@@ -31,6 +31,7 @@ dist/
 # Agent tooling metadata (generated per-user, not product code)
 .atl/
 .pi/
+.codegraph/
 
 # Environment (local overrides — never committed)
 .env
