@@ -1,0 +1,49 @@
+# Binaries
+/takt-ai
+/generate-logo
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+cmd/takt-ai/main
+cmd/takt-ai/takt-ai
+dist/
+
+# Agent tooling metadata (generated per-user, not product code)
+.atl/
+.pi/
+
+# Environment (local overrides — never committed)
+.env
+
+# Engram local runtime state (project sync chunks are intentionally versioned)
+.engram/engram.db
+.engram/cloud.json
+
+# Graphify output - keep only deliverables
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/graph.html
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/manifest.json
+!graphify-out/.gitignore
+!graphify-out/.graphify_labels.json
