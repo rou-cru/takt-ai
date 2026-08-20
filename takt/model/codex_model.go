@@ -62,41 +62,29 @@ func CodexDefaultPreset() map[string]ModelAssignment {
 	return preset
 }
 
-// ResolveCodexSubAgentAssignment resolves a sub-agent to its assigned model and effort, using the default sub-agent assignment when needed.
-// It returns an error when neither assignment provides a model.
-func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]ModelAssignment) (string, string, error) {
-	if len(assignments) == 0 {
-		assignments = CodexDefaultPreset()
+// ResolveCodexSubAgentAssignment resolves a Codex assignment from canonical
+// defaults and partial overrides, including the default sub-agent fallback.
+func ResolveCodexSubAgentAssignment(subAgent string, overrides map[string]ModelAssignment) (string, string, error) {
+	assignment, err := resolveSubAgentAssignment(AgentCodex, subAgent, overrides, CodexDefaultPreset())
+	if err != nil {
+		return "", "", err
 	}
-	a, ok := assignments[subAgent]
-	if !ok {
-		a, ok = assignments[SubAgentDefault]
-	}
-	if !ok || a.Model == "" {
-		return "", "", fmt.Errorf("codex sub-agent %q has no model assignment", subAgent)
-	}
-	return a.Model, a.Effort, nil
+	return assignment.Model, assignment.Effort, nil
 }
 
 // RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown table.
-// An empty assignment map uses the default preset, and missing sub-agent assignments use
-// the default sub-agent assignment. It returns an error if any sub-agent has no model.
+// The provided assignments override the default preset; nil and empty maps use the preset unchanged.
+// It returns an error if any resulting sub-agent assignment has no model.
 func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (string, error) {
-	if len(assignments) == 0 {
-		assignments = CodexDefaultPreset()
-	}
 	var sb strings.Builder
 	sb.WriteString("| Sub-Agent | Model | `reasoning_effort` |\n")
 	sb.WriteString("|-----------|-------|--------------------|\n")
 	for _, subAgent := range CanonicalSubAgents() {
-		assignment, ok := assignments[subAgent]
-		if !ok {
-			assignment, ok = assignments[SubAgentDefault]
+		modelID, effort, err := ResolveCodexSubAgentAssignment(subAgent, assignments)
+		if err != nil {
+			return "", err
 		}
-		if !ok || assignment.Model == "" {
-			return "", fmt.Errorf("codex sub-agent %q has no model assignment", subAgent)
-		}
-		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` |\n", subAgent, assignment.Model, assignment.Effort)
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` |\n", subAgent, modelID, effort)
 	}
 	return sb.String(), nil
 }

@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -109,6 +110,45 @@ func TestResolveCodexSubAgentAssignment_CustomOverride(t *testing.T) {
 	}
 }
 
+func TestResolveCodexSubAgentAssignment_AcceptsProviderModelID(t *testing.T) {
+	const customModel = "openai/custom-model"
+	modelID, effort, err := model.ResolveCodexSubAgentAssignment(model.SubAgentTaktDev, map[string]model.ModelAssignment{
+		model.SubAgentTaktDev: {Model: customModel, Effort: "custom-effort"},
+	})
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if modelID != customModel || effort != "custom-effort" {
+		t.Errorf("got (%q, %q), want (%q, %q)", modelID, effort, customModel, "custom-effort")
+	}
+}
+
+func TestResolveCodexSubAgentAssignment_PartialOverridePreservesDefaults(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		model.SubAgentTaktPM: {Model: model.CodexModelTerra, Effort: "medium"},
+	}
+	modelID, effort, err := model.ResolveCodexSubAgentAssignment(model.SubAgentTaktDev, assignments)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if modelID != model.CodexModelLuna || effort != "high" {
+		t.Errorf("got (%q, %q), want (%q, %q)", modelID, effort, model.CodexModelLuna, "high")
+	}
+}
+
+func TestResolveCodexSubAgentAssignment_ExplicitDefaultFallback(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		model.SubAgentDefault: {Model: model.CodexModelSol, Effort: "high"},
+	}
+	modelID, effort, err := model.ResolveCodexSubAgentAssignment("unknown", assignments)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if modelID != model.CodexModelSol || effort != "high" {
+		t.Errorf("got (%q, %q), want (%q, %q)", modelID, effort, model.CodexModelSol, "high")
+	}
+}
+
 func TestRenderCodexSubAgentAssignments_Deterministic(t *testing.T) {
 	out1 := renderCodexSubAgentAssignments(nil)
 	out2 := renderCodexSubAgentAssignments(nil)
@@ -144,13 +184,21 @@ func TestRenderCodexSubAgentAssignments_Header(t *testing.T) {
 	}
 }
 
-func TestRenderCodexSubAgentAssignments_CustomModel(t *testing.T) {
-	assignments := model.CodexDefaultPreset()
-	assignments["takt-pm"] = model.ModelAssignment{Model: model.CodexModelTerra, Effort: "medium"}
-	out := renderCodexSubAgentAssignments(assignments)
-	wantRow := "| `takt-pm` | `openai/gpt-5.6-terra` | `medium` |"
-	if !strings.Contains(out, wantRow) {
-		t.Errorf("custom model row not found; output:\n%s", out)
+func TestRenderCodexSubAgentAssignments_PartialOverride(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		"takt-pm": {Model: model.CodexModelTerra, Effort: "medium"},
+	}
+	out, err := model.RenderCodexSubAgentAssignments(assignments)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	for _, wantRow := range []string{
+		"| `takt-pm` | `openai/gpt-5.6-terra` | `medium` |",
+		"| `takt-dev` | `openai/gpt-5.6-luna` | `high` |",
+	} {
+		if !strings.Contains(out, wantRow) {
+			t.Errorf("row %q not found; output:\n%s", wantRow, out)
+		}
 	}
 }
 
@@ -223,19 +271,18 @@ func TestResolveCodexSubAgentAssignment_EmptyMapUsesDefaultPreset(t *testing.T) 
 	}
 }
 
-// TestResolveCodexSubAgentAssignment_ErrorWhenNoModel verifies that an error
-// is returned when the sub-agent and the default fallback both lack a model
-// assignment.
-func TestResolveCodexSubAgentAssignment_ErrorWhenNoModel(t *testing.T) {
+// TestResolveCodexSubAgentAssignment_UnrelatedOverridePreservesPreset verifies
+// that a partial override does not remove canonical assignments.
+func TestResolveCodexSubAgentAssignment_UnrelatedOverridePreservesPreset(t *testing.T) {
 	assignments := map[string]model.ModelAssignment{
 		"some-other-sub-agent": {Model: model.CodexModelSol, Effort: "high"},
 	}
 	modelID, effort, err := model.ResolveCodexSubAgentAssignment("takt-dev", assignments)
-	if err == nil {
-		t.Fatal("error = nil, want error when no model is assigned")
+	if err != nil {
+		t.Fatalf("error = %v", err)
 	}
-	if modelID != "" || effort != "" {
-		t.Errorf("got (%q, %q), want (\"\", \"\") on error", modelID, effort)
+	if modelID != model.CodexModelLuna || effort != "high" {
+		t.Errorf("got (%q, %q), want (%q, %q)", modelID, effort, model.CodexModelLuna, "high")
 	}
 }
 
@@ -246,8 +293,9 @@ func TestResolveCodexSubAgentAssignment_ErrorWhenAssignmentHasEmptyModel(t *test
 	assignments := map[string]model.ModelAssignment{
 		"takt-dev": {Model: "", Effort: "high"},
 	}
-	if _, _, err := model.ResolveCodexSubAgentAssignment("takt-dev", assignments); err == nil {
-		t.Error("error = nil, want error when assignment has an empty model")
+	_, _, err := model.ResolveCodexSubAgentAssignment("takt-dev", assignments)
+	if got, want := fmt.Sprint(err), `codex sub-agent "takt-dev" has no model assignment`; got != want {
+		t.Errorf("error = %q, want %q", got, want)
 	}
 }
 

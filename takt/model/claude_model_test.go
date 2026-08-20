@@ -69,6 +69,63 @@ func TestClaudeDefaultPreset_Assignments(t *testing.T) {
 	}
 }
 
+func TestResolveClaudeSubAgentAssignment(t *testing.T) {
+	tests := []struct {
+		name      string
+		subAgent  string
+		overrides map[string]model.ModelAssignment
+		want      model.ModelAssignment
+		wantErr   bool
+	}{
+		{name: "nil uses preset", subAgent: model.SubAgentTaktInit, want: model.ModelAssignment{Model: "haiku"}},
+		{name: "empty uses preset", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{}, want: model.ModelAssignment{Model: "sonnet"}},
+		{name: "partial override preserves defaults", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{model.SubAgentTaktPM: {Model: "fable", Effort: "high"}}, want: model.ModelAssignment{Model: "sonnet"}},
+		{name: "sub-agent override wins", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{model.SubAgentTaktDev: {Model: "opus", Effort: "max"}}, want: model.ModelAssignment{Model: "opus", Effort: "max"}},
+		{name: "explicit default handles unknown", subAgent: "unknown", overrides: map[string]model.ModelAssignment{model.SubAgentDefault: {Model: "haiku"}}, want: model.ModelAssignment{Model: "haiku"}},
+		{name: "preset default handles unknown", subAgent: "unknown", want: model.ModelAssignment{Model: "sonnet"}},
+		{name: "missing model is invalid", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{model.SubAgentTaktDev: {}}, wantErr: true},
+		{name: "unknown model is invalid", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{model.SubAgentTaktDev: {Model: "unknown"}}, wantErr: true},
+		{name: "unsupported effort is invalid", subAgent: model.SubAgentTaktDev, overrides: map[string]model.ModelAssignment{model.SubAgentTaktDev: {Model: "haiku", Effort: "high"}}, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := model.ResolveClaudeSubAgentAssignment(tc.subAgent, tc.overrides)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("assignment = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRenderClaudeEffortFrontmatter(t *testing.T) {
+	tests := []struct {
+		name       string
+		assignment model.ModelAssignment
+		want       string
+		wantErr    bool
+	}{
+		{name: "default effort omitted", assignment: model.ModelAssignment{Model: "sonnet"}},
+		{name: "explicit effort rendered", assignment: model.ModelAssignment{Model: "sonnet", Effort: "high"}, want: "effort: high"},
+		{name: "invalid assignment rejected", assignment: model.ModelAssignment{Model: "haiku", Effort: "high"}, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := model.RenderClaudeEffortFrontmatter(tc.assignment)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("frontmatter = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestClaudeEffortsForModelOfficialMatrix(t *testing.T) {
 	tests := []struct {
 		name  string
