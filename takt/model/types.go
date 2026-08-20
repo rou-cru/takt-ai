@@ -99,19 +99,19 @@ func CanonicalSubAgentCatalog() []CanonicalSubAgent {
 		return ModelAssignment{Model: model, Effort: effort}
 	}
 	return []CanonicalSubAgent{
-		{Name: SubAgentTaktInit, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("haiku"), AgentCodex: codex("openai/gpt-5.6-luna", "low")}},
-		{Name: SubAgentTaktAnalyst, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-luna", "medium")}},
-		{Name: SubAgentTaktPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex("openai/gpt-5.6-sol", "high")}},
-		{Name: SubAgentTaktSpec, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-terra", "medium")}},
-		{Name: SubAgentTaktArchitect, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex("openai/gpt-5.6-sol", "high")}},
-		{Name: SubAgentTaktProductDesigner, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex("openai/gpt-5.6-sol", "high")}},
-		{Name: SubAgentTaktTPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-terra", "medium")}},
-		{Name: SubAgentTaktDev, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-luna", "high")}},
-		{Name: SubAgentTaktVerify, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: ModelAssignment{Model: "sonnet", Effort: "high"}, AgentCodex: codex("openai/gpt-5.6-luna", "high")}},
-		{Name: SubAgentTaktJudgeA, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-luna", "high")}},
-		{Name: SubAgentTaktJudgeB, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-luna", "high")}},
-		{Name: SubAgentTaktFix, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-terra", "medium")}},
-		{Name: SubAgentDefault, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex("openai/gpt-5.6-terra", "medium")}},
+		{Name: SubAgentTaktInit, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("haiku"), AgentCodex: codex(CodexModelLuna, "low")}},
+		{Name: SubAgentTaktAnalyst, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "medium")}},
+		{Name: SubAgentTaktPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
+		{Name: SubAgentTaktSpec, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
+		{Name: SubAgentTaktArchitect, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
+		{Name: SubAgentTaktProductDesigner, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
+		{Name: SubAgentTaktTPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
+		{Name: SubAgentTaktDev, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
+		{Name: SubAgentTaktVerify, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: ModelAssignment{Model: "sonnet", Effort: "high"}, AgentCodex: codex(CodexModelLuna, "high")}},
+		{Name: SubAgentTaktJudgeA, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
+		{Name: SubAgentTaktJudgeB, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
+		{Name: SubAgentTaktFix, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
+		{Name: SubAgentDefault, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
 	}
 }
 
