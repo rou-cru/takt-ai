@@ -15,6 +15,8 @@
 
 package model
 
+import "fmt"
+
 // ModelAssignment is the canonical model and effort assigned to a sub-agent.
 type ModelAssignment struct {
 	Model  string // target-specific model identifier
@@ -24,4 +26,31 @@ type ModelAssignment struct {
 // FullID returns the assigned model identifier.
 func (m ModelAssignment) FullID() string {
 	return m.Model
+}
+
+// resolveSubAgentAssignment applies provider defaults and partial overrides.
+// A sub-agent override wins, followed by its preset assignment, then the
+// explicit and preset default assignments.
+func resolveSubAgentAssignment(agent AgentID, subAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error) {
+	assignment, ok := overrides[subAgent]
+	if !ok {
+		assignment, ok = preset[subAgent]
+	}
+	if !ok {
+		assignment, ok = overrides[SubAgentDefault]
+	}
+	if !ok {
+		assignment, ok = preset[SubAgentDefault]
+	}
+	if !ok {
+		return ModelAssignment{}, fmt.Errorf("%s sub-agent %q has no model assignment", agent, subAgent)
+	}
+	return validateModelAssignment(agent, subAgent, assignment)
+}
+
+func validateModelAssignment(agent AgentID, subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+	if assignment.Model == "" {
+		return ModelAssignment{}, fmt.Errorf("%s sub-agent %q has no model assignment", agent, subAgent)
+	}
+	return assignment, nil
 }
