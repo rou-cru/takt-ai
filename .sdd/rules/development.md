@@ -1,9 +1,7 @@
-# Development rules
+# Engineering practices
 
-These requirements are non-negotiable. Every code change must satisfy them,
-even when the test suite passes.
-
-They apply to planning, implementation, tests, generated assets, and review.
+These practices guide work in this repository when they are relevant. They do
+not prescribe a universal planning or delivery workflow.
 
 - **Product contract first**: make supported agents, platforms, commands, and
   installation behavior agree across detection, installation, injection,
