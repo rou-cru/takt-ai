@@ -91,7 +91,8 @@ const (
 	SkillSkillRegistry SkillID = "skill-registry"
 )
 
-// CanonicalSubAgentCatalog returns the shared specialist definitions.
+// CanonicalSubAgentCatalog returns the canonical specialist definitions in a fixed order,
+// including each specialist's persona and agent-specific model assignments.
 func CanonicalSubAgentCatalog() []CanonicalSubAgent {
 	claude := func(model string) ModelAssignment { return ModelAssignment{Model: model} }
 	codex := func(model, effort string) ModelAssignment {
@@ -114,7 +115,7 @@ func CanonicalSubAgentCatalog() []CanonicalSubAgent {
 	}
 }
 
-// CanonicalSubAgents returns the shared specialist catalog in stable order.
+// CanonicalSubAgents returns the names of shared specialists in stable catalog order.
 func CanonicalSubAgents() []string {
 	catalog := CanonicalSubAgentCatalog()
 	names := make([]string, len(catalog))

@@ -35,7 +35,8 @@ func CodexAvailableModels() []string {
 	return out
 }
 
-// FilterCodexModels returns model IDs matching query.
+// FilterCodexModels returns model IDs containing the query, ignoring letter case.
+// A blank query returns all available model IDs.
 func FilterCodexModels(query string) []string {
 	all := CodexAvailableModels()
 	if strings.TrimSpace(query) == "" {
@@ -61,7 +62,8 @@ func CodexDefaultPreset() map[string]ModelAssignment {
 	return preset
 }
 
-// ResolveCodexSubAgentAssignment resolves a sub-agent to its model and effort.
+// ResolveCodexSubAgentAssignment resolves a sub-agent to its assigned model and effort, using the default sub-agent assignment when needed.
+// It returns an error when neither assignment provides a model.
 func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]ModelAssignment) (string, string, error) {
 	if len(assignments) == 0 {
 		assignments = CodexDefaultPreset()
@@ -76,7 +78,9 @@ func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]Mode
 	return a.Model, a.Effort, nil
 }
 
-// RenderCodexSubAgentAssignments renders per-sub-agent assignments as a markdown table.
+// RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown table.
+// An empty assignment map uses the default preset, and missing sub-agent assignments use
+// the default sub-agent assignment. It returns an error if any sub-agent has no model.
 func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (string, error) {
 	if len(assignments) == 0 {
 		assignments = CodexDefaultPreset()
