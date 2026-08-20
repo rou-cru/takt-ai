@@ -65,3 +65,51 @@ func TestSetupChoice_ZeroValue(t *testing.T) {
 		t.Errorf("zero-value SetupChoice = %q, want %q (SetupDefault)", s, SetupDefault)
 	}
 }
+
+// TestCanonicalSubAgents_StableOrder verifies that CanonicalSubAgents
+// returns names in the same, fixed order as CanonicalSubAgentCatalog, since
+// callers (e.g. table rendering) depend on deterministic ordering.
+func TestCanonicalSubAgents_StableOrder(t *testing.T) {
+	want := []string{
+		SubAgentTaktInit, SubAgentTaktAnalyst, SubAgentTaktPM, SubAgentTaktSpec,
+		SubAgentTaktArchitect, SubAgentTaktProductDesigner, SubAgentTaktTPM,
+		SubAgentTaktDev, SubAgentTaktVerify, SubAgentTaktJudgeA, SubAgentTaktJudgeB,
+		SubAgentTaktFix, SubAgentDefault,
+	}
+	got := CanonicalSubAgents()
+	if len(got) != len(want) {
+		t.Fatalf("CanonicalSubAgents() len = %d, want %d", len(got), len(want))
+	}
+	for i, name := range want {
+		if got[i] != name {
+			t.Errorf("CanonicalSubAgents()[%d] = %q, want %q", i, got[i], name)
+		}
+	}
+}
+
+// TestCanonicalSubAgents_MatchesCatalogNames verifies that the names
+// returned line up positionally with CanonicalSubAgentCatalog entries.
+func TestCanonicalSubAgents_MatchesCatalogNames(t *testing.T) {
+	names := CanonicalSubAgents()
+	catalog := CanonicalSubAgentCatalog()
+	if len(names) != len(catalog) {
+		t.Fatalf("names len = %d, catalog len = %d", len(names), len(catalog))
+	}
+	for i, subAgent := range catalog {
+		if names[i] != subAgent.Name {
+			t.Errorf("names[%d] = %q, want %q", i, names[i], subAgent.Name)
+		}
+	}
+}
+
+// TestCanonicalSubAgentCatalog_NoDuplicateNames verifies that every
+// canonical sub-agent name in the catalog is unique.
+func TestCanonicalSubAgentCatalog_NoDuplicateNames(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, subAgent := range CanonicalSubAgentCatalog() {
+		if seen[subAgent.Name] {
+			t.Errorf("duplicate canonical sub-agent name: %q", subAgent.Name)
+		}
+		seen[subAgent.Name] = true
+	}
+}
