@@ -60,7 +60,9 @@ func (e ClaudeEffort) Valid() bool {
 	}
 }
 
-// ClaudeEffortsForModel returns the effort choices for a model alias.
+// ClaudeEffortsForModel returns the effort levels supported by a model alias.
+// Fable and Opus support all effort levels, Sonnet supports all except xhigh,
+// and other aliases support only the default effort level.
 func ClaudeEffortsForModel(alias ClaudeModelAlias) []ClaudeEffort {
 	switch alias {
 	case ClaudeModelFable, ClaudeModelOpus:
@@ -72,7 +74,7 @@ func ClaudeEffortsForModel(alias ClaudeModelAlias) []ClaudeEffort {
 	}
 }
 
-// ClaudeEffortAllowedForModel reports whether effort is valid for alias.
+// ClaudeEffortAllowedForModel reports whether the effort level is supported by the specified Claude model alias.
 func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bool {
 	if !effort.Valid() {
 		return false
@@ -85,7 +87,7 @@ func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bo
 	return false
 }
 
-// ClaudeDefaultPreset returns the official Claude assignment projection.
+// ClaudeDefaultPreset returns the default Claude model assignment for each canonical sub-agent.
 func ClaudeDefaultPreset() map[string]ModelAssignment {
 	catalog := CanonicalSubAgentCatalog()
 	preset := make(map[string]ModelAssignment, len(catalog))
