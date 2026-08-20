@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -169,31 +170,19 @@ func TestCodexAvailableModels_Contents(t *testing.T) {
 
 func TestFilterCodexModels(t *testing.T) {
 	tests := []struct {
-		query    string
-		wantAny  []string
-		wantNone []string
+		name  string
+		query string
+		want  []string
 	}{
-		{"sol", []string{"openai/gpt-5.6-sol"}, []string{"openai/gpt-5.6-terra"}},
-		{"TERRA", []string{"openai/gpt-5.6-terra"}, nil},
-		{"zzz", nil, []string{"openai/gpt-5.6-sol"}},
-		{"", []string{"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"}, nil},
+		{name: "case-insensitive match", query: "TERRA", want: []string{model.CodexModelTerra}},
+		{name: "no matches", query: "zzz", want: []string{}},
+		{name: "blank query preserves order", query: "", want: []string{model.CodexModelSol, model.CodexModelTerra, model.CodexModelLuna}},
 	}
 	for _, tc := range tests {
-		t.Run(tc.query, func(t *testing.T) {
-			result := model.FilterCodexModels(tc.query)
-			rs := make(map[string]bool)
-			for _, r := range result {
-				rs[r] = true
-			}
-			for _, w := range tc.wantAny {
-				if !rs[w] {
-					t.Errorf("expected %q in %v", w, result)
-				}
-			}
-			for _, nw := range tc.wantNone {
-				if rs[nw] {
-					t.Errorf("unexpected %q in %v", nw, result)
-				}
+		t.Run(tc.name, func(t *testing.T) {
+			got := model.FilterCodexModels(tc.query)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("FilterCodexModels(%q) = %v, want %v", tc.query, got, tc.want)
 			}
 		})
 	}
