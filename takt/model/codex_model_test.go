@@ -198,3 +198,82 @@ func TestFilterCodexModels(t *testing.T) {
 		})
 	}
 }
+
+// TestCodexAvailableModels_ReturnsCopy verifies that mutating the returned
+// slice does not affect subsequent calls, i.e. CodexAvailableModels does not
+// leak its internal backing array.
+func TestCodexAvailableModels_ReturnsCopy(t *testing.T) {
+	first := model.CodexAvailableModels()
+	if len(first) == 0 {
+		t.Fatal("CodexAvailableModels() returned no models")
+	}
+	first[0] = "mutated"
+
+	second := model.CodexAvailableModels()
+	if second[0] == "mutated" {
+		t.Error("mutating the returned slice affected a subsequent call; CodexAvailableModels leaks internal state")
+	}
+	if second[0] != model.CodexModelSol {
+		t.Errorf("second[0] = %q, want %q", second[0], model.CodexModelSol)
+	}
+}
+
+// TestResolveCodexSubAgentAssignment_EmptyMapUsesDefaultPreset verifies that
+// a non-nil but empty assignment map is treated the same as nil, falling
+// back to the default preset.
+func TestResolveCodexSubAgentAssignment_EmptyMapUsesDefaultPreset(t *testing.T) {
+	modelID, effort, err := model.ResolveCodexSubAgentAssignment("takt-dev", map[string]model.ModelAssignment{})
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if modelID != model.CodexModelLuna {
+		t.Errorf("model = %q, want %s", modelID, model.CodexModelLuna)
+	}
+	if effort != "high" {
+		t.Errorf("effort = %q, want high", effort)
+	}
+}
+
+// TestResolveCodexSubAgentAssignment_ErrorWhenNoModel verifies that an error
+// is returned when the sub-agent and the default fallback both lack a model
+// assignment.
+func TestResolveCodexSubAgentAssignment_ErrorWhenNoModel(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		"some-other-sub-agent": {Model: model.CodexModelSol, Effort: "high"},
+	}
+	modelID, effort, err := model.ResolveCodexSubAgentAssignment("takt-dev", assignments)
+	if err == nil {
+		t.Fatal("error = nil, want error when no model is assigned")
+	}
+	if modelID != "" || effort != "" {
+		t.Errorf("got (%q, %q), want (\"\", \"\") on error", modelID, effort)
+	}
+}
+
+// TestResolveCodexSubAgentAssignment_ErrorWhenAssignmentHasEmptyModel
+// verifies that an assignment present in the map but with an empty Model
+// field is treated as missing.
+func TestResolveCodexSubAgentAssignment_ErrorWhenAssignmentHasEmptyModel(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		"takt-dev": {Model: "", Effort: "high"},
+	}
+	if _, _, err := model.ResolveCodexSubAgentAssignment("takt-dev", assignments); err == nil {
+		t.Error("error = nil, want error when assignment has an empty model")
+	}
+}
+
+// TestRenderCodexSubAgentAssignments_ErrorWhenNoModel verifies that
+// rendering fails with an error when a sub-agent has no assignment and there
+// is no usable default fallback.
+func TestRenderCodexSubAgentAssignments_ErrorWhenNoModel(t *testing.T) {
+	assignments := map[string]model.ModelAssignment{
+		"default": {Model: "", Effort: ""},
+	}
+	out, err := model.RenderCodexSubAgentAssignments(assignments)
+	if err == nil {
+		t.Fatal("error = nil, want error when no sub-agent has a model")
+	}
+	if out != "" {
+		t.Errorf("output = %q, want empty string on error", out)
+	}
+}

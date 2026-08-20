@@ -71,3 +71,73 @@ func TestSelectionPreservedSubagents(t *testing.T) {
 		t.Errorf("Selection.PreservedSubagents = %v, want [takt-dev]", s.PreservedSubagents)
 	}
 }
+
+// TestSelectionHasAgent verifies membership checks against Agents.
+func TestSelectionHasAgent(t *testing.T) {
+	s := Selection{Agents: []AgentID{AgentClaudeCode, AgentCodex}}
+
+	if !s.HasAgent(AgentClaudeCode) {
+		t.Error("HasAgent(AgentClaudeCode) = false, want true")
+	}
+	if !s.HasAgent(AgentCodex) {
+		t.Error("HasAgent(AgentCodex) = false, want true")
+	}
+	if s.HasAgent(AgentOpenCode) {
+		t.Error("HasAgent(AgentOpenCode) = true, want false")
+	}
+}
+
+// TestSelectionHasAgent_EmptySelection verifies that a zero-value Selection
+// reports no agents present.
+func TestSelectionHasAgent_EmptySelection(t *testing.T) {
+	s := Selection{}
+	if s.HasAgent(AgentClaudeCode) {
+		t.Error("HasAgent on empty Selection = true, want false")
+	}
+}
+
+// TestSelectionHasComponent verifies membership checks against Components.
+func TestSelectionHasComponent(t *testing.T) {
+	s := Selection{Components: []ComponentID{ComponentEngram, ComponentSkills}}
+
+	if !s.HasComponent(ComponentEngram) {
+		t.Error("HasComponent(ComponentEngram) = false, want true")
+	}
+	if !s.HasComponent(ComponentSkills) {
+		t.Error("HasComponent(ComponentSkills) = false, want true")
+	}
+	if s.HasComponent(ComponentTheme) {
+		t.Error("HasComponent(ComponentTheme) = true, want false")
+	}
+}
+
+// TestSelectionHasComponent_EmptySelection verifies that a zero-value
+// Selection reports no components present.
+func TestSelectionHasComponent_EmptySelection(t *testing.T) {
+	s := Selection{}
+	if s.HasComponent(ComponentEngram) {
+		t.Error("HasComponent on empty Selection = true, want false")
+	}
+}
+
+// TestSelectionHasCommunityTool verifies membership checks against
+// CommunityTools.
+func TestSelectionHasCommunityTool(t *testing.T) {
+	s := Selection{CommunityTools: []CommunityToolID{CommunityToolCodeGraph}}
+
+	if !s.HasCommunityTool(CommunityToolCodeGraph) {
+		t.Error("HasCommunityTool(CommunityToolCodeGraph) = false, want true")
+	}
+	if s.HasCommunityTool(CommunityToolID("unknown-tool")) {
+		t.Error("HasCommunityTool(unknown-tool) = true, want false")
+	}
+}
+
+// TestSelectionHasCommunityTool_EmptySelection verifies that a zero-value
+// Selection reports no community tools present.
+func TestSelectionHasCommunityTool_EmptySelection(t *testing.T) {
+	s := Selection{}
+	if s.HasCommunityTool(CommunityToolCodeGraph) {
+		t.Error("HasCommunityTool on empty Selection = true, want false")
+	}
+}
