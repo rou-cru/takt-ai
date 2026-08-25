@@ -17,7 +17,6 @@ package model
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -53,15 +52,51 @@ func FilterCodexModels(query string) []string {
 	return out
 }
 
-// ValidateCodexModelAssignment validates a canonical Codex model and effort pair.
-func ValidateCodexModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
-	if !slices.Contains(codexAvailableModels, assignment.Model) {
-		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
+// CodexDefaultPreset returns the official Codex assignment projection.
+func CodexDefaultPreset() map[string]ModelAssignment {
+	catalog := CanonicalSubAgentCatalog()
+	preset := make(map[string]ModelAssignment, len(catalog))
+	for _, subAgent := range catalog {
+		preset[subAgent.Name] = subAgent.Assignments[AgentCodex]
 	}
-	switch assignment.Effort {
-	case "", "low", "medium", "high":
-		return assignment, nil
-	default:
-		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid effort %q", subAgent, assignment.Effort)
+	return preset
+}
+
+// ResolveCodexSubAgentAssignment resolves a sub-agent to its assigned model and effort, using the default sub-agent assignment when needed.
+// It returns an error when neither assignment provides a model.
+func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]ModelAssignment) (string, string, error) {
+	if len(assignments) == 0 {
+		assignments = CodexDefaultPreset()
 	}
+	a, ok := assignments[subAgent]
+	if !ok {
+		a, ok = assignments[SubAgentDefault]
+	}
+	if !ok || a.Model == "" {
+		return "", "", fmt.Errorf("codex sub-agent %q has no model assignment", subAgent)
+	}
+	return a.Model, a.Effort, nil
+}
+
+// RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown table.
+// An empty assignment map uses the default preset, and missing sub-agent assignments use
+// the default sub-agent assignment. It returns an error if any sub-agent has no model.
+func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (string, error) {
+	if len(assignments) == 0 {
+		assignments = CodexDefaultPreset()
+	}
+	var sb strings.Builder
+	sb.WriteString("| Sub-Agent | Model | `reasoning_effort` |\n")
+	sb.WriteString("|-----------|-------|--------------------|\n")
+	for _, subAgent := range CanonicalSubAgents() {
+		assignment, ok := assignments[subAgent]
+		if !ok {
+			assignment, ok = assignments[SubAgentDefault]
+		}
+		if !ok || assignment.Model == "" {
+			return "", fmt.Errorf("codex sub-agent %q has no model assignment", subAgent)
+		}
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` |\n", subAgent, assignment.Model, assignment.Effort)
+	}
+	return sb.String(), nil
 }

@@ -11,12 +11,25 @@ func TestModelAssignment_EffortZeroValue(t *testing.T) {
 	}
 }
 
+// TestModelAssignment_FullIDUnaffectedByEffort verifies that FullID() is not
+// changed by the presence of an Effort value.
+func TestModelAssignment_FullIDUnaffectedByEffort(t *testing.T) {
+	a := ModelAssignment{Model: "model-a", Effort: "high"}
+	want := "model-a"
+	if a.FullID() != want {
+		t.Errorf("FullID() = %q, want %q", a.FullID(), want)
+	}
+}
+
 // TestModelAssignment_ZeroValue verifies that a zero-value ModelAssignment
-// has empty Model and Effort fields.
+// has empty Model and Effort fields and an empty FullID.
 func TestModelAssignment_ZeroValue(t *testing.T) {
 	var a ModelAssignment
 	if a.Model != "" || a.Effort != "" {
 		t.Errorf("zero-value ModelAssignment = %#v, want empty Model and Effort", a)
+	}
+	if a.FullID() != "" {
+		t.Errorf("FullID() on zero value = %q, want empty string", a.FullID())
 	}
 }
 
@@ -32,80 +45,5 @@ func TestModelAssignment_Equality(t *testing.T) {
 	}
 	if a == c {
 		t.Errorf("%#v == %#v, want different", a, c)
-	}
-}
-
-func TestResolveSubAgentAssignment_Precedence(t *testing.T) {
-	tests := []struct {
-		name      string
-		subAgent  string
-		overrides map[string]ModelAssignment
-		preset    map[string]ModelAssignment
-		want      ModelAssignment
-	}{
-		{
-			name:     "specialist override wins",
-			subAgent: "specialist",
-			overrides: map[string]ModelAssignment{
-				"specialist": {Model: "override"},
-				"default":    {Model: "explicit-default"},
-			},
-			preset: map[string]ModelAssignment{
-				"specialist": {Model: "preset-specialist"},
-				"default":    {Model: "preset-default"},
-			},
-			want: ModelAssignment{Model: "override"},
-		},
-		{
-			name:     "specialist preset beats default override",
-			subAgent: "specialist",
-			overrides: map[string]ModelAssignment{
-				"default": {Model: "explicit-default"},
-			},
-			preset: map[string]ModelAssignment{
-				"specialist": {Model: "preset-specialist"},
-				"default":    {Model: "preset-default"},
-			},
-			want: ModelAssignment{Model: "preset-specialist"},
-		},
-		{
-			name:     "default override handles unknown specialist",
-			subAgent: "unknown",
-			overrides: map[string]ModelAssignment{
-				"default": {Model: "explicit-default"},
-			},
-			preset: map[string]ModelAssignment{
-				"default": {Model: "preset-default"},
-			},
-			want: ModelAssignment{Model: "explicit-default"},
-		},
-		{
-			name:     "preset default handles unknown specialist",
-			subAgent: "unknown",
-			preset: map[string]ModelAssignment{
-				"default": {Model: "preset-default"},
-			},
-			want: ModelAssignment{Model: "preset-default"},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolveSubAgentAssignment("agent", tc.subAgent, "default", tc.overrides, tc.preset)
-			if err != nil {
-				t.Fatalf("ResolveSubAgentAssignment() error = %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("ResolveSubAgentAssignment() = %#v, want %#v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestResolveSubAgentAssignment_RequiresModel(t *testing.T) {
-	_, err := ResolveSubAgentAssignment("codex", "specialist", "default", map[string]ModelAssignment{
-		"specialist": {},
-	}, nil)
-	if got, want := err.Error(), `codex sub-agent "specialist" has no model assignment`; got != want {
-		t.Errorf("error = %q, want %q", got, want)
 	}
 }

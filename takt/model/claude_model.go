@@ -15,8 +15,6 @@
 
 package model
 
-import "fmt"
-
 // ClaudeModelAlias represents one of the Claude model tiers.
 type ClaudeModelAlias string
 
@@ -89,32 +87,12 @@ func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bo
 	return false
 }
 
-// RenderClaudeEffortFrontmatter renders a validated Claude effort field.
-// The default effort produces no frontmatter field.
-func RenderClaudeEffortFrontmatter(assignment ModelAssignment) (string, error) {
-	assignment, err := validateModelAssignment(AgentClaudeCode, "default", assignment)
-	if err != nil {
-		return "", err
+// ClaudeDefaultPreset returns the default Claude model assignment for each canonical sub-agent.
+func ClaudeDefaultPreset() map[string]ModelAssignment {
+	catalog := CanonicalSubAgentCatalog()
+	preset := make(map[string]ModelAssignment, len(catalog))
+	for _, subAgent := range catalog {
+		preset[subAgent.Name] = subAgent.Assignments[AgentClaudeCode]
 	}
-	assignment, err = ValidateClaudeModelAssignment("default", assignment)
-	if err != nil {
-		return "", err
-	}
-	if assignment.Effort == "" {
-		return "", nil
-	}
-	return "effort: " + assignment.Effort, nil
-}
-
-// ValidateClaudeModelAssignment validates a Claude model and effort pair.
-func ValidateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
-	alias := ClaudeModelAlias(assignment.Model)
-	if !alias.Valid() {
-		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
-	}
-	effort := ClaudeEffort(assignment.Effort)
-	if !ClaudeEffortAllowedForModel(alias, effort) {
-		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q model %q does not support effort %q", subAgent, assignment.Model, assignment.Effort)
-	}
-	return assignment, nil
+	return preset
 }

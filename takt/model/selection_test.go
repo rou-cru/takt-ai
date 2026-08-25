@@ -21,9 +21,9 @@ func TestSelectionSetupCustom(t *testing.T) {
 
 func TestSelectionModelOverrides(t *testing.T) {
 	s := Selection{ModelOverrides: map[string]ModelAssignment{
-		"takt-judge-a": {Model: "custom-model", Effort: "high"},
+		SubAgentTaktJudgeA: {Model: "custom-model", Effort: "high"},
 	}}
-	if s.ModelOverrides["takt-judge-a"].Model != "custom-model" {
+	if s.ModelOverrides[SubAgentTaktJudgeA].Model != "custom-model" {
 		t.Fatal("model override was not retained")
 	}
 	o := SyncOverrides{ModelOverrides: s.ModelOverrides}
