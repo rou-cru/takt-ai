@@ -49,7 +49,7 @@ const (
 	WebSearchLive     WebSearch = "live"
 )
 
-// ValidSandboxMode reports whether mode is a native Codex sandbox mode.
+// ValidSandboxMode reports whether mode is a supported native Codex sandbox mode.
 func ValidSandboxMode(mode SandboxMode) bool {
 	return mode == SandboxReadOnly || mode == SandboxWorkspaceWrite
 }
@@ -79,7 +79,7 @@ type ConfigRequest struct {
 	MaxDepth    int
 }
 
-// RenderSubAgent returns one deterministic Codex TOML custom-agent file.
+// It returns an error when the request contains invalid or incomplete settings.
 func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	if err := validateSubAgent(request); err != nil {
 		return Artifact{}, err
@@ -113,7 +113,8 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 	return artifacts.SortUniqueByPath(rendered, func(a Artifact) string { return a.Path }, "Codex")
 }
 
-// RenderGlobalPrompt returns the native Codex global prompt artifact.
+// RenderGlobalPrompt creates the Codex global prompt artifact, ensuring the content ends with a newline.
+// It returns an error when the prompt is blank.
 func RenderGlobalPrompt(content string) (Artifact, error) {
 	if strings.TrimSpace(content) == "" {
 		return Artifact{}, fmt.Errorf("Codex global prompt is required")
@@ -124,7 +125,9 @@ func RenderGlobalPrompt(content string) (Artifact, error) {
 	}, nil
 }
 
-// RenderConfig returns the native Codex config.toml projection.
+// RenderConfig renders global Codex configuration as a deterministic TOML artifact.
+// It includes model, sandbox, web-search, multi-agent, thread, and depth settings, and
+// returns an error when any setting is invalid.
 func RenderConfig(request ConfigRequest) (Artifact, error) {
 	if _, err := model.ValidateCodexModelAssignment("config", request.Assignment); err != nil {
 		return Artifact{}, err
@@ -156,6 +159,7 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	}, nil
 }
 
+// validateSubAgent validates the identifier, required text fields, model assignment, sandbox mode, and web-search setting for a Codex sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
 	if err := artifacts.ValidateID("Codex", request.ID); err != nil {
 		return err
@@ -175,6 +179,7 @@ func validateSubAgent(request SubAgentRequest) error {
 	return validateWebSearch(request.WebSearch)
 }
 
+// validateSandboxMode validates a Codex sandbox mode and returns an error for unsupported values.
 func validateSandboxMode(mode SandboxMode) error {
 	if !ValidSandboxMode(mode) {
 		return fmt.Errorf("invalid Codex sandbox mode %q", mode)
@@ -182,6 +187,7 @@ func validateSandboxMode(mode SandboxMode) error {
 	return nil
 }
 
+// validateWebSearch validates a Codex web-search mode.
 func validateWebSearch(search WebSearch) error {
 	if !ValidWebSearch(search) {
 		return fmt.Errorf("invalid Codex web search %q", search)
@@ -189,10 +195,12 @@ func validateWebSearch(search WebSearch) error {
 	return nil
 }
 
+// tomlString quotes a string for use as a TOML string value.
 func tomlString(value string) string {
 	return strconv.Quote(value)
 }
 
+// ensureTrailingNewline ensures content ends with a newline.
 func ensureTrailingNewline(content string) string {
 	if strings.HasSuffix(content, "\n") {
 		return content

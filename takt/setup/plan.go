@@ -68,7 +68,8 @@ type PlanRequest struct {
 
 // BuildTargetPlans builds native target plans without writing to the
 // filesystem. Returned plans are ordered Claude first, Codex second, OpenCode
-// third, and each plan's artifacts are ordered by relative path.
+// BuildTargetPlans validates the requested targets and builds their native configuration plans in canonical order.
+// Each plan's artifacts are ordered by relative path; errors are returned without any plans.
 func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 	targets, err := selectedTargets(request.Targets)
 	if err != nil {
@@ -109,6 +110,7 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 	return plans, nil
 }
 
+// selectedTargets validates requested targets and returns them in canonical order.
 func selectedTargets(targets []model.AgentID) ([]model.AgentID, error) {
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("at least one target is required")
@@ -132,6 +134,8 @@ func selectedTargets(targets []model.AgentID) ([]model.AgentID, error) {
 	return ordered, nil
 }
 
+// buildClaudePlan creates the Claude configuration plan, including sub-agent files,
+// the global prompt, settings, and their managed paths.
 func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions, overrides map[string]model.ModelAssignment) (TargetPlan, error) {
 	requests := make([]claude.SubAgentRequest, 0, len(content))
 	for _, entry := range content {
@@ -182,6 +186,10 @@ func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions
 	}, nil
 }
 
+// buildCodexPlan builds the Codex configuration plan and its generated artifacts.
+// The plan includes sub-agent files, the global prompt, configuration, and managed
+// paths. It returns an error if assignment resolution, rendering, or manifest
+// creation fails.
 func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, overrides map[string]model.ModelAssignment) (TargetPlan, error) {
 	requests := make([]codex.SubAgentRequest, 0, len(content))
 	for _, entry := range content {
@@ -244,6 +252,7 @@ func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, 
 	}, nil
 }
 
+// buildOpenCodePlan builds an OpenCode configuration plan from native sub-agent content and the selected model, using the default model when none is specified.
 func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOptions) (TargetPlan, error) {
 	modelID := options.Model
 	if modelID == "" {
@@ -288,6 +297,7 @@ func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOpt
 	}, nil
 }
 
+// sortArtifacts orders artifacts lexicographically by their relative path.
 func sortArtifacts(artifacts []Artifact) {
 	sort.Slice(artifacts, func(i, j int) bool { return artifacts[i].Path < artifacts[j].Path })
 }

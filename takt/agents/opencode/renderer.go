@@ -46,7 +46,7 @@ type ConfigRequest struct {
 	Assignment model.ModelAssignment
 }
 
-// RenderSubAgent returns one deterministic OpenCode Markdown/frontmatter agent.
+// It returns a validation error when the request is invalid.
 func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	if err := validateSubAgent(request); err != nil {
 		return Artifact{}, err
@@ -79,7 +79,7 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 	return artifacts.SortUniqueByPath(rendered, func(a Artifact) string { return a.Path }, "OpenCode")
 }
 
-// RenderConfig returns the native OpenCode opencode.json projection.
+// RenderConfig creates the OpenCode global configuration artifact for the assigned model. It returns an error when the model assignment is blank or the configuration cannot be serialized.
 func RenderConfig(request ConfigRequest) (Artifact, error) {
 	if strings.TrimSpace(request.Assignment.Model) == "" {
 		return Artifact{}, fmt.Errorf("OpenCode config requires a model assignment")
@@ -98,6 +98,8 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	}, nil
 }
 
+// validateSubAgent validates the identifier, description, instructions, and model assignment for an OpenCode sub-agent.
+// It returns an error identifying the first invalid or missing field.
 func validateSubAgent(request SubAgentRequest) error {
 	if err := artifacts.ValidateID("OpenCode", request.ID); err != nil {
 		return err

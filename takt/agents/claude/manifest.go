@@ -35,7 +35,9 @@ type Manifest struct {
 }
 
 // NewManifest creates a Claude manifest from renderer-generated paths.
-// The native prompt and settings files are always included.
+// NewManifest constructs a manifest containing native and generated Claude-managed
+// paths, normalized and sorted deterministically. It returns an error for invalid
+// paths or duplicate normalized paths.
 func NewManifest(generatedPaths []string) (Manifest, error) {
 	paths := make([]string, 0, len(nativeManagedPaths)+len(generatedPaths))
 	paths = append(paths, nativeManagedPaths...)

@@ -29,7 +29,7 @@ import (
 )
 
 // loadOrCreateManifest loads the deployment root's ownership manifest,
-// returning an empty manifest when none exists yet.
+// loadOrCreateManifest loads the ownership manifest for rootDir, or returns an empty manifest when none exists.
 func loadOrCreateManifest(rootDir string) (*OwnershipManifest, error) {
 	manifest, err := LoadOwnershipManifest(rootDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -48,7 +48,7 @@ type TargetPlan struct {
 
 // Apply deploys all target plans through the shared deployment path and
 // records ownership for every deployed file in the ownership manifest. Stale
-// paths are intentionally left untouched; lifecycle policy owns deletion.
+// Apply deploys all managed paths and artifacts in the supplied plans without skipping existing files.
 func Apply(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 	return applyPlans(rootDir, plans, nil, nil)
 }
@@ -61,7 +61,7 @@ func Apply(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 // the user edited the file since install, so sync skips redeploying it (the
 // path is reported unchanged) and leaves its manifest entry untouched — user
 // edits to previously installed files are never clobbered. A missing file is
-// redeployed; paths without manifest entries deploy as a fresh install.
+// Sync deploys target plans while preserving managed files that have been modified locally. Missing files and paths without manifest entries are redeployed.
 func Sync(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return DeploymentResult{}, fmt.Errorf("deployment root is required")
@@ -105,7 +105,9 @@ func Sync(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 // rootDir. Ownership is released per target: entries shared with unselected
 // targets keep their files and remaining owners. When no entries remain the
 // manifest itself is deleted. A missing manifest is a successful no-op, so a
-// second uninstall is also a no-op.
+// Uninstall removes files owned exclusively by the specified targets and updates the ownership manifest.
+// Pre-existing files and files still owned by other targets are preserved. A missing manifest is treated as a successful no-op.
+// It returns the paths removed and preserved during the operation.
 func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return UninstallResult{}, fmt.Errorf("deployment root is required")
@@ -187,7 +189,7 @@ type UninstallResult struct {
 
 // pruneEmptyDirs removes now-empty directories walking upward from directory,
 // stopping at the deployment root or at the first non-empty directory (its
-// removal failing means something inside is still wanted).
+// pruneEmptyDirs removes empty directories upward from directory until reaching root or encountering an unremovable directory.
 func pruneEmptyDirs(root, directory string) {
 	for directory != root {
 		if err := os.Remove(directory); err != nil {
@@ -200,7 +202,8 @@ func pruneEmptyDirs(root, directory string) {
 // applyPlans flattens and validates the plans, deploys every artifact except
 // those named in skip (skipped paths are reported unchanged), then upserts
 // ownership manifest entries for everything it deployed. A nil manifest is
-// loaded or created here; Sync passes its already-loaded instance.
+// applyPlans deploys the supplied plans, records ownership for deployed artifacts, and saves the ownership manifest.
+// Paths listed in skip are reported as unchanged and are excluded from deployment. If manifest is nil, it is loaded or created.
 func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest) (DeploymentResult, error) {
 	managedPaths, artifacts, targetByPath, err := flattenPlans(plans)
 	if err != nil {
@@ -288,7 +291,9 @@ type priorState struct {
 }
 
 // flattenPlans rejects duplicate targets and cross-target ownership conflicts,
-// normalizes every path once, and reports which target owns each path.
+// flattenPlans normalizes and combines managed paths and artifacts from target plans,
+// returning the target associated with each path. It reports an error for invalid,
+// incomplete, duplicate, or conflicting plans.
 func flattenPlans(plans []TargetPlan) ([]string, []Artifact, map[string]string, error) {
 	if len(plans) == 0 {
 		return nil, nil, nil, fmt.Errorf("at least one target plan is required")

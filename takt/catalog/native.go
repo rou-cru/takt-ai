@@ -49,7 +49,10 @@ type NativeSubAgent struct {
 
 // JoinNativeContentForTargets validates only the native options required by
 // targets and joins the content in catalog order. The default catalog entry is
-// a fallback and is intentionally not renderable.
+// JoinNativeContentForTargets validates and combines native sub-agent content with
+// catalog assignments in catalog order. It excludes the default sub-agent and
+// returns an error when targets, catalog entries, or content are invalid or
+// incomplete.
 func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []NativeSubAgentContent, targets []model.AgentID) ([]NativeSubAgent, error) {
 	if len(catalog) == 0 {
 		return nil, fmt.Errorf("catalog is empty")
@@ -117,6 +120,7 @@ func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []Na
 	return joined, nil
 }
 
+// validateNativeTargets validates the requested native targets and returns them as a set.
 func validateNativeTargets(targets []model.AgentID) (map[model.AgentID]struct{}, error) {
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("at least one native target is required")
@@ -134,6 +138,7 @@ func validateNativeTargets(targets []model.AgentID) (map[model.AgentID]struct{},
 	return selected, nil
 }
 
+// validateNativeContent validates native sub-agent content and target-specific Claude Code and Codex options.
 func validateNativeContent(entry NativeSubAgentContent, targets map[model.AgentID]struct{}) error {
 	if entry.ID == "" || entry.ID != strings.TrimSpace(entry.ID) {
 		return fmt.Errorf("native content id must be non-empty and trimmed: %q", entry.ID)
@@ -167,6 +172,7 @@ func validateNativeContent(entry NativeSubAgentContent, targets map[model.AgentI
 	return nil
 }
 
+// cloneAssignments creates a shallow copy of a model-assignment map.
 func cloneAssignments(assignments map[model.AgentID]model.ModelAssignment) map[model.AgentID]model.ModelAssignment {
 	clone := make(map[model.AgentID]model.ModelAssignment, len(assignments))
 	for agent, assignment := range assignments {

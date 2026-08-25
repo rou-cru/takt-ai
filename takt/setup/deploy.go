@@ -48,7 +48,7 @@ type DeploymentResult struct {
 // Deploy writes only artifacts listed in managedPaths beneath rootDir.
 // Existing bytes are compared before writing, and paths absent from artifacts
 // are never deleted or modified. Changed artifacts are staged before a batch
-// commit; a failed commit triggers best-effort rollback.
+// changes when committing the deployment fails.
 func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return DeploymentResult{}, fmt.Errorf("deployment root is required")
@@ -272,6 +272,7 @@ func (tx *deploymentTransaction) cleanupTemps() error {
 	return errors.Join(cleanupErrors...)
 }
 
+// restoreBackup restores the original file from its backup to the destination.
 func restoreBackup(file *stagedDeployment) error {
 	if err := os.Rename(file.backup, file.destination); err == nil {
 		return nil
@@ -287,6 +288,8 @@ func restoreBackup(file *stagedDeployment) error {
 	return nil
 }
 
+// validateArtifactPathConflicts checks whether any artifact path is a parent of another artifact path.
+// It returns an error describing the conflicting paths when a conflict is found.
 func validateArtifactPathConflicts(artifacts []Artifact) error {
 	for index := 0; index+1 < len(artifacts); index++ {
 		parent := artifacts[index].Path + "/"
@@ -299,7 +302,7 @@ func validateArtifactPathConflicts(artifacts []Artifact) error {
 
 // inspectDeploymentPath walks every component of relativePath beneath root,
 // rejecting symlinks anywhere on the path and non-directory ancestors. It
-// returns the missing ancestor directories in parent-first creation order.
+// inspectDeploymentPath checks the components of a deployment path and returns missing ancestor directories in parent-first creation order. It returns an error if a path component is a symlink or a non-directory parent.
 func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 	var missing []string
 	current := root
@@ -327,7 +330,8 @@ func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 }
 
 // createMissingDirectories creates the directories recorded during inspection,
-// parents first, and records newly created ones for rollback.
+// createMissingDirectories creates the specified directories in order and records
+// each directory for potential rollback.
 func createMissingDirectories(directories []string, created map[string]struct{}, createdOrder *[]string) error {
 	for _, directory := range directories {
 		if _, exists := created[directory]; exists {
@@ -342,6 +346,7 @@ func createMissingDirectories(directories []string, created map[string]struct{},
 	return nil
 }
 
+// validateManagedPaths normalizes managed paths and rejects invalid or duplicate entries.
 func validateManagedPaths(paths []string) (map[string]struct{}, error) {
 	managed := make(map[string]struct{}, len(paths))
 	for _, candidate := range paths {
@@ -357,6 +362,8 @@ func validateManagedPaths(paths []string) (map[string]struct{}, error) {
 	return managed, nil
 }
 
+// validateArtifacts normalizes, validates, and sorts artifact paths against the managed paths.
+// It returns an error for invalid, duplicate, or unmanaged paths.
 func validateArtifacts(managed map[string]struct{}, input []Artifact) ([]Artifact, error) {
 	normalized := make([]Artifact, 0, len(input))
 	seen := make(map[string]struct{}, len(input))
@@ -378,6 +385,9 @@ func validateArtifacts(managed map[string]struct{}, input []Artifact) ([]Artifac
 	return normalized, nil
 }
 
+// stageFile creates a temporary file in directory with the specified mode and content.
+// It returns the temporary file's path, or an error if creation, writing, synchronization,
+// or closing fails. Failed operations remove the temporary file.
 func stageFile(directory string, content []byte, mode os.FileMode) (name string, err error) {
 	temporary, err := os.CreateTemp(directory, ".takt-setup-*")
 	if err != nil {
@@ -406,7 +416,7 @@ func stageFile(directory string, content []byte, mode os.FileMode) (name string,
 }
 
 // syncDir flushes a directory entry so renames and removals survive a crash.
-// EINVAL is tolerated for filesystems that do not support directory fsync.
+// syncDir synchronizes pending changes for the directory at path. It tolerates EINVAL from filesystems that do not support directory synchronization.
 func syncDir(path string) error {
 	directory, err := os.Open(path)
 	if err != nil {
