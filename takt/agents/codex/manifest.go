@@ -35,7 +35,8 @@ type Manifest struct {
 }
 
 // NewManifest creates a Codex manifest from renderer-generated paths.
-// The native prompt and TOML configuration files are always included.
+// NewManifest creates a manifest containing native Codex files and generated paths.
+// It normalizes and sorts the paths, returning an error for invalid or duplicate paths.
 func NewManifest(generatedPaths []string) (Manifest, error) {
 	paths := make([]string, 0, len(nativeManagedPaths)+len(generatedPaths))
 	paths = append(paths, nativeManagedPaths...)

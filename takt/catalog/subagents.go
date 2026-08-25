@@ -48,6 +48,8 @@ func Load() ([]model.CanonicalSubAgent, error) {
 	return load(subAgentsYAML)
 }
 
+// load parses and validates a YAML sub-agent catalog.
+// It returns canonical sub-agent definitions in catalog order, or an error describing the first invalid entry.
 func load(data []byte) ([]model.CanonicalSubAgent, error) {
 	var raw []rawDefinition
 	if err := yaml.UnmarshalStrict(data, &raw); err != nil {
@@ -149,6 +151,7 @@ func CodexDefaultPreset() map[string]model.ModelAssignment {
 	return defaultPreset(model.AgentCodex)
 }
 
+// defaultPreset builds model assignments for each cataloged sub-agent for the specified agent.
 func defaultPreset(agent model.AgentID) map[string]model.ModelAssignment {
 	catalog := CanonicalSubAgentCatalog()
 	preset := make(map[string]model.ModelAssignment, len(catalog))
@@ -158,7 +161,7 @@ func defaultPreset(agent model.AgentID) map[string]model.ModelAssignment {
 	return preset
 }
 
-// ResolveClaudeSubAgentAssignment applies catalog defaults and Claude validation.
+// ResolveClaudeSubAgentAssignment resolves a Claude model assignment using catalog defaults and optional overrides, then validates the result. It returns an error if resolution or validation fails.
 func ResolveClaudeSubAgentAssignment(subAgent string, overrides map[string]model.ModelAssignment) (model.ModelAssignment, error) {
 	assignment, err := model.ResolveSubAgentAssignment(model.AgentClaudeCode, subAgent, defaultSubAgent, overrides, ClaudeDefaultPreset())
 	if err != nil {
@@ -167,7 +170,8 @@ func ResolveClaudeSubAgentAssignment(subAgent string, overrides map[string]model
 	return model.ValidateClaudeModelAssignment(subAgent, assignment)
 }
 
-// ResolveCodexSubAgentAssignment applies catalog defaults and Codex precedence.
+// ResolveCodexSubAgentAssignment resolves a Codex model assignment using catalog defaults and overrides.
+// It returns the resolved model and effort, or an error if the assignment cannot be resolved.
 func ResolveCodexSubAgentAssignment(subAgent string, overrides map[string]model.ModelAssignment) (string, string, error) {
 	assignment, err := model.ResolveSubAgentAssignment(model.AgentCodex, subAgent, defaultSubAgent, overrides, CodexDefaultPreset())
 	if err != nil {

@@ -35,6 +35,9 @@ func main() {
 	}
 }
 
+// run executes the setup install, sync, or uninstall command using the provided
+// streams and writes the operation result as JSON. It reports usage, input,
+// setup, and output errors to stderr.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) < 2 || args[0] != "setup" || (args[1] != "install" && args[1] != "sync" && args[1] != "uninstall") {
 		return report(stderr, errors.New(usage))
@@ -107,7 +110,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 // ownershipTargets maps plan agent ids onto ownership target ids for
-// manifest-scoped operations.
+// ownershipTargets converts agent IDs to setup ownership targets for manifest-scoped operations.
 func ownershipTargets(ids []model.AgentID) ([]setup.OwnershipTarget, error) {
 	targets := make([]setup.OwnershipTarget, 0, len(ids))
 	for _, id := range ids {
@@ -120,6 +123,8 @@ func ownershipTargets(ids []model.AgentID) ([]setup.OwnershipTarget, error) {
 	return targets, nil
 }
 
+// decodeRequest decodes a single JSON object from input into a setup plan request.
+// Unknown fields and additional JSON values cause an error.
 func decodeRequest(input io.Reader) (setup.PlanRequest, error) {
 	var request setup.PlanRequest
 	decoder := json.NewDecoder(input)
@@ -137,6 +142,7 @@ func decodeRequest(input io.Reader) (setup.PlanRequest, error) {
 	return request, nil
 }
 
+// report writes the error message to stderr and returns the same error.
 func report(stderr io.Writer, err error) error {
 	_, _ = fmt.Fprintln(stderr, err)
 	return err

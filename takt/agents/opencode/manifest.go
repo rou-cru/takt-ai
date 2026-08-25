@@ -34,7 +34,8 @@ type Manifest struct {
 }
 
 // NewManifest creates an OpenCode manifest from renderer-generated paths.
-// The native global configuration file is always included.
+// NewManifest creates a manifest containing the native and generated OpenCode-managed paths.
+// Paths are normalized and sorted; it returns an error if a path is invalid or duplicated.
 func NewManifest(generatedPaths []string) (Manifest, error) {
 	paths := make([]string, 0, len(nativeManagedPaths)+len(generatedPaths))
 	paths = append(paths, nativeManagedPaths...)

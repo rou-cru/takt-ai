@@ -27,7 +27,8 @@ import (
 
 // NormalizeRelPath validates and cleans a slash-separated relative path.
 // It rejects empty paths, backslashes, ".." components, and absolute or
-// Windows-absolute paths.
+// NormalizeRelPath validates and cleans a slash-separated relative path.
+// It rejects empty paths, backslashes, parent-directory components, and absolute paths.
 func NormalizeRelPath(candidate string) (string, error) {
 	if strings.TrimSpace(candidate) == "" {
 		return "", fmt.Errorf("path is empty")
@@ -47,12 +48,13 @@ func NormalizeRelPath(candidate string) (string, error) {
 	return clean, nil
 }
 
+// isWindowsAbsolute reports whether candidate has a Windows-style drive-letter prefix.
 func isWindowsAbsolute(candidate string) bool {
 	return len(candidate) >= 2 && candidate[1] == ':'
 }
 
 // ValidateID rejects empty, untrimmed, separator-bearing, and dot-only IDs.
-// Label names the owning target (for example "Claude") for error messages.
+// ValidateID validates a sub-agent ID and includes the owning target label in any error message.
 func ValidateID(label, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("%s sub-agent id is required", label)
@@ -73,7 +75,9 @@ func EnsureTrailingNewline(content string) string {
 
 // SortUniqueByPath renders items deterministically: it rejects two items that
 // normalize to the same path and sorts by path. Label names the owning target
-// (for example "Claude") for the duplicate-path error.
+// SortUniqueByPath returns a copy of items sorted by their paths, or an error if
+// multiple items have the same path. The label identifies the artifact type in
+// the duplicate-path error.
 func SortUniqueByPath[T any](items []T, pathOf func(T) string, label string) ([]T, error) {
 	out := make([]T, 0, len(items))
 	seen := make(map[string]struct{}, len(items))

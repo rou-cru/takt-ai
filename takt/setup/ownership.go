@@ -58,7 +58,8 @@ var ownershipTargets = map[OwnershipTarget]bool{
 // OwnershipTargetFor maps a plan's target onto its ownership target id.
 // Plans carry either model agent ids ("claude-code") or ownership target ids
 // ("claude"); agent ids are translated, ownership ids pass through, anything
-// else is rejected.
+// OwnershipTargetFor converts an agent or ownership target identifier to an ownership target.
+// It returns an error for unsupported identifiers.
 func OwnershipTargetFor(id string) (OwnershipTarget, error) {
 	switch id {
 	case string(model.AgentClaudeCode):
@@ -100,7 +101,11 @@ type OwnershipManifest struct {
 
 // NewOwnershipEntry validates its inputs and computes the SHA-256 digest of
 // the managed content, so callers never hand-maintain hashes. Targets are
-// deduplicated and sorted for deterministic serialization.
+// NewOwnershipEntry creates a validated ownership entry and computes the SHA-256
+// hash of its managed content. Targets must be supported and unique; they are
+// stored in sorted order. Prior content metadata is required for pre-existing
+// files and rejected otherwise. It returns an error for invalid paths, empty
+// content, invalid modes, prior hashes, or targets.
 func NewOwnershipEntry(managedPath string, content []byte, mode os.FileMode, preExisting bool, priorSHA256, backupPath string, targets ...OwnershipTarget) (OwnershipEntry, error) {
 	clean, err := artifacts.NormalizeRelPath(managedPath)
 	if err != nil {
@@ -192,7 +197,9 @@ func (m *OwnershipManifest) Save(rootDir string) error {
 
 // LoadOwnershipManifest reads the manifest from the deployment root. A missing
 // file reports an error wrapping os.ErrNotExist; an unsupported future version
-// or corrupt JSON reports a descriptive error instead of partial data.
+// LoadOwnershipManifest reads and validates the ownership manifest from rootDir.
+// It returns an error if the file is missing, malformed, or uses an unsupported
+// manifest version.
 func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error) {
 	raw, err := os.ReadFile(filepath.Join(rootDir, OwnershipManifestFilename))
 	if err != nil {
