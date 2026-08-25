@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -102,15 +103,7 @@ func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 
 // RenderSubAgents returns Codex agent artifacts sorted by deterministic path.
 func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
-	rendered := make([]Artifact, 0, len(requests))
-	for _, request := range requests {
-		artifact, err := RenderSubAgent(request)
-		if err != nil {
-			return nil, err
-		}
-		rendered = append(rendered, artifact)
-	}
-	return artifacts.SortUniqueByPath(rendered, func(a Artifact) string { return a.Path }, "Codex")
+	return shared.RenderSorted(requests, RenderSubAgent, func(a Artifact) string { return a.Path }, "Codex")
 }
 
 // RenderGlobalPrompt creates the Codex global prompt artifact, ensuring the content ends with a newline.

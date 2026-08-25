@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -68,15 +69,7 @@ func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 
 // RenderSubAgents returns OpenCode agent artifacts sorted by deterministic path.
 func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
-	rendered := make([]Artifact, 0, len(requests))
-	for _, request := range requests {
-		artifact, err := RenderSubAgent(request)
-		if err != nil {
-			return nil, err
-		}
-		rendered = append(rendered, artifact)
-	}
-	return artifacts.SortUniqueByPath(rendered, func(a Artifact) string { return a.Path }, "OpenCode")
+	return shared.RenderSorted(requests, RenderSubAgent, func(a Artifact) string { return a.Path }, "OpenCode")
 }
 
 // RenderConfig creates the OpenCode global configuration artifact for the assigned model. It returns an error when the model assignment is blank or the configuration cannot be serialized.
