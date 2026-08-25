@@ -39,77 +39,97 @@ func main() {
 // streams and writes the operation result as JSON. It reports usage, input,
 // setup, and output errors to stderr.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) < 2 || args[0] != "setup" || (args[1] != "install" && args[1] != "sync" && args[1] != "uninstall") {
-		return report(stderr, errors.New(usage))
+	command, root, inputPath, err := parseSetupInvocation(args)
+	if err != nil {
+		return report(stderr, err)
+	}
+	input, closeInput, err := openRequestInput(inputPath, stdin)
+	if err != nil {
+		return report(stderr, fmt.Errorf("open input: %w", err))
+	}
+	defer closeInput()
+	request, err := decodeRequest(input)
+	if err != nil {
+		return report(stderr, fmt.Errorf("invalid input: %w", err))
 	}
 
+	result, err := executeSetup(command, root, request)
+	if err != nil {
+		return report(stderr, fmt.Errorf("setup %s: %w", command, err))
+	}
+	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+		return report(stderr, fmt.Errorf("write output: %w", err))
+	}
+	return nil
+}
+
+var setupCommands = map[string]bool{"install": true, "sync": true, "uninstall": true}
+
+// parseSetupInvocation validates the setup subcommand, parses its flags, and
+// resolves the default deployment root.
+func parseSetupInvocation(args []string) (string, string, string, error) {
+	if len(args) < 2 || args[0] != "setup" || !setupCommands[args[1]] {
+		return "", "", "", errors.New(usage)
+	}
 	flags := flag.NewFlagSet("setup "+args[1], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", "", "")
 	inputPath := flags.String("input", "-", "")
 	if err := flags.Parse(args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return report(stderr, errors.New(usage))
+			return "", "", "", errors.New(usage)
 		}
-		return report(stderr, fmt.Errorf("invalid usage: %w", err))
+		return "", "", "", fmt.Errorf("invalid usage: %w", err)
 	}
 	if flags.NArg() != 0 {
-		return report(stderr, fmt.Errorf("invalid usage: unexpected argument %q", flags.Arg(0)))
+		return "", "", "", fmt.Errorf("invalid usage: unexpected argument %q", flags.Arg(0))
 	}
-	if *root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return report(stderr, fmt.Errorf("resolve home directory: %w", err))
-		}
-		*root = home
-	}
-
-	input := stdin
-	if *inputPath != "-" {
-		file, err := os.Open(*inputPath)
-		if err != nil {
-			return report(stderr, fmt.Errorf("open input: %w", err))
-		}
-		defer file.Close()
-		input = file
-	}
-	request, err := decodeRequest(input)
+	resolvedRoot, err := resolveRoot(*root)
 	if err != nil {
-		return report(stderr, fmt.Errorf("invalid input: %w", err))
+		return "", "", "", err
 	}
+	return args[1], resolvedRoot, *inputPath, nil
+}
 
-	if args[1] == "uninstall" {
+func resolveRoot(root string) (string, error) {
+	if root != "" {
+		return root, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return home, nil
+}
+
+func openRequestInput(inputPath string, stdin io.Reader) (io.Reader, func(), error) {
+	if inputPath == "-" {
+		return stdin, func() {}, nil
+	}
+	file, err := os.Open(inputPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return file, func() { _ = file.Close() }, nil
+}
+
+// executeSetup dispatches one validated setup subcommand.
+func executeSetup(command, root string, request setup.PlanRequest) (any, error) {
+	if command == "uninstall" {
 		targets, err := ownershipTargets(request.Targets)
 		if err != nil {
-			return report(stderr, fmt.Errorf("setup %s: %w", args[1], err))
+			return nil, err
 		}
-		result, err := setup.Uninstall(*root, targets...)
-		if err != nil {
-			return report(stderr, fmt.Errorf("setup %s: %w", args[1], err))
-		}
-		if err := json.NewEncoder(stdout).Encode(result); err != nil {
-			return report(stderr, fmt.Errorf("write output: %w", err))
-		}
-		return nil
+		return setup.Uninstall(root, targets...)
 	}
-
 	plans, err := setup.BuildTargetPlans(request)
 	if err != nil {
-		return report(stderr, fmt.Errorf("setup %s: %w", args[1], err))
+		return nil, err
 	}
-	var result setup.DeploymentResult
-	if args[1] == "sync" {
-		result, err = setup.Sync(*root, plans)
-	} else {
-		result, err = setup.Apply(*root, plans)
+	if command == "sync" {
+		return setup.Sync(root, plans)
 	}
-	if err != nil {
-		return report(stderr, fmt.Errorf("setup %s: %w", args[1], err))
-	}
-	if err := json.NewEncoder(stdout).Encode(result); err != nil {
-		return report(stderr, fmt.Errorf("write output: %w", err))
-	}
-	return nil
+	return setup.Apply(root, plans)
 }
 
 // ownershipTargets maps plan agent ids onto ownership target ids for
