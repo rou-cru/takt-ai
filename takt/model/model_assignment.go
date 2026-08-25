@@ -19,28 +19,23 @@ import "fmt"
 
 // ModelAssignment is the canonical model and effort assigned to a sub-agent.
 type ModelAssignment struct {
-	Model  string // target-specific model identifier
-	Effort string // "" = target default; "low" | "medium" | "high"
+	Model  string `json:"model"`  // target-specific model identifier
+	Effort string `json:"effort"` // "" = target default; "low" | "medium" | "high"
 }
 
-// FullID returns the assigned model identifier.
-func (m ModelAssignment) FullID() string {
-	return m.Model
-}
-
-// resolveSubAgentAssignment applies provider defaults and partial overrides.
+// ResolveSubAgentAssignment applies provider-neutral assignment precedence.
 // A sub-agent override wins, followed by its preset assignment, then the
-// explicit and preset default assignments.
-func resolveSubAgentAssignment(agent AgentID, subAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error) {
+// explicit and preset fallback assignments.
+func ResolveSubAgentAssignment(agent AgentID, subAgent, defaultSubAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error) {
 	assignment, ok := overrides[subAgent]
 	if !ok {
 		assignment, ok = preset[subAgent]
 	}
 	if !ok {
-		assignment, ok = overrides[SubAgentDefault]
+		assignment, ok = overrides[defaultSubAgent]
 	}
 	if !ok {
-		assignment, ok = preset[SubAgentDefault]
+		assignment, ok = preset[defaultSubAgent]
 	}
 	if !ok {
 		return ModelAssignment{}, fmt.Errorf("%s sub-agent %q has no model assignment", agent, subAgent)

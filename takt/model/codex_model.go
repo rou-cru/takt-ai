@@ -17,6 +17,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -52,39 +53,15 @@ func FilterCodexModels(query string) []string {
 	return out
 }
 
-// CodexDefaultPreset returns the official Codex assignment projection.
-func CodexDefaultPreset() map[string]ModelAssignment {
-	catalog := CanonicalSubAgentCatalog()
-	preset := make(map[string]ModelAssignment, len(catalog))
-	for _, subAgent := range catalog {
-		preset[subAgent.Name] = subAgent.Assignments[AgentCodex]
+// ValidateCodexModelAssignment validates a canonical Codex model and effort pair.
+func ValidateCodexModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+	if !slices.Contains(codexAvailableModels, assignment.Model) {
+		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
 	}
-	return preset
-}
-
-// ResolveCodexSubAgentAssignment resolves a Codex assignment from canonical
-// defaults and partial overrides, including the default sub-agent fallback.
-func ResolveCodexSubAgentAssignment(subAgent string, overrides map[string]ModelAssignment) (string, string, error) {
-	assignment, err := resolveSubAgentAssignment(AgentCodex, subAgent, overrides, CodexDefaultPreset())
-	if err != nil {
-		return "", "", err
+	switch assignment.Effort {
+	case "", "low", "medium", "high":
+		return assignment, nil
+	default:
+		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid effort %q", subAgent, assignment.Effort)
 	}
-	return assignment.Model, assignment.Effort, nil
-}
-
-// RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown table.
-// The provided assignments override the default preset; nil and empty maps use the preset unchanged.
-// It returns an error if any resulting sub-agent assignment has no model.
-func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (string, error) {
-	var sb strings.Builder
-	sb.WriteString("| Sub-Agent | Model | `reasoning_effort` |\n")
-	sb.WriteString("|-----------|-------|--------------------|\n")
-	for _, subAgent := range CanonicalSubAgents() {
-		modelID, effort, err := ResolveCodexSubAgentAssignment(subAgent, assignments)
-		if err != nil {
-			return "", err
-		}
-		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` |\n", subAgent, modelID, effort)
-	}
-	return sb.String(), nil
 }

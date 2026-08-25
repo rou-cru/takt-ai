@@ -89,34 +89,14 @@ func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bo
 	return false
 }
 
-// ClaudeDefaultPreset returns the default Claude model assignment for each canonical sub-agent.
-func ClaudeDefaultPreset() map[string]ModelAssignment {
-	catalog := CanonicalSubAgentCatalog()
-	preset := make(map[string]ModelAssignment, len(catalog))
-	for _, subAgent := range catalog {
-		preset[subAgent.Name] = subAgent.Assignments[AgentClaudeCode]
-	}
-	return preset
-}
-
-// ResolveClaudeSubAgentAssignment resolves a Claude assignment from canonical
-// defaults and partial overrides, including the default sub-agent fallback.
-func ResolveClaudeSubAgentAssignment(subAgent string, overrides map[string]ModelAssignment) (ModelAssignment, error) {
-	assignment, err := resolveSubAgentAssignment(AgentClaudeCode, subAgent, overrides, ClaudeDefaultPreset())
-	if err != nil {
-		return ModelAssignment{}, err
-	}
-	return validateClaudeModelAssignment(subAgent, assignment)
-}
-
 // RenderClaudeEffortFrontmatter renders a validated Claude effort field.
 // The default effort produces no frontmatter field.
 func RenderClaudeEffortFrontmatter(assignment ModelAssignment) (string, error) {
-	assignment, err := validateModelAssignment(AgentClaudeCode, SubAgentDefault, assignment)
+	assignment, err := validateModelAssignment(AgentClaudeCode, "default", assignment)
 	if err != nil {
 		return "", err
 	}
-	assignment, err = validateClaudeModelAssignment(SubAgentDefault, assignment)
+	assignment, err = ValidateClaudeModelAssignment("default", assignment)
 	if err != nil {
 		return "", err
 	}
@@ -126,7 +106,8 @@ func RenderClaudeEffortFrontmatter(assignment ModelAssignment) (string, error) {
 	return "effort: " + assignment.Effort, nil
 }
 
-func validateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+// ValidateClaudeModelAssignment validates a Claude model and effort pair.
+func ValidateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
 	alias := ClaudeModelAlias(assignment.Model)
 	if !alias.Valid() {
 		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
