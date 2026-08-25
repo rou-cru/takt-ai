@@ -200,10 +200,3 @@ func tomlString(value string) string {
 	return strconv.Quote(value)
 }
 
-// ensureTrailingNewline ensures content ends with a newline.
-func ensureTrailingNewline(content string) string {
-	if strings.HasSuffix(content, "\n") {
-		return content
-	}
-	return content + "\n"
-}

@@ -209,6 +209,12 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	if manifest == nil {
+		manifest, err = loadOrCreateManifest(rootDir)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+	}
 	activePaths := make([]string, 0, len(managedPaths))
 	for _, managedPath := range managedPaths {
 		if !skip[managedPath] {
@@ -229,6 +235,14 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 	priors := make(map[string]priorState, len(activeArtifacts))
 	for _, artifact := range activeArtifacts {
 		state := priorState{mode: 0o644}
+		if entry, exists := manifest.Entries[artifact.Path]; exists {
+			state.preExisting = entry.PreExisting
+			state.priorSHA256 = entry.PriorSHA256
+			state.backupPath = entry.BackupPath
+			state.mode = os.FileMode(entry.Mode)
+			priors[artifact.Path] = state
+			continue
+		}
 		destination := filepath.Join(root, filepath.FromSlash(artifact.Path))
 		info, statErr := os.Stat(destination)
 		switch {
@@ -259,12 +273,6 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 	}
 	sort.Strings(result.Unchanged)
 
-	if manifest == nil {
-		manifest, err = loadOrCreateManifest(rootDir)
-		if err != nil {
-			return DeploymentResult{}, err
-		}
-	}
 	entries := make([]OwnershipEntry, 0, len(activeArtifacts))
 	for _, artifact := range activeArtifacts {
 		target, err := OwnershipTargetFor(targetByPath[artifact.Path])
@@ -272,7 +280,7 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 			return DeploymentResult{}, err
 		}
 		state := priors[artifact.Path]
-		entry, err := NewOwnershipEntry(artifact.Path, artifact.Content, state.mode, state.preExisting, state.priorSHA256, "", target)
+		entry, err := NewOwnershipEntry(artifact.Path, artifact.Content, state.mode, state.preExisting, state.priorSHA256, state.backupPath, target)
 		if err != nil {
 			return DeploymentResult{}, err
 		}
@@ -287,6 +295,7 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 type priorState struct {
 	preExisting bool
 	priorSHA256 string
+	backupPath  string
 	mode        os.FileMode
 }
 

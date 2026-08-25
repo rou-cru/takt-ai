@@ -189,7 +189,15 @@ func (m *OwnershipManifest) Save(rootDir string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("prepare ownership manifest directory: %w", err)
 	}
-	if err := os.WriteFile(destination, content, 0o644); err != nil {
+	staged, err := stageFile(filepath.Dir(destination), content, 0o644)
+	if err != nil {
+		return fmt.Errorf("write ownership manifest: %w", err)
+	}
+	if err := renameFile(staged, destination); err != nil {
+		_ = os.Remove(staged)
+		return fmt.Errorf("write ownership manifest: %w", err)
+	}
+	if err := syncDir(filepath.Dir(destination)); err != nil {
 		return fmt.Errorf("write ownership manifest: %w", err)
 	}
 	return nil
