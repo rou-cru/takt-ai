@@ -167,15 +167,29 @@ func validateHooks(hooks map[string][]HookGroup) error {
 		if strings.TrimSpace(event) == "" {
 			return fmt.Errorf("Claude hook event is required")
 		}
-		for index, group := range groups {
-			if len(group.Hooks) == 0 {
-				return fmt.Errorf("Claude hook event %q group %d has no hooks", event, index)
-			}
-			for hookIndex, hook := range group.Hooks {
-				if strings.TrimSpace(hook.Type) == "" || strings.TrimSpace(hook.Command) == "" {
-					return fmt.Errorf("Claude hook event %q group %d hook %d is incomplete", event, index, hookIndex)
-				}
-			}
+		if err := validateHookGroups(event, groups); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateHookGroups(event string, groups []HookGroup) error {
+	for index, group := range groups {
+		if len(group.Hooks) == 0 {
+			return fmt.Errorf("Claude hook event %q group %d has no hooks", event, index)
+		}
+		if err := validateGroupHooks(event, index, group.Hooks); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateGroupHooks(event string, groupIndex int, hooks []Hook) error {
+	for hookIndex, hook := range hooks {
+		if strings.TrimSpace(hook.Type) == "" || strings.TrimSpace(hook.Command) == "" {
+			return fmt.Errorf("Claude hook event %q group %d hook %d is incomplete", event, groupIndex, hookIndex)
 		}
 	}
 	return nil
