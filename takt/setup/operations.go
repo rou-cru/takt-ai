@@ -112,15 +112,9 @@ func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, err
 	if strings.TrimSpace(rootDir) == "" {
 		return UninstallResult{}, fmt.Errorf("deployment root is required")
 	}
-	if len(targets) == 0 {
-		return UninstallResult{}, fmt.Errorf("at least one ownership target is required")
-	}
-	selected := make(map[OwnershipTarget]bool, len(targets))
-	for _, target := range targets {
-		if !ownershipTargets[target] {
-			return UninstallResult{}, fmt.Errorf("unknown ownership target %q", target)
-		}
-		selected[target] = true
+	selected, err := selectOwnershipTargets(targets)
+	if err != nil {
+		return UninstallResult{}, err
 	}
 	manifest, err := LoadOwnershipManifest(rootDir)
 	if err != nil {
@@ -135,40 +129,83 @@ func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, err
 	}
 
 	result := UninstallResult{Removed: []string{}, Preserved: []string{}}
+	for _, entryPath := range sortedEntryPaths(manifest) {
+		if err := uninstallEntry(manifest, entryPath, selected, root, &result); err != nil {
+			return UninstallResult{}, err
+		}
+	}
+	return finishUninstall(manifest, root, result)
+}
+
+func selectOwnershipTargets(targets []OwnershipTarget) (map[OwnershipTarget]bool, error) {
+	selected := make(map[OwnershipTarget]bool, len(targets))
+	for _, target := range targets {
+		if !ownershipTargets[target] {
+			return nil, fmt.Errorf("unknown ownership target %q", target)
+		}
+		selected[target] = true
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("at least one ownership target is required")
+	}
+	return selected, nil
+}
+
+func sortedEntryPaths(manifest *OwnershipManifest) []string {
 	entryPaths := make([]string, 0, len(manifest.Entries))
 	for entryPath := range manifest.Entries {
 		entryPaths = append(entryPaths, entryPath)
 	}
 	sort.Strings(entryPaths)
-	for _, entryPath := range entryPaths {
-		entry := manifest.Entries[entryPath]
-		remaining := make([]OwnershipTarget, 0, len(entry.Targets))
-		fullySelected := true
-		for _, owner := range entry.Targets {
-			if selected[owner] {
-				continue
-			}
-			remaining = append(remaining, owner)
-			fullySelected = false
-		}
-		if !fullySelected {
-			entry.Targets = remaining
-			manifest.Entries[entryPath] = entry
+	return entryPaths
+}
+
+// uninstallEntry drops one manifest entry: partially unselected entries keep
+// their remaining owners, pre-existing files are preserved, and fully
+// Takt-owned files are removed from disk.
+func uninstallEntry(manifest *OwnershipManifest, entryPath string, selected map[OwnershipTarget]bool, root string, result *UninstallResult) error {
+	entry := manifest.Entries[entryPath]
+	remaining := make([]OwnershipTarget, 0, len(entry.Targets))
+	fullySelected := true
+	for _, owner := range entry.Targets {
+		if selected[owner] {
 			continue
 		}
-		if entry.PreExisting {
-			result.Preserved = append(result.Preserved, entryPath)
-		} else {
-			destination := filepath.Join(root, filepath.FromSlash(entryPath))
-			if err := os.Remove(destination); err == nil {
-				result.Removed = append(result.Removed, entryPath)
-				pruneEmptyDirs(root, filepath.Dir(destination))
-			} else if !os.IsNotExist(err) {
-				return UninstallResult{}, fmt.Errorf("remove managed file %q: %w", entryPath, err)
-			}
-		}
-		delete(manifest.Entries, entryPath)
+		remaining = append(remaining, owner)
+		fullySelected = false
 	}
+	if !fullySelected {
+		entry.Targets = remaining
+		manifest.Entries[entryPath] = entry
+		return nil
+	}
+	if entry.PreExisting {
+		result.Preserved = append(result.Preserved, entryPath)
+	} else if err := removeManagedEntry(root, entryPath); err != nil {
+		return err
+	} else {
+		result.Removed = append(result.Removed, entryPath)
+	}
+	delete(manifest.Entries, entryPath)
+	return nil
+}
+
+func removeManagedEntry(root, entryPath string) error {
+	destination := filepath.Join(root, filepath.FromSlash(entryPath))
+	err := os.Remove(destination)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("remove managed file %q: %w", entryPath, err)
+	}
+	pruneEmptyDirs(root, filepath.Dir(destination))
+	return nil
+}
+
+// finishUninstall removes the ownership manifest once its last entry is gone;
+// otherwise it persists the pruned entries.
+func finishUninstall(manifest *OwnershipManifest, root string, result UninstallResult) (UninstallResult, error) {
 	if len(manifest.Entries) == 0 {
 		if err := os.Remove(filepath.Join(root, OwnershipManifestFilename)); err != nil && !os.IsNotExist(err) {
 			return UninstallResult{}, fmt.Errorf("remove ownership manifest: %w", err)
@@ -205,16 +242,44 @@ func pruneEmptyDirs(root, directory string) {
 // applyPlans deploys the supplied plans, records ownership for deployed artifacts, and saves the ownership manifest.
 // Paths listed in skip are reported as unchanged and are excluded from deployment. If manifest is nil, it is loaded or created.
 func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest) (DeploymentResult, error) {
-	managedPaths, artifacts, targetByPath, err := flattenPlans(plans)
+	activePaths, activeArtifacts, targetByPath, manifest, err := prepareApply(rootDir, plans, skip, manifest)
 	if err != nil {
 		return DeploymentResult{}, err
+	}
+	priors, err := collectPriorStates(rootDir, activeArtifacts, manifest)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+
+	result, err := Deploy(rootDir, activePaths, activeArtifacts)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	markSkippedPaths(&result, skip)
+	if err := recordOwnershipEntries(manifest, activeArtifacts, targetByPath, priors); err != nil {
+		return DeploymentResult{}, err
+	}
+	return result, manifest.Save(rootDir)
+}
+
+// prepareApply flattens and validates the plans, resolves the ownership
+// manifest (loading one when nil), and drops skipped paths from deployment.
+func prepareApply(rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest) ([]string, []Artifact, map[string]string, *OwnershipManifest, error) {
+	managedPaths, artifacts, targetByPath, err := flattenPlans(plans)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	if manifest == nil {
 		manifest, err = loadOrCreateManifest(rootDir)
 		if err != nil {
-			return DeploymentResult{}, err
+			return nil, nil, nil, nil, err
 		}
 	}
+	activePaths, activeArtifacts := activeWithoutSkipped(managedPaths, artifacts, skip)
+	return activePaths, activeArtifacts, targetByPath, manifest, nil
+}
+
+func activeWithoutSkipped(managedPaths []string, artifacts []Artifact, skip map[string]bool) ([]string, []Artifact) {
 	activePaths := make([]string, 0, len(managedPaths))
 	for _, managedPath := range managedPaths {
 		if !skip[managedPath] {
@@ -227,69 +292,80 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 			activeArtifacts = append(activeArtifacts, artifact)
 		}
 	}
+	return activePaths, activeArtifacts
+}
 
+// collectPriorStates captures, per artifact, the ownership entry when present
+// or the on-disk bytes otherwise, so manifest entries can be upserted after
+// deployment.
+func collectPriorStates(rootDir string, artifacts []Artifact, manifest *OwnershipManifest) (map[string]priorState, error) {
 	root, err := filepath.Abs(rootDir)
 	if err != nil {
-		return DeploymentResult{}, fmt.Errorf("resolve deployment root: %w", err)
+		return nil, fmt.Errorf("resolve deployment root: %w", err)
 	}
-	priors := make(map[string]priorState, len(activeArtifacts))
-	for _, artifact := range activeArtifacts {
-		state := priorState{mode: 0o644}
-		if entry, exists := manifest.Entries[artifact.Path]; exists {
-			state.preExisting = entry.PreExisting
-			state.priorSHA256 = entry.PriorSHA256
-			state.backupPath = entry.BackupPath
-			state.mode = os.FileMode(entry.Mode)
-			priors[artifact.Path] = state
-			continue
-		}
-		destination := filepath.Join(root, filepath.FromSlash(artifact.Path))
-		info, statErr := os.Stat(destination)
-		switch {
-		case statErr == nil:
-			current, readErr := os.ReadFile(destination)
-			if readErr != nil {
-				return DeploymentResult{}, fmt.Errorf("inspect managed file %q: %w", artifact.Path, readErr)
-			}
-			digest := sha256.Sum256(current)
-			state.preExisting = true
-			state.priorSHA256 = hex.EncodeToString(digest[:])
-			if info.Mode().IsRegular() {
-				state.mode = info.Mode().Perm()
-			}
-		case os.IsNotExist(statErr):
-		default:
-			return DeploymentResult{}, fmt.Errorf("inspect managed file %q: %w", artifact.Path, statErr)
+	priors := make(map[string]priorState, len(artifacts))
+	for _, artifact := range artifacts {
+		state, err := priorStateFor(root, artifact, manifest)
+		if err != nil {
+			return nil, err
 		}
 		priors[artifact.Path] = state
 	}
+	return priors, nil
+}
 
-	result, err := Deploy(rootDir, activePaths, activeArtifacts)
-	if err != nil {
-		return DeploymentResult{}, err
+func priorStateFor(root string, artifact Artifact, manifest *OwnershipManifest) (priorState, error) {
+	state := priorState{mode: 0o644}
+	if entry, exists := manifest.Entries[artifact.Path]; exists {
+		state.preExisting = entry.PreExisting
+		state.priorSHA256 = entry.PriorSHA256
+		state.backupPath = entry.BackupPath
+		state.mode = os.FileMode(entry.Mode)
+		return state, nil
 	}
+	destination := filepath.Join(root, filepath.FromSlash(artifact.Path))
+	info, statErr := os.Stat(destination)
+	switch {
+	case statErr == nil:
+		current, readErr := os.ReadFile(destination)
+		if readErr != nil {
+			return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifact.Path, readErr)
+		}
+		digest := sha256.Sum256(current)
+		state.preExisting = true
+		state.priorSHA256 = hex.EncodeToString(digest[:])
+		if info.Mode().IsRegular() {
+			state.mode = info.Mode().Perm()
+		}
+	case os.IsNotExist(statErr):
+	default:
+		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifact.Path, statErr)
+	}
+	return state, nil
+}
+
+func markSkippedPaths(result *DeploymentResult, skip map[string]bool) {
 	for skippedPath := range skip {
 		result.Unchanged = append(result.Unchanged, skippedPath)
 	}
 	sort.Strings(result.Unchanged)
+}
 
-	entries := make([]OwnershipEntry, 0, len(activeArtifacts))
-	for _, artifact := range activeArtifacts {
+func recordOwnershipEntries(manifest *OwnershipManifest, artifacts []Artifact, targetByPath map[string]string, priors map[string]priorState) error {
+	entries := make([]OwnershipEntry, 0, len(artifacts))
+	for _, artifact := range artifacts {
 		target, err := OwnershipTargetFor(targetByPath[artifact.Path])
 		if err != nil {
-			return DeploymentResult{}, err
+			return err
 		}
 		state := priors[artifact.Path]
 		entry, err := NewOwnershipEntry(artifact.Path, artifact.Content, state.mode, state.preExisting, state.priorSHA256, state.backupPath, target)
 		if err != nil {
-			return DeploymentResult{}, err
+			return err
 		}
 		entries = append(entries, entry)
 	}
-	if err := manifest.Add(entries...); err != nil {
-		return DeploymentResult{}, err
-	}
-	return result, manifest.Save(rootDir)
+	return manifest.Add(entries...)
 }
 
 type priorState struct {
@@ -307,48 +383,66 @@ func flattenPlans(plans []TargetPlan) ([]string, []Artifact, map[string]string, 
 	if len(plans) == 0 {
 		return nil, nil, nil, fmt.Errorf("at least one target plan is required")
 	}
+	flat := flattenedPlans{
+		owners:       make(map[string]string),
+		targetByPath: make(map[string]string),
+	}
 	seenTargets := make(map[string]struct{}, len(plans))
-	owners := make(map[string]string)
-	targetByPath := make(map[string]string)
-	var managedPaths []string
-	var artifacts []Artifact
 	for _, plan := range plans {
-		target := strings.TrimSpace(plan.Target)
-		if target == "" {
-			return nil, nil, nil, fmt.Errorf("target plan identity is required")
-		}
-		if _, exists := seenTargets[target]; exists {
-			return nil, nil, nil, fmt.Errorf("duplicate target plan %q", target)
-		}
-		seenTargets[target] = struct{}{}
-		if len(plan.ManagedPaths) == 0 {
-			return nil, nil, nil, fmt.Errorf("target plan %q has no managed paths", target)
-		}
-		for _, managedPath := range plan.ManagedPaths {
-			clean, err := artifactutil.NormalizeRelPath(managedPath)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("invalid managed path: %w", err)
-			}
-			if owner, exists := owners[clean]; exists && owner != target {
-				return nil, nil, nil, fmt.Errorf("managed path %q belongs to targets %q and %q", clean, owner, target)
-			}
-			owners[clean] = target
-			targetByPath[clean] = target
-			managedPaths = append(managedPaths, clean)
-		}
-		for _, artifact := range plan.Artifacts {
-			clean, err := artifactutil.NormalizeRelPath(artifact.Path)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("invalid artifact path: %w", err)
-			}
-			if owner, exists := owners[clean]; exists && owner != target {
-				return nil, nil, nil, fmt.Errorf("artifact path %q belongs to targets %q and %q", clean, owner, target)
-			}
-			owners[clean] = target
-			targetByPath[clean] = target
-			artifact.Path = clean
-			artifacts = append(artifacts, artifact)
+		if err := flat.addPlan(strings.TrimSpace(plan.Target), plan, seenTargets); err != nil {
+			return nil, nil, nil, err
 		}
 	}
-	return managedPaths, artifacts, targetByPath, nil
+	return flat.managedPaths, flat.artifacts, flat.targetByPath, nil
+}
+
+type flattenedPlans struct {
+	managedPaths []string
+	artifacts    []Artifact
+	targetByPath map[string]string
+	owners       map[string]string
+}
+
+func (flat *flattenedPlans) addPlan(target string, plan TargetPlan, seenTargets map[string]struct{}) error {
+	if target == "" {
+		return fmt.Errorf("target plan identity is required")
+	}
+	if _, exists := seenTargets[target]; exists {
+		return fmt.Errorf("duplicate target plan %q", target)
+	}
+	seenTargets[target] = struct{}{}
+	if len(plan.ManagedPaths) == 0 {
+		return fmt.Errorf("target plan %q has no managed paths", target)
+	}
+	for _, managedPath := range plan.ManagedPaths {
+		clean, err := artifactutil.NormalizeRelPath(managedPath)
+		if err != nil {
+			return fmt.Errorf("invalid managed path: %w", err)
+		}
+		if err := flat.claim(clean, target, "managed path"); err != nil {
+			return err
+		}
+		flat.managedPaths = append(flat.managedPaths, clean)
+	}
+	for _, artifact := range plan.Artifacts {
+		clean, err := artifactutil.NormalizeRelPath(artifact.Path)
+		if err != nil {
+			return fmt.Errorf("invalid artifact path: %w", err)
+		}
+		if err := flat.claim(clean, target, "artifact path"); err != nil {
+			return err
+		}
+		artifact.Path = clean
+		flat.artifacts = append(flat.artifacts, artifact)
+	}
+	return nil
+}
+
+func (flat *flattenedPlans) claim(clean, target, kind string) error {
+	if owner, exists := flat.owners[clean]; exists && owner != target {
+		return fmt.Errorf("%s %q belongs to targets %q and %q", kind, clean, owner, target)
+	}
+	flat.owners[clean] = target
+	flat.targetByPath[clean] = target
+	return nil
 }

@@ -51,109 +51,19 @@ type DeploymentResult struct {
 // are never deleted or modified. Changed artifacts are staged before a batch
 // changes when committing the deployment fails.
 func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
-	if strings.TrimSpace(rootDir) == "" {
-		return DeploymentResult{}, fmt.Errorf("deployment root is required")
-	}
-	managed, err := validateManagedPaths(managedPaths)
+	root, normalized, err := prepareDeployment(rootDir, managedPaths, artifacts)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	normalized, err := validateArtifacts(managed, artifacts)
-	if err != nil {
-		return DeploymentResult{}, err
-	}
-	if err := validateArtifactPathConflicts(normalized); err != nil {
-		return DeploymentResult{}, err
-	}
-	root, err := filepath.Abs(rootDir)
-	if err != nil {
-		return DeploymentResult{}, fmt.Errorf("resolve deployment root: %w", err)
+	result, pending, err := inspectDeployments(root, normalized)
+	if err != nil || len(pending) == 0 {
+		return result, err
 	}
 
-	result := DeploymentResult{
-		Changed:   make([]string, 0, len(normalized)),
-		Unchanged: make([]string, 0, len(normalized)),
+	transaction := newDeploymentTransaction(pending)
+	if err := transaction.stage(pending); err != nil {
+		return DeploymentResult{}, transaction.abort(err)
 	}
-	pending := make([]pendingDeployment, 0, len(normalized))
-	for _, artifact := range normalized {
-		destination := filepath.Join(root, filepath.FromSlash(artifact.Path))
-		missingDirs, err := inspectDeploymentPath(root, artifact.Path)
-		if err != nil {
-			return DeploymentResult{}, err
-		}
-
-		info, statErr := os.Stat(destination)
-		exists := statErr == nil
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return DeploymentResult{}, fmt.Errorf("inspect managed artifact %q: %w", artifact.Path, statErr)
-		}
-		if exists && !info.Mode().IsRegular() {
-			return DeploymentResult{}, fmt.Errorf("managed artifact %q is not a regular file", artifact.Path)
-		}
-		if exists {
-			current, readErr := os.ReadFile(destination)
-			if readErr != nil {
-				return DeploymentResult{}, fmt.Errorf("read managed artifact %q: %w", artifact.Path, readErr)
-			}
-			if bytes.Equal(current, artifact.Content) {
-				result.Unchanged = append(result.Unchanged, artifact.Path)
-				continue
-			}
-			pending = append(pending, pendingDeployment{
-				path:        artifact.Path,
-				destination: destination,
-				exists:      true,
-				mode:        info.Mode().Perm(),
-				original:    current,
-				content:     artifact.Content,
-				missingDirs: missingDirs,
-			})
-			continue
-		}
-
-		pending = append(pending, pendingDeployment{
-			path:        artifact.Path,
-			destination: destination,
-			mode:        0o644,
-			content:     artifact.Content,
-			missingDirs: missingDirs,
-		})
-	}
-
-	if len(pending) == 0 {
-		return result, nil
-	}
-
-	transaction := deploymentTransaction{
-		files:   make([]*stagedDeployment, 0, len(pending)),
-		created: make(map[string]struct{}),
-	}
-	for _, pendingFile := range pending {
-		file := &stagedDeployment{
-			path:        pendingFile.path,
-			destination: pendingFile.destination,
-			exists:      pendingFile.exists,
-			mode:        pendingFile.mode,
-		}
-		transaction.files = append(transaction.files, file)
-
-		if err := createMissingDirectories(pendingFile.missingDirs, transaction.created, &transaction.createdOrder); err != nil {
-			return DeploymentResult{}, transaction.abort(fmt.Errorf("prepare managed artifact %q: %w", pendingFile.path, err))
-		}
-		staged, err := stageFile(filepath.Dir(pendingFile.destination), pendingFile.content, pendingFile.mode)
-		if err != nil {
-			return DeploymentResult{}, transaction.abort(fmt.Errorf("stage managed artifact %q: %w", pendingFile.path, err))
-		}
-		file.staged = staged
-		if pendingFile.exists {
-			backup, backupErr := stageFile(filepath.Dir(pendingFile.destination), pendingFile.original, pendingFile.mode)
-			if backupErr != nil {
-				return DeploymentResult{}, transaction.abort(fmt.Errorf("backup managed artifact %q: %w", pendingFile.path, backupErr))
-			}
-			file.backup = backup
-		}
-	}
-
 	if err := transaction.commit(); err != nil {
 		return DeploymentResult{}, transaction.abort(err)
 	}
@@ -164,6 +74,143 @@ func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (Deploy
 		result.Changed = append(result.Changed, pendingFile.path)
 	}
 	return result, nil
+}
+
+// prepareDeployment validates the deployment inputs once and resolves the
+// absolute deployment root.
+func prepareDeployment(rootDir string, managedPaths []string, artifacts []Artifact) (string, []Artifact, error) {
+	if strings.TrimSpace(rootDir) == "" {
+		return "", nil, fmt.Errorf("deployment root is required")
+	}
+	managed, err := validateManagedPaths(managedPaths)
+	if err != nil {
+		return "", nil, err
+	}
+	normalized, err := validateArtifacts(managed, artifacts)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := validateArtifactPathConflicts(normalized); err != nil {
+		return "", nil, err
+	}
+	root, err := filepath.Abs(rootDir)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve deployment root: %w", err)
+	}
+	return root, normalized, nil
+}
+
+// inspectDeployments compares every artifact against the filesystem and
+// reports unchanged paths plus the artifacts that still need to be written.
+func inspectDeployments(root string, normalized []Artifact) (DeploymentResult, []pendingDeployment, error) {
+	result := DeploymentResult{
+		Changed:   make([]string, 0, len(normalized)),
+		Unchanged: make([]string, 0, len(normalized)),
+	}
+	pending := make([]pendingDeployment, 0, len(normalized))
+	for _, artifact := range normalized {
+		item, unchanged, err := inspectArtifact(root, artifact)
+		if err != nil {
+			return DeploymentResult{}, nil, err
+		}
+		if unchanged {
+			result.Unchanged = append(result.Unchanged, artifact.Path)
+			continue
+		}
+		pending = append(pending, item)
+	}
+	return result, pending, nil
+}
+
+// inspectArtifact classifies one managed path as unchanged or as a pending
+// write, capturing the current bytes and mode for backup when it exists.
+func inspectArtifact(root string, artifact Artifact) (pendingDeployment, bool, error) {
+	destination := filepath.Join(root, filepath.FromSlash(artifact.Path))
+	missingDirs, err := inspectDeploymentPath(root, artifact.Path)
+	if err != nil {
+		return pendingDeployment{}, false, err
+	}
+
+	info, statErr := os.Stat(destination)
+	exists := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return pendingDeployment{}, false, fmt.Errorf("inspect managed artifact %q: %w", artifact.Path, statErr)
+	}
+	if exists && !info.Mode().IsRegular() {
+		return pendingDeployment{}, false, fmt.Errorf("managed artifact %q is not a regular file", artifact.Path)
+	}
+	if !exists {
+		return pendingDeployment{
+			path:        artifact.Path,
+			destination: destination,
+			mode:        0o644,
+			content:     artifact.Content,
+			missingDirs: missingDirs,
+		}, false, nil
+	}
+
+	current, readErr := os.ReadFile(destination)
+	if readErr != nil {
+		return pendingDeployment{}, false, fmt.Errorf("read managed artifact %q: %w", artifact.Path, readErr)
+	}
+	if bytes.Equal(current, artifact.Content) {
+		return pendingDeployment{}, true, nil
+	}
+	return pendingDeployment{
+		path:        artifact.Path,
+		destination: destination,
+		exists:      true,
+		mode:        info.Mode().Perm(),
+		original:    current,
+		content:     artifact.Content,
+		missingDirs: missingDirs,
+	}, false, nil
+}
+
+func newDeploymentTransaction(pending []pendingDeployment) *deploymentTransaction {
+	return &deploymentTransaction{
+		files:   make([]*stagedDeployment, 0, len(pending)),
+		created: make(map[string]struct{}),
+	}
+}
+
+// stage stages every pending artifact without touching its final location:
+// missing directories are created and content plus backup are written to
+// temporary files.
+func (tx *deploymentTransaction) stage(pending []pendingDeployment) error {
+	for _, pendingFile := range pending {
+		file := &stagedDeployment{
+			path:        pendingFile.path,
+			destination: pendingFile.destination,
+			exists:      pendingFile.exists,
+			mode:        pendingFile.mode,
+		}
+		tx.files = append(tx.files, file)
+		if err := tx.stageOne(file, pendingFile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tx *deploymentTransaction) stageOne(file *stagedDeployment, pending pendingDeployment) error {
+	if err := createMissingDirectories(pending.missingDirs, tx.created, &tx.createdOrder); err != nil {
+		return fmt.Errorf("prepare managed artifact %q: %w", pending.path, err)
+	}
+	staged, err := stageFile(filepath.Dir(pending.destination), pending.content, pending.mode)
+	if err != nil {
+		return fmt.Errorf("stage managed artifact %q: %w", pending.path, err)
+	}
+	file.staged = staged
+	if !pending.exists {
+		return nil
+	}
+	backup, err := stageFile(filepath.Dir(pending.destination), pending.original, pending.mode)
+	if err != nil {
+		return fmt.Errorf("backup managed artifact %q: %w", pending.path, err)
+	}
+	file.backup = backup
+	return nil
 }
 
 type pendingDeployment struct {
@@ -220,26 +267,8 @@ func (tx *deploymentTransaction) commit() error {
 func (tx *deploymentTransaction) rollback() error {
 	var rollbackErrors []error
 	for index := len(tx.files) - 1; index >= 0; index-- {
-		file := tx.files[index]
-		if !file.installed {
-			continue
-		}
-		if file.exists {
-			if err := restoreBackup(file); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("restore managed artifact %q: %w", file.path, err))
-			} else if err := syncDir(filepath.Dir(file.destination)); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("sync managed artifact %q parent after restore: %w", file.path, err))
-			}
-			continue
-		}
-		if err := os.Remove(file.destination); err != nil {
-			if !os.IsNotExist(err) {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("remove new managed artifact %q: %w", file.path, err))
-			}
-			continue
-		}
-		if err := syncDir(filepath.Dir(file.destination)); err != nil {
-			rollbackErrors = append(rollbackErrors, fmt.Errorf("sync managed artifact %q parent after removal: %w", file.path, err))
+		if err := tx.files[index].restore(); err != nil {
+			rollbackErrors = append(rollbackErrors, err)
 		}
 	}
 	if err := tx.cleanupTemps(); err != nil {
@@ -256,6 +285,41 @@ func (tx *deploymentTransaction) rollback() error {
 		}
 	}
 	return errors.Join(rollbackErrors...)
+}
+
+// restore undoes one installed artifact: existing files get their backup
+// back, brand-new files are removed.
+func (file *stagedDeployment) restore() error {
+	if !file.installed {
+		return nil
+	}
+	if file.exists {
+		return file.restoreExisting()
+	}
+	return file.removeInstalled()
+}
+
+func (file *stagedDeployment) restoreExisting() error {
+	if err := restoreBackup(file); err != nil {
+		return fmt.Errorf("restore managed artifact %q: %w", file.path, err)
+	}
+	if err := syncDir(filepath.Dir(file.destination)); err != nil {
+		return fmt.Errorf("sync managed artifact %q parent after restore: %w", file.path, err)
+	}
+	return nil
+}
+
+func (file *stagedDeployment) removeInstalled() error {
+	if err := os.Remove(file.destination); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("remove new managed artifact %q: %w", file.path, err)
+	}
+	if err := syncDir(filepath.Dir(file.destination)); err != nil {
+		return fmt.Errorf("sync managed artifact %q parent after removal: %w", file.path, err)
+	}
+	return nil
 }
 
 func (tx *deploymentTransaction) cleanupTemps() error {
