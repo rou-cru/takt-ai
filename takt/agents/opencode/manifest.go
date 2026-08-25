@@ -16,10 +16,7 @@
 package opencode
 
 import (
-	"fmt"
-	"sort"
-
-	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 )
 
 var nativeManagedPaths = []string{
@@ -37,24 +34,11 @@ type Manifest struct {
 // NewManifest creates a manifest containing the native and generated OpenCode-managed paths.
 // Paths are normalized and sorted; it returns an error if a path is invalid or duplicated.
 func NewManifest(generatedPaths []string) (Manifest, error) {
-	paths := make([]string, 0, len(nativeManagedPaths)+len(generatedPaths))
-	paths = append(paths, nativeManagedPaths...)
-	paths = append(paths, generatedPaths...)
-	normalized := make([]string, 0, len(paths))
-	seen := make(map[string]struct{}, len(paths))
-	for _, candidate := range paths {
-		clean, err := artifacts.NormalizeRelPath(candidate)
-		if err != nil {
-			return Manifest{}, fmt.Errorf("invalid OpenCode managed path %s: %w", candidate, err)
-		}
-		if _, exists := seen[clean]; exists {
-			return Manifest{}, fmt.Errorf("duplicate OpenCode managed path %s", clean)
-		}
-		seen[clean] = struct{}{}
-		normalized = append(normalized, clean)
+	paths, err := shared.NormalizeManagedPaths("OpenCode", nativeManagedPaths, generatedPaths)
+	if err != nil {
+		return Manifest{}, err
 	}
-	sort.Strings(normalized)
-	return Manifest{paths: normalized}, nil
+	return Manifest{paths: paths}, nil
 }
 
 // ManagedPaths returns a copy of the deterministic Takt-owned path list.

@@ -86,28 +86,33 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 
 	plans := make([]TargetPlan, 0, len(targets))
 	for _, target := range targets {
-		switch target {
-		case model.AgentClaudeCode:
-			plan, err := buildClaudePlan(joined, request.Claude, request.ClaudeModelOverrides)
-			if err != nil {
-				return nil, err
-			}
-			plans = append(plans, plan)
-		case model.AgentCodex:
-			plan, err := buildCodexPlan(joined, request.Codex, request.CodexModelOverrides)
-			if err != nil {
-				return nil, err
-			}
-			plans = append(plans, plan)
-		case model.AgentOpenCode:
-			plan, err := buildOpenCodePlan(joined, request.OpenCode)
-			if err != nil {
-				return nil, err
-			}
-			plans = append(plans, plan)
+		plan, renderable, err := buildPlanForTarget(target, joined, request)
+		if err != nil {
+			return nil, err
 		}
+		if !renderable {
+			continue
+		}
+		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+// buildPlanForTarget renders one target's plan. Targets without a native
+// projection report renderable=false.
+func buildPlanForTarget(target model.AgentID, content []catalog.NativeSubAgent, request PlanRequest) (TargetPlan, bool, error) {
+	switch target {
+	case model.AgentClaudeCode:
+		plan, err := buildClaudePlan(content, request.Claude, request.ClaudeModelOverrides)
+		return plan, true, err
+	case model.AgentCodex:
+		plan, err := buildCodexPlan(content, request.Codex, request.CodexModelOverrides)
+		return plan, true, err
+	case model.AgentOpenCode:
+		plan, err := buildOpenCodePlan(content, request.OpenCode)
+		return plan, true, err
+	}
+	return TargetPlan{}, false, nil
 }
 
 // selectedTargets validates requested targets and returns them in canonical order.
@@ -164,12 +169,7 @@ func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions
 		return TargetPlan{}, err
 	}
 
-	artifacts := make([]Artifact, 0, len(agents)+2)
-	generatedPaths := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
-		generatedPaths = append(generatedPaths, agent.Path)
-	}
+	artifacts, generatedPaths := collectAgentArtifacts(agents, claudeAgentArtifact)
 	artifacts = append(artifacts,
 		Artifact{Path: globalPrompt.Path, Content: globalPrompt.Content},
 		Artifact{Path: settings.Path, Content: settings.Content},
@@ -230,12 +230,7 @@ func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, 
 		return TargetPlan{}, err
 	}
 
-	artifacts := make([]Artifact, 0, len(agents)+2)
-	generatedPaths := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
-		generatedPaths = append(generatedPaths, agent.Path)
-	}
+	artifacts, generatedPaths := collectAgentArtifacts(agents, codexAgentArtifact)
 	artifacts = append(artifacts,
 		Artifact{Path: globalPrompt.Path, Content: globalPrompt.Content},
 		Artifact{Path: config.Path, Content: config.Content},
@@ -278,12 +273,7 @@ func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOpt
 		return TargetPlan{}, err
 	}
 
-	artifacts := make([]Artifact, 0, len(agents)+1)
-	generatedPaths := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
-		generatedPaths = append(generatedPaths, agent.Path)
-	}
+	artifacts, generatedPaths := collectAgentArtifacts(agents, opencodeAgentArtifact)
 	artifacts = append(artifacts, Artifact{Path: config.Path, Content: config.Content})
 	sortArtifacts(artifacts)
 	manifest, err := opencode.NewManifest(generatedPaths)
@@ -300,4 +290,30 @@ func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOpt
 // sortArtifacts orders artifacts lexicographically by their relative path.
 func sortArtifacts(artifacts []Artifact) {
 	sort.Slice(artifacts, func(i, j int) bool { return artifacts[i].Path < artifacts[j].Path })
+}
+
+// collectAgentArtifacts converts rendered sub-agent artifacts into deployable
+// artifacts and lists the generated sub-agent paths. Converters are explicit
+// because each target adapter declares its own identically shaped Artifact.
+func collectAgentArtifacts[A any](agents []A, convert func(A) Artifact) ([]Artifact, []string) {
+	artifacts := make([]Artifact, 0, len(agents))
+	generatedPaths := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		artifact := convert(agent)
+		artifacts = append(artifacts, artifact)
+		generatedPaths = append(generatedPaths, artifact.Path)
+	}
+	return artifacts, generatedPaths
+}
+
+func claudeAgentArtifact(agent claude.Artifact) Artifact {
+	return Artifact{Path: agent.Path, Content: agent.Content}
+}
+
+func codexAgentArtifact(agent codex.Artifact) Artifact {
+	return Artifact{Path: agent.Path, Content: agent.Content}
+}
+
+func opencodeAgentArtifact(agent opencode.Artifact) Artifact {
+	return Artifact{Path: agent.Path, Content: agent.Content}
 }
