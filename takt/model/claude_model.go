@@ -15,6 +15,8 @@
 
 package model
 
+import "fmt"
+
 // ClaudeModelAlias represents one of the Claude model tiers.
 type ClaudeModelAlias string
 
@@ -95,4 +97,16 @@ func ClaudeDefaultPreset() map[string]ModelAssignment {
 		preset[subAgent.Name] = subAgent.Assignments[AgentClaudeCode]
 	}
 	return preset
+}
+
+// ValidateClaudeModelAssignment validates a Claude model and effort pair.
+func ValidateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+	alias := ClaudeModelAlias(assignment.Model)
+	if !alias.Valid() {
+		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
+	}
+	if !ClaudeEffortAllowedForModel(alias, ClaudeEffort(assignment.Effort)) {
+		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q model %q does not support effort %q", subAgent, assignment.Model, assignment.Effort)
+	}
+	return assignment, nil
 }

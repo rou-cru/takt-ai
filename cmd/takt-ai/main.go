@@ -43,13 +43,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return report(stderr, errors.New(usage))
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return report(stderr, fmt.Errorf("resolve home directory: %w", err))
-	}
 	flags := flag.NewFlagSet("setup "+args[1], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	root := flags.String("root", home, "")
+	root := flags.String("root", "", "")
 	inputPath := flags.String("input", "-", "")
 	if err := flags.Parse(args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,6 +55,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if flags.NArg() != 0 {
 		return report(stderr, fmt.Errorf("invalid usage: unexpected argument %q", flags.Arg(0)))
+	}
+	if *root == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return report(stderr, fmt.Errorf("resolve home directory: %w", err))
+		}
+		*root = home
 	}
 
 	input := stdin

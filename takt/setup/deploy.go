@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -291,11 +292,14 @@ func restoreBackup(file *stagedDeployment) error {
 // validateArtifactPathConflicts checks whether any artifact path is a parent of another artifact path.
 // It returns an error describing the conflicting paths when a conflict is found.
 func validateArtifactPathConflicts(artifacts []Artifact) error {
-	for index := 0; index+1 < len(artifacts); index++ {
-		parent := artifacts[index].Path + "/"
-		if strings.HasPrefix(artifacts[index+1].Path, parent) {
-			return fmt.Errorf("artifact path %q conflicts with child artifact %q", artifacts[index].Path, artifacts[index+1].Path)
+	seen := make(map[string]struct{}, len(artifacts))
+	for _, artifact := range artifacts {
+		for parent := path.Dir(artifact.Path); parent != "."; parent = path.Dir(parent) {
+			if _, exists := seen[parent]; exists {
+				return fmt.Errorf("artifact path %q conflicts with child artifact %q", parent, artifact.Path)
+			}
 		}
+		seen[artifact.Path] = struct{}{}
 	}
 	return nil
 }
@@ -422,7 +426,7 @@ func syncDir(path string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	if err := directory.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
 		return err
 	}

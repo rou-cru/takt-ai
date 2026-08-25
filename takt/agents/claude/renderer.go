@@ -106,7 +106,7 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 // RenderGlobalPrompt returns the native Claude global prompt artifact.
 func RenderGlobalPrompt(content string) (Artifact, error) {
 	if strings.TrimSpace(content) == "" {
-		return Artifact{}, fmt.Errorf("Claude global prompt is required")
+		return Artifact{}, fmt.Errorf("claude global prompt is required")
 	}
 	return Artifact{
 		Path:    ".claude/CLAUDE.md",
@@ -120,13 +120,13 @@ func RenderSettings(request SettingsRequest) (Artifact, error) {
 	settings := make(map[string]any, len(request.Settings)+1)
 	for key, value := range request.Settings {
 		if strings.TrimSpace(key) == "" {
-			return Artifact{}, fmt.Errorf("Claude setting key is required")
+			return Artifact{}, fmt.Errorf("claude setting key is required")
 		}
 		settings[key] = value
 	}
 	if request.Hooks != nil {
 		if _, exists := settings["hooks"]; exists {
-			return Artifact{}, fmt.Errorf("Claude hooks must be provided through SettingsRequest.Hooks")
+			return Artifact{}, fmt.Errorf("claude hooks must be provided through SettingsRequest.Hooks")
 		}
 		if err := validateHooks(request.Hooks); err != nil {
 			return Artifact{}, err

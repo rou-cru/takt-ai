@@ -17,6 +17,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -99,4 +100,17 @@ func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (str
 		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` |\n", subAgent, assignment.Model, assignment.Effort)
 	}
 	return sb.String(), nil
+}
+
+// ValidateCodexModelAssignment validates a Codex model and effort pair.
+func ValidateCodexModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+	if !slices.Contains(codexAvailableModels, assignment.Model) {
+		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
+	}
+	switch assignment.Effort {
+	case "", "low", "medium", "high":
+		return assignment, nil
+	default:
+		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid effort %q", subAgent, assignment.Effort)
+	}
 }

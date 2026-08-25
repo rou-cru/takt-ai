@@ -101,6 +101,18 @@ func TestDeployDeterministicResultOrder(t *testing.T) {
 	}
 }
 
+func TestDeployRejectsSeparatedArtifactPathConflict(t *testing.T) {
+	root := t.TempDir()
+	_, err := Deploy(root, []string{"a", "a.foo", "a/b"}, []Artifact{
+		{Path: "a", Content: []byte("file")},
+		{Path: "a.foo", Content: []byte("sibling")},
+		{Path: "a/b", Content: []byte("child")},
+	})
+	if err == nil || !strings.Contains(err.Error(), `artifact path "a" conflicts with child artifact "a/b"`) {
+		t.Fatalf("Deploy() error = %v, want separated parent/child conflict", err)
+	}
+}
+
 func TestDeployRejectsInvalidInputWithoutWriting(t *testing.T) {
 	tests := []struct {
 		name     string

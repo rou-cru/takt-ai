@@ -124,7 +124,7 @@ func TestBuildTargetPlansValidation(t *testing.T) {
 		{name: "missing Claude global prompt", mutate: func(request *PlanRequest) {
 			request.Targets = []model.AgentID{model.AgentClaudeCode}
 			request.Claude.GlobalPrompt = ""
-		}, want: "Claude global prompt is required"},
+		}, want: "claude global prompt is required"},
 		{name: "invalid Codex sandbox", mutate: func(request *PlanRequest) {
 			request.Targets = []model.AgentID{model.AgentCodex}
 			request.Codex.SandboxMode = "invalid"

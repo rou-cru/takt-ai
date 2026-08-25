@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Container-isolated test runner.
 #
 # Runs `go test` inside a disposable golang Docker container. The repo source
@@ -14,7 +14,7 @@
 #   scripts/test-containerized.sh            # runs default FS-touching packages
 #   scripts/test-containerized.sh --dry-run  # print the docker command, don't run
 
-set -eu
+set -euo pipefail
 
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 IMAGE="golang:1.25"          # matches go directive in go.mod
@@ -72,8 +72,15 @@ cd '"$SRC_DIR"'
 export GOFLAGS=-mod=mod TMPDIR=/tmp GOPATH=/go GOCACHE=/go/.cache/go-build GOMODCACHE=/go/pkg/mod
 go test "$@"
 ' go "$@"
-STATUS=$?
+PIPE_STATUS=("${PIPESTATUS[@]}")
 set -e
+
+TAR_STATUS=${PIPE_STATUS[0]}
+DOCKER_STATUS=${PIPE_STATUS[1]}
+STATUS=$DOCKER_STATUS
+if [ "$TAR_STATUS" -ne 0 ]; then
+    STATUS=$TAR_STATUS
+fi
 
 if [ "$STATUS" -eq 0 ]; then
     echo "=================================================="

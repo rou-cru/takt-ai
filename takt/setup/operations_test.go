@@ -181,6 +181,32 @@ func TestApplyRecordsOwnershipManifest(t *testing.T) {
 	}
 }
 
+func TestApplyTwiceThenUninstallRemovesCreatedFile(t *testing.T) {
+	root := t.TempDir()
+	plans := []TargetPlan{{
+		Target:       "claude",
+		ManagedPaths: []string{"created.md"},
+		Artifacts:    []Artifact{{Path: "created.md", Content: []byte("created")}},
+	}}
+	if _, err := Apply(root, plans); err != nil {
+		t.Fatalf("first Apply() error = %v", err)
+	}
+	if _, err := Apply(root, plans); err != nil {
+		t.Fatalf("second Apply() error = %v", err)
+	}
+
+	result, err := Uninstall(root, TargetClaude)
+	if err != nil {
+		t.Fatalf("Uninstall() error = %v", err)
+	}
+	if !slices.Equal(result.Removed, []string{"created.md"}) {
+		t.Errorf("removed = %v, want [created.md]", result.Removed)
+	}
+	if _, err := os.Stat(filepath.Join(root, "created.md")); !os.IsNotExist(err) {
+		t.Errorf("created file stat error = %v, want removed", err)
+	}
+}
+
 func TestUninstallPreservesPreExistingAndRemovesCreated(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "shared"), 0o755); err != nil {
@@ -394,6 +420,7 @@ func TestSyncPreservesUserEditedFiles(t *testing.T) {
 	tests := []struct {
 		name          string
 		mutate        func(t *testing.T, root string)
+		verify        func(t *testing.T, root string)
 		wantChanged   []string
 		wantUnchanged []string
 	}{
@@ -404,6 +431,21 @@ func TestSyncPreservesUserEditedFiles(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
+			verify: func(t *testing.T, root string) {
+				got, err := os.ReadFile(filepath.Join(root, "a.md"))
+				if err != nil || string(got) != "user edit" {
+					t.Errorf("edited file = %q, error = %v; want user edit preserved", got, err)
+				}
+				manifest, err := LoadOwnershipManifest(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				digest := sha256.Sum256([]byte("installed a"))
+				if entry := manifest.Entries["a.md"]; entry.SHA256 != hex.EncodeToString(digest[:]) {
+					t.Errorf("manifest hash = %q, want last installed content hash preserved", entry.SHA256)
+				}
+			},
+			wantChanged:   []string{},
 			wantUnchanged: []string{"a.md", "b.md"},
 		},
 		{
@@ -413,7 +455,7 @@ func TestSyncPreservesUserEditedFiles(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantChanged: []string{"a.md"},
+			wantChanged:   []string{"a.md"},
 			wantUnchanged: []string{"b.md"},
 		},
 	}
@@ -437,25 +479,14 @@ func TestSyncPreservesUserEditedFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Sync() error = %v", err)
 			}
-			if len(tc.wantChanged) > 0 && !slices.Equal(result.Changed, tc.wantChanged) {
+			if !slices.Equal(result.Changed, tc.wantChanged) {
 				t.Errorf("changed = %v, want %v", result.Changed, tc.wantChanged)
 			}
-			if len(tc.wantUnchanged) > 0 && !slices.Equal(result.Unchanged, tc.wantUnchanged) {
+			if !slices.Equal(result.Unchanged, tc.wantUnchanged) {
 				t.Errorf("unchanged = %v, want %v", result.Unchanged, tc.wantUnchanged)
 			}
-			if tc.name == "user edit is never clobbered" {
-				got, err := os.ReadFile(filepath.Join(root, "a.md"))
-				if err != nil || string(got) != "user edit" {
-					t.Errorf("edited file = %q, error = %v; want user edit preserved", got, err)
-				}
-				manifest, err := LoadOwnershipManifest(root)
-				if err != nil {
-					t.Fatal(err)
-				}
-				digest := sha256.Sum256([]byte("installed a"))
-				if entry := manifest.Entries["a.md"]; entry.SHA256 != hex.EncodeToString(digest[:]) {
-					t.Errorf("manifest hash = %q, want last installed content hash preserved", entry.SHA256)
-				}
+			if tc.verify != nil {
+				tc.verify(t, root)
 			}
 		})
 	}
