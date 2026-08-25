@@ -61,7 +61,18 @@ func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []Na
 	if err != nil {
 		return nil, err
 	}
+	catalogByID, err := indexCatalogDefinitions(catalog)
+	if err != nil {
+		return nil, err
+	}
+	contentByID, err := indexNativeContent(content, selected, catalogByID)
+	if err != nil {
+		return nil, err
+	}
+	return joinNativeContent(catalog, contentByID)
+}
 
+func indexCatalogDefinitions(catalog []model.CanonicalSubAgent) (map[string]model.CanonicalSubAgent, error) {
 	catalogByID := make(map[string]model.CanonicalSubAgent, len(catalog))
 	for _, definition := range catalog {
 		if strings.TrimSpace(definition.Name) == "" {
@@ -78,7 +89,10 @@ func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []Na
 		}
 		catalogByID[definition.Name] = definition
 	}
+	return catalogByID, nil
+}
 
+func indexNativeContent(content []NativeSubAgentContent, selected map[model.AgentID]struct{}, catalogByID map[string]model.CanonicalSubAgent) (map[string]NativeSubAgentContent, error) {
 	contentByID := make(map[string]NativeSubAgentContent, len(content))
 	for _, entry := range content {
 		if err := validateNativeContent(entry, selected); err != nil {
@@ -97,7 +111,10 @@ func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []Na
 		sort.Strings(entry.ClaudeTools)
 		contentByID[entry.ID] = entry
 	}
+	return contentByID, nil
+}
 
+func joinNativeContent(catalog []model.CanonicalSubAgent, contentByID map[string]NativeSubAgentContent) ([]NativeSubAgent, error) {
 	joined := make([]NativeSubAgent, 0, len(catalog)-1)
 	for _, definition := range catalog {
 		if definition.Name == defaultSubAgent {
@@ -150,15 +167,8 @@ func validateNativeContent(entry NativeSubAgentContent, targets map[model.AgentI
 		return fmt.Errorf("native content %q instructions are required", entry.ID)
 	}
 	if _, selected := targets[model.AgentClaudeCode]; selected {
-		seenTools := make(map[string]struct{}, len(entry.ClaudeTools))
-		for _, tool := range entry.ClaudeTools {
-			if tool == "" || tool != strings.TrimSpace(tool) {
-				return fmt.Errorf("native content %q has an invalid Claude tool", entry.ID)
-			}
-			if _, exists := seenTools[tool]; exists {
-				return fmt.Errorf("native content %q has duplicate Claude tool %q", entry.ID, tool)
-			}
-			seenTools[tool] = struct{}{}
+		if err := validateClaudeTools(entry.ID, entry.ClaudeTools); err != nil {
+			return err
 		}
 	}
 	if _, selected := targets[model.AgentCodex]; selected {
@@ -168,6 +178,20 @@ func validateNativeContent(entry NativeSubAgentContent, targets map[model.AgentI
 		if !codex.ValidWebSearch(entry.CodexWebSearch) {
 			return fmt.Errorf("native content %q has invalid Codex web search %q", entry.ID, entry.CodexWebSearch)
 		}
+	}
+	return nil
+}
+
+func validateClaudeTools(id string, tools []string) error {
+	seenTools := make(map[string]struct{}, len(tools))
+	for _, tool := range tools {
+		if tool == "" || tool != strings.TrimSpace(tool) {
+			return fmt.Errorf("native content %q has an invalid Claude tool", id)
+		}
+		if _, exists := seenTools[tool]; exists {
+			return fmt.Errorf("native content %q has duplicate Claude tool %q", id, tool)
+		}
+		seenTools[tool] = struct{}{}
 	}
 	return nil
 }
