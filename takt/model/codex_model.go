@@ -63,8 +63,8 @@ func CodexDefaultPreset() map[string]ModelAssignment {
 	return preset
 }
 
-// ResolveCodexSubAgentAssignment resolves a sub-agent to its assigned model and effort, using the default sub-agent assignment when needed.
-// It returns an error when neither assignment provides a model.
+// ResolveCodexSubAgentAssignment resolves a sub-agent to its assigned model
+// and effort, falling back to the default sub-agent assignment.
 func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]ModelAssignment) (string, string, error) {
 	if len(assignments) == 0 {
 		assignments = CodexDefaultPreset()
@@ -79,9 +79,8 @@ func ResolveCodexSubAgentAssignment(subAgent string, assignments map[string]Mode
 	return a.Model, a.Effort, nil
 }
 
-// RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown table.
-// An empty assignment map uses the default preset, and missing sub-agent assignments use
-// the default sub-agent assignment. It returns an error if any sub-agent has no model.
+// RenderCodexSubAgentAssignments renders sub-agent model assignments as a Markdown
+// table. An empty map uses the default preset.
 func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (string, error) {
 	if len(assignments) == 0 {
 		assignments = CodexDefaultPreset()
@@ -102,7 +101,8 @@ func RenderCodexSubAgentAssignments(assignments map[string]ModelAssignment) (str
 	return sb.String(), nil
 }
 
-// ValidateCodexModelAssignment validates a Codex model and effort pair.
+// ValidateCodexModelAssignment validates that assignment contains a known
+// Codex model and a recognized effort level.
 func ValidateCodexModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
 	if !slices.Contains(codexAvailableModels, assignment.Model) {
 		return ModelAssignment{}, fmt.Errorf("codex sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)

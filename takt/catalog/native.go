@@ -47,12 +47,9 @@ type NativeSubAgent struct {
 	Assignments      map[model.AgentID]model.ModelAssignment
 }
 
-// JoinNativeContentForTargets validates only the native options required by
-// targets and joins the content in catalog order. The default catalog entry is
-// JoinNativeContentForTargets validates and combines native sub-agent content with
-// catalog assignments in catalog order. It excludes the default sub-agent and
-// returns an error when targets, catalog entries, or content are invalid or
-// incomplete.
+// JoinNativeContentForTargets validates native options for each target and joins
+// content to catalog assignments in catalog order. The default sub-agent entry is
+// intentionally not renderable.
 func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []NativeSubAgentContent, targets []model.AgentID) ([]NativeSubAgent, error) {
 	if len(catalog) == 0 {
 		return nil, fmt.Errorf("catalog is empty")

@@ -23,7 +23,7 @@ type ModelAssignment struct {
 	Effort string // "" = target default; "low" | "medium" | "high"
 }
 
-// FullID returns the assigned model identifier.
+// FullID returns the model identifier for this assignment.
 func (m ModelAssignment) FullID() string {
 	return m.Model
 }
