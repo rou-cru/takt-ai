@@ -156,7 +156,7 @@ func validateSubAgent(request SubAgentRequest) error {
 func validateHooks(hooks map[string][]HookGroup) error {
 	for event, groups := range hooks {
 		if strings.TrimSpace(event) == "" {
-			return fmt.Errorf("Claude hook event is required")
+			return fmt.Errorf("claude hook event is required")
 		}
 		if err := validateHookGroups(event, groups); err != nil {
 			return err
@@ -168,7 +168,7 @@ func validateHooks(hooks map[string][]HookGroup) error {
 func validateHookGroups(event string, groups []HookGroup) error {
 	for index, group := range groups {
 		if len(group.Hooks) == 0 {
-			return fmt.Errorf("Claude hook event %q group %d has no hooks", event, index)
+			return fmt.Errorf("claude hook event %q group %d has no hooks", event, index)
 		}
 		if err := validateGroupHooks(event, index, group.Hooks); err != nil {
 			return err
@@ -180,7 +180,7 @@ func validateHookGroups(event string, groups []HookGroup) error {
 func validateGroupHooks(event string, groupIndex int, hooks []Hook) error {
 	for hookIndex, hook := range hooks {
 		if strings.TrimSpace(hook.Type) == "" || strings.TrimSpace(hook.Command) == "" {
-			return fmt.Errorf("Claude hook event %q group %d hook %d is incomplete", event, groupIndex, hookIndex)
+			return fmt.Errorf("claude hook event %q group %d hook %d is incomplete", event, groupIndex, hookIndex)
 		}
 	}
 	return nil
