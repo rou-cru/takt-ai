@@ -17,12 +17,13 @@ package model
 
 import "errors"
 
-// OrchestratorProjection contains harness-only runtime mechanics. Canonical policy lives in the catalog YAML.
+// OrchestratorProjection defines the runtime strings the orchestrator harness needs
+// to coordinate delegation, waiting, model selection, and isolation across agents.
 type OrchestratorProjection struct {
 	Platform, Delegate, Wait, Close, Question, Background, Models, Effort, Isolation, SkillRoot string
 }
 
-// Validate reports whether all projection fields are set.
+// Validate reports whether every projection field is populated.
 func (p OrchestratorProjection) Validate() error {
 	if p.Platform == "" || p.Delegate == "" || p.Wait == "" || p.Close == "" || p.Question == "" || p.Background == "" || p.Models == "" || p.Effort == "" || p.Isolation == "" || p.SkillRoot == "" {
 		return errors.New("invalid orchestrator projection")

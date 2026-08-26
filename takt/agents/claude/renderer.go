@@ -62,7 +62,7 @@ type SettingsRequest struct {
 	Hooks    map[string][]HookGroup `json:"hooks"`
 }
 
-// RenderSubAgent renders a deterministic Claude sub-agent Markdown artifact with YAML frontmatter and normalized instructions. The artifact is written to the .claude/agents directory and includes the requested model, optional effort, and sorted tools. Validation errors are returned without an artifact.
+// RenderSubAgent returns one Claude Markdown agent file with YAML frontmatter.
 func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	if err := validateSubAgent(request); err != nil {
 		return Artifact{}, err
@@ -90,8 +90,7 @@ func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	}, nil
 }
 
-// RenderSubAgents renders sub-agent requests and returns artifacts deduplicated and sorted by path.
-// Rendering stops at the first error.
+// RenderSubAgents returns Claude agent artifacts sorted by deterministic path.
 func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 	return shared.RenderSorted(requests, RenderSubAgent, func(a Artifact) string { return a.Path }, "Claude")
 }
@@ -107,8 +106,7 @@ func RenderGlobalPrompt(content string) (Artifact, error) {
 	}, nil
 }
 
-// RenderSettings produces the Claude settings artifact as indented JSON.
-// It validates setting keys and hooks, and returns an error when settings cannot be serialized.
+// RenderSettings returns the native Claude settings.json artifact.
 func RenderSettings(request SettingsRequest) (Artifact, error) {
 	settings := make(map[string]any, len(request.Settings)+1)
 	for key, value := range request.Settings {
@@ -137,7 +135,7 @@ func RenderSettings(request SettingsRequest) (Artifact, error) {
 	}, nil
 }
 
-// validateSubAgent validates the identifier, description, instructions, and model assignment for a Claude sub-agent request.
+// validateSubAgent validates a Claude sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
 	if err := artifacts.ValidateID("Claude", request.ID); err != nil {
 		return err
@@ -154,7 +152,7 @@ func validateSubAgent(request SubAgentRequest) error {
 	return nil
 }
 
-// validateHooks validates Claude hook events, groups, and hook definitions.
+// validateHooks validates Claude hook events and groups.
 func validateHooks(hooks map[string][]HookGroup) error {
 	for event, groups := range hooks {
 		if strings.TrimSpace(event) == "" {

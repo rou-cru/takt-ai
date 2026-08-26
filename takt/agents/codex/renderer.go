@@ -80,7 +80,7 @@ type ConfigRequest struct {
 	MaxDepth    int
 }
 
-// It returns an error when the request contains invalid or incomplete settings.
+// RenderSubAgent returns one Codex TOML custom-agent file.
 func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	if err := validateSubAgent(request); err != nil {
 		return Artifact{}, err
@@ -106,8 +106,7 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 	return shared.RenderSorted(requests, RenderSubAgent, func(a Artifact) string { return a.Path }, "Codex")
 }
 
-// RenderGlobalPrompt creates the Codex global prompt artifact, ensuring the content ends with a newline.
-// It returns an error when the prompt is blank.
+// RenderGlobalPrompt returns the native Codex global prompt artifact.
 func RenderGlobalPrompt(content string) (Artifact, error) {
 	if strings.TrimSpace(content) == "" {
 		return Artifact{}, fmt.Errorf("Codex global prompt is required")
@@ -118,9 +117,7 @@ func RenderGlobalPrompt(content string) (Artifact, error) {
 	}, nil
 }
 
-// RenderConfig renders global Codex configuration as a deterministic TOML artifact.
-// It includes model, sandbox, web-search, multi-agent, thread, and depth settings, and
-// returns an error when any setting is invalid.
+// RenderConfig returns the native Codex config.toml artifact.
 func RenderConfig(request ConfigRequest) (Artifact, error) {
 	if _, err := model.ValidateCodexModelAssignment("config", request.Assignment); err != nil {
 		return Artifact{}, err
@@ -152,7 +149,7 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	}, nil
 }
 
-// validateSubAgent validates the identifier, required text fields, model assignment, sandbox mode, and web-search setting for a Codex sub-agent request.
+// validateSubAgent validates a Codex sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
 	if err := artifacts.ValidateID("Codex", request.ID); err != nil {
 		return err
@@ -172,7 +169,7 @@ func validateSubAgent(request SubAgentRequest) error {
 	return validateWebSearch(request.WebSearch)
 }
 
-// validateSandboxMode validates a Codex sandbox mode and returns an error for unsupported values.
+// validateSandboxMode validates a Codex sandbox mode.
 func validateSandboxMode(mode SandboxMode) error {
 	if !ValidSandboxMode(mode) {
 		return fmt.Errorf("invalid Codex sandbox mode %q", mode)
@@ -180,7 +177,7 @@ func validateSandboxMode(mode SandboxMode) error {
 	return nil
 }
 
-// validateWebSearch validates a Codex web-search mode.
+// validateWebSearch validates a Codex web-search setting.
 func validateWebSearch(search WebSearch) error {
 	if !ValidWebSearch(search) {
 		return fmt.Errorf("invalid Codex web search %q", search)
@@ -192,4 +189,3 @@ func validateWebSearch(search WebSearch) error {
 func tomlString(value string) string {
 	return strconv.Quote(value)
 }
-

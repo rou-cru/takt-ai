@@ -30,22 +30,22 @@ type Selection struct {
 	PreservedSubagents []string                    // sub-agent names preserved as-is during install/sync
 }
 
-// HasCommunityTool reports whether the selection includes tool.
+// HasCommunityTool reports whether tool is in the selection.
 func (s Selection) HasCommunityTool(tool CommunityToolID) bool {
 	return slices.Contains(s.CommunityTools, tool)
 }
 
-// HasAgent reports whether the selection includes agent.
+// HasAgent reports whether agent is in the selection.
 func (s Selection) HasAgent(agent AgentID) bool {
 	return slices.Contains(s.Agents, agent)
 }
 
-// HasComponent reports whether the selection includes component.
+// HasComponent reports whether component is in the selection.
 func (s Selection) HasComponent(component ComponentID) bool {
 	return slices.Contains(s.Components, component)
 }
 
-// IsNonDetected reports whether agent was selected but not detected.
+// IsNonDetected reports whether agent was selected but not detected at runtime.
 func (s Selection) IsNonDetected(agent AgentID) bool {
 	return slices.Contains(s.NonDetectedAgents, agent)
 }

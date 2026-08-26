@@ -13,6 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// Package setup implements the install, sync, and uninstall lifecycle:
+// it builds target plans from a request, deploys rendered artifacts with
+// transactional rollback, and tracks ownership through a persistent manifest.
 package setup
 
 import (

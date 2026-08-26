@@ -27,10 +27,10 @@ const (
 	ClaudeModelHaiku  ClaudeModelAlias = "haiku"
 )
 
-// String returns the string representation of the alias.
+// String returns the alias as a string.
 func (a ClaudeModelAlias) String() string { return string(a) }
 
-// Valid reports whether the alias is one of the known Claude model tiers.
+// Valid reports whether the alias is a recognized Claude model tier.
 func (a ClaudeModelAlias) Valid() bool {
 	switch a {
 	case ClaudeModelFable, ClaudeModelOpus, ClaudeModelSonnet, ClaudeModelHaiku:
@@ -52,7 +52,7 @@ const (
 	ClaudeEffortMax     ClaudeEffort = "max"
 )
 
-// Valid reports whether the effort is known.
+// Valid reports whether the effort is a recognized Claude effort level.
 func (e ClaudeEffort) Valid() bool {
 	switch e {
 	case ClaudeEffortDefault, ClaudeEffortLow, ClaudeEffortMedium, ClaudeEffortHigh, ClaudeEffortXHigh, ClaudeEffortMax:
