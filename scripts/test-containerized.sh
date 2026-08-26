@@ -18,6 +18,7 @@ set -euo pipefail
 
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 IMAGE="golang:1.25"          # matches go directive in go.mod
+SEPARATOR="=================================================="
 SRC_DIR="/src"
 MODCACHE_VOL="takt-test-gomodcache"
 GOCACHE_VOL="takt-test-gocache"
@@ -83,12 +84,12 @@ if [ "$TAR_STATUS" -ne 0 ]; then
 fi
 
 if [ "$STATUS" -eq 0 ]; then
-    echo "=================================================="
+    echo "$SEPARATOR"
     echo " PASS: containerized tests succeeded (exit 0)"
-    echo "=================================================="
+    echo "$SEPARATOR"
 else
-    echo "=================================================="
+    echo "$SEPARATOR"
     echo " FAIL: containerized tests failed (exit $STATUS)"
-    echo "=================================================="
+    echo "$SEPARATOR"
 fi
 exit "$STATUS"
