@@ -16,6 +16,7 @@
 package catalog
 
 import (
+	// Required blank import: the embed directive below depends on this package.
 	_ "embed"
 	"fmt"
 	"strings"

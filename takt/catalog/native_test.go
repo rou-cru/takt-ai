@@ -86,7 +86,7 @@ func TestJoinNativeContentDoesNotShareAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined[0].Assignments[model.AgentClaudeCode] = model.ModelAssignment{Model: "mutated"}
-	if got := semantic[0].Assignments[model.AgentClaudeCode].Model; got == "mutated" {
+	if semantic[0].Assignments[model.AgentClaudeCode].Model == "mutated" {
 		t.Fatal("joined assignments share catalog map state")
 	}
 }
