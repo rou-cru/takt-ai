@@ -25,25 +25,78 @@ GOCACHE_VOL="takt-test-gocache"
 
 DEFAULT_PKGS="./cmd/takt-ai/... ./takt/setup/..."
 
+# Resolve the final `go test` argument list.
+#
+# Flags that accept a value (e.g. `-run`, `-bench`) consume the NEXT argument
+# as their value, so that argument must NOT be mistaken for a package. The
+# space-separated form `-run TestX` was previously misclassified: `TestX`
+# started with no `-`, so it was treated as a package, the default packages
+# were dropped, and `go test` ran with nothing to test in /src.
+#
+# - RESOLVED_PKGS: the package list (defaults when none are named).
+# - RESOLVED_ARGS: flags verbatim, with defaults prepended only when no
+#   package was named.
+#
+# ponytail: the value-taking flag list covers `go test`'s common flags; add a
+# name here if a new value flag appears and starts eating the next argument.
+compute_go_args() {
+    pkgs=""
+    skip_next=0
+    for arg in "$@"; do
+        if [ "$skip_next" -eq 1 ]; then
+            skip_next=0
+            continue
+        fi
+        case $arg in
+            -run|-bench|-benchtime|-blockprofile|-cpuprofile|-memprofile|-coverprofile|-coverpkg|-cpu|-count|-timeout|-parallel|-p|-exec|-outputdir|-gcflags|-ldflags|-tags|-vet|-test.run|-test.bench|-test.benchtime|-test.timeout|-test.count|-test.parallel|-test.cpu|-test.vet)
+                skip_next=1
+                ;;
+            -*) ;;
+            *) pkgs="$pkgs $arg" ;;
+        esac
+    done
+    if [ -z "$pkgs" ]; then
+        # shellcheck disable=SC2086
+        pkgs="$DEFAULT_PKGS"
+    fi
+    RESOLVED_PKGS="$pkgs"
+    if [ "$pkgs" = "$DEFAULT_PKGS" ]; then
+        # shellcheck disable=SC2086
+        RESOLVED_ARGS="$DEFAULT_PKGS $*"
+    else
+        RESOLVED_ARGS="$*"
+    fi
+}
+
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then
     DRY_RUN=1
     shift
 fi
 
+# Self-check mode: prove both `-run TestX` and `-run=TestX` resolve to the
+# same package list, without invoking Docker.
+if [ "${1:-}" = "--self-check" ]; then
+    compute_go_args -run TestX
+    form_space="$RESOLVED_PKGS"
+    compute_go_args -run=TestX
+    form_eq="$RESOLVED_PKGS"
+    if [ "$form_space" = "$form_eq" ]; then
+        echo "SELF-CHECK PASS: '-run TestX' and '-run=TestX' produce identical package list"
+        echo "  -> $form_space"
+        exit 0
+    fi
+    echo "SELF-CHECK FAIL:" >&2
+    echo "  '-run TestX'   -> $form_space" >&2
+    echo "  '-run=TestX'   -> $form_eq" >&2
+    exit 1
+fi
+
 # Default to the FS-touching set when no packages are named; flags-only
 # invocations must keep the defaults (a bare `go test` in /src finds no Go files).
-has_pkg=0
-for arg in "$@"; do
-    case $arg in
-        -*) ;;
-        *) has_pkg=1 ;;
-    esac
-done
-if [ "$has_pkg" -eq 0 ]; then
-    # shellcheck disable=SC2086
-    set -- $DEFAULT_PKGS "$@"
-fi
+compute_go_args "$@"
+# shellcheck disable=SC2086
+set -- $RESOLVED_ARGS
 
 echo "==> containerized test run (source copied in via tar pipe, zero host mounts)"
 echo "==> packages/flags: $*"

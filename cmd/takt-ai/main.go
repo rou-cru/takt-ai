@@ -132,7 +132,6 @@ func executeSetup(command, root string, request setup.PlanRequest) (any, error) 
 	return setup.Apply(root, plans)
 }
 
-// ownershipTargets maps plan agent ids onto ownership target ids for
 // ownershipTargets converts agent IDs to setup ownership targets for manifest-scoped operations.
 func ownershipTargets(ids []model.AgentID) ([]setup.OwnershipTarget, error) {
 	targets := make([]setup.OwnershipTarget, 0, len(ids))

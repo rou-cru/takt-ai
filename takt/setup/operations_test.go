@@ -416,6 +416,116 @@ func TestUninstallRejectsBadInput(t *testing.T) {
 	}
 }
 
+// #12689: Uninstall must not delete a Takt-created file the user has edited.
+func TestUninstallPreservesUserEditedCreatedFile(t *testing.T) {
+	root := t.TempDir()
+	plans := []TargetPlan{{
+		Target:       "claude",
+		ManagedPaths: []string{"created.md"},
+		Artifacts:    []Artifact{{Path: "created.md", Content: []byte("installed")}},
+	}}
+	if _, err := Apply(root, plans); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	// Simulate the user editing the file Takt created.
+	if err := os.WriteFile(filepath.Join(root, "created.md"), []byte("user edit"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Uninstall(root, TargetClaude)
+	if err != nil {
+		t.Fatalf("Uninstall() error = %v", err)
+	}
+	if !slices.Equal(result.Preserved, []string{"created.md"}) {
+		t.Errorf("preserved = %v, want [created.md]", result.Preserved)
+	}
+	if len(result.Removed) != 0 {
+		t.Errorf("removed = %v, want empty", result.Removed)
+	}
+	got, err := os.ReadFile(filepath.Join(root, "created.md"))
+	if err != nil || string(got) != "user edit" {
+		t.Errorf("edited file = %q, error = %v; want user edit preserved", got, err)
+	}
+	manifest, err := LoadOwnershipManifest(root)
+	if err != nil {
+		t.Fatalf("manifest should survive preserving an edited file: %v", err)
+	}
+	if _, ok := manifest.Entries["created.md"]; !ok {
+		t.Errorf("manifest should still claim the preserved edited file")
+	}
+}
+
+// #12691: a failure mid-uninstall must leave a consistent state — no file is
+// left deleted while the manifest still claims it.
+func TestUninstallRollsBackOnFailure(t *testing.T) {
+	root := t.TempDir()
+	plans := []TargetPlan{{
+		Target:       "claude",
+		ManagedPaths: []string{"a.md", "b.md"},
+		Artifacts: []Artifact{
+			{Path: "a.md", Content: []byte("alpha")},
+			{Path: "b.md", Content: []byte("beta")},
+		},
+	}}
+	if _, err := Apply(root, plans); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	// Make b.md indeletable by turning it into a directory, so removal fails
+	// after a.md has already been staged.
+	if err := os.Remove(filepath.Join(root, "b.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "b.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Uninstall(root, TargetClaude)
+	if err == nil {
+		t.Fatalf("Uninstall() error = nil, want failure from indeletable entry")
+	}
+
+	// a.md must be restored and the on-disk manifest must still claim both
+	// files, because the failed run never persisted a mutated manifest.
+	if got, statErr := os.ReadFile(filepath.Join(root, "a.md")); statErr != nil || string(got) != "alpha" {
+		t.Errorf("a.md = %q, error = %v; want restored to %q", got, statErr, "alpha")
+	}
+	manifest, err := LoadOwnershipManifest(root)
+	if err != nil {
+		t.Fatalf("manifest load error = %v; want original manifest intact", err)
+	}
+	for _, path := range []string{"a.md", "b.md"} {
+		if _, ok := manifest.Entries[path]; !ok {
+			t.Errorf("manifest dropped %q but its file may still exist — inconsistent state", path)
+		}
+	}
+}
+
+// #12693: an invalid ownership target must be rejected before any artifact is
+// written, so no files or manifest are left on disk.
+func TestApplyRejectsInvalidTargetBeforeDeploy(t *testing.T) {
+	root := t.TempDir()
+	plans := []TargetPlan{{
+		Target:       "cursor",
+		ManagedPaths: []string{"evil.txt"},
+		Artifacts:    []Artifact{{Path: "evil.txt", Content: []byte("must not write")}},
+	}}
+	_, err := Apply(root, plans)
+	if err == nil || !strings.Contains(err.Error(), "unsupported target") {
+		t.Fatalf("Apply() error = %v, want unsupported target", err)
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("rejected deployment wrote files: %v", entries)
+	}
+	_, manifestErr := LoadOwnershipManifest(root)
+	if !errors.Is(manifestErr, os.ErrNotExist) {
+		t.Errorf("manifest load error = %v, want absent after rejected deploy", manifestErr)
+	}
+}
+
 func TestSyncPreservesUserEditedFiles(t *testing.T) {
 	tests := []struct {
 		name          string

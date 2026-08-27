@@ -269,3 +269,65 @@ func TestOwnershipManifestSchemaExample(t *testing.T) {
 		t.Errorf("serialized version = %d, want %d", probe.Version, OwnershipManifestVersion)
 	}
 }
+
+func TestSafeJoin(t *testing.T) {
+	root := t.TempDir()
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve root: %v", err)
+	}
+
+	t.Run("normal relative entry passes", func(t *testing.T) {
+		got, err := SafeJoin(root, "sub/file.txt")
+		if err != nil {
+			t.Fatalf("SafeJoin: %v", err)
+		}
+		if want := filepath.Join(rootReal, "sub/file.txt"); got != want {
+			t.Errorf("SafeJoin = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("parent traversal is rejected", func(t *testing.T) {
+		if _, err := SafeJoin(root, "../victim.txt"); err == nil {
+			t.Fatalf("expected %q to be rejected", "../victim.txt")
+		}
+	})
+
+	t.Run("absolute path is rejected", func(t *testing.T) {
+		if _, err := SafeJoin(root, "/etc/passwd"); err == nil {
+			t.Fatalf("expected absolute path to be rejected")
+		}
+	})
+
+	t.Run("empty path is rejected", func(t *testing.T) {
+		if _, err := SafeJoin(root, ""); err == nil {
+			t.Fatalf("expected empty path to be rejected")
+		}
+	})
+
+	t.Run("symlink escape is rejected", func(t *testing.T) {
+		outside := t.TempDir()
+		link := filepath.Join(root, "escape")
+		if err := os.Symlink(outside, link); err != nil {
+			t.Skipf("symlinks unsupported on this filesystem: %v", err)
+		}
+		if _, err := SafeJoin(root, "escape/victim.txt"); err == nil {
+			t.Fatalf("expected symlink-escape path to be rejected")
+		}
+	})
+}
+
+func TestLoadOwnershipManifestRejectsEscapingEntryPath(t *testing.T) {
+	root := t.TempDir()
+	// Crafted manifest whose entry key escapes the deployment root.
+	content := `{"version":1,"entries":{` +
+		`"../victim.txt":{"path":"../victim.txt","sha256":"` + testSHA + `","mode":420,"targets":["claude"]}` +
+		`}}`
+	if err := os.WriteFile(filepath.Join(root, OwnershipManifestFilename), []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	_, err := LoadOwnershipManifest(root)
+	if err == nil || !strings.Contains(err.Error(), "escapes deployment root") {
+		t.Fatalf("error = %v, want rejection of escaping entry path", err)
+	}
+}
