@@ -173,7 +173,7 @@ func TestBuildTargetPlansOpenCodeUsesDefaultModel(t *testing.T) {
 		t.Errorf("OpenCode config did not use the default model: %s", config.Content)
 	}
 	agent := findArtifact(plan, ".config/opencode/agents/takt-dev.md")
-	if !bytes.Contains(agent.Content, []byte("model: openai/gpt-5.6-luna\n")) {
+	if !bytes.Contains(agent.Content, []byte("model: \"openai/gpt-5.6-luna\"")) {
 		t.Errorf("OpenCode sub-agent did not use the default model: %s", agent.Content)
 	}
 }

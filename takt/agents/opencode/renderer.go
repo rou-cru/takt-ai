@@ -19,7 +19,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
@@ -56,8 +55,8 @@ func RenderSubAgent(request SubAgentRequest) (Artifact, error) {
 	var content bytes.Buffer
 	content.WriteString("---\n")
 	content.WriteString("mode: subagent\n")
-	fmt.Fprintf(&content, "description: %s\n", strconv.Quote(request.Description))
-	fmt.Fprintf(&content, "model: %s\n", request.Assignment.Model)
+	fmt.Fprintf(&content, "description: %s\n", yamlScalar(request.Description))
+	fmt.Fprintf(&content, "model: %s\n", yamlScalar(request.Assignment.Model))
 	content.WriteString("---\n\n")
 	content.WriteString(artifacts.EnsureTrailingNewline(request.Instructions))
 
@@ -89,6 +88,45 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 		Path:    ".config/opencode/opencode.json",
 		Content: append(content, '\n'),
 	}, nil
+}
+
+// yamlScalar returns s as a YAML double-quoted scalar. Double-quoted style is
+// always safe: every special character (":", "#", leading/trailing spaces,
+// double quotes, backslashes, control characters and newlines) is escaped so
+// the value round-trips to the identical string when parsed back.
+func yamlScalar(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\f':
+			b.WriteString(`\f`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			if r < 0x20 {
+				// Other control characters are not representable literally in a
+				// double-quoted scalar, so emit the YAML \xNN escape.
+				fmt.Fprintf(&b, `\x%02x`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // validateSubAgent validates an OpenCode sub-agent request.

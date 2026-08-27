@@ -28,7 +28,6 @@ import (
 	artifactutil "github.com/rou-cru/takt-ai/takt/internal/artifacts"
 )
 
-// loadOrCreateManifest loads the deployment root's ownership manifest,
 // loadOrCreateManifest loads the ownership manifest for rootDir, or returns an empty manifest when none exists.
 func loadOrCreateManifest(rootDir string) (*OwnershipManifest, error) {
 	manifest, err := LoadOwnershipManifest(rootDir)
@@ -46,21 +45,11 @@ type TargetPlan struct {
 	Artifacts    []Artifact
 }
 
-// Apply deploys all target plans through the shared deployment path and
-// records ownership for every deployed file in the ownership manifest. Stale
 // Apply deploys all managed paths and artifacts in the supplied plans without skipping existing files.
 func Apply(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 	return applyPlans(rootDir, plans, nil, nil)
 }
 
-// Sync re-runs the deploy for the requested targets and reconciles the
-// ownership manifest.
-//
-// Preservation rule: when a planned artifact path already has a manifest
-// entry, sync hashes the on-disk bytes; a mismatch against entry.SHA256 means
-// the user edited the file since install, so sync skips redeploying it (the
-// path is reported unchanged) and leaves its manifest entry untouched — user
-// edits to previously installed files are never clobbered. A missing file is
 // Sync deploys target plans while preserving managed files that have been modified locally. Missing files and paths without manifest entries are redeployed.
 func Sync(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
@@ -99,15 +88,18 @@ func Sync(rootDir string, plans []TargetPlan) (DeploymentResult, error) {
 // entirely by the ownership manifest.
 //
 // Preservation policy for pre-existing files: an entry with PreExisting set is
-// NEVER modified or deleted on uninstall. Its current bytes stay in place as
-// user content (BackupPath is ignored); only files Takt created outright are
-// removed, followed by pruning of newly emptied parent directories beneath
-// rootDir. Ownership is released per target: entries shared with unselected
-// targets keep their files and remaining owners. When no entries remain the
-// manifest itself is deleted. A missing manifest is a successful no-op, so a
-// Uninstall removes files owned exclusively by the specified targets and updates the ownership manifest.
-// Pre-existing files and files still owned by other targets are preserved. A missing manifest is treated as a successful no-op.
-// It returns the paths removed and preserved during the operation.
+// NEVER modified or deleted on uninstall; its current bytes stay in place as
+// user content. Takt-created files are removed, EXCEPT when the on-disk bytes
+// no longer match the recorded SHA-256 (the user edited the file since install)
+// — those are preserved too (#12689). Entries shared with unselected targets
+// keep their files and remaining owners. When the last entry is gone the
+// manifest itself is deleted. A missing manifest is a successful no-op.
+//
+// Uninstall is transactional (#12691): the whole operation is planned and
+// validated first, then removals are staged (moved aside) before the manifest
+// is rewritten. If any removal fails, the staged files are restored and the
+// manifest is left untouched, so it never claims a file that was deleted when
+// the operation failed.
 func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return UninstallResult{}, fmt.Errorf("deployment root is required")
@@ -128,11 +120,12 @@ func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, err
 		return UninstallResult{}, fmt.Errorf("resolve deployment root: %w", err)
 	}
 
-	result := UninstallResult{Removed: []string{}, Preserved: []string{}}
-	for _, entryPath := range sortedEntryPaths(manifest) {
-		if err := uninstallEntry(manifest, entryPath, selected, root, &result); err != nil {
-			return UninstallResult{}, err
-		}
+	plan := planUninstall(manifest, selected)
+
+	result, rollback, err := applyUninstallPlan(manifest, root, plan)
+	if err != nil {
+		rollback()
+		return UninstallResult{}, err
 	}
 	return finishUninstall(manifest, root, result)
 }
@@ -160,47 +153,142 @@ func sortedEntryPaths(manifest *OwnershipManifest) []string {
 	return entryPaths
 }
 
-// uninstallEntry drops one manifest entry: partially unselected entries keep
-// their remaining owners, pre-existing files are preserved, and fully
-// Takt-owned files are removed from disk.
-func uninstallEntry(manifest *OwnershipManifest, entryPath string, selected map[OwnershipTarget]bool, root string, result *UninstallResult) error {
-	entry := manifest.Entries[entryPath]
-	remaining := make([]OwnershipTarget, 0, len(entry.Targets))
-	fullySelected := true
-	for _, owner := range entry.Targets {
-		if selected[owner] {
-			continue
-		}
-		remaining = append(remaining, owner)
-		fullySelected = false
-	}
-	if !fullySelected {
-		entry.Targets = remaining
-		manifest.Entries[entryPath] = entry
-		return nil
-	}
-	if entry.PreExisting {
-		result.Preserved = append(result.Preserved, entryPath)
-	} else if err := removeManagedEntry(root, entryPath); err != nil {
-		return err
-	} else {
-		result.Removed = append(result.Removed, entryPath)
-	}
-	delete(manifest.Entries, entryPath)
-	return nil
+// uninstallAction classifies what Uninstall does with one manifest entry.
+type uninstallAction int
+
+const (
+	actionKeep     uninstallAction = iota // still owned by others: keep, prune targets
+	actionPreserve                        // pre-existing or user-edited: keep file + entry
+	actionRemove                          // Takt-created, unedited: delete
+)
+
+type uninstallPlanEntry struct {
+	path      string
+	action    uninstallAction
+	entry     OwnershipEntry
+	remaining []OwnershipTarget
 }
 
-func removeManagedEntry(root, entryPath string) error {
-	destination := filepath.Join(root, filepath.FromSlash(entryPath))
-	err := os.Remove(destination)
-	if os.IsNotExist(err) {
-		return nil
+type stagedFile struct {
+	original string
+	staged   string
+}
+
+// planUninstall classifies every manifest entry against the selected targets,
+// purely in memory. The on-disk edited-file check happens later, at removal
+// time, so planning cannot fail on transient I/O.
+func planUninstall(manifest *OwnershipManifest, selected map[OwnershipTarget]bool) []uninstallPlanEntry {
+	plan := make([]uninstallPlanEntry, 0, len(manifest.Entries))
+	for _, entryPath := range sortedEntryPaths(manifest) {
+		entry := manifest.Entries[entryPath]
+		remaining := make([]OwnershipTarget, 0, len(entry.Targets))
+		fullySelected := true
+		for _, owner := range entry.Targets {
+			if selected[owner] {
+				continue
+			}
+			remaining = append(remaining, owner)
+			fullySelected = false
+		}
+		if !fullySelected {
+			sort.Slice(remaining, func(i, j int) bool { return remaining[i] < remaining[j] })
+			plan = append(plan, uninstallPlanEntry{path: entryPath, action: actionKeep, entry: entry, remaining: remaining})
+			continue
+		}
+		if entry.PreExisting {
+			plan = append(plan, uninstallPlanEntry{path: entryPath, action: actionPreserve, entry: entry})
+			continue
+		}
+		plan = append(plan, uninstallPlanEntry{path: entryPath, action: actionRemove, entry: entry})
 	}
+	return plan
+}
+
+// applyUninstallPlan mutates the in-memory manifest for keep/preserve/remove
+// and stages every removal aside. Nothing is persisted until all staging
+// succeeds, so a failure restores the staged files and leaves the manifest
+// untouched (#12691).
+func applyUninstallPlan(manifest *OwnershipManifest, root string, plan []uninstallPlanEntry) (UninstallResult, func(), error) {
+	result := UninstallResult{Removed: []string{}, Preserved: []string{}}
+	staged := make([]stagedFile, 0, len(plan))
+	rollback := func() {
+		for _, s := range staged {
+			_ = renameFile(s.staged, s.original)
+		}
+		removeStagingDir(root)
+	}
+	for _, item := range plan {
+		switch item.action {
+		case actionKeep:
+			entry := item.entry
+			entry.Targets = item.remaining
+			manifest.Entries[item.path] = entry
+		case actionPreserve:
+			result.Preserved = append(result.Preserved, item.path)
+			// A preserved (pre-existing) file stays on disk as user content,
+			// but Takt no longer owns it, so drop its manifest entry.
+			delete(manifest.Entries, item.path)
+		case actionRemove:
+			original, err := SafeJoin(root, item.path)
+			if err != nil {
+				return result, rollback, err
+			}
+			data, readErr := os.ReadFile(original)
+			if os.IsNotExist(readErr) {
+				delete(manifest.Entries, item.path)
+				result.Removed = append(result.Removed, item.path)
+				continue
+			}
+			if readErr != nil {
+				return result, rollback, fmt.Errorf("inspect managed file %q: %w", item.path, readErr)
+			}
+			// #12689: a user-edited file is preserved, not deleted.
+			digest := sha256.Sum256(data)
+			if hex.EncodeToString(digest[:]) != item.entry.SHA256 {
+				result.Preserved = append(result.Preserved, item.path)
+				continue
+			}
+			stagedPath, stageErr := stageForRemoval(root, original, item.path)
+			if stageErr != nil {
+				return result, rollback, stageErr
+			}
+			staged = append(staged, stagedFile{original: original, staged: stagedPath})
+			delete(manifest.Entries, item.path)
+			result.Removed = append(result.Removed, item.path)
+		}
+	}
+
+	// All removals staged and purged; the manifest is persisted once, by the
+	// terminal finishUninstall call in Uninstall, so a failure there never
+	// claims a file we could not remove.
+	for _, s := range staged {
+		_ = os.Remove(s.staged)
+		pruneEmptyDirs(root, filepath.Dir(s.original))
+	}
+	removeStagingDir(root)
+	return result, func() {}, nil
+}
+
+// stageForRemoval moves a managed file aside within root, on the same
+// filesystem so it can be restored by rollback.
+func stageForRemoval(root, original, rel string) (string, error) {
+	// Build the staging destination with the same symlink-escape-safe join
+	// used for managed paths, so a symlinked parent outside root is rejected.
+	dst, err := SafeJoin(root, filepath.Join(".takt-uninstall-staging", filepath.FromSlash(rel)))
 	if err != nil {
-		return fmt.Errorf("remove managed file %q: %w", entryPath, err)
+		return "", fmt.Errorf("stage managed file %q: %w", rel, err)
 	}
-	pruneEmptyDirs(root, filepath.Dir(destination))
-	return nil
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", fmt.Errorf("stage managed file %q: %w", rel, err)
+	}
+	if err := renameFile(original, dst); err != nil {
+		return "", fmt.Errorf("stage managed file %q: %w", rel, err)
+	}
+	return dst, nil
+}
+
+func removeStagingDir(root string) {
+	_ = os.RemoveAll(filepath.Join(root, ".takt-uninstall-staging"))
 }
 
 // finishUninstall removes the ownership manifest once its last entry is gone;
@@ -224,8 +312,6 @@ type UninstallResult struct {
 	Preserved []string `json:"preserved"`
 }
 
-// pruneEmptyDirs removes now-empty directories walking upward from directory,
-// stopping at the deployment root or at the first non-empty directory (its
 // pruneEmptyDirs removes empty directories upward from directory until reaching root or encountering an unremovable directory.
 func pruneEmptyDirs(root, directory string) {
 	for directory != root {
@@ -236,9 +322,6 @@ func pruneEmptyDirs(root, directory string) {
 	}
 }
 
-// applyPlans flattens and validates the plans, deploys every artifact except
-// those named in skip (skipped paths are reported unchanged), then upserts
-// ownership manifest entries for everything it deployed. A nil manifest is
 // applyPlans deploys the supplied plans, records ownership for deployed artifacts, and saves the ownership manifest.
 // Paths listed in skip are reported as unchanged and are excluded from deployment. If manifest is nil, it is loaded or created.
 func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest) (DeploymentResult, error) {
@@ -250,13 +333,20 @@ func applyPlans(rootDir string, plans []TargetPlan, skip map[string]bool, manife
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// #12693: validate every ownership entry (target mapping + metadata) before
+	// Deploy so an unsupported target fails fast and leaves no artifacts or
+	// ownership manifest on disk.
+	validated, err := buildOwnershipEntries(activeArtifacts, targetByPath, priors)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
 
 	result, err := Deploy(rootDir, activePaths, activeArtifacts)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
 	markSkippedPaths(&result, skip)
-	if err := recordOwnershipEntries(manifest, activeArtifacts, targetByPath, priors); err != nil {
+	if err := manifest.Add(validated...); err != nil {
 		return DeploymentResult{}, err
 	}
 	return result, manifest.Save(rootDir)
@@ -351,21 +441,24 @@ func markSkippedPaths(result *DeploymentResult, skip map[string]bool) {
 	sort.Strings(result.Unchanged)
 }
 
-func recordOwnershipEntries(manifest *OwnershipManifest, artifacts []Artifact, targetByPath map[string]string, priors map[string]priorState) error {
+// buildOwnershipEntries validates and constructs the ownership entries for the
+// supplied artifacts without mutating the manifest, so callers can reject bad
+// input before any artifact is written to disk (#12693).
+func buildOwnershipEntries(artifacts []Artifact, targetByPath map[string]string, priors map[string]priorState) ([]OwnershipEntry, error) {
 	entries := make([]OwnershipEntry, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		target, err := OwnershipTargetFor(targetByPath[artifact.Path])
 		if err != nil {
-			return err
+			return nil, err
 		}
 		state := priors[artifact.Path]
 		entry, err := NewOwnershipEntry(artifact.Path, artifact.Content, state.mode, state.preExisting, state.priorSHA256, state.backupPath, target)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		entries = append(entries, entry)
 	}
-	return manifest.Add(entries...)
+	return entries, nil
 }
 
 type priorState struct {
@@ -375,7 +468,6 @@ type priorState struct {
 	mode        os.FileMode
 }
 
-// flattenPlans rejects duplicate targets and cross-target ownership conflicts,
 // flattenPlans normalizes and combines managed paths and artifacts from target plans,
 // returning the target associated with each path. It reports an error for invalid,
 // incomplete, duplicate, or conflicting plans.

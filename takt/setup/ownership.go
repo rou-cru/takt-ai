@@ -55,9 +55,6 @@ var ownershipTargets = map[OwnershipTarget]bool{
 	TargetOpenCode: true,
 }
 
-// OwnershipTargetFor maps a plan's target onto its ownership target id.
-// Plans carry either model agent ids ("claude-code") or ownership target ids
-// ("claude"); agent ids are translated, ownership ids pass through, anything
 // OwnershipTargetFor converts an agent or ownership target identifier to an ownership target.
 // It returns an error for unsupported identifiers.
 func OwnershipTargetFor(id string) (OwnershipTarget, error) {
@@ -99,8 +96,6 @@ type OwnershipManifest struct {
 	Entries map[string]OwnershipEntry `json:"entries"`
 }
 
-// NewOwnershipEntry validates its inputs and computes the SHA-256 digest of
-// the managed content, so callers never hand-maintain hashes. Targets are
 // NewOwnershipEntry creates a validated ownership entry and computes the SHA-256
 // hash of its managed content. Targets must be supported and unique; they are
 // stored in sorted order. Prior content metadata is required for pre-existing
@@ -203,8 +198,6 @@ func (m *OwnershipManifest) Save(rootDir string) error {
 	return nil
 }
 
-// LoadOwnershipManifest reads the manifest from the deployment root. A missing
-// file reports an error wrapping os.ErrNotExist; an unsupported future version
 // LoadOwnershipManifest reads and validates the ownership manifest from rootDir.
 // It returns an error if the file is missing, malformed, or uses an unsupported
 // manifest version.
@@ -223,7 +216,80 @@ func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error) {
 	if manifest.Entries == nil {
 		manifest.Entries = make(map[string]OwnershipEntry)
 	}
+	// Reject any manifest entry whose recorded path escapes the deployment
+	// root. A crafted or corrupted manifest with keys like "../victim.txt"
+	// would otherwise let later phases (sync, uninstall) act on files outside
+	// root, since they join the key to root without further checks.
+	for entryPath := range manifest.Entries {
+		if _, err := SafeJoin(rootDir, entryPath); err != nil {
+			return nil, fmt.Errorf("load ownership manifest: entry path %q escapes deployment root: %w", entryPath, err)
+		}
+	}
 	return &manifest, nil
+}
+
+// SafeJoin joins root with a slash-relative path and returns an absolute,
+// symlink-resolved path guaranteed to remain inside root. It is the single
+// point callers (notably Uninstall and Sync) use to turn a manifest key into
+// an on-disk path, so a crafted key such as "../victim.txt" can never address
+// a file outside the deployment root.
+//
+// SafeJoin rejects empty or absolute rel, collapses "." segments, rejects any
+// ".." traversal, and walks every existing parent directory to ensure no
+// symlink ancestor escapes root. It returns an error if any check fails.
+func SafeJoin(root, rel string) (string, error) {
+	if strings.TrimSpace(rel) == "" {
+		return "", fmt.Errorf("safe join: empty relative path")
+	}
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("safe join: absolute path not allowed: %q", rel)
+	}
+	cleanRel := filepath.Clean(rel)
+	for _, part := range strings.Split(cleanRel, string(filepath.Separator)) {
+		if part == ".." {
+			return "", fmt.Errorf("safe join: relative path escapes root: %q", rel)
+		}
+	}
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("safe join: cannot resolve root %q: %w", root, err)
+	}
+	joined := filepath.Join(rootReal, cleanRel)
+	if err := verifyNoSymlinkEscape(joined, rootReal); err != nil {
+		return "", err
+	}
+	return joined, nil
+}
+
+// verifyNoSymlinkEscape walks every existing ancestor directory of joined,
+// from its parent up to root, and rejects the path if any ancestor, once its
+// symlinks are resolved, lands outside rootReal.
+func verifyNoSymlinkEscape(joined, rootReal string) error {
+	dir := filepath.Dir(joined)
+	for {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			if !isWithin(real, rootReal) {
+				return fmt.Errorf("safe join: parent directory %q escapes deployment root via symlink", dir)
+			}
+		}
+		if dir == rootReal {
+			return nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return nil
+		}
+		dir = parent
+	}
+}
+
+// isWithin reports whether path is the same as or nested beneath root.
+func isWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 // IsManaged reports whether the given slash-relative path is owned by Takt.

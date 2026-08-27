@@ -18,7 +18,6 @@ package codex
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
@@ -185,7 +184,38 @@ func validateWebSearch(search WebSearch) error {
 	return nil
 }
 
-// tomlString quotes a string for use as a TOML string value.
+// tomlString quotes a string as a TOML basic string. TOML escaping differs
+// from Go's strconv.Quote: only the escapes in the TOML spec are allowed
+// (notably \xNN is invalid in TOML and must use \uXXXX instead).
 func tomlString(value string) string {
-	return strconv.Quote(value)
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range value {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\r':
+			b.WriteString(`\r`)
+		default:
+			// TOML requires control characters (U+0000-U+001F and U+007F-U+009F)
+			// to be escaped; \uXXXX (not Go's \xNN) is the TOML form.
+			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+				b.WriteString(fmt.Sprintf(`\u%04x`, r))
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }

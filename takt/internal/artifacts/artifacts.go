@@ -26,8 +26,6 @@ import (
 )
 
 // NormalizeRelPath validates and cleans a slash-separated relative path.
-// It rejects empty paths, backslashes, ".." components, and absolute or
-// NormalizeRelPath validates and cleans a slash-separated relative path.
 // It rejects empty paths, backslashes, parent-directory components, and absolute paths.
 func NormalizeRelPath(candidate string) (string, error) {
 	if strings.TrimSpace(candidate) == "" {
@@ -53,7 +51,6 @@ func isWindowsAbsolute(candidate string) bool {
 	return len(candidate) >= 2 && candidate[1] == ':'
 }
 
-// ValidateID rejects empty, untrimmed, separator-bearing, and dot-only IDs.
 // ValidateID validates a sub-agent ID and includes the owning target label in any error message.
 func ValidateID(label, id string) error {
 	if strings.TrimSpace(id) == "" {
@@ -73,8 +70,6 @@ func EnsureTrailingNewline(content string) string {
 	return content + "\n"
 }
 
-// SortUniqueByPath renders items deterministically: it rejects two items that
-// normalize to the same path and sorts by path. Label names the owning target
 // SortUniqueByPath returns a copy of items sorted by their paths, or an error if
 // multiple items have the same path. The label identifies the artifact type in
 // the duplicate-path error.
