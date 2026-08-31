@@ -22,12 +22,40 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
+	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/doctor"
+	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/tui"
 )
 
-const usage = "usage: takt-ai setup install|sync|uninstall [--root <dir>] [--input <json-file-or->]"
+const usage = "usage: takt-ai version | doctor | setup install|sync|uninstall [--root <dir>] [--input <json-file-or->]"
+
+// version is set by GoReleaser via ldflags at build time.
+var version = "dev"
+
+var runTUI = tui.Run
+
+var buildInfoReader = debug.ReadBuildInfo
+
+// resolveVersion determines the effective version string.
+// Priority: ldflags override > BuildInfo.Main.Version > "dev".
+func resolveVersion(ldflagsVersion string) string {
+	if ldflagsVersion != "dev" {
+		return ldflagsVersion
+	}
+	info, ok := buildInfoReader()
+	if !ok {
+		return "dev"
+	}
+	v := info.Main.Version
+	if v == "" || v == "(devel)" {
+		return "dev"
+	}
+	return strings.TrimPrefix(v, "v")
+}
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
@@ -35,10 +63,21 @@ func main() {
 	}
 }
 
-// run executes the setup install, sync, or uninstall command using the provided
-// streams and writes the operation result as JSON. It reports usage, input,
-// setup, and output errors to stderr.
+// run starts the TUI without arguments; setup commands retain their JSON interface.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		if err := runTUI(stdin, stdout); err != nil {
+			return report(stderr, err)
+		}
+		return nil
+	}
+	switch args[0] {
+	case "version", "--version", "-v":
+		_, _ = fmt.Fprintf(stdout, "takt-ai %s\n", resolveVersion(version))
+		return nil
+	case "doctor":
+		return doctor.Run(stdout)
+	}
 	command, root, inputPath, err := parseSetupInvocation(args)
 	if err != nil {
 		return report(stderr, err)
@@ -113,36 +152,17 @@ func openRequestInput(inputPath string, stdin io.Reader) (io.Reader, func(), err
 	return file, func() { _ = file.Close() }, nil
 }
 
-// executeSetup dispatches one validated setup subcommand.
+// executeSetup dispatches one validated setup subcommand through the shared
+// lifecycle and maps the outcome to the command's JSON result shape.
 func executeSetup(command, root string, request setup.PlanRequest) (any, error) {
-	if command == "uninstall" {
-		targets, err := ownershipTargets(request.Targets)
-		if err != nil {
-			return nil, err
-		}
-		return setup.Uninstall(root, targets...)
-	}
-	plans, err := setup.BuildTargetPlans(request)
+	result, err := lifecycle.RunLifecycle(command, root, request)
 	if err != nil {
 		return nil, err
 	}
-	if command == "sync" {
-		return setup.Sync(root, plans)
+	if command == "uninstall" {
+		return setup.UninstallResult{Removed: result.Removed, Preserved: result.Preserved}, nil
 	}
-	return setup.Apply(root, plans)
-}
-
-// ownershipTargets converts agent IDs to setup ownership targets for manifest-scoped operations.
-func ownershipTargets(ids []model.AgentID) ([]setup.OwnershipTarget, error) {
-	targets := make([]setup.OwnershipTarget, 0, len(ids))
-	for _, id := range ids {
-		target, err := setup.OwnershipTargetFor(string(id))
-		if err != nil {
-			return nil, err
-		}
-		targets = append(targets, target)
-	}
-	return targets, nil
+	return setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged}, nil
 }
 
 // decodeRequest decodes a single JSON object from input into a setup plan request.
