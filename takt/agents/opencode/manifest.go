@@ -25,25 +25,10 @@ var nativeManagedPaths = []string{
 	".config/opencode/opencode.json",
 }
 
-// Manifest lists only Takt-owned OpenCode paths relative to the user's home
-// directory. Every path not listed is outside this ownership contract and is
-// preserved by future lifecycle consumers.
-type Manifest struct {
-	paths []string
-}
-
-// NewManifest creates an OpenCode manifest from renderer-generated paths.
-// NewManifest creates a manifest containing the native and generated OpenCode-managed paths.
-// Paths are normalized and sorted; it returns an error if a path is invalid or duplicated.
-func NewManifest(generatedPaths []string) (Manifest, error) {
-	paths, err := shared.NormalizeManagedPaths("OpenCode", nativeManagedPaths, generatedPaths)
-	if err != nil {
-		return Manifest{}, err
-	}
-	return Manifest{paths: paths}, nil
-}
-
-// ManagedPaths returns a copy of the deterministic Takt-owned path list.
-func (m Manifest) ManagedPaths() []string {
-	return append([]string(nil), m.paths...)
+// NewManagedPaths returns Takt-owned OpenCode paths relative to the user's
+// home directory: the native paths plus the renderer-generated ones,
+// normalized and sorted. Every path not listed is outside this ownership
+// contract and is preserved by future lifecycle consumers.
+func NewManagedPaths(generated []string) ([]string, error) {
+	return shared.NewManagedPaths("OpenCode", nativeManagedPaths, generated)
 }

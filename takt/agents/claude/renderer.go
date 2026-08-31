@@ -58,8 +58,9 @@ type HookGroup struct {
 
 // SettingsRequest contains caller-supplied native settings and hooks.
 type SettingsRequest struct {
-	Settings map[string]any         `json:"settings"`
-	Hooks    map[string][]HookGroup `json:"hooks"`
+	Settings    map[string]any         `json:"settings"`
+	Hooks       map[string][]HookGroup `json:"hooks"`
+	Permissions *Permissions           `json:"permissions,omitempty"`
 }
 
 // RenderSubAgent returns one Claude Markdown agent file with YAML frontmatter.
@@ -123,6 +124,12 @@ func RenderSettings(request SettingsRequest) (Artifact, error) {
 			return Artifact{}, err
 		}
 		settings["hooks"] = request.Hooks
+	}
+	if request.Permissions != nil {
+		if _, exists := settings["permissions"]; exists {
+			return Artifact{}, fmt.Errorf("claude permissions must be provided through SettingsRequest.Permissions")
+		}
+		settings["permissions"] = request.Permissions
 	}
 
 	content, err := json.MarshalIndent(settings, "", "  ")

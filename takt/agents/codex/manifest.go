@@ -26,25 +26,10 @@ var nativeManagedPaths = []string{
 	".codex/config.toml",
 }
 
-// Manifest lists only Takt-owned Codex paths relative to the user's home
-// directory. Every path not listed is outside this ownership contract and is
+// NewManagedPaths returns Takt-owned Codex paths relative to the user's home
+// directory: the native paths plus the renderer-generated ones, normalized and
+// sorted. Every path not listed is outside this ownership contract and is
 // preserved by future lifecycle consumers.
-type Manifest struct {
-	paths []string
-}
-
-// NewManifest creates a Codex manifest from renderer-generated paths.
-// NewManifest creates a manifest containing native Codex files and generated paths.
-// It normalizes and sorts the paths, returning an error for invalid or duplicate paths.
-func NewManifest(generatedPaths []string) (Manifest, error) {
-	paths, err := shared.NormalizeManagedPaths("Codex", nativeManagedPaths, generatedPaths)
-	if err != nil {
-		return Manifest{}, err
-	}
-	return Manifest{paths: paths}, nil
-}
-
-// ManagedPaths returns a copy of the deterministic Takt-owned path list.
-func (m Manifest) ManagedPaths() []string {
-	return append([]string(nil), m.paths...)
+func NewManagedPaths(generated []string) ([]string, error) {
+	return shared.NewManagedPaths("Codex", nativeManagedPaths, generated)
 }

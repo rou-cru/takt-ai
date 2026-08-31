@@ -43,16 +43,20 @@ const OwnershipManifestFilename = ".takt-manifest.json"
 // OwnershipTarget names a deployment target that owns managed files.
 type OwnershipTarget string
 
+// Supported ownership targets: the native agent targets plus the skills
+// target, which owns deployed skill files under .agents/skills/.
 const (
 	TargetClaude   OwnershipTarget = "claude"
 	TargetCodex    OwnershipTarget = "codex"
 	TargetOpenCode OwnershipTarget = "opencode"
+	TargetSkills   OwnershipTarget = "skills"
 )
 
 var ownershipTargets = map[OwnershipTarget]bool{
 	TargetClaude:   true,
 	TargetCodex:    true,
 	TargetOpenCode: true,
+	TargetSkills:   true,
 }
 
 // OwnershipTargetFor converts an agent or ownership target identifier to an ownership target.

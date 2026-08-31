@@ -11,25 +11,12 @@ func TestModelAssignment_EffortZeroValue(t *testing.T) {
 	}
 }
 
-// TestModelAssignment_FullIDUnaffectedByEffort verifies that FullID() is not
-// changed by the presence of an Effort value.
-func TestModelAssignment_FullIDUnaffectedByEffort(t *testing.T) {
-	a := ModelAssignment{Model: "model-a", Effort: "high"}
-	want := "model-a"
-	if a.FullID() != want {
-		t.Errorf("FullID() = %q, want %q", a.FullID(), want)
-	}
-}
-
 // TestModelAssignment_ZeroValue verifies that a zero-value ModelAssignment
-// has empty Model and Effort fields and an empty FullID.
+// has empty Model and Effort fields.
 func TestModelAssignment_ZeroValue(t *testing.T) {
 	var a ModelAssignment
 	if a.Model != "" || a.Effort != "" {
 		t.Errorf("zero-value ModelAssignment = %#v, want empty Model and Effort", a)
-	}
-	if a.FullID() != "" {
-		t.Errorf("FullID() on zero value = %q, want empty string", a.FullID())
 	}
 }
 

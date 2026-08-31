@@ -22,6 +22,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/rou-cru/takt-ai/takt/model"
 	"gopkg.in/yaml.v2"
@@ -29,6 +30,12 @@ import (
 
 //go:embed subagents.yaml
 var subAgentsYAML []byte
+
+// loadCatalog parses the embedded YAML at most once. The catalog is immutable
+// build-time content, so the parsed result is shared across all callers.
+var loadCatalog = sync.OnceValues(func() ([]model.CanonicalSubAgent, error) {
+	return load(subAgentsYAML)
+})
 
 const (
 	officialPersona = "takt"
@@ -46,9 +53,12 @@ type rawAssignment struct {
 	Effort string `yaml:"effort"`
 }
 
-// Load parses and validates the embedded semantic sub-agent catalog.
+// Load parses and validates the embedded semantic sub-agent catalog. Parsing
+// happens once per process; the embedded content is immutable, so callers
+// share the result and must not mutate the returned slice or its assignment
+// maps.
 func Load() ([]model.CanonicalSubAgent, error) {
-	return load(subAgentsYAML)
+	return loadCatalog()
 }
 
 // load parses and validates a YAML sub-agent catalog into canonical definitions.
@@ -96,7 +106,6 @@ func parseDefinition(index int, definition rawDefinition, seen map[string]struct
 	}
 	return model.CanonicalSubAgent{
 		Name:        definition.ID,
-		Persona:     definition.Persona,
 		Assignments: assignments,
 	}, nil
 }
@@ -157,42 +166,4 @@ func CanonicalSubAgents() []string {
 		names[index] = subAgent.Name
 	}
 	return names
-}
-
-// ClaudeDefaultPreset returns the catalog's Claude assignment projection.
-func ClaudeDefaultPreset() map[string]model.ModelAssignment {
-	return defaultPreset(model.AgentClaudeCode)
-}
-
-// CodexDefaultPreset returns the catalog's Codex assignment projection.
-func CodexDefaultPreset() map[string]model.ModelAssignment {
-	return defaultPreset(model.AgentCodex)
-}
-
-// defaultPreset builds a model-assignment preset for all cataloged sub-agents.
-func defaultPreset(agent model.AgentID) map[string]model.ModelAssignment {
-	catalog := CanonicalSubAgentCatalog()
-	preset := make(map[string]model.ModelAssignment, len(catalog))
-	for _, subAgent := range catalog {
-		preset[subAgent.Name] = subAgent.Assignments[agent]
-	}
-	return preset
-}
-
-// ResolveClaudeSubAgentAssignment resolves a Claude assignment using catalog defaults and overrides.
-func ResolveClaudeSubAgentAssignment(subAgent string, overrides map[string]model.ModelAssignment) (model.ModelAssignment, error) {
-	assignment, err := model.ResolveSubAgentAssignment(model.AgentClaudeCode, subAgent, defaultSubAgent, overrides, ClaudeDefaultPreset())
-	if err != nil {
-		return model.ModelAssignment{}, err
-	}
-	return model.ValidateClaudeModelAssignment(subAgent, assignment)
-}
-
-// ResolveCodexSubAgentAssignment resolves a Codex assignment using catalog defaults and overrides.
-func ResolveCodexSubAgentAssignment(subAgent string, overrides map[string]model.ModelAssignment) (string, string, error) {
-	assignment, err := model.ResolveSubAgentAssignment(model.AgentCodex, subAgent, defaultSubAgent, overrides, CodexDefaultPreset())
-	if err != nil {
-		return "", "", err
-	}
-	return assignment.Model, assignment.Effort, nil
 }

@@ -32,8 +32,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
 )
 
-// ponytail: package-level function var instead of interface injection; enough
-// for fault-injection tests, swap for a rename interface only if callers need it.
 var renameFile = os.Rename
 
 // Artifact is renderer output ready for deployment. Path is relative to the
@@ -371,9 +369,9 @@ func validateArtifactPathConflicts(artifacts []Artifact) error {
 	return nil
 }
 
-// inspectDeploymentPath walks every component of relativePath beneath root,
-// rejecting symlinks anywhere on the path and non-directory ancestors. It
-// inspectDeploymentPath checks the components of a deployment path and returns missing ancestor directories in parent-first creation order. It returns an error if a path component is a symlink or a non-directory parent.
+// inspectDeploymentPath checks the components of a deployment path and returns
+// missing ancestor directories in parent-first creation order. It returns an
+// error if a path component is a symlink or a non-directory parent.
 func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 	var missing []string
 	current := root
@@ -400,9 +398,8 @@ func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 	return missing, nil
 }
 
-// createMissingDirectories creates the directories recorded during inspection,
-// createMissingDirectories creates the specified directories in order and records
-// each directory for potential rollback.
+// createMissingDirectories creates the specified directories in order and
+// records each directory for potential rollback.
 func createMissingDirectories(directories []string, created map[string]struct{}, createdOrder *[]string) error {
 	for _, directory := range directories {
 		if _, exists := created[directory]; exists {
@@ -486,8 +483,8 @@ func stageFile(directory string, content []byte, mode os.FileMode) (name string,
 	return name, nil
 }
 
-// syncDir flushes a directory entry so renames and removals survive a crash.
-// syncDir synchronizes pending changes for the directory at path. It tolerates EINVAL from filesystems that do not support directory synchronization.
+// syncDir synchronizes pending changes for the directory at path. It tolerates
+// EINVAL from filesystems that do not support directory synchronization.
 func syncDir(path string) error {
 	directory, err := os.Open(path)
 	if err != nil {
