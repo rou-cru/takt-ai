@@ -211,6 +211,8 @@ func TestNormalizeSkillName(t *testing.T) {
 		{"linear--workflow", "linear-workflow"},
 		{"  linear-workflow  ", "linear-workflow"},
 		{"LINEAR-WORKFLOW", "linear-workflow"},
+		{"review/v2!", "review-v2"},
+		{"foo@bar#baz", "foo-bar-baz"},
 	}
 
 	for _, tc := range tests {

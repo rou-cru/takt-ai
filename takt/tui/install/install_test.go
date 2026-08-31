@@ -210,8 +210,8 @@ func TestActionResultPresentationAndReturn(t *testing.T) {
 		msg  runtime.ActionResultMsg
 		want string
 	}{
-		{name: "success", msg: runtime.ActionResultMsg{Result: runtime.ActionResult{Action: runtime.ActionInstall, Changed: []string{"a"}}}, want: "Install complete: 1 changed"},
-		{name: "error", msg: runtime.ActionResultMsg{Err: errors.New("disk full")}, want: "Install failed: disk full"},
+		{name: "success", msg: runtime.ActionResultMsg{Request: runtime.ActionRequest{Action: runtime.ActionInstall}, Result: runtime.ActionResult{Action: runtime.ActionInstall, Changed: []string{"a"}}}, want: "Install complete: 1 changed"},
+		{name: "error", msg: runtime.ActionResultMsg{Request: runtime.ActionRequest{Action: runtime.ActionInstall}, Err: errors.New("disk full")}, want: "Install failed: disk full"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m := reviewModel(t)
@@ -224,6 +224,18 @@ func TestActionResultPresentationAndReturn(t *testing.T) {
 				t.Fatalf("step = %v, want review", m.Step())
 			}
 		})
+	}
+}
+
+func TestActionResultIgnoresOtherActions(t *testing.T) {
+	m := reviewModel(t)
+	before := m.Step()
+	m = update(t, m, runtime.ActionResultMsg{
+		Request: runtime.ActionRequest{Action: runtime.ActionSync},
+		Result:  runtime.ActionResult{Action: runtime.ActionSync, Changed: []string{"a"}},
+	})
+	if m.Step() != before {
+		t.Fatalf("step = %v, want unchanged %v", m.Step(), before)
 	}
 }
 

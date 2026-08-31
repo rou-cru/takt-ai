@@ -59,8 +59,8 @@ func TestTaktThemeArtifact(t *testing.T) {
 
 func TestDefaultPermissions(t *testing.T) {
 	permissions := DefaultPermissions()
-	if permissions.DefaultMode != "bypassPermissions" {
-		t.Fatalf("defaultMode = %q, want bypassPermissions", permissions.DefaultMode)
+	if permissions.DefaultMode != "auto" {
+		t.Fatalf("defaultMode = %q, want auto", permissions.DefaultMode)
 	}
 	want := []string{
 		"Bash(rm -rf /)",
@@ -107,7 +107,7 @@ func TestRenderSettingsMergesPermissionsIntoSingleSettingsFile(t *testing.T) {
 	want := `{
   "enabled": true,
   "permissions": {
-    "defaultMode": "bypassPermissions",
+    "defaultMode": "auto",
     "deny": [
       "Bash(rm -rf /)",
       "Bash(sudo rm -rf /)",

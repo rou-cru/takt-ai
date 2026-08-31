@@ -39,8 +39,7 @@ func TestConfirmationCancelDoesNotEmitAction(t *testing.T) {
 	if command != nil {
 		t.Fatal("cancel emitted an action")
 	}
-	screen = updated.(Model)
-	if screen.State() != StateTargets {
+	if screen := updated.(Model); screen.State() != StateTargets {
 		t.Fatalf("state = %v, want targets", screen.State())
 	}
 }

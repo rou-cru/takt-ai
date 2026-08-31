@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -119,10 +120,14 @@ func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, err
 	if err != nil {
 		return UninstallResult{}, fmt.Errorf("resolve deployment root: %w", err)
 	}
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootReal = root // fallback if it cannot be resolved (e.g. does not exist yet)
+	}
 
 	plan := planUninstall(manifest, selected)
 
-	result, rollback, err := applyUninstallPlan(manifest, root, plan)
+	result, rollback, err := applyUninstallPlan(manifest, rootReal, plan)
 	if err != nil {
 		rollback()
 		return UninstallResult{}, err
@@ -191,7 +196,7 @@ func planUninstall(manifest *OwnershipManifest, selected map[OwnershipTarget]boo
 			fullySelected = false
 		}
 		if !fullySelected {
-			sort.Slice(remaining, func(i, j int) bool { return remaining[i] < remaining[j] })
+			slices.Sort(remaining)
 			plan = append(plan, uninstallPlanEntry{path: entryPath, action: actionKeep, entry: entry, remaining: remaining})
 			continue
 		}

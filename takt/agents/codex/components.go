@@ -28,21 +28,26 @@ func appendContext7Server(content *bytes.Buffer) {
 // the permissions component.
 const permissionsProfileName = "takt-dev"
 
+// profileTablePath builds a "permissions.takt-dev<suffix>" TOML table path.
+func profileTablePath(suffix string) string {
+	return "permissions." + permissionsProfileName + suffix
+}
+
 // appendPermissionsProfile writes the canonical takt-dev permission profile:
 // top-level policy keys plus the permissions.takt-dev table tree. It mirrors
 // the workspace-write sandbox with network access, Git metadata writes,
 // Nix/Home Manager support, and secret-file protections.
 func appendPermissionsProfile(content *bytes.Buffer) {
-	fmt.Fprintf(content, "\n[permissions.%s]\n", permissionsProfileName)
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(""))
 	fmt.Fprintf(content, "description = %s\n", tomlString("Comfortable local development profile with workspace writes, network access, Git metadata writes, Nix/Home Manager support, and secret-file protections."))
 
-	content.WriteString("\n[permissions." + permissionsProfileName + ".network]\n")
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(".network"))
 	content.WriteString("enabled = true\n")
 
-	content.WriteString("\n[permissions." + permissionsProfileName + ".network.domains]\n")
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(".network.domains"))
 	content.WriteString(`"*" = "allow"` + "\n")
 
-	content.WriteString("\n[permissions." + permissionsProfileName + ".filesystem]\n")
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(".filesystem"))
 	for _, path := range []string{
 		":minimal",
 		"~/.config/git",
@@ -60,13 +65,13 @@ func appendPermissionsProfile(content *bytes.Buffer) {
 		fmt.Fprintf(content, "%s = \"write\"\n", tomlString(path))
 	}
 
-	content.WriteString("\n[permissions." + permissionsProfileName + ".filesystem.\":workspace_roots\"]\n")
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(`.filesystem.":workspace_roots"`))
 	fmt.Fprintf(content, `"." = "write"`+"\n")
 	fmt.Fprintf(content, `".git/**" = "write"`+"\n")
 	for _, glob := range shared.SensitivePathGlobs {
 		fmt.Fprintf(content, "%s = \"deny\"\n", tomlString("**/"+glob))
 	}
 
-	content.WriteString("\n[permissions." + permissionsProfileName + ".workspace_roots]\n")
+	fmt.Fprintf(content, "\n[%s]\n", profileTablePath(".workspace_roots"))
 	fmt.Fprintf(content, `%s = true`+"\n", tomlString("~"))
 }

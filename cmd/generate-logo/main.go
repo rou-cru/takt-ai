@@ -68,7 +68,11 @@ func generate(input, output string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: closing input file: %v\n", cerr)
+		}
+	}()
 	inputImage, err := png.Decode(file)
 	if err != nil {
 		return fmt.Errorf("decode PNG: %w", err)
@@ -78,9 +82,15 @@ func generate(input, output string) error {
 		return err
 	}
 	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
+	defer func() {
+		if rerr := os.Remove(temporaryName); rerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: removing temp file: %v\n", rerr)
+		}
+	}()
 	if err := png.Encode(temporary, removeBorderWhite(inputImage)); err != nil {
-		temporary.Close()
+		if cerr := temporary.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: closing temp file: %v\n", cerr)
+		}
 		return fmt.Errorf("encode processed PNG: %w", err)
 	}
 	if err := temporary.Close(); err != nil {

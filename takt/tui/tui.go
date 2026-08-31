@@ -67,14 +67,14 @@ func (m Model) CurrentRoute() Route { return m.route }
 
 // Update routes input to the visible screen and action messages through runtime.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	switch message.(type) {
+	switch message := message.(type) {
 	case runtime.ActionRequest, runtime.ActionResultMsg:
 		return m.updateAction(message)
 	case syncflow.BackMsg:
 		m.returnToMenu()
 		return m, nil
 	case tea.KeyMsg:
-		if m.active != nil && !m.runtime.Busy && message.(tea.KeyMsg).String() == "ctrl+b" {
+		if m.active != nil && !m.runtime.Busy && message.String() == "ctrl+b" {
 			m.returnToMenu()
 			return m, nil
 		}

@@ -48,7 +48,8 @@ type Permissions struct {
 }
 
 // DefaultPermissions returns the canonical Takt permission rules for Claude
-// Code: permissive by default with explicit deny rules for secret files,
+// Code: auto mode by default (classifier-routed tool calls that block
+// destructive actions) with explicit deny rules for secret files,
 // credentials, and destructive shell commands.
 func DefaultPermissions() Permissions {
 	deny := []string{
@@ -62,7 +63,7 @@ func DefaultPermissions() Permissions {
 		deny = append(deny, fmt.Sprintf("Read(%s)", pattern), fmt.Sprintf("Edit(%s)", pattern))
 	}
 	return Permissions{
-		DefaultMode: "bypassPermissions",
+		DefaultMode: "auto",
 		Deny:        deny,
 	}
 }

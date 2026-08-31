@@ -52,7 +52,7 @@ compute_go_args() {
             continue
         fi
         case $arg in
-            -run|-bench|-benchtime|-blockprofile|-cpuprofile|-memprofile|-coverprofile|-coverpkg|-cpu|-count|-timeout|-parallel|-p|-exec|-outputdir|-gcflags|-ldflags|-tags|-vet|-test.run|-test.bench|-test.benchtime|-test.timeout|-test.count|-test.parallel|-test.cpu|-test.vet)
+            -run|-bench|-benchtime|-blockprofile|-cpuprofile|-memprofile|-coverprofile|-covermode|-coverpkg|-cpu|-count|-timeout|-parallel|-p|-exec|-outputdir|-gcflags|-ldflags|-tags|-vet|-shuffle|-fuzz|-fuzztime|-test.run|-test.bench|-test.benchtime|-test.timeout|-test.count|-test.parallel|-test.cpu|-test.vet)
                 skip_next=1
                 ;;
             -*) ;;
