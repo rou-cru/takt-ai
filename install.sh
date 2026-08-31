@@ -257,7 +257,7 @@ get_latest_version() {
     info "Fetching latest release from GitHub..."
 
     local response
-    response="$(curl -sL -w "\n%{http_code}" "$url")" || fatal "Failed to fetch latest release"
+    response="$(curl -sL --proto '=https' -w "\n%{http_code}" "$url")" || fatal "Failed to fetch latest release"
 
     local http_code body
     http_code="$(echo "$response" | tail -n1)"
@@ -297,7 +297,7 @@ install_binary() {
 
     # Download archive
     info "Downloading ${archive_name}..."
-    if ! curl -sfL -o "${tmpdir}/${archive_name}" "$download_url"; then
+    if ! curl -sfL --proto '=https' -o "${tmpdir}/${archive_name}" "$download_url"; then
         fatal "Failed to download ${download_url}"
     fi
 
@@ -312,7 +312,7 @@ install_binary() {
 
     # Download and verify checksum — fail closed unless --insecure is set
     info "Verifying checksum..."
-    if curl -sL -o "${tmpdir}/checksums.txt" "$checksums_url"; then
+    if curl -sL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
         local expected_checksum
         expected_checksum="$(grep "${archive_name}" "${tmpdir}/checksums.txt" 2>/dev/null | awk '{print $1}' || true)"
 

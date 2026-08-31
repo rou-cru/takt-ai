@@ -60,7 +60,8 @@ func fatal(err error) {
 }
 
 func generate(input, output string) error {
-	if err := requireChafa(); err != nil {
+	chafaPath, err := requireChafa()
+	if err != nil {
 		return err
 	}
 	file, err := os.Open(input)
@@ -85,7 +86,7 @@ func generate(input, output string) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	ansi, err := exec.Command("chafa", "--format=symbols", "--symbols=braille", "--colors=full", "--fg-only", "--size=32x20", temporaryName).Output()
+	ansi, err := exec.Command(chafaPath, "--format=symbols", "--symbols=braille", "--colors=full", "--fg-only", "--size=32x20", temporaryName).Output()
 	if err != nil {
 		return fmt.Errorf("run chafa: %w", err)
 	}
@@ -121,15 +122,19 @@ func trimBlankRows(lines [][]span) [][]span {
 	return lines[start:end]
 }
 
-func requireChafa() error {
-	output, err := exec.Command("chafa", "--version").Output()
+func requireChafa() (string, error) {
+	path, err := exec.LookPath("chafa")
 	if err != nil {
-		return errors.New("Chafa 1.18.2 is required to regenerate the logo; install it outside the release binary")
+		return "", errors.New("Chafa 1.18.2 is required to regenerate the logo; install it outside the release binary")
+	}
+	output, err := exec.Command(path, "--version").Output()
+	if err != nil {
+		return "", errors.New("Chafa 1.18.2 is required to regenerate the logo; install it outside the release binary")
 	}
 	if !strings.Contains(string(output), "Chafa version "+chafaVersion) {
-		return fmt.Errorf("Chafa %s is required, got %q", chafaVersion, strings.TrimSpace(string(output)))
+		return "", fmt.Errorf("Chafa %s is required, got %q", chafaVersion, strings.TrimSpace(string(output)))
 	}
-	return nil
+	return path, nil
 }
 
 func removeBorderWhite(source image.Image) *image.NRGBA {
