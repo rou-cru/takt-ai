@@ -44,6 +44,12 @@ type SubAgentRequest struct {
 // ConfigRequest contains the native OpenCode global configuration projection.
 type ConfigRequest struct {
 	Assignment model.ModelAssignment
+	// Context7 adds the canonical context7 remote MCP server entry.
+	Context7 bool
+	// Permissions adds the canonical bash/read permission rules.
+	Permissions bool
+	// Theme sets the OpenCode theme when non-empty.
+	Theme string
 }
 
 // RenderSubAgent returns one OpenCode Markdown agent file with frontmatter.
@@ -76,9 +82,18 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	if strings.TrimSpace(request.Assignment.Model) == "" {
 		return Artifact{}, fmt.Errorf("OpenCode config requires a model assignment")
 	}
-	config := map[string]string{
+	config := map[string]any{
 		"$schema": "https://opencode.ai/config.json",
 		"model":   request.Assignment.Model,
+	}
+	if request.Context7 {
+		config["mcp"] = context7Config()
+	}
+	if request.Permissions {
+		config["permission"] = permissionsConfig()
+	}
+	if request.Theme != "" {
+		config["theme"] = request.Theme
 	}
 	content, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {

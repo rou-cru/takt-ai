@@ -77,6 +77,10 @@ type ConfigRequest struct {
 	MultiAgent  bool
 	MaxThreads  int
 	MaxDepth    int
+	// Context7 adds the canonical context7 remote MCP server block.
+	Context7 bool
+	// Permissions adds the canonical takt-dev permission profile.
+	Permissions bool
 }
 
 // RenderSubAgent returns one Codex TOML custom-agent file.
@@ -135,12 +139,22 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	fmt.Fprintf(&content, "model = %s\n", tomlString(request.Assignment.Model))
 	fmt.Fprintf(&content, "model_reasoning_effort = %s\n", tomlString(request.Assignment.Effort))
 	fmt.Fprintf(&content, "sandbox_mode = %s\n", tomlString(string(request.SandboxMode)))
-	fmt.Fprintf(&content, "web_search = %s\n\n", tomlString(string(request.WebSearch)))
-	content.WriteString("[features]\n")
+	fmt.Fprintf(&content, "web_search = %s\n", tomlString(string(request.WebSearch)))
+	if request.Permissions {
+		content.WriteString("approval_policy = \"on-request\"\n")
+		content.WriteString("default_permissions = " + tomlString(permissionsProfileName) + "\n")
+	}
+	content.WriteString("\n[features]\n")
 	fmt.Fprintf(&content, "multi_agent = %t\n\n", request.MultiAgent)
 	content.WriteString("[agents]\n")
 	fmt.Fprintf(&content, "max_threads = %d\n", request.MaxThreads)
 	fmt.Fprintf(&content, "max_depth = %d\n", request.MaxDepth)
+	if request.Context7 {
+		appendContext7Server(&content)
+	}
+	if request.Permissions {
+		appendPermissionsProfile(&content)
+	}
 
 	return Artifact{
 		Path:    ".codex/config.toml",

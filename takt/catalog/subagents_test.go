@@ -22,9 +22,6 @@ func TestLoadEmbeddedCatalog(t *testing.T) {
 		t.Fatalf("catalog names = %v, want %v", got, wantNames)
 	}
 	for _, subAgent := range catalog {
-		if subAgent.Persona != officialPersona {
-			t.Errorf("%q persona = %q, want %q", subAgent.Name, subAgent.Persona, officialPersona)
-		}
 		for _, agent := range []model.AgentID{model.AgentClaudeCode, model.AgentCodex} {
 			assignment, ok := subAgent.Assignments[agent]
 			if !ok || assignment.Model == "" {
@@ -114,71 +111,6 @@ func TestLoadYAMLValidation(t *testing.T) {
 func TestCanonicalQueries(t *testing.T) {
 	if got, want := CanonicalSubAgents(), names(CanonicalSubAgentCatalog()); !slices.Equal(got, want) {
 		t.Errorf("CanonicalSubAgents() = %v, want %v", got, want)
-	}
-	claude := ClaudeDefaultPreset()
-	codex := CodexDefaultPreset()
-	if len(claude) != len(codex) || len(claude) != len(CanonicalSubAgents()) {
-		t.Fatalf("preset sizes differ: Claude=%d Codex=%d catalog=%d", len(claude), len(codex), len(CanonicalSubAgents()))
-	}
-	if got := claude["takt-init"]; got != (model.ModelAssignment{Model: "haiku"}) {
-		t.Errorf("ClaudeDefaultPreset()[takt-init] = %#v, want haiku", got)
-	}
-	if got := codex["takt-dev"]; got != (model.ModelAssignment{Model: model.CodexModelLuna, Effort: "high"}) {
-		t.Errorf("CodexDefaultPreset()[takt-dev] = %#v, want Luna/high", got)
-	}
-}
-
-func TestResolveAssignmentsPreservePrecedence(t *testing.T) {
-	tests := []struct {
-		name     string
-		subAgent string
-		override map[string]model.ModelAssignment
-		want     model.ModelAssignment
-		wantErr  string
-	}{
-		{name: "Claude specialist override", subAgent: "takt-dev", override: map[string]model.ModelAssignment{"takt-dev": {Model: "opus", Effort: "max"}}, want: model.ModelAssignment{Model: "opus", Effort: "max"}},
-		{name: "Claude default override for unknown", subAgent: "unknown", override: map[string]model.ModelAssignment{"default": {Model: "haiku"}}, want: model.ModelAssignment{Model: "haiku"}},
-		{name: "Claude invalid model override", subAgent: "takt-dev", override: map[string]model.ModelAssignment{"takt-dev": {Model: "unknown"}}, wantErr: "invalid model assignment"},
-		{name: "Claude unsupported effort override", subAgent: "takt-dev", override: map[string]model.ModelAssignment{"takt-dev": {Model: "haiku", Effort: "high"}}, wantErr: "does not support effort"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolveClaudeSubAgentAssignment(tc.subAgent, tc.override)
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("ResolveClaudeSubAgentAssignment() error = %v, want substring %q", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("ResolveClaudeSubAgentAssignment() error = %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("assignment = %#v, want %#v", got, tc.want)
-			}
-		})
-	}
-	modelID, effort, err := ResolveCodexSubAgentAssignment("takt-dev", map[string]model.ModelAssignment{
-		"takt-dev": {Model: model.CodexModelSol, Effort: "high"},
-	})
-	if err != nil {
-		t.Fatalf("ResolveCodexSubAgentAssignment() error = %v", err)
-	}
-	if modelID != model.CodexModelSol || effort != "high" {
-		t.Errorf("Codex assignment = (%q, %q), want Sol/high", modelID, effort)
-	}
-}
-
-func TestResolveCodexSubAgentAssignment_AllowsProviderOverride(t *testing.T) {
-	const customModel = "openai/custom-model"
-	modelID, effort, err := ResolveCodexSubAgentAssignment("takt-dev", map[string]model.ModelAssignment{
-		"takt-dev": {Model: customModel, Effort: "custom-effort"},
-	})
-	if err != nil {
-		t.Fatalf("ResolveCodexSubAgentAssignment() error = %v", err)
-	}
-	if modelID != customModel || effort != "custom-effort" {
-		t.Errorf("assignment = (%q, %q), want (%q, %q)", modelID, effort, customModel, "custom-effort")
 	}
 }
 

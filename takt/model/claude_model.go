@@ -27,7 +27,7 @@ const (
 	ClaudeModelHaiku  ClaudeModelAlias = "haiku"
 )
 
-// String returns the alias as a string.
+// String returns the alias as a lowercase string.
 func (a ClaudeModelAlias) String() string { return string(a) }
 
 // Valid reports whether the alias is a recognized Claude model tier.
@@ -87,16 +87,6 @@ func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bo
 		}
 	}
 	return false
-}
-
-// ClaudeDefaultPreset returns the default Claude model assignment for each canonical sub-agent.
-func ClaudeDefaultPreset() map[string]ModelAssignment {
-	catalog := CanonicalSubAgentCatalog()
-	preset := make(map[string]ModelAssignment, len(catalog))
-	for _, subAgent := range catalog {
-		preset[subAgent.Name] = subAgent.Assignments[AgentClaudeCode]
-	}
-	return preset
 }
 
 // ValidateClaudeModelAssignment validates a Claude model and effort pair.

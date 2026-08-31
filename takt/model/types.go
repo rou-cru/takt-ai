@@ -62,15 +62,11 @@ const (
 type SkillID string
 
 // CanonicalSubAgent is the platform-level definition of a specialist sub-agent,
-// carrying its persona and per-target model assignments.
+// carrying its per-target model assignments.
 type CanonicalSubAgent struct {
 	Name        string
-	Persona     string
 	Assignments map[AgentID]ModelAssignment
 }
-
-// OfficialPersona is the only Takt personalization applied to specialists.
-const OfficialPersona = "takt"
 
 const (
 	// Canonical sub-agent identifiers in catalog order.
@@ -97,44 +93,15 @@ const (
 	SkillTaktSpec      SkillID = SubAgentTaktSpec
 	SkillTaktArchitect SkillID = SubAgentTaktArchitect
 	SkillTaktTpm       SkillID = SubAgentTaktTPM
+
+	// Orchestrator workflow skills (consumed by orchestrator, not sub-agents).
+	SkillLinearWorkflow SkillID = "takt-linear-workflow"
+
+	// Utility skills.
 	SkillCreator       SkillID = "skill-creator"
 	SkillJudgment      SkillID = "judgment"
 	SkillSkillRegistry SkillID = "skill-registry"
 )
-
-// CanonicalSubAgentCatalog returns the canonical specialist definitions in a fixed order,
-// including each specialist's persona and agent-specific model assignments.
-func CanonicalSubAgentCatalog() []CanonicalSubAgent {
-	claude := func(model string) ModelAssignment { return ModelAssignment{Model: model} }
-	codex := func(model, effort string) ModelAssignment {
-		return ModelAssignment{Model: model, Effort: effort}
-	}
-	return []CanonicalSubAgent{
-		{Name: SubAgentTaktInit, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("haiku"), AgentCodex: codex(CodexModelLuna, "low")}},
-		{Name: SubAgentTaktAnalyst, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "medium")}},
-		{Name: SubAgentTaktPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
-		{Name: SubAgentTaktSpec, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
-		{Name: SubAgentTaktArchitect, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
-		{Name: SubAgentTaktProductDesigner, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("opus"), AgentCodex: codex(CodexModelSol, "high")}},
-		{Name: SubAgentTaktTPM, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
-		{Name: SubAgentTaktDev, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
-		{Name: SubAgentTaktVerify, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: ModelAssignment{Model: "sonnet", Effort: "high"}, AgentCodex: codex(CodexModelLuna, "high")}},
-		{Name: SubAgentTaktJudgeA, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
-		{Name: SubAgentTaktJudgeB, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelLuna, "high")}},
-		{Name: SubAgentTaktFix, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
-		{Name: SubAgentDefault, Persona: OfficialPersona, Assignments: map[AgentID]ModelAssignment{AgentClaudeCode: claude("sonnet"), AgentCodex: codex(CodexModelTerra, "medium")}},
-	}
-}
-
-// CanonicalSubAgents returns the names of shared specialists in stable catalog order.
-func CanonicalSubAgents() []string {
-	catalog := CanonicalSubAgentCatalog()
-	names := make([]string, len(catalog))
-	for i, subAgent := range catalog {
-		names[i] = subAgent.Name
-	}
-	return names
-}
 
 // SystemPromptStrategy defines how an agent system prompt is managed.
 type SystemPromptStrategy int

@@ -55,7 +55,9 @@ type OpenCodePlanOptions struct {
 
 // PlanRequest contains selected targets, explicit native content, and target
 // model overrides. Content has no assignment fields; assignments are resolved
-// from the semantic catalog for each selected target.
+// from the semantic catalog for each selected target. Components optionally
+// names artifact-only components for a custom setup; the default setup leaves
+// it empty.
 type PlanRequest struct {
 	Targets              []model.AgentID                  `json:"targets"`
 	Content              []catalog.NativeSubAgentContent  `json:"content"`
@@ -64,12 +66,12 @@ type PlanRequest struct {
 	OpenCode             OpenCodePlanOptions              `json:"opencode"`
 	ClaudeModelOverrides map[string]model.ModelAssignment `json:"claude_model_overrides"`
 	CodexModelOverrides  map[string]model.ModelAssignment `json:"codex_model_overrides"`
+	Components           []string                         `json:"components"`
 }
 
-// BuildTargetPlans builds native target plans without writing to the
-// filesystem. Returned plans are ordered Claude first, Codex second, OpenCode
-// BuildTargetPlans validates the requested targets and builds their native configuration plans in canonical order.
-// Each plan's artifacts are ordered by relative path; errors are returned without any plans.
+// BuildTargetPlans validates the requested targets and builds their native
+// configuration plans in canonical order. Each plan's artifacts are ordered by
+// relative path; errors are returned without any plans.
 func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 	targets, err := selectedTargets(request.Targets)
 	if err != nil {
@@ -83,10 +85,14 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	components, err := ValidateComponents(request.Components)
+	if err != nil {
+		return nil, err
+	}
 
 	plans := make([]TargetPlan, 0, len(targets))
 	for _, target := range targets {
-		plan, renderable, err := buildPlanForTarget(target, joined, request)
+		plan, renderable, err := buildPlanForTarget(target, joined, request, components)
 		if err != nil {
 			return nil, err
 		}
@@ -100,16 +106,16 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error) {
 
 // buildPlanForTarget renders one target's plan. Targets without a native
 // projection report renderable=false.
-func buildPlanForTarget(target model.AgentID, content []catalog.NativeSubAgent, request PlanRequest) (TargetPlan, bool, error) {
+func buildPlanForTarget(target model.AgentID, content []catalog.NativeSubAgent, request PlanRequest, components []model.ComponentID) (TargetPlan, bool, error) {
 	switch target {
 	case model.AgentClaudeCode:
-		plan, err := buildClaudePlan(content, request.Claude, request.ClaudeModelOverrides)
+		plan, err := buildClaudePlan(content, request.Claude, request.ClaudeModelOverrides, components)
 		return plan, true, err
 	case model.AgentCodex:
-		plan, err := buildCodexPlan(content, request.Codex, request.CodexModelOverrides)
+		plan, err := buildCodexPlan(content, request.Codex, request.CodexModelOverrides, components)
 		return plan, true, err
 	case model.AgentOpenCode:
-		plan, err := buildOpenCodePlan(content, request.OpenCode)
+		plan, err := buildOpenCodePlan(content, request.OpenCode, components)
 		return plan, true, err
 	}
 	return TargetPlan{}, false, nil
@@ -140,11 +146,19 @@ func selectedTargets(targets []model.AgentID) ([]model.AgentID, error) {
 }
 
 // buildClaudePlan creates the Claude configuration plan, including sub-agent files,
-// the global prompt, settings, and their managed paths.
-func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions, overrides map[string]model.ModelAssignment) (TargetPlan, error) {
+// the global prompt, settings, selected component artifacts, and their managed paths.
+func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions, overrides map[string]model.ModelAssignment, components []model.ComponentID) (TargetPlan, error) {
 	requests := make([]claude.SubAgentRequest, 0, len(content))
 	for _, entry := range content {
-		assignment, err := catalog.ResolveClaudeSubAgentAssignment(entry.ID, overrides)
+		preset := map[string]model.ModelAssignment{
+			entry.ID:  entry.Assignments[model.AgentClaudeCode],
+			"default": entry.DefaultAssignments[model.AgentClaudeCode],
+		}
+		assignment, err := model.ResolveSubAgentAssignment(model.AgentClaudeCode, entry.ID, "default", overrides, preset)
+		if err != nil {
+			return TargetPlan{}, err
+		}
+		assignment, err = model.ValidateClaudeModelAssignment(entry.ID, assignment)
 		if err != nil {
 			return TargetPlan{}, err
 		}
@@ -164,36 +178,54 @@ func buildClaudePlan(content []catalog.NativeSubAgent, options ClaudePlanOptions
 	if err != nil {
 		return TargetPlan{}, err
 	}
+	componentArtifacts := claudeComponentArtifacts(components, &options.Settings)
 	settings, err := claude.RenderSettings(options.Settings)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 
-	artifacts, generatedPaths := collectAgentArtifacts(agents, claudeAgentArtifact)
+	artifacts := make([]Artifact, 0, len(agents))
+	generatedPaths := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
+		generatedPaths = append(generatedPaths, agent.Path)
+	}
+	for _, artifact := range componentArtifacts {
+		artifacts = append(artifacts, artifact)
+		generatedPaths = append(generatedPaths, artifact.Path)
+	}
 	artifacts = append(artifacts,
 		Artifact{Path: globalPrompt.Path, Content: globalPrompt.Content},
 		Artifact{Path: settings.Path, Content: settings.Content},
 	)
 	sortArtifacts(artifacts)
-	manifest, err := claude.NewManifest(generatedPaths)
+	managedPaths, err := claude.NewManagedPaths(generatedPaths)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 	return TargetPlan{
 		Target:       string(model.AgentClaudeCode),
-		ManagedPaths: manifest.ManagedPaths(),
+		ManagedPaths: managedPaths,
 		Artifacts:    artifacts,
 	}, nil
 }
 
 // buildCodexPlan builds the Codex configuration plan and its generated artifacts.
-// The plan includes sub-agent files, the global prompt, configuration, and managed
-// paths. It returns an error if assignment resolution, rendering, or manifest
-// creation fails.
-func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, overrides map[string]model.ModelAssignment) (TargetPlan, error) {
+// The plan includes sub-agent files, the global prompt, configuration, selected
+// component merges, and managed paths. It returns an error if assignment
+// resolution, rendering, or manifest creation fails.
+func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, overrides map[string]model.ModelAssignment, components []model.ComponentID) (TargetPlan, error) {
 	requests := make([]codex.SubAgentRequest, 0, len(content))
 	for _, entry := range content {
-		modelID, effort, err := catalog.ResolveCodexSubAgentAssignment(entry.ID, overrides)
+		preset := map[string]model.ModelAssignment{
+			entry.ID:  entry.Assignments[model.AgentCodex],
+			"default": entry.DefaultAssignments[model.AgentCodex],
+		}
+		assignment, err := model.ResolveSubAgentAssignment(model.AgentCodex, entry.ID, "default", overrides, preset)
+		if err != nil {
+			return TargetPlan{}, err
+		}
+		assignment, err = model.ValidateCodexModelAssignment(entry.ID, assignment)
 		if err != nil {
 			return TargetPlan{}, err
 		}
@@ -201,7 +233,7 @@ func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, 
 			ID:           entry.ID,
 			Description:  entry.Description,
 			Instructions: entry.Instructions,
-			Assignment:   model.ModelAssignment{Model: modelID, Effort: effort},
+			Assignment:   assignment,
 			SandboxMode:  entry.CodexSandboxMode,
 			WebSearch:    entry.CodexWebSearch,
 		})
@@ -214,41 +246,51 @@ func buildCodexPlan(content []catalog.NativeSubAgent, options CodexPlanOptions, 
 	if err != nil {
 		return TargetPlan{}, err
 	}
-	modelID, effort, err := catalog.ResolveCodexSubAgentAssignment("default", overrides)
+	globalPreset := map[string]model.ModelAssignment{
+		"default": content[0].DefaultAssignments[model.AgentCodex],
+	}
+	assignment, err := model.ResolveSubAgentAssignment(model.AgentCodex, "default", "default", overrides, globalPreset)
 	if err != nil {
 		return TargetPlan{}, err
 	}
-	config, err := codex.RenderConfig(codex.ConfigRequest{
-		Assignment:  model.ModelAssignment{Model: modelID, Effort: effort},
+	configRequest := codex.ConfigRequest{
+		Assignment:  assignment,
 		SandboxMode: options.SandboxMode,
 		WebSearch:   options.WebSearch,
 		MultiAgent:  options.MultiAgent,
 		MaxThreads:  options.MaxThreads,
 		MaxDepth:    options.MaxDepth,
-	})
+	}
+	codexComponentArtifacts(components, &configRequest)
+	config, err := codex.RenderConfig(configRequest)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 
-	artifacts, generatedPaths := collectAgentArtifacts(agents, codexAgentArtifact)
+	artifacts := make([]Artifact, 0, len(agents))
+	generatedPaths := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
+		generatedPaths = append(generatedPaths, agent.Path)
+	}
 	artifacts = append(artifacts,
 		Artifact{Path: globalPrompt.Path, Content: globalPrompt.Content},
 		Artifact{Path: config.Path, Content: config.Content},
 	)
 	sortArtifacts(artifacts)
-	manifest, err := codex.NewManifest(generatedPaths)
+	managedPaths, err := codex.NewManagedPaths(generatedPaths)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 	return TargetPlan{
 		Target:       string(model.AgentCodex),
-		ManagedPaths: manifest.ManagedPaths(),
+		ManagedPaths: managedPaths,
 		Artifacts:    artifacts,
 	}, nil
 }
 
 // buildOpenCodePlan builds an OpenCode configuration plan from native sub-agent content and the selected model, using the default model when none is specified.
-func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOptions) (TargetPlan, error) {
+func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOptions, components []model.ComponentID) (TargetPlan, error) {
 	modelID := options.Model
 	if modelID == "" {
 		modelID = DefaultOpenCodeModel
@@ -266,23 +308,34 @@ func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOpt
 	if err != nil {
 		return TargetPlan{}, err
 	}
-	config, err := opencode.RenderConfig(opencode.ConfigRequest{
+	configRequest := opencode.ConfigRequest{
 		Assignment: model.ModelAssignment{Model: modelID},
-	})
+	}
+	componentArtifacts := openCodeComponentArtifacts(components, &configRequest)
+	config, err := opencode.RenderConfig(configRequest)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 
-	artifacts, generatedPaths := collectAgentArtifacts(agents, opencodeAgentArtifact)
+	artifacts := make([]Artifact, 0, len(agents))
+	generatedPaths := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		artifacts = append(artifacts, Artifact{Path: agent.Path, Content: agent.Content})
+		generatedPaths = append(generatedPaths, agent.Path)
+	}
+	for _, artifact := range componentArtifacts {
+		artifacts = append(artifacts, artifact)
+		generatedPaths = append(generatedPaths, artifact.Path)
+	}
 	artifacts = append(artifacts, Artifact{Path: config.Path, Content: config.Content})
 	sortArtifacts(artifacts)
-	manifest, err := opencode.NewManifest(generatedPaths)
+	managedPaths, err := opencode.NewManagedPaths(generatedPaths)
 	if err != nil {
 		return TargetPlan{}, err
 	}
 	return TargetPlan{
 		Target:       string(model.AgentOpenCode),
-		ManagedPaths: manifest.ManagedPaths(),
+		ManagedPaths: managedPaths,
 		Artifacts:    artifacts,
 	}, nil
 }
@@ -290,30 +343,4 @@ func buildOpenCodePlan(content []catalog.NativeSubAgent, options OpenCodePlanOpt
 // sortArtifacts orders artifacts lexicographically by their relative path.
 func sortArtifacts(artifacts []Artifact) {
 	sort.Slice(artifacts, func(i, j int) bool { return artifacts[i].Path < artifacts[j].Path })
-}
-
-// collectAgentArtifacts converts rendered sub-agent artifacts into deployable
-// artifacts and lists the generated sub-agent paths. Converters are explicit
-// because each target adapter declares its own identically shaped Artifact.
-func collectAgentArtifacts[A any](agents []A, convert func(A) Artifact) ([]Artifact, []string) {
-	artifacts := make([]Artifact, 0, len(agents))
-	generatedPaths := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		artifact := convert(agent)
-		artifacts = append(artifacts, artifact)
-		generatedPaths = append(generatedPaths, artifact.Path)
-	}
-	return artifacts, generatedPaths
-}
-
-func claudeAgentArtifact(agent claude.Artifact) Artifact {
-	return Artifact{Path: agent.Path, Content: agent.Content}
-}
-
-func codexAgentArtifact(agent codex.Artifact) Artifact {
-	return Artifact{Path: agent.Path, Content: agent.Content}
-}
-
-func opencodeAgentArtifact(agent opencode.Artifact) Artifact {
-	return Artifact{Path: agent.Path, Content: agent.Content}
 }

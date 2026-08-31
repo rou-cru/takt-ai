@@ -13,23 +13,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package claude renders Claude Code agent files: sub-agent Markdown
-// frontmatter, global prompt, and settings JSON.
-package claude
+package shared
 
-import (
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
-)
-
-var nativeManagedPaths = []string{
-	".claude/CLAUDE.md",
-	".claude/settings.json",
-}
-
-// NewManagedPaths returns Takt-owned Claude paths relative to the user's home
-// directory: the native paths plus the renderer-generated ones, normalized and
-// sorted. Every path not listed is outside this ownership contract and is
-// preserved by future lifecycle consumers.
-func NewManagedPaths(generated []string) ([]string, error) {
-	return shared.NewManagedPaths("Claude", nativeManagedPaths, generated)
+// NewManagedPaths builds a target adapter's list of Takt-owned paths relative
+// to the user's home directory: the adapter's native paths plus its
+// renderer-generated paths, normalized and sorted. Every path not listed is
+// outside the adapter's ownership contract and is preserved by future
+// lifecycle consumers. It returns an error if a path is invalid or duplicated.
+func NewManagedPaths(label string, nativePaths, generatedPaths []string) ([]string, error) {
+	return NormalizeManagedPaths(label, nativePaths, generatedPaths)
 }

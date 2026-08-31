@@ -41,6 +41,14 @@ func TestJoinNativeContent(t *testing.T) {
 	if got, want := joined[0].Assignments[model.AgentCodex], (model.ModelAssignment{Model: model.CodexModelLuna, Effort: "high"}); got != want {
 		t.Errorf("first Codex assignment = %#v, want %#v", got, want)
 	}
+	// joined[0] is joined before the default definition is visited, so this
+	// pins the fallback being attached regardless of catalog order.
+	if got, want := joined[0].DefaultAssignments[model.AgentCodex], (model.ModelAssignment{Model: model.CodexModelTerra, Effort: "medium"}); got != want {
+		t.Errorf("default Codex fallback assignment = %#v, want %#v", got, want)
+	}
+	if got, want := joined[1].DefaultAssignments[model.AgentClaudeCode], (model.ModelAssignment{Model: "sonnet"}); got != want {
+		t.Errorf("default Claude fallback assignment = %#v, want %#v", got, want)
+	}
 	if got, want := joined[1].ClaudeTools, []string{"Read", "Write"}; !slices.Equal(got, want) {
 		t.Errorf("second Claude tools = %v, want %v", got, want)
 	}

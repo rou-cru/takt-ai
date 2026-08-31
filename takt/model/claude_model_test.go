@@ -40,35 +40,6 @@ func TestClaudeModelAliasString(t *testing.T) {
 	}
 }
 
-func TestClaudeDefaultPreset_CoversCanonicalCatalog(t *testing.T) {
-	preset := model.ClaudeDefaultPreset()
-	if len(preset) != len(model.CanonicalSubAgents()) {
-		t.Fatalf("preset has %d entries, want %d", len(preset), len(model.CanonicalSubAgents()))
-	}
-	for _, subAgent := range model.CanonicalSubAgents() {
-		assignment, ok := preset[subAgent]
-		if !ok || !model.ClaudeModelAlias(assignment.Model).Valid() {
-			t.Errorf("missing or invalid assignment for %q: %#v", subAgent, assignment)
-		}
-	}
-}
-
-func TestClaudeDefaultPreset_Assignments(t *testing.T) {
-	preset := model.ClaudeDefaultPreset()
-	want := map[string]model.ModelAssignment{
-		"takt-init":    {Model: "haiku"},
-		"takt-judge-a": {Model: "sonnet"},
-		"takt-judge-b": {Model: "sonnet"},
-		"default":      {Model: "sonnet"},
-		"takt-verify":  {Model: "sonnet", Effort: "high"},
-	}
-	for subAgent, expected := range want {
-		if preset[subAgent] != expected {
-			t.Errorf("preset[%q] = %#v, want %#v", subAgent, preset[subAgent], expected)
-		}
-	}
-}
-
 func TestClaudeEffortsForModelOfficialMatrix(t *testing.T) {
 	tests := []struct {
 		name  string

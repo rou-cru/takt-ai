@@ -23,11 +23,6 @@ type ModelAssignment struct {
 	Effort string // "" = target default; "low" | "medium" | "high"
 }
 
-// FullID returns the model identifier for this assignment.
-func (m ModelAssignment) FullID() string {
-	return m.Model
-}
-
 // ResolveSubAgentAssignment applies override and preset precedence to a sub-agent.
 func ResolveSubAgentAssignment(agent AgentID, subAgent, defaultSubAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error) {
 	assignment, ok := overrides[subAgent]

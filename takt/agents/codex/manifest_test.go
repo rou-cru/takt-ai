@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNewManifest(t *testing.T) {
+func TestNewManagedPaths(t *testing.T) {
 	tests := []struct {
 		name      string
 		generated []string
@@ -50,31 +50,19 @@ func TestNewManifest(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			manifest, err := NewManifest(tc.generated)
+			paths, err := NewManagedPaths(tc.generated)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("NewManifest() error = %v, want substring %q", err, tc.wantErr)
+					t.Fatalf("NewManagedPaths() error = %v, want substring %q", err, tc.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("NewManifest() error = %v", err)
+				t.Fatalf("NewManagedPaths() error = %v", err)
 			}
-			if got := manifest.ManagedPaths(); !slices.Equal(got, tc.want) {
-				t.Fatalf("ManagedPaths() = %v, want %v", got, tc.want)
+			if !slices.Equal(paths, tc.want) {
+				t.Fatalf("NewManagedPaths() = %v, want %v", paths, tc.want)
 			}
 		})
-	}
-}
-
-func TestManifestManagedPathsReturnsCopy(t *testing.T) {
-	manifest, err := NewManifest([]string{".codex/agents/takt-dev.toml"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths := manifest.ManagedPaths()
-	paths[0] = "mutated"
-	if got := manifest.ManagedPaths(); got[0] == "mutated" {
-		t.Fatal("ManagedPaths() leaked internal state")
 	}
 }

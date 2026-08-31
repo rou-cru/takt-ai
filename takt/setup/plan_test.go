@@ -155,6 +155,47 @@ func TestBuildTargetPlansValidation(t *testing.T) {
 	}
 }
 
+func TestBuildTargetPlansClaudeOverrideValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		override model.ModelAssignment
+		want     string
+	}{
+		{name: "invalid model override", override: model.ModelAssignment{Model: "unknown"}, want: "invalid model assignment"},
+		{name: "unsupported effort override", override: model.ModelAssignment{Model: "haiku", Effort: "high"}, want: "does not support effort"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := validPlanRequest()
+			request.Targets = []model.AgentID{model.AgentClaudeCode}
+			request.ClaudeModelOverrides = map[string]model.ModelAssignment{"takt-dev": tc.override}
+			if _, err := BuildTargetPlans(request); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("BuildTargetPlans() error = %v, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildTargetPlansCodexDefaultOverrideDrivesGlobalConfig(t *testing.T) {
+	request := validPlanRequest()
+	request.Targets = []model.AgentID{model.AgentCodex}
+	request.CodexModelOverrides = map[string]model.ModelAssignment{
+		"default": {Model: model.CodexModelSol, Effort: "high"},
+	}
+	plans, err := BuildTargetPlans(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := findArtifact(plans[0], ".codex/config.toml")
+	if !bytes.Contains(config.Content, []byte("model = \"openai/gpt-5.6-sol\"\n")) {
+		t.Errorf("Codex default override did not drive the global config: %s", config.Content)
+	}
+	agent := findArtifact(plans[0], ".codex/agents/takt-dev.toml")
+	if !bytes.Contains(agent.Content, []byte("model = \"openai/gpt-5.6-luna\"\n")) {
+		t.Errorf("default override must not reassign cataloged sub-agents: %s", agent.Content)
+	}
+}
+
 func TestBuildTargetPlansOpenCodeUsesDefaultModel(t *testing.T) {
 	request := validPlanRequest()
 	request.Targets = []model.AgentID{model.AgentOpenCode}

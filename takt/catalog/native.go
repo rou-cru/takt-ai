@@ -37,14 +37,18 @@ type NativeSubAgentContent struct {
 }
 
 // NativeSubAgent is validated native content joined to its catalog assignment.
+// DefaultAssignments is every joined entry's shared fallback: a clone of the
+// default catalog definition's assignments, so resolution needs no second
+// catalog lookup.
 type NativeSubAgent struct {
-	ID               string
-	Description      string
-	Instructions     string
-	ClaudeTools      []string
-	CodexSandboxMode codex.SandboxMode
-	CodexWebSearch   codex.WebSearch
-	Assignments      map[model.AgentID]model.ModelAssignment
+	ID                 string
+	Description        string
+	Instructions       string
+	ClaudeTools        []string
+	CodexSandboxMode   codex.SandboxMode
+	CodexWebSearch     codex.WebSearch
+	Assignments        map[model.AgentID]model.ModelAssignment
+	DefaultAssignments map[model.AgentID]model.ModelAssignment
 }
 
 // JoinNativeContentForTargets validates native options for each target and joins
@@ -113,8 +117,10 @@ func indexNativeContent(content []NativeSubAgentContent, selected map[model.Agen
 
 func joinNativeContent(catalog []model.CanonicalSubAgent, contentByID map[string]NativeSubAgentContent) ([]NativeSubAgent, error) {
 	joined := make([]NativeSubAgent, 0, len(catalog)-1)
+	var defaultAssignments map[model.AgentID]model.ModelAssignment
 	for _, definition := range catalog {
 		if definition.Name == defaultSubAgent {
+			defaultAssignments = cloneAssignments(definition.Assignments)
 			continue
 		}
 		entry, ok := contentByID[definition.Name]
@@ -130,6 +136,12 @@ func joinNativeContent(catalog []model.CanonicalSubAgent, contentByID map[string
 			CodexWebSearch:   entry.CodexWebSearch,
 			Assignments:      cloneAssignments(definition.Assignments),
 		})
+	}
+	// The default definition may appear anywhere in catalog order (the embedded
+	// catalog lists it last), so the shared fallback clone is attached after the
+	// join loop.
+	for index := range joined {
+		joined[index].DefaultAssignments = defaultAssignments
 	}
 	return joined, nil
 }
