@@ -149,7 +149,7 @@ func (m Model) key(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case spaceToggle.Matches(message):
 		if m.step == StepComponents && m.cursor < len(componentChoices) {
-			m.toggleComponent(componentChoices[m.cursor])
+			m.components = common.Toggle(m.components, componentChoices[m.cursor])
 		}
 	case m.keymap.Confirm.Matches(message):
 		return m.confirm()
@@ -177,7 +177,7 @@ func (m Model) confirm() (tea.Model, tea.Cmd) {
 	switch m.step {
 	case StepTargets:
 		if m.cursor < len(supportedTargets) {
-			m.toggle(supportedTargets[m.cursor])
+			m.targets = common.Toggle(m.targets, supportedTargets[m.cursor])
 		} else if len(m.targets) > 0 {
 			m.step, m.cursor = m.nextModelStep(), 0
 		}
@@ -191,7 +191,7 @@ func (m Model) confirm() (tea.Model, tea.Cmd) {
 		}
 	case StepComponents:
 		if m.cursor < len(componentChoices) {
-			m.toggleComponent(componentChoices[m.cursor])
+			m.components = common.Toggle(m.components, componentChoices[m.cursor])
 		} else {
 			m.step, m.cursor = StepReview, 0
 		}
@@ -203,24 +203,6 @@ func (m Model) confirm() (tea.Model, tea.Cmd) {
 		m.step, m.cursor, m.setupCustom, m.components = StepTargets, 0, false, nil
 	}
 	return m, nil
-}
-
-func (m *Model) toggle(target model.AgentID) {
-	for index, selected := range m.targets {
-		if selected == target {
-			m.targets = append(m.targets[:index], m.targets[index+1:]...)
-			return
-		}
-	}
-	m.targets = append(m.targets, target)
-}
-
-func (m *Model) toggleComponent(component model.ComponentID) {
-	if index := slices.Index(m.components, component); index >= 0 {
-		m.components = slices.Delete(m.components, index, index+1)
-		return
-	}
-	m.components = append(m.components, component)
 }
 
 // componentNames returns the selected component names in canonical order, or
@@ -327,12 +309,7 @@ func (m Model) View() string {
 }
 
 func (m Model) shell(enterLabel, body string, extra ...keys.Binding) string {
-	return ui.Shell(ui.Frame{
-		Body:       body,
-		Keys:       m.keymap,
-		Extra:      append([]keys.Binding{m.keymap.Back}, extra...),
-		EnterLabel: enterLabel,
-	})
+	return common.Shell(m.keymap, enterLabel, body, append([]keys.Binding{m.keymap.Back}, extra...)...)
 }
 
 func (m Model) targetsBody() string {

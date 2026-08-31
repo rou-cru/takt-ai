@@ -10,6 +10,8 @@ package codex
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 )
 
 // Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
@@ -61,21 +63,8 @@ func appendPermissionsProfile(content *bytes.Buffer) {
 	content.WriteString("\n[permissions." + permissionsProfileName + ".filesystem.\":workspace_roots\"]\n")
 	fmt.Fprintf(content, `"." = "write"`+"\n")
 	fmt.Fprintf(content, `".git/**" = "write"`+"\n")
-	for _, pattern := range []string{
-		"**/.env",
-		"**/.env.local",
-		"**/.env.*.local",
-		"**/.aws/credentials",
-		"**/.config/gh/hosts.yml",
-		"**/.credentials/**",
-		"**/.ssh/**",
-		"**/Library/Keychains/**",
-		"**/credentials.json",
-		"**/*.pem",
-		"**/*.key",
-		"**/secrets/**",
-	} {
-		fmt.Fprintf(content, "%s = \"deny\"\n", tomlString(pattern))
+	for _, glob := range shared.SensitivePathGlobs {
+		fmt.Fprintf(content, "%s = \"deny\"\n", tomlString("**/"+glob))
 	}
 
 	content.WriteString("\n[permissions." + permissionsProfileName + ".workspace_roots]\n")

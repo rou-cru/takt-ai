@@ -116,7 +116,7 @@ func (model Model) updateTargets(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return model, nil
 		}
-		model.toggle(SupportedTargets()[model.cursor])
+		model.targets = common.Toggle(model.targets, SupportedTargets()[model.cursor])
 	case model.keymap.Back.Matches(key):
 		model.backRequested = true
 	}
@@ -176,16 +176,6 @@ func (model Model) updateResult(message tea.Msg) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-func (model *Model) toggle(target modelpkg.AgentID) {
-	for index, selected := range model.targets {
-		if selected == target {
-			model.targets = append(model.targets[:index], model.targets[index+1:]...)
-			return
-		}
-	}
-	model.targets = append(model.targets, target)
-}
-
 func sameRequest(left, right runtime.ActionRequest) bool {
 	if left.Action != right.Action || left.RootDir != right.RootDir || len(left.Targets) != len(right.Targets) {
 		return false
@@ -211,12 +201,7 @@ func (model Model) View() string {
 }
 
 func (model Model) shell(enterLabel, body string) string {
-	return ui.Shell(ui.Frame{
-		Body:       body,
-		Keys:       model.keymap,
-		Extra:      []keys.Binding{model.keymap.Back},
-		EnterLabel: enterLabel,
-	})
+	return common.Shell(model.keymap, enterLabel, body, model.keymap.Back)
 }
 
 func (model Model) targetsBody() string {
