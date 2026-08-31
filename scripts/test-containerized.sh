@@ -13,6 +13,10 @@
 #   scripts/test-containerized.sh [go test flags and packages...]
 #   scripts/test-containerized.sh            # runs default FS-touching packages
 #   scripts/test-containerized.sh --dry-run  # print the docker command, don't run
+#
+# Passing -coverprofile=<file> copies that file back out of the (otherwise
+# disposable) container onto the host once tests pass, so CI can feed it to
+# SonarCloud alongside the host-run coverage.out.
 
 set -euo pipefail
 
@@ -101,6 +105,16 @@ set -- $RESOLVED_ARGS
 echo "==> containerized test run (source copied in via tar pipe, zero host mounts)"
 echo "==> packages/flags: $*"
 
+# Extract the -coverprofile=<file> target, if any, so the container can be
+# kept (instead of --rm) long enough for `docker cp` to pull the file out.
+COVER_FILE=""
+for arg in "$@"; do
+    case "$arg" in
+        -coverprofile=*) COVER_FILE="${arg#-coverprofile=}" ;;
+    esac
+done
+CONTAINER_NAME="takt-test-containerized-$$"
+
 if [ "$DRY_RUN" = "1" ]; then
     echo "DRY-RUN (not executing):"
     echo "  tar -C '$REPO_ROOT' --exclude ./.git --exclude ./.codegraph -cf - . |"
@@ -113,8 +127,14 @@ fi
 set +e
 # COPYFILE_DISABLE=1: skip macOS ._ resource forks; --no-xattrs: skip Apple xattrs
 # that GNU tar in the container would warn about.
+#
+# When a coverage file was requested, keep the container around (drop --rm)
+# so `docker cp` can pull the file out below; otherwise remove it immediately.
+DOCKER_KEEP_FLAG="--rm"
+[ -n "$COVER_FILE" ] && DOCKER_KEEP_FLAG="--name $CONTAINER_NAME"
+# shellcheck disable=SC2086
 tar -C "$REPO_ROOT" --no-xattrs --exclude ./\.git --exclude ./\.codegraph -cf - . |
-    docker run --rm -i \
+    docker run $DOCKER_KEEP_FLAG -i \
         -e HOME=/tmp/fake-home \
         -v "$MODCACHE_VOL":/go/pkg/mod \
         -v "$GOCACHE_VOL":/go/.cache/go-build \
@@ -134,6 +154,13 @@ DOCKER_STATUS=${PIPE_STATUS[1]}
 STATUS=$DOCKER_STATUS
 if [ "$TAR_STATUS" -ne 0 ]; then
     STATUS=$TAR_STATUS
+fi
+
+if [ -n "$COVER_FILE" ]; then
+    if [ "$STATUS" -eq 0 ]; then
+        docker cp "${CONTAINER_NAME}:${SRC_DIR}/${COVER_FILE}" "${REPO_ROOT}/${COVER_FILE}" || STATUS=1
+    fi
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
 
 if [ "$STATUS" -eq 0 ]; then
