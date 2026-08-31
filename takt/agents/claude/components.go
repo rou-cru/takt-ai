@@ -11,6 +11,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 )
 
 // Context7MCPVersion pins the @upstash/context7-mcp package version deployed
@@ -49,34 +51,19 @@ type Permissions struct {
 // Code: permissive by default with explicit deny rules for secret files,
 // credentials, and destructive shell commands.
 func DefaultPermissions() Permissions {
+	deny := []string{
+		"Bash(rm -rf /)",
+		"Bash(sudo rm -rf /)",
+		"Bash(rm -rf ~)",
+		"Bash(sudo rm -rf ~)",
+	}
+	for _, glob := range shared.SensitivePathGlobs {
+		pattern := "**/" + glob
+		deny = append(deny, fmt.Sprintf("Read(%s)", pattern), fmt.Sprintf("Edit(%s)", pattern))
+	}
 	return Permissions{
 		DefaultMode: "bypassPermissions",
-		Deny: []string{
-			"Bash(rm -rf /)",
-			"Bash(sudo rm -rf /)",
-			"Bash(rm -rf ~)",
-			"Bash(sudo rm -rf ~)",
-			"Read(.env)",
-			"Read(.env.*)",
-			"Edit(.env)",
-			"Edit(.env.*)",
-			"Read(.ssh/*)",
-			"Edit(.ssh/*)",
-			"Read(.credentials/*)",
-			"Edit(.credentials/*)",
-			"Read(Library/Keychains/*)",
-			"Edit(Library/Keychains/*)",
-			"Read(.aws/credentials)",
-			"Edit(.aws/credentials)",
-			"Read(.config/gh/hosts.yml)",
-			"Edit(.config/gh/hosts.yml)",
-			"Read(**/*.pem)",
-			"Edit(**/*.pem)",
-			"Read(**/*.key)",
-			"Edit(**/*.key)",
-			"Read(**/secrets/*)",
-			"Edit(**/secrets/*)",
-		},
+		Deny:        deny,
 	}
 }
 

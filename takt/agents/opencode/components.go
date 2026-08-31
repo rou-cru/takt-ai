@@ -10,6 +10,8 @@ package opencode
 import (
 	_ "embed"
 	"encoding/json"
+
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 )
 
 // Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
@@ -36,6 +38,14 @@ func context7Config() map[string]any {
 // read are permissive by default with ask rules for state-changing Git
 // commands and deny rules for secret files and credentials.
 func permissionsConfig() map[string]any {
+	read := map[string]any{
+		"*":       "allow",
+		"*.env":   "deny",
+		"*.env.*": "deny",
+	}
+	for _, glob := range shared.SensitivePathGlobs {
+		read["**/"+glob] = "deny"
+	}
 	return map[string]any{
 		"bash": map[string]any{
 			"*":                  "allow",
@@ -46,22 +56,7 @@ func permissionsConfig() map[string]any {
 			"git rebase *":       "ask",
 			"git reset --hard *": "ask",
 		},
-		"read": map[string]any{
-			"*":                       "allow",
-			"*.env":                   "deny",
-			"*.env.*":                 "deny",
-			"**/.env":                 "deny",
-			"**/.env.*":               "deny",
-			"**/secrets/**":           "deny",
-			"**/credentials.json":     "deny",
-			"**/.ssh/**":              "deny",
-			"**/.credentials/**":      "deny",
-			"**/Library/Keychains/**": "deny",
-			"**/.aws/credentials":     "deny",
-			"**/.config/gh/hosts.yml": "deny",
-			"**/*.pem":                "deny",
-			"**/*.key":                "deny",
-		},
+		"read": read,
 	}
 }
 

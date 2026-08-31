@@ -73,17 +73,16 @@ enabled = true
 "." = "write"
 ".git/**" = "write"
 "**/.env" = "deny"
-"**/.env.local" = "deny"
-"**/.env.*.local" = "deny"
+"**/.env.*" = "deny"
+"**/.ssh/**" = "deny"
+"**/.credentials/**" = "deny"
+"**/Library/Keychains/**" = "deny"
 "**/.aws/credentials" = "deny"
 "**/.config/gh/hosts.yml" = "deny"
-"**/.credentials/**" = "deny"
-"**/.ssh/**" = "deny"
-"**/Library/Keychains/**" = "deny"
-"**/credentials.json" = "deny"
 "**/*.pem" = "deny"
 "**/*.key" = "deny"
 "**/secrets/**" = "deny"
+"**/credentials.json" = "deny"
 
 [permissions.takt-dev.workspace_roots]
 "~" = true

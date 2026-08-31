@@ -182,12 +182,7 @@ func (m Model) View() string {
 }
 
 func (m Model) shell(enterLabel string, extra []keys.Binding, body string) string {
-	return ui.Shell(ui.Frame{
-		Body:       body,
-		Keys:       m.keymap,
-		Extra:      extra,
-		EnterLabel: enterLabel,
-	})
+	return common.Shell(m.keymap, enterLabel, body, extra...)
 }
 
 func (m Model) selectBody() string {
