@@ -76,7 +76,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		_, _ = fmt.Fprintf(stdout, "takt-ai %s\n", resolveVersion(version))
 		return nil
 	case "doctor":
-		return doctor.Run(stdout)
+		if err := doctor.Run(stdout); err != nil {
+			return report(stderr, err)
+		}
+		return nil
 	}
 	command, root, inputPath, err := parseSetupInvocation(args)
 	if err != nil {

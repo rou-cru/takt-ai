@@ -224,7 +224,7 @@ func tomlString(value string) string {
 			// TOML requires control characters (U+0000-U+001F and U+007F-U+009F)
 			// to be escaped; \uXXXX (not Go's \xNN) is the TOML form.
 			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
-				b.WriteString(fmt.Sprintf(`\u%04x`, r))
+				fmt.Fprintf(&b, `\u%04x`, r)
 			} else {
 				b.WriteRune(r)
 			}

@@ -83,7 +83,7 @@ func TestActionRequestDoesNotTouchFilesystemDuringUpdate(t *testing.T) {
 	app := New(root)
 	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyDown})
 	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyEnter})
-	app, command := update(t, app, runtime.ActionRequest{
+	_, command := update(t, app, runtime.ActionRequest{
 		Action:  runtime.ActionSync,
 		RootDir: root,
 		Targets: []model.AgentID{model.AgentCodex},

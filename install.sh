@@ -67,8 +67,9 @@ Options:
 
 Install methods (auto-detected in priority order):
   1. brew    — Homebrew tap (recommended)
-  2. go      — go install from source
-  3. binary  — Pre-built binary from GitHub Releases
+  2. binary  — Pre-built binary from GitHub Releases
+
+  go — go install from source; not auto-detected, select with --method go
 
 Examples:
   curl -sL https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/install.sh | bash

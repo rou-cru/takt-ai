@@ -19,6 +19,7 @@
 package doctor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -259,12 +260,20 @@ func diskCheck(home string) CheckResult {
 
 // defaultHTTPGet performs one GET request and returns the HTTP status code.
 func defaultHTTPGet(url string, timeout time.Duration) (int, error) {
-	resp, err := (&http.Client{Timeout: timeout}).Get(url)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode, nil
+	resp, err := (&http.Client{Timeout: timeout}).Do(request)
+	if err != nil {
+		return 0, err
+	}
+	status := resp.StatusCode
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return status, fmt.Errorf("close response body: %w", closeErr)
+	}
+	return status, nil
 }
 
 // statfsFreeBytes reports bytes available to unprivileged users on dir's

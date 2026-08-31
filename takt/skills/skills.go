@@ -23,11 +23,17 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
+
+// nonSkillChars matches any character outside [a-z0-9-] once the name has
+// been lowercased, so punctuation like "/" or "!" collapses to a separator
+// instead of passing through untouched.
+var nonSkillChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
 //go:embed workflows
 var skillsFS embed.FS
@@ -190,6 +196,7 @@ func NormalizeSkillName(name string) string {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, " ", "-")
 	name = strings.ReplaceAll(name, "_", "-")
+	name = nonSkillChars.ReplaceAllString(name, "-")
 	// Remove consecutive hyphens.
 	for strings.Contains(name, "--") {
 		name = strings.ReplaceAll(name, "--", "-")

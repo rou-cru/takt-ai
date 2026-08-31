@@ -108,6 +108,9 @@ func (m Model) Targets() []model.AgentID { return append([]model.AgentID(nil), m
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case runtime.ActionResultMsg:
+		if message.Request.Action != runtime.ActionInstall {
+			return m, nil
+		}
 		return m.result(message), nil
 	case runtime.TickMsg:
 		if !m.busy {

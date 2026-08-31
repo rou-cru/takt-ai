@@ -28,6 +28,9 @@ const (
 // BackMsg asks the hosting navigation layer to return from the sync flow.
 type BackMsg struct{}
 
+// syncTitle is the shared screen title rendered across all sync phases.
+const syncTitle = "Sync managed configuration"
+
 type target struct {
 	id       model.AgentID
 	label    string
@@ -91,25 +94,36 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.Phase == PhaseRunning {
+	switch m.Phase {
+	case PhaseRunning:
 		return m, nil
+	case PhaseResult:
+		return m.updateKeyResult(message)
+	case PhaseConfirm:
+		return m.updateKeyConfirm(message)
+	default:
+		return m.updateKeySelect(message)
 	}
-	if m.Phase == PhaseResult {
-		if m.keymap.Confirm.Matches(message) || m.keymap.Back.Matches(message) {
-			return m, backCommand()
-		}
-		return m, nil
-	}
-	if m.Phase == PhaseConfirm {
-		if m.keymap.Confirm.Matches(message) {
-			return m.updateConfirmation(common.AcceptConfirmation{})
-		}
-		if m.keymap.Back.Matches(message) {
-			return m.updateConfirmation(common.CancelConfirmation{})
-		}
-		return m, nil
-	}
+}
 
+func (m Model) updateKeyResult(message tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.keymap.Confirm.Matches(message) || m.keymap.Back.Matches(message) {
+		return m, backCommand()
+	}
+	return m, nil
+}
+
+func (m Model) updateKeyConfirm(message tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.keymap.Confirm.Matches(message) {
+		return m.updateConfirmation(common.AcceptConfirmation{})
+	}
+	if m.keymap.Back.Matches(message) {
+		return m.updateConfirmation(common.CancelConfirmation{})
+	}
+	return m, nil
+}
+
+func (m Model) updateKeySelect(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.keymap.Up.Matches(message) {
 		m.cursor = (m.cursor + len(m.targets) - 1) % len(m.targets)
 		return m, nil
@@ -165,7 +179,7 @@ func (m Model) View() string {
 	switch m.Phase {
 	case PhaseRunning:
 		var view strings.Builder
-		view.WriteString(styles.TitleStyle.Render("Sync managed configuration"))
+		view.WriteString(styles.TitleStyle.Render(syncTitle))
 		view.WriteString("\n\n")
 		view.WriteString(theme.Caption.Render(ui.Spinner(m.frame) + " "))
 		view.WriteString(styles.WarningStyle.Render("Syncing selected targets…"))
@@ -191,7 +205,7 @@ func (m Model) selectBody() string {
 		items[i] = ui.Item{Label: target.label, Checked: target.selected}
 	}
 	var view strings.Builder
-	view.WriteString(styles.TitleStyle.Render("Sync managed configuration"))
+	view.WriteString(styles.TitleStyle.Render(syncTitle))
 	view.WriteString("\n\n")
 	view.WriteString(ui.CheckList(items, m.cursor, 0))
 	view.WriteString("\n")
@@ -206,7 +220,7 @@ func (m Model) selectBody() string {
 
 func (m Model) confirmBody() string {
 	var view strings.Builder
-	view.WriteString(styles.TitleStyle.Render("Sync managed configuration"))
+	view.WriteString(styles.TitleStyle.Render(syncTitle))
 	view.WriteString("\n\n")
 	m.writeSummary(&view)
 	view.WriteString("\n\n")
@@ -224,7 +238,7 @@ func (m Model) writeSummary(view *strings.Builder) {
 
 func (m Model) resultBody() string {
 	var view strings.Builder
-	view.WriteString(styles.TitleStyle.Render("Sync managed configuration"))
+	view.WriteString(styles.TitleStyle.Render(syncTitle))
 	view.WriteString("\n\n")
 	if m.err != nil {
 		view.WriteString(styles.ErrorStyle.Render(theme.Icon.Cross + " Sync failed"))
