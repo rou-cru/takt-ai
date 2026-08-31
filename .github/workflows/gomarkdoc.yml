@@ -1,0 +1,32 @@
+name: Regenerate gomarkdocs
+
+on:
+  push:
+    branches: [stage]
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-docs:
+    # Prevent the bot commit from triggering this workflow again.
+    if: github.event.head_commit.author.email != 'github-actions[bot]@users.noreply.github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Regenerate API docs
+        run: make docs
+
+      - name: Commit and push if changed
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/api/
+          git commit -m "docs: regenerate gomarkdoc API reference"
+          git push
