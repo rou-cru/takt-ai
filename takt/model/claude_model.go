@@ -15,6 +15,8 @@
 
 package model
 
+import "fmt"
+
 // ClaudeModelAlias represents one of the Claude model tiers.
 type ClaudeModelAlias string
 
@@ -25,10 +27,10 @@ const (
 	ClaudeModelHaiku  ClaudeModelAlias = "haiku"
 )
 
-// String returns the string representation of the alias.
+// String returns the alias as a lowercase string.
 func (a ClaudeModelAlias) String() string { return string(a) }
 
-// Valid reports whether the alias is one of the known Claude model tiers.
+// Valid reports whether the alias is a recognized Claude model tier.
 func (a ClaudeModelAlias) Valid() bool {
 	switch a {
 	case ClaudeModelFable, ClaudeModelOpus, ClaudeModelSonnet, ClaudeModelHaiku:
@@ -50,7 +52,7 @@ const (
 	ClaudeEffortMax     ClaudeEffort = "max"
 )
 
-// Valid reports whether the effort is known.
+// Valid reports whether the effort is a recognized Claude effort level.
 func (e ClaudeEffort) Valid() bool {
 	switch e {
 	case ClaudeEffortDefault, ClaudeEffortLow, ClaudeEffortMedium, ClaudeEffortHigh, ClaudeEffortXHigh, ClaudeEffortMax:
@@ -87,12 +89,14 @@ func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bo
 	return false
 }
 
-// ClaudeDefaultPreset returns the default Claude model assignment for each canonical sub-agent.
-func ClaudeDefaultPreset() map[string]ModelAssignment {
-	catalog := CanonicalSubAgentCatalog()
-	preset := make(map[string]ModelAssignment, len(catalog))
-	for _, subAgent := range catalog {
-		preset[subAgent.Name] = subAgent.Assignments[AgentClaudeCode]
+// ValidateClaudeModelAssignment validates a Claude model and effort pair.
+func ValidateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error) {
+	alias := ClaudeModelAlias(assignment.Model)
+	if !alias.Valid() {
+		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q has invalid model assignment %q", subAgent, assignment.Model)
 	}
-	return preset
+	if !ClaudeEffortAllowedForModel(alias, ClaudeEffort(assignment.Effort)) {
+		return ModelAssignment{}, fmt.Errorf("claude-code sub-agent %q model %q does not support effort %q", subAgent, assignment.Model, assignment.Effort)
+	}
+	return assignment, nil
 }

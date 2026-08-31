@@ -1,0 +1,49 @@
+version: 2
+
+project_name: takt-ai
+
+before:
+  hooks:
+  - go mod tidy
+
+builds:
+- main: ./cmd/takt-ai
+  binary: takt-ai
+  env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  - darwin
+  goarch:
+  - amd64
+  - arm64
+  ldflags:
+  - -s -w -X main.version={{.Version}}
+
+archives:
+- formats:
+  - tar.gz
+  name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - "^docs:"
+    - "^test:"
+    - "^ci:"
+
+brews:
+- repository:
+    owner: rou-cru
+    name: homebrew-takt-ai
+    token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+  directory: Formula
+  name: takt-ai
+  homepage: "https://github.com/rou-cru/takt-ai"
+  description: "Takt-AI — Coding agents."
+  license: "AGPL-3.0"
+  commit_msg_template: "chore: update takt-ai formula to {{ .Tag }}"
