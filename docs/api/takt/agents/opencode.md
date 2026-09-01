@@ -27,7 +27,7 @@ Package opencode renders OpenCode agent files: sub\-agent Markdown frontmatter a
 <a name="Context7RemoteURL"></a>Context7RemoteURL is the canonical context7 remote MCP endpoint deployed into opencode.json by the context7 component.
 
 ```go
-const Context7RemoteURL = "https://mcp.context7.com/mcp"
+const Context7RemoteURL = shared.Context7RemoteURL
 ```
 
 <a name="TaktTheme"></a>TaktTheme is the OpenCode theme deployed by the theme component.
@@ -51,10 +51,7 @@ NewManagedPaths returns Takt\-owned OpenCode paths relative to the user's home d
 Artifact is a filesystem\-free OpenCode projection. Path is relative to the user's home directory and Content is ready for a later deployer to write.
 
 ```go
-type Artifact struct {
-    Path    string
-    Content []byte
-}
+type Artifact = shared.Artifact
 ```
 
 <a name="RenderConfig"></a>

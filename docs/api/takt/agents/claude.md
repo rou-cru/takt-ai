@@ -50,10 +50,7 @@ NewManagedPaths returns Takt\-owned Claude paths relative to the user's home dir
 Artifact is a filesystem\-free Claude projection. Path is relative to the user's home directory and Content is ready for a later deployer to write.
 
 ```go
-type Artifact struct {
-    Path    string
-    Content []byte
-}
+type Artifact = shared.Artifact
 ```
 
 <a name="Context7ServerArtifact"></a>
