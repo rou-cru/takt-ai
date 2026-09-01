@@ -8,7 +8,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 )
 
-// ActionRequest extracts the emitted ActionRequest from a command, following
 // ActionRequest executes a Bubble Tea command and extracts its runtime action request.
 // It also searches commands wrapped in a tea.BatchMsg and fails the test when no
 // runtime.ActionRequest is emitted.
