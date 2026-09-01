@@ -18,7 +18,7 @@ import (
 // into Codex config.toml by the context7 component.
 const Context7RemoteURL = shared.Context7RemoteURL
 
-// appendContext7Server writes the context7 remote MCP server block.
+// appendContext7Server appends the Context7 remote MCP server configuration to content.
 func appendContext7Server(content *bytes.Buffer) {
 	content.WriteString("\n[mcp_servers.context7]\n")
 	fmt.Fprintf(content, "url = %s\n", tomlString(Context7RemoteURL))

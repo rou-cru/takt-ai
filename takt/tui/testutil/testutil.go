@@ -9,7 +9,9 @@ import (
 )
 
 // ActionRequest extracts the emitted ActionRequest from a command, following
-// tea.Batch wrappers the flow attaches alongside the busy spinner tick.
+// ActionRequest executes a Bubble Tea command and extracts its runtime action request.
+// It also searches commands wrapped in a tea.BatchMsg and fails the test when no
+// runtime.ActionRequest is emitted.
 func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
 	t.Helper()
 	if cmd == nil {
