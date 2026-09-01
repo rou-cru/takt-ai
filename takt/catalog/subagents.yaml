@@ -1,0 +1,105 @@
+- id: takt-init
+  persona: takt
+  assignments:
+    claude-code:
+      model: haiku
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: low
+- id: takt-analyst
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: medium
+- id: takt-pm
+  persona: takt
+  assignments:
+    claude-code:
+      model: opus
+    codex:
+      model: openai/gpt-5.6-sol
+      effort: high
+- id: takt-spec
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-terra
+      effort: medium
+- id: takt-architect
+  persona: takt
+  assignments:
+    claude-code:
+      model: opus
+    codex:
+      model: openai/gpt-5.6-sol
+      effort: high
+- id: takt-product-designer
+  persona: takt
+  assignments:
+    claude-code:
+      model: opus
+    codex:
+      model: openai/gpt-5.6-sol
+      effort: high
+- id: takt-tpm
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-terra
+      effort: medium
+- id: takt-dev
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: high
+- id: takt-verify
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+      effort: high
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: high
+- id: takt-judge-a
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: high
+- id: takt-judge-b
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-luna
+      effort: high
+- id: takt-fix
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-terra
+      effort: medium
+- id: default
+  persona: takt
+  assignments:
+    claude-code:
+      model: sonnet
+    codex:
+      model: openai/gpt-5.6-terra
+      effort: medium
