@@ -21,16 +21,12 @@ import (
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
-	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 // Artifact is a filesystem-free Codex projection. Path is relative to the
 // user's home directory and Content is ready for a later deployer to write.
-type Artifact struct {
-	Path    string
-	Content []byte
-}
+type Artifact = shared.Artifact
 
 // SandboxMode is the native Codex sandbox setting.
 type SandboxMode string
@@ -111,13 +107,7 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 
 // RenderGlobalPrompt returns the native Codex global prompt artifact.
 func RenderGlobalPrompt(content string) (Artifact, error) {
-	if strings.TrimSpace(content) == "" {
-		return Artifact{}, fmt.Errorf("Codex global prompt is required")
-	}
-	return Artifact{
-		Path:    ".codex/AGENTS.md",
-		Content: []byte(artifacts.EnsureTrailingNewline(content)),
-	}, nil
+	return shared.RenderGlobalPrompt("Codex", ".codex/AGENTS.md", content)
 }
 
 // RenderConfig returns the native Codex config.toml artifact.
@@ -164,16 +154,10 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 
 // validateSubAgent validates a Codex sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
-	if err := artifacts.ValidateID("Codex", request.ID); err != nil {
+	if err := shared.ValidateSubAgentBase("Codex", request.ID, request.Description, request.Instructions, request.Assignment.Model, func(id, m string) error {
+		_, err := model.ValidateCodexModelAssignment(id, request.Assignment)
 		return err
-	}
-	if strings.TrimSpace(request.Description) == "" {
-		return fmt.Errorf("Codex sub-agent %q description is required", request.ID)
-	}
-	if strings.TrimSpace(request.Instructions) == "" {
-		return fmt.Errorf("Codex sub-agent %q instructions are required", request.ID)
-	}
-	if _, err := model.ValidateCodexModelAssignment(request.ID, request.Assignment); err != nil {
+	}); err != nil {
 		return err
 	}
 	if err := validateSandboxMode(request.SandboxMode); err != nil {

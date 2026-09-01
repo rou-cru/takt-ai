@@ -30,10 +30,7 @@ import (
 
 // Artifact is a filesystem-free Claude projection. Path is relative to the
 // user's home directory and Content is ready for a later deployer to write.
-type Artifact struct {
-	Path    string
-	Content []byte
-}
+type Artifact = shared.Artifact
 
 // SubAgentRequest contains the native data needed for one Claude agent file.
 type SubAgentRequest struct {
@@ -98,13 +95,7 @@ func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error) {
 
 // RenderGlobalPrompt returns the native Claude global prompt artifact.
 func RenderGlobalPrompt(content string) (Artifact, error) {
-	if strings.TrimSpace(content) == "" {
-		return Artifact{}, fmt.Errorf("claude global prompt is required")
-	}
-	return Artifact{
-		Path:    ".claude/CLAUDE.md",
-		Content: []byte(artifacts.EnsureTrailingNewline(content)),
-	}, nil
+	return shared.RenderGlobalPrompt("claude", ".claude/CLAUDE.md", content)
 }
 
 // RenderSettings returns the native Claude settings.json artifact.
@@ -144,19 +135,10 @@ func RenderSettings(request SettingsRequest) (Artifact, error) {
 
 // validateSubAgent validates a Claude sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
-	if err := artifacts.ValidateID("Claude", request.ID); err != nil {
+	return shared.ValidateSubAgentBase("Claude", request.ID, request.Description, request.Instructions, request.Assignment.Model, func(id, m string) error {
+		_, err := model.ValidateClaudeModelAssignment(id, request.Assignment)
 		return err
-	}
-	if strings.TrimSpace(request.Description) == "" {
-		return fmt.Errorf("Claude sub-agent %q description is required", request.ID)
-	}
-	if strings.TrimSpace(request.Instructions) == "" {
-		return fmt.Errorf("Claude sub-agent %q instructions are required", request.ID)
-	}
-	if _, err := model.ValidateClaudeModelAssignment(request.ID, request.Assignment); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 // validateHooks validates Claude hook events and groups.

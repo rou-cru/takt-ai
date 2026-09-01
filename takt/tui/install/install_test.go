@@ -11,6 +11,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/tui/common"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 func TestTargetSelectionAndTransitions(t *testing.T) {
@@ -169,7 +170,7 @@ func TestConfirmEmitsInstallRequest(t *testing.T) {
 	if updated.(Model).Step() != StepConfirmation {
 		t.Fatal("confirmation should remain visible until the action result")
 	}
-	request := actionRequest(t, command)
+	request := testutil.ActionRequest(t, command)
 	if request.Action != runtime.ActionInstall || request.RootDir != "/project" {
 		t.Fatalf("request = %#v", request)
 	}
@@ -197,7 +198,7 @@ func TestConfirmCarriesSelectedComponents(t *testing.T) {
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // Continue
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // review → confirmation
 	_, command := m.Update(common.AcceptConfirmation{})
-	request := actionRequest(t, command)
+	request := testutil.ActionRequest(t, command)
 	want := []string{"context7", "permissions"}
 	if !slices.Equal(request.Components, want) {
 		t.Fatalf("components = %v, want %v", request.Components, want)
@@ -274,26 +275,7 @@ func reviewModel(t *testing.T) Model {
 	return m
 }
 
-// actionRequest extracts the emitted ActionRequest from a command, following
-// tea.Batch wrappers the flow attaches alongside the busy spinner tick.
-func actionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
-	t.Helper()
-	if cmd == nil {
-		t.Fatal("nil command")
-	}
-	if request, ok := cmd().(runtime.ActionRequest); ok {
-		return request
-	}
-	if batch, ok := cmd().(tea.BatchMsg); ok {
-		for _, sub := range batch {
-			if request, ok := sub().(runtime.ActionRequest); ok {
-				return request
-			}
-		}
-	}
-	t.Fatalf("command did not emit ActionRequest")
-	return runtime.ActionRequest{}
-}
+
 
 func update(t *testing.T, m Model, message tea.Msg) Model {
 	t.Helper()

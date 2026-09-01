@@ -16,7 +16,7 @@ import (
 
 // Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
 // into opencode.json by the context7 component.
-const Context7RemoteURL = "https://mcp.context7.com/mcp"
+const Context7RemoteURL = shared.Context7RemoteURL
 
 // TaktTheme is the OpenCode theme deployed by the theme component.
 const TaktTheme = "takt-kanagawa"

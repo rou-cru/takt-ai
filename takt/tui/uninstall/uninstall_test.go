@@ -9,6 +9,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/tui/common"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 func TestTargetSelectionAndDestructiveSummary(t *testing.T) {
@@ -51,7 +52,7 @@ func TestConfirmationEmitsTargetScopedUninstallRequest(t *testing.T) {
 		t.Fatal("confirm did not emit an action")
 	}
 	screen = updated.(Model)
-	request := actionRequest(t, command)
+	request := testutil.ActionRequest(t, command)
 	want := runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: "/project", Targets: []model.AgentID{model.AgentClaudeCode}}
 	if !sameRequest(request, want) {
 		t.Fatalf("request = %#v, want %#v", request, want)
@@ -62,7 +63,7 @@ func TestResultPresentationAndBackNavigation(t *testing.T) {
 	screen := confirmedModel(t)
 	updated, command := screen.Update(common.AcceptConfirmation{})
 	screen = updated.(Model)
-	request := actionRequest(t, command)
+	request := testutil.ActionRequest(t, command)
 
 	screen = update(t, screen, runtime.ActionResultMsg{
 		Request: request,
@@ -81,7 +82,7 @@ func TestErrorResultAndBackNavigation(t *testing.T) {
 	screen := confirmedModel(t)
 	updated, command := screen.Update(common.AcceptConfirmation{})
 	screen = updated.(Model)
-	request := actionRequest(t, command)
+	request := testutil.ActionRequest(t, command)
 
 	screen = update(t, screen, runtime.ActionResultMsg{Request: request, Err: errors.New("manifest unavailable")})
 	if screen.State() != StateResult || !strings.Contains(screen.View(), "Uninstall failed: manifest unavailable") {
@@ -107,26 +108,7 @@ func confirmedModel(t *testing.T) Model {
 	return model
 }
 
-// actionRequest extracts the emitted ActionRequest from a command, following
-// tea.Batch wrappers the flow attaches alongside the busy spinner tick.
-func actionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
-	t.Helper()
-	if cmd == nil {
-		t.Fatal("nil command")
-	}
-	if request, ok := cmd().(runtime.ActionRequest); ok {
-		return request
-	}
-	if batch, ok := cmd().(tea.BatchMsg); ok {
-		for _, sub := range batch {
-			if request, ok := sub().(runtime.ActionRequest); ok {
-				return request
-			}
-		}
-	}
-	t.Fatalf("command did not emit runtime.ActionRequest")
-	return runtime.ActionRequest{}
-}
+
 
 func update(t *testing.T, model Model, message tea.Msg) Model {
 	t.Helper()

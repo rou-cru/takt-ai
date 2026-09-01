@@ -11,6 +11,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/common"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	syncflow "github.com/rou-cru/takt-ai/takt/tui/sync"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 func TestMenuRoutesAndQuits(t *testing.T) {
@@ -55,7 +56,7 @@ func TestActionResultReturnsToTheActiveFlowBeforeBack(t *testing.T) {
 	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyEnter})
 	app, requestCommand := update(t, app, common.AcceptConfirmation{})
 
-	request := actionRequest(t, requestCommand)
+	request := testutil.ActionRequest(t, requestCommand)
 	app, actionCommand := update(t, app, request)
 	if actionCommand == nil || !app.runtime.Busy {
 		t.Fatal("action request must be deferred through runtime")
@@ -104,21 +105,4 @@ func update(t *testing.T, app Model, message tea.Msg) (Model, tea.Cmd) {
 
 // actionRequest extracts the emitted ActionRequest from a command, following
 // tea.Batch wrappers the flow attaches alongside the busy spinner tick.
-func actionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
-	t.Helper()
-	if cmd == nil {
-		t.Fatal("nil command")
-	}
-	if request, ok := cmd().(runtime.ActionRequest); ok {
-		return request
-	}
-	if batch, ok := cmd().(tea.BatchMsg); ok {
-		for _, sub := range batch {
-			if request, ok := sub().(runtime.ActionRequest); ok {
-				return request
-			}
-		}
-	}
-	t.Fatalf("command did not emit runtime.ActionRequest")
-	return runtime.ActionRequest{}
-}
+
