@@ -16,7 +16,7 @@ import (
 
 // Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
 // into Codex config.toml by the context7 component.
-const Context7RemoteURL = "https://mcp.context7.com/mcp"
+const Context7RemoteURL = shared.Context7RemoteURL
 
 // appendContext7Server writes the context7 remote MCP server block.
 func appendContext7Server(content *bytes.Buffer) {

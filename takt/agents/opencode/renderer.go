@@ -28,10 +28,7 @@ import (
 
 // Artifact is a filesystem-free OpenCode projection. Path is relative to the
 // user's home directory and Content is ready for a later deployer to write.
-type Artifact struct {
-	Path    string
-	Content []byte
-}
+type Artifact = shared.Artifact
 
 // SubAgentRequest contains the native data needed for one OpenCode agent file.
 type SubAgentRequest struct {
@@ -146,17 +143,10 @@ func yamlScalar(s string) string {
 
 // validateSubAgent validates an OpenCode sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
-	if err := artifacts.ValidateID("OpenCode", request.ID); err != nil {
-		return err
-	}
-	if strings.TrimSpace(request.Description) == "" {
-		return fmt.Errorf("OpenCode sub-agent %q description is required", request.ID)
-	}
-	if strings.TrimSpace(request.Instructions) == "" {
-		return fmt.Errorf("OpenCode sub-agent %q instructions are required", request.ID)
-	}
-	if strings.TrimSpace(request.Assignment.Model) == "" {
-		return fmt.Errorf("OpenCode sub-agent %q has no model assignment", request.ID)
-	}
-	return nil
+	return shared.ValidateSubAgentBase("OpenCode", request.ID, request.Description, request.Instructions, request.Assignment.Model, func(id, m string) error {
+		if strings.TrimSpace(m) == "" {
+			return fmt.Errorf("OpenCode sub-agent %q has no model assignment", id)
+		}
+		return nil
+	})
 }

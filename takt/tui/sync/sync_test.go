@@ -10,6 +10,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/tui/common"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 func TestTargetSelectionAndSummary(t *testing.T) {
@@ -47,7 +48,7 @@ func TestConfirmationAcceptEmitsSyncRequest(t *testing.T) {
 	if m.Phase != PhaseRunning || cmd == nil {
 		t.Fatalf("accept = phase %v, cmd %v; want running with command", m.Phase, cmd)
 	}
-	request := actionRequest(t, cmd)
+	request := testutil.ActionRequest(t, cmd)
 	want := runtime.ActionRequest{Action: runtime.ActionSync, RootDir: "/project", Targets: []model.AgentID{model.AgentClaudeCode, model.AgentCodex}}
 	if !reflect.DeepEqual(request, want) {
 		t.Fatalf("request = %#v, want %#v", request, want)
@@ -93,26 +94,7 @@ func enterConfirmation(t *testing.T, m Model) Model {
 	return m
 }
 
-// actionRequest extracts the emitted ActionRequest from a command, following
-// tea.Batch wrappers the flow attaches alongside the busy spinner tick.
-func actionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
-	t.Helper()
-	if cmd == nil {
-		t.Fatal("nil command")
-	}
-	if request, ok := cmd().(runtime.ActionRequest); ok {
-		return request
-	}
-	if batch, ok := cmd().(tea.BatchMsg); ok {
-		for _, sub := range batch {
-			if request, ok := sub().(runtime.ActionRequest); ok {
-				return request
-			}
-		}
-	}
-	t.Fatalf("command did not emit runtime.ActionRequest")
-	return runtime.ActionRequest{}
-}
+
 
 func update(t *testing.T, m Model, message tea.Msg) Model {
 	t.Helper()
