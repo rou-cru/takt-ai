@@ -11,18 +11,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/agents/claude"
-	"github.com/rou-cru/takt-ai/takt/agents/codex"
-	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
-	"github.com/rou-cru/takt-ai/takt/skills"
+	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
+	skillsutil "github.com/rou-cru/takt-ai/takt/skills/testutil"
 )
 
 func TestRunInstallReadsJSONFileAndWritesResult(t *testing.T) {
 	root := t.TempDir()
 	inputPath := filepath.Join(t.TempDir(), "request.json")
-	payload, err := json.Marshal(testPlanRequest(model.AgentClaudeCode))
+	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentClaudeCode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +72,7 @@ func TestRunWithoutArgumentsLaunchesTUI(t *testing.T) {
 func TestRunUsesStdinAndHomeDirectoryDefaults(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", root)
-	payload, err := json.Marshal(testPlanRequest(model.AgentCodex))
+	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentCodex))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +99,7 @@ func TestRunUsesStdinAndHomeDirectoryDefaults(t *testing.T) {
 
 func TestRunUninstallRemovesInstalledFilesForSelectedTarget(t *testing.T) {
 	root := t.TempDir()
-	payload, err := json.Marshal(testPlanRequest(model.AgentClaudeCode, model.AgentCodex))
+	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentClaudeCode, model.AgentCodex))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,27 +205,14 @@ func TestRunRejectsInvalidCommandAndJSON(t *testing.T) {
 	}
 }
 
-func firstSkill(t *testing.T) (string, []byte) {
-	t.Helper()
-	definitions, err := skills.LoadSkills()
-	if err != nil {
-		t.Fatalf("LoadSkills() error = %v", err)
-	}
-	artifacts := skills.BuildSkillArtifacts(definitions)
-	if len(artifacts) == 0 {
-		t.Fatal("no embedded skills found")
-	}
-	return artifacts[0].Path, artifacts[0].Content
-}
-
 // TestRunLifecycleDeploysAndRemovesSkills covers the JSON setup interface:
 // install deploys embedded skills and records them in the ownership manifest,
 // sync preserves local skill modifications, and uninstalling any agent target
 // also removes the skill files.
 func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 	root := t.TempDir()
-	skillPath, embedded := firstSkill(t)
-	payload, err := json.Marshal(testPlanRequest(model.AgentOpenCode))
+	skillPath, embedded := skillsutil.FirstSkill(t)
+	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentOpenCode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,50 +270,6 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 	}
 }
 
-func testPlanRequest(targets ...model.AgentID) setup.PlanRequest {
-	semantic, err := catalog.Load()
-	if err != nil {
-		panic(err)
-	}
-	content := make([]catalog.NativeSubAgentContent, 0, len(semantic)-1)
-	for _, entry := range semantic {
-		if entry.Name == "default" {
-			continue
-		}
-		native := catalog.NativeSubAgentContent{
-			ID:           entry.Name,
-			Description:  entry.Name + " test specialist",
-			Instructions: "Follow the explicit test instructions.",
-		}
-		if slices.Contains(targets, model.AgentClaudeCode) {
-			native.ClaudeTools = []string{"Read"}
-		}
-		if slices.Contains(targets, model.AgentCodex) {
-			native.CodexSandboxMode = codex.SandboxWorkspaceWrite
-			native.CodexWebSearch = codex.WebSearchDisabled
-		}
-		content = append(content, native)
-	}
-
-	request := setup.PlanRequest{Targets: targets, Content: content}
-	if slices.Contains(targets, model.AgentClaudeCode) {
-		request.Claude = setup.ClaudePlanOptions{
-			GlobalPrompt: "Use the explicit Claude test prompt.",
-			Settings:     claude.SettingsRequest{Settings: map[string]any{"enabled": true}},
-		}
-	}
-	if slices.Contains(targets, model.AgentCodex) {
-		request.Codex = setup.CodexPlanOptions{
-			GlobalPrompt: "Use the explicit Codex test prompt.",
-			SandboxMode:  codex.SandboxWorkspaceWrite,
-			WebSearch:    codex.WebSearchDisabled,
-			MaxThreads:   2,
-			MaxDepth:     1,
-		}
-	}
-	return request
-}
-
 func TestDecodeRequestAcceptsComponents(t *testing.T) {
 	request, err := decodeRequest(strings.NewReader(`{"targets":["opencode"],"components":["theme","context7"]}`))
 	if err != nil {
@@ -348,7 +289,7 @@ func TestDecodeRequestStillRejectsUnknownFields(t *testing.T) {
 
 func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	root := t.TempDir()
-	payload, err := json.Marshal(testPlanRequest(model.AgentOpenCode))
+	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentOpenCode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +312,7 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read opencode.json: %v", err)
 	}
-	if !bytes.Contains(config, []byte("\"theme\": \"takt-kanagawa\"")) {
+	if !bytes.Contains(config, []byte(`"theme": "takt-kanagawa"`)) {
 		t.Fatalf("opencode.json missing theme merge:\n%s", config)
 	}
 	for _, deployed := range []string{

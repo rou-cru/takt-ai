@@ -35,8 +35,8 @@ type Artifact struct {
 // into agent configs by the context7 component.
 const Context7RemoteURL = "https://mcp.context7.com/mcp"
 
-// RenderGlobalPrompt returns the native global prompt artifact for the given
-// target. The path and label are target-specific.
+// RenderGlobalPrompt creates a global prompt artifact with the specified path and content.
+// It requires non-empty content and ensures the artifact content ends with a newline.
 func RenderGlobalPrompt(target, path, content string) (Artifact, error) {
 	if strings.TrimSpace(content) == "" {
 		return Artifact{}, fmt.Errorf("%s global prompt is required", target)
@@ -47,9 +47,7 @@ func RenderGlobalPrompt(target, path, content string) (Artifact, error) {
 	}, nil
 }
 
-// ValidateSubAgentBase validates the fields common to all target
-// sub-agent requests: ID, description, instructions, and model assignment.
-// The caller passes a target-specific model validation function.
+// ValidateSubAgentBase validates the required fields shared by sub-agent definitions and applies target-specific model validation. It returns the first validation error encountered.
 func ValidateSubAgentBase(target, id, description, instructions, model string, validateModel func(string, string) error) error {
 	if err := artifacts.ValidateID(target, id); err != nil {
 		return err

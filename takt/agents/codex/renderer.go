@@ -152,7 +152,7 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	}, nil
 }
 
-// validateSubAgent validates a Codex sub-agent request.
+// validateSubAgent validates the fields and Codex-specific settings in a sub-agent request.
 func validateSubAgent(request SubAgentRequest) error {
 	if err := shared.ValidateSubAgentBase("Codex", request.ID, request.Description, request.Instructions, request.Assignment.Model, func(id, m string) error {
 		_, err := model.ValidateCodexModelAssignment(id, request.Assignment)
