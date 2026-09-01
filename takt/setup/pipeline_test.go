@@ -6,16 +6,14 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/agents/claude"
-	"github.com/rou-cru/takt-ai/takt/agents/codex"
-	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 )
 
 func TestApplyIsIdempotent(t *testing.T) {
 	root := t.TempDir()
-	request := testPlanRequest(model.AgentClaudeCode, model.AgentCodex)
+	request := setuputil.TestPlanRequest(model.AgentClaudeCode, model.AgentCodex)
 
 	plans, err := setup.BuildTargetPlans(request)
 	if err != nil {
@@ -59,7 +57,7 @@ func TestTargetsDoNotRequireUnselectedNativeOptions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			plans, err := setup.BuildTargetPlans(testPlanRequest(tc.target))
+			plans, err := setup.BuildTargetPlans(setuputil.TestPlanRequest(tc.target))
 			if err != nil {
 				t.Fatalf("BuildTargetPlans() error = %v", err)
 			}
@@ -75,48 +73,4 @@ func TestTargetsDoNotRequireUnselectedNativeOptions(t *testing.T) {
 			}
 		})
 	}
-}
-
-func testPlanRequest(targets ...model.AgentID) setup.PlanRequest {
-	semantic, err := catalog.Load()
-	if err != nil {
-		panic(err)
-	}
-	content := make([]catalog.NativeSubAgentContent, 0, len(semantic)-1)
-	for _, entry := range semantic {
-		if entry.Name == "default" {
-			continue
-		}
-		native := catalog.NativeSubAgentContent{
-			ID:           entry.Name,
-			Description:  entry.Name + " test specialist",
-			Instructions: "Follow the explicit test instructions.",
-		}
-		if slices.Contains(targets, model.AgentClaudeCode) {
-			native.ClaudeTools = []string{"Read"}
-		}
-		if slices.Contains(targets, model.AgentCodex) {
-			native.CodexSandboxMode = codex.SandboxWorkspaceWrite
-			native.CodexWebSearch = codex.WebSearchDisabled
-		}
-		content = append(content, native)
-	}
-
-	request := setup.PlanRequest{Targets: targets, Content: content}
-	if slices.Contains(targets, model.AgentClaudeCode) {
-		request.Claude = setup.ClaudePlanOptions{
-			GlobalPrompt: "Use the explicit Claude test prompt.",
-			Settings:     claude.SettingsRequest{Settings: map[string]any{"enabled": true}},
-		}
-	}
-	if slices.Contains(targets, model.AgentCodex) {
-		request.Codex = setup.CodexPlanOptions{
-			GlobalPrompt: "Use the explicit Codex test prompt.",
-			SandboxMode:  codex.SandboxWorkspaceWrite,
-			WebSearch:    codex.WebSearchDisabled,
-			MaxThreads:   2,
-			MaxDepth:     1,
-		}
-	}
-	return request
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
-	"github.com/rou-cru/takt-ai/takt/skills"
+	skillsutil "github.com/rou-cru/takt-ai/takt/skills/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/common"
 )
 
@@ -43,26 +43,13 @@ func TestAdapterLifecycleActions(t *testing.T) {
 	}
 }
 
-func firstSkill(t *testing.T) (string, []byte) {
-	t.Helper()
-	definitions, err := skills.LoadSkills()
-	if err != nil {
-		t.Fatalf("LoadSkills() error = %v", err)
-	}
-	artifacts := skills.BuildSkillArtifacts(definitions)
-	if len(artifacts) == 0 {
-		t.Fatal("no embedded skills found")
-	}
-	return artifacts[0].Path, artifacts[0].Content
-}
-
 func TestAdapterInstallDeploysSkills(t *testing.T) {
 	root := t.TempDir()
 	result, err := (Adapter{}).Execute(ActionRequest{Action: ActionInstall, RootDir: root, Targets: []model.AgentID{model.AgentOpenCode}})
 	if err != nil {
 		t.Fatalf("install error = %v", err)
 	}
-	skillPath, _ := firstSkill(t)
+	skillPath, _ := skillsutil.FirstSkill(t)
 	if !slices.Contains(result.Changed, skillPath) {
 		t.Fatalf("install changed = %v, want %q", result.Changed, skillPath)
 	}
@@ -80,7 +67,7 @@ func TestAdapterInstallDeploysSkills(t *testing.T) {
 }
 
 func TestAdapterSyncPreservesModifiedAndRedeploysDeletedSkills(t *testing.T) {
-	skillPath, embedded := firstSkill(t)
+	skillPath, embedded := skillsutil.FirstSkill(t)
 	adapter := Adapter{}
 	targets := []model.AgentID{model.AgentOpenCode}
 
@@ -141,7 +128,7 @@ func TestAdapterUninstallRemovesSkills(t *testing.T) {
 	if _, err := adapter.Execute(ActionRequest{Action: ActionInstall, RootDir: root, Targets: targets}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
-	skillPath, _ := firstSkill(t)
+	skillPath, _ := skillsutil.FirstSkill(t)
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); err != nil {
 		t.Fatalf("precondition: installed skill file: %v", err)
 	}
@@ -208,7 +195,7 @@ func TestAdapterExecuteCarriesComponents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read opencode.json: %v", err)
 	}
-	if !bytes.Contains(config, []byte("\"theme\": \"takt-kanagawa\"")) {
+	if !bytes.Contains(config, []byte(`"theme": "takt-kanagawa"`)) {
 		t.Fatalf("opencode.json missing component merge:\n%s", config)
 	}
 
