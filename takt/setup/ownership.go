@@ -21,40 +21,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
-	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// OwnershipManifestVersion is the schema version written by this build.
-// LoadOwnershipManifest rejects files carrying any other version so future
-// formats are never misread by old binaries.
+// OwnershipManifestVersion is the schema this build writes; other versions are never misread.
 const OwnershipManifestVersion = 1
 
-// OwnershipManifestFilename is the manifest file name at the deployment root.
-// It records every file Takt manages across all targets, with content hashes,
-// prior-state capture, permissions, backup metadata, and owning targets.
+// OwnershipManifestFilename records every file Takt manages with hashes, takeover state, and owners.
 const OwnershipManifestFilename = ".takt-manifest.json"
 
 // OwnershipTarget names a deployment target that owns managed files.
 type OwnershipTarget string
 
 // Supported ownership targets: the native agent targets plus the skills
-// target, which owns deployed skill files under .agents/skills/.
+// target, which owns deployed skill files under .opencode/skills/.
 const (
-	TargetClaude   OwnershipTarget = "claude"
-	TargetCodex    OwnershipTarget = "codex"
+	// TargetOpenCode is the OpenCode harness target.
 	TargetOpenCode OwnershipTarget = "opencode"
-	TargetSkills   OwnershipTarget = "skills"
+	// TargetSkills owns deployed skill files shared across harnesses.
+	TargetSkills OwnershipTarget = "skills"
 )
 
+// ownershipTargets is the set of identifiers Uninstall and ownership accept.
 var ownershipTargets = map[OwnershipTarget]bool{
-	TargetClaude:   true,
-	TargetCodex:    true,
 	TargetOpenCode: true,
 	TargetSkills:   true,
 }
@@ -62,49 +55,42 @@ var ownershipTargets = map[OwnershipTarget]bool{
 // OwnershipTargetFor converts an agent or ownership target identifier to an ownership target.
 // It returns an error for unsupported identifiers.
 func OwnershipTargetFor(id string) (OwnershipTarget, error) {
-	switch id {
-	case string(model.AgentClaudeCode):
-		return TargetClaude, nil
-	case string(model.AgentCodex):
-		return TargetCodex, nil
-	case string(model.AgentOpenCode):
-		return TargetOpenCode, nil
+	if target := OwnershipTarget(id); ownershipTargets[target] {
+		return target, nil
 	}
-	target := OwnershipTarget(id)
-	if !ownershipTargets[target] {
-		return "", fmt.Errorf("unsupported target %q", id)
-	}
-	return target, nil
+	return "", fmt.Errorf("unsupported target %q", id)
 }
 
-// OwnershipEntry records one managed file. Path is slash-relative to the
-// deployment root. SHA256 is the hex digest of the managed content Takt wrote;
-// PriorSHA256 captures the pre-existing user content before takeover (empty
-// when the file did not pre-exist); BackupPath points at a preserved copy of
-// that prior content when one exists.
+// OwnershipEntry records one managed file: its current digest, takeover
+// history, mode, and owners.
 type OwnershipEntry struct {
-	Path        string            `json:"path"`
-	SHA256      string            `json:"sha256"`
-	Mode        uint32            `json:"mode"`
-	PreExisting bool              `json:"preExisting,omitempty"`
-	PriorSHA256 string            `json:"priorSha256,omitempty"`
-	BackupPath  string            `json:"backupPath,omitempty"`
-	Targets     []OwnershipTarget `json:"targets"`
+	// Path is the slash-relative managed path under the deployment root.
+	Path string `json:"path"`
+	// SHA256 is the hex digest of the managed content Takt wrote.
+	SHA256 string `json:"sha256"`
+	// Mode is the permission bits recorded at deploy time.
+	Mode uint32 `json:"mode"`
+	// PreExisting means the file predates Takt ownership and is never deleted on uninstall.
+	PreExisting bool `json:"preExisting,omitempty"`
+	// PriorSHA256 is the digest of content Takt overwrote; empty when nothing was ever overwritten.
+	PriorSHA256 string `json:"priorSha256,omitempty"`
+	// BackupPath is the root-relative backup holding overwritten content for restore.
+	BackupPath string `json:"backupPath,omitempty"`
+	// Targets are the owning targets in sorted order.
+	Targets []OwnershipTarget `json:"targets"`
 }
 
-// OwnershipManifest is the cross-target superset of the per-target manifests:
-// the single source of truth for which files Takt owns beneath a deployment
-// root. Later lifecycle phases consume it to drive sync and uninstall.
+// OwnershipManifest is the single source of truth for which files Takt owns beneath a deployment root.
+// Sync and uninstall consume it to decide what to preserve, restore, or remove.
 type OwnershipManifest struct {
-	Version int                       `json:"version"`
+	// Version is the schema version; only OwnershipManifestVersion loads.
+	Version int `json:"version"`
+	// Entries maps slash-relative paths to their ownership records.
 	Entries map[string]OwnershipEntry `json:"entries"`
 }
 
-// NewOwnershipEntry creates a validated ownership entry and computes the SHA-256
-// hash of its managed content. Targets must be supported and unique; they are
-// stored in sorted order. Prior content metadata is required for pre-existing
-// files and rejected otherwise. It returns an error for invalid paths, empty
-// content, invalid modes, prior hashes, or targets.
+// NewOwnershipEntry creates a validated ownership entry and digests its managed content.
+// Targets must be supported and unique; pre-existing files must carry their prior hash.
 func NewOwnershipEntry(managedPath string, content []byte, mode os.FileMode, preExisting bool, priorSHA256, backupPath string, targets ...OwnershipTarget) (OwnershipEntry, error) {
 	clean, err := artifacts.NormalizeRelPath(managedPath)
 	if err != nil {
@@ -116,38 +102,54 @@ func NewOwnershipEntry(managedPath string, content []byte, mode os.FileMode, pre
 	if mode == 0 {
 		return OwnershipEntry{}, fmt.Errorf("ownership entry %q requires a non-zero file mode", clean)
 	}
-	digest := sha256.Sum256(content)
 	entry := OwnershipEntry{
 		Path:        clean,
-		SHA256:      hex.EncodeToString(digest[:]),
+		SHA256:      hashOf(content),
 		Mode:        uint32(mode.Perm()),
 		PreExisting: preExisting,
 		BackupPath:  backupPath,
 	}
-	if preExisting {
-		if prior, err := hex.DecodeString(priorSHA256); err != nil || len(prior) != sha256.Size {
-			return OwnershipEntry{}, fmt.Errorf("ownership entry %q pre-existing requires a valid prior SHA-256", clean)
-		}
-		entry.PriorSHA256 = priorSHA256
-	} else if priorSHA256 != "" {
-		return OwnershipEntry{}, fmt.Errorf("ownership entry %q has prior SHA-256 but is not marked pre-existing", clean)
+	if err := setPriorHash(&entry, clean, preExisting, priorSHA256); err != nil {
+		return OwnershipEntry{}, err
 	}
+	if err := setOwnershipTargets(&entry, clean, targets); err != nil {
+		return OwnershipEntry{}, err
+	}
+	return entry, nil
+}
+
+func setPriorHash(entry *OwnershipEntry, path string, preExisting bool, priorSHA256 string) error {
+	if priorSHA256 == "" {
+		if preExisting {
+			return fmt.Errorf("ownership entry %q pre-existing requires a valid prior SHA-256", path)
+		}
+		return nil
+	}
+	prior, err := hex.DecodeString(priorSHA256)
+	if err != nil || len(prior) != sha256.Size {
+		return fmt.Errorf("ownership entry %q requires a valid prior SHA-256", path)
+	}
+	entry.PriorSHA256 = priorSHA256
+	return nil
+}
+
+func setOwnershipTargets(entry *OwnershipEntry, path string, targets []OwnershipTarget) error {
 	seen := make(map[OwnershipTarget]bool, len(targets))
 	for _, target := range targets {
 		if !ownershipTargets[target] {
-			return OwnershipEntry{}, fmt.Errorf("ownership entry %q has unknown target %q", clean, target)
+			return fmt.Errorf("ownership entry %q has unknown target %q", path, target)
 		}
 		if seen[target] {
-			return OwnershipEntry{}, fmt.Errorf("ownership entry %q duplicates target %q", clean, target)
+			return fmt.Errorf("ownership entry %q duplicates target %q", path, target)
 		}
 		seen[target] = true
 		entry.Targets = append(entry.Targets, target)
 	}
 	if len(entry.Targets) == 0 {
-		return OwnershipEntry{}, fmt.Errorf("ownership entry %q requires at least one target", clean)
+		return fmt.Errorf("ownership entry %q requires at least one target", path)
 	}
-	sort.Slice(entry.Targets, func(i, j int) bool { return entry.Targets[i] < entry.Targets[j] })
-	return entry, nil
+	slices.Sort(entry.Targets)
+	return nil
 }
 
 // NewOwnershipManifest returns an empty manifest ready for Add calls.
@@ -158,10 +160,8 @@ func NewOwnershipManifest() *OwnershipManifest {
 	}
 }
 
-// Add inserts entries, replacing any entry already recorded for the same
-// path. Entries must come from NewOwnershipEntry, which owns validation; Add
-// only rejects a mismatched manifest version so a manifest loaded by a future
-// reader cannot be mutated with stale rules.
+// Add inserts entries, replacing any entry already recorded for the same path.
+// Entries must come from NewOwnershipEntry; only a mismatched manifest version is rejected.
 func (m *OwnershipManifest) Add(entries ...OwnershipEntry) error {
 	if m.Version != OwnershipManifestVersion {
 		return fmt.Errorf("cannot add entries to ownership manifest version %d", m.Version)
@@ -172,39 +172,13 @@ func (m *OwnershipManifest) Add(entries ...OwnershipEntry) error {
 	return nil
 }
 
-// Save writes the manifest to OwnershipManifestFilename beneath rootDir,
-// creating parent directories as needed. Serialization is deterministic, so
-// saving identical state twice produces identical bytes (idempotent).
+// Save writes the manifest beneath rootDir with deterministic bytes, so identical state saves identically.
 func (m *OwnershipManifest) Save(rootDir string) error {
-	if strings.TrimSpace(rootDir) == "" {
-		return fmt.Errorf("deployment root is required")
-	}
-	content, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal ownership manifest: %w", err)
-	}
-	content = append(content, '\n')
-	destination := filepath.Join(rootDir, OwnershipManifestFilename)
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return fmt.Errorf("prepare ownership manifest directory: %w", err)
-	}
-	staged, err := stageFile(filepath.Dir(destination), content, 0o644)
-	if err != nil {
-		return fmt.Errorf("write ownership manifest: %w", err)
-	}
-	if err := renameFile(staged, destination); err != nil {
-		_ = os.Remove(staged)
-		return fmt.Errorf("write ownership manifest: %w", err)
-	}
-	if err := syncDir(filepath.Dir(destination)); err != nil {
-		return fmt.Errorf("write ownership manifest: %w", err)
-	}
-	return nil
+	return saveRecord(rootDir, OwnershipManifestFilename, "ownership manifest", m)
 }
 
-// LoadOwnershipManifest reads and validates the ownership manifest from rootDir.
-// It returns an error if the file is missing, malformed, or uses an unsupported
-// manifest version.
+// LoadOwnershipManifest reads and validates the manifest from rootDir.
+// A missing file, malformed JSON, or foreign version is an error callers handle distinctly.
 func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error) {
 	raw, err := os.ReadFile(filepath.Join(rootDir, OwnershipManifestFilename))
 	if err != nil {
@@ -232,15 +206,8 @@ func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error) {
 	return &manifest, nil
 }
 
-// SafeJoin joins root with a slash-relative path and returns an absolute,
-// symlink-resolved path guaranteed to remain inside root. It is the single
-// point callers (notably Uninstall and Sync) use to turn a manifest key into
-// an on-disk path, so a crafted key such as "../victim.txt" can never address
-// a file outside the deployment root.
-//
-// SafeJoin rejects empty or absolute rel, collapses "." segments, rejects any
-// ".." traversal, and walks every existing parent directory to ensure no
-// symlink ancestor escapes root. It returns an error if any check fails.
+// SafeJoin joins root with a slash-relative path, guaranteed to stay inside root.
+// It rejects escapes and symlink-ancestor exits, so crafted manifest keys can never address outside files.
 func SafeJoin(root, rel string) (string, error) {
 	if strings.TrimSpace(rel) == "" {
 		return "", fmt.Errorf("safe join: empty relative path")
@@ -294,30 +261,4 @@ func isWithin(path, root string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
-}
-
-// IsManaged reports whether the given slash-relative path is owned by Takt.
-func (m *OwnershipManifest) IsManaged(managedPath string) bool {
-	_, exists := m.Entries[path.Clean(managedPath)]
-	return exists
-}
-
-// EntriesForTarget returns the entries owned by the given target, sorted by
-// path. Unknown targets yield an empty slice.
-func (m *OwnershipManifest) EntriesForTarget(target OwnershipTarget) []OwnershipEntry {
-	paths := make([]string, 0)
-	for entryPath, entry := range m.Entries {
-		for _, owner := range entry.Targets {
-			if owner == target {
-				paths = append(paths, entryPath)
-				break
-			}
-		}
-	}
-	sort.Strings(paths)
-	entries := make([]OwnershipEntry, 0, len(paths))
-	for _, entryPath := range paths {
-		entries = append(entries, m.Entries[entryPath])
-	}
-	return entries
 }

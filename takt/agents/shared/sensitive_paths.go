@@ -15,9 +15,7 @@
 
 package shared
 
-// SensitivePathGlobs are the relative glob fragments every target adapter
-// must deny read/write access to. Each adapter prefixes "**/" and wraps the
-// fragment in its own rule syntax.
+// SensitivePathGlobs lists secret-bearing paths every target must block from agent reads and writes.
 var SensitivePathGlobs = []string{
 	".env",
 	".env.*",

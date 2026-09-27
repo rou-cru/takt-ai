@@ -4,13 +4,11 @@ package testutil
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 )
 
-// ActionRequest executes a Bubble Tea command and extracts its runtime action request.
-// It also searches commands wrapped in a tea.BatchMsg and fails the test when no
-// runtime.ActionRequest is emitted.
+// ActionRequest extracts a runtime request from a command so tests share one unwrapping rule.
 func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest {
 	t.Helper()
 	if cmd == nil {

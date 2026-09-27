@@ -15,31 +15,10 @@
 
 package model
 
-import "fmt"
-
-// ModelAssignment is the canonical model and effort assigned to a sub-agent.
+// ModelAssignment pairs one model with its effort so each sub-agent has a single clear runtime choice.
 type ModelAssignment struct {
-	Model  string // target-specific model identifier
+	// Model holds the target-specific model id, explicit so typos fail fast instead of silently defaulting.
+	Model string // target-specific model identifier
+	// Effort holds the effort level; empty means target default, so callers can omit what they do not tune.
 	Effort string // "" = target default; "low" | "medium" | "high"
-}
-
-// ResolveSubAgentAssignment applies override and preset precedence to a sub-agent.
-func ResolveSubAgentAssignment(agent AgentID, subAgent, defaultSubAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error) {
-	assignment, ok := overrides[subAgent]
-	if !ok {
-		assignment, ok = preset[subAgent]
-	}
-	if !ok {
-		assignment, ok = overrides[defaultSubAgent]
-	}
-	if !ok {
-		assignment, ok = preset[defaultSubAgent]
-	}
-	if !ok {
-		return ModelAssignment{}, fmt.Errorf("%s sub-agent %q has no model assignment", agent, subAgent)
-	}
-	if assignment.Model == "" {
-		return ModelAssignment{}, fmt.Errorf("%s sub-agent %q has no model assignment", agent, subAgent)
-	}
-	return assignment, nil
 }

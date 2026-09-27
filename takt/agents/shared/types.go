@@ -15,51 +15,11 @@
 
 package shared
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
-)
-
-// Artifact is a filesystem-free agent projection. Path is relative to the
-// user's home directory and Content is ready for a later deployer to write.
-// All three target adapters (Claude, Codex, OpenCode) share this identical
-// definition.
+// Artifact is a file ready to deploy, with its home-relative path and content.
 type Artifact struct {
 	Path    string
 	Content []byte
 }
 
-// Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
-// into agent configs by the context7 component.
+// Context7RemoteURL is the shared docs-server endpoint so every target reaches the same library docs.
 const Context7RemoteURL = "https://mcp.context7.com/mcp"
-
-// RenderGlobalPrompt creates a global prompt artifact with the specified path and content.
-// It requires non-empty content and ensures the artifact content ends with a newline.
-func RenderGlobalPrompt(target, path, content string) (Artifact, error) {
-	if strings.TrimSpace(content) == "" {
-		return Artifact{}, fmt.Errorf("%s global prompt is required", target)
-	}
-	return Artifact{
-		Path:    path,
-		Content: []byte(artifacts.EnsureTrailingNewline(content)),
-	}, nil
-}
-
-// ValidateSubAgentBase validates the required fields shared by sub-agent definitions and applies target-specific model validation. It returns the first validation error encountered.
-func ValidateSubAgentBase(target, id, description, instructions, model string, validateModel func(string, string) error) error {
-	if err := artifacts.ValidateID(target, id); err != nil {
-		return err
-	}
-	if strings.TrimSpace(description) == "" {
-		return fmt.Errorf("%s sub-agent %q description is required", target, id)
-	}
-	if strings.TrimSpace(instructions) == "" {
-		return fmt.Errorf("%s sub-agent %q instructions are required", target, id)
-	}
-	if err := validateModel(id, model); err != nil {
-		return err
-	}
-	return nil
-}

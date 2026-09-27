@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+  persona: PERSONA.md
+  soul: SOUL.md
+description: Define coherent, accessible, feasible UI/UX and developer experiences.
+id: takt-product-designer
+instances:
+- product-designer
+vfs_capabilities:
+  product-designer: []
+role: direct_interlocutor
+skills:
+- takt-memory-contract
+- takt-memory-product-designer
+- takt-interlocutor-handoff

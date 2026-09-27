@@ -1,0 +1,13 @@
+context:
+  operations: OPERATIONS.md
+description: Implement requested changes and demonstrate them against available contracts.
+id: takt-dev
+instances:
+- dev
+vfs_capabilities:
+  dev: [bind, write, read, delete]
+role: execution
+skills:
+- takt-memory-contract
+- takt-memory-dev
+- takt-vfs-mutation

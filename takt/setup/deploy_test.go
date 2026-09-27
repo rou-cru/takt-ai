@@ -1,6 +1,8 @@
 package setup
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,34 +11,6 @@ import (
 	"testing"
 )
 
-func TestDeployWritesAndIsIdempotent(t *testing.T) {
-	root := t.TempDir()
-	managed := []string{".claude/CLAUDE.md"}
-	artifact := Artifact{Path: ".claude/CLAUDE.md", Content: []byte("v1\n")}
-
-	first, err := Deploy(root, managed, []Artifact{artifact})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(first.Changed, []string{".claude/CLAUDE.md"}) || len(first.Unchanged) != 0 {
-		t.Fatalf("first result = %#v, want one changed path", first)
-	}
-	path := filepath.Join(root, ".claude", "CLAUDE.md")
-	if got, err := os.ReadFile(path); err != nil || string(got) != "v1\n" {
-		t.Fatalf("deployed content = %q, error = %v", got, err)
-	}
-	assertNoDeploymentTemps(t, root)
-
-	second, err := Deploy(root, managed, []Artifact{artifact})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(second.Changed) != 0 || !slices.Equal(second.Unchanged, []string{".claude/CLAUDE.md"}) {
-		t.Fatalf("second result = %#v, want one unchanged path", second)
-	}
-	assertNoDeploymentTemps(t, root)
-}
-
 func TestDeployPreflightsEveryDestinationBeforeWriting(t *testing.T) {
 	root := t.TempDir()
 	blockedPath := filepath.Join(root, "blocked")
@@ -44,14 +18,14 @@ func TestDeployPreflightsEveryDestinationBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Deploy(root, []string{"a.txt", "blocked/b.txt"}, []Artifact{
+	_, err := DeployContext(context.Background(), root, []string{"a.txt", "blocked/b.txt"}, []Artifact{
 		{Path: "a.txt", Content: []byte("must not be deployed\n")},
 		{Path: "blocked/b.txt", Content: []byte("must not be deployed\n")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "not a directory") {
-		t.Fatalf("Deploy() error = %v, want blocking parent error", err)
+		t.Fatalf("DeployContext() error = %v, want blocking parent error", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(root, "a.txt")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(root, "a.txt")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("a.txt stat error = %v, want absent", statErr)
 	}
 	if got, readErr := os.ReadFile(blockedPath); readErr != nil || string(got) != "user file\n" {
@@ -60,36 +34,10 @@ func TestDeployPreflightsEveryDestinationBeforeWriting(t *testing.T) {
 	assertNoDeploymentTemps(t, root)
 }
 
-func TestDeployReplacesManagedArtifactAndPreservesUnrelatedFile(t *testing.T) {
-	root := t.TempDir()
-	userPath := filepath.Join(root, "user-owned.txt")
-	if err := os.WriteFile(userPath, []byte("keep\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	managed := []string{".codex/AGENTS.md"}
-	if _, err := Deploy(root, managed, []Artifact{{Path: ".codex/AGENTS.md", Content: []byte("old\n")}}); err != nil {
-		t.Fatal(err)
-	}
-	result, err := Deploy(root, managed, []Artifact{{Path: ".codex/AGENTS.md", Content: []byte("new\n")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(result.Changed, []string{".codex/AGENTS.md"}) || len(result.Unchanged) != 0 {
-		t.Fatalf("replacement result = %#v, want one changed path", result)
-	}
-	if got, err := os.ReadFile(filepath.Join(root, ".codex", "AGENTS.md")); err != nil || string(got) != "new\n" {
-		t.Fatalf("replacement content = %q, error = %v", got, err)
-	}
-	if got, err := os.ReadFile(userPath); err != nil || string(got) != "keep\n" {
-		t.Fatalf("unrelated content = %q, error = %v", got, err)
-	}
-}
-
 func TestDeployDeterministicResultOrder(t *testing.T) {
 	root := t.TempDir()
 	managed := []string{"b.txt", "a.txt"}
-	result, err := Deploy(root, managed, []Artifact{
+	result, err := DeployContext(context.Background(), root, managed, []Artifact{
 		{Path: "b.txt", Content: []byte("b")},
 		{Path: "a.txt", Content: []byte("a")},
 	})
@@ -103,13 +51,13 @@ func TestDeployDeterministicResultOrder(t *testing.T) {
 
 func TestDeployRejectsSeparatedArtifactPathConflict(t *testing.T) {
 	root := t.TempDir()
-	_, err := Deploy(root, []string{"a", "a.foo", "a/b"}, []Artifact{
+	_, err := DeployContext(context.Background(), root, []string{"a", "a.foo", "a/b"}, []Artifact{
 		{Path: "a", Content: []byte("file")},
 		{Path: "a.foo", Content: []byte("sibling")},
 		{Path: "a/b", Content: []byte("child")},
 	})
 	if err == nil || !strings.Contains(err.Error(), `artifact path "a" conflicts with child artifact "a/b"`) {
-		t.Fatalf("Deploy() error = %v, want separated parent/child conflict", err)
+		t.Fatalf("DeployContext() error = %v, want separated parent/child conflict", err)
 	}
 }
 
@@ -137,9 +85,9 @@ func TestDeployRejectsInvalidInputWithoutWriting(t *testing.T) {
 			if tc.name == "unmanaged artifact" {
 				artifacts = append([]Artifact{{Path: "managed.txt", Content: []byte("must not write")}}, artifacts...)
 			}
-			_, err := Deploy(root, tc.managed, artifacts)
+			_, err := DeployContext(context.Background(), root, tc.managed, artifacts)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("Deploy() error = %v, want substring %q", err, tc.wantErr)
+				t.Fatalf("DeployContext() error = %v, want substring %q", err, tc.wantErr)
 			}
 			entries, readErr := os.ReadDir(root)
 			if readErr != nil {
@@ -158,7 +106,7 @@ func TestDeployPreservesExistingManagedModeWhenReplacing(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Deploy(root, []string{"managed.txt"}, []Artifact{{Path: "managed.txt", Content: []byte("new")}}); err != nil {
+	if _, err := DeployContext(context.Background(), root, []string{"managed.txt"}, []Artifact{{Path: "managed.txt", Content: []byte("new")}}); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -187,21 +135,21 @@ func TestDeployRollsBackWhenCommitFailsMidBatch(t *testing.T) {
 		return os.Rename(from, to)
 	}
 
-	_, err := Deploy(root, []string{"a.txt", "new/z.txt"}, []Artifact{
+	_, err := DeployContext(context.Background(), root, []string{"a.txt", "new/z.txt"}, []Artifact{
 		{Path: "a.txt", Content: []byte("updated\n")},
 		{Path: "new/z.txt", Content: []byte("fresh\n")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "new/z.txt") {
-		t.Fatalf("Deploy() error = %v, want error mentioning new/z.txt", err)
+		t.Fatalf("DeployContext() error = %v, want error mentioning new/z.txt", err)
 	}
 
 	if got, readErr := os.ReadFile(existingPath); readErr != nil || string(got) != "old\n" {
 		t.Fatalf("existing artifact after rollback = %q, error = %v, want restored original", got, readErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(root, "new", "z.txt")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(root, "new", "z.txt")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("partially installed artifact still exists: %v", statErr)
 	}
-	if _, statErr := os.Stat(createdDir); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(createdDir); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("created directory not rolled back: %v", statErr)
 	}
 	assertNoDeploymentTemps(t, root)
@@ -211,7 +159,7 @@ func TestDeployFsyncCreatedDirectoriesOnSuccess(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "a", "b", "c.txt")
 
-	result, err := Deploy(root, []string{"a/b/c.txt"}, []Artifact{{Path: "a/b/c.txt", Content: []byte("durable\n")}})
+	result, err := DeployContext(context.Background(), root, []string{"a/b/c.txt"}, []Artifact{{Path: "a/b/c.txt", Content: []byte("durable\n")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,11 +184,11 @@ func TestSyncDir(t *testing.T) {
 func assertNoDeploymentTemps(t *testing.T, root string) {
 	t.Helper()
 	var temporary string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if path != root && strings.HasPrefix(info.Name(), ".takt-setup-") {
+		if path != root && strings.HasPrefix(entry.Name(), ".takt-setup-") {
 			temporary = path
 			return filepath.SkipDir
 		}

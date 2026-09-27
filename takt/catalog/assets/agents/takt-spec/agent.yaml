@@ -1,0 +1,13 @@
+context:
+  operations: OPERATIONS.md
+description: Translate intent into observable behavior and acceptance scenarios.
+id: takt-spec
+instances:
+- spec
+vfs_capabilities:
+  spec: []
+role: planning_author
+skills:
+- takt-memory-contract
+- takt-memory-spec
+- takt-interlocutor-handoff

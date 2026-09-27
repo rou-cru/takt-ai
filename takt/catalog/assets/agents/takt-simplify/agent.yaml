@@ -1,0 +1,14 @@
+context:
+  operations: OPERATIONS.md
+description: Implement cleanup that removes duplication, dead code, and structural
+  complexity without changing behavior.
+id: takt-simplify
+instances:
+- simplify
+vfs_capabilities:
+  simplify: [bind, write, read, delete]
+role: execution
+skills:
+- takt-memory-contract
+- takt-memory-simplify
+- takt-vfs-mutation

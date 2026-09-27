@@ -27,18 +27,32 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/codegraph"
+	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
+)
+
+const (
+	// doctorCheckCapacity reserves the expected number of health checks.
+	doctorCheckCapacity = 3
+	// doctorHTTPTimeout bounds each remote health probe.
+	doctorHTTPTimeout = 3 * time.Second
+	// doctorRuleWidth is the separator width used by the human-readable report.
+	doctorRuleWidth = 39
 )
 
 // CheckStatus is the outcome of a single doctor check.
 type CheckStatus string
 
-// Check outcomes.
+// Check outcomes: pass, warn (works but needs attention), fail (broken or missing).
 const (
 	CheckStatusPass CheckStatus = "pass"
 	CheckStatusWarn CheckStatus = "warn"
@@ -61,7 +75,7 @@ type DoctorReport struct {
 // doctorTools are the CLI executables the Takt workflow depends on. The list
 // is hardcoded because these are plain executable names; no catalog mapping
 // exists for them.
-var doctorTools = []string{"takt-ai", "claude", "codex", "opencode", "engram"}
+var doctorTools = []string{"takt-ai", "opencode", "engram"}
 
 // Injected seams, swapped in tests with t.Cleanup restore.
 var (
@@ -72,6 +86,19 @@ var (
 	diskFree    = statfsFreeBytes
 )
 
+// controlPlaneHealth reports control-plane/bus health. Injectable seam so
+// doctor stays decoupled from session/obs (importing session here would risk
+// an import cycle). Default is warn — never fail when there is no live
+// session to inspect.
+var controlPlaneHealth = func() CheckResult {
+	return CheckResult{
+		Name:   "control-plane:health",
+		Status: CheckStatusWarn,
+		Detail: "no live session to inspect",
+		Remedy: "Run within a live session for a full control-plane check",
+	}
+}
+
 // Run executes every doctor check and renders the report to stdout. Failed
 // checks do not affect the returned error: only internal failures (home
 // resolution, write errors) are returned as errors.
@@ -81,7 +108,13 @@ func Run(stdout io.Writer) error {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	report := DoctorReport{Checks: toolChecks()}
-	report.Checks = append(report.Checks, deploymentCheck(home), engramCheck(), diskCheck(home))
+	report.Checks = append(report.Checks, controlPlaneHealth())
+	report.Checks = append(report.Checks, deploymentChecks(home)...)
+	report.Checks = append(report.Checks, engramChecks(home)...)
+	report.Checks = append(report.Checks, engramNativePluginCheck(home))
+	report.Checks = append(report.Checks, codegraphChecks(home)...)
+	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeSandboxAdapterCheck(home))
+	report.Checks = append(report.Checks, diskCheck(home))
 	return render(stdout, report)
 }
 
@@ -139,87 +172,275 @@ func scanToolCopies(tool string) []string {
 	return copies
 }
 
-// deploymentCheck inspects the ownership manifest beneath the home directory
-// and whether every managed file is still deployed.
-func deploymentCheck(home string) CheckResult {
+// deploymentChecks returns the global manifest check plus one
+// "deployment:<target>" check per seen target, counting missing
+// files per target instead of only globally.
+func deploymentChecks(home string) []CheckResult {
 	const name = "deployment:manifest"
 	manifest, err := setup.LoadOwnershipManifest(home)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return CheckResult{
+			return []CheckResult{{
 				Name:   name,
 				Status: CheckStatusWarn,
 				Detail: fmt.Sprintf("no ownership manifest at %s (expected for first-time use)", home),
 				Remedy: "Run 'takt-ai setup install' to deploy agent configs",
-			}
+			}}
 		}
-		return CheckResult{
+		return []CheckResult{{
 			Name:   name,
 			Status: CheckStatusFail,
 			Detail: err.Error(),
 			Remedy: "Run 'takt-ai setup sync' or reinstall to repair",
-		}
+		}}
 	}
-	missing := 0
-	seenTargets := make(map[setup.OwnershipTarget]bool)
+	total, byTarget := inspectDeployment(home, manifest)
+	targetNames := make([]string, 0, len(byTarget))
+	for target := range byTarget {
+		targetNames = append(targetNames, string(target))
+	}
+	slices.Sort(targetNames)
+	global := deploymentResult(name, "managed", total)
+	if total.missing == 0 && len(targetNames) > 0 {
+		global.Detail += fmt.Sprintf(" (%s)", strings.Join(targetNames, ", "))
+	}
+	checks := []CheckResult{global}
+	for _, target := range targetNames {
+		checks = append(checks, deploymentResult("deployment:"+target, target, byTarget[setup.OwnershipTarget(target)]))
+	}
+	return checks
+}
+
+type deploymentTotals struct {
+	total, missing int
+}
+
+// inspectDeployment preserves the existing classification: any stat error is missing.
+func inspectDeployment(home string, manifest *setup.OwnershipManifest) (deploymentTotals, map[setup.OwnershipTarget]deploymentTotals) {
+	total := deploymentTotals{}
+	byTarget := make(map[setup.OwnershipTarget]deploymentTotals)
 	for entryPath, entry := range manifest.Entries {
-		if _, err := os.Stat(filepath.Join(home, filepath.FromSlash(entryPath))); err != nil {
-			missing++
-		}
+		_, err := os.Stat(filepath.Join(home, filepath.FromSlash(entryPath)))
+		total.add(err != nil)
 		for _, target := range entry.Targets {
-			seenTargets[target] = true
+			counts := byTarget[target]
+			counts.add(err != nil)
+			byTarget[target] = counts
 		}
 	}
-	total := len(manifest.Entries)
-	if missing > 0 {
+	return total, byTarget
+}
+
+func (t *deploymentTotals) add(missing bool) {
+	t.total++
+	if missing {
+		t.missing++
+	}
+}
+
+func deploymentResult(name, label string, totals deploymentTotals) CheckResult {
+	if totals.missing > 0 {
 		return CheckResult{
-			Name:   name,
-			Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("%d of %d managed files missing", missing, total),
+			Name: name, Status: CheckStatusWarn,
+			Detail: fmt.Sprintf("%d of %d %s files missing", totals.missing, totals.total, label),
 			Remedy: "Run 'takt-ai setup sync' to restore missing files",
 		}
 	}
-	detail := fmt.Sprintf("%d managed files deployed", total)
-	if len(seenTargets) > 0 {
-		names := make([]string, 0, len(seenTargets))
-		for target := range seenTargets {
-			names = append(names, string(target))
-		}
-		sort.Strings(names)
-		detail += fmt.Sprintf(" (%s)", strings.Join(names, ", "))
-	}
-	return CheckResult{Name: name, Status: CheckStatusPass, Detail: detail}
+	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("%d %s files deployed", totals.total, label)}
 }
 
-// engramCheck verifies the engram health endpoint answers.
-func engramCheck() CheckResult {
+// codegraphVersionFn and resolveCodegraph run the codegraph checks; vars for test seams.
+var (
+	codegraphVersionFn = codegraph.VerifyVersion
+	resolveCodegraph   = codegraph.Resolve
+)
+
+// binaryChecks probes one managed binary: whether a compatible copy resolved
+// (on PATH or under Takt's managed path) and, when it did, its version. ok is
+// false when the binary is missing, so the caller can skip its remaining
+// checks instead of producing noise.
+func binaryChecks(prefix, expectedVersion, managedPath, missingRemedy, binary string, found bool, verifyVersion func(string) (string, error)) ([]CheckResult, bool) {
+	var binaryErr error
+	if !found {
+		binaryErr = fmt.Errorf("no %s %s or newer on PATH or at %s", prefix, expectedVersion, managedPath)
+	}
+	checks := make([]CheckResult, 0, doctorCheckCapacity)
+	checks = append(checks, CheckResult{
+		Name:   prefix + ":binary",
+		Status: checkStatusForError(binaryErr),
+		Detail: checkDetailOrRemedy(binaryErr, prefix+" found at "+binary, missingRemedy),
+	})
+	if binaryErr != nil {
+		return checks, false
+	}
+	version, versionErr := verifyVersion(binary)
+	return append(checks, CheckResult{
+		Name:   prefix + ":version",
+		Status: checkStatusForError(versionErr),
+		Detail: checkDetailOrRemedy(versionErr, prefix+" version: "+version, "Reinstall or update the "+prefix+" binary"),
+	}), true
+}
+
+// codegraphChecks verifies a compatible codegraph binary (on PATH or Takt's
+// managed copy) exists and answers its version, the two things its MCP entry needs.
+func codegraphChecks(home string) []CheckResult {
+	binary, found := resolveCodegraph(home)
+	checks, _ := binaryChecks("codegraph", codegraph.CodegraphVersion, codegraph.ManagedBinaryPath(home),
+		"Run 'takt-ai setup sync' to install codegraph so agents can explore the codebase",
+		binary, found, codegraphVersionFn)
+	return checks
+}
+
+// engramVersionFn and resolveEngram run the engram checks; vars for test seams.
+var (
+	engramVersionFn = engram.VerifyVersion
+	resolveEngram   = engram.Resolve
+)
+
+// engramChecks verifies the engram installation (a compatible binary on PATH
+// or Takt's managed copy, its version output) and the MCP health endpoint answers.
+func engramChecks(home string) []CheckResult {
+	binary, found := resolveEngram(home)
+	checks, ok := binaryChecks("engram", engram.EngramVersion, engram.ManagedBinaryPath(home),
+		"Run 'takt-ai setup sync' to install engram so agents can reach the memory server",
+		binary, found, engramVersionFn)
+	if !ok {
+		// Without the binary the remaining engram checks only produce noise.
+		return checks
+	}
+
 	const name = "engram:reachable"
-	base := os.Getenv("ENGRAM_BASE_URL")
+	base := os.Getenv(model.EnvEngramURL)
 	if base == "" {
-		base = "http://localhost:7437"
+		base = model.DefaultEngramURL
 	}
 	url := strings.TrimRight(base, "/") + "/health"
-	status, err := httpGet(url, 3*time.Second)
+	status, err := httpGet(url, doctorHTTPTimeout)
 	if err != nil {
-		return CheckResult{
+		checks = append(checks, CheckResult{
 			Name:   name,
 			Status: CheckStatusFail,
 			Detail: fmt.Sprintf("engram health endpoint unreachable at %s: %s", url, err),
 			Remedy: "Start engram or check that it is configured as an MCP server",
-		}
+		})
+		return checks
 	}
 	if status < 200 || status >= 300 {
-		return CheckResult{
+		checks = append(checks, CheckResult{
 			Name:   name,
 			Status: CheckStatusWarn,
 			Detail: fmt.Sprintf("engram health endpoint %s returned HTTP %d", url, status),
-		}
+		})
+		return checks
 	}
-	return CheckResult{
+	checks = append(checks, CheckResult{
 		Name:   name,
 		Status: CheckStatusPass,
 		Detail: fmt.Sprintf("engram reachable at %s", url),
+	})
+	return checks
+}
+
+// engramNativePluginCheck warns when Engram's own plugin is installed, since it injects a protocol that competes with Takt's memory contract.
+func engramNativePluginCheck(home string) CheckResult {
+	const name = "engram:native-plugin"
+	found := engram.NativePluginFootprints(home)
+	if len(found) == 0 {
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no Engram plugin competes with Takt's memory contract"}
 	}
+	return CheckResult{
+		Name:   name,
+		Status: CheckStatusWarn,
+		Detail: "Engram's own plugin injects a second memory protocol: " + strings.Join(found, ", "),
+		Remedy: "Remove it to keep Takt's memory contract the only source: delete " +
+			"~/" + model.OpenCodeConfigDir + "/" + model.OpenCodePluginsDir + "/" + model.EngramPluginFile,
+	}
+}
+
+func checkStatusForError(err error) CheckStatus {
+	if err != nil {
+		return CheckStatusFail
+	}
+	return CheckStatusPass
+}
+
+// opencodeVersionCheck reports whether the installed OpenCode is new enough to
+// load Takt's plugins. Takt targets the V2 plugin API, and a V1 install skips
+// every Takt plugin without an error of its own.
+func opencodeVersionCheck() CheckResult {
+	const name = "opencode:version"
+	handshake, err := openCodeHandshake()
+	if err != nil {
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusWarn,
+			Detail: "OpenCode V2 handshake failed: " + opencodeapi.RedactError(err).Error(),
+			Remedy: "Check that 'opencode api GET /api/info' and the model API work",
+		}
+	}
+	if handshake.Major < opencodeapi.MinimumMajor {
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: fmt.Sprintf("OpenCode %s is installed; Takt needs V2 or newer", handshake.Version),
+			Remedy: "Upgrade OpenCode, then run 'takt-ai setup sync'",
+		}
+	}
+	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("OpenCode %s with functional V2 API", handshake.Version)}
+}
+
+// openCodeHandshake is the V2 capability lookup seam; tests replace it.
+var openCodeHandshake = func() (opencodeapi.Handshake, error) {
+	return opencode.Handshake(context.Background())
+}
+
+// opencodeVFSPluginCheck reports whether the governed VFS plugin is deployed
+// with the native write tools denied, so OpenCode mutations go through the
+// durable core instead of the workspace.
+func opencodeVFSPluginCheck(home string) CheckResult {
+	return opencodePluginCheck(home, "opencode:vfs-plugin", model.VFSPluginFile, "VFS plugin", "the governed VFS plugin")
+}
+
+// opencodeSandboxAdapterCheck reports whether the sandbox adapter the VFS
+// plugin loads to wrap shell commands is deployed. Without it every shell
+// command is denied (PR-HAR-15 fail-closed), which is safe but leaves shell
+// unusable, so a missing adapter is worth surfacing on its own.
+func opencodeSandboxAdapterCheck(home string) CheckResult {
+	// "takt-sandbox.mjs" matches the filename TaktSandboxAdapterArtifact
+	// deploys and the sibling name the VFS plugin loads it by; no model
+	// constant exists for it (unlike VFSPluginFile).
+	return opencodePluginCheck(home, "opencode:sandbox-adapter", "takt-sandbox.mjs", "Sandbox adapter", "the sandbox adapter used to run captured shell commands")
+}
+
+// opencodePluginCheck verifies one Takt-deployed OpenCode plugin is a regular file, so a
+// missing or replaced plugin is reported instead of silently disabling its behavior.
+func opencodePluginCheck(home, name, file, label, deploys string) CheckResult {
+	plugin := model.OpenCodePluginPath(home, file)
+	info, err := os.Stat(plugin)
+	if err != nil {
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusWarn,
+			Detail: label + " not installed",
+			Remedy: "Run 'takt-ai setup sync' to deploy " + deploys,
+		}
+	}
+	if !info.Mode().IsRegular() {
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: fmt.Sprintf("%s is not a regular file", plugin),
+			Remedy: "Remove it and run 'takt-ai setup sync'",
+		}
+	}
+	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("plugin installed at %s", plugin)}
+}
+
+func checkDetailOrRemedy(err error, okDetail, remedy string) string {
+	if err == nil {
+		return okDetail
+	}
+	return err.Error() + " — " + remedy
 }
 
 // diskCheck reports free space on the filesystem holding ~/.takt-ai.
@@ -297,15 +518,10 @@ var checkIcons = map[CheckStatus]string{
 // branch: header, per-check lines with optional remedy lines, summary,
 // and overall status.
 func render(w io.Writer, report DoctorReport) error {
-	if _, err := fmt.Fprintln(w, "takt-ai doctor — system health check"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(w, strings.Repeat("=", 39)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(w); err != nil {
-		return err
-	}
+	var out strings.Builder
+	out.WriteString("takt-ai doctor — system health check\n")
+	out.WriteString(strings.Repeat("=", doctorRuleWidth) + "\n\n")
+
 	var passed, failed, warnings int
 	for _, check := range report.Checks {
 		switch check.Status {
@@ -316,25 +532,21 @@ func render(w io.Writer, report DoctorReport) error {
 		case CheckStatusFail:
 			failed++
 		}
-		if _, err := fmt.Fprintf(w, "  %s  %-30s %s\n", checkIcons[check.Status], check.Name, check.Detail); err != nil {
-			return err
-		}
+		fmt.Fprintf(&out, "  %s  %-30s %s\n", checkIcons[check.Status], check.Name, check.Detail)
 		if check.Remedy != "" {
-			if _, err := fmt.Fprintf(w, "       Remedy: %s\n", check.Remedy); err != nil {
-				return err
-			}
+			fmt.Fprintf(&out, "       Remedy: %s\n", check.Remedy)
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\nSummary: %d passed, %d failed, %d warnings\n", passed, failed, warnings); err != nil {
-		return err
-	}
+
+	fmt.Fprintf(&out, "\nSummary: %d passed, %d failed, %d warnings\n", passed, failed, warnings)
 	status := "healthy"
-	switch {
-	case failed > 0:
+	if failed > 0 {
 		status = "unhealthy"
-	case warnings > 0:
+	} else if warnings > 0 {
 		status = "degraded"
 	}
-	_, err := fmt.Fprintf(w, "Status:  %s\n", status)
+	fmt.Fprintf(&out, "Status:  %s\n", status)
+
+	_, err := io.WriteString(w, out.String())
 	return err
 }

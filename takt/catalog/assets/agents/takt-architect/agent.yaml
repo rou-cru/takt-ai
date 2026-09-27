@@ -1,0 +1,16 @@
+context:
+  operations: OPERATIONS.md
+  persona: PERSONA.md
+  soul: SOUL.md
+description: Define buildable architecture, boundaries, data flow, and exact interface
+  contracts.
+id: takt-architect
+instances:
+- architect
+vfs_capabilities:
+  architect: []
+role: direct_interlocutor
+skills:
+- takt-memory-contract
+- takt-memory-architect
+- takt-interlocutor-handoff

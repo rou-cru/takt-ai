@@ -30,7 +30,7 @@ Package codex renders OpenAI Codex agent files: custom\-agent TOML, global promp
 <a name="Context7RemoteURL"></a>Context7RemoteURL is the canonical context7 remote MCP endpoint deployed into Codex config.toml by the context7 component.
 
 ```go
-const Context7RemoteURL = shared.Context7RemoteURL
+const Context7RemoteURL = "https://mcp.context7.com/mcp"
 ```
 
 <a name="NewManagedPaths"></a>
@@ -66,7 +66,10 @@ ValidWebSearch reports whether search is a native Codex web\-search setting.
 Artifact is a filesystem\-free Codex projection. Path is relative to the user's home directory and Content is ready for a later deployer to write.
 
 ```go
-type Artifact = shared.Artifact
+type Artifact struct {
+    Path    string
+    Content []byte
+}
 ```
 
 <a name="RenderConfig"></a>

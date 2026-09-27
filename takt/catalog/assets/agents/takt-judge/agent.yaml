@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+description: Provide independent adversarial review when ordinary verification is
+  insufficient.
+id: takt-judge
+instances:
+- judge-a
+- judge-b
+vfs_capabilities:
+  judge-a: []
+  judge-b: []
+role: verification
+skills:
+- takt-memory-contract
+- takt-memory-judge

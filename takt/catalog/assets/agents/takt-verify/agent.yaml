@@ -1,0 +1,13 @@
+context:
+  operations: OPERATIONS.md
+description: Independently assess reference invariants, staged gates, and executable
+  acceptance.
+id: takt-verify
+instances:
+- verify
+vfs_capabilities:
+  verify: [bind, read, verify]
+role: verification
+skills:
+- takt-memory-contract
+- takt-memory-verify

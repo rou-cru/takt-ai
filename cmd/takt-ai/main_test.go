@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,46 +13,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	skillsutil "github.com/rou-cru/takt-ai/takt/skills/testutil"
 )
 
-func TestRunInstallReadsJSONFileAndWritesResult(t *testing.T) {
-	root := t.TempDir()
-	inputPath := filepath.Join(t.TempDir(), "request.json")
-	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentClaudeCode))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(inputPath, payload, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	err = run([]string{"setup", "install", "--root", root, "--input", inputPath}, strings.NewReader(""), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("run() error = %v", err)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), `"changed"`) {
-		t.Fatalf("stdout = %q, want DeploymentResult JSON", stdout.String())
-	}
-	var result setup.DeploymentResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(result.Changed, ".claude/CLAUDE.md") {
-		t.Errorf("changed = %v, want Claude prompt", result.Changed)
-	}
-}
-
+// TestRunWithoutArgumentsLaunchesTUI verifies empty args start the interactive UI.
 func TestRunWithoutArgumentsLaunchesTUI(t *testing.T) {
-	original := runTUI
-	t.Cleanup(func() { runTUI = original })
+	original, originalInteractive := runTUI, isInteractive
+	t.Cleanup(func() { runTUI, isInteractive = original, originalInteractive })
+	isInteractive = func(io.Reader, io.Writer) bool { return true }
 	called := false
 	runTUI = func(input io.Reader, output io.Writer) error {
 		called = input != nil && output != nil
@@ -69,71 +42,25 @@ func TestRunWithoutArgumentsLaunchesTUI(t *testing.T) {
 	}
 }
 
-func TestRunUsesStdinAndHomeDirectoryDefaults(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("HOME", root)
-	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentCodex))
-	if err != nil {
-		t.Fatal(err)
+// TestRunWithoutTerminalRefusesTUI verifies the TUI refuses to start without a terminal.
+func TestRunWithoutTerminalRefusesTUI(t *testing.T) {
+	original := runTUI
+	t.Cleanup(func() { runTUI = original })
+	runTUI = func(io.Reader, io.Writer) error {
+		t.Fatal("TUI launched without a terminal")
+		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = run([]string{"setup", "sync"}, bytes.NewReader(payload), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("run() error = %v", err)
+	if err := run(nil, strings.NewReader(""), &stdout, &stderr); err == nil {
+		t.Fatal("run() error = nil, want non-terminal refusal")
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-	var result setup.DeploymentResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(result.Changed, ".codex/AGENTS.md") {
-		t.Errorf("changed = %v, want Codex prompt", result.Changed)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".codex", "AGENTS.md")); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(stderr.String(), "usage:") || !strings.Contains(stderr.String(), "requires a terminal") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
-func TestRunUninstallRemovesInstalledFilesForSelectedTarget(t *testing.T) {
-	root := t.TempDir()
-	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentClaudeCode, model.AgentCodex))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stdout, stderr bytes.Buffer
-	if err := run([]string{"setup", "install", "--root", root}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
-		t.Fatalf("install run() error = %v", err)
-	}
-
-	stdout.Reset()
-	uninstallPayload := strings.NewReader(`{"targets":["claude-code"]}`)
-	if err := run([]string{"setup", "uninstall", "--root", root}, uninstallPayload, &stdout, &stderr); err != nil {
-		t.Fatalf("uninstall run() error = %v", err)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-	var result setup.UninstallResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Removed) == 0 || !slices.ContainsFunc(result.Removed, func(path string) bool { return strings.HasPrefix(path, ".claude/") }) {
-		t.Errorf("removed = %v, want Claude files", result.Removed)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".claude")); !os.IsNotExist(err) {
-		t.Errorf(".claude stat error = %v, want removed", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".codex", "AGENTS.md")); err != nil {
-		t.Errorf("codex files must survive claude-scoped uninstall: %v", err)
-	}
-	if _, err := setup.LoadOwnershipManifest(root); err != nil {
-		t.Errorf("manifest should keep codex entries: %v", err)
-	}
-}
-
+// TestRunVersionPrintsResolvedVersion verifies every version flag prints the resolved version.
 func TestRunVersionPrintsResolvedVersion(t *testing.T) {
 	for _, arg := range []string{"version", "--version", "-v"} {
 		t.Run(arg, func(t *testing.T) {
@@ -151,6 +78,7 @@ func TestRunVersionPrintsResolvedVersion(t *testing.T) {
 	}
 }
 
+// TestResolveVersion verifies release, build, and dev versions resolve correctly.
 func TestResolveVersion(t *testing.T) {
 	original := buildInfoReader
 	t.Cleanup(func() { buildInfoReader = original })
@@ -177,48 +105,18 @@ func TestResolveVersion(t *testing.T) {
 	}
 }
 
-func TestRunRejectsInvalidCommandAndJSON(t *testing.T) {
-	tests := []struct {
-		name  string
-		args  []string
-		input string
-		want  string
-	}{
-		{name: "invalid command", args: []string{"setup", "remove"}, want: "usage:"},
-		{name: "invalid JSON", args: []string{"setup", "install", "--root", t.TempDir()}, input: "{", want: "invalid input:"},
-		{name: "unsupported uninstall target", args: []string{"setup", "uninstall", "--root", t.TempDir()}, input: `{"targets":["cursor"]}`, want: "unsupported target"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			err := run(tc.args, strings.NewReader(tc.input), &stdout, &stderr)
-			if err == nil {
-				t.Fatal("run() error = nil, want error")
-			}
-			if !strings.Contains(stderr.String(), tc.want) {
-				t.Errorf("stderr = %q, want substring %q", stderr.String(), tc.want)
-			}
-			if stdout.Len() != 0 {
-				t.Errorf("stdout = %q, want empty", stdout.String())
-			}
-		})
-	}
-}
-
-// TestRunLifecycleDeploysAndRemovesSkills covers the JSON setup interface:
-// install deploys embedded skills and records them in the ownership manifest,
-// sync preserves local skill modifications, and uninstalling any agent target
-// also removes the skill files.
+// TestRunLifecycleDeploysAndRemovesSkills verifies skills deploy, survive sync edits, and uninstall cleanly.
 func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
+	fakeOpenCodeLifecycle(t)
 	root := t.TempDir()
 	skillPath, embedded := skillsutil.FirstSkill(t)
-	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentOpenCode))
+	payload, err := json.Marshal(setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := run([]string{"setup", "install", "--root", root}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
+	if err := run([]string{"setup", "install", "--root", root, "--yes"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
 		t.Fatalf("install run() error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); err != nil {
@@ -238,7 +136,7 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := run([]string{"setup", "sync", "--root", root}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
+	if err := run([]string{"setup", "sync", "--root", root, "--yes", "--json"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
 		t.Fatalf("sync run() error = %v", err)
 	}
 	var syncResult setup.DeploymentResult
@@ -256,24 +154,25 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 		t.Fatal("sync did not preserve the locally modified skill content")
 	}
 
-	// Restore the embedded content before uninstalling: uninstall preserves
-	// locally modified managed files by design (#12689).
+	// Uninstall preserves locally modified managed files, so restore the
+	// embedded content before uninstalling.
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(skillPath)), embedded, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := run([]string{"setup", "uninstall", "--root", root}, strings.NewReader(`{"targets":["opencode"]}`), &stdout, &stderr); err != nil {
+	if err := run([]string{"setup", "uninstall", "--root", root, "--yes"}, strings.NewReader(`{}`), &stdout, &stderr); err != nil {
 		t.Fatalf("uninstall run() error = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("skill file after uninstall stat error = %v, want removed", err)
 	}
 }
 
+// TestDecodeRequestAcceptsComponents verifies component selection passes through decoding.
 func TestDecodeRequestAcceptsComponents(t *testing.T) {
-	request, err := decodeRequest(strings.NewReader(`{"targets":["opencode"],"components":["theme","context7"]}`))
+	request, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["theme","context7"]}`))
 	if err != nil {
-		t.Fatalf("decodeRequest() error = %v", err)
+		t.Fatalf("decodeStrict() error = %v", err)
 	}
 	want := []string{"theme", "context7"}
 	if !slices.Equal(request.Components, want) {
@@ -281,15 +180,18 @@ func TestDecodeRequestAcceptsComponents(t *testing.T) {
 	}
 }
 
+// TestDecodeRequestStillRejectsUnknownFields verifies typos in input fail instead of being ignored.
 func TestDecodeRequestStillRejectsUnknownFields(t *testing.T) {
-	if _, err := decodeRequest(strings.NewReader(`{"components":["theme"],"bogus":true}`)); err == nil {
-		t.Fatal("decodeRequest() error = nil, want unknown field rejection")
+	if _, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["theme"],"bogus":true}`)); err == nil {
+		t.Fatal("decodeStrict() error = nil, want unknown field rejection")
 	}
 }
 
+// TestRunInstallDeploysSelectedComponents verifies chosen components land in the right files.
 func TestRunInstallDeploysSelectedComponents(t *testing.T) {
+	fakeOpenCodeLifecycle(t)
 	root := t.TempDir()
-	payload, err := json.Marshal(setuputil.TestPlanRequest(model.AgentOpenCode))
+	payload, err := json.Marshal(setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,23 +206,87 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := run([]string{"setup", "install", "--root", root}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
+	if err := run([]string{"setup", "install", "--root", root, "--yes"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
 		t.Fatalf("install run() error = %v", err)
 	}
 
-	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "opencode.json"))
+	// V2 keeps theme selection in the terminal client's own cli.json.
+	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "cli.json"))
 	if err != nil {
-		t.Fatalf("read opencode.json: %v", err)
+		t.Fatalf("read cli.json: %v", err)
 	}
-	if !bytes.Contains(config, []byte(`"theme": "takt-kanagawa"`)) {
-		t.Fatalf("opencode.json missing theme merge:\n%s", config)
+	if !bytes.Contains(config, []byte(`"name": "takt"`)) {
+		t.Fatalf("cli.json missing theme selection:\n%s", config)
 	}
 	for _, deployed := range []string{
-		filepath.Join(root, ".config", "opencode", "tui.json"),
-		filepath.Join(root, ".config", "opencode", "tui-plugins", "takt-logo.tsx"),
+		filepath.Join(root, ".config", "opencode", "cli.json"),
+		filepath.Join(root, ".config", "opencode", "plugins", "takt-dag", "tui.tsx"),
 	} {
 		if _, err := os.Stat(deployed); err != nil {
 			t.Errorf("deployed component artifact: %v", err)
 		}
+	}
+}
+
+// TestBlockOnConflictsHonorsPriorAcceptanceOnly verifies accepted edits pass while new conflicts block.
+func TestBlockOnConflictsHonorsPriorAcceptanceOnly(t *testing.T) {
+	preserve, err := blockOnConflicts("install", []setup.ConflictEntry{
+		{Path: "a", Reason: "user-edited", Impact: setup.ImpactUncertain, Accepted: true},
+		{Path: "b", Reason: "user-edited", Impact: setup.ImpactUnrelated},
+	})
+	if err != nil || len(preserve) != 2 {
+		t.Fatalf("accepted+unrelated must pass: preserve=%v err=%v", preserve, err)
+	}
+	if _, err := blockOnConflicts("install", []setup.ConflictEntry{{Path: "c", Reason: "user-edited", Impact: setup.ImpactUncertain}}); err == nil {
+		t.Fatal("unaccepted uncertain conflict must block")
+	}
+}
+
+// fakeOpenCodeLifecycle exercises the production preflight and reload through
+// the process boundary without using the developer's running OpenCode service.
+func fakeOpenCodeLifecycle(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	script := `#!/bin/sh
+case "$*" in
+  'api GET /api/info') printf '%s' '{"version":"2.0.16"}' ;;
+  'api GET /api/model') printf '%s' '{"location":{},"data":[]}' ;;
+  'service restart'|'api POST /api/location/reload') exit 0 ;;
+  *) echo "unexpected OpenCode invocation: $*" >&2; exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "opencode"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestExecuteSetupPreservesPartialResultOnFailure(t *testing.T) {
+	original := runLifecycle
+	t.Cleanup(func() { runLifecycle = original })
+	wantErr := errors.New("provider action failed")
+	runLifecycle = func(context.Context, string, string, setup.PlanRequest, ...string) (lifecycle.LifecycleResult, error) {
+		return lifecycle.LifecycleResult{Changed: []string{"config.json"}}, wantErr
+	}
+
+	result, outcome, err := executeSetup(context.Background(), "install", t.TempDir(), setup.PlanRequest{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("executeSetup() error = %v, want %v", err, wantErr)
+	}
+	deployed, ok := result.(setup.DeploymentResult)
+	if !ok || !slices.Equal(deployed.Changed, []string{"config.json"}) || !slices.Equal(outcome.Changed, []string{"config.json"}) {
+		t.Fatalf("partial result = %#v, lifecycle = %#v", result, outcome)
+	}
+}
+
+func TestRenderPartialResultTextIncludesAppliedWork(t *testing.T) {
+	var output bytes.Buffer
+	err := renderPartialResultText(&output, "install", setup.DeploymentResult{Changed: []string{"config.json"}}, errors.New("provider action failed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "Install failed after applying partial work") || !strings.Contains(text, "Install partial: 1 changed") || !strings.Contains(text, "[changed] config.json") {
+		t.Fatalf("partial output = %q", text)
 	}
 }

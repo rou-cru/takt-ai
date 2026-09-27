@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+  persona: PERSONA.md
+  soul: SOUL.md
+description: Define product intent, value, scope, priorities, and measurable success.
+id: takt-pm
+instances:
+- pm
+vfs_capabilities:
+  pm: []
+role: direct_interlocutor
+skills:
+- takt-memory-contract
+- takt-memory-pm
+- takt-interlocutor-handoff

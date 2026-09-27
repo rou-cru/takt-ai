@@ -32,7 +32,6 @@ dist/
 .atl/
 .pi/
 .codegraph/
-.agents/
 
 # Environment (local overrides — never committed)
 .env
