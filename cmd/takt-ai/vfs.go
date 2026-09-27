@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/session"
@@ -241,6 +242,9 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	}
 	// Session.Close releases only the event store; the FS is closed here.
 	defer func() { err = errors.Join(err, sess.Close(), sess.FS.Close()) }()
+	if err := gc.GuardVFS(*state, command, identity, req.Action, req.Path, vfs.AgentID(req.AuthorKey), sess.FS); err != nil {
+		return err
+	}
 	out, err := runVFSMutate(sess.FS, command, *state, req, identity)
 	if err != nil {
 		return err

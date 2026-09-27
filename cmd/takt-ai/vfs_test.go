@@ -437,6 +437,78 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	}
 }
 
+// TestVFSGateChainAsThePluginDrivesIt runs the exact sequence the OpenCode
+// plugin sends, with the delegations' admissions in between: the orchestrator
+// assigns the author's scope, the author binds and stages, the verifier runs as
+// its own unit linked only by the author key, and the orchestrator consolidates.
+// Every request carries the invariants the plugin declares.
+func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	invariants := []string{"AGENTS.md"}
+	delegate := func(action, unit, agent string) {
+		t.Helper()
+		b, err := json.Marshal(coordinationRequest{Action: action, Event: unit, Session: "s1", Agent: agent, Dispatch: "call-" + unit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out, errout bytes.Buffer
+		if err = runDispatch([]string{"--workspace", root, "--state", state, "--request", string(b)}, &out, &errout); err != nil {
+			t.Fatalf("%s %s: %v (%s)", action, unit, err, errout.String())
+		}
+	}
+
+	claim, err := mutate("assign", vfsReq("impl", "dev", map[string]any{"scope": []string{"app.go"}, "invariants": invariants}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delegate("admit", "impl", "dev")
+	author, err := mutate("bind", vfsReq("impl", "dev", map[string]any{"scope": []string{"app.go"}, "invariants": invariants}))
+	if err != nil || author.Key != claim.Key {
+		t.Fatalf("author adopted its claim = %+v, %v", author, err)
+	}
+	staged, err := mutate("op", vfsReq("impl", "dev", map[string]any{
+		"author_key": author.Key, "call_id": "w1", "expected_revision": 0,
+		"action": "create", "path": "app.go", "content": "package app",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delegate("finish", "impl", "dev")
+
+	gate, err := mutate("assign-verifier", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delegate("admit", "gate", "verify")
+	verifier, err := mutate("bind", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
+	if err != nil || verifier.Key != gate.Key {
+		t.Fatalf("verifier adopted its gate = %+v, %v", verifier, err)
+	}
+	read, err := mutate("op", vfsReq("gate", "verify", map[string]any{
+		"author_key": verifier.Key, "view_key": author.Key, "call_id": "r1",
+		"expected_revision": staged.Revision, "action": "read", "path": "app.go",
+	}))
+	if err != nil || read.Content != "package app" {
+		t.Fatalf("verifier read = %+v, %v", read, err)
+	}
+	if _, err = mutate("verify", vfsReq("gate", "verify", map[string]any{
+		"verifier_key": verifier.Key, "author_key": author.Key, "call_id": "v1",
+		"expected_revision": staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mutate("consolidate", vfsReq("impl", "dev", map[string]any{
+		"author_key": author.Key, "checkpoint": "gate", "expected_revision": staged.Revision,
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "app.go")); err != nil || string(got) != "package app" {
+		t.Fatalf("consolidated app.go = %q, %v", got, err)
+	}
+}
+
 // TestVFSDiscardReleasesRetainedWork discards a failed author's staged work,
 // the orchestrator's decision, so its paths can be assigned again.
 func TestVFSDiscardReleasesRetainedWork(t *testing.T) {
@@ -457,5 +529,65 @@ func TestVFSDiscardReleasesRetainedWork(t *testing.T) {
 	}
 	if assigned, err := mutate("assign", vfsReq("u2", "fix", map[string]any{"scope": []string{"a.go"}})); err != nil || !assigned.OK {
 		t.Fatalf("discarded work still holds its path: %+v, %v", assigned, err)
+	}
+}
+
+// Maintenance attribution is harness authority, not an ordinary bind argument.
+func TestVFSIPCRejectsForgedCycleAttribution(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	req := map[string]any{"ipc_version": IPCVersion, "session_id": "s1", "work_unit_id": "u1", "agent_id": "maint", "specialist": "dev", "scope": []string{"a.go"}, "cycle_id": "forged", "mandate_class": "dead-code"}
+	if _, err := mutate("bind", req); err == nil {
+		t.Fatal("ordinary bind forged maintenance attribution")
+	}
+	delete(req, "cycle_id")
+	delete(req, "mandate_class")
+	if _, err := mutate("bind", req); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestVFSVerifyIgnoresCycleAttributionButNotIdentity: a verifier bound with
+// cycle attribution may verify without repeating it, while a caller whose real
+// identity differs is still refused even when its cycle fields match.
+func TestVFSVerifyIgnoresCycleAttributionButNotIdentity(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	cycle := map[string]any{"cycle_id": "cycle-7", "mandate_class": "dead-code"}
+	author, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := mutate("op", vfsReq("u1", "dev", map[string]any{
+		"author_key": author.Key, "call_id": "c1", "expected_revision": 0, "action": "create", "path": "a.go", "content": "x",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := mutate("assign-verifier", vfsReq("u1", "verify", map[string]any{"author_key": author.Key}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mutate("bind", vfsReq("u1", "verify", map[string]any{"author_key": author.Key})); err != nil {
+		t.Fatal(err)
+	}
+	verify := func(caller, call string, extra map[string]any) error {
+		req := map[string]any{
+			"verifier_key": verifier.Key, "author_key": author.Key, "call_id": call,
+			"expected_revision": 1, "delta_hash": created.DeltaHash, "pass": true,
+		}
+		for k, v := range extra {
+			req[k] = v
+		}
+		_, err := mutate("verify", vfsReq("u1", caller, req))
+		return err
+	}
+	if err = verify("verify", "bad", cycle); err == nil || !strings.Contains(err.Error(), "maintenance cycle") {
+		t.Fatalf("verify with forged cycle fields accepted: %v", err)
+	}
+	if err = verify("verify", "ok", nil); err != nil {
+		t.Fatalf("verify without repeating cycle fields: %v", err)
 	}
 }

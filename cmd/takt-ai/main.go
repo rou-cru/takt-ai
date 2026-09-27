@@ -39,7 +39,7 @@ import (
 const cancelledExitStatus = 130
 
 // usage lists valid commands so users can recover after a mistake.
-const usage = "usage: takt-ai version | doctor | setup install|sync|uninstall|image [--root <dir>] [--input <json-file-or->] [--plan-only] [--yes] [--json] | setup default-request | memory record|continue|close < request.json | codegraph ensure-index | restore [--root <dir>] | vfs journal|recover|bind|op|verify|consolidate|resolve --workspace <dir> --state <private-dir> | obs ingest --workspace <dir> < event.json"
+const usage = "usage: takt-ai version | doctor | setup install|sync|uninstall|image [--root <dir>] [--input <json-file-or->] [--plan-only] [--yes] [--json] | setup default-request | memory record|continue|close < request.json | codegraph ensure-index | restore [--root <dir>] | vfs journal|recover|bind|op|verify|consolidate|resolve --workspace <dir> --state <private-dir> | obs ingest --workspace <dir> < event.json | gc plan|findings --workspace <dir> --state <private-dir> --session <id> --cycle <id> --mandate <class>"
 
 // version holds the release version so users can report what they run.
 var version = "dev"
@@ -144,6 +144,10 @@ func dispatchCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) e
 		return runVFS(args[1:], stdin, stdout, stderr)
 	case "obs":
 		return runObs(args[1:], stdin, stdout, stderr)
+	case "gc":
+		return runGC(args[1:], stdout, stderr)
+	case "dispatch":
+		return runDispatch(args[1:], stdout, stderr)
 	case "dag":
 		return runDag(args[1:], stdout, stderr)
 	case "memory":
