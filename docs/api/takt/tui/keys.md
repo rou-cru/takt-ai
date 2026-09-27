@@ -17,20 +17,18 @@ Package keys defines the global keyboard grammar for TUI flows.
 
 
 <a name="Binding"></a>
-## type Binding
+## type [Binding](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/keys/keys.go#L11-L13>)
 
-Binding is a discoverable action and its equivalent key names.
+Binding is an action and its equivalent key names.
 
 ```go
 type Binding struct {
-    Keys        []string
-    Key         string
-    Description string
+    Keys []string
 }
 ```
 
 <a name="Binding.Matches"></a>
-### func \(Binding\) Matches
+### func \(Binding\) [Matches](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/keys/keys.go#L16>)
 
 ```go
 func (b Binding) Matches(msg tea.Msg) bool
@@ -39,18 +37,18 @@ func (b Binding) Matches(msg tea.Msg) bool
 Matches reports whether msg activates this binding.
 
 <a name="KeyMap"></a>
-## type KeyMap
+## type [KeyMap](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/keys/keys.go#L25-L27>)
 
 KeyMap is the full interaction grammar.
 
 ```go
 type KeyMap struct {
-    Up, Down, Confirm, NextSection, Back, Help Binding
+    Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back Binding
 }
 ```
 
 <a name="Default"></a>
-### func Default
+### func [Default](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/keys/keys.go#L30>)
 
 ```go
 func Default() KeyMap

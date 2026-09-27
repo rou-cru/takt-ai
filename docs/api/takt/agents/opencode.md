@@ -6,20 +6,34 @@
 import "github.com/rou-cru/takt-ai/takt/agents/opencode"
 ```
 
-Package opencode renders OpenCode agent files: sub\-agent Markdown frontmatter and opencode.json configuration.
+Package opencode renders native OpenCode configuration from catalog references.
+
+Package opencode renders native OpenCode configuration from catalog references.
 
 ## Index
 
 - [Constants](<#constants>)
-- [func NewManagedPaths\(generated \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
+- [func AgentMode\(role model.RoleClass\) string](<#AgentMode>)
+- [func AvailableModels\(ctx context.Context\) \(\[\]string, error\)](<#AvailableModels>)
+- [func ComposePrompt\(def catalog.AgentDefinition, instanceID string\) string](<#ComposePrompt>)
+- [func ConfigDir\(\) string](<#ConfigDir>)
+- [func ConfigPath\(\) string](<#ConfigPath>)
+- [func DeployPath\(rel string\) string](<#DeployPath>)
+- [func FileRef\(rel string\) string](<#FileRef>)
+- [func Handshake\(ctx context.Context\) \(opencodeapi.Handshake, error\)](<#Handshake>)
+- [func InstallSandboxDependency\(ctx context.Context, rootDir string\) error](<#InstallSandboxDependency>)
+- [func MemoryClause\(authorID string\) string](<#MemoryClause>)
+- [func Reload\(ctx context.Context\) error](<#Reload>)
+- [type AgentSpec](<#AgentSpec>)
 - [type Artifact](<#Artifact>)
+  - [func OpenCodePluginPackageArtifact\(\) Artifact](<#OpenCodePluginPackageArtifact>)
   - [func RenderConfig\(request ConfigRequest\) \(Artifact, error\)](<#RenderConfig>)
-  - [func RenderSubAgent\(request SubAgentRequest\) \(Artifact, error\)](<#RenderSubAgent>)
-  - [func RenderSubAgents\(requests \[\]SubAgentRequest\) \(\[\]Artifact, error\)](<#RenderSubAgents>)
-  - [func TaktLogoPluginArtifact\(\) Artifact](<#TaktLogoPluginArtifact>)
-  - [func TaktLogoRegistrationArtifact\(\) Artifact](<#TaktLogoRegistrationArtifact>)
+  - [func TaktCLIArtifact\(theme string\) Artifact](<#TaktCLIArtifact>)
+  - [func TaktDagPluginArtifact\(taktAIBinary string\) Artifact](<#TaktDagPluginArtifact>)
+  - [func TaktMemoryPluginArtifact\(taktAIBinary string\) Artifact](<#TaktMemoryPluginArtifact>)
+  - [func TaktSandboxAdapterArtifact\(\) Artifact](<#TaktSandboxAdapterArtifact>)
+  - [func TaktVFSPluginArtifact\(taktAIBinary string, shellEnforced bool\) Artifact](<#TaktVFSPluginArtifact>)
 - [type ConfigRequest](<#ConfigRequest>)
-- [type SubAgentRequest](<#SubAgentRequest>)
 
 
 ## Constants
@@ -27,38 +41,177 @@ Package opencode renders OpenCode agent files: sub\-agent Markdown frontmatter a
 <a name="Context7RemoteURL"></a>Context7RemoteURL is the canonical context7 remote MCP endpoint deployed into opencode.json by the context7 component.
 
 ```go
-const Context7RemoteURL = "https://mcp.context7.com/mcp"
+const Context7RemoteURL = shared.Context7RemoteURL
+```
+
+<a name="OpenCodePluginSDKVersion"></a>OpenCodePluginSDKVersion pins plugin SDK packages to the deployed OpenCode runtime. Keep client and plugin on the same release.
+
+```go
+const OpenCodePluginSDKVersion = "2.0.16"
+```
+
+<a name="SandboxRuntimeVersion"></a>SandboxRuntimeVersion is the @anthropic\-ai/sandbox\-runtime version pinned in takt/runtime/sandbox/package.json — the same dependency the adapter's probe test runs against.
+
+```go
+const SandboxRuntimeVersion = "0.0.76"
 ```
 
 <a name="TaktTheme"></a>TaktTheme is the OpenCode theme deployed by the theme component.
 
 ```go
-const TaktTheme = "takt-kanagawa"
+const TaktTheme = "takt"
 ```
 
-<a name="NewManagedPaths"></a>
-## func NewManagedPaths
+<a name="VFSShellEnforced"></a>VFSShellEnforced controls whether the VFS plugin intercepts specialist shell commands \(PR\-HAR\-15\). File edits stay VFS\-governed either way.
 
 ```go
-func NewManagedPaths(generated []string) ([]string, error)
+const VFSShellEnforced = true
 ```
 
-NewManagedPaths returns Takt\-owned OpenCode paths relative to the user's home directory: the native paths plus the renderer\-generated ones, normalized and sorted. Every path not listed is outside this ownership contract and is preserved by future lifecycle consumers.
+<a name="AgentMode"></a>
+## func [AgentMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L33>)
+
+```go
+func AgentMode(role model.RoleClass) string
+```
+
+AgentMode is primary for the orchestrator, all for interlocutors, subagent otherwise.
+
+<a name="AvailableModels"></a>
+## func [AvailableModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L20>)
+
+```go
+func AvailableModels(ctx context.Context) ([]string, error)
+```
+
+AvailableModels returns the provider/model identifiers exposed by the local OpenCode V2 API, preserving the server's order.
+
+<a name="ComposePrompt"></a>
+## func [ComposePrompt](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L46>)
+
+```go
+func ComposePrompt(def catalog.AgentDefinition, instanceID string) string
+```
+
+ComposePrompt chains BASELINE, PERSONA, SOUL and OPERATIONS by file reference, then the memory paths.
+
+<a name="ConfigDir"></a>
+## func [ConfigDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L21>)
+
+```go
+func ConfigDir() string
+```
+
+ConfigDir is OpenCode's config root, relative to the install root.
+
+<a name="ConfigPath"></a>
+## func [ConfigPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L24>)
+
+```go
+func ConfigPath() string
+```
+
+ConfigPath returns the OpenCode config file path relative to the install root.
+
+<a name="DeployPath"></a>
+## func [DeployPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L27>)
+
+```go
+func DeployPath(rel string) string
+```
+
+DeployPath returns the deployed location of a package file at rel.
+
+<a name="FileRef"></a>
+## func [FileRef](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L30>)
+
+```go
+func FileRef(rel string) string
+```
+
+FileRef returns the \{file:...\} reference OpenCode resolves relative to the config root.
+
+<a name="Handshake"></a>
+## func [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L37>)
+
+```go
+func Handshake(ctx context.Context) (opencodeapi.Handshake, error)
+```
+
+Handshake proves that the local OpenCode installation is functional for Takt before setup mutates anything \(PR\-ART\-2\).
+
+<a name="InstallSandboxDependency"></a>
+## func [InstallSandboxDependency](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L246>)
+
+```go
+func InstallSandboxDependency(ctx context.Context, rootDir string) error
+```
+
+InstallSandboxDependency npm\-installs the sandbox adapter's one dependency next to its deployed location. The adapter remains an optional component: absence of npm degrades shell capture but does not block other setup work.
+
+<a name="MemoryClause"></a>
+## func [MemoryClause](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L56>)
+
+```go
+func MemoryClause(authorID string) string
+```
+
+MemoryClause names installed skill paths without injecting their content.
+
+<a name="Reload"></a>
+## func [Reload](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/reload.go#L15>)
+
+```go
+func Reload(ctx context.Context) error
+```
+
+Reload asks the user's OpenCode server to rebuild loaded locations after a deployment, using normal server resolution so the handoff affects the session the user will run.
+
+<a name="AgentSpec"></a>
+## type [AgentSpec](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L47-L63>)
+
+AgentSpec is one native OpenCode agent entry keyed by instance ID.
+
+```go
+type AgentSpec struct {
+    ID          string
+    Description string
+    Mode        string
+    System      string
+    Model       string
+    // Variant is the model variant (OpenCode V2's name for the reasoning tier
+    // that ModelAssignment.Effort carries); empty leaves the provider default.
+    Variant string
+    Role    model.RoleClass
+    // VFSCapabilities is the explicit operation grant for this exact instance;
+    // an empty non-nil slice means no VFS access, while nil is undeclared.
+    VFSCapabilities []model.VFSCapability
+    // Skills are the Takt skills this agent is designed to use; every other
+    // Takt skill is hidden from it. Skills Takt does not install are untouched.
+    Skills []string
+}
+```
 
 <a name="Artifact"></a>
-## type Artifact
+## type [Artifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L44>)
 
 Artifact is a filesystem\-free OpenCode projection. Path is relative to the user's home directory and Content is ready for a later deployer to write.
 
 ```go
-type Artifact struct {
-    Path    string
-    Content []byte
-}
+type Artifact = shared.Artifact
 ```
 
+<a name="OpenCodePluginPackageArtifact"></a>
+### func [OpenCodePluginPackageArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L167>)
+
+```go
+func OpenCodePluginPackageArtifact() Artifact
+```
+
+OpenCodePluginPackageArtifact returns the package manifest for the shared OpenCode plugin directory. OpenCode resolves bare imports from this package root, so SDK dependencies must be declared here rather than left as transitive or manually\-installed node\_modules.
+
 <a name="RenderConfig"></a>
-### func RenderConfig
+### func [RenderConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L80>)
 
 ```go
 func RenderConfig(request ConfigRequest) (Artifact, error)
@@ -66,44 +219,53 @@ func RenderConfig(request ConfigRequest) (Artifact, error)
 
 RenderConfig returns the native OpenCode opencode.json artifact.
 
-<a name="RenderSubAgent"></a>
-### func RenderSubAgent
+<a name="TaktCLIArtifact"></a>
+### func [TaktCLIArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L291>)
 
 ```go
-func RenderSubAgent(request SubAgentRequest) (Artifact, error)
+func TaktCLIArtifact(theme string) Artifact
 ```
 
-RenderSubAgent returns one OpenCode Markdown agent file with frontmatter.
+TaktCLIArtifact returns cli.json selecting the Takt theme when theme is non\-empty.
 
-<a name="RenderSubAgents"></a>
-### func RenderSubAgents
+<a name="TaktDagPluginArtifact"></a>
+### func [TaktDagPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L273>)
 
 ```go
-func RenderSubAgents(requests []SubAgentRequest) ([]Artifact, error)
+func TaktDagPluginArtifact(taktAIBinary string) Artifact
 ```
 
-RenderSubAgents returns OpenCode agent artifacts sorted by deterministic path.
+TaktDagPluginArtifact returns the OpenCode TUI plugin rendering Takt's read\-only execution DAG projection \(PRD\_DAG\_TUI.md\). It is deployed at the documented discovery path \<config\>/plugins/\<name\>/tui.tsx, so no config file registers it; taktAIBinary is the takt\-ai path it polls.
 
-<a name="TaktLogoPluginArtifact"></a>
-### func TaktLogoPluginArtifact
+<a name="TaktMemoryPluginArtifact"></a>
+### func [TaktMemoryPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L103>)
 
 ```go
-func TaktLogoPluginArtifact() Artifact
+func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
 ```
 
-TaktLogoPluginArtifact returns the local OpenCode TUI plugin that renders the Takt brand logo on the home screen. The asset is generated by cmd/generate\-logo from docs/assets/brand/takt\-ai\-logo\-source.png — do not hand\-edit it.
+TaktMemoryPluginArtifact returns the OpenCode plugin exposing the memory tools; taktAIBinary is the absolute takt\-ai path the plugin spawns.
 
-<a name="TaktLogoRegistrationArtifact"></a>
-### func TaktLogoRegistrationArtifact
+<a name="TaktSandboxAdapterArtifact"></a>
+### func [TaktSandboxAdapterArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L213>)
 
 ```go
-func TaktLogoRegistrationArtifact() Artifact
+func TaktSandboxAdapterArtifact() Artifact
 ```
 
-TaktLogoRegistrationArtifact returns tui.json registering the local Takt logo plugin.
+TaktSandboxAdapterArtifact returns the sandbox adapter module the VFS plugin loads \(as "./takt\-sandbox.mjs", a sibling of the VFS plugin file\) to wrap shell commands with @anthropic\-ai/sandbox\-runtime before they run \(PR\-HAR\-15\). Without this deployed, every shell command is denied.
+
+<a name="TaktVFSPluginArtifact"></a>
+### func [TaktVFSPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L117>)
+
+```go
+func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact
+```
+
+TaktVFSPluginArtifact returns the OpenCode plugin exposing the governed VFS tools; taktAIBinary is the absolute takt\-ai path the plugin spawns and shellEnforced decides whether it intercepts specialist shell commands.
 
 <a name="ConfigRequest"></a>
-## type ConfigRequest
+## type [ConfigRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L66-L77>)
 
 ConfigRequest contains the native OpenCode global configuration projection.
 
@@ -114,22 +276,11 @@ type ConfigRequest struct {
     Context7 bool
     // Permissions adds the canonical bash/read permission rules.
     Permissions bool
-    // Theme sets the OpenCode theme when non-empty.
+    // Theme names the OpenCode theme when non-empty. V2 keeps theme selection in
+    // cli.json, so this reaches TaktCLIArtifact rather than opencode.json.
     Theme string
-}
-```
-
-<a name="SubAgentRequest"></a>
-## type SubAgentRequest
-
-SubAgentRequest contains the native data needed for one OpenCode agent file.
-
-```go
-type SubAgentRequest struct {
-    ID           string
-    Description  string
-    Instructions string
-    Assignment   model.ModelAssignment
+    // Agents are Takt instances registered natively in opencode.json.
+    Agents []AgentSpec
 }
 ```
 

@@ -17,7 +17,7 @@ Package doctor implements the \`takt\-ai doctor\` system health check: tool avai
 
 
 <a name="Run"></a>
-## func Run
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L105>)
 
 ```go
 func Run(stdout io.Writer) error
@@ -26,7 +26,7 @@ func Run(stdout io.Writer) error
 Run executes every doctor check and renders the report to stdout. Failed checks do not affect the returned error: only internal failures \(home resolution, write errors\) are returned as errors.
 
 <a name="CheckResult"></a>
-## type CheckResult
+## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L63-L68>)
 
 CheckResult is one health check outcome with an optional remediation hint.
 
@@ -40,7 +40,7 @@ type CheckResult struct {
 ```
 
 <a name="CheckStatus"></a>
-## type CheckStatus
+## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L53>)
 
 CheckStatus is the outcome of a single doctor check.
 
@@ -48,7 +48,7 @@ CheckStatus is the outcome of a single doctor check.
 type CheckStatus string
 ```
 
-<a name="CheckStatusPass"></a>Check outcomes.
+<a name="CheckStatusPass"></a>Check outcomes: pass, warn \(works but needs attention\), fail \(broken or missing\).
 
 ```go
 const (
@@ -59,7 +59,7 @@ const (
 ```
 
 <a name="DoctorReport"></a>
-## type DoctorReport
+## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L71-L73>)
 
 DoctorReport aggregates every check executed in one doctor run.
 

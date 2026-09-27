@@ -10,152 +10,526 @@ Package ui contains reusable terminal UI primitives.
 
 ## Index
 
-- [Variables](<#variables>)
+- [Constants](<#constants>)
+- [func Back\(\) tea.Msg](<#Back>)
 - [func BodyHeight\(height int\) int](<#BodyHeight>)
-- [func CheckList\(items \[\]Item, cursor, width int\) string](<#CheckList>)
+- [func Busy\(operation string, cancelRequested bool, marker string\) string](<#Busy>)
+- [func CheckList\(items \[\]Item, cursor int, focused bool\) string](<#CheckList>)
+- [func FooterActions\(actions \[\]FooterAction, cursor int, focused bool\) string](<#FooterActions>)
 - [func InnerWidth\(width int\) int](<#InnerWidth>)
-- [func KeyBar\(keymap keys.KeyMap, extra \[\]keys.Binding, context KeyBarContext, width int\) string](<#KeyBar>)
 - [func MoveCursor\(cursor, count, delta int\) int](<#MoveCursor>)
-- [func Options\(options \[\]string, cursor, width int\) string](<#Options>)
+- [func Nudge\(cursor \*int, n int, km keys.KeyMap, msg tea.Msg\) bool](<#Nudge>)
+- [func NudgeHorizontal\(cursor \*int, n int, km keys.KeyMap, msg tea.Msg\) bool](<#NudgeHorizontal>)
+- [func Options\(options \[\]string, cursor int, focused bool\) string](<#Options>)
+- [func Scroll\(scroll, height int, key string\) \(int, bool\)](<#Scroll>)
 - [func Shell\(frame Frame\) string](<#Shell>)
-- [func Spinner\(frame int\) string](<#Spinner>)
-- [func WindowRange\(count, cursor, height int\) \(lo, hi int\)](<#WindowRange>)
-- [func Wrap\(text string, width int\) string](<#Wrap>)
-- [func WrapLine\(line string, width int\) \[\]string](<#WrapLine>)
+- [func Status\(state State, message string\) string](<#Status>)
+- [func TargetLabel\(id string\) string](<#TargetLabel>)
+- [func Toggle\[T comparable\]\(items \[\]T, item T\) \[\]T](<#Toggle>)
+- [func Verification\(report verify.Report\) string](<#Verification>)
+- [type BackMsg](<#BackMsg>)
+- [type Dirtier](<#Dirtier>)
+- [type FooterAction](<#FooterAction>)
+  - [func Actions\(labels ...string\) \[\]FooterAction](<#Actions>)
 - [type Frame](<#Frame>)
 - [type Item](<#Item>)
-- [type KeyBarContext](<#KeyBarContext>)
+- [type Section](<#Section>)
+  - [func SwitchSection\(current Section, keymap keys.KeyMap, message tea.Msg\) \(Section, bool\)](<#SwitchSection>)
+- [type Spinner](<#Spinner>)
+  - [func NewSpinner\(\) Spinner](<#NewSpinner>)
+  - [func \(s Spinner\) Tick\(\) tea.Cmd](<#Spinner.Tick>)
+  - [func \(s Spinner\) Update\(msg tea.Msg\) \(Spinner, tea.Cmd\)](<#Spinner.Update>)
+  - [func \(s Spinner\) View\(\) string](<#Spinner.View>)
+- [type State](<#State>)
+- [type Table](<#Table>)
+  - [func \(t Table\[S, M\]\) Apply\(m \*M, from S, event string\) \(next S, cmd tea.Cmd, ok bool\)](<#Table[S, M].Apply>)
+- [type TransitionKey](<#TransitionKey>)
 
 
-## Variables
+## Constants
 
-<a name="SpinnerFrameCount"></a>SpinnerFrameCount is the number of frames in a full revolution.
+<a name="MinWidth"></a>MinWidth and MinHeight bound the smallest usable screen.
 
 ```go
-var SpinnerFrameCount = len(spinnerFrames)
+const (
+    // MinWidth is the narrowest supported terminal width in cells.
+    MinWidth = 60
+    // MinHeight is the shortest supported terminal height in cells.
+    MinHeight = 20
+    // DefaultWidth is the fallback terminal width used by the shared shell.
+    DefaultWidth = 80
+    // DefaultHeight is the fallback terminal height used by the shared shell.
+    DefaultHeight = 24
+)
 ```
 
+<a name="TextMenuInstall"></a>Text constants are static user\-facing strings. They are exported so screens compose them by name and grep stays the only way a string moves.
+
+```go
+const (
+    // Menu.
+    TextMenuInstall      = "Install"
+    TextMenuAssignModels = "Assign models"
+    TextMenuCheckDrift   = "Check for drift"
+    TextMenuUninstall    = "Uninstall"
+    TextMenuDiagnostics  = "Diagnostics"
+    TextMenuConfigure    = "Configure installation"
+    TextMenuQuit         = "Quit"
+
+    // Guard overlay.
+    TextGuardKeepEditing   = "Keep editing"
+    TextGuardDiscard       = "Discard changes"
+    TextGuardDiscardBody   = "Leaving now discards the edits you have not applied."
+    TextGuardUnappliedWord = "Unapplied changes"
+
+    // Shell chrome.
+    TextBrand            = "Takt AI"
+    TextShellTooSmallFmt = "Terminal too small: need at least %dx%d (current %dx%d). Resize to continue."
+
+    // Busy / footer primitives.
+    TextInProgressSuffix = " in progress."
+    TextCancelRequested  = "Cancellation requested. The current phase must finish before Takt can report what was applied."
+    TextCancelHint       = "Ctrl+C requests cancellation."
+    TextUnavailableIntro = "  Unavailable: "
+
+    // Shared actions.
+    TextActionBackToMenu      = "Back to menu"
+    TextActionQuit            = "Quit"
+    TextActionContinue        = "Continue"
+    TextActionPersonalize     = "Personalize"
+    TextActionInstall         = "Install"
+    TextActionApplyChanges    = "Apply changes"
+    TextActionRetry           = "Retry"
+    TextActionReviewAgain     = "Review again"
+    TextActionKeepCurrent     = "Keep current state"
+    TextActionAssignModels    = "Assign models"
+    TextActionBack            = "Back"
+    TextActionUninstall       = "Uninstall"
+    TextActionSelectFiles     = "Select files to restore"
+    TextActionRestoreSelected = "Restore selected files"
+    TextActionReselect        = "Back to selection"
+    TextActionRescan          = "Check again"
+    TextActionAssignAnother   = "Assign another"
+
+    // Install flow.
+    TextSetupDefault        = "Default — install the recommended stack"
+    TextSetupCustom         = "Custom — choose what to include"
+    TextOpenCodeNotFound    = "OpenCode was not found on PATH — Takt installs its configuration anyway."
+    TextTitleInstall        = "Install"
+    TextTitleConfigure      = "Configure installation"
+    TextStepSetup           = "Setup"
+    TextStepComponents      = "Components"
+    TextStepExisting        = "Existing files"
+    TextStepReview          = "Review"
+    TextStepResult          = "Result"
+    TextStepInstalling      = "Installing"
+    TextStepApplying        = "Applying"
+    TextBusyInstallation    = "Installation"
+    TextBusyConfiguration   = "Configuration"
+    TextComponentsIntro     = "Choose what to include. Takt agents and core skills are always installed."
+    TextConflictPreexisting = "pre-existing, not created by Takt"
+    TextConflictEdited      = "edited after installation"
+    TextConflictMissing     = "missing, deleted after installation"
+    TextConflictsIntro      = "These files differ from what Takt would write. Choose what to do with each one; nothing changes until you apply the review."
+    TextConflictSource      = "  Source: "
+    TextConflictAffects     = "  Affects: "
+    TextConflictKnown       = "  Known incompatibility: "
+    TextConflictAlternative = "  Alternative: "
+    TextConflictUncertain   = "  Uncertain: "
+    TextConflictRecommend   = "  Recommended: restore Takt version."
+    TextKeepMine            = "Keep my version"
+    TextRestoreTakt         = "Restore Takt version"
+    TextPreviouslyKeptTitle = "Previously kept — no new consequences"
+    TextNotAffectedTitle    = "Not affected by this operation"
+    TextKeepCannotWorkFmt   = "Keeping %s cannot work. %s"
+    TextScopeFmt            = "Scope: %s · user-global installation"
+    TextComponentsLineFmt   = "Components: %s"
+    TextCannotPrepareIntro  = "Cannot prepare the review: "
+    TextNothingChangedRetry = "Nothing was changed. Personalize your choices, or go back and try again."
+    TextSectionAdd          = "Add"
+    TextSectionModifyFmt    = "Modify: %d files"
+    TextSectionNotInstalled = "Not installed (dependency unmet)"
+    TextSectionPreserve     = "Preserve"
+    TextSectionUncertain    = "Uncertain:"
+    TextReplacesYours       = " (replaces your version)"
+    TextYourVersionKept     = " (your version is kept)"
+    TextNotAffectedNote     = " (not affected by this operation)"
+    TextPreviouslyKeptNote  = " (previously kept)"
+    TextNothingToChange     = "Nothing to change: installed files already match these choices."
+    TextNewFilesFmt         = "%d new files"
+    TextAgentSkillsFmt      = " (agent definitions: %d, skills: %d)"
+    TextPluginFmt           = "Plugin: %s (%s)"
+    TextRemovalFmt          = "%s — %s"
+    TextNotIncludedIntro    = "Not included: "
+    TextDefaultAll          = "Default (all recommended)"
+    TextNone                = "none"
+    TextRetryInstall        = "Review the error, then retry the installation."
+    TextRetryApply          = "Review the error, then retry applying the changes."
+    TextReviewAgainNote     = "Review again checks the actual files first, then applies what is still missing."
+    TextInstalledForFmt     = "Takt was installed for %s."
+    TextUpdatedForFmt       = "The installation was updated for %s."
+    TextFilesChangedFmt     = "Files: %d changed, %d unchanged"
+    TextPreservedFmt        = ", %d preserved"
+    TextNotReady            = "Not ready to work: some capabilities are not verified."
+    TextCannotGuaranteeFmt  = "Takt cannot guarantee %s while your versions are kept."
+    TextUseDrift            = "Use Check for drift from the menu to restore these files later."
+    TextTakeEffectFmt       = "Changes take effect the next time you start %s."
+
+    // Uninstall flow.
+    TextUninstallModifiedTitle = "Uninstall · Modified files"
+    TextUninstallEngramTitle   = "Uninstall · Engram database"
+    TextUninstallReviewTitle   = "Uninstall · Review"
+    TextUninstallResultTitle   = "Uninstall · Result"
+    TextUninstallTitle         = "Uninstall"
+    TextUninstallBusy          = "Uninstall"
+    TextUninstallChooseEach    = "Choose what to do with each modified file"
+    TextUninstallCannotPlan    = "Could not prepare the uninstall plan: "
+    TextUninstallModifiedIntro = "These files were installed by Takt and changed since. Choose what to do with each one."
+    TextUninstallRemoveOpt     = "Remove"
+    TextUninstallKeptMoveIntro = "Kept files move to "
+    TextUninstallKeptMoveOutro = " so they are not left inside the removed installation."
+    TextEngramQuestion         = "Engram database (outside Takt footprint):"
+    TextEngramLeave            = "Leave"
+    TextEngramRetain           = "Retain"
+    TextEngramRemove           = "Remove"
+    TextEngramNever            = "Leave keeps it where it is. Retain also copies it to the retained directory. Only Remove asks to discard it."
+    TextUninstallRemoveFmt     = "Remove: %s installed by Takt"
+    TextUninstallMemoryLine    = "  Memory server (Engram) entries in each harness configuration"
+    TextUninstallRestoreTitle  = "Restore to their content from before Takt was installed:"
+    TextUninstallKeepInPlace   = "Keep in place:"
+    TextUninstallKeepMine      = "Keep my version:"
+    TextUninstallRetainedData  = "Retained data: "
+    TextUninstallNoBackup      = "Takt keeps no backup of removed files."
+    TextUninstallEngramChose   = "You chose to remove the Engram database: its configuration is removed, and anything without a supported remover is reported as incomplete."
+    TextUninstallEngramRetains = "You chose to retain the Engram database: a consistent copy is handed off to the retained directory and the original stays where it is."
+    TextUninstallMemoryKept    = "Engram memory retained at: "
+    TextUninstallEngramStays   = "Memories stored by Engram are not part of the installation and stay where they are."
+    TextUninstallAgainNote     = "Uninstall again checks the actual files first, then removes what remains."
+    TextUninstallFailedIntro   = "Uninstall did not complete: "
+    TextUninstallPartialFmt    = "Takt was removed from %s, but some cleanup did not complete."
+    TextUninstallOkFmt         = "Takt was removed from %s."
+    TextUninstallRemovedFmt    = "Removed: %s"
+    TextUninstallKeptChoice    = "Kept by your choice:"
+    TextUninstallRetainedIn    = "Retained in: "
+    TextUninstallIncomplete    = "Not removed (incomplete):"
+    TextUninstallTakeEffectFmt = "Changes take effect the next time you start %s."
+    TextOneFile                = "1 file"
+    TextFilesFmt               = "%d files"
+    TextReasonPreexisting      = "existed before Takt was installed"
+    TextReasonAdditions        = "existed before Takt was installed, still contains settings Takt added"
+    TextModifiedSuffix         = " - your modified version"
+    TextReasonSep              = " - "
+
+    // Drift flow.
+    TextDriftSelectTitle  = "Check for drift · Select"
+    TextDriftReviewTitle  = "Check for drift · Review"
+    TextDriftResultTitle  = "Check for drift · Result"
+    TextDriftEmptyTitle   = "Check for drift · Nothing installed"
+    TextDriftReportTitle  = "Check for drift · Report"
+    TextDriftBusy         = "Drift correction"
+    TextDriftChecking     = "Checking managed files..."
+    TextDriftCannotCheck  = "Could not check managed files: "
+    TextDriftClean        = "No drift: every managed file matches its installed definition."
+    TextDriftNoVerify     = "A drift check does not verify functionality. Run Diagnostics to check functional availability."
+    TextDriftDifferOutro  = " differ from their installed definition."
+    TextDriftOneManaged   = "1 managed file"
+    TextDriftManagedFmt   = "%d managed files"
+    TextDriftSelectIntro  = "Select the files to restore to their installed definition."
+    TextDriftSelectStar   = "* Select at least one file to continue."
+    TextScopeSimpleFmt    = "Scope: %s"
+    TextDriftRestoreHead  = "Restore:"
+    TextDriftPreserveHead = "Preserve:"
+    TextDriftPreserveAll  = "Every other managed file stays as it is."
+    TextDriftRefFmt       = "Reference: definitions of Takt %s as installed."
+    TextDriftRefUnknown   = "Reference: the installed Takt version is not recorded; this build is "
+    TextDriftRefMismatch  = "Reference: installed with Takt "
+    TextDriftCheckAgain   = "Check again shows which managed files still differ from their installed definition."
+    TextDriftRestoredFmt  = "Restored %s, but correction did not complete: %s"
+    TextDriftRestoredHead = "Restored:"
+    TextDriftSeeCurrent   = "Check again to see the current state of managed files."
+    TextDriftFailedIntro  = "Drift correction did not complete: "
+    TextDriftPartialFmt   = "Restored %s; %d could not be planned."
+    TextDriftNoPlanned    = "No selected file could be planned for restoration."
+    TextDriftAlreadyMatch = "The selected files already match their installed definition."
+    TextDriftRestoredOk   = "Restored "
+    TextDriftRestoredOut  = " to their installed definition."
+    TextDriftUnplanned    = "Could not be planned:"
+    TextDriftLeftAsIs     = "No longer part of the installed definition, so it was left as it is."
+    TextDriftNoFuncVerify = "Drift correction does not verify functionality. Run Diagnostics to check functional availability."
+    TextDriftTakeEffect   = "Changes take effect the next time you start your harness."
+    TextDriftBackupIntro  = "Restoring is not an undo of your edits; backup copies stay in "
+    TextDriftRecreated    = "Recreated from the installed definition."
+    TextDriftReplacedEdit = "Your edit is replaced by the installed definition; a backup copy is kept first."
+    TextDriftReplacedFile = "Your file is replaced by the installed definition; a backup copy is kept first."
+    TextDriftVersionBlock = "The installed version's definitions are not available in this build"
+
+    // Models flow.
+    TextModelsBusy        = "Model assignment"
+    TextModelsResultTitle = "Assign models · Result"
+    TextModelsTitle       = "Assign models"
+    TextModelsLoadFail    = "Could not load the installed configuration: "
+    TextModelsNothingKept = "Nothing was changed. Esc returns to the menu."
+    TextModelsNothing     = "Nothing installed yet. Install Takt before assigning models."
+    TextModelsAssignAgain = "Assign another shows the current assignments."
+    TextModelsAssignFail  = "Could not assign models on "
+    TextModelsFailNote    = "Specialists applied before the failure keep their new model. Assign another shows the current assignments."
+    TextModelsNoChanges   = "No changes were needed."
+    TextModelsAssignedFmt = "Assigned models for %d specialist(s) on %s."
+    TextModelsChangedHead = "Changed files:"
+    TextModelsTakeEffect  = "Changes take effect the next time you start "
+    TextModelsTitleFmt    = "Assign models · %s"
+
+    // Model picker.
+    TextPickerChoose      = "Choose a specialist to change its model."
+    TextPickerInheritFmt  = "inherit from %s"
+    TextPickerNoChanges   = "No changes to apply"
+    TextPickerCurrent     = "Current: "
+    TextPickerLoadingFmt  = "Loading %s models."
+    TextPickerLoadFailFmt = "Could not list %s models: %s. You can keep inheriting the harness default."
+    TextPickerSearchIntro = "Search: "
+    TextPickerNoMatchFmt  = "No models match %q. Ctrl+U clears the search."
+    TextPickerPosFmt      = "%d / %d"
+    TextPickerSep         = " — "
+
+    // Diagnostics.
+    TextDiagCheckingTitle = "Diagnostics · Checking"
+    TextDiagReportTitle   = "Diagnostics · Report"
+    TextDiagBusy          = "Checking functional availability."
+    TextDiagNone          = "No capability could be checked."
+
+    // Shared outcome.
+    TextCancelledNone      = "Cancelled before any change was applied."
+    TextOutcomeNothing     = "Nothing was changed."
+    TextCancelledPartFmt   = "Cancelled after applying %d of %d changes."
+    TextOutcomeAppliedHead = "Applied:"
+    TextNotAppliedFmt      = "%d changes were not applied"
+    TextOneNotApplied      = "1 change was not applied"
+    TextAppliedStaysIntro  = "Current state: the applied changes stay in place; "
+    TextNoRollback         = "Automatic rollback is not available."
+    TextBackupKeptIntro    = " Backup copies of replaced files are in "
+    TextLateCancel         = "Completed before the cancellation could take effect."
+    TextFunctionalTitle    = "Functional availability"
+)
+```
+
+<a name="OpenCodeLabel"></a>OpenCodeLabel is the harness display name; prose keeps the raw identifier.
+
+```go
+const OpenCodeLabel = "OpenCode"
+```
+
+<a name="Back"></a>
+## func [Back](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L69>)
+
+```go
+func Back() tea.Msg
+```
+
+Back requests navigation to the previous screen.
+
 <a name="BodyHeight"></a>
-## func BodyHeight
+## func [BodyHeight](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L239>)
 
 ```go
 func BodyHeight(height int) int
 ```
 
-BodyHeight returns the usable content height.
+BodyHeight returns usable content height.
 
-<a name="CheckList"></a>
-## func CheckList
+<a name="Busy"></a>
+## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L41>)
 
 ```go
-func CheckList(items []Item, cursor, width int) string
+func Busy(operation string, cancelRequested bool, marker string) string
 ```
 
-CheckList renders independently checked rows.
+Busy shows a running operation with a step marker and cancellation path.
+
+<a name="CheckList"></a>
+## func [CheckList](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L34>)
+
+```go
+func CheckList(items []Item, cursor int, focused bool) string
+```
+
+CheckList renders independently checked rows so multi\-select stays visible.
+
+<a name="FooterActions"></a>
+## func [FooterActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L51>)
+
+```go
+func FooterActions(actions []FooterAction, cursor int, focused bool) string
+```
+
+FooterActions renders the row of filled action buttons. The focused button is filled with focus.ring; unavailable and destructive choices keep their verb and reason.
 
 <a name="InnerWidth"></a>
-## func InnerWidth
+## func [InnerWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L250>)
 
 ```go
 func InnerWidth(width int) int
 ```
 
-InnerWidth returns the width inside the frame's border and padding.
-
-<a name="KeyBar"></a>
-## func KeyBar
-
-```go
-func KeyBar(keymap keys.KeyMap, extra []keys.Binding, context KeyBarContext, width int) string
-```
-
-KeyBar renders discoverable bindings using the shared keymap.
+InnerWidth returns width inside margins.
 
 <a name="MoveCursor"></a>
-## func MoveCursor
+## func [MoveCursor](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L13>)
 
 ```go
 func MoveCursor(cursor, count, delta int) int
 ```
 
-MoveCursor applies up/down wraparound.
+MoveCursor wraps the cursor within count.
 
-<a name="Options"></a>
-## func Options
+<a name="Nudge"></a>
+## func [Nudge](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L28>)
 
 ```go
-func Options(options []string, cursor, width int) string
+func Nudge(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
 ```
 
-Options renders a list of labels with a focused row.
+Nudge moves \*cursor within n rows on Up or Down.
+
+<a name="NudgeHorizontal"></a>
+## func [NudgeHorizontal](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L41>)
+
+```go
+func NudgeHorizontal(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
+```
+
+NudgeHorizontal moves a cursor across options rendered in one row.
+
+<a name="Options"></a>
+## func [Options](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L17>)
+
+```go
+func Options(options []string, cursor int, focused bool) string
+```
+
+Options renders labels with a focus marker so the cursor survives focus changes.
+
+<a name="Scroll"></a>
+## func [Scroll](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L54>)
+
+```go
+func Scroll(scroll, height int, key string) (int, bool)
+```
+
+Scroll applies pgup and pgdown for a screen of the given height.
 
 <a name="Shell"></a>
-## func Shell
+## func [Shell](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L56>)
 
 ```go
 func Shell(frame Frame) string
 ```
 
-Shell composes a body and its keybar inside one frame.
+Shell composes the signature header, the paneled body and the action row so every screen shares one layout. No key bar is rendered.
 
-<a name="Spinner"></a>
-## func Spinner
-
-```go
-func Spinner(frame int) string
-```
-
-Spinner returns the frame at frame, wrapping in both directions.
-
-<a name="WindowRange"></a>
-## func WindowRange
+<a name="Status"></a>
+## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L23>)
 
 ```go
-func WindowRange(count, cursor, height int) (lo, hi int)
+func Status(state State, message string) string
 ```
 
-WindowRange returns the \[lo, hi\) rows that fit and keep the cursor visible.
+Status prefixes a message with its state.
 
-<a name="Wrap"></a>
-## func Wrap
+<a name="TargetLabel"></a>
+## func [TargetLabel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/labels.go#L12>)
 
 ```go
-func Wrap(text string, width int) string
+func TargetLabel(id string) string
 ```
 
-Wrap folds text to width while preserving existing line breaks.
+TargetLabel returns the display name for a plan target, which is the harness for its own plan and a bare identifier such as "skills" for the others.
 
-<a name="WrapLine"></a>
-## func WrapLine
+<a name="Toggle"></a>
+## func [Toggle](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/toggle.go#L6>)
 
 ```go
-func WrapLine(line string, width int) []string
+func Toggle[T comparable](items []T, item T) []T
 ```
 
-WrapLine folds one line into display\-width\-aware rows.
+Toggle flips one selection so checklist flows share a single rule.
+
+<a name="Verification"></a>
+## func [Verification](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/verification.go#L12>)
+
+```go
+func Verification(report verify.Report) string
+```
+
+Verification shows availability checks from a verify report.
+
+<a name="BackMsg"></a>
+## type [BackMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L66>)
+
+BackMsg asks the controller to pop the active flow.
+
+```go
+type BackMsg struct{}
+```
+
+<a name="Dirtier"></a>
+## type [Dirtier](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L72>)
+
+Dirtier marks flows with unapplied drafts.
+
+```go
+type Dirtier interface{ Dirty() bool }
+```
+
+<a name="FooterAction"></a>
+## type [FooterAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L34-L38>)
+
+FooterAction is one labeled completion control.
+
+```go
+type FooterAction struct {
+    Label       string
+    Unavailable string
+    Danger      bool
+}
+```
+
+<a name="Actions"></a>
+### func [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L41>)
+
+```go
+func Actions(labels ...string) []FooterAction
+```
+
+Actions builds available actions from labels so callers skip the struct boilerplate.
 
 <a name="Frame"></a>
-## type Frame
+## type [Frame](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L14-L29>)
 
-Frame is everything required to draw one screen.
+Frame holds everything needed to draw one screen.
 
 ```go
 type Frame struct {
-    Body       string
-    Keys       keys.KeyMap
-    Extra      []keys.Binding
-    Width      int
-    Height     int
-    Covered    bool
-    HasFooter  bool
-    EnterLabel string
+    // Header names the task and step ("Install · Review"); Shell renders the
+    // step after " · " on the right of the header, the signature on the left.
+    Header string
+    Body   string
+    // Footer is the row of action buttons rendered below the panel.
+    Footer string
+    Width  int
+    Height int
+    Scroll int
+    // Home renders the entry screen: no panel and no step, since the logo in
+    // Body already identifies the product.
+    Home bool
+    // CenterBody vertically centers short content in the available body area.
+    CenterBody bool
 }
 ```
 
 <a name="Item"></a>
-## type Item
+## type [Item](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L11-L14>)
 
-Item is one selectable row.
+Item is one selectable row so checked state travels with its label.
 
 ```go
 type Item struct {
@@ -164,15 +538,135 @@ type Item struct {
 }
 ```
 
-<a name="KeyBarContext"></a>
-## type KeyBarContext
+<a name="Section"></a>
+## type [Section](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L12>)
 
-KeyBarContext carries the focused action and optional footer reachability.
+Section marks which screen region holds keyboard focus so lists and footers stay independent.
 
 ```go
-type KeyBarContext struct {
-    EnterLabel string
-    ShowTab    bool
+type Section int
+```
+
+<a name="SectionBody"></a>Focus sections are the closed set of screen regions.
+
+```go
+const (
+    // SectionBody focuses the list region so cursor keys stay inside the list.
+    SectionBody Section = iota
+    // SectionFooter focuses completion controls so Enter commits instead of moving.
+    SectionFooter
+)
+```
+
+<a name="SwitchSection"></a>
+### func [SwitchSection](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L23>)
+
+```go
+func SwitchSection(current Section, keymap keys.KeyMap, message tea.Msg) (Section, bool)
+```
+
+SwitchSection moves focus between regions.
+
+<a name="Spinner"></a>
+## type [Spinner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L10-L12>)
+
+Spinner is one animated step marker owned by a flow's busy state.
+
+```go
+type Spinner struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewSpinner"></a>
+### func [NewSpinner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L15>)
+
+```go
+func NewSpinner() Spinner
+```
+
+NewSpinner returns a MiniDot spinner; inert when animation is disabled.
+
+<a name="Spinner.Tick"></a>
+### func \(Spinner\) [Tick](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L20>)
+
+```go
+func (s Spinner) Tick() tea.Cmd
+```
+
+Tick requests the next frame; nil when animation is disabled.
+
+<a name="Spinner.Update"></a>
+### func \(Spinner\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L28>)
+
+```go
+func (s Spinner) Update(msg tea.Msg) (Spinner, tea.Cmd)
+```
+
+Update advances the animation and chains the next frame.
+
+<a name="Spinner.View"></a>
+### func \(Spinner\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L41>)
+
+```go
+func (s Spinner) View() string
+```
+
+View renders the current frame, or the ASCII baseline when disabled.
+
+<a name="State"></a>
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L6>)
+
+State names a result in words.
+
+```go
+type State string
+```
+
+<a name="StateSuccess"></a>Shared result and operation states.
+
+```go
+const (
+    // StateSuccess marks a completed operation.
+    StateSuccess State = "Success"
+    // StatePartial marks a cancellation with changes already applied.
+    StatePartial State = "Partial"
+    // StateFailed marks a failed operation.
+    StateFailed State = "Failed"
+    // StateWarning marks a condition needing attention.
+    StateWarning State = "Warning"
+    // StatePending marks an operation still running.
+    StatePending State = "Pending"
+)
+```
+
+<a name="Table"></a>
+## type [Table](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L12>)
+
+Table holds a flow's transitions as data.
+
+```go
+type Table[S comparable, M any] map[TransitionKey[S]]func(*M) (S, tea.Cmd)
+```
+
+<a name="Table[S, M].Apply"></a>
+### func \(Table\[S, M\]\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L15>)
+
+```go
+func (t Table[S, M]) Apply(m *M, from S, event string) (next S, cmd tea.Cmd, ok bool)
+```
+
+Apply runs the rule for \(from, event\).
+
+<a name="TransitionKey"></a>
+## type [TransitionKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L6-L9>)
+
+TransitionKey names one rule in a transition table.
+
+```go
+type TransitionKey[S comparable] struct {
+    From  S
+    Event string
 }
 ```
 

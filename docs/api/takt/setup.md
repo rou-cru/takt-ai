@@ -11,68 +11,296 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
+- [func AllComponents\(\) \(\[\]model.ComponentID, error\)](<#AllComponents>)
+- [func BackupsSince\(rootDir string, since time.Time\) string](<#BackupsSince>)
+- [func BeginOperation\(rootDir, action string\) \(func\(\), error\)](<#BeginOperation>)
+- [func DriftLabel\(reason string\) \(label, severity, explanation string\)](<#DriftLabel>)
+- [func EngramDataDir\(\) \(string, error\)](<#EngramDataDir>)
+- [func ForgetInstallation\(rootDir string\) error](<#ForgetInstallation>)
+- [func InstalledVersion\(rootDir string\) string](<#InstalledVersion>)
+- [func IsCurrentVersion\(installed string\) bool](<#IsCurrentVersion>)
+- [func IsInstalled\(rootDir string\) bool](<#IsInstalled>)
+- [func RecordInstallation\(rootDir string, request PlanRequest\) error](<#RecordInstallation>)
+- [func RecordRiskAcceptances\(rootDir string, accepted \[\]RiskAcceptance\) error](<#RecordRiskAcceptances>)
+- [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
 - [func SafeJoin\(root, rel string\) \(string, error\)](<#SafeJoin>)
+- [func SaveInstalledConfig\(rootDir string, request PlanRequest\) error](<#SaveInstalledConfig>)
 - [func ValidateComponents\(names \[\]string\) \(\[\]model.ComponentID, error\)](<#ValidateComponents>)
 - [type Artifact](<#Artifact>)
-- [type ClaudePlanOptions](<#ClaudePlanOptions>)
-- [type CodexPlanOptions](<#CodexPlanOptions>)
+- [type ConflictEntry](<#ConflictEntry>)
+  - [func DetectConflicts\(rootDir string, plans \[\]TargetPlan\) \(\[\]ConflictEntry, error\)](<#DetectConflicts>)
 - [type DeploymentResult](<#DeploymentResult>)
-  - [func Apply\(rootDir string, plans \[\]TargetPlan\) \(DeploymentResult, error\)](<#Apply>)
-  - [func Deploy\(rootDir string, managedPaths \[\]string, artifacts \[\]Artifact\) \(DeploymentResult, error\)](<#Deploy>)
-  - [func Sync\(rootDir string, plans \[\]TargetPlan\) \(DeploymentResult, error\)](<#Sync>)
+  - [func ApplyContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, preserve ...string\) \(DeploymentResult, error\)](<#ApplyContext>)
+  - [func ApplyModelOverrideChange\(ctx context.Context, rootDir string, subAgentID string, assignment model.ModelAssignment, runtime ProviderRuntime\) \(DeploymentResult, error\)](<#ApplyModelOverrideChange>)
+  - [func DeployContext\(ctx context.Context, rootDir string, managedPaths \[\]string, artifacts \[\]Artifact\) \(DeploymentResult, error\)](<#DeployContext>)
+  - [func SyncContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, preserve ...string\) \(DeploymentResult, error\)](<#SyncContext>)
+- [type DriftCorrectionResult](<#DriftCorrectionResult>)
+  - [func CorrectDriftContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, selectedPaths \[\]string, runtime ProviderRuntime\) \(DriftCorrectionResult, error\)](<#CorrectDriftContext>)
 - [type OpenCodePlanOptions](<#OpenCodePlanOptions>)
+- [type OperationRecord](<#OperationRecord>)
+  - [func IncompleteOperation\(rootDir string\) \(OperationRecord, bool\)](<#IncompleteOperation>)
+  - [func \(record OperationRecord\) Notice\(rootDir string\) \[\]string](<#OperationRecord.Notice>)
 - [type OwnershipEntry](<#OwnershipEntry>)
   - [func NewOwnershipEntry\(managedPath string, content \[\]byte, mode os.FileMode, preExisting bool, priorSHA256, backupPath string, targets ...OwnershipTarget\) \(OwnershipEntry, error\)](<#NewOwnershipEntry>)
 - [type OwnershipManifest](<#OwnershipManifest>)
   - [func LoadOwnershipManifest\(rootDir string\) \(\*OwnershipManifest, error\)](<#LoadOwnershipManifest>)
   - [func NewOwnershipManifest\(\) \*OwnershipManifest](<#NewOwnershipManifest>)
   - [func \(m \*OwnershipManifest\) Add\(entries ...OwnershipEntry\) error](<#OwnershipManifest.Add>)
-  - [func \(m \*OwnershipManifest\) EntriesForTarget\(target OwnershipTarget\) \[\]OwnershipEntry](<#OwnershipManifest.EntriesForTarget>)
-  - [func \(m \*OwnershipManifest\) IsManaged\(managedPath string\) bool](<#OwnershipManifest.IsManaged>)
   - [func \(m \*OwnershipManifest\) Save\(rootDir string\) error](<#OwnershipManifest.Save>)
 - [type OwnershipTarget](<#OwnershipTarget>)
   - [func OwnershipTargetFor\(id string\) \(OwnershipTarget, error\)](<#OwnershipTargetFor>)
 - [type PlanRequest](<#PlanRequest>)
-  - [func DefaultPlanRequest\(targets \[\]model.AgentID\) \(PlanRequest, error\)](<#DefaultPlanRequest>)
+  - [func DefaultPlanRequest\(\) \(PlanRequest, error\)](<#DefaultPlanRequest>)
+  - [func LoadInstalledConfig\(rootDir string\) \(PlanRequest, error\)](<#LoadInstalledConfig>)
+- [type ProviderAction](<#ProviderAction>)
+- [type ProviderRuntime](<#ProviderRuntime>)
+- [type RestoreResult](<#RestoreResult>)
+  - [func Restore\(rootDir string, manifest \*OwnershipManifest\) \(RestoreResult, error\)](<#Restore>)
+- [type RetentionChoices](<#RetentionChoices>)
+- [type RetentionResult](<#RetentionResult>)
+  - [func ApplyUninstallRetention\(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time\) \(RetentionResult, error\)](<#ApplyUninstallRetention>)
+- [type RiskAcceptance](<#RiskAcceptance>)
 - [type TargetPlan](<#TargetPlan>)
-  - [func BuildTargetPlans\(request PlanRequest\) \(\[\]TargetPlan, error\)](<#BuildTargetPlans>)
+  - [func BuildTargetPlans\(request PlanRequest\) \(\[\]TargetPlan, \[\]catalog.Removal, error\)](<#BuildTargetPlans>)
 - [type UninstallResult](<#UninstallResult>)
-  - [func Uninstall\(rootDir string, targets ...OwnershipTarget\) \(UninstallResult, error\)](<#Uninstall>)
+  - [func PreviewUninstall\(rootDir string, targets ...OwnershipTarget\) \(UninstallResult, error\)](<#PreviewUninstall>)
+  - [func UninstallContext\(ctx context.Context, rootDir string, targets ...OwnershipTarget\) \(UninstallResult, error\)](<#UninstallContext>)
 
 
 ## Constants
 
-<a name="DefaultOpenCodeModel"></a>DefaultOpenCodeModel is the fallback OpenCode model assignment. The semantic catalog has no OpenCode assignments yet, so every OpenCode projection uses this default unless OpenCodePlanOptions overrides it.
+<a name="ImpactUnrelated"></a>Impact values rank what keeping local content means for ConflictEntry.Impact.
 
 ```go
-const DefaultOpenCodeModel = "openai/gpt-5.6-luna"
+const (
+    // ImpactUnrelated means the operation does not need this file; the external change is kept without asking.
+    ImpactUnrelated = "unrelated"
+    // ImpactUncertain means keeping the user's version works, but Takt cannot guarantee the affected capability.
+    ImpactUncertain = "uncertain"
+    // ImpactIncompatible means keeping the user's version cannot work; only restoring Takt's version is viable.
+    ImpactIncompatible = "incompatible"
+)
 ```
 
-<a name="OwnershipManifestFilename"></a>OwnershipManifestFilename is the manifest file name at the deployment root. It records every file Takt manages across all targets, with content hashes, prior\-state capture, permissions, backup metadata, and owning targets.
+<a name="ManagedFileMode"></a>Deployment modes make deployed artifacts user\-readable and traversable.
+
+```go
+const (
+    // ManagedFileMode is the mode used for deployed user-readable artifacts.
+    ManagedFileMode os.FileMode = 0o644
+    // ManagedDirectoryMode allows traversal of the deployment tree.
+    ManagedDirectoryMode os.FileMode = 0o755
+)
+```
+
+<a name="RetainedDirectoryMode"></a>Retention modes keep uninstall evidence owner\-only.
+
+```go
+const (
+    // RetainedDirectoryMode protects directories containing uninstall evidence.
+    RetainedDirectoryMode os.FileMode = 0o700
+    // RetainedFileMode protects retained uninstall evidence files.
+    RetainedFileMode os.FileMode = 0o600
+)
+```
+
+<a name="BackupDir"></a>BackupDir holds preserved copies of pre\-existing content Takt is about to take over. Addressed through SafeJoin so crafted artifact paths can never write outside root.
+
+```go
+const BackupDir = ".takt-backups"
+```
+
+<a name="EngramDataDirName"></a>EngramDataDirName is the default Engram data directory under the user's home; ENGRAM\_DATA\_DIR overrides it \(\`engram help\`, Environment\).
+
+```go
+const EngramDataDirName = ".engram"
+```
+
+<a name="EngramDatabaseName"></a>EngramDatabaseName is the SQLite file Engram keeps inside its data directory.
+
+```go
+const EngramDatabaseName = "engram.db"
+```
+
+<a name="InstalledConfigFilename"></a>InstalledConfigFilename records the PlanRequest last applied, so later operations reapply real custom choices.
+
+```go
+const InstalledConfigFilename = ".takt-installed-config.json"
+```
+
+<a name="NotInstalledMessage"></a>NotInstalledMessage is the full sentence shown by screens \(Diagnostics, Drift, Uninstall\) that require a prior installation and found none.
+
+```go
+const NotInstalledMessage = "Nothing installed yet — install first."
+```
+
+<a name="OperationRecordFilename"></a>OperationRecordFilename marks a mutating operation in progress on disk. Written before the first change and removed on return; a leftover means the process ended mid\-operation.
+
+```go
+const OperationRecordFilename = ".takt-operation.json"
+```
+
+<a name="OwnershipManifestFilename"></a>OwnershipManifestFilename records every file Takt manages with hashes, takeover state, and owners.
 
 ```go
 const OwnershipManifestFilename = ".takt-manifest.json"
 ```
 
-<a name="OwnershipManifestVersion"></a>OwnershipManifestVersion is the schema version written by this build. LoadOwnershipManifest rejects files carrying any other version so future formats are never misread by old binaries.
+<a name="OwnershipManifestVersion"></a>OwnershipManifestVersion is the schema this build writes; other versions are never misread.
 
 ```go
 const OwnershipManifestVersion = 1
 ```
 
+<a name="RetainedDirName"></a>RetainedDirName is the directory under the deployment root that receives content kept during uninstall. It is not a harness configuration directory and Takt never records it as managed.
+
+```go
+const RetainedDirName = "takt-retained"
+```
+
+<a name="RiskAcceptanceFilename"></a>RiskAcceptanceFilename records uncertain conflicts the user chose to keep. Re\-asking stops only for identical content with identical impact; it never authorizes overwrites.
+
+```go
+const RiskAcceptanceFilename = ".takt-accepted-risks.json"
+```
+
+## Variables
+
+<a name="BuildVersion"></a>BuildVersion is the running Takt build's version, recorded as the installed version by RecordInstallation.
+
+```go
+var BuildVersion = "dev"
+```
+
+<a name="AllComponents"></a>
+## func [AllComponents](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/components.go#L24>)
+
+```go
+func AllComponents() ([]model.ComponentID, error)
+```
+
+AllComponents returns every selectable component in display and planning order from the capability manifest. It is the single source of truth for "install everything applicable"; Engram and skills are not selectable.
+
+<a name="BackupsSince"></a>
+## func [BackupsSince](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operation_record.go#L90>)
+
+```go
+func BackupsSince(rootDir string, since time.Time) string
+```
+
+BackupsSince returns rootDir's backup directory when it holds a copy written at or after since, or "" otherwise.
+
+<a name="BeginOperation"></a>
+## func [BeginOperation](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operation_record.go#L42>)
+
+```go
+func BeginOperation(rootDir, action string) (func(), error)
+```
+
+BeginOperation records action as in progress under rootDir and returns the func that clears the record once the operation has returned.
+
+<a name="DriftLabel"></a>
+## func [DriftLabel](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/drift_labels.go#L20>)
+
+```go
+func DriftLabel(reason string) (label, severity, explanation string)
+```
+
+DriftLabel maps a conflict reason to one display label, severity, and explanation. CLI and TUI render from here so drift reasons always read the same.
+
+<a name="EngramDataDir"></a>
+## func [EngramDataDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/uninstall_retention.go#L52>)
+
+```go
+func EngramDataDir() (string, error)
+```
+
+EngramDataDir resolves where Engram keeps its data the way Engram does: ENGRAM\_DATA\_DIR when set, otherwise \~/.engram.
+
+<a name="ForgetInstallation"></a>
+## func [ForgetInstallation](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L88>)
+
+```go
+func ForgetInstallation(rootDir string) error
+```
+
+ForgetInstallation drops rootDir's installed record and the risk acceptances recorded with it: uninstalling OpenCode leaves nothing installed.
+
+<a name="InstalledVersion"></a>
+## func [InstalledVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L75>)
+
+```go
+func InstalledVersion(rootDir string) string
+```
+
+InstalledVersion returns rootDir's recorded Takt version, or "" when absent or untracked.
+
+<a name="IsCurrentVersion"></a>
+## func [IsCurrentVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L82>)
+
+```go
+func IsCurrentVersion(installed string) bool
+```
+
+IsCurrentVersion reports whether installed matches this build, so drift correction never restores another version's definitions.
+
+<a name="IsInstalled"></a>
+## func [IsInstalled](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L99>)
+
+```go
+func IsInstalled(rootDir string) bool
+```
+
+IsInstalled reports whether rootDir holds a prior installation; an unreadable record means "nothing installed".
+
+<a name="RecordInstallation"></a>
+## func [RecordInstallation](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L46>)
+
+```go
+func RecordInstallation(rootDir string, request PlanRequest) error
+```
+
+RecordInstallation persists request as the installed configuration a full install or sync produced with this build's definitions.
+
+<a name="RecordRiskAcceptances"></a>
+## func [RecordRiskAcceptances](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/risk_acceptance.go#L28>)
+
+```go
+func RecordRiskAcceptances(rootDir string, accepted []RiskAcceptance) error
+```
+
+RecordRiskAcceptances upserts accepted into rootDir's record by path.
+
+<a name="ResolveComponents"></a>
+## func [ResolveComponents](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/components.go#L65>)
+
+```go
+func ResolveComponents(names []string) ([]model.ComponentID, []catalog.Removal, error)
+```
+
+ResolveComponents validates custom\-setup names and drops components whose dependencies are unsatisfied. A dependency the user explicitly deselected is never re\-added.
+
 <a name="SafeJoin"></a>
-## func SafeJoin
+## func [SafeJoin](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L211>)
 
 ```go
 func SafeJoin(root, rel string) (string, error)
 ```
 
-SafeJoin joins root with a slash\-relative path and returns an absolute, symlink\-resolved path guaranteed to remain inside root. It is the single point callers \(notably Uninstall and Sync\) use to turn a manifest key into an on\-disk path, so a crafted key such as "../victim.txt" can never address a file outside the deployment root.
+SafeJoin joins root with a slash\-relative path, guaranteed to stay inside root. It rejects escapes and symlink\-ancestor exits, so crafted manifest keys can never address outside files.
 
-SafeJoin rejects empty or absolute rel, collapses "." segments, rejects any ".." traversal, and walks every existing parent directory to ensure no symlink ancestor escapes root. It returns an error if any check fails.
+<a name="SaveInstalledConfig"></a>
+## func [SaveInstalledConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L40>)
+
+```go
+func SaveInstalledConfig(rootDir string, request PlanRequest) error
+```
+
+SaveInstalledConfig persists request as the installed snapshot, keeping the recorded version. Partial changes must not claim the whole installation matches this build, so the version stays.
 
 <a name="ValidateComponents"></a>
-## func ValidateComponents
+## func [ValidateComponents](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/components.go#L35>)
 
 ```go
 func ValidateComponents(names []string) ([]model.ComponentID, error)
@@ -81,144 +309,240 @@ func ValidateComponents(names []string) ([]model.ComponentID, error)
 ValidateComponents validates custom\-setup component names: every name must be known, non\-empty, and unique. The returned list follows the canonical component order regardless of input order.
 
 <a name="Artifact"></a>
-## type Artifact
+## type [Artifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L49-L54>)
 
-Artifact is renderer output ready for deployment. Path is relative to the deployment root; Content is never retained by the deployer.
+Artifact is renderer output ready for deployment.
 
 ```go
 type Artifact struct {
-    Path    string
+    // Path is the slash-relative destination under the deployment root.
+    Path string
+    // Content is the exact bytes to write.
     Content []byte
 }
 ```
 
-<a name="ClaudePlanOptions"></a>
-## type ClaudePlanOptions
+<a name="ConflictEntry"></a>
+## type [ConflictEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L150-L170>)
 
-ClaudePlanOptions contains explicit Claude global projection inputs.
+ConflictEntry is a plan artifact whose on\-disk content differs from what Takt would deploy, in a case where the automatic resolution is not obviously right for every user; see DetectConflicts.
 
 ```go
-type ClaudePlanOptions struct {
-    GlobalPrompt string                 `json:"global_prompt"`
-    Settings     claude.SettingsRequest `json:"settings"`
+type ConflictEntry struct {
+    // Path is the artifact's root-relative path, suitable for passing back
+    // into the preserve list of ApplyContext/SyncContext.
+    Path string
+    // Reason is "pre-existing" (unmanaged content Takt would overwrite), "user-edited", or "missing".
+    Reason string
+    // Impact is ImpactUnrelated, ImpactUncertain or ImpactIncompatible; see
+    // classifyConflict for the rule set.
+    Impact string
+    // Affects names the capability the file defines, in user terms.
+    Affects string
+    // Consequence explains, in one sentence, what keeping the file means.
+    Consequence string
+    // Alternative is the viable route when Impact is ImpactIncompatible.
+    Alternative string
+    // SHA256 is the hex digest of the content on disk ("" when missing), the
+    // content a risk acceptance refers to.
+    SHA256 string
+    // Accepted reports the user already kept this exact content with this impact, so it must not be asked again.
+    Accepted bool
 }
 ```
 
-<a name="CodexPlanOptions"></a>
-## type CodexPlanOptions
-
-CodexPlanOptions contains explicit Codex global projection inputs. The default catalog assignment supplies the global model and reasoning effort.
+<a name="DetectConflicts"></a>
+### func [DetectConflicts](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L174>)
 
 ```go
-type CodexPlanOptions struct {
-    GlobalPrompt string            `json:"global_prompt"`
-    SandboxMode  codex.SandboxMode `json:"sandbox_mode"`
-    WebSearch    codex.WebSearch   `json:"web_search"`
-    MultiAgent   bool              `json:"multi_agent"`
-    MaxThreads   int               `json:"max_threads"`
-    MaxDepth     int               `json:"max_depth"`
-}
+func DetectConflicts(rootDir string, plans []TargetPlan) ([]ConflictEntry, error)
 ```
+
+DetectConflicts previews where deploying would overwrite unowned content or discard a user edit, without writing or mutating state.
 
 <a name="DeploymentResult"></a>
-## type DeploymentResult
+## type [DeploymentResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L57-L66>)
 
 DeploymentResult reports the normalized paths changed or left untouched.
 
 ```go
 type DeploymentResult struct {
-    Changed   []string `json:"changed"`
+    // Changed lists normalized paths written by this deployment.
+    Changed []string `json:"changed"`
+    // Unchanged lists managed paths already matching deployed content.
     Unchanged []string `json:"unchanged"`
+    // Actions lists provider actions that completed after deployment.
+    Actions []string `json:"actions,omitempty"`
+    // NotApplied lists planned changes a cancellation left unapplied; empty when the deployment completed.
+    NotApplied []string `json:"notApplied,omitempty"`
 }
 ```
 
-<a name="Apply"></a>
-### func Apply
+<a name="ApplyContext"></a>
+### func [ApplyContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L57>)
 
 ```go
-func Apply(rootDir string, plans []TargetPlan) (DeploymentResult, error)
+func ApplyContext(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, preserve ...string) (DeploymentResult, error)
 ```
 
-Apply deploys all managed paths and artifacts in the supplied plans without skipping existing files.
+ApplyContext applies plans with cooperative cancellation; see DeployContext. Provider actions run only after a complete deployment.
 
-<a name="Deploy"></a>
-### func Deploy
+<a name="ApplyModelOverrideChange"></a>
+### func [ApplyModelOverrideChange](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/model_overrides.go#L28>)
 
 ```go
-func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error)
+func ApplyModelOverrideChange(ctx context.Context, rootDir string, subAgentID string, assignment model.ModelAssignment, runtime ProviderRuntime) (DeploymentResult, error)
 ```
 
-Deploy writes only artifacts listed in managedPaths beneath rootDir. Existing bytes are compared before writing, and paths absent from artifacts are never deleted or modified. Changed artifacts are staged before a batch changes when committing the deployment fails.
+ApplyModelOverrideChange reassigns one sub\-agent's model starting from the real installed configuration, redeploying only the artifacts it changes.
 
-<a name="Sync"></a>
-### func Sync
+<a name="DeployContext"></a>
+### func [DeployContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L70>)
 
 ```go
-func Sync(rootDir string, plans []TargetPlan) (DeploymentResult, error)
+func DeployContext(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error)
 ```
 
-Sync deploys target plans while preserving managed files that have been modified locally. Missing files and paths without manifest entries are redeployed.
+DeployContext is Deploy with cooperative cancellation: it returns partial results and ctx.Err\(\) without rolling back what is already installed.
+
+<a name="SyncContext"></a>
+### func [SyncContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L63>)
+
+```go
+func SyncContext(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, preserve ...string) (DeploymentResult, error)
+```
+
+SyncContext syncs plans with cooperative cancellation; see DeployContext.
+
+<a name="DriftCorrectionResult"></a>
+## type [DriftCorrectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/drift_correction.go#L21-L25>)
+
+DriftCorrectionResult reports what CorrectDrift applied, plus requested paths missing from plans.
+
+```go
+type DriftCorrectionResult struct {
+    DeploymentResult
+    // Unresolved lists selected paths absent from plans, e.g. a sub-agent the catalog no longer renders.
+    Unresolved []string `json:"unresolved,omitempty"`
+}
+```
+
+<a name="CorrectDriftContext"></a>
+### func [CorrectDriftContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/drift_correction.go#L28>)
+
+```go
+func CorrectDriftContext(ctx context.Context, rootDir string, plans []TargetPlan, selectedPaths []string, runtime ProviderRuntime) (DriftCorrectionResult, error)
+```
+
+CorrectDriftContext is CorrectDrift with cooperative cancellation; cancellation returns restored work with ctx.Err\(\).
 
 <a name="OpenCodePlanOptions"></a>
-## type OpenCodePlanOptions
+## type [OpenCodePlanOptions](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L29-L35>)
 
 OpenCodePlanOptions contains explicit OpenCode global projection inputs.
 
 ```go
 type OpenCodePlanOptions struct {
+    // Model is the fallback model for sub-agents without an override.
     Model string `json:"model"`
+    // GlobalPrompt is the shared crew prompt every OpenCode agent reads. Empty
+    // skips the artifact so callers that only project models stay valid.
+    GlobalPrompt string `json:"global_prompt"`
 }
 ```
 
-<a name="OwnershipEntry"></a>
-## type OwnershipEntry
+<a name="OperationRecord"></a>
+## type [OperationRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operation_record.go#L31-L38>)
 
-OwnershipEntry records one managed file. Path is slash\-relative to the deployment root. SHA256 is the hex digest of the managed content Takt wrote; PriorSHA256 captures the pre\-existing user content before takeover \(empty when the file did not pre\-exist\); BackupPath points at a preserved copy of that prior content when one exists.
+OperationRecord describes the mutating operation that was in progress.
+
+```go
+type OperationRecord struct {
+    // Action is the operation that was running: install, sync, uninstall, correct-drift, or reassign-models.
+    Action string `json:"action"`
+    // Started is when the operation began, shown in the recovery notice.
+    Started time.Time `json:"started"`
+    // TaktVersion is the build that ran the operation, for diagnosing version skew.
+    TaktVersion string `json:"takt_version"`
+}
+```
+
+<a name="IncompleteOperation"></a>
+### func [IncompleteOperation](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operation_record.go#L60>)
+
+```go
+func IncompleteOperation(rootDir string) (OperationRecord, bool)
+```
+
+IncompleteOperation returns the record an abruptly ended operation left under rootDir. An unreadable record still reports an unfinished operation.
+
+<a name="OperationRecord.Notice"></a>
+### func \(OperationRecord\) [Notice](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operation_record.go#L71>)
+
+```go
+func (record OperationRecord) Notice(rootDir string) []string
+```
+
+Notice explains an unfinished operation: what stopped, that files are checked first, and how to recover replaced content.
+
+<a name="OwnershipEntry"></a>
+## type [OwnershipEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L66-L81>)
+
+OwnershipEntry records one managed file: its current digest, takeover history, mode, and owners.
 
 ```go
 type OwnershipEntry struct {
-    Path        string            `json:"path"`
-    SHA256      string            `json:"sha256"`
-    Mode        uint32            `json:"mode"`
-    PreExisting bool              `json:"preExisting,omitempty"`
-    PriorSHA256 string            `json:"priorSha256,omitempty"`
-    BackupPath  string            `json:"backupPath,omitempty"`
-    Targets     []OwnershipTarget `json:"targets"`
+    // Path is the slash-relative managed path under the deployment root.
+    Path string `json:"path"`
+    // SHA256 is the hex digest of the managed content Takt wrote.
+    SHA256 string `json:"sha256"`
+    // Mode is the permission bits recorded at deploy time.
+    Mode uint32 `json:"mode"`
+    // PreExisting means the file predates Takt ownership and is never deleted on uninstall.
+    PreExisting bool `json:"preExisting,omitempty"`
+    // PriorSHA256 is the digest of content Takt overwrote; empty when nothing was ever overwritten.
+    PriorSHA256 string `json:"priorSha256,omitempty"`
+    // BackupPath is the root-relative backup holding overwritten content for restore.
+    BackupPath string `json:"backupPath,omitempty"`
+    // Targets are the owning targets in sorted order.
+    Targets []OwnershipTarget `json:"targets"`
 }
 ```
 
 <a name="NewOwnershipEntry"></a>
-### func NewOwnershipEntry
+### func [NewOwnershipEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L94>)
 
 ```go
 func NewOwnershipEntry(managedPath string, content []byte, mode os.FileMode, preExisting bool, priorSHA256, backupPath string, targets ...OwnershipTarget) (OwnershipEntry, error)
 ```
 
-NewOwnershipEntry creates a validated ownership entry and computes the SHA\-256 hash of its managed content. Targets must be supported and unique; they are stored in sorted order. Prior content metadata is required for pre\-existing files and rejected otherwise. It returns an error for invalid paths, empty content, invalid modes, prior hashes, or targets.
+NewOwnershipEntry creates a validated ownership entry and digests its managed content. Targets must be supported and unique; pre\-existing files must carry their prior hash.
 
 <a name="OwnershipManifest"></a>
-## type OwnershipManifest
+## type [OwnershipManifest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L85-L90>)
 
-OwnershipManifest is the cross\-target superset of the per\-target manifests: the single source of truth for which files Takt owns beneath a deployment root. Later lifecycle phases consume it to drive sync and uninstall.
+OwnershipManifest is the single source of truth for which files Takt owns beneath a deployment root. Sync and uninstall consume it to decide what to preserve, restore, or remove.
 
 ```go
 type OwnershipManifest struct {
-    Version int                       `json:"version"`
+    // Version is the schema version; only OwnershipManifestVersion loads.
+    Version int `json:"version"`
+    // Entries maps slash-relative paths to their ownership records.
     Entries map[string]OwnershipEntry `json:"entries"`
 }
 ```
 
 <a name="LoadOwnershipManifest"></a>
-### func LoadOwnershipManifest
+### func [LoadOwnershipManifest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L182>)
 
 ```go
 func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error)
 ```
 
-LoadOwnershipManifest reads and validates the ownership manifest from rootDir. It returns an error if the file is missing, malformed, or uses an unsupported manifest version.
+LoadOwnershipManifest reads and validates the manifest from rootDir. A missing file, malformed JSON, or foreign version is an error callers handle distinctly.
 
 <a name="NewOwnershipManifest"></a>
-### func NewOwnershipManifest
+### func [NewOwnershipManifest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L156>)
 
 ```go
 func NewOwnershipManifest() *OwnershipManifest
@@ -227,43 +551,25 @@ func NewOwnershipManifest() *OwnershipManifest
 NewOwnershipManifest returns an empty manifest ready for Add calls.
 
 <a name="OwnershipManifest.Add"></a>
-### func \(\*OwnershipManifest\) Add
+### func \(\*OwnershipManifest\) [Add](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L165>)
 
 ```go
 func (m *OwnershipManifest) Add(entries ...OwnershipEntry) error
 ```
 
-Add inserts entries, replacing any entry already recorded for the same path. Entries must come from NewOwnershipEntry, which owns validation; Add only rejects a mismatched manifest version so a manifest loaded by a future reader cannot be mutated with stale rules.
-
-<a name="OwnershipManifest.EntriesForTarget"></a>
-### func \(\*OwnershipManifest\) EntriesForTarget
-
-```go
-func (m *OwnershipManifest) EntriesForTarget(target OwnershipTarget) []OwnershipEntry
-```
-
-EntriesForTarget returns the entries owned by the given target, sorted by path. Unknown targets yield an empty slice.
-
-<a name="OwnershipManifest.IsManaged"></a>
-### func \(\*OwnershipManifest\) IsManaged
-
-```go
-func (m *OwnershipManifest) IsManaged(managedPath string) bool
-```
-
-IsManaged reports whether the given slash\-relative path is owned by Takt.
+Add inserts entries, replacing any entry already recorded for the same path. Entries must come from NewOwnershipEntry; only a mismatched manifest version is rejected.
 
 <a name="OwnershipManifest.Save"></a>
-### func \(\*OwnershipManifest\) Save
+### func \(\*OwnershipManifest\) [Save](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L176>)
 
 ```go
 func (m *OwnershipManifest) Save(rootDir string) error
 ```
 
-Save writes the manifest to OwnershipManifestFilename beneath rootDir, creating parent directories as needed. Serialization is deterministic, so saving identical state twice produces identical bytes \(idempotent\).
+Save writes the manifest beneath rootDir with deterministic bytes, so identical state saves identically.
 
 <a name="OwnershipTarget"></a>
-## type OwnershipTarget
+## type [OwnershipTarget](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L38>)
 
 OwnershipTarget names a deployment target that owns managed files.
 
@@ -271,19 +577,19 @@ OwnershipTarget names a deployment target that owns managed files.
 type OwnershipTarget string
 ```
 
-<a name="TargetClaude"></a>Supported ownership targets: the native agent targets plus the skills target, which owns deployed skill files under .agents/skills/.
+<a name="TargetOpenCode"></a>Supported ownership targets: the native agent targets plus the skills target, which owns deployed skill files under .opencode/skills/.
 
 ```go
 const (
-    TargetClaude   OwnershipTarget = "claude"
-    TargetCodex    OwnershipTarget = "codex"
+    // TargetOpenCode is the OpenCode harness target.
     TargetOpenCode OwnershipTarget = "opencode"
-    TargetSkills   OwnershipTarget = "skills"
+    // TargetSkills owns deployed skill files shared across harnesses.
+    TargetSkills OwnershipTarget = "skills"
 )
 ```
 
 <a name="OwnershipTargetFor"></a>
-### func OwnershipTargetFor
+### func [OwnershipTargetFor](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/ownership.go#L57>)
 
 ```go
 func OwnershipTargetFor(id string) (OwnershipTarget, error)
@@ -292,77 +598,222 @@ func OwnershipTargetFor(id string) (OwnershipTarget, error)
 OwnershipTargetFor converts an agent or ownership target identifier to an ownership target. It returns an error for unsupported identifiers.
 
 <a name="PlanRequest"></a>
-## type PlanRequest
+## type [PlanRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L39-L46>)
 
-PlanRequest contains selected targets, explicit native content, and target model overrides. Content has no assignment fields; assignments are resolved from the semantic catalog for each selected target. Components optionally names artifact\-only components for a custom setup; the default setup leaves it empty.
+PlanRequest contains explicit native content and model overrides; assignments resolve from the semantic catalog.
 
 ```go
 type PlanRequest struct {
-    Targets              []model.AgentID                  `json:"targets"`
-    Content              []catalog.NativeSubAgentContent  `json:"content"`
-    Claude               ClaudePlanOptions                `json:"claude"`
-    Codex                CodexPlanOptions                 `json:"codex"`
-    OpenCode             OpenCodePlanOptions              `json:"opencode"`
-    ClaudeModelOverrides map[string]model.ModelAssignment `json:"claude_model_overrides"`
-    CodexModelOverrides  map[string]model.ModelAssignment `json:"codex_model_overrides"`
-    Components           []string                         `json:"components"`
+    // OpenCode holds the OpenCode fallback model.
+    OpenCode OpenCodePlanOptions `json:"opencode"`
+    // OpenCodeModelOverrides reassigns OpenCode sub-agent models by ID.
+    OpenCodeModelOverrides map[string]model.ModelAssignment `json:"opencode_model_overrides"`
+    // Components names artifact-only components for a custom setup; empty means defaults.
+    Components []string `json:"components"`
 }
 ```
 
 <a name="DefaultPlanRequest"></a>
-### func DefaultPlanRequest
+### func [DefaultPlanRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/default_request.go#L14>)
 
 ```go
-func DefaultPlanRequest(targets []model.AgentID) (PlanRequest, error)
+func DefaultPlanRequest() (PlanRequest, error)
 ```
 
-DefaultPlanRequest returns valid native content for the explicitly selected targets. Content follows the embedded catalog order and excludes default, which is an assignment fallback rather than a renderable sub\-agent.
+DefaultPlanRequest returns a PlanRequest selecting every applicable component; component choice is resolved in BuildTargetPlans.
+
+<a name="LoadInstalledConfig"></a>
+### func [LoadInstalledConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/installed_config.go#L56>)
+
+```go
+func LoadInstalledConfig(rootDir string) (PlanRequest, error)
+```
+
+LoadInstalledConfig reads the installed snapshot; a missing file wraps os.ErrNotExist for fallback logic.
+
+<a name="ProviderAction"></a>
+## type [ProviderAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/provider_actions.go#L26-L33>)
+
+ProviderAction is a trusted external integration command executed without a shell.
+
+```go
+type ProviderAction struct {
+    // ID names the action in results and not-applied lists.
+    ID  string
+    // Program is the executable resolved without a shell.
+    Program string
+    // Args are the exact arguments passed to the program.
+    Args []string
+}
+```
+
+<a name="ProviderRuntime"></a>
+## type [ProviderRuntime](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/provider_actions.go#L36-L43>)
+
+ProviderRuntime supplies executable lookup and command execution seams.
+
+```go
+type ProviderRuntime struct {
+    // LookPath resolves the program; defaults to exec.LookPath.
+    LookPath func(string) (string, error)
+    // Run executes the program; defaults to a bounded-output runner.
+    Run func(context.Context, string, ...string) ([]byte, error)
+    // Timeout caps one action; non-positive means the default timeout.
+    Timeout time.Duration
+}
+```
+
+<a name="RestoreResult"></a>
+## type [RestoreResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/restore.go#L27-L30>)
+
+RestoreResult reports which managed paths had their pre\-existing content restored from backup.
+
+```go
+type RestoreResult struct {
+    // Restored lists managed paths whose pre-existing content came back from backup.
+    Restored []string `json:"restored"`
+}
+```
+
+<a name="Restore"></a>
+### func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/restore.go#L34>)
+
+```go
+func Restore(rootDir string, manifest *OwnershipManifest) (RestoreResult, error)
+```
+
+Restore writes each entry's backed\-up pre\-existing content back, undoing Takt's takeover. Entries without backups are skipped; crafted paths can never write outside rootDir.
+
+<a name="RetentionChoices"></a>
+## type [RetentionChoices](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/uninstall_retention.go#L30-L38>)
+
+RetentionChoices are the user's explicit decisions for externally modified managed files that Uninstall left in place. Paths not listed stay where Uninstall left them.
+
+```go
+type RetentionChoices struct {
+    // Keep lists preserved files to move into the retained directory.
+    Keep []string
+    // Remove lists preserved files to delete.
+    Remove []string
+    // MemoryFrom is the Engram data directory whose database is handed off
+    // into the retained directory. Empty means no memory choice was made.
+    MemoryFrom string
+}
+```
+
+<a name="RetentionResult"></a>
+## type [RetentionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/uninstall_retention.go#L66-L81>)
+
+RetentionResult reports how RetentionChoices were carried out. Deliberate retention \(Retained\) is kept apart from cleanup that did not complete \(Incomplete\) so neither is relabeled as the other.
+
+```go
+type RetentionResult struct {
+    // Removed lists deleted paths.
+    Removed []string
+    // Retained lists paths moved into the retained directory.
+    Retained []string
+    // RetainedDir is the timestamped directory holding kept content.
+    RetainedDir string
+    // Memory is the delivered Engram database inside RetainedDir; empty when
+    // no memory was handed off (no choice, or Engram holds no database).
+    Memory string
+    // Incomplete holds "path: reason" for every choice that could not be
+    // carried out; the file stays where it was.
+    Incomplete []string
+    // NotApplied holds the choices a cancellation left untouched in place.
+    NotApplied []string
+}
+```
+
+<a name="ApplyUninstallRetention"></a>
+### func [ApplyUninstallRetention](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/uninstall_retention.go#L104>)
+
+```go
+func ApplyUninstallRetention(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time) (RetentionResult, error)
+```
+
+ApplyUninstallRetention carries out keep/remove choices after Uninstall, moving retained files and the Engram database into one timestamped directory.
+
+<a name="RiskAcceptance"></a>
+## type [RiskAcceptance](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/risk_acceptance.go#L18-L25>)
+
+RiskAcceptance is one kept file as reviewed: its path, the SHA\-256 of the content the user saw \("" for a missing file\) and the assessed impact.
+
+```go
+type RiskAcceptance struct {
+    // Path is the kept file's root-relative path.
+    Path string `json:"path"`
+    // SHA256 is the digest of the reviewed content ("" when the file is missing).
+    SHA256 string `json:"sha256"`
+    // Impact is the assessed impact the user accepted.
+    Impact string `json:"impact"`
+}
+```
 
 <a name="TargetPlan"></a>
-## type TargetPlan
+## type [TargetPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L44-L53>)
 
 TargetPlan is the plain setup input supplied by a native adapter. Target is opaque to setup; its manifest and artifacts define the target's ownership.
 
 ```go
 type TargetPlan struct {
-    Target       string
+    // Target identifies the owning agent; setup treats it opaquely.
+    Target string
+    // ManagedPaths are the normalized paths this target owns.
     ManagedPaths []string
-    Artifacts    []Artifact
+    // Artifacts is the rendered content ready for deployment.
+    Artifacts []Artifact
+    // Actions are provider commands that run after a complete deployment.
+    Actions []ProviderAction
 }
 ```
 
 <a name="BuildTargetPlans"></a>
-### func BuildTargetPlans
+### func [BuildTargetPlans](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L51>)
 
 ```go
-func BuildTargetPlans(request PlanRequest) ([]TargetPlan, error)
+func BuildTargetPlans(request PlanRequest) ([]TargetPlan, []catalog.Removal, error)
 ```
 
-BuildTargetPlans validates the requested targets and builds their native configuration plans in canonical order. Each plan's artifacts are ordered by relative path; errors are returned without any plans.
+BuildTargetPlans validates the request and builds the OpenCode plan with path\-sorted artifacts. The returned removals are the manifest dependencies dropped from the selection, if any.
 
 <a name="UninstallResult"></a>
-## type UninstallResult
+## type [UninstallResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L602-L614>)
 
 UninstallResult reports what manifest\-driven removal did per file.
 
 ```go
 type UninstallResult struct {
-    Removed   []string `json:"removed"`
+    // Removed lists deleted Takt-owned paths.
+    Removed []string `json:"removed"`
+    // Preserved lists paths kept because the user changed them or never owned them.
     Preserved []string `json:"preserved"`
+    // Restored lists pre-existing files put back to their pre-Takt content; see restorablePreExisting.
+    Restored []string `json:"restored,omitempty"`
+    // NotApplied lists manifest entries a cancellation left installed.
+    NotApplied []string `json:"notApplied,omitempty"`
+    // PreservedReasons maps a Preserved path to why it stayed: "pre-existing", "takt-additions", or "user-edited".
+    // Only PreviewUninstall populates this; Uninstall leaves it nil.
+    PreservedReasons map[string]string `json:"preservedReasons,omitempty"`
 }
 ```
 
-<a name="Uninstall"></a>
-### func Uninstall
+<a name="PreviewUninstall"></a>
+### func [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L280>)
 
 ```go
-func Uninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, error)
+func PreviewUninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, error)
 ```
 
-Uninstall removes Takt's footprint for the given ownership targets, driven entirely by the ownership manifest.
+PreviewUninstall classifies what Uninstall would do without touching disk. Callers present this plan before requiring explicit authorization to apply it.
 
-Preservation policy for pre\-existing files: an entry with PreExisting set is NEVER modified or deleted on uninstall; its current bytes stay in place as user content. Takt\-created files are removed, EXCEPT when the on\-disk bytes no longer match the recorded SHA\-256 \(the user edited the file since install\) — those are preserved too \(\#12689\). Entries shared with unselected targets keep their files and remaining owners. When the last entry is gone the manifest itself is deleted. A missing manifest is a successful no\-op.
+<a name="UninstallContext"></a>
+### func [UninstallContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L243>)
 
-Uninstall is transactional \(\#12691\): the whole operation is planned and validated first, then removals are staged \(moved aside\) before the manifest is rewritten. If any removal fails, the staged files are restored and the manifest is left untouched, so it never claims a file that was deleted when the operation failed.
+```go
+func UninstallContext(ctx context.Context, rootDir string, targets ...OwnershipTarget) (UninstallResult, error)
+```
+
+UninstallContext is Uninstall with cooperative cancellation: ctx is checked between entries. Cancelled work finalizes handled entries, leaves the rest in NotApplied, and returns ctx.Err\(\).
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

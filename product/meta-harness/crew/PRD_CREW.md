@@ -1,0 +1,68 @@
+# PRD: Crew Role Classes and Permission Profiles
+
+**Actual implementation progress: 74%** — 17 own requirements: 8 complete, 9 partial, 0 not integrated. `takt/catalog/packages.go` gives every specialty exactly one resolved role class per instance (`Profile`, packages.go:57-67; `instance_profiles` in e.g. `simplify/agent.yaml`), validated against `model.RoleClass`'s closed six-value enum by `ValidateRoleClass` (packages.go:306,346; model/role.go:27-53). `takt/agents/opencode/renderer.go`'s `agentPermissionRules` (renderer.go:154-180) derives non-VFS behavior from role, while exact per-instance grants drive VFS allow/deny rules: `vfs.GuardGitMutation` (vfs/vfs.go:377-384, wired at shell.go:292 and renderer.go:234-243) restricts mutating Git to the orchestrator alone; the VFS core's existing role checks remain independent server-side guards; and `admitVerifierLocked` (vfs/operation.go:513-522) deterministically rejects self-verification (`ErrSelfVerification`) on every `vfs_verify` call, independent of role — PR-CRW-8, PR-CRW-9, PR-CRW-10, and PR-CRW-12 are complete on this evidence. What stays partial is everywhere the profile depends on the orchestrator's own judgment rather than a harness check: PR-CRW-5's "never absorbs a reachable lane's judgment", PR-CRW-13's crew-shape fallback, and PR-CRW-14/15's blind judge-pair review are all real, specific instructions in `takt/catalog/assets/agents/takt/OPERATIONS.md` (lines 27-28, 56-59) and `takt-judge/OPERATIONS.md` (line 3), but no code isolates the two judges' sessions, gates the pair on an admissible condition, or checks that an absorbed lane was declared. PR-CRW-16's GC half is solid (VFS-staged mutation plus discard-on-fail at `vfs/operation.go:485`), but its dreaming half has no implementation of any kind — no `dream` code and no dreaming skill asset exist in the repository.
+
+## 1. Problem
+
+OpenCode v2 governs capabilities per instance and its assigned role; its projection must preserve the specialist definitions Takt owns, and orchestration dispatches work to named participants. Takt requires a fixed set of role classes, each with a permission profile that OpenCode v2 can enforce deterministically.
+
+This document defines the classes, the distinction between specialty and instance, and their profiles. Which concrete Takt specialists exist, and the model each receives in OpenCode v2, belong to the versioned capability manifest of `PR-SET-31`, not here: a specialist is added or removed without changing a class.
+
+## 2. Functional Requirements
+
+### 2.1 Role Classes
+
+| ID | Requirement |
+| --- | --- |
+| PR-CRW-1 | Every specialty in the canonical definition MUST declare the role classes it admits. Each dispatched instance MUST be created with exactly one of those classes and its permission profile. A specialty with no declared classes, or an instance without one admitted class, MUST NOT be dispatched. The instance MUST NOT change role class during its lifetime; planning and implementation require separate instances. |
+| PR-CRW-2 | The role classes are: **orchestrator**, **direct interlocutor**, **planning author**, **execution**, **verification**, and **maintenance**. |
+| PR-CRW-3 | The instance's assigned role class determines its non-VFS permission profile and the interaction class of `PIRS_ORCHESTRATION` §3. VFS access is declared separately for each exact instance ID (`PR-CRW-18`). Specialty determines focus, not an additional role class or permission profile. Files it may touch are fixed per dispatch by the contract's declared file set (`PR-ORQ-18`). |
+| PR-CRW-4 | Adding a specialist to the manifest MUST NOT introduce a new permission profile. A capability that no existing class covers is a change to this document, reviewable as such. |
+
+### 2.2 Permission Profiles
+
+Each cell resolves to allowed, denied, or approval-gated per `PR-HAR-8`.
+
+| ID | Requirement |
+| --- | --- |
+| PR-CRW-5 | **Orchestrator.** Dispatches work units and owns the DAG. Its own work is keeping every agent's delivery oriented to the goal and aligned against the others': integration, sequencing, coherence between lanes, and the completion report. Direct execution, including native filesystem mutation and shell, is available and does not require VFS. Delegation remains the normal mode for implementation, especially laborious work and work owned by a reachable specialty. Direct execution is appropriate for a truly small adjustment, a critical or urgent intervention, or work the user explicitly asks the orchestrator to do directly; these exceptions do not change delegation as the normal mode. What the orchestrator never absorbs is a reachable lane's judgment — architecture, experience, specification, proposal, verdict — regardless of what dispatching that lane is estimated to cost or which model backs it. Sole agent permitted to perform mutating or destructive Git operations: Git commit at a validated milestone (`PR-VFS-GIT-3`), and other mutating Git actions approval-gated under deterministic confirmation (`PR-VFS-GIT-5`); all other roles are strictly prohibited from mutating Git. Configuration mutation while holding the interface (`PR-HAR-14`). |
+| PR-CRW-6 | **Direct interlocutor.** Speaks with the user to align intent, architecture, or scope (`IR-1`). Direct interlocutors include discovery, architecture alignment, and product design. Configuration mutation while holding the interface (`PR-HAR-14`). Persists each artifact it authors as a document in the repository, through native file tools, and as one complete, isolated Engram entry with the exact same content; it holds no VFS binding. Where its lane's artifact does not yet exist, it authors it from the brief it received (`PR-CRW-7`). Git mutation denied. Relays the user's request to trigger GC (`PR-MNT-8`) or join or trigger dreaming (`PR-MNT-2`); it does not conduct the cycle itself. |
+| PR-CRW-7 | **Planning author.** Produces specifications, detailed technical designs, and contracts (`PR-ORQ-19`). A planning author whose lane's artifact does not yet exist authors it from the brief it received: the absence of an upstream document is never a reason to decline the dispatch, and never licence to improvise past the brief. Artifacts already authored by other lanes bind as read-only contracts (`PR-ORQ-16`). It does not produce the execution DAG: that is the orchestrator's own strategy, compiled by the orchestrator from these artifacts (`PR-CRW-5`, `PRD_DAG`). Persists each artifact it authors as a document in the repository, through native file tools, and as one complete, isolated Engram entry with the exact same content; it holds no VFS binding. Git mutation denied; Git read allowed (`PR-VFS-GIT-2`). Reports to the orchestrator when dispatched internally within the crew. |
+| PR-CRW-8 | **Execution.** Implements against a frozen contract. Filesystem mutation via VFS (`PR-VFS-STG-1`). Shell available, with workspace writes captured into the VFS (`PR-HAR-15`). Git mutation denied (`PR-VFS-GIT-1`); Git read allowed. Configuration mutation denied. Reports to the orchestrator. |
+| PR-CRW-9 | **Verification.** Judges work against reference invariants and evidence. One specialist with two dispatch modes: in *gate* mode it holds no mutation capability and issues the verdict that `PR-VFS-CSL-3` requires; in *acceptance* mode it runs builds, suites, and linters against the materialized workspace (`PR-VFS-CSL-6`) and may write only test output outside the workspace. Neither mode mutates configuration, and the class is never user-invocable. |
+| PR-CRW-16 | **Maintenance.** Runs harness-controlled cycles under their separate contracts: workspace GC (`PRD_GC.md`, `PR-MNT-1`, `PR-MNT-3`) or memory dreaming (`PRD_DREAMING.md`, `PR-DRM-1`..`2`), never ordinary orchestrator work units or active task execution. In GC, the simplification instance mutates the workspace via VFS with behavior-preserving deltas and an independent verdict (`PR-MNT-15`). Tests are not an object of GC work: only consequential removal under `PR-MNT-25` is in scope; explicit test work belongs to another specialty (Article 9). Dreaming mutates memory within `ARCH_MEMORY` §6; Deep Dream requires user participation and individually validated removals (`PR-MNT-21`). Git mutation denied; Git read allowed. Configuration mutation denied. These cycle restrictions do not bind ordinary instances of the simplification specialty assigned other roles. |
+| PR-CRW-10 | Network access is unrestricted for every class (`PR-HAR-10`). Filesystem read is available to every class, subject to the contract's declared file set. |
+
+### 2.3 Interaction and Invocability
+
+| ID | Requirement |
+| --- | --- |
+| PR-CRW-11 | Direct interlocutors are user-invocable and may hold the interface (`IR-14`, `IR-15`). Planning authors and execution specialists are user-invocable but operate internally once dispatched with aligned work (`IR-2`). Verification specialists are exclusively internal and never enter the interlocutor stack (`IR-3`, `IR-17`). |
+| PR-CRW-17 | Maintenance instances are not user-invocable as interlocutors and never enter the interlocutor stack. GC instances do not speak with or wait for the user; requests to trigger GC pass through the interface holder (`PR-MNT-8`). Dreaming retains user requests and participation, relayed through the interface holder (`PR-MNT-2`, `MEM-DRM-6`). These restrictions apply to the assigned maintenance role, not to every instance of a specialty that admits it. |
+| PR-CRW-12 | An instance that produced a delta MUST NOT verify it. The gate verdict of `PR-VFS-CSL-3` comes from a verification instance distinct from the authoring agent. Author and verifier MAY share a specialty, never the same instance or authorship of the change. |
+
+### 2.4 Crew Shape and High-Stakes Verification
+
+| ID | Requirement |
+| --- | --- |
+| PR-CRW-13 | The installed crew is always complete (`PR-SET-12`); in a session it may be complete, partial when a specialist is unavailable, or a single agent (`IR-14`, `PR-HAR-14`). Capability does not depend on its shape. Work owned by another role class is routed to it when that class is present; when it is not, the agent performs the work itself to its own standard and declares which lane's judgment it absorbed and on what basis. Declining delivery because a specialist is absent is a failure, and so is absorbing a lane that was present. The complete crew under orchestration is the intended configuration and the one that compounds capability; it is not a precondition for delivering. |
+| PR-CRW-14 | High-stakes verification is performed by two independent instances of the verification class (`PR-CRW-9`) reviewing the same work in parallel. Neither sees the other's findings, neither is told the other's identity, and neither may seek them: the duplication is the mechanism, and agreement between two blind judgments is the signal it produces. Both receive an identical brief. Their findings reach the orchestrator unmerged. The two instances are separately assignable agents, each drawing its model from the capability manifest (`PR-SET-31`); the independence of their judgments is a property of that assignment, not of the class. |
+| PR-CRW-15 | The pair of `PR-CRW-14` is not a routine gate; the single verdict of `PR-VFS-CSL-3` is. It is admissible only where one verification is insufficient: damage of unknown extent, or a required certainty abnormally higher than the work's ordinary standard. The orchestrator MAY request it by declaring which condition holds; the harness dispatches the pair, as in `PR-DAG-TMP-7`, and the orchestrator neither selects the reviewers nor re-dispatches one to obtain a different answer (`PR-DAG-TMP-6`). Its cost is two specialists, and it counts against the session bounds of `PR-HAR-19`. |
+
+### 2.5 VFS Grants
+
+| ID | Requirement |
+| --- | --- |
+| PR-CRW-18 | Every deployed agent instance MUST declare its operation-level VFS capabilities by exact instance ID. A missing declaration MUST fail catalog validation; there is no global default and no inheritance from a shared agent definition or role class. An explicit empty list (`[]`) denies all VFS operations. Instances sharing one agent definition, including instances assigned different roles, MUST each declare their own list. Orchestration claim list, assign, and release are separate capabilities and MUST be explicitly assigned to the orchestrator instance. |
+
+## 3. Failure Behavior
+
+| Situation | Expected Behavior |
+| --- | --- |
+| A specialty declares no admitted roles, or an instance has no single admitted role | Visible failure before dispatch; the specialist is not dispatched and the condition is reported. |
+| A specialist attempts an action outside its class profile | Denied or approval-gated by the harness per `PR-HAR-8`, with a visible deterministic result. |
+| The authoring agent is the only candidate to verify its own delta | Consolidation does not proceed; the orchestrator escalates rather than accepting a self-issued verdict. |
+| The orchestrator requests the pair without naming an admissible condition of `PR-CRW-15` | The request is refused deterministically and visibly; the single verdict path remains available. |
+| A role class the work needs is unavailable in the session | The present agent delivers under `PR-CRW-13` and declares the absorbed lane; an unavailable specialist is never reported as a reason not to deliver. |
+
+A request to change an instance from planning to execution is refused; implementation requires a new instance with its own aligned contract and permissions (`PR-CRW-1`).

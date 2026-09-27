@@ -6,85 +6,319 @@
 import "github.com/rou-cru/takt-ai/takt/catalog"
 ```
 
-Package catalog loads and validates the semantic sub\-agent definitions, joins them to native content, and resolves per\-target model assignments.
+Package catalog is the single declarative source of Takt's installable content: agent definitions, skill packages, shared files and the versioned install manifest. Loaders validate before any deployment can be planned.
 
 ## Index
 
-- [func CanonicalSubAgentCatalog\(\) \[\]model.CanonicalSubAgent](<#CanonicalSubAgentCatalog>)
-- [func CanonicalSubAgents\(\) \[\]string](<#CanonicalSubAgents>)
-- [func Load\(\) \(\[\]model.CanonicalSubAgent, error\)](<#Load>)
-- [type NativeSubAgent](<#NativeSubAgent>)
-  - [func JoinNativeContentForTargets\(catalog \[\]model.CanonicalSubAgent, content \[\]NativeSubAgentContent, targets \[\]model.AgentID\) \(\[\]NativeSubAgent, error\)](<#JoinNativeContentForTargets>)
+- [Constants](<#constants>)
+- [func AssetFS\(\) fs.FS](<#AssetFS>)
+- [func ComponentPurpose\(id model.ComponentID\) string](<#ComponentPurpose>)
+- [func LoadNativeContent\(\) \(map\[string\]NativeSubAgentContent, error\)](<#LoadNativeContent>)
+- [func SelectableOrder\(\) \(\[\]model.ComponentID, error\)](<#SelectableOrder>)
+- [type AgentDefinition](<#AgentDefinition>)
+  - [func \(a AgentDefinition\) ComposeText\(fsys fs.FS\) \(string, error\)](<#AgentDefinition.ComposeText>)
+  - [func \(a AgentDefinition\) ContextPaths\(\) \[\]string](<#AgentDefinition.ContextPaths>)
+  - [func \(a AgentDefinition\) Profile\(instance string\) InstanceProfile](<#AgentDefinition.Profile>)
+  - [func \(a AgentDefinition\) VFSCapabilities\(instanceID string\) \(\[\]model.VFSCapability, bool\)](<#AgentDefinition.VFSCapabilities>)
+- [type Capabilities](<#Capabilities>)
+  - [func LoadCapabilities\(\) \(Capabilities, error\)](<#LoadCapabilities>)
+- [type Capability](<#Capability>)
+- [type Catalog](<#Catalog>)
+  - [func LoadFS\(fsys fs.FS\) \(Catalog, error\)](<#LoadFS>)
+  - [func LoadPackages\(\) \(Catalog, error\)](<#LoadPackages>)
+- [type ContextFiles](<#ContextFiles>)
+- [type InstanceProfile](<#InstanceProfile>)
 - [type NativeSubAgentContent](<#NativeSubAgentContent>)
+- [type PackageFile](<#PackageFile>)
+- [type Removal](<#Removal>)
+  - [func Reconcile\(m Capabilities, selected \[\]model.ComponentID\) \(\[\]model.ComponentID, \[\]Removal\)](<#Reconcile>)
+  - [func ReconcileSelection\(selected \[\]model.ComponentID\) \(\[\]model.ComponentID, \[\]Removal, error\)](<#ReconcileSelection>)
+- [type SkillPackage](<#SkillPackage>)
 
 
-<a name="CanonicalSubAgentCatalog"></a>
-## func CanonicalSubAgentCatalog
+## Constants
+
+<a name="BaselinePath"></a>BaselinePath is the shared prompt prefix every agent composes on top of.
 
 ```go
-func CanonicalSubAgentCatalog() []model.CanonicalSubAgent
+const BaselinePath = "shared/BASELINE.md"
 ```
 
-CanonicalSubAgentCatalog returns the validated catalog in YAML order.
-
-<a name="CanonicalSubAgents"></a>
-## func CanonicalSubAgents
+<a name="SkillFileName"></a>SkillFileName is the descriptor filename every skill package carries.
 
 ```go
-func CanonicalSubAgents() []string
+const SkillFileName = "SKILL.md"
 ```
 
-CanonicalSubAgents returns catalog IDs in their YAML order.
-
-<a name="Load"></a>
-## func Load
+<a name="AssetFS"></a>
+## func [AssetFS](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L20>)
 
 ```go
-func Load() ([]model.CanonicalSubAgent, error)
+func AssetFS() fs.FS
 ```
 
-Load parses and validates the embedded semantic sub\-agent catalog. Parsing happens once per process; the embedded content is immutable, so callers share the result and must not mutate the returned slice or its assignment maps.
+AssetFS exposes the single declarative source tree, without its embedding prefix.
 
-<a name="NativeSubAgent"></a>
-## type NativeSubAgent
-
-NativeSubAgent is validated native content joined to its catalog assignment. DefaultAssignments is every joined entry's shared fallback: a clone of the default catalog definition's assignments, so resolution needs no second catalog lookup.
+<a name="ComponentPurpose"></a>
+## func [ComponentPurpose](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L101>)
 
 ```go
-type NativeSubAgent struct {
-    ID                 string
-    Description        string
-    Instructions       string
-    ClaudeTools        []string
-    CodexSandboxMode   codex.SandboxMode
-    CodexWebSearch     codex.WebSearch
-    Assignments        map[model.AgentID]model.ModelAssignment
-    DefaultAssignments map[model.AgentID]model.ModelAssignment
+func ComponentPurpose(id model.ComponentID) string
+```
+
+ComponentPurpose explains a component in plain words, falling back to its ID when unknown.
+
+<a name="LoadNativeContent"></a>
+## func [LoadNativeContent](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/native_content.go#L34>)
+
+```go
+func LoadNativeContent() (map[string]NativeSubAgentContent, error)
+```
+
+LoadNativeContent returns specialist prose keyed by instance ID for joining with catalog models.
+
+<a name="SelectableOrder"></a>
+## func [SelectableOrder](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L82>)
+
+```go
+func SelectableOrder() ([]model.ComponentID, error)
+```
+
+SelectableOrder lists user\-choosable components in manifest order so prompts stay stable.
+
+<a name="AgentDefinition"></a>
+## type [AgentDefinition](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L40-L58>)
+
+AgentDefinition retains references until the target adapter composes its prompt. Role profiles may inherit definition defaults; VFS grants are always declared separately by exact instance ID.
+
+```go
+type AgentDefinition struct {
+    // ID is the agent's stable identifier, the key adapters compose prompts from.
+    ID  string `yaml:"id"`
+    // Instances lists the deployable instances sharing this definition.
+    Instances []string `yaml:"instances"`
+    // InstanceProfiles overrides description and role per instance.
+    InstanceProfiles map[string]InstanceProfile `yaml:"instance_profiles"`
+    // VFSGrants declares an explicit VFS capability list for every instance ID.
+    // Grants never inherit from the definition or role.
+    VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
+    // Description says when to pick this agent.
+    Description string `yaml:"description"`
+    // Role is the default role class instances inherit.
+    Role model.RoleClass `yaml:"role"`
+    // Context names the agent context markdown files composing its prompt.
+    Context ContextFiles `yaml:"context"`
+    // Skills lists the skill package IDs the agent may use.
+    Skills []string `yaml:"skills"`
 }
 ```
 
-<a name="JoinNativeContentForTargets"></a>
-### func JoinNativeContentForTargets
+<a name="AgentDefinition.ComposeText"></a>
+### func \(AgentDefinition\) [ComposeText](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L440>)
 
 ```go
-func JoinNativeContentForTargets(catalog []model.CanonicalSubAgent, content []NativeSubAgentContent, targets []model.AgentID) ([]NativeSubAgent, error)
+func (a AgentDefinition) ComposeText(fsys fs.FS) (string, error)
 ```
 
-JoinNativeContentForTargets validates native options for each target and joins content to catalog assignments in catalog order. The default sub\-agent entry is intentionally not renderable.
+ComposeText joins this agent's context files \(see ContextPaths\) into one flat prompt body.
+
+<a name="AgentDefinition.ContextPaths"></a>
+### func \(AgentDefinition\) [ContextPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L429>)
+
+```go
+func (a AgentDefinition) ContextPaths() []string
+```
+
+ContextPaths is the declared composition order, not an authority hierarchy.
+
+<a name="AgentDefinition.Profile"></a>
+### func \(AgentDefinition\) [Profile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L61>)
+
+```go
+func (a AgentDefinition) Profile(instance string) InstanceProfile
+```
+
+Profile resolves one instance's description and role: its override where set, the definition's otherwise.
+
+<a name="AgentDefinition.VFSCapabilities"></a>
+### func \(AgentDefinition\) [VFSCapabilities](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L75>)
+
+```go
+func (a AgentDefinition) VFSCapabilities(instanceID string) ([]model.VFSCapability, bool)
+```
+
+VFSCapabilities returns the grants declared for this exact instance ID. The bool is false when the declaration is missing; no definition or role fallback is performed. The returned slice is independent of the catalog's map.
+
+<a name="Capabilities"></a>
+## type [Capabilities](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L43-L46>)
+
+Capabilities is the versioned install manifest installers reconcile user selections against.
+
+```go
+type Capabilities struct {
+    Version    int          `yaml:"version"`
+    Components []Capability `yaml:"components"`
+}
+```
+
+<a name="LoadCapabilities"></a>
+### func [LoadCapabilities](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L49>)
+
+```go
+func LoadCapabilities() (Capabilities, error)
+```
+
+LoadCapabilities returns the shared parsed manifest; callers must not mutate the result.
+
+<a name="Capability"></a>
+## type [Capability](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L33-L40>)
+
+Capability describes one installable unit and its dependencies so installers can explain choices.
+
+```go
+type Capability struct {
+    ID         string   `yaml:"id"`
+    Purpose    string   `yaml:"purpose"`
+    Core       bool     `yaml:"core"`
+    Selectable bool     `yaml:"selectable"`
+    Deps       []string `yaml:"deps"`
+    Note       string   `yaml:"note"`
+}
+```
+
+<a name="Catalog"></a>
+## type [Catalog](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L105-L112>)
+
+Catalog is the validated declarative content Takt deploys: agent definitions, skill packages, and free files shared across agents.
+
+```go
+type Catalog struct {
+    // Agents lists validated agent definitions.
+    Agents []AgentDefinition
+    // Skills lists validated skill packages with their files.
+    Skills []SkillPackage
+    // Files lists shared files deployed across agents.
+    Files []PackageFile
+}
+```
+
+<a name="LoadFS"></a>
+### func [LoadFS](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L134>)
+
+```go
+func LoadFS(fsys fs.FS) (Catalog, error)
+```
+
+LoadFS validates the entire package before any deployment can be planned; skill executables are declared in frontmatter, not taken from file modes.
+
+<a name="LoadPackages"></a>
+### func [LoadPackages](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L130>)
+
+```go
+func LoadPackages() (Catalog, error)
+```
+
+LoadPackages loads and validates the embedded declarative catalog.
+
+<a name="ContextFiles"></a>
+## type [ContextFiles](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L23-L27>)
+
+ContextFiles names the agent context markdown files one agent definition references.
+
+```go
+type ContextFiles struct {
+    Persona    string `yaml:"persona"`
+    Soul       string `yaml:"soul"`
+    Operations string `yaml:"operations"`
+}
+```
+
+<a name="InstanceProfile"></a>
+## type [InstanceProfile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L32-L35>)
+
+InstanceProfile is what one instance may differ in from its definition: one role class and a description saying when to pick it. Empty fields inherit the definition's.
+
+```go
+type InstanceProfile struct {
+    Description string          `yaml:"description"`
+    Role        model.RoleClass `yaml:"role"`
+}
+```
 
 <a name="NativeSubAgentContent"></a>
-## type NativeSubAgentContent
+## type [NativeSubAgentContent](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/native.go#L23-L29>)
 
-NativeSubAgentContent is target\-neutral content plus target\-native options. Model assignments are deliberately absent; they come from the semantic catalog when JoinNativeContent is called.
+NativeSubAgentContent holds target\-neutral prose, without model choices.
 
 ```go
 type NativeSubAgentContent struct {
-    ID               string            `json:"id"`
-    Description      string            `json:"description"`
-    Instructions     string            `json:"instructions"`
-    ClaudeTools      []string          `json:"claude_tools"`
-    CodexSandboxMode codex.SandboxMode `json:"codex_sandbox_mode"`
-    CodexWebSearch   codex.WebSearch   `json:"codex_web_search"`
+    ID           string `json:"id" yaml:"id"`
+    Description  string `json:"description" yaml:"description"`
+    Instructions string `json:"instructions" yaml:"instructions"`
+    // Role decides the permission profile and whether users may talk to this specialist directly.
+    Role model.RoleClass `json:"role" yaml:"role"`
+}
+```
+
+<a name="PackageFile"></a>
+## type [PackageFile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L84-L91>)
+
+PackageFile preserves binary bytes and an explicit deployment mode.
+
+```go
+type PackageFile struct {
+    // Path is the slash-separated path inside the catalog source tree.
+    Path string
+    // Content holds the file's binary bytes, preserved as authored.
+    Content []byte
+    // Mode is the deployment mode: 0755 only for scripts a skill declares executable.
+    Mode fs.FileMode
+}
+```
+
+<a name="Removal"></a>
+## type [Removal](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L112-L115>)
+
+Removal explains why a chosen capability was dropped so users can fix their selection.
+
+```go
+type Removal struct {
+    Component model.ComponentID
+    Reason    string
+}
+```
+
+<a name="Reconcile"></a>
+### func [Reconcile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L118>)
+
+```go
+func Reconcile(m Capabilities, selected []model.ComponentID) ([]model.ComponentID, []Removal)
+```
+
+Reconcile drops selected capabilities whose dependencies are missing, without re\-adding anything the user removed.
+
+<a name="ReconcileSelection"></a>
+### func [ReconcileSelection](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/capabilities.go#L151>)
+
+```go
+func ReconcileSelection(selected []model.ComponentID) ([]model.ComponentID, []Removal, error)
+```
+
+ReconcileSelection reconciles a selection against the embedded manifest for callers that hold no manifest.
+
+<a name="SkillPackage"></a>
+## type [SkillPackage](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L94-L101>)
+
+SkillPackage is one validated skill: its package ID and SKILL.md descriptor bytes.
+
+```go
+type SkillPackage struct {
+    // ID is the package identifier, also its directory name under skills/.
+    ID  string
+    // Descriptor holds the SKILL.md frontmatter and body bytes.
+    Descriptor []byte
+    // Files lists every file deployed for the skill, executables marked.
+    Files []PackageFile
 }
 ```
 

@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/cmd/generate-logo"
 ```
 
-Command generate\-logo creates structured TUI branding data from the canonical PNG.
+Package main rebuilds logo data so TUI branding stays matched to the canonical PNG.
 
 ## Index
 
