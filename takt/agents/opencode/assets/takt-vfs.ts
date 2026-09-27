@@ -46,6 +46,10 @@ const VFS_SHELL_ENFORCED: boolean = "__TAKT_VFS_SHELL_ENFORCED__" as unknown as 
 // launch needs the exact scope reserved first.
 const VFS_AGENTS: string[] = "__TAKT_VFS_AGENTS__" as unknown as string[]
 
+// RESULT_AGENTS are the catalog producers that carry the takt-result-handoff
+// skill: their delegation must call deliver_result before it ends.
+const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
+
 // INVARIANT_DOCUMENTS are the governing documents a bind declares, in the
 // precedence order PR-VFS-CSL-3 fixes. AGENTS.md carries the goal and directives
 // the user set for this workspace; the harness pins each document by its content
@@ -84,8 +88,8 @@ const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknow
 // read the workspace natively to investigate or judge; only the collector
 // stages its authorized change.
 const GC_LANE_TOOLS: Record<string, string[]> = {
-  collector: ["read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete"],
-  verifier: ["read", "glob", "grep"],
+  collector: ["read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record", "memory_continue_session", "memory_close_session"],
+  verifier: ["read", "glob", "grep", "memory_record", "memory_continue_session", "memory_close_session"],
 }
 
 // gcSessionPermissions is the ruleset a GC child session is created with: only
@@ -136,6 +140,12 @@ export default Plugin.define({
     const delegations = new Map<string, Delegation>(
       Object.entries(((await ctx.storage.get(DELEGATIONS_KEY)) as Record<string, Delegation> | undefined) ?? {}))
     const persistDelegations = () => ctx.storage.set(DELEGATIONS_KEY, Object.fromEntries(delegations))
+    // deliveries and childOf track a producer's result delivery for the life
+    // of one delegation only; neither is durable, unlike bindings/delegations
+    // above, because a producer whose process died must redeliver anyway.
+    const deliveries = new Map<string, true>()
+    const childOf = new Map<string, string>()
+    const unitKey = (root: string, unit: string) => `${root}\0${unit}`
     // record keeps the binding, and its durable copy, in step with the harness's
     // answer to an operation.
     async function record(b: Binding, res: Record<string, any>) {
@@ -172,8 +182,11 @@ export default Plugin.define({
       while (!seen.has(current)) {
         seen.add(current)
         const info = await ctx.session.get({ sessionID: current })
-        if (!info.parentID) return current
-        current = info.parentID
+        // A switch-created session has no parentID; its root is found through
+        // the takt_switch metadata the switch itself recorded instead.
+        const next = info.parentID ?? info.metadata?.takt_switch
+        if (!next) return current
+        current = next
       }
       throw new Error(`session ${id} has a parent cycle`)
     }
@@ -669,20 +682,21 @@ export default Plugin.define({
         if (d === undefined) return
         delegations.delete(delegation)
         await persistDelegations()
-        let validationError: unknown
-        if (event.status === "completed" && ["analyst", "pm", "architect", "product-designer", "spec"].includes(d.agent ?? "")) {
-          const output = JSON.stringify(event.result ?? {})
-          const match = output.match(/Engram result IDs:\s*(\[[\d,\s]+\])/)
-          try {
-            const ids = match ? JSON.parse(match[1]) : []
-            await dispatchAction({ action: "validate_results", session: d.root, result_ids: ids })
-          } catch (error) {
-            validationError = error
+        const key = unitKey(d.root, d.unit)
+        if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "") && !deliveries.has(key)) {
+          const child = childOf.get(key)
+          // Bounded to one retry: a producer that forgot deliver_result gets a
+          // single nudge, never an unbounded prompt loop.
+          if (child) await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+          if (!deliveries.has(key)) {
+            childOf.delete(key)
+            throw new Error("delegation ended without delivering a result via deliver_result")
           }
         }
+        deliveries.delete(key)
+        childOf.delete(key)
         await dispatchAction({ action: "finish", event: d.unit, dispatch: delegation, session: d.root })
         scheduleGC()
-        if (validationError) throw validationError
       } else if (event.tool.startsWith("vfs_") && !gcChildren.has(event.sessionID)) {
         await initializeGC()
         await coordinate({ action: "tick", session: await rootSession(event.sessionID) })
@@ -954,8 +968,16 @@ export default Plugin.define({
             agent: args.target_agent,
             metadata: { takt_switch: session },
           })
+          let result: any
+          try {
+            result = await dispatchAction({ action: "switch", session, child, agent: args.target_agent, artifact: args.expected_artifact })
+          } catch (error) {
+            // The switch never registered, so the child is stopped rather than
+            // left dangling unprompted.
+            await stopChild(child)
+            throw error
+          }
           await promptChild(child, text)
-          const result = await dispatchAction({ action: "switch", session, agent: args.target_agent, artifact: args.expected_artifact })
           interlocutorChild = child
           interlocutorRoot = session
           return { content: JSON.stringify(result) }
@@ -1152,6 +1174,20 @@ export default Plugin.define({
           return { content: "Consolidated to workspace" }
         },
       })
+      editor.add({
+        name: "deliver_result",
+        description: "Deliver this delegation's completed result: the Engram entry IDs already recorded for it. Call this before your turn ends.",
+        input: obj({
+          result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Existing Engram entry IDs this delegation delivers" },
+        }, ["result_ids"]),
+        async execute(args: { result_ids: number[] }, c) {
+          const root = await rootSession(c.sessionID)
+          const unit = await delegatedUnit(c.sessionID)
+          await dispatchAction({ action: "validate_results", session: root, result_ids: args.result_ids })
+          deliveries.set(unitKey(root, unit), true)
+          return { content: `Delivered ${args.result_ids.length} result id(s)` }
+        },
+      })
     })
 
     // Delegated VFS context is granted per exact agent instance and only while
@@ -1176,6 +1212,7 @@ export default Plugin.define({
         const allowed = VFS_TOOL_NAMES.filter(name => explicitlyAllows(name) && event.tools[name])
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
+        if (RESULT_AGENTS.includes(event.agent)) childOf.set(unitKey(root, unit), event.sessionID)
         const claim = await findClaim(root, unit, event.agent, ["pending", "active"])
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools[name]

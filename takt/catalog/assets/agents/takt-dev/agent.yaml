@@ -10,4 +10,5 @@ role: execution
 skills:
 - takt-memory-contract
 - takt-memory-dev
+- takt-handoff
 - takt-vfs-mutation

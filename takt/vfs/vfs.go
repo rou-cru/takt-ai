@@ -184,7 +184,7 @@ type CollisionError struct {
 
 // Error renders the refused path and both dispatch identities behind it.
 func (e *CollisionError) Error() string {
-	return fmt.Sprintf("%v: requested path %q for target %q (instance %q, session %q, unit %q) is owned by agent %q (session %q, unit %q)",
+	return fmt.Sprintf("%v: requested path %q for target %q (instance %q, session %q, unit %q) is owned by agent %q (session %q, unit %q); ask the orchestrator to release it",
 		ErrCollision, e.RequestedPath, e.TargetAgent, e.TargetInstance, e.TargetSession, e.TargetUnit,
 		e.OwnerAgent, e.OwnerSession, e.OwnerUnit)
 }
@@ -516,7 +516,7 @@ func (f *FS) appendJournalLocked(entry JournalEntry) {
 func (f *FS) checkOwnership(agent AgentID, rel string) error {
 	existing, owned := f.owners[rel]
 	if !owned {
-		return ErrScopeDenied
+		return fmt.Errorf("%w: %q is outside this binding's scope; ask the orchestrator to rebind with that path", ErrScopeDenied, rel)
 	}
 	if existing == agent {
 		return nil

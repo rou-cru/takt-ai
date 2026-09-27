@@ -2,17 +2,23 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -1107,5 +1113,123 @@ func TestDispatchInterlocutorAbortSwitchByUser(t *testing.T) {
 	}
 	if _, ok := resp["memory"]; !ok {
 		t.Fatalf("abort_switch response carries no memory field: %+v", resp)
+	}
+}
+
+// scrubFakeEngramPath drops any PATH entry from the fake engram stub
+// TestMain installs (os.MkdirTemp("", "takt-tui-engram-")), so a real-binary
+// test in this package can force a genuine download instead of finding it.
+func scrubFakeEngramPath(path string) string {
+	entries := strings.Split(path, string(os.PathListSeparator))
+	kept := entries[:0]
+	for _, entry := range entries {
+		if !strings.Contains(entry, "takt-tui-engram-") {
+			kept = append(kept, entry)
+		}
+	}
+	return strings.Join(kept, string(os.PathListSeparator))
+}
+
+// TestDispatchValidateResultsAgainstRealEngram is E2E-D: every other
+// coverage of validate_results (TestDispatchInterlocutorHandoffArtifactGate
+// above) fakes Engram with an httptest.Server. This one downloads the pinned
+// release, runs a real `engram serve`, saves a real observation through its
+// real HTTP API, and drives the real dispatch action against it — the one
+// link the Wave 2 delivery rewrite depends on that no test exercised without
+// a mock. It runs only inside the disposable test container
+// (scripts/test-containerized.sh): it never touches a host data directory.
+func TestDispatchValidateResultsAgainstRealEngram(t *testing.T) {
+	if _, err := os.Stat("/.dockerenv"); err != nil {
+		t.Skip("E2E-D runs only inside the test container")
+	}
+	t.Setenv("HOME", t.TempDir())
+	// This package's TestMain (memory_test.go) puts a fake `engram` stub first
+	// on PATH for every other test's sake; strip it here so Acquire's PATH
+	// lookup can't shadow the real pinned release this test needs.
+	t.Setenv("PATH", scrubFakeEngramPath(os.Getenv("PATH")))
+	binary, err := engram.Acquire(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("acquire real engram: %v", err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	dataDir := t.TempDir()
+	server := exec.Command(binary, "serve", strconv.Itoa(port))
+	server.Env = append(os.Environ(), "ENGRAM_DATA_DIR="+dataDir)
+	var serverOut bytes.Buffer
+	server.Stdout = &serverOut
+	server.Stderr = &serverOut
+	if err := server.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- server.Wait() }()
+	t.Cleanup(func() { _ = server.Process.Kill() })
+	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
+	deadline := time.After(15 * time.Second)
+waitLoop:
+	for {
+		select {
+		case waitErr := <-exited:
+			t.Fatalf("engram serve exited early (%v): %s", waitErr, serverOut.String())
+		case <-deadline:
+			t.Fatalf("engram serve never listened: %s", serverOut.String())
+		case <-time.After(100 * time.Millisecond):
+			if conn, dialErr := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port)); dialErr == nil {
+				_ = conn.Close()
+				break waitLoop
+			}
+		}
+	}
+	t.Setenv("ENGRAM_BASE_URL", baseURL)
+
+	sessionBody, err := json.Marshal(map[string]any{
+		"id": "e2e-d-session", "project": "fixture", "directory": "/tmp/e2e-d",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An observation belongs to a session; the real server rejects a post
+	// under a session id it hasn't seen yet.
+	sessionResp, err := http.Post(baseURL+"/sessions", "application/json", bytes.NewReader(sessionBody))
+	if err != nil {
+		t.Fatalf("post real session: %v", err)
+	}
+	_ = sessionResp.Body.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"session_id": "e2e-d-session",
+		"type":       "decision",
+		"title":      "real engram fixture",
+		"content":    "written by TestDispatchValidateResultsAgainstRealEngram",
+		"tool_name":  "test",
+		"project":    "fixture",
+		"scope":      "project",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Post(baseURL+"/observations", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post real observation: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if e := json.NewDecoder(resp.Body).Decode(&created); e != nil || created.ID == 0 {
+		t.Fatalf("real engram did not return an id: %v", e)
+	}
+
+	_, _, call := dispatchHarnessRaw(t)
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{created.ID + 1_000_000}}); e == nil {
+		t.Fatal("real engram accepted a nonexistent ID")
+	}
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{created.ID}}); e != nil {
+		t.Fatalf("real engram rejected its own freshly-saved observation: %v", e)
 	}
 }

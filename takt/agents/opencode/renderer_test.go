@@ -16,6 +16,66 @@ func vfsCaps(capabilities ...model.VFSCapability) []model.VFSCapability {
 	return append([]model.VFSCapability{}, capabilities...)
 }
 
+func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var specs []opencode.AgentSpec
+	for _, def := range pack.Agents {
+		for _, id := range def.Instances {
+			profile := def.Profile(id)
+			grants, _ := def.VFSCapabilities(id)
+			specs = append(specs, opencode.AgentSpec{ID: id, Description: profile.Description, Mode: opencode.AgentMode(profile.Role), System: opencode.ComposePrompt(def, id), Role: profile.Role, VFSCapabilities: grants, Skills: def.Skills})
+		}
+	}
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Agents: specs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := decodeConfig(t, artifact.Content)
+	for _, spec := range specs {
+		t.Run(spec.ID, func(t *testing.T) {
+			rules := config.Agents[spec.ID].Permissions
+			if spec.Role != model.RoleOrchestrator && effectOf(rules, "subagent", "*") != "deny" {
+				t.Error("specialist may delegate")
+			}
+			for _, tool := range []string{"dispatch_switch", "dispatch_abort_switch"} {
+				want := "deny"
+				if spec.Role == model.RoleOrchestrator {
+					want = "allow"
+				}
+				if got := effectOf(rules, tool, "*"); got != want {
+					t.Errorf("%s = %q, want %q", tool, got, want)
+				}
+			}
+			want := "deny"
+			if spec.Role == model.RoleDirectInterlocutor {
+				want = "allow"
+			}
+			if got := effectOf(rules, "dispatch_handoff", "*"); got != want {
+				t.Errorf("handoff = %q, want %q", got, want)
+			}
+			if spec.ID == "analyst" && effectOf(rules, "edit", "*") != "deny" {
+				t.Error("analyst may edit files")
+			}
+			for _, skill := range []string{"takt-handoff", "takt-memory-contract"} {
+				if !slices.Contains(spec.Skills, skill) || effectOf(rules, "skill", skill) == "deny" {
+					t.Errorf("missing accessible %s", skill)
+				}
+			}
+			producer := slices.Contains([]string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"}, spec.ID)
+			if slices.Contains(spec.Skills, "takt-result-handoff") != producer {
+				t.Error("incorrect result handoff assignment")
+			}
+			interlocutor := spec.Role == model.RoleOrchestrator || spec.Role == model.RoleDirectInterlocutor
+			if slices.Contains(spec.Skills, "takt-interlocutor-handoff") != interlocutor {
+				t.Error("incorrect interlocutor handoff assignment")
+			}
+		})
+	}
+}
+
 func TestRenderConfig(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Assignment: model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
@@ -260,7 +320,7 @@ func TestVFSPluginToolsAllHaveRolePermissions(t *testing.T) {
 	for _, match := range matches {
 		name := match[1]
 		if name == "vfs_consolidate" || name == "vfs_discard" {
-			if got := effectOf(config.Agents["takt"].Permissions, name, "*"); got == "deny" {
+			if effectOf(config.Agents["takt"].Permissions, name, "*") == "deny" {
 				t.Errorf("orchestrator must retain %s", name)
 			}
 			continue
@@ -329,8 +389,12 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 				}
 			}
 			if agent.Role == model.RoleDirectInterlocutor || agent.Role == model.RolePlanningAuthor {
-				if got := effectOf(rules, "edit", "*"); got != "allow" {
-					t.Errorf("document author edit = %q, want allow", got)
+				want := "allow"
+				if agent.ID == "analyst" {
+					want = "deny"
+				}
+				if got := effectOf(rules, "edit", "*"); got != want {
+					t.Errorf("document author edit = %q, want %q", got, want)
 				}
 			}
 		})
@@ -350,22 +414,29 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *tes
 		t.Fatal(err)
 	}
 	config := decodeConfig(t, artifact.Content)
-	interlocutorTools := []string{"dispatch_switch", "dispatch_handoff", "dispatch_abort_switch"}
-	for _, id := range []string{"verify", "takt-gc"} {
+	switchTools := []string{"dispatch_switch", "dispatch_abort_switch"}
+	for _, id := range []string{"verify", "takt-gc", "pm"} {
 		rules := config.Agents[id].Permissions
-		for _, tool := range interlocutorTools {
+		for _, tool := range switchTools {
 			if effectOf(rules, tool, "*") != "deny" {
 				t.Errorf("%s %s = %q, want deny", id, tool, effectOf(rules, tool, "*"))
 			}
 		}
 	}
-	for _, id := range []string{"takt", "pm"} {
-		rules := config.Agents[id].Permissions
-		for _, tool := range interlocutorTools {
-			if effectOf(rules, tool, "*") == "deny" {
-				t.Errorf("%s %s must not be denied by the static interlocutor rule", id, tool)
-			}
+	for _, tool := range switchTools {
+		rules := config.Agents["takt"].Permissions
+		if effectOf(rules, tool, "*") == "deny" {
+			t.Errorf("takt %s must not be denied by the static interlocutor rule", tool)
 		}
+	}
+	for _, id := range []string{"verify", "takt-gc"} {
+		rules := config.Agents[id].Permissions
+		if effectOf(rules, "dispatch_handoff", "*") != "deny" {
+			t.Errorf("%s dispatch_handoff = %q, want deny", id, effectOf(rules, "dispatch_handoff", "*"))
+		}
+	}
+	if got := effectOf(config.Agents["pm"].Permissions, "dispatch_handoff", "*"); got == "deny" {
+		t.Errorf("pm dispatch_handoff must not be denied, got %q", got)
 	}
 }
 
@@ -411,7 +482,7 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 	}
 	rules := decodeConfig(t, artifact.Content).Agents["takt"].Permissions
 	for _, skill := range designed {
-		if got := effectOf(rules, "skill", skill); got == "deny" {
+		if effectOf(rules, "skill", skill) == "deny" {
 			t.Errorf("designed skill %s hidden from the orchestrator", skill)
 		}
 	}
@@ -425,7 +496,7 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 			t.Errorf("GC cycle tool %s = %q for the orchestrator, want deny", tool, got)
 		}
 	}
-	if got := effectOf(rules, "skill", "someone-elses-skill"); got == "deny" {
+	if effectOf(rules, "skill", "someone-elses-skill") == "deny" {
 		t.Errorf("a skill Takt does not install was denied")
 	}
 }

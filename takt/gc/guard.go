@@ -34,7 +34,7 @@ func guardVFSBind(c *Coordinator, command string, identity vfs.Identity) error {
 		return nil
 	}
 	if identity.CycleID != "" || identity.MandateClass != "" {
-		return errors.New("gc: collector bindings are issued only by coordinator authorization")
+		return errors.New("gc: collector bindings are issued only by coordinator authorization; ask the coordinator to submit the bind request")
 	}
 	// The barrier halts new work, not work already running: a unit whose
 	// delegation is in flight (the harness resolved its attempt at admission)
@@ -48,7 +48,7 @@ func guardVFSBind(c *Coordinator, command string, identity vfs.Identity) error {
 
 func guardVFSCycle(c *Coordinator, cycleID string) error {
 	if c.Cycle == nil || c.Cycle.Plan.CycleID != cycleID {
-		return errors.New("gc: cycle is not active")
+		return errors.New("gc: no active cycle matches; ask the orchestrator to open one")
 	}
 	return nil
 }
@@ -56,10 +56,10 @@ func guardVFSCycle(c *Coordinator, cycleID string) error {
 func guardVFSCommand(c *Coordinator, command, action, path string) error {
 	switch command {
 	case "verify", "consolidate":
-		return errors.New("gc: maintenance verdict and consolidation are coordinator-only")
+		return errors.New("gc: maintenance verdict and consolidation are coordinator-only; ask the coordinator to submit the verdict")
 	case "op":
 		if c.Cycle.Phase != "collect" {
-			return errors.New("gc: mutation outside collector phase")
+			return errors.New("gc: mutation outside collector phase; ask the orchestrator to collect first")
 		}
 		if action != "read" && action != "rollback" && !slices.Contains(c.Cycle.Scope, path) {
 			return errors.New("gc: path outside authorized scope")

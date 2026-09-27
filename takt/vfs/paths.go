@@ -63,7 +63,7 @@ func (f *FS) validatePath(rel string) error {
 	parts := strings.Split(rel, "/")
 	// Lexical, so it holds below directories that do not exist yet.
 	if slices.ContainsFunc(parts, reservedName) {
-		return ErrInvalidPath
+		return fmt.Errorf("%w: %q is a protected workspace-relative path", ErrInvalidPath, rel)
 	}
 	return f.validatePathParts(parts)
 }

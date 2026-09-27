@@ -113,7 +113,7 @@ func Run(stdout io.Writer) error {
 	report.Checks = append(report.Checks, engramChecks(home)...)
 	report.Checks = append(report.Checks, engramNativePluginCheck(home))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
-	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeSandboxAdapterCheck(home))
+	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
 	return render(stdout, report)
 }
@@ -399,6 +399,13 @@ var openCodeHandshake = func() (opencodeapi.Handshake, error) {
 // durable core instead of the workspace.
 func opencodeVFSPluginCheck(home string) CheckResult {
 	return opencodePluginCheck(home, "opencode:vfs-plugin", model.VFSPluginFile, "VFS plugin", "the governed VFS plugin")
+}
+
+// opencodeMemoryPluginCheck reports whether the governed memory writer is
+// deployed. Engram's MCP server is read-only; without this plugin an agent
+// cannot call memory_record even though its contract requires it.
+func opencodeMemoryPluginCheck(home string) CheckResult {
+	return opencodePluginCheck(home, "opencode:memory-plugin", "takt-memory.ts", "Memory writer", "the memory writer that registers memory_record")
 }
 
 // opencodeSandboxAdapterCheck reports whether the sandbox adapter the VFS

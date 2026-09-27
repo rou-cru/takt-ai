@@ -118,10 +118,12 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	artifact := taktPluginArtifact(taktVFSPluginSource, model.VFSPluginFile, taktAIBinary)
 	enforced, _ := json.Marshal(shellEnforced)              // a bool always marshals
 	vfsAgents, _ := json.Marshal(vfsAgentIDs())             // a string slice always marshals
+	resultAgents, _ := json.Marshal(resultAgentIDs())       // a string slice always marshals
 	sensitive, _ := json.Marshal(shared.SensitivePathGlobs) // a string slice always marshals
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
 	content = strings.Replace(content, `"__TAKT_SENSITIVE_READ_GLOBS__"`, string(sensitive), 1)
-	artifact.Content = []byte(strings.Replace(content, `"__TAKT_VFS_AGENTS__"`, string(vfsAgents), 1))
+	content = strings.Replace(content, `"__TAKT_VFS_AGENTS__"`, string(vfsAgents), 1)
+	artifact.Content = []byte(strings.Replace(content, `"__TAKT_RESULT_AGENTS__"`, string(resultAgents), 1))
 	return artifact
 }
 
@@ -154,6 +156,19 @@ func vfsAgentIDs() []string {
 			if grants, _ := def.VFSCapabilities(id); slices.Contains(grants, model.VFSCapabilityWrite) {
 				ids = append(ids, id)
 			}
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// resultAgentIDs lists the catalog instances designed to use takt-result-handoff:
+// the producers that deliver a complete Engram artifact as their final result.
+func resultAgentIDs() []string {
+	ids := []string{}
+	for _, def := range loadCatalog().Agents {
+		if slices.Contains(def.Skills, "takt-result-handoff") {
+			ids = append(ids, def.Instances...)
 		}
 	}
 	slices.Sort(ids)

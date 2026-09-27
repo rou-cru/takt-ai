@@ -175,6 +175,10 @@ var orchestratorToolNames = []string{"dispatch_commit", "dispatch_activity_start
 // vfsMutationSkill carries the conduct of agents that stage their own work.
 const vfsMutationSkill = "takt-vfs-mutation"
 
+// resultHandoffSkill gates the deliver_result tool: only the producers
+// designed to use it may present a complete Engram artifact as their result.
+const resultHandoffSkill = "takt-result-handoff"
+
 func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 	entry := map[string]any{
 		"description": spec.Description,
@@ -201,6 +205,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, subagentRules(maintenance)...)
 	} else {
 		rules = append(rules, shellRules(spec.Role)...)
+		rules = append(rules, permissionRule{"subagent", allResources, "deny"})
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "deny"})
 		}
@@ -210,6 +215,12 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// user asks for it; this permission is independent of their VFS grant.
 		// V2 folds write and patch into edit, so one rule covers both.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
+	}
+	if spec.ID == "analyst" {
+		// Unlike spec/tpm, the analyst never authors a document: it only
+		// researches and delivers findings through the handoff channels, so its
+		// inherited planning_author edit-allow is withdrawn.
+		rules = append(rules, permissionRule{"edit", allResources, "deny"})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions
@@ -228,6 +239,11 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		skillEffect = "allow"
 	}
 	rules = append(rules, permissionRule{"skill", vfsMutationSkill, skillEffect})
+	deliverResultEffect := "deny"
+	if slices.Contains(spec.Skills, resultHandoffSkill) {
+		deliverResultEffect = "allow"
+	}
+	rules = append(rules, permissionRule{"deliver_result", allResources, deliverResultEffect})
 	rules = append(rules, interlocutorRules(spec.Role)...)
 	return rules
 }
@@ -255,22 +271,28 @@ func subagentRules(maintenance []string) []permissionRule {
 	return rules
 }
 
-// interlocutorTools are the PIRS_ORCHESTRATION tools that lend, return, and
-// cut the chat interface between the orchestrator and a temporary specialist.
-var interlocutorTools = []string{"dispatch_switch", "dispatch_handoff", "dispatch_abort_switch"}
+// switchTools lend and return the chat interface itself; only the
+// orchestrator, which owns the interface, may hand it out or reclaim it.
+var switchTools = []string{"dispatch_switch", "dispatch_abort_switch"}
 
-// interlocutorRules denies the interlocutor-stack tools for role classes
-// PIRS_ORCHESTRATION's IR-3/IR-17 bar from ever entering the interlocutor
-// stack: verification and maintenance are harness-run and never hold chat.
+// interlocutorRules projects the interlocutor-stack tools by role: switching
+// the interface is the orchestrator's alone, and handing a completed
+// interlocution back is the direct_interlocutor's alone. No other role class
+// ever holds chat (PIRS_ORCHESTRATION's IR-3/IR-17).
 func interlocutorRules(role model.RoleClass) []permissionRule {
-	if role != model.RoleVerification && role != model.RoleMaintenance {
-		return nil
+	switchEffect := "deny"
+	if role == model.RoleOrchestrator {
+		switchEffect = "allow"
 	}
-	var rules []permissionRule
-	for _, name := range interlocutorTools {
-		rules = append(rules, permissionRule{name, allResources, "deny"})
+	handoffEffect := "deny"
+	if role == model.RoleDirectInterlocutor {
+		handoffEffect = "allow"
 	}
-	return rules
+	rules := make([]permissionRule, 0, len(switchTools)+1)
+	for _, name := range switchTools {
+		rules = append(rules, permissionRule{name, allResources, switchEffect})
+	}
+	return append(rules, permissionRule{"dispatch_handoff", allResources, handoffEffect})
 }
 
 // skillRules hides every Takt skill the agent is not designed to use, so its

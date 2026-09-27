@@ -98,6 +98,18 @@ func assertContains(t *testing.T, output, want string) {
 	}
 }
 
+func TestRunReportsMissingMemoryWriter(t *testing.T) {
+	home := t.TempDir()
+	withSeams(t, home, nil, nil, nil, nil)
+	var output bytes.Buffer
+	if err := Run(&output); err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, output.String(), "opencode:memory-plugin")
+	assertContains(t, output.String(), "memory_record")
+	assertContains(t, output.String(), "takt-ai setup sync")
+}
+
 // TestEngramChecksUseResolvedBinary verifies the binary check follows engram.Resolve and the version check runs that path.
 func TestEngramChecksUseResolvedBinary(t *testing.T) {
 	home := t.TempDir()

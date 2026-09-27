@@ -598,7 +598,7 @@ func (f *FS) correlateLocked(start int, key, view AgentID, call string) {
 func (f *FS) consumeCallLocked(session, call string) error {
 	key := session + "\x00" + call
 	if f.calls[key] {
-		return ErrDuplicateCall
+		return fmt.Errorf("%w: %q was already consumed by a prior request; issue a fresh call", ErrDuplicateCall, call)
 	}
 	f.calls[key] = true
 	return nil
@@ -650,7 +650,7 @@ func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err erro
 func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	identity, ok := f.bindings[op.Key]
 	if !ok || op.CallID == "" {
-		return identity, ErrIdentity
+		return identity, fmt.Errorf("%w: key %q has no active binding; ask the orchestrator to rebind", ErrIdentity, op.Key)
 	}
 	if view != op.Key {
 		target, ok := f.bindings[view]
@@ -670,8 +670,8 @@ func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	if f.collidedLocked(identity) {
 		return identity, ErrCollision
 	}
-	if f.revisionOf(view) != op.ExpectedRevision {
-		return identity, ErrStaleRevision
+	if current := f.revisionOf(view); current != op.ExpectedRevision {
+		return identity, fmt.Errorf("%w: current revision %d; re-read and issue a fresh call", ErrStaleRevision, current)
 	}
 	return identity, nil
 }

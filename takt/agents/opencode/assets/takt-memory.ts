@@ -73,8 +73,11 @@ export default Plugin.define({
       while (!seen.has(current)) {
         seen.add(current)
         const info = await ctx.session.get({ sessionID: current })
-        if (!info.parentID) return current
-        current = info.parentID
+        // A switch-created session has no parentID; its root is found through
+        // the takt_switch metadata the switch itself recorded instead.
+        const next = info.parentID ?? info.metadata?.takt_switch
+        if (!next) return current
+        current = next
       }
       throw new Error(`session ${id} has a parent cycle`)
     }

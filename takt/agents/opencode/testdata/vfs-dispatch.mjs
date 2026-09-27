@@ -38,6 +38,8 @@ const hooks = {}
 const sessionHooks = {}
 const synthetic = []
 const interrupted = []
+const promptedSessions = []
+let onPrompt = () => undefined
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -45,11 +47,12 @@ await plugin.setup({
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
     hook: async (name, callback) => { (sessionHooks[name] ??= []).push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
-    prompt: async () => {},
+    prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
   },
   permission: { hook: async () => () => {} },
+  agent: { get: async () => ({ permissions: [] }) },
   shell: { hook: async () => () => {} },
   tool: {
     hook: async (name, callback) => { (hooks[name] ??= []).push(callback); return { dispose() {} } },
@@ -165,16 +168,38 @@ assert.deepEqual(store.get("takt/vfs/delegations"), {})
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 } : undefined
 let planningAt = dispatched().length
 await delegate("execute.before", "brief", "call-4", "pm")
-await delegate("execute.after", "brief", "call-4", "pm", { content: "Engram result IDs: [123, 456]" })
+await tools.deliver_result.execute({ result_ids: [123, 456] }, { sessionID: "brief", agent: "pm" })
+await delegate("execute.after", "brief", "call-4", "pm")
 assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
 assert.deepEqual(dispatched().slice(planningAt)[2].result_ids, [123, 456])
-planningAt = dispatched().length
-respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results" && requestOf(call).result_ids.length === 0
+
+// deliver_result's own failure is an ordinary failed tool call: no special
+// casing, the caller sees it and can retry in the same turn.
+respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results"
   ? { stdout: "", stderr: "handoff requires an Engram ID", code: 1 } : undefined
-await delegate("execute.before", "missing-result", "call-6", "pm")
-await assert.rejects(delegate("execute.after", "missing-result", "call-6", "pm"), /validate_results/)
-assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
+await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "unreported", agent: "pm" }), /Engram ID/)
 respond = () => undefined
+
+// A producer that never calls deliver_result never silently finishes: the
+// delegation fails distinctly instead.
+planningAt = dispatched().length
+await delegate("execute.before", "missing-result", "call-6", "pm")
+await assert.rejects(delegate("execute.after", "missing-result", "call-6", "pm"), /delegation ended without delivering a result via deliver_result/)
+assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch"])
+
+// The context hook records a producer's own session as its unit's child. A
+// delegation that ends without a delivery re-prompts that exact child once;
+// a delivery made on that nudge still reaches finish.
+planningAt = dispatched().length
+await delegate("execute.before", "nudge", "call-7", "pm")
+const nudgeEvent = { agent: "pm", sessionID: "nudge", tools: {}, system: [] }
+for (const callback of sessionHooks.context) await callback(nudgeEvent)
+onPrompt = async (sessionID) => { await tools.deliver_result.execute({ result_ids: [789] }, { sessionID, agent: "pm" }) }
+await delegate("execute.after", "nudge", "call-7", "pm")
+onPrompt = () => undefined
+assert.deepEqual(promptedSessions.slice(-1), ["nudge"])
+assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
+
 planningAt = dispatched().length
 await assert.rejects(delegate("execute.before", "u3", "call-5"), /no matching pending clean claim/)
 assert.equal(dispatched().slice(planningAt).filter(r => r.action === "admit").length, 0, "unclaimed VFS lane was admitted")
@@ -206,11 +231,24 @@ assert.match((await contextFor("takt", {}))[0], /^Maintenance concluded/)
 assert.deepEqual(await contextFor("takt", {}), [])
 assert.deepEqual(await contextFor("dev", { draining: true }), [])
 
+// A switch registers with Go, carrying the created child session id, before
+// the child is ever prompted; a registration failure stops that
+// never-prompted child instead of leaving it dangling.
+respond = (call) => call.verb === "dispatch" && requestOf(call).action === "switch"
+  ? { stdout: "", stderr: "harness: the interlocutor interface is already held; no chaining", code: 1 } : undefined
+const switchAt = calls.length
+await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "o" }, root), /no chaining/)
+assert.deepEqual(requestOf(calls.slice(switchAt).find(c => c.verb === "dispatch")), { action: "switch", session: "root", child: "lent", agent: "pm" })
+assert.equal(promptedSessions.includes("lent"), false, "a never-registered switch child was prompted")
+assert.deepEqual(interrupted, ["lent"])
+interrupted.length = 0
+respond = () => undefined
+
 // A lent interface comes back to the orchestrator: an accepted handoff writes
 // the envelope into the root session and gives the holder nothing, then ends
 // its turn; a refused one tells only the holder why.
-respond = () => undefined
 await tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", expected_artifact: "brief.md" }, root)
+assert.deepEqual(requestOf(calls.filter(c => c.verb === "dispatch").at(-1)), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
 const holder = { sessionID: "lent", agent: "pm" }
 const handoff = { result: "Standard", additional_context: "ctx", extra_artifacts: [] }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"

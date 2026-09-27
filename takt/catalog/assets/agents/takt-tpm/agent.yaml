@@ -10,4 +10,5 @@ role: planning_author
 skills:
 - takt-memory-contract
 - takt-memory-tpm
-- takt-interlocutor-handoff
+- takt-handoff
+- takt-result-handoff

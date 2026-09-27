@@ -23,24 +23,23 @@ fact verified, a decision taken, a file created or changed, a problem found, a
 disagreement raised. It is written in **past or present tense** and is anchored to that
 event (MEM-TYP-7).
 
-A memory **never speculates about the future**. Forbidden in the title and content: next
-steps, plans, TODOs, pending work, predictions, intentions, recommendations for later.
-Record what happened or what is true now. The only
-exception is a direct user order to remember something; record it as that order, in the
-past tense ("The user asked to keep X"). Set `user_order` only when the user explicitly
-ordered you to record something that speaks about the future.
+Record what happened, what is true now, or the deliverable your specialty was assigned to
+produce. A specialist whose work is a plan, task breakdown, proposal, or design records
+that deliverable. Do not add plans, predictions, or recommendations outside your assignment.
+A direct user order to remember something is recorded as that order ("The user asked to
+keep X"); set `user_order` only then.
 
 An idea that was explored but not adopted is a `proposal` in the past tense ("X was
 proposed as ..."), not a plan.
 
 A good entry has a short, searchable `title` that names what happened, and a `content`
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
-For every implementation-invariant result, record its complete final content in one dedicated
-`project` entry. Each distinct result has its own entry and ID, including an official investigation
-report or a nonstandard artifact. A filesystem copy is optional; when one exists, its content
-matches the entry. Return the IDs so the orchestrator can pass only relevant results to consumers.
-If the write fails, the result is not delivered. An autonomous delegate returns the IDs as
-`Engram result IDs: [123, 456]` (one ID per result) so they can be checked.
+Engram stores every final planning or research result and every formal invariant. Record
+each complete artifact in one dedicated `project` entry, with no other result, process, or
+commentary mixed in. Consumers retrieve that entry directly by its ID; they do not search
+for it or reconstruct it. A requested filesystem copy must match the entry and never replaces
+it. If the write fails, the result is not delivered. Present its ID through the assigned
+handoff operation, not through a phrase in your final answer.
 Its nature follows §2.
 
 ## 2. Natures (MEM-TYP-5/6)
@@ -135,7 +134,7 @@ Knowledge in another role's domain is still recorded by you when your work produ
 ## 6. Never record
 
 - Ordinary conversation, intermediate reasoning, or task progress.
-- Task lists and reports: they live in their own files.
+- Process notes, status updates, or a second copy of a deliverable already recorded.
 - Tool output dumps or code excerpts.
 - Anything forbidden by §1.
 

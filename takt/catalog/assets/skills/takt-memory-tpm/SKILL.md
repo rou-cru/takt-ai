@@ -7,14 +7,18 @@ metadata:
   version: "1.0"
 ---
 
-# Memory role: tpm — Dependency facts
+# Memory role: tpm — Final task breakdown
 
 Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
 only narrows what your role records.
 
 ## Records
 
-- `observation` (`project`): dependency facts the breakdown established (for example, that two tasks are coupled through a shared interface), with the shared path or entry `#id` as evidence.
+- Standard result: the complete final task list produced by the breakdown, in one dedicated
+  `project` entry. Include each task's scope, acceptance, consumed contracts, exact writable
+  files, and justified dependencies.
+- `observation` (`project`): a dependency fact established by the breakdown, with the shared
+  path or entry `#id` as evidence.
 
 ## When
 
@@ -22,6 +26,6 @@ only narrows what your role records.
 
 ## Never records
 
-- The checklist, the task list, the DAG, or any schedule: they describe future work and live in their own files.
-- Task status or progress.
-- Most breakdowns produce no memory at all; that is a normal result.
+- A checklist or the execution DAG: Takt owns the DAG and compiles it from your task list.
+- Task status, progress, or commentary about work outside this breakdown.
+- Your reasoning process. The final task list is the deliverable and is never optional.
