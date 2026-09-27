@@ -1,0 +1,49 @@
+image:
+  repository: 099814429435.dkr.ecr.mx-central-1.amazonaws.com/kaf
+  pullPolicy: IfNotPresent
+
+server:
+  passwordSecret:
+    name: opencode-auth
+
+serviceAccount:
+  create: false
+  name: default
+  automountServiceAccountToken: false
+
+priorityClassName: idp-general
+
+persistence:
+  storageClassName: gp3
+  size: 5Gi
+  retain: false
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: private
+      namespace: platform
+      sectionName: https-wildcard
+  hostnames:
+    - kaf.data.ctl.kapital.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+vpa:
+  enabled: true
+  updatePolicy:
+    updateMode: InPlaceOrRecreate
+
+nodeSelector:
+  karpenter.sh/nodepool: internal-it
+  kubernetes.io/arch: arm64
+  storage.kapital.com/ebs-enabled: "true"
+
+tolerations:
+  - key: internal-it
+    operator: Equal
+    value: "true"
+    effect: NoSchedule

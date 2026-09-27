@@ -1,0 +1,155 @@
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+commonLabels: {}
+commonAnnotations: {}
+
+image:
+  repository: 099814429435.dkr.ecr.mx-central-1.amazonaws.com/kaf
+  tag: kaf
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+command: []
+args: []
+port: 4096
+service:
+  type: ClusterIP
+  port: 4096
+  annotations: {}
+  labels: {}
+
+# OpenCode v2's HTTP server always requires Basic Auth as user "opencode"; it
+# generates a random password unless OPENCODE_PASSWORD is set. Supply it via a
+# pre-existing Secret; never put credential material in values.
+server:
+  passwordSecret:
+    name: ""
+    key: password
+  env: []
+  envFrom: []
+
+runtime:
+  env: []
+  envFrom: []
+
+workspace:
+  mountPath: /workspace
+  repository:
+    url: ""
+    revision: ""
+    cloneImage: alpine/git:2.47.2
+    authSecret:
+      name: ""
+      usernameKey: username
+      passwordKey: password
+    resources: {}
+
+persistence:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  size: 10Gi
+  annotations: {}
+  labels: {}
+  # Retain the PVC only when explicitly requested; default lifecycle is ephemeral.
+  retain: false
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+priorityClassName: ""
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+    ephemeral-storage: 512Mi
+  limits:
+    memory: 4Gi
+    ephemeral-storage: 2Gi
+
+probes:
+  liveness:
+    enabled: true
+    path: ""
+    initialDelaySeconds: 20
+    periodSeconds: 10
+  readiness:
+    enabled: true
+    path: ""
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  startup:
+    enabled: true
+    path: ""
+    periodSeconds: 5
+    failureThreshold: 60
+
+externalSecret:
+  enabled: false
+  apiVersion: external-secrets.io/v1
+  name: ""
+  secretStoreRef:
+    kind: SecretStore
+    name: ""
+  target:
+    name: ""
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  refreshInterval: 1h
+  data: []
+  dataFrom: []
+  template: {}
+  labels: {}
+  annotations: {}
+
+httpRoute:
+  enabled: false
+  apiVersion: gateway.networking.k8s.io/v1
+  parentRefs: []
+  hostnames: []
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+  labels: {}
+  annotations: {}
+
+vpa:
+  enabled: false
+  apiVersion: autoscaling.k8s.io/v1
+  updatePolicy:
+  updateMode: "Off"
+  resourcePolicy: {}
+  labels: {}
+  annotations: {}
+
+nodeSelector:
+  kubernetes.io/arch: arm64
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
