@@ -1,33 +1,29 @@
 #!/usr/bin/env bash
 # Container-isolated test runner.
 #
-# Runs `go test` inside a disposable golang Docker container. The repo source
+# Runs `go test` inside a disposable Go + Node Docker container. The repo source
 # is COPIED into the container via a tar pipe on stdin -- no bind mounts at
 # all, not even read-only ones. The built binary and every file a test writes
 # stay inside the container; nothing can touch the host filesystem.
 #
-# Module and build caches live in named Docker volumes (Docker-managed, not
-# host paths), so repeat runs are fast without ever exposing host state.
+# No host or Docker-volume mounts are used. Module and build caches are
+# disposable container state and are recreated on each run.
 #
 # Usage:
 #   scripts/test-containerized.sh [go test flags and packages...]
 #   scripts/test-containerized.sh            # runs default FS-touching packages
-#   scripts/test-containerized.sh --dry-run  # print the docker command, don't run
 #
-# Passing -coverprofile=<file> copies that file back out of the (otherwise
-# disposable) container onto the host once tests pass, so CI can feed it to
+# Passing -coverprofile=<file> (or -coverprofile <file>) copies it out of the
+# disposable container onto the host once tests pass, so CI can feed it to
 # SonarCloud alongside the host-run coverage.out.
 
 set -euo pipefail
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-IMAGE="golang:1.25"          # matches go directive in go.mod
+REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+IMAGE="takt-test:go1.25-node24"
 SEPARATOR="=================================================="
 SRC_DIR="/src"
-MODCACHE_VOL="takt-test-gomodcache"
-GOCACHE_VOL="takt-test-gocache"
-
-DEFAULT_PKGS="./cmd/takt-ai/... ./takt/setup/..."
+source "$REPO_ROOT/scripts/test-packages.sh"
 
 # Resolve the final `go test` argument list.
 #
@@ -37,54 +33,41 @@ DEFAULT_PKGS="./cmd/takt-ai/... ./takt/setup/..."
 # started with no `-`, so it was treated as a package, the default packages
 # were dropped, and `go test` ran with nothing to test in /src.
 #
-# - RESOLVED_PKGS: the package list (defaults when none are named).
-# - RESOLVED_ARGS: flags verbatim, with defaults prepended only when no
-#   package was named.
+# - RESOLVED_ARGS: an array preserving every argument boundary, with defaults
+#   prepended only when no package was named. -args ends go flag parsing.
 #
 # ponytail: the value-taking flag list covers `go test`'s common flags; add a
 # name here if a new value flag appears and starts eating the next argument.
 compute_go_args() {
-    pkgs=""
-    skip_next=0
+    local arg has_packages=0 skip_next=0
     for arg in "$@"; do
         if [ "$skip_next" -eq 1 ]; then
             skip_next=0
             continue
         fi
         case $arg in
-            -run|-bench|-benchtime|-blockprofile|-cpuprofile|-memprofile|-coverprofile|-covermode|-coverpkg|-cpu|-count|-timeout|-parallel|-p|-exec|-outputdir|-gcflags|-ldflags|-tags|-vet|-shuffle|-fuzz|-fuzztime|-test.run|-test.bench|-test.benchtime|-test.timeout|-test.count|-test.parallel|-test.cpu|-test.vet)
+            -args|--args|--) break ;;
+            -run|-bench|-benchtime|-blockprofile|-blockprofilerate|-cpuprofile|-memprofile|-memprofilerate|-mutexprofile|-mutexprofilefraction|-trace|-coverprofile|-covermode|-coverpkg|-cpu|-count|-timeout|-parallel|-p|-exec|-outputdir|-gcflags|-ldflags|-asmflags|-gccgoflags|-tags|-vet|-shuffle|-fuzz|-fuzztime|-fuzzminimizetime|-list|-o|-mod|-modfile|-overlay|-pkgdir|-toolexec|-buildmode|-compiler|-pgo|-test.run|-test.bench|-test.benchtime|-test.timeout|-test.count|-test.parallel|-test.cpu|-test.vet)
                 skip_next=1
                 ;;
             -*) ;;
-            *) pkgs="$pkgs $arg" ;;
+            *) has_packages=1 ;;
         esac
     done
-    if [ -z "$pkgs" ]; then
-        # shellcheck disable=SC2086
-        pkgs="$DEFAULT_PKGS"
-    fi
-    RESOLVED_PKGS="$pkgs"
-    if [ "$pkgs" = "$DEFAULT_PKGS" ]; then
-        # shellcheck disable=SC2086
-        RESOLVED_ARGS="$DEFAULT_PKGS $*"
+    if [ "$has_packages" -eq 0 ]; then
+        RESOLVED_ARGS=("${CONTAINER_TEST_PKGS[@]}" "$@")
     else
-        RESOLVED_ARGS="$*"
+        RESOLVED_ARGS=("$@")
     fi
 }
-
-DRY_RUN=0
-if [ "${1:-}" = "--dry-run" ]; then
-    DRY_RUN=1
-    shift
-fi
 
 # Self-check mode: prove both `-run TestX` and `-run=TestX` resolve to the
 # same package list, without invoking Docker.
 if [ "${1:-}" = "--self-check" ]; then
     compute_go_args -run TestX
-    form_space="$RESOLVED_PKGS"
+    form_space="${RESOLVED_ARGS[*]:0:${#CONTAINER_TEST_PKGS[@]}}"
     compute_go_args -run=TestX
-    form_eq="$RESOLVED_PKGS"
+    form_eq="${RESOLVED_ARGS[*]:0:${#CONTAINER_TEST_PKGS[@]}}"
     if [ "$form_space" = "$form_eq" ]; then
         echo "SELF-CHECK PASS: '-run TestX' and '-run=TestX' produce identical package list"
         echo "  -> $form_space"
@@ -99,8 +82,9 @@ fi
 # Default to the FS-touching set when no packages are named; flags-only
 # invocations must keep the defaults (a bare `go test` in /src finds no Go files).
 compute_go_args "$@"
-# shellcheck disable=SC2086
-set -- $RESOLVED_ARGS
+set -- "${RESOLVED_ARGS[@]}"
+
+docker build -f "$REPO_ROOT/docker/Dockerfile.test" -t "$IMAGE" "$REPO_ROOT"
 
 echo "==> containerized test run (source copied in via tar pipe, zero host mounts)"
 echo "==> packages/flags: $*"
@@ -108,21 +92,20 @@ echo "==> packages/flags: $*"
 # Extract the -coverprofile=<file> target, if any, so the container can be
 # kept (instead of --rm) long enough for `docker cp` to pull the file out.
 COVER_FILE=""
+cover_next=0
 for arg in "$@"; do
+    if [ "$cover_next" -eq 1 ]; then
+        COVER_FILE="$arg"
+        cover_next=0
+        continue
+    fi
     case "$arg" in
+        -args|--args|--) break ;;
+        -coverprofile) cover_next=1 ;;
         -coverprofile=*) COVER_FILE="${arg#-coverprofile=}" ;;
     esac
 done
 CONTAINER_NAME="takt-test-containerized-$$"
-
-if [ "$DRY_RUN" = "1" ]; then
-    echo "DRY-RUN (not executing):"
-    echo "  tar -C '$REPO_ROOT' --exclude ./.git --exclude ./.codegraph -cf - . |"
-    echo "    docker run --rm -i -e HOME=/tmp/fake-home \\"
-    echo "      -v $MODCACHE_VOL:/go/pkg/mod -v $GOCACHE_VOL:/go/.cache/go-build \\"
-    echo "      $IMAGE /bin/sh -c 'tar -x -C $SRC_DIR && cd $SRC_DIR && go test' ... $*"
-    exit 0
-fi
 
 set +e
 # COPYFILE_DISABLE=1: skip macOS ._ resource forks; --no-xattrs: skip Apple xattrs
@@ -130,20 +113,18 @@ set +e
 #
 # When a coverage file was requested, keep the container around (drop --rm)
 # so `docker cp` can pull the file out below; otherwise remove it immediately.
-DOCKER_KEEP_FLAG="--rm"
-[ -n "$COVER_FILE" ] && DOCKER_KEEP_FLAG="--name $CONTAINER_NAME"
-# shellcheck disable=SC2086
-tar -C "$REPO_ROOT" --no-xattrs --exclude ./\.git --exclude ./\.codegraph -cf - . |
-    docker run $DOCKER_KEEP_FLAG -i \
+DOCKER_KEEP_FLAGS=(--rm)
+[ -n "$COVER_FILE" ] && DOCKER_KEEP_FLAGS=(--name "$CONTAINER_NAME")
+COPYFILE_DISABLE=1 tar -C "$REPO_ROOT" --no-xattrs --exclude ./\.git --exclude ./\.codegraph -cf - . |
+    docker run "${DOCKER_KEEP_FLAGS[@]}" -i \
         -e HOME=/tmp/fake-home \
-        -v "$MODCACHE_VOL":/go/pkg/mod \
-        -v "$GOCACHE_VOL":/go/.cache/go-build \
         "$IMAGE" /bin/sh -c '
 set -e
 mkdir -p '"$SRC_DIR"'
 tar -x -C '"$SRC_DIR"' 2>/dev/null
 cd '"$SRC_DIR"'
-export GOFLAGS=-mod=mod TMPDIR=/tmp GOPATH=/go GOCACHE=/go/.cache/go-build GOMODCACHE=/go/pkg/mod
+export GOFLAGS=-mod=readonly GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local TMPDIR=/tmp GOPATH=/go GOCACHE=/go/.cache/go-build GOMODCACHE=/go/pkg/mod
+./scripts/test-packages.sh check
 go test "$@"
 ' go "$@"
 PIPE_STATUS=("${PIPESTATUS[@]}")

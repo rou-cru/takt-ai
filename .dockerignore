@@ -1,0 +1,8 @@
+.git
+.env
+**/.env
+deploy/manual-trial/
+coverage.out
+takt-ai
+generate-logo
+dist/

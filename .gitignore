@@ -7,6 +7,7 @@
 
 # Test binary
 *.test
+!docker/Dockerfile.test
 
 # Output of go coverage
 *.out
@@ -27,14 +28,20 @@ Thumbs.db
 cmd/takt-ai/main
 cmd/takt-ai/takt-ai
 dist/
+first-test/
 
 # Agent tooling metadata (generated per-user, not product code)
 .atl/
 .pi/
 .codegraph/
+.agents/
 
 # Environment (local overrides — never committed)
 .env
+
+# Dev scratch (bind-mounted at /work in compose.yml)
+.dev/*
+!/.dev/.gitkeep
 
 # Engram local runtime state (project sync chunks are intentionally versioned)
 .engram/engram.db
@@ -48,3 +55,6 @@ graphify-out/*
 !graphify-out/manifest.json
 !graphify-out/.gitignore
 !graphify-out/.graphify_labels.json
+
+# Local JavaScript adapter dependencies
+node_modules/

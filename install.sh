@@ -302,13 +302,10 @@ install_binary() {
         fatal "Failed to download ${download_url}"
     fi
 
-    # Verify file was actually downloaded (not a 404 HTML page)
+    # Size is informational; integrity and format are checked below. A small
+    # valid archive is not an error (and a large HTML response is not proof).
     local file_size
     file_size="$(wc -c < "${tmpdir}/${archive_name}" | tr -d '[:space:]')"
-    if [ "$file_size" -lt 1000 ]; then
-        fatal "Downloaded file is suspiciously small (${file_size} bytes). Archive may not exist for this platform."
-    fi
-
     success "Downloaded ${archive_name} (${file_size} bytes)"
 
     # Download and verify checksum — fail closed unless --insecure is set

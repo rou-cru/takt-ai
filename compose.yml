@@ -1,0 +1,35 @@
+name: takt-ai
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      args:
+        OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.16}
+        GO_VERSION: ${GO_VERSION:-1.25.0}
+    image: takt-ai:dev
+    # Match the host user so files written into the bind mount below aren't
+    # owned by a container-only uid on Linux. Defaults to 1000 (the common
+    # first-user uid); override in .env with your own `id -u`/`id -g` if it
+    # doesn't match.
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    stdin_open: true
+    tty: true
+    # Provider/inference credentials come only from here, never baked in.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+    # Explicit workspace input: point DEV_REPO at host work, or keep scratch.
+    # Everything else (home dir, logins, caches) lives in the container's
+    # writable layer and is gone the moment the container is removed.
+    volumes:
+      - type: bind
+        source: ${DEV_REPO:-./.dev}
+        target: /work
+    working_dir: /work

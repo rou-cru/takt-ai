@@ -1,0 +1,102 @@
+# syntax=docker/dockerfile:1
+# Disposable dev image for B03 first-use runs: takt-ai CLI + OpenCode ready,
+# onboarding NOT completed (never run `takt-ai setup install` here).
+
+ARG GO_VERSION=1.25.0
+FROM golang:${GO_VERSION}-bookworm AS builder
+# ponytail: keep GO_VERSION in sync with the `go` directive in go.mod
+# (CI builds with go-version-file: go.mod). Tool pins are the newest releases
+# whose go directive still allows Go 1.25 (verified via module .mod files).
+ARG GOCYCLO_VERSION=v0.6.0
+ARG XTOOLS_VERSION=v0.49.0
+ARG GOFUMPT_VERSION=v0.11.0
+ARG GOLANGCI_VERSION=v2.12.2
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# ponytail: static binary is enough, no cgo in final image
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./cmd/takt-ai
+# ponytail: build once here (network+toolchain exist), runtime just copies binaries
+# (one RUN per module: multi-package `go install` requires same module+version)
+RUN GOBIN=/out/tools go install github.com/fzipp/gocyclo/cmd/gocyclo@${GOCYCLO_VERSION}
+RUN GOBIN=/out/tools go install golang.org/x/tools/cmd/deadcode@${XTOOLS_VERSION} \
+      golang.org/x/tools/cmd/goimports@${XTOOLS_VERSION}
+RUN GOBIN=/out/tools go install mvdan.cc/gofumpt@${GOFUMPT_VERSION}
+RUN GOBIN=/out/tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}
+
+FROM ubuntu:26.04
+# Pinned to OpenCode 2.x on purpose; never "latest".
+ARG OPENCODE_VERSION=2.0.16
+ARG PYTHON_VERSION=3.14
+ARG NODE_MAJOR=24
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+# ponytail: bubbletea/lipgloss only render truecolor when this is set; the
+# container's own tty doesn't propagate it, so bake it into the image
+# instead of leaving the TUI to degrade to dithered 256/16-color output.
+ENV COLORTERM=truecolor
+# ponytail: uv binaries come from the official image, no pip/curl installer
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# ponytail: tools land in /usr/local/bin so the dev user inherits them
+ENV UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
+# ponytail: same Go toolchain the builder used (== go.mod), no second download
+COPY --from=builder /usr/local/go /usr/local/go
+COPY --from=builder /out/tools/ /usr/local/bin/
+ENV PATH="/usr/local/go/bin:${PATH}"
+# ponytail: one root layer for apt+node+python+tooling, no recommends, cache dropped in same layer
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep tar tzdata unzip; \
+    curl -fsSL --proto '=https' --tlsv1.2 "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
+    apt-get install -y --no-install-recommends nodejs; \
+    uv python install "${PYTHON_VERSION}"; \
+    py="$(uv python find "${PYTHON_VERSION}")"; \
+    ln -sf "${py}" /usr/local/bin/python"${PYTHON_VERSION}"; \
+    ln -sf "${py}" /usr/local/bin/python3; \
+    ln -sf "${py}" /usr/local/bin/python; \
+    # ponytail: ruff covers lint+format, pytest+pytest-cov covers UT+coverage
+    uv tool install ruff==0.16.9 --no-build; \
+    uv tool install pytest==9.1.1 --with pytest-cov==7.1.0 --no-build; \
+    # ponytail: npm owns the globals so no PNPM_HOME perms to manage; pnpm stays for projects
+    npm install -g --no-fund --no-audit --ignore-scripts \
+      pnpm@12.6.0 vitest@5.0.2 @vitest/coverage-v8@5.0.2 eslint@10.11.0 prettier@3.9.9; \
+    rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache; \
+    useradd -m -s /bin/bash dev; \
+    ln -s "$(command -v fdfind)" /usr/local/bin/fd; \
+    python --version; \
+    uv --version; \
+    ruff --version; \
+    pytest --version; \
+    node --version; \
+    pnpm --version; \
+    vitest --version; \
+    eslint --version; \
+    prettier --version; \
+    # ponytail: gofmt/go vet/go test ship with Go; the rest are pinned above
+    go version; \
+    gocyclo -h 2>&1 | head -1; \
+    deadcode -h 2>&1 | head -1; \
+    gofumpt -h 2>&1 | head -1; \
+    goimports -h 2>&1 | head -1; \
+    golangci-lint version; \
+    # ponytail: container runs as the host uid (compose `user:`) so bind-mount
+    # writes aren't uid-1001-owned on Linux; open perms since this dir never
+    # touches the host and dies with the container anyway.
+    chmod -R a+rwX /home/dev
+COPY --from=builder /out/takt-ai /usr/local/bin/takt-ai
+USER dev
+WORKDIR /home/dev
+# Explicit version only: reject anything that is not a 2.x semver (blocks "latest"/empty).
+RUN set -eux; \
+    case "${OPENCODE_VERSION}" in \
+      2.[0-9]*.[0-9]*) ;; \
+      *) echo "OPENCODE_VERSION must be 2.x.y, got '${OPENCODE_VERSION}'" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --proto '=https' --tlsv1.2 https://opencode.ai/v2/install | bash -s -- --no-modify-path --version "${OPENCODE_VERSION}"; \
+    /home/dev/.opencode/bin/opencode --version; \
+    takt-ai version
+ENV PATH="/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"
+# /work is the explicit workspace input (bind) or scratch space; writes stay inside.
+WORKDIR /work
+ENTRYPOINT ["bash"]

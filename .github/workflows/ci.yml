@@ -20,14 +20,29 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Build
         run: go build ./...
 
       - name: Vet
         run: go vet ./...
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: v2.12.2
+
       - name: Test
         run: make test-host
 
+      - name: Test shell scripts (offline fixtures)
+        run: make test-shell
+
       - name: Test (containerized)
-        run: ./scripts/test-containerized.sh -coverprofile=coverage-containerized.out
+        run: ./scripts/test-containerized.sh -race -coverprofile=coverage-containerized.out
+
+      - name: Coverage gate
+        run: ./scripts/check-coverage.sh coverage.out coverage-containerized.out
