@@ -125,11 +125,12 @@ func DenyArtifactMissing(h *history.History, journalRef, root, childSession, age
 	})
 }
 
-// BuildHandoffEnvelope requires existing Engram IDs for delivered results;
-// filesystem copies are optional and do not establish a handoff.
-func BuildHandoffEnvelope(h *history.History, journalRef, workspace, root, callerSession, agent, result, additionalContext string, extraArtifacts []string, resultIDs []int64) (map[string]any, error) {
+// BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this
+// session for delivered results; filesystem copies are optional and do not
+// establish a handoff. memoryRoot is where the memory session index lives.
+func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent, result, additionalContext string, extraArtifacts []string, resultIDs []int64) (map[string]any, error) {
 	if result == "Standard" || len(resultIDs) > 0 {
-		if e := memory.ValidateResultIDs(context.Background(), memory.Config{}, resultIDs); e != nil {
+		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, resultIDs); e != nil {
 			return nil, e
 		}
 	}
@@ -144,12 +145,15 @@ func BuildHandoffEnvelope(h *history.History, journalRef, workspace, root, calle
 
 // BuildAbortEnvelope ends the temporary holder's turn (IR-24) and assembles
 // the same IR-22 envelope shape a handoff produces: no negotiated result, the
-// abort's evidence as additional context, and childSession's memory entries.
-func BuildAbortEnvelope(h *history.History, journalRef, workspace, root, childSession, reason, origin string) (map[string]any, error) {
+// abort's evidence as additional context, and the memory entries the holder
+// recorded. Memory is indexed under the root session, by author, in
+// memoryRoot, so the holder is read before the abort clears it.
+func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error) {
+	holder := h.Project().Budgets(root).InterlocutorAgent
 	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
 		return nil, e
 	}
-	ids, e := memory.EntryIDsForSession(workspace, childSession)
+	ids, e := memory.EntryIDsByAuthor(memoryRoot, root, holder)
 	if e != nil {
 		return nil, e
 	}

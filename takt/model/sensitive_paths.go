@@ -13,11 +13,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package shared
+package model
 
-import "github.com/rou-cru/takt-ai/takt/model"
-
-// SensitivePathGlobs lists secret-bearing paths every target must block from
-// agent reads and writes; the list itself lives in model so the VFS shell
-// sandbox and the native permission rules share one source.
-var SensitivePathGlobs = model.SensitivePathGlobs
+// SensitivePathGlobs lists secret-bearing paths every target must block from agent reads and writes.
+var SensitivePathGlobs = []string{
+	".env",
+	".env.*",
+	".ssh/**",
+	".credentials/**",
+	"Library/Keychains/**",
+	".aws/credentials",
+	".config/gh/hosts.yml",
+	"*.pem",
+	"*.key",
+	"secrets/**",
+	"credentials.json",
+}

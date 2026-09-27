@@ -126,6 +126,22 @@ func EntryIDsForSession(root, session string) ([]int64, error) {
 	return ids, nil
 }
 
+// EntryIDsByAuthor returns the ids of the entries author recorded within
+// session: what that author may present as its own delivered results.
+func EntryIDsByAuthor(root, session, author string) ([]int64, error) {
+	l, err := loadSessionIndex(root, session)
+	if err != nil || l == nil {
+		return []int64{}, err
+	}
+	ids := []int64{}
+	for _, e := range l.Entries {
+		if e.Author == author {
+			ids = append(ids, e.ID)
+		}
+	}
+	return ids, nil
+}
+
 func (l *sessionIndex) hasEntry(id int64) bool {
 	return slices.ContainsFunc(l.Entries, func(e sessionIndexEntry) bool { return e.ID == id })
 }

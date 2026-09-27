@@ -10,29 +10,14 @@
 | --------------- | ---------------- | ------------ | --- | -------------------------------- | ------------- | -------------- | ----------------------------------- |
 | OpenCode        | `opencode`       | Yes          | Yes | Full (multi-mode overlay)        | No            | Yes            | `~/.config/opencode`                |
 
-OpenCode receives the **full SDD orchestrator** policy, plus skill files written to its skills directory, through the OpenCode-compatible `opencode.json` agent overlay. The agent handles SDD automatically when the task is large enough, or when the user explicitly asks for it — no manual setup required.
+OpenCode receives the Takt crew as native agents in `opencode.json`: the `takt`
+orchestrator (primary, default agent) plus the specialist instances declared in
+`takt/catalog/assets/agents/`. Skills are deployed to `~/.opencode/skills/` and load
+on demand. The orchestrator loads the SDD workflow skill when a delivery needs it.
 
-`takt-ai install --scope=workspace` is supported for agent-scoped files. In workspace scope, Takt AI writes system prompts, skills, and SDD agents into the current project root when the agent supports project-local configuration. Global-only integrations, such as settings that the agent only reads from its global config, remain global by design.
-
----
-
-## Delegation Models
-
-| Model                 | How It Works                                                                                                                                                                                       | Agents                                                                                                    |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **Full (sub-agents)** | Each SDD phase runs in an isolated context window via native sub-agent delegation, package-managed subagents, or an OpenCode-compatible overlay. The orchestrator coordinates; sub-agents execute. | OpenCode |
-
----
-
-## SDD Mode Support
-
-| Feature          | OpenCode |
-| ---------------- | :------: |
-| SDD orchestrator |   Yes    |
-| Single-mode SDD  |   Yes    |
-| Multi-mode SDD   |   Yes    |
-
-**Multi-mode** (assigning different AI models to each SDD phase) is supported by **OpenCode** through the OpenCode-compatible multi-mode overlay. Otherwise the agent runs in **single-mode** — the orchestrator manages everything using whatever model the agent is already running.
+The crew roster, role classes, VFS grants and what each role may change are defined
+once in [the catalog README](../takt/catalog/assets/README.md); this page does not
+restate them.
 
 ---
 
@@ -40,17 +25,15 @@ OpenCode receives the **full SDD orchestrator** policy, plus skill files written
 
 ### OpenCode
 
-- Full multi-agent overlay with 11 named agents in `opencode.json` (`takt-orchestrator` plus 10 SDD phase agents)
-- Slash commands for SDD phases (`/sdd-new`, `/sdd-explore`, etc.)
-- Native OpenCode `subagent` delegation; experimental background execution is available when supported by the installed OpenCode V2 build
+- One native agent per catalog instance; OpenCode's built-in `build`, `plan`,
+  `general` and `explore` agents are disabled so delegation always reaches a Takt
+  specialist.
+- Native OpenCode `subagent` delegation, admitted and bounded by the `takt-vfs`
+  plugin (concurrency ceiling, plan budgets, VFS claims before implementation).
 - The TUI model picker includes providers and models discovered from the local `opencode.json`, including custom providers
-- Custom models from `opencode.json` must advertise `capabilities.tools:true` explicitly to appear as selectable SDD-capable options in the model picker
-- Multi-mode prerequisite: connect your AI providers first via `/connect`, then verify models via `/models` or `opencode api get /api/model`
-- Takt AI sets OpenCode SDD agent sharing to `disabled` by default for privacy; existing user-managed `share` values such as `manual` or `auto` are preserved.
-- OpenCode Desktop SDD commands resolve the project with `git rev-parse --show-toplevel || pwd` before acting, avoiding Electron current-working-directory drift.
-
-- Sub-agents run natively via `mode:subagent` in `opencode.json` (server/project config) and terminal preferences in the global `cli.json`; there is no V2 `settings.json`.
-- **Delegation**: Full (multi-mode overlay)
+- Custom models from `opencode.json` must advertise `capabilities.tools:true` explicitly to appear as selectable options in the model picker
+- Multi-model prerequisite: connect your AI providers first via `/connect`, then verify models via `/models` or `opencode api get /api/model`
+- Sub-agents run natively via `mode:subagent` in `opencode.json` and terminal preferences in the global `cli.json`; there is no V2 `settings.json`.
 
 ---
 

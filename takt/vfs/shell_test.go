@@ -19,6 +19,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -215,5 +216,36 @@ func TestShellPrepareRejectsStaleRevisionAndUnknownBinding(t *testing.T) {
 	}
 	if _, err := f.PrepareShell(key, "", "ls", state, 0); !errors.Is(err, ErrIdentity) {
 		t.Fatalf("PrepareShell(no call id) = %v; want ErrIdentity", err)
+	}
+}
+
+func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
+	f, root, state := durable(t)
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets/token", "src/main.go", "node_modules/pkg/.env"} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan, err := f.PrepareShell("", "inspect", "cat .env", state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Decision != ShellAllow {
+		t.Fatalf("inspection decision = %s (%s)", plan.Decision, plan.Reason)
+	}
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets"} {
+		want := filepath.Join(root, filepath.FromSlash(rel))
+		if !slices.Contains(plan.Private, want) {
+			t.Errorf("inspection may read %s; private = %v", rel, plan.Private)
+		}
+	}
+	for _, rel := range []string{"src/main.go", "secrets/token"} {
+		if slices.Contains(plan.Private, filepath.Join(root, filepath.FromSlash(rel))) {
+			t.Errorf("%s listed individually; private = %v", rel, plan.Private)
+		}
 	}
 }

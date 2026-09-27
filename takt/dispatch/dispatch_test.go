@@ -28,7 +28,7 @@ func TestAdmitHeldDeniesRegardlessOfBudget(t *testing.T) {
 	if e != nil {
 		t.Fatalf("load policy: %v", e)
 	}
-	if e := Admit(h, p, "", "unit-1", "session-1", "some-agent", "", true); e == nil {
+	if Admit(h, p, "", "unit-1", "session-1", "some-agent", "", true) == nil {
 		t.Fatal("expected the admission barrier to deny admission")
 	}
 	entries := h.Entries()
@@ -97,7 +97,7 @@ func TestAdmitDeniesPastConcurrencyCeiling(t *testing.T) {
 			t.Fatalf("expected admission %d to succeed, got %v", i, e)
 		}
 	}
-	if e := Admit(h, p, "", "unit-over-ceiling", "session-1", "agent", "", false); e == nil {
+	if Admit(h, p, "", "unit-over-ceiling", "session-1", "agent", "", false) == nil {
 		t.Fatal("expected admission past the concurrency ceiling to be denied")
 	}
 }
@@ -108,7 +108,7 @@ func TestCommitRejectsPrerequisiteCycle(t *testing.T) {
 		{Unit: "a", Contract: "c", Prerequisites: []string{"b"}},
 		{Unit: "b", Contract: "c", Prerequisites: []string{"a"}},
 	}
-	if e := Commit(h, "", "session-1", "v1", units); e == nil {
+	if Commit(h, "", "session-1", "v1", units) == nil {
 		t.Fatal("expected a prerequisite cycle to be rejected")
 	}
 }
@@ -173,7 +173,7 @@ func TestReviseRejectsStaleBaseVersion(t *testing.T) {
 	if e := Commit(h, "", "session-1", "v1", []PlanUnit{{Unit: "a", Contract: "c"}}); e != nil {
 		t.Fatalf("commit: %v", e)
 	}
-	if e := Revise(h, "", "session-1", "stale", "v2", []PlanUnit{{Unit: "d", Contract: "c"}}, nil); e == nil {
+	if Revise(h, "", "session-1", "stale", "v2", []PlanUnit{{Unit: "d", Contract: "c"}}, nil) == nil {
 		t.Fatal("expected a stale base version to be rejected")
 	}
 	entries := h.Entries()
@@ -199,7 +199,7 @@ func TestReviseRejectsCycle(t *testing.T) {
 		{Unit: "x", Contract: "c", Prerequisites: []string{"y"}},
 		{Unit: "y", Contract: "c", Prerequisites: []string{"x"}},
 	}
-	if e := Revise(h, "", "session-1", "v1", "v2", adds, nil); e == nil {
+	if Revise(h, "", "session-1", "v1", "v2", adds, nil) == nil {
 		t.Fatal("expected a cyclic revision to be rejected")
 	}
 	entries := h.Entries()
@@ -228,7 +228,7 @@ func TestReviseRejectsAlteringAnAdmittedUnit(t *testing.T) {
 	if e := Admit(h, p, "", "a", "session-1", "agent", "", false); e != nil {
 		t.Fatalf("admit: %v", e)
 	}
-	if e := Revise(h, "", "session-1", "v1", "v2", []PlanUnit{{Unit: "a", Contract: "c2"}}, nil); e == nil {
+	if Revise(h, "", "session-1", "v1", "v2", []PlanUnit{{Unit: "a", Contract: "c2"}}, nil) == nil {
 		t.Fatal("expected a revision altering an admitted unit's contract to be rejected")
 	}
 	entries := h.Entries()
@@ -299,7 +299,7 @@ func TestContestAllowanceIsExhaustible(t *testing.T) {
 			t.Fatalf("expected contest %d to be admitted, got %v", i, e)
 		}
 	}
-	if e := Contest(h, p, "", "unit-over-ceiling", "session-1", history.FirstAttempt); e == nil {
+	if Contest(h, p, "", "unit-over-ceiling", "session-1", history.FirstAttempt) == nil {
 		t.Fatal("expected the contest allowance to be exhausted")
 	}
 }
@@ -321,7 +321,7 @@ func TestAdmitPlannedUnitIsCoveredPastUnplannedBound(t *testing.T) {
 			t.Fatalf("finish %s: %v", unit, e)
 		}
 	}
-	if e := Admit(h, p, "", "uncovered", "session-1", "agent", "d-uncovered", false); e == nil {
+	if Admit(h, p, "", "uncovered", "session-1", "agent", "d-uncovered", false) == nil {
 		t.Fatal("expected uncovered work past the bound to be denied")
 	}
 	if e := Commit(h, "", "session-1", "v1", []PlanUnit{{Unit: "verify-feature", Contract: "judge the delta"}}); e != nil {
@@ -379,7 +379,7 @@ func TestAdmitDeniesUnitAlreadyInFlight(t *testing.T) {
 	if e := Admit(h, p, "", "impl", "session-1", "dev", "d-1", false); e != nil {
 		t.Fatalf("first admit: %v", e)
 	}
-	if e := Admit(h, p, "", "impl", "session-1", "dev", "d-2", false); e == nil {
+	if Admit(h, p, "", "impl", "session-1", "dev", "d-2", false) == nil {
 		t.Fatal("expected a duplicate delegation of an in-flight unit to be denied")
 	}
 	last := h.Entries()[len(h.Entries())-1]
@@ -388,5 +388,35 @@ func TestAdmitDeniesUnitAlreadyInFlight(t *testing.T) {
 	}
 	if u := h.Project().Units["impl"]; u.Dispatch != "d-1" || u.AttemptID != history.FirstAttempt {
 		t.Fatalf("the running attempt changed: %+v", u)
+	}
+}
+
+func TestDeclareCommitsFirstThenOnlyRevisesAgainstTheStandingVersion(t *testing.T) {
+	h := openHistory(t)
+	if Declare(h, "", "session-1", "v1", "v0", []PlanUnit{{Unit: "a", Contract: "c"}}, nil) == nil {
+		t.Fatal("a revision with no standing plan must be refused")
+	}
+	if e := Declare(h, "", "session-1", "v1", "", []PlanUnit{{Unit: "a", Contract: "c"}}, nil); e != nil {
+		t.Fatalf("first declaration must commit: %v", e)
+	}
+	before := len(h.Entries())
+	if Declare(h, "", "session-1", "v2", "", []PlanUnit{{Unit: "d", Contract: "c"}}, nil) == nil {
+		t.Fatal("a second declaration without its base version must be refused")
+	}
+	if len(h.Entries()) != before {
+		t.Fatal("a refused silent rewrite must record nothing")
+	}
+	if Declare(h, "", "session-1", "v2", "stale", []PlanUnit{{Unit: "d", Contract: "c"}}, nil) == nil {
+		t.Fatal("a stale base version must be refused")
+	}
+	if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision {
+		t.Fatalf("a stale revision is recorded as invalid, got %+v", last)
+	}
+	if e := Declare(h, "", "session-1", "v2", "v1", []PlanUnit{{Unit: "d", Contract: "c"}}, []string{"a"}); e != nil {
+		t.Fatalf("a revision against the standing version must apply: %v", e)
+	}
+	p := h.Project()
+	if p.Budgets("session-1").PlanVersion != "v2" || p.Units["d"].State != history.StatePlanned {
+		t.Fatalf("revision not applied: version %q, d %+v", p.Budgets("session-1").PlanVersion, p.Units["d"])
 	}
 }

@@ -151,7 +151,10 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 	// so no projection is needed. An approved command adds everything outside
 	// the workspace, which is exactly what the user accepted: the workspace
 	// itself stays write-denied, because no approval opens a way around the VFS.
+	// It also reads in place, so the secrets the native read rules deny are
+	// denied here too; a captured mutation never sees the workspace at all.
 	plan.Cwd, plan.Writable, plan.Protected = f.rootDir, []string{plan.Scratch}, []string{f.rootDir}
+	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, userHome())...)
 	if decision == ShellAsk {
 		plan.Writable = []string{everythingWritable}
 	}

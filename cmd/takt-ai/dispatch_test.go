@@ -620,7 +620,7 @@ func TestDispatchContestAllowance(t *testing.T) {
 	if e := contest("failure-late"); e != nil {
 		t.Fatalf("scoped exception did not enable the contest: %v", e)
 	}
-	if e := contest("failure-later"); e == nil {
+	if contest("failure-later") == nil {
 		t.Fatal("exception granted an open-ended allowance")
 	}
 }
@@ -1052,6 +1052,36 @@ func dispatchHarnessRaw(t *testing.T) (string, string, func(coordinationRequest)
 	return root, state, call
 }
 
+// seedMemoryIndex writes the memory session index `takt-ai memory record`
+// keeps under a fresh HOME: which author recorded which entry in session.
+func seedMemoryIndex(t *testing.T, session string, authors map[int64]string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	type entry struct {
+		ID     int64  `json:"id"`
+		Author string `json:"author"`
+	}
+	index := struct {
+		Session string  `json:"session"`
+		Entries []entry `json:"entries"`
+	}{Session: session}
+	for id, author := range authors {
+		index.Entries = append(index.Entries, entry{ID: id, Author: author})
+	}
+	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, session+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestDispatchInterlocutorHandoffArtifactGate requires existing result IDs,
 // not an optional filesystem copy, before a standard handoff can finish.
 func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
@@ -1065,11 +1095,18 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	}))
 	defer server.Close()
 	t.Setenv("ENGRAM_BASE_URL", server.URL)
+	seedMemoryIndex(t, "root", map[int64]string{123: "pm", 124: "dev", 999: "pm"})
 	_, _, call := dispatchHarnessRaw(t)
-	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{999}}); e == nil {
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{999}}); e == nil {
 		t.Fatal("autonomous result validator accepted a nonexistent ID")
 	}
-	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{123}}); e != nil {
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{124}}); e == nil || !strings.Contains(e.Error(), "not recorded by pm") {
+		t.Fatalf("autonomous result validator accepted another author's entry: %v", e)
+	}
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "other", Agent: "pm", ResultIDs: []int64{123}}); e == nil {
+		t.Fatal("autonomous result validator accepted an entry of another session")
+	}
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{123}}); e != nil {
 		t.Fatalf("autonomous result validator rejected an existing ID: %v", e)
 	}
 	const artifact = "PRD.md"
@@ -1100,6 +1137,7 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 // TestDispatchInterlocutorAbortSwitchByUser covers IR-24: the user may end a
 // temporary holder's turn without negotiation, after a prior switch.
 func TestDispatchInterlocutorAbortSwitchByUser(t *testing.T) {
+	seedMemoryIndex(t, "root", map[int64]string{41: "pm", 42: "takt"})
 	_, _, call := dispatchHarnessRaw(t)
 	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-2", Agent: "pm", Artifact: "PRD.md"}); e != nil {
 		t.Fatalf("switch: %v", e)
@@ -1111,8 +1149,9 @@ func TestDispatchInterlocutorAbortSwitchByUser(t *testing.T) {
 	if resp["result"] != "Aborted" {
 		t.Fatalf("abort_switch result: %+v", resp)
 	}
-	if _, ok := resp["memory"]; !ok {
-		t.Fatalf("abort_switch response carries no memory field: %+v", resp)
+	// The envelope carries what the holder recorded, not the whole session's memory.
+	if ids, ok := resp["memory"].([]any); !ok || len(ids) != 1 || ids[0] != float64(41) {
+		t.Fatalf("abort_switch memory is not the holder's entries: %+v", resp)
 	}
 }
 
@@ -1225,11 +1264,13 @@ waitLoop:
 		t.Fatalf("real engram did not return an id: %v", e)
 	}
 
+	missing := created.ID + 1_000_000
+	seedMemoryIndex(t, "root", map[int64]string{created.ID: "pm", missing: "pm"})
 	_, _, call := dispatchHarnessRaw(t)
-	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{created.ID + 1_000_000}}); e == nil {
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{missing}}); e == nil {
 		t.Fatal("real engram accepted a nonexistent ID")
 	}
-	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", ResultIDs: []int64{created.ID}}); e != nil {
+	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{created.ID}}); e != nil {
 		t.Fatalf("real engram rejected its own freshly-saved observation: %v", e)
 	}
 }

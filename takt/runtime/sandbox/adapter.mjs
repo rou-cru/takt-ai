@@ -12,7 +12,7 @@ export const SHELL_ESCAPED_DESCENDANTS = 121;
 const DESCENDANT_SWEEPS = 30;
 
 export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], callID }) {
-  if (!['darwin', 'linux'].includes(process.platform) || process.arch !== 'arm64') {
+  if (!['darwin', 'linux'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch)) {
     throw new Error('Takt sandbox: unsupported target; no direct-shell fallback');
   }
   const deps = await SandboxManager.checkDependenciesAsync();
@@ -39,7 +39,7 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
 // group is gone. Without that record the coordinator refuses to import the
 // delta: a surviving process could still be writing into the projection.
 export function supervise(wrapped, confirmPath) {
-  const confirm = `'${confirmPath.replaceAll("'", "'\\''")}'`;
+  const confirm = `'${confirmPath.replaceAll("'", String.raw`'\''`)}'`;
   // Monitor mode is switched off again once the job exists: it is only needed to
   // give the command its own process group, and leaving it on would print job
   // notices into the command's own stderr.

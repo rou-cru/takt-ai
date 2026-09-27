@@ -7,32 +7,19 @@
 ## Architecture
 
 ```
-cmd/takt-ai/               CLI entrypoint
-internal/
-  app/                     Command dispatch + runtime wiring
-  model/                   Domain types (agents, components, skills, presets, personas)
-  catalog/                 Registry definitions (agents, skills, components)
-  system/                  OS/distro detection, dependency checks, platform guards
-  cli/                     Install flags, validation, orchestration, dry-run
-  planner/                 Dependency graph, resolution, ordering, review payloads
-  installcmd/              Profile-aware command resolver (brew/apt/pacman/dnf/winget/go install)
-  pipeline/                Staged execution + rollback orchestration
-  backup/                  Config snapshot + restore
-  assets/                  Embedded skill files + persona templates
-  components/              Per-component install/inject logic
-    engram/  sdd/  skills/  mcp/  persona/  theme/  permissions/  gga/
-    filemerge/             Marker-based file merging (inject without clobbering)
-  agents/                  Agent adapters (config strategy per agent)
-    opencode/
-  opencode/                OpenCode model/config parsing utilities
-  state/                   Installation state tracking
-  update/                  Self-update + upgrade logic
-  verify/                  Post-apply health checks + reporting
-  tui/                     Bubbletea TUI (Rose Pine theme)
-    styles/  screens/
-scripts/                   Installer scripts (bash + PowerShell)
-e2e/                       Docker-based E2E tests (Ubuntu + Arch)
-testdata/                  Golden test fixtures
+cmd/takt-ai/          CLI entrypoint: install/sync, doctor, vfs, dispatch, gc, memory, obs, dag
+takt/
+  catalog/            Declarative crew: agents, shared BASELINE, skills (single editable source)
+  agents/opencode/    OpenCode projection: opencode.json renderer, permissions, plugins
+  vfs/                Governed staging: claims, bindings, verdict gate, shell sandbox plans
+  dispatch/           Admission, plan commitments and revisions, interlocutor stack
+  gc/                 Maintenance (graph-cleaner) cycle coordinator
+  history/            Execution history and its projection
+  memory/ engram/     Engram-backed memory tools and wiring
+  obs/                Content-free observability events
+  setup/ lifecycle/   Install, sync, ownership, drift, uninstall
+  runtime/sandbox/    Sandbox adapter (@anthropic-ai/sandbox-runtime)
+  tui/                Bubbletea TUI
 ```
 
 ---
@@ -78,4 +65,4 @@ Install Takt.Dots first for your dev environment, then Takt AI Stack for the AI 
 
 ## License
 
-MIT
+AGPL-3.0

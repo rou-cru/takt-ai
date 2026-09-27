@@ -7,7 +7,7 @@ import plugin from "./takt-vfs.ts"
 const calls = []
 // respond lets a scenario make one command fail the way takt-ai does: exit
 // non-zero with the reason on stderr and nothing on stdout.
-let respond = () => undefined
+let respond = (_call) => undefined
 globalThis.Bun = {
   spawn(argv, options) {
     assert.equal(argv[0], "/test/takt-ai")
@@ -35,11 +35,12 @@ function requestOf(call) {
 const store = new Map([["takt/vfs/delegations", { "old:call-0": { unit: "orphan", root: "old-root" } }]])
 const tools = {}
 const hooks = {}
+const permissionHooks = {}
 const sessionHooks = {}
 const synthetic = []
 const interrupted = []
 const promptedSessions = []
-let onPrompt = () => undefined
+let onPrompt = (_sessionID, _text) => undefined
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -51,7 +52,7 @@ await plugin.setup({
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
   },
-  permission: { hook: async () => () => {} },
+  permission: { hook: async (name, callback) => { (permissionHooks[name] ??= []).push(callback); return { dispose() {} } } },
   agent: { get: async () => ({ permissions: [] }) },
   shell: { hook: async () => () => {} },
   tool: {
@@ -95,6 +96,8 @@ assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", claim
 await tools.dispatch_commit.execute({ version: "v1", plan: [{ unit: "u1", contract: "c1" }] }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
 assert.deepEqual(requestOf(calls.at(-1)), { action: "commit", session: "root", version: "v1", plan: [{ unit: "u1", contract: "c1", prerequisites: [] }] })
+await tools.dispatch_commit.execute({ version: "v2", base_version: "v1", plan: [{ unit: "u4", contract: "c4" }], withdraw: ["u1"] }, root)
+assert.deepEqual(requestOf(calls.at(-1)), { action: "commit", session: "root", version: "v2", base_version: "v1", plan: [{ unit: "u4", contract: "c4", prerequisites: [] }], withdrawals: ["u1"] })
 
 await tools.dispatch_declare_recovery.execute({ objective: "obj1", result: "res1", point: "p1", scope: ["u1"], actions: 5, attempts: 2 }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
@@ -209,7 +212,7 @@ respond = () => undefined
 // orchestrator's alone.
 const dev = { sessionID: "u1", agent: "dev" }
 await tools.vfs_bind.execute({ scope: ["a.txt"] }, dev)
-assert.equal(calls.filter(c => c.verb === "vfs").at(-1).stdin.work_unit_id, "u1")
+assert.equal(calls.findLast(c => c.verb === "vfs").stdin.work_unit_id, "u1")
 await assert.rejects(tools.vfs_consolidate.execute({ author_key: "k", checkpoint: "cp" }, dev), /orchestrator/)
 
 // A refused consolidation says why: takt-ai's reason travels on stderr.
@@ -248,7 +251,7 @@ respond = () => undefined
 // the envelope into the root session and gives the holder nothing, then ends
 // its turn; a refused one tells only the holder why.
 await tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", expected_artifact: "brief.md" }, root)
-assert.deepEqual(requestOf(calls.filter(c => c.verb === "dispatch").at(-1)), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
+assert.deepEqual(requestOf(calls.findLast(c => c.verb === "dispatch")), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
 const holder = { sessionID: "lent", agent: "pm" }
 const handoff = { result: "Standard", additional_context: "ctx", extra_artifacts: [] }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
@@ -270,3 +273,44 @@ respond = () => undefined
 
 // A finished direct activity names one of the three outcomes the record accepts.
 assert.deepEqual(tools.dispatch_activity_finish.input.properties.outcome.enum, ["completed", "failed", "interrupted"])
+
+// A native edit never lands on a path a VFS claim holds; any other path keeps
+// the decision the ruleset already took, and a deny is never weakened.
+const editEvaluate = async (resource, effect = "allow", agent = "takt") => {
+  const event = { sessionID: "root", agent, action: "edit", resources: [resource], effect }
+  for (const hook of permissionHooks.evaluate) await hook(event)
+  return event
+}
+respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, { ...priorClaim, active: false }] }), stderr: "", code: 0 } : undefined
+const heldEdit = await editEvaluate("/workspace/a.txt")
+assert.equal(heldEdit.effect, "deny")
+assert.match(heldEdit.message, /a\.txt is held by work unit u1 \(agent dev\)/)
+assert.equal((await editEvaluate("./a.txt", "allow", "pm")).effect, "deny")
+assert.equal((await editEvaluate("docs/brief.md")).effect, "allow")
+assert.equal((await editEvaluate("docs/brief.md", "ask")).effect, "ask")
+// Only claims still pending or active hold a path.
+respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [{ ...claim, pending: false }] }), stderr: "", code: 0 } : undefined
+assert.equal((await editEvaluate("a.txt")).effect, "allow")
+// Ownership that cannot be read is not free to take.
+respond = (call) => call.argv[2] === "claims" ? { stdout: "", stderr: "store locked", code: 1 } : undefined
+assert.equal((await editEvaluate("docs/brief.md")).effect, "deny")
+respond = () => undefined
+// Shell decisions are not this hook's.
+const shellEvent = { sessionID: "root", agent: "takt", action: "shell", resources: ["cat a.txt"], effect: "allow" }
+for (const hook of permissionHooks.evaluate) await hook(shellEvent)
+assert.equal(shellEvent.effect, "allow")
+
+// Every refusal is observed as a dispatch decision with its reason class, so
+// the operation shows where conduct and controls disagree.
+respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 } : undefined
+await assert.rejects(delegate("execute.before", "u9", "call-9"), /no matching pending clean claim/)
+respond = (call) => call.verb === "dispatch" && requestOf(call).action === "admit"
+  ? { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 } : undefined
+await assert.rejects(delegate("execute.before", "brief-2", "call-10", "pm"), /ceiling/)
+respond = () => undefined
+await new Promise(resolve => setTimeout(resolve, 10))
+const refusals = calls.filter(c => c.verb === "obs" && c.stdin?.attributes?.decision === "refused")
+  .map(c => [c.stdin.attributes.reason_code, c.stdin.attributes.specialist, c.stdin.work_unit_id])
+for (const want of [["claimed_path", "takt", "u1"], ["missing_unit", "dev", ""], ["missing_claim", "dev", "u9"], ["admission_denied", "pm", "brief-2"]]) {
+  assert.ok(refusals.some(r => JSON.stringify(r) === JSON.stringify(want)), `refusal ${want} not observed; saw ${JSON.stringify(refusals)}`)
+}

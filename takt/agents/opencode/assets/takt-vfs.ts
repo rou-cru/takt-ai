@@ -30,7 +30,7 @@ const SANDBOX_ADAPTER = "./takt-sandbox.mjs"
 
 // SHELL_ACTIONS are the permission actions shell execution resolves under; the
 // command itself is the resource the rules and the approval match.
-const SHELL_ACTIONS = ["shell", "bash"]
+const SHELL_ACTIONS = new Set(["shell", "bash"])
 
 // SHELL_NOT_ADMITTED is the status a command exits with when no admitted plan
 // covers it. create.before cannot abort, so the command is replaced by its own
@@ -79,6 +79,12 @@ const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
+
+// asString narrows an unknown protocol field to a string, falling back
+// instead of letting a non-string value stringify to the useless
+// "[object Object]" (dispatch/shell fields are caller-supplied and only
+// typed unknown because they pass through a Record<string, unknown>).
+const asString = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback)
 
 // SENSITIVE_READ_GLOBS are the secret-bearing paths no agent reads, injected
 // from the same list the global read rules deny.
@@ -159,7 +165,7 @@ export default Plugin.define({
     // SHA-256, kept outside the workspace itself.
     function stateDir(): string {
       const abs = workspace.startsWith("/") ? workspace : `${process.env.HOME}/${workspace}`
-      const slug = abs.split("/").filter(Boolean).pop() ?? "workspace"
+      const slug = abs.split("/").findLast(Boolean) ?? "workspace"
       const hash = createHash("sha256").update(abs).digest("hex").slice(0, 8)
       return `${process.env.HOME}/.local/share/takt-ai/vfs/${slug}-${hash}`
     }
@@ -233,6 +239,16 @@ export default Plugin.define({
       })() }, 0)
     }
 
+    // refused records a governed refusal before it reaches the caller: the
+    // denials are the signal of whether conduct and controls agree, so they are
+    // observed like any other dispatch decision, then thrown unchanged.
+    function refused(reasonCode: string, agent: string, sessionID: string, error: Error, workUnitID = ""): Error {
+      observe("dispatch", "takt.orchestration", agent || "harness", sessionID, {
+        decision: "refused", specialist: agent, reason_code: reasonCode, dispatch_id: workUnitID,
+      }, workUnitID)
+      return error
+    }
+
     async function taktUnlocked(command: string, request: Record<string, unknown>): Promise<Record<string, any>> {
       const proc = Bun.spawn([TAKT_AI, "vfs", command, "--workspace", workspace, "--state", stateDir()], {
         stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd: workspace,
@@ -287,7 +303,7 @@ export default Plugin.define({
     async function binding(c: { sessionID: string; agent: string }, authorKey?: string): Promise<Binding> {
       if (gcChildren.has(c.sessionID)) return own(c)
       const named = authorKey ? bindings.get(authorKey) : undefined
-      if (named && named.agent === c.agent && named.dispatch === c.sessionID && named.session === await rootSession(c.sessionID)) return named
+      if (named?.agent === c.agent && named.dispatch === c.sessionID && named.session === await rootSession(c.sessionID)) return named
       return own(c)
     }
 
@@ -332,8 +348,8 @@ export default Plugin.define({
 
     if (VFS_SHELL_ENFORCED) {
       await ctx.tool.hook("execute.before", async (event) => {
-        if (!SHELL_ACTIONS.includes(event.tool)) return
-        const command = String((event.input as { command?: unknown })?.command ?? "")
+        if (!SHELL_ACTIONS.has(event.tool)) return
+        const command = asString((event.input as { command?: unknown })?.command, "")
         // Correlation into create.before is by command text alone, so a command
         // already pending for another caller would be ambiguous: it could run
         // under the wrong binding's sandbox, or take the orchestrator's direct path.
@@ -362,7 +378,7 @@ export default Plugin.define({
           call_id: callID, command,
         })
         const plan = res.shell as ShellPlan
-        if (plan.decision === "deny") throw new Error(`Takt refused this shell command: ${plan.reason}`)
+        if (plan.decision === "deny") throw refused("shell_denied", event.agent ?? "", event.sessionID, new Error(`Takt refused this shell command: ${plan.reason}`))
         admittedShell.set(command, {
           plan, callID, session: event.sessionID, key: b?.key, started: false, evaluated: false,
         })
@@ -397,7 +413,7 @@ export default Plugin.define({
           // the supervised command against its projection. A command that
           // mutates gets the sandbox scratch as home and temporary directory;
           // inspection runs in the workspace and keeps the real home.
-          const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
+          const quote = (s: string) => `'${s.replaceAll("'", String.raw`'\''`)}'`
           const dir = await mkdtemp(join(tmpdir(), "takt-shell-"))
           const wrapper = join(dir, "sh")
           await writeFile(wrapper, [
@@ -417,7 +433,7 @@ export default Plugin.define({
       })
 
       await ctx.permission.hook("evaluate", async (event) => {
-        if (!SHELL_ACTIONS.includes(event.action)) return
+        if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
         if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID) return
@@ -441,7 +457,7 @@ export default Plugin.define({
 
       // The command's result is admitted as one VFS transaction once it has ended.
       await ctx.tool.hook("execute.after", async (event) => {
-        for (const [command, admitted] of [...admittedShell]) {
+        for (const [command, admitted] of admittedShell) {
           if (!admitted.started || admitted.session !== event.sessionID) continue
           admittedShell.delete(command)
           if (admitted.wrapper) await rm(admitted.wrapper, { recursive: true, force: true })
@@ -482,7 +498,7 @@ export default Plugin.define({
       const [out, err, code] = await Promise.all([
         new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
       ])
-      if (code !== 0) throw new Error(`${verb.join(" ")} ${request.action}: ${err || out}`)
+      if (code !== 0) throw new Error(`${verb.join(" ")} ${asString(request.action, "unknown")}: ${err || out}`)
       return JSON.parse(out)
     }
     const coordinate = (request: Record<string, unknown>): Promise<any> =>
@@ -493,10 +509,10 @@ export default Plugin.define({
     const dispatchAction = (request: Record<string, unknown>): Promise<any> =>
       exclusive(async () => {
         const result = await spawnCoordination(["dispatch"], request)
-        const action = String(request.action ?? "unknown")
-        const session = String(request.session ?? "")
-        const event = String(request.event ?? "")
-        const agent = String(request.agent ?? "harness")
+        const action = asString(request.action, "unknown")
+        const session = asString(request.session, "")
+        const event = asString(request.event, "")
+        const agent = asString(request.agent, "harness")
         observe("dispatch", "takt.orchestration", agent, session, {
           decision: action, dispatch_id: event, reason_code: "dispatch_completed", parallelism: 0,
         }, event)
@@ -545,7 +561,7 @@ export default Plugin.define({
       // A host subagent call lives inside the process that started it, so one
       // still recorded here died with that process: its liveness is uncertain,
       // and it is reconciled as not running, which releases its slot (PR-HAR-18).
-      for (const [delegation, d] of [...delegations]) {
+      for (const [delegation, d] of delegations) {
         await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
         await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
         delegations.delete(delegation)
@@ -648,7 +664,7 @@ export default Plugin.define({
         // The session's own permission ruleset already removes everything else;
         // this is the second lock, for a tool that reaches execution anyway.
         const allowed = event.tool.startsWith("gc_") || (GC_LANE_TOOLS[gcLaneRole.get(event.sessionID) ?? ""] ?? []).includes(event.tool)
-        if (!allowed) throw new Error("This maintenance cycle does not use that tool")
+        if (!allowed) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This maintenance cycle does not use that tool"))
         return
       }
       if (event.tool !== "subagent") return
@@ -659,12 +675,16 @@ export default Plugin.define({
       // unit by its committed identity, and a retry by the same name again. The
       // host call identity tells a transport repetition apart from a retry.
       const unit = (input.description ?? "").trim()
-      if (!unit) throw new Error("Name the delegation after the work unit it executes: set its description to the unit identity")
       const specialist = String(input.agent ?? "")
-      if (!specialist) throw new Error("Takt VFS refused launch: the requested specialist identity is missing")
+      if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
+      if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
-      if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`)
-      await dispatchAction({ action: "admit", event: unit, dispatch: delegation, session: root, agent: specialist })
+      if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
+      try {
+        await dispatchAction({ action: "admit", event: unit, dispatch: delegation, session: root, agent: specialist })
+      } catch (error) {
+        throw refused("admission_denied", specialist, root, error as Error, unit)
+      }
       // Only an admitted delegation is remembered: a denied one never ran.
       delegations.set(delegation, { unit, root, agent: specialist })
       await persistDelegations()
@@ -701,6 +721,38 @@ export default Plugin.define({
         await initializeGC()
         await coordinate({ action: "tick", session: await rootSession(event.sessionID) })
         scheduleGC()
+      }
+    })
+
+    // A native edit never lands on a path a VFS claim holds: that path belongs
+    // to the staged work of its unit until it is consolidated or discarded, so
+    // editing it natively would race the gate. Only ever tightens a decision.
+    const workspaceRelative = (resource: string) => {
+      const clean = resource.startsWith(workspace + "/") ? resource.slice(workspace.length + 1) : resource
+      return clean.replace(/^\.\//, "")
+    }
+    await ctx.permission.hook("evaluate", async (event: any) => {
+      if (event.action !== "edit" || event.effect === "deny") return
+      const resources: string[] = (event.resources ?? [event.resource])
+        .filter((r: unknown): r is string => typeof r === "string" && r.length > 0)
+        .map((r) => workspaceRelative(r))
+      if (resources.length === 0) return
+      const session = await rootSession(event.sessionID).catch(() => event.sessionID)
+      const claims = await takt("claims", { session_id: session }).then(r => r.claims ?? [], () => undefined)
+      if (claims === undefined) {
+        // Ownership that cannot be read is not free to take.
+        event.effect = "deny"
+        event.message = "Takt refused this edit: path ownership could not be read"
+        return
+      }
+      for (const c of claims) {
+        if (c.pending !== true && c.active !== true) continue
+        const held = resources.find(r => (c.scope ?? []).includes(r))
+        if (!held) continue
+        event.effect = "deny"
+        event.message = `Takt refused this edit: ${held} is held by work unit ${c.work_unit_id} (agent ${c.agent_id}); wait for its consolidation or discard it`
+        refused("claimed_path", event.agent ?? "", session, new Error(event.message), c.work_unit_id)
+        return
       }
     })
 
@@ -832,17 +884,24 @@ export default Plugin.define({
           },
         })
 
-      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. A planned unit is executed by delegating it with the unit identity as the subagent description; delegating that name again retries the unit. Commit before delegating more work than may run without a plan, or when the active workflow calls for one.",
+      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. A planned unit is executed by delegating it with the unit identity as the subagent description; delegating that name again retries the unit. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. Once a plan stands, change it by naming its current version as base_version: listed units are added or replaced, withdrawn units leave the plan.",
         "commit",
         obj({
           version: str("Identifier of this baseline version"),
+          base_version: str("The standing plan version this declaration revises; omit only for the first commitment"),
           plan: { type: "array", items: obj({
             unit: str("Work unit identity"), contract: str("Frozen contract this unit is dispatched against"),
             prerequisites: { type: "array", items: { type: "string" }, description: "Prerequisite work unit identities" },
-          }, ["unit", "contract"]), description: "Every unit this baseline covers" },
+          }, ["unit", "contract"]), description: "Every unit this baseline covers, or that a revision adds or replaces" },
+          withdraw: { type: "array", items: { type: "string" }, description: "Still-planned unit identities a revision removes" },
         }, ["version", "plan"]),
-        (args: { version: string; plan: { unit: string; contract: string; prerequisites?: string[] }[] }) =>
-          ({ version: args.version, plan: args.plan.map(u => ({ unit: u.unit, contract: u.contract, prerequisites: u.prerequisites ?? [] })) }))
+        (args: { version: string; base_version?: string; withdraw?: string[]; plan: { unit: string; contract: string; prerequisites?: string[] }[] }) =>
+          ({
+            version: args.version,
+            ...(args.base_version ? { base_version: args.base_version } : {}),
+            plan: args.plan.map(u => ({ unit: u.unit, contract: u.contract, prerequisites: u.prerequisites ?? [] })),
+            ...(args.withdraw?.length ? { withdrawals: args.withdraw } : {}),
+          }))
 
       editor.add({ name: "claim_list", description: "List ownership claims for the current root session.", input: obj({}, []), async execute(_args: any, c) {
         orchestratorOnly(c, "VFS claims")
@@ -1038,7 +1097,7 @@ export default Plugin.define({
         async execute(args: { scope: string[]; author_key?: string }, c) {
           const session = await rootSession(c.sessionID)
           const author = args.author_key ? bindings.get(args.author_key) : undefined
-          if (args.author_key && (!author || author.session !== session)) throw new Error("author_key does not name an active binding of this session")
+          if (args.author_key && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
           // A verifier runs as its own unit; the author key alone links it to
           // the staged work it judges.
           const unit = await delegatedUnit(c.sessionID)
@@ -1121,7 +1180,7 @@ export default Plugin.define({
           // Discarding is the orchestrator's backtracking decision (PR-VFS-CSL-5).
           orchestratorOnly(c, "vfs_discard")
           const b = bindings.get(args.author_key)
-          if (!b || b.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
+          if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
           await takt("op", {
             ...identity(b), author_key: b.key, call_id: args.call_id,
             expected_revision: b.revision, action: "rollback",
@@ -1166,7 +1225,7 @@ export default Plugin.define({
           // staged (PR-DAG-REP-5); the author's binding speaks for the delta.
           if (c.agent !== ORCHESTRATOR_ID) throw new Error("vfs_consolidate belongs to the orchestrator")
           const b = bindings.get(args.author_key)
-          if (!b || b.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
+          if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
           await takt("consolidate", {
             ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
           })
@@ -1183,7 +1242,7 @@ export default Plugin.define({
         async execute(args: { result_ids: number[] }, c) {
           const root = await rootSession(c.sessionID)
           const unit = await delegatedUnit(c.sessionID)
-          await dispatchAction({ action: "validate_results", session: root, result_ids: args.result_ids })
+          await dispatchAction({ action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
           deliveries.set(unitKey(root, unit), true)
           return { content: `Delivered ${args.result_ids.length} result id(s)` }
         },

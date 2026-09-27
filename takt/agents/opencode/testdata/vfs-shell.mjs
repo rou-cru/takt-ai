@@ -49,7 +49,12 @@ await plugin.setup({
 // OpenCode while file edits keep their VFS tools.
 if (process.env.TAKT_EXPECT_SHELL_OFF) {
   assert.equal(hooks.shell["create.before"], undefined)
-  assert.equal(hooks.permission.evaluate, undefined)
+  // The only evaluate hook left governs native edits; a shell decision passes through untouched.
+  for (const hook of hooks.permission.evaluate ?? []) {
+    const event = { sessionID: "author-a", agent: "dev", action: "shell", resources: ["printf x > data.txt"], effect: "allow" }
+    await hook(event)
+    assert.equal(event.effect, "allow")
+  }
   assert.ok(tools.vfs_write, "file edits stay VFS-governed")
   process.exit(0)
 }

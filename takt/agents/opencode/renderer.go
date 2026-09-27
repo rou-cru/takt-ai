@@ -169,8 +169,8 @@ const vfsConsolidateTool = "vfs_consolidate"
 
 // orchestratorToolNames are the orchestrator's own declarations to the
 // harness (plan, direct activity, recovery, exceptions, contests, GC
-// preparation); no other agent is offered them.
-var orchestratorToolNames = []string{"dispatch_commit", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_exception", "dispatch_contest", "gc_prepare"}
+// preparation and requests); no other agent is offered them.
+var orchestratorToolNames = []string{"dispatch_commit", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_exception", "dispatch_contest", "gc_prepare", "gc_request"}
 
 // vfsMutationSkill carries the conduct of agents that stage their own work.
 const vfsMutationSkill = "takt-vfs-mutation"
@@ -202,7 +202,11 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// doc comment): it keeps full native permissions, no shell overrides.
 		// The VFS grant is projected independently below.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
+		rules = append(rules, sensitiveEditDenies()...)
 		rules = append(rules, subagentRules(maintenance)...)
+		for _, name := range orchestratorToolNames {
+			rules = append(rules, permissionRule{name, allResources, "allow"})
+		}
 	} else {
 		rules = append(rules, shellRules(spec.Role)...)
 		rules = append(rules, permissionRule{"subagent", allResources, "deny"})
@@ -215,6 +219,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// user asks for it; this permission is independent of their VFS grant.
 		// V2 folds write and patch into edit, so one rule covers both.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
+		rules = append(rules, sensitiveEditDenies()...)
 	}
 	if spec.ID == "analyst" {
 		// Unlike spec/tpm, the analyst never authors a document: it only
@@ -255,6 +260,16 @@ func modelRef(spec AgentSpec) any {
 		return spec.Model
 	}
 	return spec.Model + "#" + spec.Variant
+}
+
+// sensitiveEditDenies follows every edit allow: the last match wins, so a
+// blanket allow never reopens a secret-bearing path to writes.
+func sensitiveEditDenies() []permissionRule {
+	rules := make([]permissionRule, 0, len(shared.SensitivePathGlobs))
+	for _, glob := range shared.SensitivePathGlobs {
+		rules = append(rules, permissionRule{"edit", "**/" + glob, "deny"})
+	}
+	return rules
 }
 
 // subagentRules keeps a single blanket allow when there is nothing to exclude.

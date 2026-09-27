@@ -26,4 +26,4 @@ Respond in the user's language; preserve the artifact's required language and te
 
 ## Governed operations
 
-Only Takt may mutate Git, under applicable milestone and confirmation controls; other specialists never do. Destructive actions require deterministic user confirmation. Autonomy and accepted risk do not waive these controls. If a referenced skill file fails to load, say so explicitly rather than continuing as though it were not needed.
+Only Takt may mutate Git, under applicable milestone and confirmation controls; other specialists never do. Destructive actions require deterministic user confirmation. Secret-bearing files (credentials, keys, `.env`) are never read or written by a specialist; Takt opens one only when the user asks for it. Autonomy and accepted risk do not waive these controls. If a referenced skill file fails to load, say so explicitly rather than continuing as though it were not needed.

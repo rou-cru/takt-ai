@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Trigger: development workflow, full cycle, implement feature, DAG orchestration, plan the work, parallel tasks. Plans work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max 4 concurrent appliers, no worktrees. Orchestrator-only guide."
+description: "Trigger: development workflow, full cycle, implement feature, DAG orchestration, plan the work, parallel tasks. Plans work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max 4 concurrent specialists, no worktrees. Orchestrator-only guide."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,7 +11,7 @@ metadata:
 
 Orchestrator operational guide: convert an approved plan into a maximally concurrent
 dependency DAG, guarantee that every parallel lane is unlocked by a frozen contract, and
-sustain execution with bounded concurrent appliers in a single shared workspace.
+sustain execution with bounded concurrent specialists in a single shared workspace.
 
 > **Target Audience:** Orchestrator agent only. Sub-agents consume individual task
 > contracts, not this skill.
@@ -103,8 +103,9 @@ path, and keep moving.
 1. **Shared Workspace (No Worktrees):** All tasks execute in the root workspace. Isolation
    comes from disjoint file ownership and frozen interface contracts, never from Git
    branches. See §1.
-2. **Concurrency Ceiling (Max 4):** Dispatch at most 4 active appliers simultaneously.
-   Excess READY tasks queue. **4 is an empirical maximum**, derived from running this
+2. **Concurrency Ceiling (Max 4):** At most 4 specialists run at once, whatever their lane:
+   appliers, verifiers and planning lanes share the same slots. Excess READY tasks queue.
+   **4 is an empirical maximum**, derived from running this
    method across distinct complex projects with distinct models: fewer forces the very
    linearity this skill exists to prevent, and more multiplies the cost of a single
    orchestration error into a random large token burn. Do not negotiate it downward for
@@ -326,7 +327,7 @@ No reason outside this list justifies an edge.
 ### Dispatch Logic
 
 1. Collect all READY tasks (per §0).
-2. If `active_count < 4`, dispatch up to the available slots.
+2. If fewer than 4 specialists are in flight (any lane), dispatch up to the available slots.
 3. When `ready_count > available_slots`, prioritize by **critical path** — longest
    remaining downstream chain first.
 
@@ -334,26 +335,11 @@ No reason outside this list justifies an edge.
 
 ## 7. Specialist Routing
 
-Takt selects the minimum sufficient participants, integrates their output, and owns the
-DAG. These are routing choices, not mandatory phases or permission to replace an available
-owner. Every handoff carries decisions, contracts, evidence, assumptions, and limits.
-
-| Need | Owner | Selection boundary |
-|---|---|---|
-| Unverified context or environment; research or uncertain impact | `analyst` | Reuse still-valid context; omit if evidence is sufficient; product choices go to PM |
-| Product intent, value, scope, priorities | `pm` | Reuse approved intent; do not reopen it for a handoff |
-| Observable behavior and acceptance | `spec` | Reuse adequate criteria; structure belongs to Architect |
-| Interfaces and system boundaries | `architect` | Freeze missing contracts; do not redesign settled ones |
-| UI/UX/DX and shared identity | `product-designer` | Supply verifiable experience rules where existing ones do not suffice |
-| Scoped, traceable task decomposition | `tpm` | Supplies files and justified dependencies, never owns the DAG |
-| Implementation | `dev` | Consume settled contracts; omit when no code is needed |
-| Defect repair | `fix` | Use confirmed findings; self-confirm if Verify is absent, without claiming independent acceptance |
-| Gate / executable acceptance | `verify` | Distinct modes; never skip a required gate |
-| Extraordinary assurance | Blind Judge pair | Only unknown damage or unusually high certainty; not routine Verify replacement |
-
-When interfaces prevent concurrency, return to Architect; behavioral gaps go to Spec and
-experience gaps to Designer. TPM revises decomposition when needed; Takt revises the graph.
-If an owner is absent, deliver permitted fallback work and name the missing assurance.
+Route by the need table in your OPERATIONS; this skill adds no second one. Every handoff
+carries decisions, contracts, evidence, assumptions, and limits. When interfaces prevent
+concurrency, return to Architect; behavioral gaps go to Spec and experience gaps to
+Designer. TPM revises decomposition when needed; Takt revises the graph. If an owner is
+absent, deliver permitted fallback work and name the missing assurance.
 
 ---
 
@@ -425,7 +411,8 @@ The following is an available route, not a procession required of every change:
    tradeoff → PM and the user. Provide the failed task ID, evidence, and contract segment.
 4. **Contract delta & re-index:** the owner emits a contract delta, naming the exact prior
    version it replaces and what it adds or retires; TPM revises affected
-   task decomposition if needed. Takt alone restructures the sub-DAG, checks file ownership
+   task decomposition if needed. Takt alone restructures the sub-DAG, commits the revised plan
+   with `dispatch_commit` naming the standing version as its base, checks file ownership
    against in-flight work, and re-runs §5.1 on the affected region.
 5. **Resume:** re-queue only after correction and any required approval. Budget exhaustion
    ends the recovery scope; confirm termination and restoration of unconsolidated state before

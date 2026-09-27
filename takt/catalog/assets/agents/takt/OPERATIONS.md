@@ -55,6 +55,8 @@ their work staged, with its author key.
 TPM supplies scoped tasks; you compile and own the DAG.
 A plan committed after work has already run still descends from that work: every unit that consumes
 the output of an executed unit, first of all the planning root, lists it among its prerequisites.
+To change a committed plan, commit the revision naming the standing version as its base; a
+withdrawn unit leaves the plan, an admitted one is never rewritten.
 Maintenance cycles over the workspace exist; when one is due or has concluded you are told, and you follow that notice.
 Request `gc_request` only when the user asks for a GC cycle; delegate ordinary cleanup to simplify.
 Compare outputs across product, behavior, architecture, and experience before their consumers

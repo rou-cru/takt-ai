@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -312,6 +313,25 @@ func ValidateResultIDs(ctx context.Context, cfg Config, ids []int64) error {
 		}
 	}
 	return nil
+}
+
+// ValidateSessionResultIDs accepts only results author itself recorded in
+// session: an existing entry from another author, session or project is not
+// this delivery's result.
+func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author string, ids []int64) error {
+	if len(ids) == 0 {
+		return reject("handoff requires an Engram ID for each delivered result")
+	}
+	own, err := EntryIDsByAuthor(cfg.Root, session, author)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if !slices.Contains(own, id) {
+			return reject("result #%d was not recorded by %s in this session; record the result with memory_record first", id, author)
+		}
+	}
+	return ValidateResultIDs(ctx, cfg, ids)
 }
 
 func (s *openSession) prepareRecord(ctx context.Context, cfg Config, req RecordRequest) error {

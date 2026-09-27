@@ -10,18 +10,16 @@ metadata:
 # Takt Memory Contract
 
 This is the only definition of memory rules for Takt agents. Your role skill
-(`.opencode/skills/takt-memory-<role>/SKILL.md`) says **what** your role records; this contract
+(`~/.opencode/skills/takt-memory-<role>/SKILL.md`) says **what** your role records; this contract
 says what a good memory contains. Where any other memory guidance disagrees with this
 contract, this contract wins.
-
-Requirement IDs refer to `ARCH_MEMORY` (MEM-*).
 
 ## 1. What a memory is
 
 A memory records **something that happened or what is true now**: an idea explored, a
 fact verified, a decision taken, a file created or changed, a problem found, a
 disagreement raised. It is written in **past or present tense** and is anchored to that
-event (MEM-TYP-7).
+event.
 
 Record what happened, what is true now, or the deliverable your specialty was assigned to
 produce. A specialist whose work is a plan, task breakdown, proposal, or design records
@@ -42,7 +40,7 @@ it. If the write fails, the result is not delivered. Present its ID through the 
 handoff operation, not through a phrase in your final answer.
 Its nature follows §2.
 
-## 2. Natures (MEM-TYP-5/6)
+## 2. Natures
 
 | `nature` | Meaning |
 |---|---|
@@ -57,13 +55,13 @@ decision is its author; the authority is the user, and it goes in `evidence`.
 Orchestrator acceptance of an autonomous result permits downstream use; it does not
 turn that result into a user-approved `decision`.
 
-What an entry **is** and what it **governs today** are separate (MEM-TYP-6). Nature is
+What an entry **is** and what it **governs today** are separate. Nature is
 fixed; currency follows the evolution links already recorded (§4): an entry another
 `supersedes` is superseded, one another `disputes` is in dispute. So an entry stops
 governing without being deleted, and recording a correction or a supersession promotes
-nothing — a `proposal` stays a `proposal` (MEM-RET-5).
+nothing — a `proposal` stays a `proposal`.
 
-## 3. Scope and tiers (MEM-SCP-1..4)
+## 3. Scope and tiers
 
 Memory has two canonical tiers, and the `scope` you choose picks one:
 
@@ -77,7 +75,7 @@ Memory has two canonical tiers, and the `scope` you choose picks one:
   project work; never write workspace artifacts into it.
 - When unsure, use `project`. Never copy project content into `personal`.
 
-## 4. Relations (MEM-OPS-1..3)
+## 4. Relations
 
 Entries are never overwritten or deleted. A change in understanding is a **new** entry
 whose `relates_to` names the affected entry by its `#id` and one relation:
@@ -98,8 +96,8 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
   across the tier boundary.
 - Same fact, same nature, still current: record nothing.
 
-Knowledge in another role's domain is still recorded by you when your work produced it
-(MEM-TYP-4). The table only helps avoid two roles recording the same thing:
+Knowledge in another role's domain is still recorded by you when your work produced it.
+The table only helps avoid two roles recording the same thing:
 
 | Domain | Natural writer |
 |---|---|
@@ -116,7 +114,7 @@ Knowledge in another role's domain is still recorded by you when your work produ
 | Review findings that contradict memory | judges |
 | Session objective and state | orchestrator |
 
-## 5. When to record (MEM-TYP-1..3)
+## 5. When to record
 
 - Call `memory_record` once per entry **when the assigned work finishes**, before you
   return your result, not after every step. Keep entries concise.
@@ -141,9 +139,9 @@ Knowledge in another role's domain is still recorded by you when your work produ
 ## 7. Reading memory
 
 - Read with `mem_search`, `mem_get_observation`, and `mem_context`.
-- Verified repository state prevails over a contradicting memory (MEM-RET-3). When they
+- Verified repository state prevails over a contradicting memory. When they
   disagree, trust the repository and record an `observation` that `corrects` the entry.
 - Entries that were corrected or superseded are history, never directives.
 - Open `disputes` stay open: present them as open, settled neither by recency nor by
-  another role's assertion (MEM-RET-4/5).
+  another role's assertion.
 - Never promote a `proposal` or `hypothesis` into a fact when you rely on it.

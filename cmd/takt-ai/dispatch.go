@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
@@ -43,11 +44,20 @@ type coordinationRequest struct {
 	Allowance         int              `json:"allowance"`
 	Version           string           `json:"version"`
 	Plan              []gc.PlanUnit    `json:"plan"`
+	BaseVersion       string           `json:"base_version,omitempty"`
+	Withdrawals       []string         `json:"withdrawals,omitempty"`
 	Artifact          string           `json:"artifact"`
 	AdditionalContext string           `json:"additional_context"`
 	ExtraArtifacts    []string         `json:"extra_artifacts"`
 	ResultIDs         []int64          `json:"result_ids"`
 	Origin            string           `json:"origin"`
+}
+
+// memoryRoot is where `takt-ai memory` keeps its session index: the user's
+// home, not the workspace, so results are resolved where they were recorded.
+func memoryRoot() string {
+	home, _ := os.UserHomeDir()
+	return home
 }
 
 // journalRef is the Action Journal position an execution-history entry is
@@ -181,22 +191,26 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 	}
 	handlers := map[string]func() (any, error){
 		"admit": routine, "finish": routine, "tick": routine,
-		"launch":           func() (any, error) { return c, protocol.Launch(h, ref, r.Event, r.Session) },
-		"uncertain":        record(history.KindUncertain),
-		"reconcile":        func() (any, error) { return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass) },
-		"suspend":          record(history.KindSuspended),
-		"cancel":           record(history.KindCancelRequested),
-		"stop":             record(history.KindStopped),
-		"escalate":         record(history.KindEscalated),
-		"withdraw":         func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
-		"commit":           func() (any, error) { return c, protocol.Commit(h, ref, r.Session, r.Version, r.Plan) },
-		"switch":           func() (any, error) { return nil, protocol.Switch(h, ref, r.Session, r.Child, r.Agent, r.Artifact) },
-		"validate_results": func() (any, error) { return nil, memory.ValidateResultIDs(ctx, memory.Config{}, r.ResultIDs) },
+		"launch":    func() (any, error) { return c, protocol.Launch(h, ref, r.Event, r.Session) },
+		"uncertain": record(history.KindUncertain),
+		"reconcile": func() (any, error) { return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass) },
+		"suspend":   record(history.KindSuspended),
+		"cancel":    record(history.KindCancelRequested),
+		"stop":      record(history.KindStopped),
+		"escalate":  record(history.KindEscalated),
+		"withdraw":  func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
+		"commit": func() (any, error) {
+			return c, protocol.Declare(h, ref, r.Session, r.Version, r.BaseVersion, r.Plan, r.Withdrawals)
+		},
+		"switch": func() (any, error) { return nil, protocol.Switch(h, ref, r.Session, r.Child, r.Agent, r.Artifact) },
+		"validate_results": func() (any, error) {
+			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
+		},
 		"handoff": func() (any, error) {
-			return protocol.BuildHandoffEnvelope(h, ref, workspace, r.Session, r.Child, r.Agent, r.Result, r.AdditionalContext, r.ExtraArtifacts, r.ResultIDs)
+			return protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, r.Result, r.AdditionalContext, r.ExtraArtifacts, r.ResultIDs)
 		},
 		"abort_switch": func() (any, error) {
-			return protocol.BuildAbortEnvelope(h, ref, workspace, r.Session, r.Child, r.Evidence, r.Origin)
+			return protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
 		},
 		"contest": func() (any, error) {
 			p, e := protocol.LoadAdmissionPolicy()

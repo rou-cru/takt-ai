@@ -352,6 +352,24 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 	return nil
 }
 
+// Declare is the orchestrator's one plan declaration: the first one commits
+// the baseline; once a plan stands, a declaration revises it and must name
+// the version it revises, so a stale or silent rewrite of the plan is refused
+// instead of recorded as a fresh commitment (PR-DAG-MUT-6).
+func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string) error {
+	standing := h.Project().Budgets(session).PlanVersion
+	if standing == "" {
+		if baseVersion != "" || len(withdrawals) > 0 {
+			return errors.New("dispatch: no plan stands in this session yet; commit one before revising it")
+		}
+		return Commit(h, journalRef, session, version, units)
+	}
+	if baseVersion == "" {
+		return fmt.Errorf("dispatch: plan version %s already stands; name it as the base version to revise it", standing)
+	}
+	return Revise(h, journalRef, session, baseVersion, version, units, withdrawals)
+}
+
 // validPlan rejects the declarations PR-DAG-MUT-6 calls invalid: duplicate or
 // unknown identities and cycles. An invalid commitment covers nothing.
 func validPlan(p history.Projection, units []PlanUnit) error {

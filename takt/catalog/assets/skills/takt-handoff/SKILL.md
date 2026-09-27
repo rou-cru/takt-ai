@@ -14,13 +14,11 @@ final results, or a return of the conversational interface once your assignment 
 complete. It is the one channel between your session and the orchestrator's; everything
 else you do along the way stays inside your own work.
 
-## Submitted content is checked on meaning, not on form
+## What a submission must carry
 
-Whatever you submit through a handoff operation is normalized before it is checked:
-whitespace, formatting, and incidental phrasing differences are reconciled automatically,
-never matched against a brittle fixed string. What is checked is whether the content
-means what the operation requires, not whether it is typed a particular way. Write your
-submission plainly and completely; do not contort it to satisfy an imagined exact format.
+A handoff checks the values the operation declares: an allowed outcome, and for a result,
+the IDs of the entries you recorded for it in this session. Nobody grades your prose there;
+write it plainly and completely, for the orchestrator that reads it next.
 
 ## A rejected attempt is simply corrected
 
