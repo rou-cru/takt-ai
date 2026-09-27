@@ -54,20 +54,24 @@ type Palette struct {
 	ActionPrimaryBg, ActionPrimaryFg, ActionDangerBg, ActionDangerFg color.Color
 }
 
+// hexBrandTeal is the brand's teal accent (brand.md section 5.3, dark
+// column), shared by every role that carries brand emphasis.
+const hexBrandTeal = "#80C3CB"
+
 // Dark maps the brand's dark semantic token set onto the terminal. Hex
 // values come from brand.md section 5.3 (dark column).
 var Dark = Palette{
 	Canvas: lipgloss.Color("#101B20"), Surface: lipgloss.Color("#18262C"), Raised: lipgloss.Color("#25343A"),
 	TextPrimary: lipgloss.Color("#F5F7F7"), TextSecondary: lipgloss.Color("#D2DCDD"), TextMuted: lipgloss.Color("#ADBDC0"),
-	BrandInk: lipgloss.Color("#80C3CB"), FocusRing: lipgloss.Color("#80C3CB"),
+	BrandInk: lipgloss.Color(hexBrandTeal), FocusRing: lipgloss.Color(hexBrandTeal),
 	BorderControl: lipgloss.Color("#82979C"), BorderSubtle: lipgloss.Color("#35464D"),
 	SelectionFg: lipgloss.Color("#D9EEF0"), SelectionBg: lipgloss.Color("#1E3B46"),
 	SuccessBg: lipgloss.Color("#022C22"), SuccessFg: lipgloss.Color("#6EE7B7"),
 	WarningBg: lipgloss.Color("#451A03"), WarningFg: lipgloss.Color("#FCD34D"),
 	DangerBg: lipgloss.Color("#450A0A"), DangerFg: lipgloss.Color("#FCA5A5"),
-	InfoBg: lipgloss.Color("#102630"), InfoFg: lipgloss.Color("#80C3CB"),
+	InfoBg: lipgloss.Color("#102630"), InfoFg: lipgloss.Color(hexBrandTeal),
 	DisabledBg: lipgloss.Color("#25343A"), DisabledFg: lipgloss.Color("#ADBDC0"),
-	ActionPrimaryBg: lipgloss.Color("#80C3CB"), ActionPrimaryFg: lipgloss.Color("#102630"),
+	ActionPrimaryBg: lipgloss.Color(hexBrandTeal), ActionPrimaryFg: lipgloss.Color("#102630"),
 	ActionDangerBg: lipgloss.Color("#FCA5A5"), ActionDangerFg: lipgloss.Color("#450A0A"),
 }
 

@@ -35,4 +35,5 @@ case "$action" in
   install) helm install "$release" charts/takt-workspace --namespace "$namespace" "${helm_args[@]}" ;;
   upgrade) helm upgrade --install "$release" charts/takt-workspace --namespace "$namespace" "${helm_args[@]}" ;;
   uninstall) helm uninstall "$release" --namespace "$namespace" "${helm_args[@]}" ;;
+  *) usage ;;
 esac

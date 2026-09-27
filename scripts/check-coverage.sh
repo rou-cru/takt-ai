@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
     echo "usage: check-coverage.sh <profile.out> [<profile.out> ...]" >&2
     exit 2
 fi
@@ -21,7 +21,7 @@ trap 'rm -f "$MERGED"' EXIT
 
 first=1
 for profile in "$@"; do
-    if [ "$first" -eq 1 ]; then
+    if [[ "$first" -eq 1 ]]; then
         cp "$profile" "$MERGED"
         first=0
     else

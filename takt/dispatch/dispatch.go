@@ -124,30 +124,40 @@ func CurrentAttempt(p history.Projection, event string) string {
 	return history.FirstAttempt
 }
 
+// AdmissionRequest identifies the unit an admission decision is made for: the
+// work unit and session identities, the agent it would delegate to, and the
+// dispatch identity to record against it.
+type AdmissionRequest struct {
+	Event    string
+	Session  string
+	Agent    string
+	Dispatch string
+}
+
 // Admit is called before the host task tool. It reserves one concurrency slot
 // indivisibly against the projection (PR-HAR-16); a refusal is recorded and
 // stays visible. held is the caller's own reason (if any) to pause every
 // admission regardless of budget, such as a maintenance cycle in flight;
 // this package enforces it without knowing why it applies.
-func Admit(h *history.History, p AdmissionPolicy, journalRef, event, session, agent, dispatch string, held bool) error {
-	if event == "" || session == "" {
+func Admit(h *history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest, held bool) error {
+	if req.Event == "" || req.Session == "" {
 		return errors.New("dispatch: identity required")
 	}
 	projection := h.Project()
-	unit, known := projection.Units[event]
+	unit, known := projection.Units[req.Event]
 	entry := history.Entry{
-		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: session,
-		WorkUnitID: event, AttemptID: nextAttempt(unit, known), Dispatch: dispatch, Agent: agent,
+		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
+		WorkUnitID: req.Event, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
 		Cause: history.CauseUncaptured, JournalRef: journalRef, PolicyRef: AdmissionPolicyRef,
 	}
-	budgets := projection.Budgets(session)
+	budgets := projection.Budgets(req.Session)
 	// Only a unit never seen before is new work: a planned unit is covered by
 	// its commitment, and a settled one is retried under its own identity, so
 	// neither adds to the uncovered count (PR-HAR-19, PR-DAG-MUT-10).
 	newUnit := !known
 	// Scope membership is declared, so an admission inside a recovery scope is an
 	// attempt of that recovery and records which one it belongs to.
-	objective, recovery := budgets.Scope(event)
+	objective, recovery := budgets.Scope(req.Event)
 	entry.Objective = objective
 	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
@@ -161,10 +171,10 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef, event, session, ag
 		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s)", p.Concurrency.Specialists, history.BoundConcurrency)
 	case known && unit.State == history.StateInFlight:
 		entry.Kind, entry.Cause = history.KindDenied, CauseRepetition
-		e = fmt.Errorf("harness: work unit %q is already in flight; a retry starts only once its current attempt settles", event)
+		e = fmt.Errorf("harness: work unit %q is already in flight; a retry starts only once its current attempt settles", req.Event)
 	case known && unit.State == history.StateWithdrawn:
 		entry.Kind, entry.Cause = history.KindDenied, CauseWithdrawn
-		e = fmt.Errorf("harness: work unit %q was withdrawn from the plan", event)
+		e = fmt.Errorf("harness: work unit %q was withdrawn from the plan", req.Event)
 	case newUnit && budgets.Unplanned >= p.Budgets.UnplannedUnits+budgets.Allowance[history.BoundUnplanned]:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundUnplanned
 		e = fmt.Errorf("harness: unplanned delegation bound of %d reached; commit a plan covering this unit and delegate it under that identity, or record the user's enabling decision on bound %s", p.Budgets.UnplannedUnits, history.BoundUnplanned)
@@ -387,22 +397,44 @@ func validPlan(p history.Projection, units []PlanUnit) error {
 // identities and unknown prerequisites. pending counts each unit's in-plan
 // prerequisites; dependents maps a unit to the units waiting on it.
 func planGraph(p history.Projection, units []PlanUnit) (map[string]int, map[string][]string, error) {
+	pending, err := indexPendingUnits(units)
+	if err != nil {
+		return nil, nil, err
+	}
+	dependents, err := linkPrerequisites(p, units, pending)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pending, dependents, nil
+}
+
+// indexPendingUnits validates that every committed unit has an identity and
+// a contract and appears once, seeding pending's in-plan-prerequisite count
+// at zero for each.
+func indexPendingUnits(units []PlanUnit) (map[string]int, error) {
 	pending := make(map[string]int, len(units))
 	for _, u := range units {
 		if u.Unit == "" || u.Contract == "" {
-			return nil, nil, errors.New("dispatch: every committed unit needs an identity and a contract")
+			return nil, errors.New("dispatch: every committed unit needs an identity and a contract")
 		}
 		if _, dup := pending[u.Unit]; dup {
-			return nil, nil, fmt.Errorf("dispatch: duplicate identity in commitment: %s", u.Unit)
+			return nil, fmt.Errorf("dispatch: duplicate identity in commitment: %s", u.Unit)
 		}
 		pending[u.Unit] = 0
 	}
+	return pending, nil
+}
+
+// linkPrerequisites rejects a prerequisite that names neither an in-plan nor
+// an already-executed unit, and otherwise counts it against pending and
+// records the in-plan reverse edge in dependents.
+func linkPrerequisites(p history.Projection, units []PlanUnit, pending map[string]int) (map[string][]string, error) {
 	dependents := map[string][]string{}
 	for _, u := range units {
 		for _, need := range u.Prerequisites {
 			if _, inPlan := pending[need]; !inPlan {
 				if _, executed := p.Units[need]; !executed {
-					return nil, nil, fmt.Errorf("dispatch: unknown prerequisite identity: %s", need)
+					return nil, fmt.Errorf("dispatch: unknown prerequisite identity: %s", need)
 				}
 				continue
 			}
@@ -410,7 +442,7 @@ func planGraph(p history.Projection, units []PlanUnit) (map[string]int, map[stri
 			dependents[need] = append(dependents[need], u.Unit)
 		}
 	}
-	return pending, dependents, nil
+	return dependents, nil
 }
 
 // acyclic reports whether every unit settles once its prerequisites do
@@ -718,7 +750,8 @@ func Account(h *history.History, entries []vfs.JournalEntry) error {
 			if !recovery.Open || recovery.Unreconciled {
 				continue
 			}
-			if e := accountRecovery(h, entries, session, objective, recovery, budgets, projection, head); e != nil {
+			scope := recoveryScope{Session: session, Objective: objective, Recovery: recovery, Budgets: budgets, Projection: projection}
+			if e := accountRecovery(h, entries, scope, head); e != nil {
 				return e
 			}
 		}
@@ -726,21 +759,32 @@ func Account(h *history.History, entries []vfs.JournalEntry) error {
 	return nil
 }
 
+// recoveryScope is one open, reconciled recovery scope being accounted: the
+// session and objective it belongs to, its current recovery and budget
+// state, and the session projection its exhaustion check reads.
+type recoveryScope struct {
+	Session    string
+	Objective  string
+	Recovery   history.Recovery
+	Budgets    history.Budgets
+	Projection history.Projection
+}
+
 // accountRecovery records the consumption of one open, reconciled recovery
 // scope observed on the bus up to head, then forces backtracking if that
 // exhausts its budget.
-func accountRecovery(h *history.History, entries []vfs.JournalEntry, session, objective string, recovery history.Recovery, budgets history.Budgets, projection history.Projection, head int) error {
-	if head < recovery.Cursor {
+func accountRecovery(h *history.History, entries []vfs.JournalEntry, scope recoveryScope, head int) error {
+	if head < scope.Recovery.Cursor {
 		// The bus no longer accounts for consumption already observed.
-		return recordActions(h, session, objective, recovery, history.KindActionsUncertain, 0, head)
+		return recordActions(h, scope.Session, scope.Objective, scope.Recovery, history.KindActionsUncertain, 0, head)
 	}
-	if n := scopeActions(entries, recovery); n > 0 {
-		recovery.Used += n
-		if e := recordActions(h, session, objective, recovery, history.KindActions, n, head); e != nil {
+	if n := scopeActions(entries, scope.Recovery); n > 0 {
+		scope.Recovery.Used += n
+		if e := recordActions(h, scope.Session, scope.Objective, scope.Recovery, history.KindActions, n, head); e != nil {
 			return e
 		}
 	}
-	return forceBacktrackIfExhausted(h, session, objective, recovery, budgets, projection, head)
+	return forceBacktrackIfExhausted(h, scope.Session, scope.Objective, scope.Recovery, scope.Budgets, scope.Projection, head)
 }
 
 // scopeActions counts the tool executions recorded past the established cursor

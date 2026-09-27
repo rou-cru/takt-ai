@@ -16,12 +16,16 @@ import (
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
+// actionNoChange names the coordination action/reason recorded when a cycle
+// closes without proposing or refuting any findings.
+const actionNoChange = "no-change"
+
 var gcCoordinateActions = map[string]bool{
 	"prepare": true, "status": true, "request": true, "tick": true,
 	"attach": true, "recover": true, "abort": true,
 	"baseline": true, "findings": true, "investigate": true,
 	"authorize": true, "collected": true, "delta": true,
-	"verdict": true, "acceptance": true, "no-change": true,
+	"verdict": true, "acceptance": true, actionNoChange: true,
 }
 
 func runGCCoordinate(args []string, stdout, stderr io.Writer) (err error) {
@@ -110,7 +114,7 @@ func coordinateGC(ctx context.Context, fs *vfs.FS, h *history.History, workspace
 		return coordinateVerdict(h, fs, workspace, state, c, r)
 	case "acceptance":
 		return coordinateAcceptance(ctx, h, fs, workspace, state, c, r)
-	case "no-change":
+	case actionNoChange:
 		return coordinateNoChange(h, workspace, c, r)
 	default:
 		return nil, fmt.Errorf("gc: unknown coordination action %q", r.Action)
@@ -290,7 +294,7 @@ func coordinateNoChange(h *history.History, workspace string, c *gc.Coordinator,
 	if c.Cycle.Phase != "investigate" {
 		return nil, errors.New("gc: no-change is only allowed before mutation")
 	}
-	reason := "no-change"
+	reason := actionNoChange
 	if len(c.Cycle.Report.Findings) > 0 {
 		reason = "proposals-or-refuted"
 	}
@@ -360,7 +364,10 @@ func evaluateMandateReversionRate(workspace string, c *gc.Cycle) error {
 	clock := obs.NewClock()
 	bus := obs.NewBus(c.Plan.SessionID, clock)
 	bus.AttachStore(store)
-	_, err = gc.EvaluateMandateReversionRate(store, bus, clock, harnessAgent, c.Plan.SessionID, c.Plan.Mandate, 0, 0, c.Plan.CycleID)
+	_, err = gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{
+		Agent: harnessAgent, SessionID: c.Plan.SessionID, Mandate: c.Plan.Mandate,
+		AfterID: 0, BeforeID: 0, WorkUnitID: c.Plan.CycleID,
+	})
 	return err
 }
 func abortGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordinator, reason string) error {

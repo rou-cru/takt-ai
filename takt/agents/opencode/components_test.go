@@ -219,12 +219,30 @@ func TestTaktDagPluginArtifact(t *testing.T) {
 		t.Fatalf("path = %q, want .config/opencode/plugins/takt-dag/tui.tsx", artifact.Path)
 	}
 	content := string(artifact.Content)
+	assertDagPluginBinaryAndPolling(t, content)
+	assertDagPluginRouteRegistration(t, content)
+	assertDagPluginScrollBehavior(t, content)
+	assertDagPluginKeybinding(t, content)
+	assertDagPluginNodeKindMarkers(t, content)
+	assertDagPluginExports(t, content)
+}
+
+// assertDagPluginBinaryAndPolling checks the plugin embeds the substituted
+// takt-ai binary path (not the placeholder) and polls dag status with it.
+func assertDagPluginBinaryAndPolling(t *testing.T, content string) {
+	t.Helper()
 	if !strings.Contains(content, `"/opt/takt/bin/takt-ai"`) || strings.Contains(content, "__TAKT_AI_BINARY__") {
 		t.Error("plugin missing the substituted takt-ai binary path")
 	}
 	if !strings.Contains(content, `"dag", "status"`) {
 		t.Error("plugin must poll takt-ai dag status")
 	}
+}
+
+// assertDagPluginRouteRegistration checks the plugin registers its route,
+// id, slash command and sidebar projection slot.
+func assertDagPluginRouteRegistration(t *testing.T, content string) {
+	t.Helper()
 	if !strings.Contains(content, `id: "takt.dag"`) {
 		t.Error("plugin missing the takt.dag id")
 	}
@@ -237,21 +255,44 @@ func TestTaktDagPluginArtifact(t *testing.T) {
 	if !strings.Contains(content, `prepend: "sidebar.content"`) {
 		t.Error("plugin missing the sidebar projection slot")
 	}
+}
+
+// assertDagPluginScrollBehavior checks the sidebar graph scrolls sideways
+// only, while the route graph scrolls both ways with keyboard focus.
+func assertDagPluginScrollBehavior(t *testing.T, content string) {
+	t.Helper()
 	if !strings.Contains(content, `mode="sidebar"`) || !strings.Contains(content, "scrollY: false") || !strings.Contains(content, "horizontalScrollbarOptions") {
 		t.Error("sidebar graph must scroll sideways only")
 	}
 	if !strings.Contains(content, `mode="route"`) || !strings.Contains(content, "scrollY: true, focused: true") {
 		t.Error("route graph must scroll both ways with keyboard focus")
 	}
-	// ctrl+shift+d is OpenCode's default input.delete.line.
+}
+
+// assertDagPluginKeybinding checks the plugin binds <leader>d, not
+// OpenCode's default input.delete.line chord (ctrl+shift+d).
+func assertDagPluginKeybinding(t *testing.T, content string) {
+	t.Helper()
 	if !strings.Contains(content, `bind: "<leader>d"`) || strings.Contains(content, `bind: "ctrl+shift+d"`) {
 		t.Error("plugin must bind <leader>d, not OpenCode's input.delete.line chord")
 	}
+}
+
+// assertDagPluginNodeKindMarkers checks every explicit node-kind rendering
+// marker is present in the plugin source.
+func assertDagPluginNodeKindMarkers(t *testing.T, content string) {
+	t.Helper()
 	for _, marker := range []string{`readonly node_kind?: "delegated"`, `type DagActivityKind = "orchestrator" | "maintenance"`, `return "↗"`, `interface DagActivity`, `readonly activities?: readonly DagActivity[]`, `Activities · separate from work DAG; no prerequisite edges`, `GC activity`} {
 		if !strings.Contains(content, marker) {
 			t.Errorf("plugin missing explicit node-kind rendering marker %q", marker)
 		}
 	}
+}
+
+// assertDagPluginExports checks the plugin uses the V2 default export and
+// imports the V2 TUI plugin package.
+func assertDagPluginExports(t *testing.T, content string) {
+	t.Helper()
 	if !strings.Contains(content, "export default Plugin.define(") {
 		t.Error("plugin missing the V2 default export")
 	}

@@ -161,7 +161,8 @@ func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agen
 	if e != nil {
 		return e
 	}
-	if e := dispatch.Admit(h, p, journalRef, event, session, agent, delegation, c.holdsAdmission(agent)); e != nil {
+	req := dispatch.AdmissionRequest{Event: event, Session: session, Agent: agent, Dispatch: delegation}
+	if e := dispatch.Admit(h, p, journalRef, req, c.holdsAdmission(agent)); e != nil {
 		return e
 	}
 	c.Units++

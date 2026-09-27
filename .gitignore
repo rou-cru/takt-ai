@@ -35,6 +35,7 @@ first-test/
 .pi/
 .codegraph/
 .agents/
+.claude/
 
 # Environment (local overrides — never committed)
 .env

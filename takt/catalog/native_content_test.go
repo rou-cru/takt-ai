@@ -112,26 +112,40 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 		t.Fatal(err)
 	}
 	for id, expected := range wantVFS {
-		found := false
-		for _, def := range packages.Agents {
-			if capabilities, ok := def.VFSCapabilities(id); ok {
-				found = true
-				if !slices.Equal(capabilities, expected) {
-					t.Errorf("%s VFS capabilities = %q, want %q", id, capabilities, expected)
-				}
+		assertInstanceHasExactVFSCapabilities(t, packages, id, expected)
+	}
+	assertRetiredSimplifyInstancesGone(t, content)
+	if content["dev"].Role != model.RoleExecution || content["judge-b"].Role != model.RoleVerification {
+		t.Error("single-role agents must keep their definition-level role")
+	}
+}
+
+// assertInstanceHasExactVFSCapabilities checks that some agent definition
+// grants instance id exactly the expected VFS capabilities.
+func assertInstanceHasExactVFSCapabilities(t *testing.T, packages Catalog, id string, expected []model.VFSCapability) {
+	t.Helper()
+	found := false
+	for _, def := range packages.Agents {
+		if capabilities, ok := def.VFSCapabilities(id); ok {
+			found = true
+			if !slices.Equal(capabilities, expected) {
+				t.Errorf("%s VFS capabilities = %q, want %q", id, capabilities, expected)
 			}
 		}
-		if !found {
-			t.Errorf("%s has no exact-instance VFS capability", id)
-		}
 	}
+	if !found {
+		t.Errorf("%s has no exact-instance VFS capability", id)
+	}
+}
+
+// assertRetiredSimplifyInstancesGone checks none of the retired simplify
+// instances are still exposed in content.
+func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeSubAgentContent) {
+	t.Helper()
 	for _, retired := range []string{"simplify-align", "simplify-plan", "simplify-verify", "simplify-gc"} {
 		if _, ok := content[retired]; ok {
 			t.Errorf("retired instance %q still exposed", retired)
 		}
-	}
-	if content["dev"].Role != model.RoleExecution || content["judge-b"].Role != model.RoleVerification {
-		t.Error("single-role agents must keep their definition-level role")
 	}
 }
 
@@ -219,36 +233,57 @@ func TestVFSOnlyMutationSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var skill *SkillPackage
-	for i := range cat.Skills {
-		if cat.Skills[i].ID == "takt-vfs-mutation" {
-			skill = &cat.Skills[i]
-		}
-	}
-	if skill == nil {
-		t.Fatal("takt-vfs-mutation skill not found in catalog")
-	}
-	descriptor := string(skill.Descriptor)
-	for _, want := range []string{"only through your VFS assignment", "Never use native edit or write tools", "as destructive"} {
-		if !strings.Contains(descriptor, want) {
-			t.Errorf("takt-vfs-mutation skill missing %q", want)
-		}
-	}
+	skill := findSkillPackage(t, cat, "takt-vfs-mutation")
+	assertSkillDescriptorContains(t, skill, "only through your VFS assignment", "Never use native edit or write tools", "as destructive")
+	assertAgentsDeclareSkill(t, cat, "takt-vfs-mutation", "takt-dev", "takt-fix", "takt-simplify")
+}
 
-	wantAgents := map[string]bool{"takt-dev": false, "takt-fix": false, "takt-simplify": false}
+// findSkillPackage returns the catalog's skill with the given id, failing
+// the test if it is not found.
+func findSkillPackage(t *testing.T, cat Catalog, id string) *SkillPackage {
+	t.Helper()
+	for i := range cat.Skills {
+		if cat.Skills[i].ID == id {
+			return &cat.Skills[i]
+		}
+	}
+	t.Fatalf("%s skill not found in catalog", id)
+	return nil
+}
+
+// assertSkillDescriptorContains checks that skill's descriptor mentions
+// every one of want.
+func assertSkillDescriptorContains(t *testing.T, skill *SkillPackage, want ...string) {
+	t.Helper()
+	descriptor := string(skill.Descriptor)
+	for _, w := range want {
+		if !strings.Contains(descriptor, w) {
+			t.Errorf("%s skill missing %q", skill.ID, w)
+		}
+	}
+}
+
+// assertAgentsDeclareSkill checks that every named agent in the catalog
+// declares skillID among its skills.
+func assertAgentsDeclareSkill(t *testing.T, cat Catalog, skillID string, agentIDs ...string) {
+	t.Helper()
+	wantAgents := map[string]bool{}
+	for _, id := range agentIDs {
+		wantAgents[id] = false
+	}
 	for _, agent := range cat.Agents {
 		if _, ok := wantAgents[agent.ID]; !ok {
 			continue
 		}
 		for _, s := range agent.Skills {
-			if s == "takt-vfs-mutation" {
+			if s == skillID {
 				wantAgents[agent.ID] = true
 			}
 		}
 	}
 	for id, found := range wantAgents {
 		if !found {
-			t.Errorf("%s does not declare the takt-vfs-mutation skill", id)
+			t.Errorf("%s does not declare the %s skill", id, skillID)
 		}
 	}
 }

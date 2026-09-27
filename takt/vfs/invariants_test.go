@@ -56,7 +56,7 @@ func TestVerdictBoundToInvariantSetVersion(t *testing.T) {
 		t.Fatalf("verifier invariants %q; want the author's %q", judged.InvariantsHash, authored.InvariantsHash)
 	}
 
-	staged := apply(t, f, author, "c1", 0, OpCreate, "app.go", "package main")
+	staged := apply(t, f, applyCase{author, "c1", 0, OpCreate, "app.go", "package main"})
 	if err = f.Verify(verifier, author, "v1", staged.Revision, staged.DeltaHash, true, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +93,8 @@ func TestAttemptIdentitySurvivesRestart(t *testing.T) {
 	if id, _ := f.BindingIdentity(first); id.AttemptID != "1" {
 		t.Fatalf("first attempt = %q; want 1", id.AttemptID)
 	}
-	apply(t, f, first, "c1", 0, OpCreate, "app.go", "package main")
-	apply(t, f, first, "c2", 1, OpRollback, "", "")
+	apply(t, f, applyCase{first, "c1", 0, OpCreate, "app.go", "package main"})
+	apply(t, f, applyCase{first, "c2", 1, OpRollback, "", ""})
 	if err = f.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestVerifierReadsAuthorsStagedView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	staged := apply(t, f, author, "c1", 0, OpCreate, "app.go", "package staged")
+	staged := apply(t, f, applyCase{author, "c1", 0, OpCreate, "app.go", "package staged"})
 	verifier, err := f.AssignVerifier(Identity{SessionID: "s", WorkUnitID: "u", AgentID: "judge", Specialist: "verify"}, author)
 	if err != nil {
 		t.Fatal(err)

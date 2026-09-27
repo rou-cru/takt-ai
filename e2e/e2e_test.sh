@@ -21,8 +21,8 @@ source "$SCRIPT_DIR/lib.sh"
 # Resolve binary
 # ---------------------------------------------------------------------------
 BINARY="$(resolve_binary)"
-if [ -z "$BINARY" ]; then
-    echo "ERROR: takt-ai binary not found. Build it first."
+if [[ -z "$BINARY" ]]; then
+    echo "ERROR: takt-ai binary not found. Build it first." >&2
     exit 1
 fi
 log_info "Using binary: $BINARY"
@@ -44,7 +44,7 @@ readonly SDD_ORCHESTRATOR_KEY='"sdd-orchestrator"'
 # Side-effect E2E exercises install/injection behavior. Keep it deterministic by
 # satisfying the installer's "engram already exists on PATH" branch unless a
 # maintainer explicitly opts into the live GitHub release download path.
-if [ "${RUN_FULL_E2E:-0}" = "1" ] || [ "${RUN_BACKUP_TESTS:-0}" = "1" ]; then
+if [[ "${RUN_FULL_E2E:-0}" = "1" ]] || [[ "${RUN_BACKUP_TESTS:-0}" = "1" ]]; then
     setup_fake_engram_binary
 fi
 
@@ -57,11 +57,12 @@ fi
 test_binary_exists() {
     log_test "Binary exists and is executable"
 
-    if [ -x "$(command -v "$BINARY")" ] || [ -x "$BINARY" ]; then
+    if [[ -x "$(command -v "$BINARY")" ]] || [[ -x "$BINARY" ]]; then
         log_pass "Binary is executable"
     else
         log_fail "Binary not found or not executable"
     fi
+    return $?
 }
 
 test_binary_runs() {
@@ -76,6 +77,7 @@ test_binary_runs() {
             log_pass "Binary exited with non-zero (no panic)"
         fi
     fi
+    return $?
 }
 
 test_version_command() {
@@ -88,6 +90,7 @@ test_version_command() {
     else
         log_fail "Version command failed: $output"
     fi
+    return $?
 }
 
 # --- Category 1b: Dry-run output format ---
@@ -103,6 +106,7 @@ test_dry_run_output_format() {
     assert_output_contains "$output" "Preset:" "Output contains 'Preset:' header"
     assert_output_contains "$output" "Components order:" "Output contains 'Components order:' header"
     assert_output_contains "$output" "Platform decision:" "Output contains 'Platform decision:' header"
+    return $?
 }
 
 test_dry_run_platform_detection() {
@@ -111,6 +115,7 @@ test_dry_run_platform_detection() {
     output=$($BINARY install --dry-run 2>&1) || true
 
     assert_output_contains "$output" "Platform decision" "Platform decision present in dry-run"
+    return $?
 }
 
 test_dry_run_detects_linux() {
@@ -136,6 +141,7 @@ test_dry_run_agent_opencode() {
     output=$($BINARY install --agent opencode --dry-run 2>&1) || true
 
     assert_output_contains "$output" "opencode" "Dry-run output shows opencode agent"
+    return $?
 }
 
 # --- Category 1d: Preset flags ---
@@ -146,6 +152,7 @@ test_dry_run_preset_minimal() {
     output=$($BINARY install --preset minimal --dry-run 2>&1) || true
 
     assert_output_contains "$output" "Preset: minimal" "Shows minimal preset"
+    return $?
 }
 
 test_dry_run_preset_ecosystem() {
@@ -154,6 +161,7 @@ test_dry_run_preset_ecosystem() {
     output=$($BINARY install --preset ecosystem-only --dry-run 2>&1) || true
 
     assert_output_contains "$output" "Preset: ecosystem-only" "Shows ecosystem-only preset"
+    return $?
 }
 
 test_dry_run_preset_full() {
@@ -162,6 +170,7 @@ test_dry_run_preset_full() {
     output=$($BINARY install --preset full-takt --dry-run 2>&1) || true
 
     assert_output_contains "$output" "Preset: full-takt" "Shows full-takt preset"
+    return $?
 }
 
 test_dry_run_preset_custom() {
@@ -170,6 +179,7 @@ test_dry_run_preset_custom() {
     output=$($BINARY install --preset custom --dry-run 2>&1) || true
 
     assert_output_contains "$output" "Preset: custom" "Shows custom preset"
+    return $?
 }
 
 # --- Category 1e: Preset component order validation ---
@@ -197,17 +207,18 @@ test_dry_run_full_preset_persona_before_sdd() {
     engram_idx=$(echo "$order_str" | tr ',' '\n' | grep -n '^engram$' | cut -d: -f1)
     sdd_idx=$(echo "$order_str" | tr ',' '\n' | grep -n '^sdd$' | cut -d: -f1)
 
-    if [ -n "$persona_idx" ] && [ -n "$engram_idx" ] && [ "$persona_idx" -lt "$engram_idx" ]; then
+    if [[ -n "$persona_idx" ]] && [[ -n "$engram_idx" ]] && [[ "$persona_idx" -lt "$engram_idx" ]]; then
         log_pass "Persona ($persona_idx) before engram ($engram_idx)"
     else
         log_fail "Persona must appear before engram in component order: $order_str"
     fi
 
-    if [ -n "$persona_idx" ] && [ -n "$sdd_idx" ] && [ "$persona_idx" -lt "$sdd_idx" ]; then
+    if [[ -n "$persona_idx" ]] && [[ -n "$sdd_idx" ]] && [[ "$persona_idx" -lt "$sdd_idx" ]]; then
         log_pass "Persona ($persona_idx) before sdd ($sdd_idx)"
     else
         log_fail "Persona must appear before sdd in component order: $order_str"
     fi
+    return $?
 }
 
 # --- Category 1f: Individual component flags ---
@@ -216,12 +227,14 @@ test_dry_run_component_permissions() {
     log_test "Dry-run with --component permissions"
     output=$($BINARY install --agent opencode --component permissions --dry-run 2>&1) || true
     assert_output_contains "$output" "permissions" "Shows permissions component"
+    return $?
 }
 
 test_dry_run_component_theme() {
     log_test "Dry-run with --component theme"
     output=$($BINARY install --agent opencode --component theme --dry-run 2>&1) || true
     assert_output_contains "$output" "theme" "Shows theme component"
+    return $?
 }
 
 # --- Category 1f2: SDD mode flag ---
@@ -233,6 +246,7 @@ test_dry_run_sdd_mode_multi() {
 
     assert_output_contains "$output" "opencode" "Shows opencode agent"
     assert_output_contains "$output" "sdd-mode: multi\|SDDMode: multi\|sdd_mode.*multi\|multi" "Shows multi mode"
+    return $?
 }
 
 test_dry_run_sdd_mode_single() {
@@ -241,6 +255,7 @@ test_dry_run_sdd_mode_single() {
     output=$($BINARY install --agent opencode --sdd-mode single --dry-run 2>&1) || true
 
     assert_output_contains "$output" "opencode" "Shows opencode agent"
+    return $?
 }
 
 test_dry_run_sdd_mode_invalid_rejected() {
@@ -251,6 +266,7 @@ test_dry_run_sdd_mode_invalid_rejected() {
     else
         log_pass "Invalid sdd-mode correctly rejected"
     fi
+    return $?
 }
 
 # --- Category 1g: Invalid input rejection ---
@@ -263,6 +279,7 @@ test_invalid_persona_rejected() {
     else
         log_pass "Invalid persona correctly rejected"
     fi
+    return $?
 }
 
 test_invalid_component_rejected() {
@@ -273,6 +290,7 @@ test_invalid_component_rejected() {
     else
         log_pass "Invalid component correctly rejected"
     fi
+    return $?
 }
 
 test_invalid_preset_rejected() {
@@ -283,6 +301,7 @@ test_invalid_preset_rejected() {
     else
         log_pass "Invalid preset correctly rejected"
     fi
+    return $?
 }
 
 test_unknown_command_rejected() {
@@ -293,6 +312,7 @@ test_unknown_command_rejected() {
     else
         log_pass "Unknown command correctly rejected"
     fi
+    return $?
 }
 
 # ===========================================================================
@@ -311,6 +331,7 @@ test_oc_persona_custom_does_nothing() {
     else
         log_fail "OpenCode custom persona install command failed"
     fi
+    return $?
 }
 
 # --- Category 3: OpenCode component injection ---
@@ -336,6 +357,7 @@ test_oc_engram_injection() {
     else
         log_fail "OpenCode engram install command failed"
     fi
+    return $?
 }
 
 test_oc_sdd_injection() {
@@ -364,6 +386,7 @@ test_oc_sdd_injection() {
     else
         log_fail "OpenCode SDD install command failed"
     fi
+    return $?
 }
 
 test_oc_persona_takt() {
@@ -378,6 +401,7 @@ test_oc_persona_takt() {
     else
         log_fail "OpenCode persona (takt) install command failed"
     fi
+    return $?
 }
 
 test_oc_persona_neutral() {
@@ -392,6 +416,7 @@ test_oc_persona_neutral() {
     else
         log_fail "OpenCode persona (neutral) install command failed"
     fi
+    return $?
 }
 
 test_oc_skills_minimal() {
@@ -407,6 +432,7 @@ test_oc_skills_minimal() {
     else
         log_fail "OpenCode skills (minimal) install command failed"
     fi
+    return $?
 }
 
 test_oc_skills_full() {
@@ -425,6 +451,7 @@ test_oc_skills_full() {
     else
         log_fail "OpenCode skills (full) install command failed"
     fi
+    return $?
 }
 
 test_oc_context7_injection() {
@@ -441,6 +468,7 @@ test_oc_context7_injection() {
     else
         log_fail "OpenCode context7 install command failed"
     fi
+    return $?
 }
 
 test_oc_permissions_injection() {
@@ -457,6 +485,7 @@ test_oc_permissions_injection() {
     else
         log_fail "OpenCode permissions install command failed"
     fi
+    return $?
 }
 
 test_oc_theme_injection() {
@@ -472,6 +501,7 @@ test_oc_theme_injection() {
     else
         log_fail "OpenCode theme install command failed"
     fi
+    return $?
 }
 
 # --- Category 4: Full preset integration ---
@@ -513,6 +543,7 @@ test_full_preset_opencode() {
     else
         log_fail "Full preset (OpenCode) install command failed"
     fi
+    return $?
 }
 
 test_minimal_preset_opencode_only_engram_no_persona() {
@@ -527,7 +558,7 @@ test_minimal_preset_opencode_only_engram_no_persona() {
         assert_file_contains "$settings" '"engram"' "OpenCode has engram MCP"
 
         # Minimal preset should NOT silently install persona.
-        if [ -f "$agents_md" ]; then
+        if [[ -f "$agents_md" ]]; then
             assert_file_not_contains "$agents_md" "takt-ai:persona" "No persona marker in minimal preset"
             assert_file_not_contains "$agents_md" "$TAKT_PERSONA_LABEL" "No persona content in minimal preset"
         else
@@ -536,6 +567,7 @@ test_minimal_preset_opencode_only_engram_no_persona() {
     else
         log_fail "Minimal preset (OpenCode) install command failed"
     fi
+    return $?
 }
 
 # --- Category 5: Content validation ---
@@ -547,12 +579,12 @@ test_content_opencode_commands_valid_markdown() {
     $BINARY install --agent opencode --component sdd --persona neutral 2>&1 || true
 
     local commands_dir="$HOME/.config/opencode/commands"
-    if [ -d "$commands_dir" ]; then
+    if [[ -d "$commands_dir" ]]; then
         local all_ok=true
         while IFS= read -r cmd_file; do
             local size
             size=$(wc -c < "$cmd_file" | tr -d ' ')
-            if [ "$size" -lt 10 ]; then
+            if [[ "$size" -lt 10 ]]; then
                 log_fail "Command file too small ($size bytes): $cmd_file"
                 all_ok=false
             fi
@@ -564,6 +596,7 @@ test_content_opencode_commands_valid_markdown() {
     else
         log_fail "OpenCode commands directory not created"
     fi
+    return $?
 }
 
 # --- Category 6: Idempotency ---
@@ -580,11 +613,12 @@ test_idempotent_permissions_opencode() {
     local second_hash
     second_hash=$(sha256sum "$HOME/.config/opencode/opencode.json" 2>/dev/null | cut -d' ' -f1)
 
-    if [ "$first_hash" = "$second_hash" ] && [ -n "$first_hash" ]; then
+    if [[ "$first_hash" = "$second_hash" ]] && [[ -n "$first_hash" ]]; then
         log_pass "Idempotent: same permissions config after two runs"
     else
         log_fail "Permissions config changed between runs ($first_hash vs $second_hash)"
     fi
+    return $?
 }
 
 
@@ -600,11 +634,12 @@ test_idempotent_theme_opencode() {
     local second_hash
     second_hash=$(sha256sum "$HOME/.config/opencode/cli.json" 2>/dev/null | cut -d' ' -f1)
 
-    if [ "$first_hash" = "$second_hash" ] && [ -n "$first_hash" ]; then
+    if [[ "$first_hash" = "$second_hash" ]] && [[ -n "$first_hash" ]]; then
         log_pass "Idempotent: same theme config after two runs"
     else
         log_fail "Theme config changed between runs ($first_hash vs $second_hash)"
     fi
+    return $?
 }
 
 # --- Category 8: Edge cases ---
@@ -628,6 +663,7 @@ test_edge_persona_switch_preserves_sections_opencode() {
     assert_file_not_contains "$agents_md" "Rioplatense" "Regional language removed after switch"
     assert_file_contains "$agents_md" "$ENGRAM_PROTOCOL_MARKER" "Engram section survived persona switch"
     assert_no_duplicate_section "$agents_md" "engram-protocol" "No duplicate engram after switch"
+    return $?
 }
 
 test_edge_json_merge_preserves_existing() {
@@ -646,6 +682,7 @@ test_edge_json_merge_preserves_existing() {
     assert_file_contains "$settings" '"preserved"' "Pre-existing value preserved"
     assert_file_contains "$settings" "$PERMISSIONS_KEY" "Permissions config merged in"
     assert_valid_json "$settings" "Merged JSON is valid"
+    return $?
 }
 
 test_edge_multiple_json_overlays() {
@@ -663,6 +700,7 @@ test_edge_multiple_json_overlays() {
     assert_file_contains "$settings" '"mcp"' "MCP servers present after 3 merges"
     assert_file_contains "$settings" '"context7"' "Context7 present after 3 merges"
     assert_valid_json "$settings" "Final merged JSON is valid"
+    return $?
 }
 
 # --- Category: GGA tests ---
@@ -681,14 +719,14 @@ test_integrity_sdd_skills_nonempty() {
 
         for skill in "${sdd_skills[@]}"; do
             local path="$skill_dir/$skill/SKILL.md"
-            if [ ! -f "$path" ]; then
+            if [[ ! -f "$path" ]]; then
                 log_fail "SDD skill missing: $path"
                 all_ok=false
                 continue
             fi
             local size
             size=$(wc -c < "$path" | tr -d ' ')
-            if [ "$size" -lt 100 ]; then
+            if [[ "$size" -lt 100 ]]; then
                 log_fail "SDD skill empty or too small ($size bytes): $skill"
                 all_ok=false
             fi
@@ -700,6 +738,7 @@ test_integrity_sdd_skills_nonempty() {
     else
         log_fail "SDD install command failed"
     fi
+    return $?
 }
 
 test_integrity_sdd_orchestrator_in_opencode_json() {
@@ -716,6 +755,7 @@ test_integrity_sdd_orchestrator_in_opencode_json() {
     else
         log_fail "SDD install for orchestrator check failed"
     fi
+    return $?
 }
 
 test_integrity_all_sdd_commands_have_frontmatter() {
@@ -729,7 +769,7 @@ test_integrity_all_sdd_commands_have_frontmatter() {
 
         for cmd in "${expected_commands[@]}"; do
             local path="$commands_dir/$cmd.md"
-            if [ ! -f "$path" ]; then
+            if [[ ! -f "$path" ]]; then
                 log_fail "SDD command missing: $cmd.md"
                 all_ok=false
                 continue
@@ -742,7 +782,7 @@ test_integrity_all_sdd_commands_have_frontmatter() {
             # Must contain agent: sdd-orchestrator (except sdd-continue, sdd-ff, sdd-new which use different agent)
             local size
             size=$(wc -c < "$path" | tr -d ' ')
-            if [ "$size" -lt 50 ]; then
+            if [[ "$size" -lt 50 ]]; then
                 log_fail "SDD command $cmd.md too small ($size bytes)"
                 all_ok=false
             fi
@@ -754,6 +794,7 @@ test_integrity_all_sdd_commands_have_frontmatter() {
     else
         log_fail "SDD install for command check failed"
     fi
+    return $?
 }
 
 test_integrity_full_preset_all_skills_nonempty() {
@@ -768,7 +809,7 @@ test_integrity_full_preset_all_skills_nonempty() {
         while IFS= read -r skill_file; do
             local size
             size=$(wc -c < "$skill_file" | tr -d ' ')
-            if [ "$size" -lt 100 ]; then
+            if [[ "$size" -lt 100 ]]; then
                 log_fail "Skill file empty/corrupt ($size bytes): $skill_file"
                 all_ok=false
                 empty_count=$((empty_count + 1))
@@ -785,6 +826,7 @@ test_integrity_full_preset_all_skills_nonempty() {
     else
         log_fail "Full preset install for integrity check failed"
     fi
+    return $?
 }
 
 test_integrity_sdd_orchestrator_agent_structure() {
@@ -801,6 +843,7 @@ test_integrity_sdd_orchestrator_agent_structure() {
     else
         log_fail "SDD + persona install for agent structure check failed"
     fi
+    return $?
 }
 
 test_integrity_skills_plus_sdd_coexist() {
@@ -828,6 +871,7 @@ test_integrity_skills_plus_sdd_coexist() {
     else
         log_fail "SDD + skills coexistence install failed"
     fi
+    return $?
 }
 
 # --- Category 9: SDD multi-mode tests ---
@@ -861,6 +905,7 @@ test_oc_sdd_multi_mode_injection() {
     else
         log_fail "OpenCode SDD multi-mode install command failed"
     fi
+    return $?
 }
 
 test_oc_sdd_single_mode_no_models() {
@@ -880,6 +925,7 @@ test_oc_sdd_single_mode_no_models() {
     else
         log_fail "OpenCode SDD single-mode install command failed"
     fi
+    return $?
 }
 
 test_oc_sdd_default_mode_same_as_single() {
@@ -898,6 +944,7 @@ test_oc_sdd_default_mode_same_as_single() {
     else
         log_fail "OpenCode SDD default mode install command failed"
     fi
+    return $?
 }
 
 # ===========================================================================
@@ -912,7 +959,7 @@ test_backup_created_on_install() {
     if $BINARY install --agent opencode --component permissions --persona neutral 2>&1; then
         local backup_count
         backup_count=$(find "$HOME/.takt-ai/backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$backup_count" -gt 0 ]; then
+        if [[ "$backup_count" -gt 0 ]]; then
             log_pass "Backup directory created ($backup_count snapshots)"
         else
             log_fail "No backup directory found"
@@ -920,6 +967,7 @@ test_backup_created_on_install() {
     else
         log_fail "Install with backup failed"
     fi
+    return $?
 }
 
 test_backup_contains_original_files() {
@@ -930,10 +978,10 @@ test_backup_contains_original_files() {
     if $BINARY install --agent opencode --component permissions --persona neutral 2>&1; then
         local latest_backup
         latest_backup=$(find "$HOME/.takt-ai/backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1)
-        if [ -n "$latest_backup" ]; then
+        if [[ -n "$latest_backup" ]]; then
             local file_count
             file_count=$(find "$latest_backup" -type f 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$file_count" -gt 0 ]; then
+            if [[ "$file_count" -gt 0 ]]; then
                 log_pass "Backup contains $file_count file(s)"
             else
                 log_fail "Backup directory is empty"
@@ -944,6 +992,7 @@ test_backup_contains_original_files() {
     else
         log_fail "Install for backup test failed"
     fi
+    return $?
 }
 
 test_backup_manifest_exists() {
@@ -954,8 +1003,8 @@ test_backup_manifest_exists() {
     if $BINARY install --agent opencode --component permissions --persona neutral 2>&1; then
         local latest_backup
         latest_backup=$(find "$HOME/.takt-ai/backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1)
-        if [ -n "$latest_backup" ]; then
-            if [ -f "$latest_backup/manifest.json" ]; then
+        if [[ -n "$latest_backup" ]]; then
+            if [[ -f "$latest_backup/manifest.json" ]]; then
                 assert_valid_json "$latest_backup/manifest.json" "Backup manifest is valid JSON"
             else
                 log_fail "manifest.json not found in backup: $latest_backup"
@@ -966,6 +1015,7 @@ test_backup_manifest_exists() {
     else
         log_fail "Install for manifest test failed"
     fi
+    return $?
 }
 
 test_backup_idempotent_install() {
@@ -980,11 +1030,12 @@ test_backup_idempotent_install() {
     local second_content
     second_content=$(cat "$HOME/.config/opencode/opencode.json" 2>/dev/null)
 
-    if [ "$first_content" = "$second_content" ] && [ -n "$first_content" ]; then
+    if [[ "$first_content" = "$second_content" ]] && [[ -n "$first_content" ]]; then
         log_pass "Idempotent: same config after two runs (with backup)"
     else
         log_fail "Config changed between runs (with backup)"
     fi
+    return $?
 }
 
 test_backup_multiple_snapshots() {
@@ -998,11 +1049,12 @@ test_backup_multiple_snapshots() {
 
     local backup_count
     backup_count=$(find "$HOME/.takt-ai/backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$backup_count" -ge 2 ]; then
+    if [[ "$backup_count" -ge 2 ]]; then
         log_pass "Multiple backup snapshots created ($backup_count)"
     else
         log_fail "Expected >= 2 backup snapshots, got $backup_count"
     fi
+    return $?
 }
 
 # ===========================================================================
@@ -1048,7 +1100,7 @@ test_invalid_component_rejected
 test_invalid_preset_rejected
 test_unknown_command_rejected
 
-if [ "${RUN_FULL_E2E:-0}" = "1" ]; then
+if [[ "${RUN_FULL_E2E:-0}" = "1" ]]; then
     log_info ""
     log_info "=== Tier 2: Component injection tests ==="
 
@@ -1101,7 +1153,7 @@ else
     log_skip "Tier 2 tests (set RUN_FULL_E2E=1 to enable)"
 fi
 
-if [ "${RUN_BACKUP_TESTS:-0}" = "1" ]; then
+if [[ "${RUN_BACKUP_TESTS:-0}" = "1" ]]; then
     log_info ""
     log_info "=== Tier 3: Backup/restore tests ==="
     test_backup_created_on_install

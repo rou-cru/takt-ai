@@ -32,8 +32,8 @@ func TestCycleAttributionSealedAndDurable(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	r := apply(t, f, key, "create", 0, OpCreate, "a.txt", "x")
-	r = apply(t, f, key, "patch", r.Revision, OpPatch, "a.txt", "y")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.txt", "x"})
+	r = apply(t, f, applyCase{key, "patch", r.Revision, OpPatch, "a.txt", "y"})
 	if _, e = f.Apply(Operation{key, "denied", 0, OpCreate, "not-owned", nil}); e == nil {
 		t.Fatal("out-of-scope create allowed")
 	}
@@ -139,7 +139,7 @@ func TestStoreWrittenBeforeCycleFieldsStillOpens(t *testing.T) {
 		t.Fatalf("legacy binding = %+v %v", id, ok)
 	}
 	key := bind(t, f, "new", "u2", "dev", "n.txt")
-	apply(t, f, key, "create", 0, OpCreate, "n.txt", "x")
+	apply(t, f, applyCase{key, "create", 0, OpCreate, "n.txt", "x"})
 	if page = f.JournalPage("s", "u2", -1, 10); len(page) != 1 || page[0].Seq != 1 {
 		t.Fatalf("new entry after legacy journal = %+v", page)
 	}

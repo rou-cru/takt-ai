@@ -123,13 +123,13 @@ func Reconcile(m Capabilities, selected []model.ComponentID) ([]model.ComponentI
 	kept := make([]model.ComponentID, 0, len(selected))
 	var removals []Removal
 	for _, c := range selected {
-		cap, ok := capByID(m, c)
+		capability, ok := capByID(m, c)
 		if !ok {
 			kept = append(kept, c)
 			continue
 		}
 		var missing []string
-		for _, dep := range cap.Deps {
+		for _, dep := range capability.Deps {
 			if selectedSet[model.ComponentID(dep)] || isCore(m, model.ComponentID(dep)) {
 				continue
 			}

@@ -214,23 +214,38 @@ func projectWithExecutionOrder(entries []Entry) (Projection, map[string][]string
 		_, known := p.Units[e.WorkUnitID]
 		var settled []string
 		if e.Kind == KindAdmitted && !known {
-			for id, u := range p.Units {
-				if u.State == StateSettled {
-					settled = append(settled, id)
-				}
-			}
+			settled = settledUnitIDs(&p)
 		}
 		p.fold(e)
 		if _, now := p.Units[e.WorkUnitID]; e.Kind == KindAdmitted && !known && now {
-			inferred[e.WorkUnitID] = frontier(settled, func(id string) []string {
-				if u := p.Units[id]; u.Committed {
-					return u.Prerequisites
-				}
-				return inferred[id]
-			})
+			inferred[e.WorkUnitID] = frontier(settled, prerequisitesOf(&p, inferred))
 		}
 	}
 	return p, inferred
+}
+
+// settledUnitIDs lists the units already settled in p, the candidates an
+// admitted-but-uncovered unit's inferred prerequisites are drawn from.
+func settledUnitIDs(p *Projection) []string {
+	var settled []string
+	for id, u := range p.Units {
+		if u.State == StateSettled {
+			settled = append(settled, id)
+		}
+	}
+	return settled
+}
+
+// prerequisitesOf resolves a unit's prerequisites for frontier reduction: a
+// committed unit's declared prerequisites, or an inferred unit's already
+// computed ones.
+func prerequisitesOf(p *Projection, inferred map[string][]string) func(string) []string {
+	return func(id string) []string {
+		if u := p.Units[id]; u.Committed {
+			return u.Prerequisites
+		}
+		return inferred[id]
+	}
 }
 
 // frontier keeps the candidates no other candidate already depends on,

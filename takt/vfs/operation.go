@@ -455,13 +455,34 @@ func (f *FS) attemptLocked(identity Identity) (string, InvariantSet) {
 	// An attempt the delegation's admission already issued is authoritative:
 	// the bind joins it, inheriting the invariant set it was opened with.
 	if identity.AttemptID != "" {
-		for _, existing := range f.bindings {
-			if existing.sameAttempt(identity) {
-				return existing.AttemptID, existing.Invariants
-			}
+		if existing, ok := f.joinedAttempt(identity); ok {
+			return existing.AttemptID, existing.Invariants
 		}
 		return identity.AttemptID, identity.Invariants
 	}
+	highest, open := f.highestOpenAttempt(identity)
+	if open.AttemptID != "" {
+		return open.AttemptID, open.Invariants
+	}
+	return strconv.Itoa(highest + 1), identity.Invariants
+}
+
+// joinedAttempt finds an existing binding sharing identity's declared
+// attempt, whose invariant set the join must inherit.
+func (f *FS) joinedAttempt(identity Identity) (Identity, bool) {
+	for _, existing := range f.bindings {
+		if existing.sameAttempt(identity) {
+			return existing, true
+		}
+	}
+	return Identity{}, false
+}
+
+// highestOpenAttempt scans identity's unit's bindings for the highest
+// attempt number seen, and, among bindings at that number, the one that
+// still holds file ownership (an attempt stays open while its binding does).
+// A highest attempt with no owning binding is not open: it settled.
+func (f *FS) highestOpenAttempt(identity Identity) (int, Identity) {
 	owning := make(map[AgentID]bool, len(f.owners))
 	for _, owner := range f.owners {
 		owning[owner] = true
@@ -479,10 +500,7 @@ func (f *FS) attemptLocked(identity Identity) (string, InvariantSet) {
 			open = existing
 		}
 	}
-	if open.AttemptID != "" {
-		return open.AttemptID, open.Invariants
-	}
-	return strconv.Itoa(highest + 1), identity.Invariants
+	return highest, open
 }
 
 func completeIdentity(identity Identity) bool {

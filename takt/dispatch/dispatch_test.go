@@ -28,7 +28,7 @@ func TestAdmitHeldDeniesRegardlessOfBudget(t *testing.T) {
 	if e != nil {
 		t.Fatalf("load policy: %v", e)
 	}
-	if Admit(h, p, "", "unit-1", "session-1", "some-agent", "", true) == nil {
+	if Admit(h, p, "", AdmissionRequest{"unit-1", "session-1", "some-agent", ""}, true) == nil {
 		t.Fatal("expected the admission barrier to deny admission")
 	}
 	entries := h.Entries()
@@ -43,7 +43,7 @@ func TestAdmitSucceedsWithinBudget(t *testing.T) {
 	if e != nil {
 		t.Fatalf("load policy: %v", e)
 	}
-	if e := Admit(h, p, "", "unit-1", "session-1", "some-agent", "", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"unit-1", "session-1", "some-agent", ""}, false); e != nil {
 		t.Fatalf("expected admission to succeed, got %v", e)
 	}
 	entries := h.Entries()
@@ -93,11 +93,11 @@ func TestAdmitDeniesPastConcurrencyCeiling(t *testing.T) {
 	}
 	for i := 0; i < p.Concurrency.Specialists; i++ {
 		unit := "unit-" + string(rune('a'+i))
-		if e := Admit(h, p, "", unit, "session-1", "agent", "", false); e != nil {
+		if e := Admit(h, p, "", AdmissionRequest{unit, "session-1", "agent", ""}, false); e != nil {
 			t.Fatalf("expected admission %d to succeed, got %v", i, e)
 		}
 	}
-	if Admit(h, p, "", "unit-over-ceiling", "session-1", "agent", "", false) == nil {
+	if Admit(h, p, "", AdmissionRequest{"unit-over-ceiling", "session-1", "agent", ""}, false) == nil {
 		t.Fatal("expected admission past the concurrency ceiling to be denied")
 	}
 }
@@ -225,7 +225,7 @@ func TestReviseRejectsAlteringAnAdmittedUnit(t *testing.T) {
 	if e := Commit(h, "", "session-1", "v1", []PlanUnit{{Unit: "a", Contract: "c"}}); e != nil {
 		t.Fatalf("commit: %v", e)
 	}
-	if e := Admit(h, p, "", "a", "session-1", "agent", "", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"a", "session-1", "agent", ""}, false); e != nil {
 		t.Fatalf("admit: %v", e)
 	}
 	if Revise(h, "", "session-1", "v1", "v2", []PlanUnit{{Unit: "a", Contract: "c2"}}, nil) == nil {
@@ -314,20 +314,20 @@ func TestAdmitPlannedUnitIsCoveredPastUnplannedBound(t *testing.T) {
 	}
 	for i := 0; i < p.Budgets.UnplannedUnits; i++ {
 		unit := "loose-" + string(rune('a'+i))
-		if e := Admit(h, p, "", unit, "session-1", "agent", "d-"+unit, false); e != nil {
+		if e := Admit(h, p, "", AdmissionRequest{unit, "session-1", "agent", "d-" + unit}, false); e != nil {
 			t.Fatalf("admit %s: %v", unit, e)
 		}
 		if e := Finish(h, "", unit, "session-1"); e != nil {
 			t.Fatalf("finish %s: %v", unit, e)
 		}
 	}
-	if Admit(h, p, "", "uncovered", "session-1", "agent", "d-uncovered", false) == nil {
+	if Admit(h, p, "", AdmissionRequest{"uncovered", "session-1", "agent", "d-uncovered"}, false) == nil {
 		t.Fatal("expected uncovered work past the bound to be denied")
 	}
 	if e := Commit(h, "", "session-1", "v1", []PlanUnit{{Unit: "verify-feature", Contract: "judge the delta"}}); e != nil {
 		t.Fatalf("commit: %v", e)
 	}
-	if e := Admit(h, p, "", "verify-feature", "session-1", "verify", "d-verify", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"verify-feature", "session-1", "verify", "d-verify"}, false); e != nil {
 		t.Fatalf("expected the planned unit to be admitted, got %v", e)
 	}
 	if got := h.Project().Budgets("session-1").Unplanned; got != p.Budgets.UnplannedUnits {
@@ -343,13 +343,13 @@ func TestAdmitRetriesSettledUnitAsNextAttempt(t *testing.T) {
 	if e != nil {
 		t.Fatalf("load policy: %v", e)
 	}
-	if e := Admit(h, p, "", "impl", "session-1", "dev", "d-1", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"impl", "session-1", "dev", "d-1"}, false); e != nil {
 		t.Fatalf("first admit: %v", e)
 	}
 	if e := Finish(h, "", "impl", "session-1"); e != nil {
 		t.Fatalf("finish: %v", e)
 	}
-	if e := Admit(h, p, "", "impl", "session-1", "dev", "d-2", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"impl", "session-1", "dev", "d-2"}, false); e != nil {
 		t.Fatalf("retry admit: %v", e)
 	}
 	projection := h.Project()
@@ -376,10 +376,10 @@ func TestAdmitDeniesUnitAlreadyInFlight(t *testing.T) {
 	if e != nil {
 		t.Fatalf("load policy: %v", e)
 	}
-	if e := Admit(h, p, "", "impl", "session-1", "dev", "d-1", false); e != nil {
+	if e := Admit(h, p, "", AdmissionRequest{"impl", "session-1", "dev", "d-1"}, false); e != nil {
 		t.Fatalf("first admit: %v", e)
 	}
-	if Admit(h, p, "", "impl", "session-1", "dev", "d-2", false) == nil {
+	if Admit(h, p, "", AdmissionRequest{"impl", "session-1", "dev", "d-2"}, false) == nil {
 		t.Fatal("expected a duplicate delegation of an in-flight unit to be denied")
 	}
 	last := h.Entries()[len(h.Entries())-1]

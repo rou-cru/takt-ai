@@ -9,6 +9,22 @@ const CONTRACT = "Follow the Takt memory contract skill (takt-memory-contract)."
 
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 
+async function takt(command: string, request: Record<string, unknown>): Promise<{ code: number; ok: boolean; result?: any; error?: string }> {
+  const proc = Bun.spawn([TAKT_AI, "memory", command], { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
+  proc.stdin.write(JSON.stringify(request))
+  proc.stdin.end()
+  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  try {
+    return { code, ...JSON.parse(out) }
+  } catch {
+    return { code, ok: false, error: `takt-ai memory ${command} exited ${code}: ${out || await new Response(proc.stderr).text()}` }
+  }
+}
+
+async function fallbackClose(session: string, directory: string) {
+  await takt("close", { author: "takt", session, directory, fallback: true }).catch(() => undefined)
+}
+
 export default Plugin.define({
   id: "takt.memory",
   async setup(ctx) {
@@ -82,28 +98,12 @@ export default Plugin.define({
       throw new Error(`session ${id} has a parent cycle`)
     }
 
-    async function takt(command: string, request: Record<string, unknown>): Promise<{ code: number; ok: boolean; result?: any; error?: string }> {
-      const proc = Bun.spawn([TAKT_AI, "memory", command], { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
-      proc.stdin.write(JSON.stringify(request))
-      proc.stdin.end()
-      const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-      try {
-        return { code, ...JSON.parse(out) }
-      } catch {
-        return { code, ok: false, error: `takt-ai memory ${command} exited ${code}: ${out || await new Response(proc.stderr).text()}` }
-      }
-    }
-
     async function call(command: string, c: { sessionID: string; agent: string }, fields: Record<string, unknown>) {
       const session = await rootSession(c.sessionID)
       touched.set(session, pluginDirectory)
       const res = await takt(command, { author: c.agent, session, directory: pluginDirectory, ...fields })
       if (!res.ok) throw new Error(res.error ?? `takt-ai memory ${command} failed`)
       return res.result
-    }
-
-    async function fallbackClose(session: string, directory: string) {
-      await takt("close", { author: "takt", session, directory, fallback: true }).catch(() => undefined)
     }
 
     await ctx.tool.transform((editor) => {

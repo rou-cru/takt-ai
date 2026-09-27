@@ -182,7 +182,11 @@ function geometryFor(snapshot: DagSnapshot): Geometry {
   return { across: NODE_ROWS, along: longest + NODE_CHROME, pitch: NODE_ROWS + NODE_GAP, depart: DEPART_ROW, arrive: ARRIVE_ROW }
 }
 
-const ordinal = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+function ordinal(a: string, b: string): number {
+  if (a < b) return -1
+  if (a > b) return 1
+  return 0
+}
 
 function topologyKey(snapshot: DagSnapshot): string {
   const nodeIds = snapshot.nodes.map((n) => `${n.id}:${nodeKindFor(n)}`).sort(ordinal)
@@ -225,7 +229,10 @@ function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
   for (const node of snapshot.nodes) layers.set(depthOf(node.id), [...(layers.get(depthOf(node.id)) ?? []), node.id])
   // Within a layer nodes are ordered by id: identity only, so stable.
   const column = new Map<string, number>()
-  for (const ids of layers.values()) ids.sort(ordinal).forEach((id, index) => column.set(id, index))
+  for (const ids of layers.values()) {
+    ids.sort(ordinal)
+    ids.forEach((id, index) => column.set(id, index))
+  }
   // Perpendicular position of a node: its row on screen.
   const xOf = (id: string) => (column.get(id) ?? 0) * g.pitch
 
@@ -334,7 +341,7 @@ function edgeRows(layout: Layout): string[] {
     const [sx, sy] = path[0]
     mask[sy][sx] |= LEFT // the stem leaves the parent box
     for (let i = 1; i < path.length; i++) link(path[i - 1], path[i])
-    const [ex, ey] = path[path.length - 1]
+    const [ex, ey] = path.at(-1)!
     mask[ey][ex] |= RIGHT // the edge runs into the child box
   }
   return mask.map((row) => row.map((m) => LINE_GLYPHS[m] ?? " ").join(""))
@@ -355,7 +362,7 @@ function edgePorts(layout: Layout): Port[] {
   const ports = new Map<string, Port>()
   for (const path of layout.paths) {
     const [sx, sy] = path[0]
-    const [ex, ey] = path[path.length - 1]
+    const [ex, ey] = path.at(-1)!
     ports.set(`${sx - 1},${sy}`, { x: sx - 1, y: sy, glyph: "┴" })
     ports.set(`${ex + 1},${ey}`, { x: ex + 1, y: ey, glyph: "▶" })
   }

@@ -46,17 +46,17 @@ await plugin.setup({
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
-    hook: async (name, callback) => { (sessionHooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
   },
-  permission: { hook: async (name, callback) => { (permissionHooks[name] ??= []).push(callback); return { dispose() {} } } },
+  permission: { hook: async (name, callback) => { permissionHooks[name] ??= []; permissionHooks[name].push(callback); return { dispose() {} } } },
   agent: { get: async () => ({ permissions: [] }) },
   shell: { hook: async () => () => {} },
   tool: {
-    hook: async (name, callback) => { (hooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
     transform: async (callback) => {
       callback({ add: (definition) => { tools[definition.name] = definition }, namespace() {}, list: () => [], get: () => undefined, update() {}, remove() {} })
       return { dispose() {} }
@@ -144,7 +144,7 @@ const lifecycle = dispatched().slice(mark).filter(r => ["admit", "launch", "fini
 assert.deepEqual(lifecycle.map(r => [r.action, r.event]), [["admit", "u1"], ["launch", "u1"], ["finish", "u1"]])
 assert.equal(lifecycle[0].dispatch, "root:call-1")
 assert.equal(lifecycle[2].dispatch, "root:call-1")
-await assert.rejects(delegate("execute.before", "   ", "call-2"), /work unit/)
+await assert.rejects(() => delegate("execute.before", "   ", "call-2"), /work unit/)
 
 // The orphan left by the dead process is ended before any new admission: its
 // liveness is declared uncertain and reconciled as not running.
@@ -157,11 +157,16 @@ assert.equal(restart[2].action, "admit")
 assert.deepEqual(store.get("takt/vfs/delegations"), {})
 
 // A denied admission never ran, so nothing is remembered for it.
-respond = (call) => call.argv[2] === "claims"
-  ? { stdout: JSON.stringify({ ok: true, claims: [claim, { ...claim, work_unit_id: "u2" }] }), stderr: "", code: 0 }
-  : call.verb === "dispatch" && requestOf(call).action === "admit"
-    ? { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 } : undefined
-await assert.rejects(delegate("execute.before", "u2", "call-3"), /ceiling/)
+respond = (call) => {
+  if (call.argv[2] === "claims") {
+    return { stdout: JSON.stringify({ ok: true, claims: [claim, { ...claim, work_unit_id: "u2" }] }), stderr: "", code: 0 }
+  }
+  if (call.verb === "dispatch" && requestOf(call).action === "admit") {
+    return { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 }
+  }
+  return undefined
+}
+await assert.rejects(() => delegate("execute.before", "u2", "call-3"), /ceiling/)
 respond = () => undefined
 assert.deepEqual(store.get("takt/vfs/delegations"), {})
 
@@ -187,7 +192,7 @@ respond = () => undefined
 // delegation fails distinctly instead.
 planningAt = dispatched().length
 await delegate("execute.before", "missing-result", "call-6", "pm")
-await assert.rejects(delegate("execute.after", "missing-result", "call-6", "pm"), /delegation ended without delivering a result via deliver_result/)
+await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /delegation ended without delivering a result via deliver_result/)
 assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch"])
 
 // The context hook records a producer's own session as its unit's child. A
@@ -204,7 +209,7 @@ assert.deepEqual(promptedSessions.slice(-1), ["nudge"])
 assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
 
 planningAt = dispatched().length
-await assert.rejects(delegate("execute.before", "u3", "call-5"), /no matching pending clean claim/)
+await assert.rejects(() => delegate("execute.before", "u3", "call-5"), /no matching pending clean claim/)
 assert.equal(dispatched().slice(planningAt).filter(r => r.action === "admit").length, 0, "unclaimed VFS lane was admitted")
 respond = () => undefined
 
@@ -303,10 +308,10 @@ assert.equal(shellEvent.effect, "allow")
 // Every refusal is observed as a dispatch decision with its reason class, so
 // the operation shows where conduct and controls disagree.
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 } : undefined
-await assert.rejects(delegate("execute.before", "u9", "call-9"), /no matching pending clean claim/)
+await assert.rejects(() => delegate("execute.before", "u9", "call-9"), /no matching pending clean claim/)
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "admit"
   ? { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 } : undefined
-await assert.rejects(delegate("execute.before", "brief-2", "call-10", "pm"), /ceiling/)
+await assert.rejects(() => delegate("execute.before", "brief-2", "call-10", "pm"), /ceiling/)
 respond = () => undefined
 await new Promise(resolve => setTimeout(resolve, 10))
 const refusals = calls.filter(c => c.verb === "obs" && c.stdin?.attributes?.decision === "refused")

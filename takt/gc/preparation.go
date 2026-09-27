@@ -21,6 +21,9 @@ import (
 // preparationFileMode keeps the persisted preparation state private.
 const preparationFileMode os.FileMode = 0o600
 
+// preparationFileName is the persisted preparation state's file name inside state.
+const preparationFileName = "gc-preparation.json"
+
 // ProjectConfig is reviewed project configuration, never supplied by the collector.
 // Executables must already be installed by the project's ordinary preparation.
 type ProjectConfig struct {
@@ -195,7 +198,7 @@ func Prepare(ctx context.Context, workspace, state, session string) (Preparation
 	if e != nil {
 		return p, e
 	}
-	e = os.WriteFile(filepath.Join(state, "gc-preparation.json"), b, preparationFileMode)
+	e = os.WriteFile(filepath.Join(state, preparationFileName), b, preparationFileMode)
 	return p, e
 }
 
@@ -214,7 +217,7 @@ func preparationDigests(workspace string, cfg ProjectConfig) (map[string]string,
 func preparationSources(ctx context.Context, workspace, state, session string, cfg ProjectConfig) (map[string]SourceSnapshot, error) {
 	// Preserve the original session baseline across idempotent preparation.
 	var old Preparation
-	if bytes, err := os.ReadFile(filepath.Join(state, "gc-preparation.json")); err == nil {
+	if bytes, err := os.ReadFile(filepath.Join(state, preparationFileName)); err == nil {
 		if err = json.Unmarshal(bytes, &old); err != nil {
 			return nil, err
 		}
@@ -284,7 +287,7 @@ func validateAnalyzerCommand(argv []string) error {
 // running acceptance against a moved baseline.
 func LoadPreparation(workspace, state string) (Preparation, error) {
 	var p Preparation
-	b, e := os.ReadFile(filepath.Join(state, "gc-preparation.json"))
+	b, e := os.ReadFile(filepath.Join(state, preparationFileName))
 	if e != nil {
 		return p, fmt.Errorf("gc: project not prepared: %w", e)
 	}

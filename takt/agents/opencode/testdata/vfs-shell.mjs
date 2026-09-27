@@ -23,7 +23,8 @@ globalThis.Bun = {
 const hooks = { permission: {}, shell: {}, tool: {} }
 const tools = {}
 const register = (bag) => async (name, callback) => {
-  (bag[name] ??= []).push(callback)
+  bag[name] ??= []
+  bag[name].push(callback)
   return { dispose() {} }
 }
 await plugin.setup({
@@ -136,7 +137,7 @@ await finish()
 
 // 3. An uncapturable mutation is refused before the shell exists.
 plan = { decision: "deny", reason: "this agent does not modify the workspace through the shell: printf x > out.txt" }
-await assert.rejects(before("printf x > out.txt"), /printf x > out\.txt/)
+await assert.rejects(() => before("printf x > out.txt"), /printf x > out\.txt/)
 const refused = await create("printf x > out.txt")
 assert.match(refused.command, /exit 122$/, "a denied command must not reach the shell")
 assert.equal(refused.shell, "/bin/sh")
@@ -170,15 +171,15 @@ await finish()
 
 // 7. A coordinator failure refuses rather than falling back to the host.
 plan = undefined
-await assert.rejects(before("ls"))
+await assert.rejects(() => before("ls"))
 assert.match((await create("ls")).command, /exit 122$/)
 
 // 8. An identical command already pending for another session is refused: the
 //    shell hook could not tell whose sandbox it belongs to.
 plan = capturing
 await before("printf staged > data.txt")
-await assert.rejects(before("printf staged > data.txt", { sessionID: "author-b", agent: "dev" }), /another session/)
-await assert.rejects(before("printf staged > data.txt", { sessionID: "root", agent: "takt" }), /pending/)
+await assert.rejects(() => before("printf staged > data.txt", { sessionID: "author-b", agent: "dev" }), /another session/)
+await assert.rejects(() => before("printf staged > data.txt", { sessionID: "root", agent: "takt" }), /pending/)
 await create("printf staged > data.txt")
 await evaluate("printf staged > data.txt")
 await finish()
@@ -202,7 +203,7 @@ assert.equal(messages.filter((message) => message.command === "shell-import").le
   "orchestrator shell must not import a VFS delta")
 // A specialist cannot ride the orchestrator's pending direct path.
 await before("npm test", orchestrator)
-await assert.rejects(before("npm test"), /another session/)
+await assert.rejects(() => before("npm test"), /another session/)
 await create("npm test")
 
 // The VFS bypass never weakens a native permission denial for the orchestrator.

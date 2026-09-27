@@ -10,7 +10,7 @@ import (
 func TestDenialsExplainResponsibleNextAction(t *testing.T) {
 	f, _, _ := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "owned.go")
-	apply(t, f, key, "write", 0, OpCreate, "owned.go", "content")
+	apply(t, f, applyCase{key, "write", 0, OpCreate, "owned.go", "content"})
 	cases := []struct {
 		name      string
 		op        Operation
@@ -25,17 +25,36 @@ func TestDenialsExplainResponsibleNextAction(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := f.Apply(tc.op)
-			if !errors.Is(err, tc.want) {
-				t.Fatalf("got %v; want %v", err, tc.want)
-			}
-			for _, fragment := range tc.fragments {
-				if !strings.Contains(err.Error(), fragment) {
-					t.Errorf("denial lacks %q: %v", fragment, err)
-				}
-			}
+			assertDenialExplainsNextAction(t, f, tc.op, tc.want, tc.fragments)
 		})
 	}
+	assertBindCollisionExplainsCoordination(t, f)
+	if stagedCount(f, key) != 1 {
+		t.Fatal("denial changed staged files")
+	}
+}
+
+// assertDenialExplainsNextAction applies op and checks the resulting error
+// both matches want and mentions every fragment, so the message tells the
+// caller what to do next rather than just that it failed.
+func assertDenialExplainsNextAction(t *testing.T, f *FS, op Operation, want error, fragments []string) {
+	t.Helper()
+	_, err := f.Apply(op)
+	if !errors.Is(err, want) {
+		t.Fatalf("got %v; want %v", err, want)
+	}
+	for _, fragment := range fragments {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("denial lacks %q: %v", fragment, err)
+		}
+	}
+}
+
+// assertBindCollisionExplainsCoordination proves a colliding Bind against an
+// already-owned path preserves the collision identity and tells the caller
+// to coordinate release with the orchestrator.
+func assertBindCollisionExplainsCoordination(t *testing.T, f *FS) {
+	t.Helper()
 	_, err := f.Bind(Identity{SessionID: "s", WorkUnitID: "other", AgentID: "other", Specialist: "dev"}, []string{"owned.go"})
 	var collision *CollisionError
 	if !errors.Is(err, ErrCollision) || !errors.As(err, &collision) {
@@ -43,8 +62,5 @@ func TestDenialsExplainResponsibleNextAction(t *testing.T) {
 	}
 	if collision.RequestedPath != "owned.go" || !strings.Contains(err.Error(), "orchestrator") || !strings.Contains(err.Error(), "release") {
 		t.Fatalf("collision lacks coordination: %v", err)
-	}
-	if stagedCount(f, key) != 1 {
-		t.Fatal("denial changed staged files")
 	}
 }

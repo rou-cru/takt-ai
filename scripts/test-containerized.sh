@@ -41,7 +41,7 @@ source "$REPO_ROOT/scripts/test-packages.sh"
 compute_go_args() {
     local arg has_packages=0 skip_next=0
     for arg in "$@"; do
-        if [ "$skip_next" -eq 1 ]; then
+        if [[ "$skip_next" -eq 1 ]]; then
             skip_next=0
             continue
         fi
@@ -54,7 +54,7 @@ compute_go_args() {
             *) has_packages=1 ;;
         esac
     done
-    if [ "$has_packages" -eq 0 ]; then
+    if [[ "$has_packages" -eq 0 ]]; then
         RESOLVED_ARGS=("${CONTAINER_TEST_PKGS[@]}" "$@")
     else
         RESOLVED_ARGS=("$@")
@@ -63,12 +63,12 @@ compute_go_args() {
 
 # Self-check mode: prove both `-run TestX` and `-run=TestX` resolve to the
 # same package list, without invoking Docker.
-if [ "${1:-}" = "--self-check" ]; then
+if [[ "${1:-}" = "--self-check" ]]; then
     compute_go_args -run TestX
     form_space="${RESOLVED_ARGS[*]:0:${#CONTAINER_TEST_PKGS[@]}}"
     compute_go_args -run=TestX
     form_eq="${RESOLVED_ARGS[*]:0:${#CONTAINER_TEST_PKGS[@]}}"
-    if [ "$form_space" = "$form_eq" ]; then
+    if [[ "$form_space" = "$form_eq" ]]; then
         echo "SELF-CHECK PASS: '-run TestX' and '-run=TestX' produce identical package list"
         echo "  -> $form_space"
         exit 0
@@ -94,7 +94,7 @@ echo "==> packages/flags: $*"
 COVER_FILE=""
 cover_next=0
 for arg in "$@"; do
-    if [ "$cover_next" -eq 1 ]; then
+    if [[ "$cover_next" -eq 1 ]]; then
         COVER_FILE="$arg"
         cover_next=0
         continue
@@ -114,7 +114,7 @@ set +e
 # When a coverage file was requested, keep the container around (drop --rm)
 # so `docker cp` can pull the file out below; otherwise remove it immediately.
 DOCKER_KEEP_FLAGS=(--rm)
-[ -n "$COVER_FILE" ] && DOCKER_KEEP_FLAGS=(--name "$CONTAINER_NAME")
+[[ -n "$COVER_FILE" ]] && DOCKER_KEEP_FLAGS=(--name "$CONTAINER_NAME")
 COPYFILE_DISABLE=1 tar -C "$REPO_ROOT" --no-xattrs --exclude ./\.git --exclude ./\.codegraph -cf - . |
     docker run "${DOCKER_KEEP_FLAGS[@]}" -i \
         -e HOME=/tmp/fake-home \
@@ -133,18 +133,18 @@ set -e
 TAR_STATUS=${PIPE_STATUS[0]}
 DOCKER_STATUS=${PIPE_STATUS[1]}
 STATUS=$DOCKER_STATUS
-if [ "$TAR_STATUS" -ne 0 ]; then
+if [[ "$TAR_STATUS" -ne 0 ]]; then
     STATUS=$TAR_STATUS
 fi
 
-if [ -n "$COVER_FILE" ]; then
-    if [ "$STATUS" -eq 0 ]; then
+if [[ -n "$COVER_FILE" ]]; then
+    if [[ "$STATUS" -eq 0 ]]; then
         docker cp "${CONTAINER_NAME}:${SRC_DIR}/${COVER_FILE}" "${REPO_ROOT}/${COVER_FILE}" || STATUS=1
     fi
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
 
-if [ "$STATUS" -eq 0 ]; then
+if [[ "$STATUS" -eq 0 ]]; then
     echo "$SEPARATOR"
     echo " PASS: containerized tests succeeded (exit 0)"
     echo "$SEPARATOR"

@@ -31,24 +31,32 @@ func TestNativeOrchestratorCheck(t *testing.T) {
 		{name: "unavailable", runErr: errors.New("fake server unavailable"), want: NotVerifiable, explanation: opencodeapi.ErrUnavailable.Error()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			calls := 0
-			client := opencodeapi.New(opencodeapi.WithRunner(func(_ context.Context, args []string) ([]byte, []byte, error) {
-				calls++
-				if want := []string{"api", "GET", "/api/agent"}; !reflect.DeepEqual(args, want) {
-					t.Fatalf("args = %v, want %v", args, want)
-				}
-				return []byte(tc.output), nil, tc.runErr
-			}))
-			got := nativeOrchestratorCheck(context.Background(), client)
-			if calls != 1 {
-				t.Fatalf("inventory calls = %d, want 1", calls)
-			}
-			if got.ID != "orchestrator:opencode:takt" || got.State != tc.want {
-				t.Fatalf("nativeOrchestratorCheck() = %+v, want state %q", got, tc.want)
-			}
-			if got.Explanation == "" || !strings.Contains(got.Explanation, tc.explanation) {
-				t.Fatalf("explanation = %q, want nonempty and containing %q", got.Explanation, tc.explanation)
-			}
+			assertNativeOrchestratorCheck(t, tc.output, tc.runErr, tc.want, tc.explanation)
 		})
+	}
+}
+
+// assertNativeOrchestratorCheck stubs the /api/agent response with output
+// and runErr, runs nativeOrchestratorCheck once, and checks it queries the
+// inventory exactly once and returns the wanted state and explanation.
+func assertNativeOrchestratorCheck(t *testing.T, output string, runErr error, want State, explanation string) {
+	t.Helper()
+	calls := 0
+	client := opencodeapi.New(opencodeapi.WithRunner(func(_ context.Context, args []string) ([]byte, []byte, error) {
+		calls++
+		if wantArgs := []string{"api", "GET", "/api/agent"}; !reflect.DeepEqual(args, wantArgs) {
+			t.Fatalf("args = %v, want %v", args, wantArgs)
+		}
+		return []byte(output), nil, runErr
+	}))
+	got := nativeOrchestratorCheck(context.Background(), client)
+	if calls != 1 {
+		t.Fatalf("inventory calls = %d, want 1", calls)
+	}
+	if got.ID != "orchestrator:opencode:takt" || got.State != want {
+		t.Fatalf("nativeOrchestratorCheck() = %+v, want state %q", got, want)
+	}
+	if got.Explanation == "" || !strings.Contains(got.Explanation, explanation) {
+		t.Fatalf("explanation = %q, want nonempty and containing %q", got.Explanation, explanation)
 	}
 }

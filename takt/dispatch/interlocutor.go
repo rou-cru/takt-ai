@@ -125,21 +125,31 @@ func DenyArtifactMissing(h *history.History, journalRef, root, childSession, age
 	})
 }
 
+// HandoffOutcome is the negotiated result a handoff envelope carries: the
+// IR-23 result, any additional context, extra filesystem artifacts, and the
+// Engram IDs the holder recorded for delivered results.
+type HandoffOutcome struct {
+	Result            string
+	AdditionalContext string
+	ExtraArtifacts    []string
+	ResultIDs         []int64
+}
+
 // BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this
 // session for delivered results; filesystem copies are optional and do not
 // establish a handoff. memoryRoot is where the memory session index lives.
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent, result, additionalContext string, extraArtifacts []string, resultIDs []int64) (map[string]any, error) {
-	if result == "Standard" || len(resultIDs) > 0 {
-		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, resultIDs); e != nil {
+func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error) {
+	if outcome.Result == "Standard" || len(outcome.ResultIDs) > 0 {
+		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, outcome.ResultIDs); e != nil {
 			return nil, e
 		}
 	}
-	if e := Handoff(h, journalRef, root, callerSession, result); e != nil {
+	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
 		return nil, e
 	}
 	return map[string]any{
-		"result": result, "additional_context": additionalContext,
-		"extra_artifacts": extraArtifacts, "memory": resultIDs,
+		"result": outcome.Result, "additional_context": outcome.AdditionalContext,
+		"extra_artifacts": outcome.ExtraArtifacts, "memory": outcome.ResultIDs,
 	}, nil
 }
 

@@ -122,7 +122,8 @@ export default Plugin.define({
       new Response(codegraph.stdout).text(), new Response(codegraph.stderr).text(), codegraph.exited,
     ])
     if (codegraphExit !== 0) {
-      throw new Error(`CodeGraph workspace preparation failed: ${codegraphErr.trim() || codegraphOut.trim() || `exit ${codegraphExit}`}`)
+      const reason = codegraphErr.trim() || codegraphOut.trim() || `exit ${codegraphExit}`
+      throw new Error(`CodeGraph workspace preparation failed: ${reason}`)
     }
     // Everything a binding needs to speak for its dispatch. `dispatch` is the
     // session that ran the bind (the child session the subagent tool created for
@@ -386,7 +387,8 @@ export default Plugin.define({
 
       await ctx.shell.hook("create.before", async (input) => {
         const refuse = (reason: string) => {
-          input.command = `echo ${JSON.stringify(`Takt: ${reason}`)} >&2; exit ${SHELL_NOT_ADMITTED}`
+          const message = JSON.stringify(`Takt: ${reason}`)
+          input.command = `echo ${message} >&2; exit ${SHELL_NOT_ADMITTED}`
         }
         const directCount = directShell.get(input.command) ?? 0
         if (directCount > 0) {
@@ -592,8 +594,9 @@ export default Plugin.define({
       const state = await coordinate({ action: "status" })
       const cycle = state.cycle
       if (!cycle) return
-      const role = cycle.phase === "baseline" || cycle.phase === "verify" || cycle.phase === "acceptance" ? "verifier"
-        : cycle.phase === "investigate" ? "collector" : undefined
+      let role: "verifier" | "collector" | undefined
+      if (cycle.phase === "baseline" || cycle.phase === "verify" || cycle.phase === "acceptance") role = "verifier"
+      else if (cycle.phase === "investigate") role = "collector"
       if (!role) return
       const stamp = `${cycle.plan.cycle_id}:${cycle.phase}`
       if (prompted.has(stamp)) return
@@ -932,7 +935,9 @@ export default Plugin.define({
         const claim = (claims.claims ?? []).find((x: any) => x.key === args.claim_key)
         if (!claim) throw new Error(`unknown claim_key ${args.claim_key}; call claim_list and use an exact listed key`)
         if (claim.root_session_id === session && args.confirmed !== true) {
-          const status = claim.pending === true ? "pending" : claim.active === true ? "active" : "neither active nor pending"
+          let status = "neither active nor pending"
+          if (claim.pending === true) status = "pending"
+          else if (claim.active === true) status = "active"
           throw new Error(`WARNING: agent ${claim.agent_id} (instance ${claim.target_instance}, ${status}) owns [${(claim.scope ?? []).join(", ")}]. Ask the user via the orchestrator's native question mechanism whether to release this exact claim; retry with confirmed:true only after an explicit yes. This server plugin cannot present dialogs or verify confirmation. Ownership was not released; staged delta is preserved.`)
         }
         return { content: JSON.stringify(await takt("release", { session_id: session, claim_key: claim.key })) }

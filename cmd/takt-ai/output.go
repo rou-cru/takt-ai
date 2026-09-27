@@ -33,6 +33,10 @@ type deploymentResult struct {
 	Verify *verify.Report `json:"verify,omitempty"`
 }
 
+// labeledLineFmt renders a bracketed label followed by a subject and an
+// explanation, one per line.
+const labeledLineFmt = "  [%s] %s — %s\n"
+
 // renderPlanText shows the preview as text so users can review before applying.
 func renderPlanText(w io.Writer, command string, plan any) error {
 	switch p := plan.(type) {
@@ -62,7 +66,7 @@ func renderInstallPlanText(w io.Writer, command string, plan lifecycle.InstallPr
 	}
 	for _, conflict := range plan.Conflicts {
 		label, _, explanation := setup.DriftLabel(conflict.Reason)
-		if err := writef(w, "  [%s] %s — %s\n", label, conflict.Path, explanation); err != nil {
+		if err := writef(w, labeledLineFmt, label, conflict.Path, explanation); err != nil {
 			return err
 		}
 	}
@@ -186,7 +190,7 @@ func renderVerificationText(w io.Writer, report *verify.Report) error {
 		return err
 	}
 	for _, check := range report.Checks {
-		if err := writef(w, "  [%s] %s — %s\n", string(check.State), check.ID, check.Explanation); err != nil {
+		if err := writef(w, labeledLineFmt, string(check.State), check.ID, check.Explanation); err != nil {
 			return err
 		}
 	}
@@ -269,7 +273,7 @@ func blockOnConflicts(command string, conflicts []setup.ConflictEntry) ([]string
 	}
 	for _, conflict := range blocking {
 		label, _, explanation := setup.DriftLabel(conflict.Reason)
-		if err := writef(&b, "  [%s] %s — %s\n", label, conflict.Path, explanation); err != nil {
+		if err := writef(&b, labeledLineFmt, label, conflict.Path, explanation); err != nil {
 			return nil, err
 		}
 	}

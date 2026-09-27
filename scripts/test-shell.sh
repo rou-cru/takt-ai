@@ -20,7 +20,7 @@ expect_failure() {
     local expected=$1 status=0
     shift
     "$@" > "$TMP/output" 2>&1 || status=$?
-    [ "$status" -ne 0 ] || fail "expected failure: $*"
+    [[ "$status" -ne 0 ]] || fail "expected failure: $*"
     grep -Fq -- "$expected" "$TMP/output" || { cat "$TMP/output"; fail "missing: $expected"; }
 }
 
@@ -32,7 +32,7 @@ case "$command" in
     build) cat >/dev/null ;;
     run)
         printf '%s\0' "$@" > "$FIXTURE/docker-args"
-        while [ "$1" != go ]; do shift; done
+        while [[ "$1" != go ]]; do shift; done
         shift
         printf '%s\0' "$@" > "$FIXTURE/go-args"
         cat >/dev/null
@@ -75,14 +75,15 @@ test_runner() {
     local args=() arg
     while IFS= read -r -d '' arg; do args+=("$arg"); done < "$TMP/cp-args"
     [[ "${args[0]}" = takt-test-containerized-*:/src/'coverage with spaces.out' ]] || fail 'coverage source'
-    [ "${args[1]}" = "$TMP/repo/coverage with spaces.out" ] || fail 'coverage destination'
-    [ -s "$TMP/rm-args" ] || fail 'coverage container not removed'
+    [[ "${args[1]}" = "$TMP/repo/coverage with spaces.out" ]] || fail 'coverage destination'
+    [[ -s "$TMP/rm-args" ]] || fail 'coverage container not removed'
     local i=0
     args=()
     while IFS= read -r -d '' arg; do args+=("$arg"); done < "$TMP/docker-args"
-    while [ "$i" -lt "${#args[@]}" ]; do
+    while [[ "$i" -lt "${#args[@]}" ]]; do
         case "${args[$i]}" in
             --mount|--mount=*|--volume=*|--privileged|-v) fail 'volume or privileged mount added' ;;
+            *) ;; # every other argument is allowed; only mount/privileged flags are forbidden
         esac
         i=$((i + 1))
     done
@@ -91,8 +92,8 @@ test_runner() {
     rm -f "$TMP/cp-args" "$TMP/rm-args"
     export FAKE_DOCKER_STATUS=7
     expect_failure 'exit 7' run_runner -coverprofile=coverage.out ./takt/vfs
-    [ ! -e "$TMP/cp-args" ] || fail 'copied coverage after failed tests'
-    [ -e "$TMP/rm-args" ] || fail 'failed container not removed'
+    [[ ! -e "$TMP/cp-args" ]] || fail 'copied coverage after failed tests'
+    [[ -e "$TMP/rm-args" ]] || fail 'failed container not removed'
     unset FAKE_DOCKER_STATUS
     export FAKE_CP_STATUS=1
     expect_failure 'exit 1' run_runner -coverprofile=coverage.out ./takt/vfs
@@ -121,7 +122,7 @@ SH
     printf './new/unclassified\n' >> "$TMP/packages"
     expect_failure 'unclassified' check_test_packages
     expect_failure 'unclassified' make -s -C "$TMP/repo" test-host
-    [ ! -e "$TMP/host-args" ] || fail 'host tests ran despite incomplete classification'
+    [[ ! -e "$TMP/host-args" ]] || fail 'host tests ran despite incomplete classification'
     printf '%s\n' "${HOST_TEST_PKGS[@]}" "${CONTAINER_TEST_PKGS[@]}" > "$TMP/packages"
     # Mutations intentionally stay in separate subshells: each case starts clean.
     # shellcheck disable=SC2030
@@ -149,14 +150,14 @@ test_install() {
     archive="takt-ai_1.2.3_${os}_${arch}.tar.gz"
     printf '#!/bin/sh\nprintf "fixture v1.2.3\\n"\n' > "$TMP/payload/takt-ai"
     COPYFILE_DISABLE=1 tar -czf "$TMP/release/$archive" -C "$TMP/payload" takt-ai
-    [ "$(wc -c < "$TMP/release/$archive")" -lt 1000 ] || fail 'fixture must reproduce the old size rejection'
+    [[ "$(wc -c < "$TMP/release/$archive")" -lt 1000 ]] || fail 'fixture must reproduce the old size rejection'
     checksum() { (cd "$TMP/release" && shasum -a 256 "$archive" > checksums.txt); }
     checksum
     cat > "$TMP/bin/curl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 out=''
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
     case "$1" in -o) out=$2; shift ;; esac
     url=$1
     shift
@@ -176,7 +177,7 @@ SH
     rm "$TMP/install bin/takt-ai"
     printf '%064d  %s\n' 0 "$archive" > "$TMP/release/checksums.txt"
     expect_failure 'Checksum mismatch' install_fixture
-    [ ! -e "$TMP/install bin/takt-ai" ] || fail 'installed mismatched archive'
+    [[ ! -e "$TMP/install bin/takt-ai" ]] || fail 'installed mismatched archive'
     printf 'not an archive\n' > "$TMP/release/$archive"
     checksum
     expect_failure 'Failed to extract archive' install_fixture
@@ -186,7 +187,7 @@ SH
     expect_failure "Binary 'takt-ai' not found in archive" install_fixture
     rm "$TMP/release/checksums.txt"
     expect_failure 'Refusing to install without integrity verification' install_fixture
-    [ ! -e "$TMP/install bin/takt-ai" ] || fail 'installed invalid archive'
+    [[ ! -e "$TMP/install bin/takt-ai" ]] || fail 'installed invalid archive'
     pass 'checksum mismatch, corrupt archive, missing binary, and missing checksum fail closed'
 }
 

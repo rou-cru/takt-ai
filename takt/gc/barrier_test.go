@@ -26,23 +26,32 @@ func TestBarrier(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			v := Barrier(c.in)
-			if v.Proceed != c.wantProceed || v.Reason != c.wantReason || v.Deferrals != c.wantDeferrals {
-				t.Fatalf("Barrier(%+v)=%+v", c.in, v)
-			}
-			rec, ok := v.ControlRecord("harness")
-			if ok != !c.wantProceed {
-				t.Fatalf("recorded=%v, want %v", ok, !c.wantProceed)
-			}
-			if ok {
-				if err := rec.Validate(); err != nil {
-					t.Fatal(err)
-				}
-				if rec.ActionClass != obs.ActionEscalate || rec.PolicyRef != BarrierPolicyRef || !strings.Contains(rec.TriggeringCondition, c.wantReason) {
-					t.Fatalf("bad record: %+v", rec)
-				}
-			}
+			assertBarrierOutcome(t, c.in, c.wantProceed, c.wantReason, c.wantDeferrals)
 		})
+	}
+}
+
+// assertBarrierOutcome checks that Barrier(in) matches the wanted
+// proceed/reason/deferrals, and that the resulting control record (or its
+// absence, when the barrier proceeds) is consistent with that outcome.
+func assertBarrierOutcome(t *testing.T, in BarrierInput, wantProceed bool, wantReason string, wantDeferrals int) {
+	t.Helper()
+	v := Barrier(in)
+	if v.Proceed != wantProceed || v.Reason != wantReason || v.Deferrals != wantDeferrals {
+		t.Fatalf("Barrier(%+v)=%+v", in, v)
+	}
+	rec, ok := v.ControlRecord("harness")
+	if ok != !wantProceed {
+		t.Fatalf("recorded=%v, want %v", ok, !wantProceed)
+	}
+	if !ok {
+		return
+	}
+	if err := rec.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if rec.ActionClass != obs.ActionEscalate || rec.PolicyRef != BarrierPolicyRef || !strings.Contains(rec.TriggeringCondition, wantReason) {
+		t.Fatalf("bad record: %+v", rec)
 	}
 }
 

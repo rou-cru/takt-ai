@@ -378,21 +378,30 @@ func validateVFSCapabilities(a AgentDefinition) error {
 		if capabilities == nil {
 			return fmt.Errorf("agent instance %q: VFS capabilities must be an explicit list (use [] for no VFS access)", instance)
 		}
-		seen := make(map[model.VFSCapability]bool, len(capabilities))
-		for _, capability := range capabilities {
-			if !capability.Valid() {
-				return fmt.Errorf("agent instance %q: unknown VFS capability %q", instance, capability)
-			}
-			if seen[capability] {
-				return fmt.Errorf("agent instance %q: duplicate VFS capability %q", instance, capability)
-			}
-			seen[capability] = true
+		if err := validateVFSCapabilityList(instance, capabilities); err != nil {
+			return err
 		}
 	}
 	for _, instance := range a.Instances {
 		if _, ok := a.VFSCapabilities(instance); !ok {
 			return fmt.Errorf("agent instance %q: missing explicit VFS capability", instance)
 		}
+	}
+	return nil
+}
+
+// validateVFSCapabilityList rejects an unknown or duplicate capability
+// within one instance's granted list.
+func validateVFSCapabilityList(instance string, capabilities []model.VFSCapability) error {
+	seen := make(map[model.VFSCapability]bool, len(capabilities))
+	for _, capability := range capabilities {
+		if !capability.Valid() {
+			return fmt.Errorf("agent instance %q: unknown VFS capability %q", instance, capability)
+		}
+		if seen[capability] {
+			return fmt.Errorf("agent instance %q: duplicate VFS capability %q", instance, capability)
+		}
+		seen[capability] = true
 	}
 	return nil
 }

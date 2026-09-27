@@ -71,9 +71,22 @@ func bind(t *testing.T, f *FS, agent, unit, specialist string, scope ...string) 
 	}
 	return key
 }
-func apply(t *testing.T, f *FS, key AgentID, call string, rev uint64, action OperationType, path, content string) OperationResult {
+
+// applyCase is one operation apply exercises against the test fixture: the
+// binding key, its call identity and expected revision, the action, and the
+// target path and content.
+type applyCase struct {
+	Key     AgentID
+	CallID  string
+	Rev     uint64
+	Action  OperationType
+	Path    string
+	Content string
+}
+
+func apply(t *testing.T, f *FS, c applyCase) OperationResult {
 	t.Helper()
-	r, e := f.Apply(Operation{key, call, rev, action, path, []byte(content)})
+	r, e := f.Apply(Operation{c.Key, c.CallID, c.Rev, c.Action, c.Path, []byte(c.Content)})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -123,7 +136,7 @@ func gate(t *testing.T, f *FS, key AgentID, r OperationResult) {
 func TestDurableReopenAndContentFreeJournal(t *testing.T) {
 	f, root, state := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "dir/new.txt")
-	r := apply(t, f, key, "create", 0, OpCreate, "dir/new.txt", "secret-content")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "dir/new.txt", "secret-content"})
 	if _, e := os.Stat(filepath.Join(root, "dir")); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("staging touched workspace")
 	}
@@ -139,7 +152,7 @@ func TestDurableReopenAndContentFreeJournal(t *testing.T) {
 			t.Errorf("close filesystem: %v", err)
 		}
 	})
-	read := apply(t, f, key, "read", r.Revision, OpRead, "dir/new.txt", "")
+	read := apply(t, f, applyCase{key, "read", r.Revision, OpRead, "dir/new.txt", ""})
 	if string(read.Content) != "secret-content" {
 		t.Fatal("lost staging")
 	}
@@ -219,7 +232,7 @@ func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseKeepsDelta(t *testing.T)
 	if err != nil || adopted != key {
 		t.Fatalf("adopt prelaunch claim = %q, %v; want %q", adopted, err, key)
 	}
-	created := apply(t, f, key, "write", 0, OpCreate, "a.go", "staged")
+	created := apply(t, f, applyCase{key, "write", 0, OpCreate, "a.go", "staged"})
 	verifier, err := f.AssignVerifier(Identity{SessionID: "root-session", WorkUnitID: "unit-a", AttemptID: "1", AgentID: "verify", Specialist: "verify"}, key)
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +318,7 @@ func TestWorkspaceLockAndPrivateStore(t *testing.T) {
 func TestGateRevisionIdentityAndReplay(t *testing.T) {
 	f, _, _ := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "a")
-	r := apply(t, f, key, "create", 0, OpCreate, "a", "one")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a", "one"})
 	if _, e := f.Apply(Operation{key, "create", r.Revision, OpPatch, "a", []byte("two")}); !errors.Is(e, ErrDuplicateCall) {
 		t.Fatal(e)
 	}
@@ -337,7 +350,7 @@ func TestGateRevisionIdentityAndReplay(t *testing.T) {
 	if e := f.Verify(v, key, "pass", r.Revision, r.DeltaHash, true, ""); e != nil {
 		t.Fatal(e)
 	}
-	next := apply(t, f, key, "edit", r.Revision, OpPatch, "a", "two")
+	next := apply(t, f, applyCase{key, "edit", r.Revision, OpPatch, "a", "two"})
 	if hasVerdict(f, key) {
 		t.Fatal("edit retained gate")
 	}
@@ -381,8 +394,8 @@ func TestEveryFlushBoundaryRecoversAfterReopen(t *testing.T) {
 				t.Fatal(e)
 			}
 			key := bind(t, f, "author", "unit", "dev", "a", "b")
-			r := apply(t, f, key, "a", 0, OpPatch, "a", "new")
-			r = apply(t, f, key, "b", r.Revision, OpCreate, "b", "")
+			r := apply(t, f, applyCase{key, "a", 0, OpPatch, "a", "new"})
+			r = apply(t, f, applyCase{key, "b", r.Revision, OpCreate, "b", ""})
 			gate(t, f, key, r)
 			f.failpoint = func(p string) error {
 				if p == point {
@@ -430,7 +443,7 @@ func TestEveryFlushBoundaryRecoversAfterReopen(t *testing.T) {
 func TestRecoveryNeverOverwritesExternalChange(t *testing.T) {
 	f, root, _ := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "a")
-	r := apply(t, f, key, "create", 0, OpCreate, "a", "new")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a", "new"})
 	gate(t, f, key, r)
 	f.failpoint = func(p string) error {
 		if p == "after/a" {
@@ -510,7 +523,7 @@ func TestAbruptProcessRecovery(t *testing.T) {
 			panic(e)
 		}
 		key := bind(t, f, "author", "unit", "dev", "a")
-		r := apply(t, f, key, "create", 0, OpCreate, "a", "new")
+		r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a", "new"})
 		gate(t, f, key, r)
 		f.failpoint = func(p string) error {
 			if p == "after/a" {
@@ -553,7 +566,7 @@ func TestAbruptProcessRecovery(t *testing.T) {
 func TestVerifierInspectsAuthorProjectionWithoutMutationRights(t *testing.T) {
 	f, _, _ := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "a")
-	r := apply(t, f, key, "create", 0, OpCreate, "a", "staged")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a", "staged"})
 	verifier := bind(t, f, "judge", "unit", "verify")
 	view, err := f.apply(Operation{Key: verifier, CallID: "inspect", ExpectedRevision: r.Revision, Action: OpRead, Path: "a"}, key)
 	if err != nil || string(view.Content) != "staged" || view.DeltaHash != r.DeltaHash {
@@ -571,7 +584,7 @@ func TestVerifierInspectsAuthorProjectionWithoutMutationRights(t *testing.T) {
 func TestRecoveryRetainsManifestOnRestorationFailure(t *testing.T) {
 	f, _, state := durable(t)
 	key := bind(t, f, "author", "unit", "dev", "new/child/a")
-	r := apply(t, f, key, "create", 0, OpCreate, "new/child/a", "staged")
+	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "new/child/a", "staged"})
 	gate(t, f, key, r)
 	f.failpoint = func(p string) error {
 		if p == "after/new/child/a" {

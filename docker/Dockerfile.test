@@ -5,17 +5,18 @@ FROM node:24-bookworm-slim AS node
 # product itself resolves any release at or above takt/codegraph.CodegraphVersion.
 ARG CODEGRAPH_VERSION=1.6.0
 RUN npm install -g --prefix /opt/codegraph --no-fund --no-audit --loglevel=error --ignore-scripts \
-      @colbymchenry/codegraph@${CODEGRAPH_VERSION}
+      "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 
 FROM golang:1.25
 # deadcode's version is pinned by the module's own `tool` directive
 # (go.mod) and its checksum by go.sum — no separate ARG to drift from it.
-COPY go.mod go.sum /tmp/takt-module/
-RUN cd /tmp/takt-module && go mod download && \
+WORKDIR /tmp/takt-module
+COPY go.mod go.sum ./
+RUN go mod download && \
     GOBIN=/opt/tools go install golang.org/x/tools/cmd/deadcode
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /opt/codegraph /opt/codegraph
-ENV PATH=/opt/codegraph/bin:/opt/tools:$PATH TAKT_E2E_CODEGRAPH=/opt/codegraph/bin/codegraph TAKT_E2E_DEADCODE=/opt/tools/deadcode CODEGRAPH_TELEMETRY=0
+ENV PATH="/opt/codegraph/bin:/opt/tools:$PATH" TAKT_E2E_CODEGRAPH=/opt/codegraph/bin/codegraph TAKT_E2E_DEADCODE=/opt/tools/deadcode CODEGRAPH_TELEMETRY=0
 # scripts/test-containerized.sh always runs this image as the fixed `runner`
 # account below (no --user override), so ownership can be scoped to it
 # instead of opened up to everyone.

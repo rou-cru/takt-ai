@@ -19,15 +19,32 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./cmd/takt-ai
 # ponytail: build once here (network+toolchain exist), runtime just copies binaries
 # (one RUN per module: multi-package `go install` requires same module+version)
-RUN GOBIN=/out/tools go install github.com/fzipp/gocyclo/cmd/gocyclo@${GOCYCLO_VERSION}
-RUN GOBIN=/out/tools go install golang.org/x/tools/cmd/deadcode@${XTOOLS_VERSION} \
-      golang.org/x/tools/cmd/goimports@${XTOOLS_VERSION}
-RUN GOBIN=/out/tools go install mvdan.cc/gofumpt@${GOFUMPT_VERSION}
-RUN GOBIN=/out/tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}
+# Reject anything that isn't an exact vX.Y.Z tag, so a --build-arg override
+# can't silently float these installs to "latest"/a branch/an empty string
+# (docker:S8545 — dependency versions must stay pinned and predictable).
+RUN set -eux; \
+    for v in "${GOCYCLO_VERSION}" "${XTOOLS_VERSION}" "${GOFUMPT_VERSION}" "${GOLANGCI_VERSION}"; do \
+      case "$v" in \
+        v[0-9]*.[0-9]*.[0-9]*) ;; \
+        *) echo "Tool version must be pinned as vX.Y.Z, got '$v'" >&2; exit 1 ;; \
+      esac; \
+    done
+RUN GOBIN=/out/tools go install "github.com/fzipp/gocyclo/cmd/gocyclo@${GOCYCLO_VERSION}"
+RUN GOBIN=/out/tools go install "golang.org/x/tools/cmd/deadcode@${XTOOLS_VERSION}" \
+      "golang.org/x/tools/cmd/goimports@${XTOOLS_VERSION}"
+RUN GOBIN=/out/tools go install "mvdan.cc/gofumpt@${GOFUMPT_VERSION}"
+RUN GOBIN=/out/tools go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}"
 
 FROM ubuntu:26.04
 # Pinned to OpenCode 2.x on purpose; never "latest".
 ARG OPENCODE_VERSION=2.0.16
+# ponytail: sha256 of https://opencode.ai/v2/install captured at authoring
+# time. The installer endpoint is shared across all CLI versions and carries
+# no vendor-published checksum of its own, so we pin our own hash and verify
+# it before ever executing the script (docker:S8482). If OpenCode legitimately
+# updates the installer, this check fails closed — re-download, review the
+# diff, and refresh the pin.
+ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
 ARG PYTHON_VERSION=3.14
 ARG NODE_MAJOR=24
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -48,7 +65,18 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep tar tzdata unzip; \
-    curl -fsSL --proto '=https' --tlsv1.2 "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
+    # ponytail: register the NodeSource apt repo via NodeSource's own
+    # documented manual steps (GPG-signed key + apt source) instead of piping
+    # their setup script to bash: apt then verifies every nodejs package
+    # signature against this key before installing anything, so no
+    # unverified remote script ever runs as root (docker:S8482).
+    mkdir -p /usr/share/keyrings; \
+    curl -fsSL --proto '=https' --tlsv1.2 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg; \
+    chmod 644 /usr/share/keyrings/nodesource.gpg; \
+    printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x\nSuites: nodistro\nComponents: main\nArchitectures: %s\nSigned-By: /usr/share/keyrings/nodesource.gpg\n' \
+      "${NODE_MAJOR}" "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/nodesource.sources; \
+    apt-get update; \
     apt-get install -y --no-install-recommends nodejs; \
     uv python install "${PYTHON_VERSION}"; \
     py="$(uv python find "${PYTHON_VERSION}")"; \
@@ -80,10 +108,16 @@ RUN set -eux; \
     gofumpt -h 2>&1 | head -1; \
     goimports -h 2>&1 | head -1; \
     golangci-lint version; \
-    # ponytail: container runs as the host uid (compose `user:`) so bind-mount
-    # writes aren't uid-1001-owned on Linux; open perms since this dir never
-    # touches the host and dies with the container anyway.
-    chmod -R a+rwX /home/dev
+    # ponytail: container runs as the host uid (compose `user:`), so a UID/GID
+    # override matching neither "dev" nor its group still needs to create
+    # files under $HOME (shell history, tool caches, ...); this dir never
+    # touches the host and dies with the container anyway. Only the directory
+    # itself is opened to "other" so new files can land in it — the
+    # pre-existing skeleton dotfiles keep their default, non-world-writable
+    # mode so no arbitrary process can plant a payload in .bashrc/.profile for
+    # the next shell to source (docker:S2612).
+    chmod a+rwX /home/dev; \
+    find /home/dev -mindepth 1 -maxdepth 1 -type f -exec chmod go-w {} +
 COPY --from=builder /out/takt-ai /usr/local/bin/takt-ai
 USER dev
 WORKDIR /home/dev
@@ -93,7 +127,12 @@ RUN set -eux; \
       2.[0-9]*.[0-9]*) ;; \
       *) echo "OPENCODE_VERSION must be 2.x.y, got '${OPENCODE_VERSION}'" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL --proto '=https' --tlsv1.2 https://opencode.ai/v2/install | bash -s -- --no-modify-path --version "${OPENCODE_VERSION}"; \
+    # Download the installer to a file and verify its checksum before ever
+    # executing it, instead of piping curl straight into bash (docker:S8482).
+    curl -fsSL --proto '=https' --tlsv1.2 -o /tmp/opencode-install.sh https://opencode.ai/v2/install; \
+    echo "${OPENCODE_INSTALL_SHA256}  /tmp/opencode-install.sh" | sha256sum -c -; \
+    bash /tmp/opencode-install.sh --no-modify-path --version "${OPENCODE_VERSION}"; \
+    rm -f /tmp/opencode-install.sh; \
     /home/dev/.opencode/bin/opencode --version; \
     takt-ai version
 ENV PATH="/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"

@@ -61,26 +61,8 @@ func CollectWithReload(ctx context.Context, rootDir string, reload ReloadStatus)
 	if err != nil {
 		return summarize([]CheckResult{{"installation", NotVerifiable, fmt.Sprintf("Cannot identify managed installation: %v", err)}})
 	}
-	targets := make(map[setup.OwnershipTarget]bool)
-	for _, entry := range manifest.Entries {
-		for _, target := range entry.Targets {
-			targets[target] = true
-		}
-	}
-	produce := func() []CheckResult {
-		var checks []CheckResult
-		for _, target := range []setup.OwnershipTarget{setup.TargetOpenCode} {
-			if targets[target] {
-				checks = append(checks, managedMCPChecks(ctx, rootDir, target)...)
-			}
-		}
-		if targets[setup.TargetOpenCode] {
-			checks = append(checks, nativeOpenCodeChecks(ctx, rootDir)...)
-		} else {
-			checks = append(checks, CheckResult{"orchestrator:opencode:takt", NotVerifiable, "The selectable orchestrator requires an installed OpenCode target; no other native projection is provided yet."})
-		}
-		return checks
-	}
+	targets := ownedTargets(manifest)
+	produce := func() []CheckResult { return produceChecks(ctx, rootDir, targets) }
 	var checks []CheckResult
 	if reload.Attempted && reload.Err == nil {
 		// Reload's POST /api/location/reload returns as soon as the HTTP
@@ -91,14 +73,49 @@ func CollectWithReload(ctx context.Context, rootDir string, reload ReloadStatus)
 	} else {
 		checks = produce()
 	}
-	if reload.Attempted {
-		if reload.Err != nil {
-			checks = append(checks, CheckResult{"reload:opencode", NotVerified, fmt.Sprintf("OpenCode configuration reload failed: %v", reload.Err)})
-		} else {
-			checks = append(checks, CheckResult{"reload:opencode", Verified, "OpenCode configuration reload completed after deployment."})
+	checks = append(checks, reloadCheck(reload)...)
+	return summarize(checks)
+}
+
+// ownedTargets indexes the ownership manifest's targets for a quick lookup
+// of whether an integration was installed.
+func ownedTargets(manifest *setup.OwnershipManifest) map[setup.OwnershipTarget]bool {
+	targets := make(map[setup.OwnershipTarget]bool)
+	for _, entry := range manifest.Entries {
+		for _, target := range entry.Targets {
+			targets[target] = true
 		}
 	}
-	return summarize(checks)
+	return targets
+}
+
+// produceChecks runs the managed-MCP and native-orchestrator checks for
+// every installed target, in place of an unbuilt one.
+func produceChecks(ctx context.Context, rootDir string, targets map[setup.OwnershipTarget]bool) []CheckResult {
+	var checks []CheckResult
+	for _, target := range []setup.OwnershipTarget{setup.TargetOpenCode} {
+		if targets[target] {
+			checks = append(checks, managedMCPChecks(ctx, rootDir, target)...)
+		}
+	}
+	if targets[setup.TargetOpenCode] {
+		checks = append(checks, nativeOpenCodeChecks(ctx, rootDir)...)
+	} else {
+		checks = append(checks, CheckResult{"orchestrator:opencode:takt", NotVerifiable, "The selectable orchestrator requires an installed OpenCode target; no other native projection is provided yet."})
+	}
+	return checks
+}
+
+// reloadCheck reports the post-deployment OpenCode reload outcome, or no
+// check at all when no reload was attempted.
+func reloadCheck(reload ReloadStatus) []CheckResult {
+	if !reload.Attempted {
+		return nil
+	}
+	if reload.Err != nil {
+		return []CheckResult{{"reload:opencode", NotVerified, fmt.Sprintf("OpenCode configuration reload failed: %v", reload.Err)}}
+	}
+	return []CheckResult{{"reload:opencode", Verified, "OpenCode configuration reload completed after deployment."}}
 }
 
 // reloadSettleTimeout and reloadSettleInterval bound settleAfterReload's wait

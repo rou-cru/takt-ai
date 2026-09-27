@@ -12,8 +12,10 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
-// TODO: missing black-box test for reaching every drift screen only through
-// its visible actions.
+// Known gap: this suite does not yet drive every drift screen (select,
+// review, result, report) black-box, through its visible actions only. Add
+// that coverage before relying on this file alone to catch drift-screen
+// regressions.
 
 // TestDriftShowsNotInstalledGuardOnFreshRoot verifies that on a root with
 // nothing installed, drift says plainly that nothing is installed instead of

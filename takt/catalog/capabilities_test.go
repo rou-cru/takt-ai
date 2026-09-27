@@ -32,30 +32,38 @@ func TestCapabilitiesReservedCore(t *testing.T) {
 	}
 	reserved := map[string]bool{}
 	for _, entry := range manifest.Components {
-		if entry.Selectable {
-			if entry.Core {
-				t.Errorf("selectable entry %q must not be core", entry.ID)
-			}
-			continue
-		}
-		reserved[entry.ID] = entry.Core
-		if !entry.Core {
-			t.Errorf("reserved entry %q must be core", entry.ID)
-		}
-		if !strings.Contains(entry.Note, "non-omittable") {
-			t.Errorf("reserved entry %q note = %q, want non-omittable marker", entry.ID, entry.Note)
-		}
-		if strings.TrimSpace(entry.Purpose) == "" {
-			t.Errorf("reserved entry %q has no purpose", entry.ID)
-		}
-		if len(entry.Deps) != 0 {
-			t.Errorf("reserved entry %q deps = %v, want empty", entry.ID, entry.Deps)
-		}
+		assertCapabilityEntryReservation(t, entry, reserved)
 	}
 	for _, id := range []string{"engram", "skills", "specialists"} {
 		if !reserved[id] {
 			t.Errorf("missing reserved core entry %q", id)
 		}
+	}
+}
+
+// assertCapabilityEntryReservation checks one manifest entry's reserved/core
+// status is consistent, and, for a reserved entry, records it in reserved and
+// checks its note, purpose and deps meet the reserved-core shape.
+func assertCapabilityEntryReservation(t *testing.T, entry Capability, reserved map[string]bool) {
+	t.Helper()
+	if entry.Selectable {
+		if entry.Core {
+			t.Errorf("selectable entry %q must not be core", entry.ID)
+		}
+		return
+	}
+	reserved[entry.ID] = entry.Core
+	if !entry.Core {
+		t.Errorf("reserved entry %q must be core", entry.ID)
+	}
+	if !strings.Contains(entry.Note, "non-omittable") {
+		t.Errorf("reserved entry %q note = %q, want non-omittable marker", entry.ID, entry.Note)
+	}
+	if strings.TrimSpace(entry.Purpose) == "" {
+		t.Errorf("reserved entry %q has no purpose", entry.ID)
+	}
+	if len(entry.Deps) != 0 {
+		t.Errorf("reserved entry %q deps = %v, want empty", entry.ID, entry.Deps)
 	}
 }
 

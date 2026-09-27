@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 
 # quoted wraps its argument in single quotes, for the "'$pattern'" idiom
 # assertion labels use when they display the pattern under test.
-quoted() { printf "'%s'" "$1"; }
+quoted() { printf "'%s'" "$1"; return $?; }
 
 # ---------------------------------------------------------------------------
 # Counters
@@ -32,11 +32,11 @@ SKIPPED=0
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-log_test()  { printf "${YELLOW}[TEST]${NC}  %s\n" "$1"; }
-log_pass()  { printf "${GREEN}[PASS]${NC}  %s\n" "$1"; PASSED=$((PASSED + 1)); }
-log_fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$1"; FAILED=$((FAILED + 1)); }
-log_skip()  { printf "${BLUE}[SKIP]${NC}  %s\n" "$1"; SKIPPED=$((SKIPPED + 1)); }
-log_info()  { printf "${BLUE}[INFO]${NC}  %s\n" "$1"; }
+log_test()  { printf "${YELLOW}[TEST]${NC}  %s\n" "$1"; return $?; }
+log_pass()  { printf "${GREEN}[PASS]${NC}  %s\n" "$1"; PASSED=$((PASSED + 1)); return $?; }
+log_fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$1"; FAILED=$((FAILED + 1)); return $?; }
+log_skip()  { printf "${BLUE}[SKIP]${NC}  %s\n" "$1"; SKIPPED=$((SKIPPED + 1)); return $?; }
+log_info()  { printf "${BLUE}[INFO]${NC}  %s\n" "$1"; return $?; }
 
 # ---------------------------------------------------------------------------
 # Binary resolution
@@ -56,17 +56,18 @@ resolve_binary() {
     # the resolver works whether the test is invoked from the repo root or from e2e/.
     local repo_root
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    if [ -x "$repo_root/takt-ai" ]; then
+    if [[ -x "$repo_root/takt-ai" ]]; then
         echo "$repo_root/takt-ai"
-    elif [ -x "./takt-ai" ]; then
+    elif [[ -x "./takt-ai" ]]; then
         echo "./takt-ai"
-    elif [ -x "$HOME/takt-ai" ]; then
+    elif [[ -x "$HOME/takt-ai" ]]; then
         echo "$HOME/takt-ai"
     elif command -v takt-ai >/dev/null 2>&1; then
         echo "takt-ai"
     else
         echo ""
     fi
+    return $?
 }
 
 # ---------------------------------------------------------------------------
@@ -80,6 +81,7 @@ cleanup_test_env() {
     rm -rf "$HOME/.config/gga" 2>/dev/null || true
     rm -rf "$HOME/.takt-ai" 2>/dev/null || true
     mkdir -p "$HOME/.config"
+    return $?
 }
 
 # setup_fake_engram_binary — install a deterministic local engram shim for E2E.
@@ -91,7 +93,7 @@ cleanup_test_env() {
 #
 # Set TAKT_AI_E2E_REAL_ENGRAM=1 to opt out and exercise the live download path.
 setup_fake_engram_binary() {
-    if [ "${TAKT_AI_E2E_REAL_ENGRAM:-0}" = "1" ]; then
+    if [[ "${TAKT_AI_E2E_REAL_ENGRAM:-0}" = "1" ]]; then
         log_info "Using real Engram binary/download path for E2E"
         return 0
     fi
@@ -137,6 +139,7 @@ EOF
 setup_fake_configs() {
     mkdir -p "$HOME/.config/opencode"
     echo '{"fake-settings": true}' > "$HOME/.config/opencode/opencode.json"
+    return $?
 }
 
 # ---------------------------------------------------------------------------
@@ -148,7 +151,7 @@ setup_fake_configs() {
 assert_file_exists() {
     local file="$1"
     local label="${2:-$file}"
-    if [ -f "$file" ]; then
+    if [[ -f "$file" ]]; then
         log_pass "File exists: $label"
         return 0
     else
@@ -161,7 +164,7 @@ assert_file_exists() {
 assert_file_not_exists() {
     local file="$1"
     local label="${2:-$file}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         log_pass "File correctly absent: $label"
         return 0
     else
@@ -174,7 +177,7 @@ assert_file_not_exists() {
 assert_dir_exists() {
     local dir="$1"
     local label="${2:-$dir}"
-    if [ -d "$dir" ]; then
+    if [[ -d "$dir" ]]; then
         log_pass "Directory exists: $label"
         return 0
     else
@@ -189,7 +192,7 @@ assert_file_contains() {
     local file="$1"
     local pattern="$2"
     local label="${3:-$file contains $(quoted "$pattern")}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         log_fail "Cannot check content — file not found: $file"
         return 1
     fi
@@ -208,7 +211,7 @@ assert_file_not_contains() {
     local file="$1"
     local pattern="$2"
     local label="${3:-$file does NOT contain $(quoted "$pattern")}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         # File doesn't exist = pattern not found. That's a pass.
         log_pass "$label (file doesn't exist)"
         return 0
@@ -228,13 +231,13 @@ assert_file_size_min() {
     local file="$1"
     local min_bytes="$2"
     local label="${3:-$file >= $min_bytes bytes}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         log_fail "Cannot check size — file not found: $file"
         return 1
     fi
     local actual_size
     actual_size=$(wc -c < "$file" | tr -d ' ')
-    if [ "$actual_size" -ge "$min_bytes" ]; then
+    if [[ "$actual_size" -ge "$min_bytes" ]]; then
         log_pass "$label (${actual_size}b)"
         return 0
     else
@@ -248,7 +251,7 @@ assert_file_size_min() {
 assert_valid_json() {
     local file="$1"
     local label="${2:-$file is valid JSON}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         log_fail "Cannot check JSON — file not found: $file"
         return 1
     fi
@@ -283,7 +286,7 @@ json_files_equal() {
     local file2="$2"
     if ! command -v python3 >/dev/null 2>&1; then
         # Fallback: byte comparison (may false-fail on key reorder)
-        [ "$(sha256sum "$file1" | cut -d' ' -f1)" = "$(sha256sum "$file2" | cut -d' ' -f1)" ]
+        [[ "$(sha256sum "$file1" | cut -d' ' -f1)" = "$(sha256sum "$file2" | cut -d' ' -f1)" ]]
         return $?
     fi
     python3 -c "
@@ -301,13 +304,13 @@ assert_file_count() {
     local pattern="$2"
     local expected="$3"
     local label="${4:-$dir/$pattern count == $expected}"
-    if [ ! -d "$dir" ]; then
+    if [[ ! -d "$dir" ]]; then
         log_fail "Cannot count files — directory not found: $dir"
         return 1
     fi
     local actual
     actual=$(find "$dir" -name "$pattern" -type f 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$actual" -eq "$expected" ]; then
+    if [[ "$actual" -eq "$expected" ]]; then
         log_pass "$label (found $actual)"
         return 0
     else
@@ -323,13 +326,13 @@ assert_file_count_min() {
     local pattern="$2"
     local min="$3"
     local label="${4:-$dir/$pattern count >= $min}"
-    if [ ! -d "$dir" ]; then
+    if [[ ! -d "$dir" ]]; then
         log_fail "Cannot count files — directory not found: $dir"
         return 1
     fi
     local actual
     actual=$(find "$dir" -name "$pattern" -type f 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$actual" -ge "$min" ]; then
+    if [[ "$actual" -ge "$min" ]]; then
         log_pass "$label (found $actual)"
         return 0
     else
@@ -344,18 +347,18 @@ assert_md5_match() {
     local file1="$1"
     local file2="$2"
     local label="${3:-$file1 == $file2}"
-    if [ ! -f "$file1" ]; then
+    if [[ ! -f "$file1" ]]; then
         log_fail "Cannot compare — file not found: $file1"
         return 1
     fi
-    if [ ! -f "$file2" ]; then
+    if [[ ! -f "$file2" ]]; then
         log_fail "Cannot compare — file not found: $file2"
         return 1
     fi
     local hash1 hash2
     hash1=$(sha256sum "$file1" | cut -d' ' -f1)
     hash2=$(sha256sum "$file2" | cut -d' ' -f1)
-    if [ "$hash1" = "$hash2" ]; then
+    if [[ "$hash1" = "$hash2" ]]; then
         log_pass "$label"
         return 0
     else
@@ -370,17 +373,17 @@ assert_no_duplicate_section() {
     local file="$1"
     local section_id="$2"
     local label="${3:-No duplicate section '$section_id' in $file}"
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
         log_fail "Cannot check sections — file not found: $file"
         return 1
     fi
     local marker="<!-- takt-ai:${section_id} -->"
     local count
     count=$(grep -c "$marker" "$file" 2>/dev/null || echo "0")
-    if [ "$count" -eq 1 ]; then
+    if [[ "$count" -eq 1 ]]; then
         log_pass "$label"
         return 0
-    elif [ "$count" -eq 0 ]; then
+    elif [[ "$count" -eq 0 ]]; then
         log_fail "Section marker not found: $marker in $file"
         return 1
     else
@@ -430,7 +433,7 @@ print_summary() {
     echo "  TOTAL : $((PASSED + FAILED + SKIPPED))"
     echo "========================================"
 
-    if [ "$FAILED" -gt 0 ]; then
+    if [[ "$FAILED" -gt 0 ]]; then
         printf "\n%bSome tests failed.%b\n" "$RED" "$NC"
         return 1
     fi

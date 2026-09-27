@@ -202,37 +202,55 @@ func TestStoreEventsAndCountEventsFilterAndRange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if n, err := s.CountEvents("s1", obs.EventVFSDelta, 0, 0); err != nil || n != 3 {
-		t.Fatalf("CountEvents VFSDelta = %d, %v; want 3, nil", n, err)
-	}
-	if n, err := s.CountEvents("s1", obs.EventDispatch, 0, 0); err != nil || n != 2 {
-		t.Fatalf("CountEvents Dispatch = %d, %v; want 2, nil", n, err)
-	}
-	if n, err := s.CountEvents("s1", "", 0, 0); err != nil || n != 5 {
-		t.Fatalf("CountEvents any class = %d, %v; want 5, nil", n, err)
-	}
+	assertEventCount(t, s, eventCountCase{"s1", obs.EventVFSDelta, 0, 0, 3, "VFSDelta"})
+	assertEventCount(t, s, eventCountCase{"s1", obs.EventDispatch, 0, 0, 2, "Dispatch"})
+	assertEventCount(t, s, eventCountCase{"s1", "", 0, 0, 5, "any class"})
 	// Bounded to a work-registered range (the first two ids only).
-	if n, err := s.CountEvents("s1", "", 0, ids[1]); err != nil || n != 2 {
-		t.Fatalf("CountEvents bounded = %d, %v; want 2, nil", n, err)
-	}
-	if n, err := s.CountEvents("s2", obs.EventVFSDelta, 0, 0); err != nil || n != 1 {
-		t.Fatalf("CountEvents other session = %d, %v; want 1, nil", n, err)
-	}
+	assertEventCount(t, s, eventCountCase{"s1", "", 0, ids[1], 2, "bounded"})
+	assertEventCount(t, s, eventCountCase{"s2", obs.EventVFSDelta, 0, 0, 1, "other session"})
 
-	got, err := s.Events("s1", obs.EventVFSDelta, 0, 0, 0)
+	assertEventsAllOfClass(t, s, "s1", obs.EventVFSDelta, 3)
+	if page, err := s.Events("s1", "", ids[0], 0, 1); err != nil || len(page) != 1 || page[0].ID != ids[1] {
+		t.Fatalf("Events paged from %d limit 1 = %+v, %v", ids[0], page, err)
+	}
+}
+
+// eventCountCase is one CountEvents assertion: the session and class filter,
+// the bounded range, the expected count, and a label identifying which case
+// regressed on failure.
+type eventCountCase struct {
+	Session string
+	Class   obs.EventClass
+	From    int64
+	To      int64
+	Want    int64
+	Label   string
+}
+
+// assertEventCount checks s.CountEvents(c.Session, c.Class, c.From, c.To)
+// equals c.Want, failing with c.Label identifying which case regressed.
+func assertEventCount(t *testing.T, s *obs.Store, c eventCountCase) {
+	t.Helper()
+	if n, err := s.CountEvents(c.Session, c.Class, c.From, c.To); err != nil || n != c.Want {
+		t.Fatalf("CountEvents %s = %d, %v; want %d, nil", c.Label, n, err, c.Want)
+	}
+}
+
+// assertEventsAllOfClass checks s.Events returns exactly want rows for
+// session and class, and that every returned row is actually that class.
+func assertEventsAllOfClass(t *testing.T, s *obs.Store, session string, class obs.EventClass, want int) {
+	t.Helper()
+	got, err := s.Events(session, class, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("Events VFSDelta returned %d rows; want 3", len(got))
+	if len(got) != want {
+		t.Fatalf("Events %s returned %d rows; want %d", class, len(got), want)
 	}
 	for _, e := range got {
-		if e.Envelope.EventClass != obs.EventVFSDelta {
+		if e.Envelope.EventClass != class {
 			t.Errorf("Events leaked class %q", e.Envelope.EventClass)
 		}
-	}
-	if page, err := s.Events("s1", "", ids[0], 0, 1); err != nil || len(page) != 1 || page[0].ID != ids[1] {
-		t.Fatalf("Events paged from %d limit 1 = %+v, %v", ids[0], page, err)
 	}
 }
 

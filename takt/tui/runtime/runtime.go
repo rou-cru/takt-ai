@@ -211,7 +211,7 @@ func (adapter Adapter) finishExecution(ctx context.Context, request ActionReques
 	if request.Action == ActionInstall || request.Action == ActionSync {
 		// A failed record only means the same question is asked again; it must not turn a completed operation into a failure.
 		_ = setup.RecordRiskAcceptances(request.RootDir, request.AcceptedRisks)
-		report := verify.CollectWithReload(context.Background(), request.RootDir, verify.ReloadStatus{
+		report := verify.CollectWithReload(ctx, request.RootDir, verify.ReloadStatus{
 			Attempted: result.ReloadAttempted,
 			Err:       result.ReloadError,
 		})

@@ -46,7 +46,16 @@ func sensitivePaths(root, home string) []string {
 			found = append(found, p)
 		}
 	}
-	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, sensitiveWalkFn(root, add))
+	addHomeSensitivePaths(home, add)
+	return found
+}
+
+// sensitiveWalkFn builds the filepath.WalkDir callback that reports every
+// sensitive match under root to add, skipping directories the walk never
+// needs to descend into.
+func sensitiveWalkFn(root string, add func(string)) fs.WalkDirFunc {
+	return func(p string, d fs.DirEntry, err error) error {
 		if err != nil || p == root {
 			return nil
 		}
@@ -61,16 +70,22 @@ func sensitivePaths(root, home string) []string {
 			}
 		}
 		return nil
-	})
-	if home != "" {
-		for _, glob := range model.SensitivePathGlobs {
-			matches, _ := filepath.Glob(filepath.Join(home, filepath.FromSlash(strings.TrimSuffix(glob, "/**"))))
-			for _, m := range matches {
-				add(m)
-			}
+	}
+}
+
+// addHomeSensitivePaths reports every home-relative sensitive glob match
+// (".ssh/**", ".aws/credentials", ...) under home to add. A blank home is a
+// no-op, since it means the caller could not resolve one.
+func addHomeSensitivePaths(home string, add func(string)) {
+	if home == "" {
+		return
+	}
+	for _, glob := range model.SensitivePathGlobs {
+		matches, _ := filepath.Glob(filepath.Join(home, filepath.FromSlash(strings.TrimSuffix(glob, "/**"))))
+		for _, m := range matches {
+			add(m)
 		}
 	}
-	return found
 }
 
 func isSkipDir(name string) bool {

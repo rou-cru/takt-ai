@@ -637,7 +637,7 @@ func TestDispatchRecoveryFailureStreak(t *testing.T) {
 		_, err := call(gcDeclaration(unit, objective, []string{unit}, 4, 1))
 		return err
 	}
-	close := func(unit, objective string, demonstrated bool) {
+	closeRecovery := func(unit, objective string, demonstrated bool) {
 		t.Helper()
 		if _, e := call(coordinationRequest{Action: "recovered", Event: unit, Session: "root",
 			Objective: objective, Pass: demonstrated, Evidence: "gate evidence"}); e != nil {
@@ -649,7 +649,7 @@ func TestDispatchRecoveryFailureStreak(t *testing.T) {
 		if e := declare(unit, "goal"); e != nil {
 			t.Fatalf("recovery %d denied: %v", i, e)
 		}
-		close(unit, "goal", false)
+		closeRecovery(unit, "goal", false)
 	}
 	blocked := func(unit string) {
 		t.Helper()
@@ -681,7 +681,7 @@ func TestDispatchRecoveryFailureStreak(t *testing.T) {
 		t.Fatalf("enabling decision ignored: %v", e)
 	}
 	// Only a demonstrated recovery breaks the streak.
-	close("attempt-3", "goal", true)
+	closeRecovery("attempt-3", "goal", true)
 	if r := gcProjection(t, state).Budgets("root").Recoveries["goal"]; r.Failures != 0 || r.Open {
 		t.Fatalf("demonstrated recovery did not break the streak: %+v", r)
 	}

@@ -25,7 +25,7 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
   const deps = await SandboxManager.checkDependenciesAsync();
   if (deps.errors.length) throw new Error(`Takt sandbox dependencies: ${deps.errors.join(', ')}`);
   if (!callID || !scratch || !writable?.length || !(protectedPaths.length || privatePaths.length) ||
-      [...writable, scratch, ...protectedPaths, ...privatePaths].some(p => !isAbsolute(p) || /[*?\[\]]/.test(p))) {
+      [...writable, scratch, ...protectedPaths, ...privatePaths].some(p => !isAbsolute(p) || /[*?[\]]/.test(p))) {
     throw new Error('Takt sandbox: explicit absolute literal paths and call ID required');
   }
   // SRT grants shared temp/log directories by default. They are NOT private

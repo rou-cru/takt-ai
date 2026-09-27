@@ -38,7 +38,7 @@ await plugin.setup({
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
-    hook: async (name, callback) => { (sessionHooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
     synthetic: async () => {},
@@ -48,7 +48,7 @@ await plugin.setup({
   agent: { get: async () => ({ permissions: [] }) },
   shell: { hook: async () => () => {} },
   tool: {
-    hook: async (name, callback) => { (hooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
     transform: async (callback) => {
       callback({ add: (definition) => { tools[definition.name] = definition }, namespace() {}, list: () => [], get: () => undefined, update() {}, remove() {} })
       return { dispose() {} }
@@ -145,7 +145,7 @@ if (scenario === "retry") {
   // producer's missing delivery.
   mark = dispatched().length
   await delegate("execute.before", "tpm-missing", "call-tpm-missing", "tpm")
-  await assert.rejects(delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
+  await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
     /delegation ended without delivering a result via deliver_result/)
   assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch"])
 } else {

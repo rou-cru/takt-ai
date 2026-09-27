@@ -58,7 +58,7 @@ await plugin.setup({
   agent: { get: async () => ({ permissions: [] }) },
   shell: { hook: async () => () => {} },
   tool: {
-    hook: async (name, callback) => { (hooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
     transform: async (callback) => {
       callback({ add: (definition) => { tools[definition.name] = definition }, namespace() {}, list: () => [], get: () => undefined, update() {}, remove() {} })
       return { dispose() {} }

@@ -40,10 +40,10 @@ func closeMarker(sectionID string) string {
 
 // stripOrphanMarkers removes unpaired opening or closing markers for the
 // given sectionID. Prevents duplicate blocks on re-sync (issue #301).
-func stripOrphanMarkers(content, open, close string) string {
+func stripOrphanMarkers(content, open, closeMark string) string {
 	for {
 		openIdx := strings.Index(content, open)
-		closeIdx := strings.Index(content, close)
+		closeIdx := strings.Index(content, closeMark)
 
 		switch {
 		case openIdx < 0 && closeIdx < 0:
@@ -54,7 +54,7 @@ func stripOrphanMarkers(content, open, close string) string {
 			// Orphan closer: no opener before it. Remove this closer and loop;
 			// the opener may then form a valid pair or become an orphan opener
 			// that gets cleaned up in the next iteration.
-			content = content[:closeIdx] + content[closeIdx+len(close):]
+			content = content[:closeIdx] + content[closeIdx+len(closeMark):]
 
 		case openIdx >= 0 && closeIdx < 0:
 			// Orphan opener: opening marker exists but no closer follows.
@@ -73,23 +73,23 @@ func stripOrphanMarkers(content, open, close string) string {
 // comments <!-- takt-ai:SECTION_ID --> in a markdown file.
 func InjectMarkdownSection(existing, sectionID, content string) string {
 	open := openMarker(sectionID)
-	close := closeMarker(sectionID)
+	closeMark := closeMarker(sectionID)
 
 	// Repair any orphan markers left by previous (buggy) sync runs before
 	// attempting replacement. This is the core fix for issue #301.
-	existing = stripOrphanMarkers(existing, open, close)
+	existing = stripOrphanMarkers(existing, open, closeMark)
 
 	openIdx := strings.Index(existing, open)
-	closeIdx := strings.Index(existing, close)
+	closeIdx := strings.Index(existing, closeMark)
 
 	// If both markers are found and in the correct order, replace the section.
 	if openIdx >= 0 && closeIdx > openIdx {
 		before := existing[:openIdx]
-		after := existing[closeIdx+len(close):]
+		after := existing[closeIdx+len(closeMark):]
 		if content == "" {
 			return withoutSection(before, after)
 		}
-		return before + sectionBlock(open, content, close) + after
+		return before + sectionBlock(open, content, closeMark) + after
 	}
 
 	// If content is empty and section doesn't exist, return existing unchanged.
@@ -105,16 +105,16 @@ func InjectMarkdownSection(existing, sectionID, content string) string {
 		}
 		separator += "\n"
 	}
-	return existing + separator + sectionBlock(open, content, close) + "\n"
+	return existing + separator + sectionBlock(open, content, closeMark) + "\n"
 }
 
 // sectionBlock is the marked section: the opening marker, the content on its
 // own lines, and the closing marker.
-func sectionBlock(open, content, close string) string {
+func sectionBlock(open, content, closeMark string) string {
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
-	return open + "\n" + content + close
+	return open + "\n" + content + closeMark
 }
 
 // withoutSection joins what surrounded a removed section, dropping the newline

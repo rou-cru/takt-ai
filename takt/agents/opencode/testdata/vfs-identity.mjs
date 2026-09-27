@@ -1,6 +1,40 @@
 import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
 
+const identity = (ctx, unit) => ({
+  ipc_version: 4, agent_id: ctx.agent, specialist: ctx.agent,
+  session_id: "root", work_unit_id: unit,
+})
+function checkIdentity(request, ctx, unit) {
+  for (const [field, value] of Object.entries(identity(ctx, unit))) {
+    assert.equal(request[field], value, `${field}: ${JSON.stringify(request)}`)
+  }
+  // Neither the attempt nor the invariant set's version is the caller's to
+  // declare: the harness issues both from the binding key.
+  for (const field of ["attempt_id", "invariants_hash"]) {
+    assert.equal(request[field], undefined, `${field}: ${JSON.stringify(request)}`)
+  }
+}
+async function bind(tools, messages, ctx, unit, authorKey) {
+  const before = messages.length
+  const result = await tools.vfs_bind.execute({
+    scope: authorKey ? [] : ["file.txt"], author_key: authorKey,
+    // Model-supplied identity must not override the harness context.
+    agent_id: "impostor", specialist: "impostor",
+  }, ctx)
+  assert.equal(messages.length, before + 1)
+  const message = messages.at(-1)
+  assert.equal(message.command, "bind")
+  checkIdentity(message.request, ctx, unit)
+  // A bind declares the governing documents; the harness pins them.
+  assert.deepEqual(message.request.invariants, ["AGENTS.md"])
+  // A verifier's bind names the staged work it judges; an author's names none.
+  assert.equal(message.request.author_key, authorKey)
+  assert.ok(result.content.includes("at version inv1:test"))
+  assert.ok(result.content.endsWith(`author_key ${message.key}`))
+  return message.key
+}
+
 // Keys are opaque transport responses, not a second implementation of bindings.
 for (const reverse of [false, true]) {
   const messages = []
@@ -79,42 +113,9 @@ for (const reverse of [false, true]) {
   const reviewerA = { sessionID: "review-a", agent: "takt-review" }
   const reviewerB = { sessionID: "review-b", agent: "takt-review" }
   const reviewerC = { sessionID: "review-a", agent: "takt-security" }
-  const identity = (ctx, unit) => ({
-    ipc_version: 4, agent_id: ctx.agent, specialist: ctx.agent,
-    session_id: "root", work_unit_id: unit,
-  })
-  function checkIdentity(request, ctx, unit) {
-    for (const [field, value] of Object.entries(identity(ctx, unit))) {
-      assert.equal(request[field], value, `${field}: ${JSON.stringify(request)}`)
-    }
-    // Neither the attempt nor the invariant set's version is the caller's to
-    // declare: the harness issues both from the binding key.
-    for (const field of ["attempt_id", "invariants_hash"]) {
-      assert.equal(request[field], undefined, `${field}: ${JSON.stringify(request)}`)
-    }
-  }
-  async function bind(ctx, unit, authorKey) {
-    const before = messages.length
-    const result = await tools.vfs_bind.execute({
-      scope: authorKey ? [] : ["file.txt"], author_key: authorKey,
-      // Model-supplied identity must not override the harness context.
-      agent_id: "impostor", specialist: "impostor",
-    }, ctx)
-    assert.equal(messages.length, before + 1)
-    const message = messages.at(-1)
-    assert.equal(message.command, "bind")
-    checkIdentity(message.request, ctx, unit)
-    // A bind declares the governing documents; the harness pins them.
-    assert.deepEqual(message.request.invariants, ["AGENTS.md"])
-    // A verifier's bind names the staged work it judges; an author's names none.
-    assert.equal(message.request.author_key, authorKey)
-    assert.ok(result.content.includes("at version inv1:test"))
-    assert.ok(result.content.endsWith(`author_key ${message.key}`))
-    return message.key
-  }
   const authors = reverse ? [authorB, authorA] : [authorA, authorB]
   const keys = {}
-  for (const author of authors) keys[author.sessionID] = await bind(author, author.sessionID)
+  for (const author of authors) keys[author.sessionID] = await bind(tools, messages, author, author.sessionID)
   const registrations = [
     [reviewerA, "author-a"], [reviewerB, "author-a"],
     [reviewerC, "author-a"], [reviewerA, "author-b"],
@@ -123,7 +124,7 @@ for (const reverse of [false, true]) {
   // the author key alone links it to the staged work it judges.
   const expectations = []
   for (const [ctx, unit] of reverse ? registrations.toReversed() : registrations) {
-    expectations.push({ ctx, unit, key: await bind(ctx, ctx.sessionID, keys[unit]) })
+    expectations.push({ ctx, unit, key: await bind(tools, messages, ctx, ctx.sessionID, keys[unit]) })
   }
   // The verifier names only the author and its verdict; the judged revision
   // and hash are the author's staged state, filled in by the plugin.
@@ -163,8 +164,8 @@ for (const reverse of [false, true]) {
   assert.equal(messages.at(-1).command, "op")
   assert.equal(messages.at(-1).request.action, "rollback")
   assert.equal(messages.at(-1).request.author_key, keys["author-a"])
-  const nextAuthor = await bind(authorA, "author-a")
-  const nextVerifier = await bind(reviewerA, "review-a", nextAuthor)
+  const nextAuthor = await bind(tools, messages, authorA, "author-a")
+  const nextVerifier = await bind(tools, messages, reviewerA, "review-a", nextAuthor)
   await tools.vfs_verify.execute(args(nextAuthor), reviewerA)
   const next = messages.at(-1)
   assert.equal(next.command, "verify")

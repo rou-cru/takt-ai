@@ -149,18 +149,18 @@ func routeTransitions() ui.Table[Route, Model] {
 			return route, m.active().Init()
 		}
 	}
-	close := func(m *Model) (Route, tea.Cmd) { return m.pop(), nil }
+	closeScreen := func(m *Model) (Route, tea.Cmd) { return m.pop(), nil }
 	return ui.Table[Route, Model]{
 		{From: RouteMenu, Event: openEvent(RouteInstall)}:     open(RouteInstall, func(root string) tea.Model { return install.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteDiagnostics)}: open(RouteDiagnostics, func(root string) tea.Model { return diagnostics.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteDrift)}:       open(RouteDrift, func(root string) tea.Model { return drift.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteUninstall)}:   open(RouteUninstall, func(root string) tea.Model { return uninstall.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteModels)}:      open(RouteModels, func(root string) tea.Model { return models.New(root) }),
-		{From: RouteInstall, Event: eventClose}:               close,
-		{From: RouteDiagnostics, Event: eventClose}:           close,
-		{From: RouteDrift, Event: eventClose}:                 close,
-		{From: RouteUninstall, Event: eventClose}:             close,
-		{From: RouteModels, Event: eventClose}:                close,
+		{From: RouteInstall, Event: eventClose}:               closeScreen,
+		{From: RouteDiagnostics, Event: eventClose}:           closeScreen,
+		{From: RouteDrift, Event: eventClose}:                 closeScreen,
+		{From: RouteUninstall, Event: eventClose}:             closeScreen,
+		{From: RouteModels, Event: eventClose}:                closeScreen,
 		{From: RouteInstall, Event: eventReplaceModels}: func(m *Model) (Route, tea.Cmd) {
 			m.stack, m.routes = nil, nil
 			m.push(RouteModels, models.New(m.root))

@@ -145,36 +145,49 @@ type MandateRateDecision struct {
 	Demoted        bool         `json:"demoted"`
 }
 
+// MandateReversionRateInput is what EvaluateMandateReversionRate measures a
+// mandate class's reversion rate over: the class and session, the registered
+// range (afterID, beforeID], the acting agent recorded on any resulting
+// CONTAIN effect, and the work unit that effect is attributed to.
+type MandateReversionRateInput struct {
+	Agent      string
+	SessionID  string
+	Mandate    MandateClass
+	AfterID    int64
+	BeforeID   int64
+	WorkUnitID string
+}
+
 // EvaluateMandateReversionRate measures how often mandate's consolidated work
 // gets reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
 // session events in (afterID, beforeID], never elapsed time (PR-MNT-9/11).
 // Above reversionRateThreshold it demotes mandate to proposal-only (PR-MNT-32)
 // and publishes the CONTAIN effect PR-OBS-CTL-5 requires.
-func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, agent, sessionID string, mandate MandateClass, afterID, beforeID int64, workUnitID string) (MandateRateDecision, error) {
-	reedits, err := store.Events(sessionID, obs.EventCycleReedit, afterID, beforeID, 0)
+func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
+	reedits, err := store.Events(in.SessionID, obs.EventCycleReedit, in.AfterID, in.BeforeID, 0)
 	if err != nil {
 		return MandateRateDecision{}, err
 	}
 	var reversions int64
 	for _, e := range reedits {
-		if mc, _ := e.Envelope.Attributes["mandate_class"].(string); mc == string(mandate) {
+		if mc, _ := e.Envelope.Attributes["mandate_class"].(string); mc == string(in.Mandate) {
 			reversions++
 		}
 	}
-	registered, err := store.CountEvents(sessionID, "", afterID, beforeID)
+	registered, err := store.CountEvents(in.SessionID, "", in.AfterID, in.BeforeID)
 	if err != nil {
 		return MandateRateDecision{}, err
 	}
-	d := MandateRateDecision{Mandate: mandate, Reversions: reversions, RegisteredWork: registered}
+	d := MandateRateDecision{Mandate: in.Mandate, Reversions: reversions, RegisteredWork: registered}
 	if registered > 0 {
 		d.Rate = float64(reversions) / float64(registered)
 	}
 	if registered >= minRegisteredWorkForRateDecision && d.Rate > reversionRateThreshold {
-		demoteMandate(mandate)
+		demoteMandate(in.Mandate)
 		d.Demoted = true
 		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d) exceeds threshold %.2f",
-			mandate, d.Rate, reversions, registered, reversionRateThreshold)
-		if err := obs.PublishControlEffectEvent(bus, clock, obs.ActionContain, agent, "gc.mandate-reversion-rate", cond, workUnitID); err != nil {
+			in.Mandate, d.Rate, reversions, registered, reversionRateThreshold)
+		if err := obs.PublishControlEffectEvent(bus, clock, obs.ActionContain, in.Agent, "gc.mandate-reversion-rate", cond, in.WorkUnitID); err != nil {
 			return d, err
 		}
 	}

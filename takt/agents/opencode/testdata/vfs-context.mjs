@@ -30,7 +30,7 @@ await plugin.setup({
   storage: { async get(key) { return storage.get(key) }, async set(key, value) { storage.set(key, value) } },
   session: {
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: "unit-1" } },
-    hook: async (name, callback) => { (hooks[name] ??= []).push(callback); return { dispose() {} } },
+    hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "created" }), prompt: async () => {}, interrupt: async () => {},
   },
   agent: { async get({ agentID }) { return { id: agentID, permissions: agentID === "dev-none" ? [] : [

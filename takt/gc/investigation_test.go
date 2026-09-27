@@ -72,7 +72,7 @@ func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) 
 	seedRegisteredWork(t, bus, clock, 20)          // denominator = 20
 	seedReedits(t, bus, clock, MandateDeadCode, 2) // 2/20 = 10%, below the 25% threshold
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, "agent-a", "session-rate-test", MandateDeadCode, 0, 0, "wu-1")
+	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDeadCode, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *test
 	seedRegisteredWork(t, bus, clock, 10)             // denominator = 10 registered-work events...
 	seedReedits(t, bus, clock, MandateDuplication, 5) // ...plus 5 reedits = 15 registered, 5/15 = 33%, above 25%
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, "agent-a", "session-rate-test", MandateDuplication, 0, 0, "wu-1")
+	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDuplication, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T)
 	// below minRegisteredWorkForRateDecision, so it must not fire.
 	seedReedits(t, bus, clock, MandateDocumentation, 2)
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, "agent-a", "session-rate-test", MandateDocumentation, 0, 0, "wu-1")
+	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDocumentation, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) 
 	seedRegisteredWork(t, bus, clock, 10)
 	seedReedits(t, bus, clock, MandateComplexity, 5)
 
-	if _, err := EvaluateMandateReversionRate(store, bus, clock, "agent-a", "session-rate-test", MandateComplexity, 0, 0, "wu-1"); err != nil {
+	if _, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateComplexity, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"}); err != nil {
 		t.Fatal(err)
 	}
 

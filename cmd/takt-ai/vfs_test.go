@@ -70,31 +70,19 @@ func TestVFSClaimControlCommands(t *testing.T) {
 	mutate := newVFSMutator(t, root, state)
 
 	assigned, err := mutate("assign", vfsReq("u1", "dev", map[string]any{"scope": []string{"owned.go"}}))
-	if err != nil || !assigned.OK || assigned.Key == "" {
-		t.Fatalf("assign = %+v, %v", assigned, err)
-	}
+	assertVFSAssigned(t, assigned, err)
 	claims, err := mutate("claims", map[string]any{"ipc_version": IPCVersion, "session_id": "s1"})
-	if err != nil || len(claims.Claims) != 1 || !claims.Claims[0].Pending || claims.Claims[0].Active || string(claims.Claims[0].Key) != assigned.Key {
-		t.Fatalf("pending claim inspection = %+v, %v", claims, err)
-	}
+	assertVFSPendingClaim(t, claims, err, assigned.Key)
 
 	refused, err := mutate("assign", vfsReq("u2", "fix", map[string]any{"scope": []string{"owned.go"}}))
-	if err != nil || refused.OK || refused.Collision == nil {
-		t.Fatalf("collision refusal = %+v, %v", refused, err)
-	}
-	if refused.Collision.RequestedPath != "owned.go" || refused.Collision.TargetAgent != "fix" ||
-		refused.Collision.OwnerAgent != "dev" || refused.Collision.OwnerSession != "s1" || refused.Collision.OwnerUnit != "u1" {
-		t.Fatalf("collision evidence = %+v", refused.Collision)
-	}
+	assertVFSCollisionRefusal(t, refused, err, "dev", "s1", "u1")
 
 	bound, err := mutate("bind", vfsReq("u1", "dev", nil))
 	if err != nil || !bound.OK || bound.Key != assigned.Key {
 		t.Fatalf("target adopted assigned claim = %+v, %v", bound, err)
 	}
 	claims, err = mutate("claims", map[string]any{"ipc_version": IPCVersion, "session_id": "s1"})
-	if err != nil || len(claims.Claims) != 1 || claims.Claims[0].Pending || !claims.Claims[0].Active {
-		t.Fatalf("active claim inspection = %+v, %v", claims, err)
-	}
+	assertVFSActiveClaim(t, claims, err)
 	released, err := mutate("release", map[string]any{"ipc_version": IPCVersion, "session_id": "s1", "key": assigned.Key})
 	if err != nil || !released.OK {
 		t.Fatalf("release = %+v, %v", released, err)
@@ -102,6 +90,38 @@ func TestVFSClaimControlCommands(t *testing.T) {
 	claims, err = mutate("claims", map[string]any{"ipc_version": IPCVersion, "session_id": "s1"})
 	if err != nil || len(claims.Claims) != 0 {
 		t.Fatalf("claims after release = %+v, %v", claims, err)
+	}
+}
+
+func assertVFSAssigned(t *testing.T, assigned response, err error) {
+	t.Helper()
+	if err != nil || !assigned.OK || assigned.Key == "" {
+		t.Fatalf("assign = %+v, %v", assigned, err)
+	}
+}
+
+func assertVFSPendingClaim(t *testing.T, claims response, err error, wantKey string) {
+	t.Helper()
+	if err != nil || len(claims.Claims) != 1 || !claims.Claims[0].Pending || claims.Claims[0].Active || string(claims.Claims[0].Key) != wantKey {
+		t.Fatalf("pending claim inspection = %+v, %v", claims, err)
+	}
+}
+
+func assertVFSActiveClaim(t *testing.T, claims response, err error) {
+	t.Helper()
+	if err != nil || len(claims.Claims) != 1 || claims.Claims[0].Pending || !claims.Claims[0].Active {
+		t.Fatalf("active claim inspection = %+v, %v", claims, err)
+	}
+}
+
+func assertVFSCollisionRefusal(t *testing.T, refused response, err error, ownerAgent vfs.AgentID, ownerSession, ownerUnit string) {
+	t.Helper()
+	if err != nil || refused.OK || refused.Collision == nil {
+		t.Fatalf("collision refusal = %+v, %v", refused, err)
+	}
+	if refused.Collision.RequestedPath != "owned.go" || refused.Collision.TargetAgent != "fix" ||
+		refused.Collision.OwnerAgent != ownerAgent || refused.Collision.OwnerSession != ownerSession || refused.Collision.OwnerUnit != ownerUnit {
+		t.Fatalf("collision evidence = %+v", refused.Collision)
 	}
 }
 
@@ -360,30 +380,9 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	root := t.TempDir()
 	state := filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
-	type unit struct {
-		author, verifier response
-		delta            string
-		path             string
-	}
-	units := map[string]*unit{"u1": {path: "a.go"}, "u2": {path: "b.go"}}
+	units := map[string]*separateSessionUnit{"u1": {path: "a.go"}, "u2": {path: "b.go"}}
 	for id, u := range units {
-		var err error
-		if u.author, err = mutate("bind", vfsReq(id, "dev", map[string]any{"scope": []string{u.path}})); err != nil {
-			t.Fatal(err)
-		}
-		created, err := mutate("op", vfsReq(id, "dev", map[string]any{
-			"author_key": u.author.Key, "call_id": "w-" + id, "expected_revision": 0, "action": "create", "path": u.path, "content": id,
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		u.delta = created.DeltaHash
-		if u.verifier, err = mutate("assign-verifier", vfsReq(id, "verify", map[string]any{"author_key": u.author.Key})); err != nil {
-			t.Fatal(err)
-		}
-		if _, err = mutate("bind", vfsReq(id, "verify", map[string]any{"author_key": u.author.Key})); err != nil {
-			t.Fatal(err)
-		}
+		bindUnitAuthorAndVerifier(t, mutate, id, u)
 	}
 	// u2 reaches for a path u1 owns: a collision inside u2 only.
 	if _, err := mutate("op", vfsReq("u2", "dev", map[string]any{
@@ -410,30 +409,70 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 		t.Fatalf("u2 consolidation over its own unresolved collision: %v", err)
 	}
 	for id, u := range units {
-		var out, stderr bytes.Buffer
-		if err := run([]string{"vfs", "journal", "--workspace", root, "--state", state, "--session", "s1", "--unit", id}, strings.NewReader(""), &out, &stderr); err != nil {
-			t.Fatal(err)
-		}
-		var entries []vfs.JournalEntry
-		if err := json.Unmarshal(out.Bytes(), &entries); err != nil {
-			t.Fatal(err)
-		}
-		created := false
-		for _, e := range entries {
-			created = created || (e.Path == u.path && e.Operation == vfs.OpCreate)
-			if e.WorkUnitID != id || (e.Path != "" && e.Path != u.path) {
-				t.Fatalf("unit %s journal holds a foreign entry: %+v", id, e)
-			}
-		}
-		if !created {
-			t.Fatalf("unit %s journal lacks its create: %s", id, out.String())
-		}
+		assertUnitJournalIsolated(t, root, state, id, u)
 	}
 	if content, err := os.ReadFile(filepath.Join(root, "a.go")); err != nil || string(content) != "u1" {
 		t.Fatalf("u1 not consolidated: %q, %v", content, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "b.go")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("u2 reached disk despite its collision")
+	}
+}
+
+// separateSessionUnit is one unit's fixture in
+// TestVFSUnitsOfOneSessionAreSeparate: its author and verifier bindings, the
+// delta hash it staged, and the path it owns.
+type separateSessionUnit struct {
+	author, verifier response
+	delta            string
+	path             string
+}
+
+// bindUnitAuthorAndVerifier stages id's create and binds both its author and
+// verifier claims, recording the delta hash TestVFSUnitsOfOneSessionAreSeparate
+// verifies against.
+func bindUnitAuthorAndVerifier(t *testing.T, mutate func(string, map[string]any) (response, error), id string, u *separateSessionUnit) {
+	t.Helper()
+	var err error
+	if u.author, err = mutate("bind", vfsReq(id, "dev", map[string]any{"scope": []string{u.path}})); err != nil {
+		t.Fatal(err)
+	}
+	created, err := mutate("op", vfsReq(id, "dev", map[string]any{
+		"author_key": u.author.Key, "call_id": "w-" + id, "expected_revision": 0, "action": "create", "path": u.path, "content": id,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.delta = created.DeltaHash
+	if u.verifier, err = mutate("assign-verifier", vfsReq(id, "verify", map[string]any{"author_key": u.author.Key})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mutate("bind", vfsReq(id, "verify", map[string]any{"author_key": u.author.Key})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// assertUnitJournalIsolated checks that id's journal holds only its own
+// entries (no foreign unit or path leaks in) and contains its create.
+func assertUnitJournalIsolated(t *testing.T, root, state, id string, u *separateSessionUnit) {
+	t.Helper()
+	var out, stderr bytes.Buffer
+	if err := run([]string{"vfs", "journal", "--workspace", root, "--state", state, "--session", "s1", "--unit", id}, strings.NewReader(""), &out, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	var entries []vfs.JournalEntry
+	if err := json.Unmarshal(out.Bytes(), &entries); err != nil {
+		t.Fatal(err)
+	}
+	created := false
+	for _, e := range entries {
+		created = created || (e.Path == u.path && e.Operation == vfs.OpCreate)
+		if e.WorkUnitID != id || (e.Path != "" && e.Path != u.path) {
+			t.Fatalf("unit %s journal holds a foreign entry: %+v", id, e)
+		}
+	}
+	if !created {
+		t.Fatalf("unit %s journal lacks its create: %s", id, out.String())
 	}
 }
 

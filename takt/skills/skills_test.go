@@ -190,24 +190,41 @@ func TestEveryAuthorHasExactlyOneMemoryRoleSkill(t *testing.T) {
 // TestMemoryRoleSkillsLinkContractWithoutRestatingIt verifies shared rules stay in the contract alone.
 func TestMemoryRoleSkillsLinkContractWithoutRestatingIt(t *testing.T) {
 	for deployed, content := range memorySkills(t) {
-		for _, metadata := range []string{"mem_save", "mem_session_", "`session_id`", "**Author**:", "Memory: "} {
-			if strings.Contains(content, metadata) {
-				t.Errorf("%s asks the agent for harness metadata %q", deployed, metadata)
-			}
-		}
-		if strings.Contains(strings.ToLower(content), "## next steps") {
-			t.Errorf("%s carries a Next Steps section", deployed)
-		}
+		assertMemorySkillAsksNoHarnessMetadata(t, deployed, content)
 		if deployed == engram.ContractSkillPath {
 			continue
 		}
-		if !strings.Contains(content, "takt-memory-contract/SKILL.md") {
-			t.Errorf("%s does not link the contract", path.Dir(deployed))
+		assertMemorySkillLinksContractWithoutRestating(t, deployed, content)
+	}
+}
+
+// assertMemorySkillAsksNoHarnessMetadata checks that the deployed skill at
+// content never asks the agent to supply harness-owned metadata, and carries
+// no Next Steps section (every memory-role skill's rule, including the
+// contract skill itself).
+func assertMemorySkillAsksNoHarnessMetadata(t *testing.T, deployed, content string) {
+	t.Helper()
+	for _, metadata := range []string{"mem_save", "mem_session_", "`session_id`", "**Author**:", "Memory: "} {
+		if strings.Contains(content, metadata) {
+			t.Errorf("%s asks the agent for harness metadata %q", deployed, metadata)
 		}
-		for _, shared := range []string{"| `proposal` |", "`proposal`, `decision`", "memory_record(", "relates_to", "mem_search", "mem_save", "Memory: ~"} {
-			if strings.Contains(content, shared) {
-				t.Errorf("%s restates contract rule %q", path.Dir(deployed), shared)
-			}
+	}
+	if strings.Contains(strings.ToLower(content), "## next steps") {
+		t.Errorf("%s carries a Next Steps section", deployed)
+	}
+}
+
+// assertMemorySkillLinksContractWithoutRestating checks that a non-contract
+// memory-role skill links the memory contract skill rather than restating
+// its rules.
+func assertMemorySkillLinksContractWithoutRestating(t *testing.T, deployed, content string) {
+	t.Helper()
+	if !strings.Contains(content, "takt-memory-contract/SKILL.md") {
+		t.Errorf("%s does not link the contract", path.Dir(deployed))
+	}
+	for _, shared := range []string{"| `proposal` |", "`proposal`, `decision`", "memory_record(", "relates_to", "mem_search", "mem_save", "Memory: ~"} {
+		if strings.Contains(content, shared) {
+			t.Errorf("%s restates contract rule %q", path.Dir(deployed), shared)
 		}
 	}
 }

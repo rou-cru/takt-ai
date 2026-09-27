@@ -106,10 +106,10 @@ func TestInjectMarkdownSection_CloseBeforeOpenTreatedAsNotFound(t *testing.T) {
 func TestInjectMarkdownSection_OrphanRepair(t *testing.T) {
 	const sid = "engram-protocol"
 	open := "<!-- takt-ai:" + sid + " -->"
-	close := "<!-- /takt-ai:" + sid + " -->"
+	closeMark := "<!-- /takt-ai:" + sid + " -->"
 	newContent := "Engram protocol content.\n"
 
-	oneBlock := open + "\n" + newContent + close + "\n"
+	oneBlock := open + "\n" + newContent + closeMark + "\n"
 
 	tests := []struct {
 		name     string
@@ -148,7 +148,7 @@ func TestInjectMarkdownSection_OrphanRepair(t *testing.T) {
 				if count != 1 {
 					t.Fatalf("orphan-opener: expected exactly 1 open marker after repair, got %d\n%q", count, result)
 				}
-				if !strings.Contains(result, close) {
+				if !strings.Contains(result, closeMark) {
 					t.Fatalf("orphan-opener: result must contain the close marker\n%q", result)
 				}
 				if !strings.Contains(result, newContent) {
@@ -171,13 +171,13 @@ func TestInjectMarkdownSection_OrphanRepair(t *testing.T) {
 			// A single sync must collapse to one block.
 			name: "two blocks (orphan opener + appended block) — collapsed to one",
 			existing: "# Preamble\n\n" + open + "\nOld content.\n" +
-				"\n" + open + "\n" + newContent + close + "\n",
+				"\n" + open + "\n" + newContent + closeMark + "\n",
 			checkOnce: func(t *testing.T, result string) {
 				count := strings.Count(result, open)
 				if count != 1 {
 					t.Fatalf("two-blocks: expected exactly 1 open marker after collapse, got %d\n%q", count, result)
 				}
-				if !strings.Contains(result, close) {
+				if !strings.Contains(result, closeMark) {
 					t.Fatalf("two-blocks: result must contain the close marker\n%q", result)
 				}
 			},
@@ -198,7 +198,7 @@ func TestInjectMarkdownSection_OrphanRepair(t *testing.T) {
 				if count != 1 {
 					t.Fatalf("no-markers: expected 1 open marker after first sync, got %d\n%q", count, result)
 				}
-				if !strings.Contains(result, close) {
+				if !strings.Contains(result, closeMark) {
 					t.Fatalf("no-markers: result must contain the close marker\n%q", result)
 				}
 				if !strings.Contains(result, "User content only.") {

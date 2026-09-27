@@ -38,7 +38,7 @@ const (
 	TextActionRetry           = "Retry"
 	TextActionReviewAgain     = "Review again"
 	TextActionKeepCurrent     = "Keep current state"
-	TextActionAssignModels    = "Assign models"
+	TextActionAssignModels    = TextMenuAssignModels
 	TextActionBack            = "Back"
 	TextActionUninstall       = "Uninstall"
 	TextActionSelectFiles     = "Select files to restore"
@@ -202,7 +202,7 @@ const (
 	// Models flow.
 	TextModelsBusy        = "Model assignment"
 	TextModelsResultTitle = "Assign models · Result"
-	TextModelsTitle       = "Assign models"
+	TextModelsTitle       = TextMenuAssignModels
 	TextModelsLoadFail    = "Could not load the installed configuration: "
 	TextModelsNothingKept = "Nothing was changed. Esc returns to the menu."
 	TextModelsNothing     = "Nothing installed yet. Install Takt before assigning models."

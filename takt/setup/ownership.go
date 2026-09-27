@@ -238,8 +238,8 @@ func SafeJoin(root, rel string) (string, error) {
 func verifyNoSymlinkEscape(joined, rootReal string) error {
 	dir := filepath.Dir(joined)
 	for {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			if !isWithin(real, rootReal) {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			if !isWithin(resolved, rootReal) {
 				return fmt.Errorf("safe join: parent directory %q escapes deployment root via symlink", dir)
 			}
 		}

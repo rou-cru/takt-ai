@@ -207,7 +207,10 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
 		},
 		"handoff": func() (any, error) {
-			return protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, r.Result, r.AdditionalContext, r.ExtraArtifacts, r.ResultIDs)
+			return protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
+				Result: r.Result, AdditionalContext: r.AdditionalContext,
+				ExtraArtifacts: r.ExtraArtifacts, ResultIDs: r.ResultIDs,
+			})
 		},
 		"abort_switch": func() (any, error) {
 			return protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
