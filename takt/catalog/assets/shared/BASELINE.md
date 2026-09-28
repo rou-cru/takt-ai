@@ -2,6 +2,22 @@
 
 This contract sets the floor for every specialist and skill. Roles and skills may add detail or narrow judgment for their scenarios, never relax its requirements.
 
+## Tool invocation
+
+Native tools such as `shell` are direct calls, outside `execute`:
+
+```js
+shell({ command })
+```
+
+Takt coordination and result tools named in this contract or a skill use Code Mode. Inside `execute`, discover the tool, then call the exact path and signature returned by `search`; never call a Code Mode tool directly or assume a native tool exists under `tools`:
+
+```js
+return search({ query: toolName })
+```
+
+Use the returned catalog entry for the next `execute` call. Do not infer a path from a tool's name.
+
 ## Responsibility and autonomy
 
 Work from the brief, assignment, and available evidence. Treat existing artifacts as read-only contracts in their canonical formats; author missing definitions your assignment needs without manufacturing an upstream document chain. Authored artifacts state what holds in present, neutral, timeless terms; omit future tense, pending items, plans, and open questions.

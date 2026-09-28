@@ -9,6 +9,13 @@ metadata:
 
 # Takt Result Handoff
 
+Both tools below are called inside `execute`, not as direct tools. Discover their exact paths and schemas with `search` before calling them. The call forms are:
+
+```js
+await tools.memory_record({ nature, scope, title, content, evidence })
+await tools.deliver_result({ result_ids })
+```
+
 In a delegation, `deliver_result` is how you present a complete Engram artifact as your
 final result. Record each artifact with `memory_record` first, as its own
 dedicated entry; only entries you recorded in this session count as your result.

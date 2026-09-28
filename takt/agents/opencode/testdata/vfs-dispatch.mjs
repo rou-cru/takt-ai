@@ -54,6 +54,7 @@ await plugin.setup({
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
+    wait: async () => {},
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
   },

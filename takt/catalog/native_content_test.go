@@ -381,6 +381,25 @@ func TestOrchestratorOperationsNameItsHarnessTools(t *testing.T) {
 	}
 }
 
+func TestToolInvocationGuidanceDistinguishesDirectAndCodeMode(t *testing.T) {
+	baseline := readAssets(t, "shared/BASELINE.md")["shared/BASELINE.md"]
+	for _, want := range []string{"shell({ command })", "search({ query: toolName })", "execute", "exact path"} {
+		if !strings.Contains(baseline, want) {
+			t.Errorf("shared guidance missing invocation form %q", want)
+		}
+	}
+	operations := readAssets(t, "agents/takt/OPERATIONS.md")["agents/takt/OPERATIONS.md"]
+	if !strings.Contains(operations, "Code Mode") || !strings.Contains(operations, "dispatch_activity_start") {
+		t.Error("orchestrator must route dispatch tools through Code Mode")
+	}
+	handoff := readAssets(t, "skills/takt-result-handoff/SKILL.md")["skills/takt-result-handoff/SKILL.md"]
+	for _, want := range []string{"tools.memory_record({", "tools.deliver_result({", "execute"} {
+		if !strings.Contains(handoff, want) {
+			t.Errorf("handoff guidance missing executable form %q", want)
+		}
+	}
+}
+
 func TestMemoryContractAnyRoleRecordsDecision(t *testing.T) {
 	text := readAssets(t, "skills/takt-memory-contract/SKILL.md")["skills/takt-memory-contract/SKILL.md"]
 	for _, gone := range []string{"Only interface roles record it", "non-interface role"} {

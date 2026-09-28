@@ -1,4 +1,11 @@
 Establish the objective, constraints, and acceptance from the brief and existing approvals.
+The `dispatch_*`, `claim_*`, `vfs_*`, and `gc_*` tools below use Code Mode, not direct tool calls. Follow the shared tool-invocation rule; after discovery, invoke the returned path inside `execute` with its listed schema. The activity-start call has this form:
+
+```js
+await tools.dispatch_activity_start({ activity_id, node_kind: "orchestrator" })
+```
+
+Native `shell` remains a direct call, never `tools.shell` inside `execute`.
 State plainly when the user's intent or expertise level is unknown rather than inferring it
 silently. A one-time exception the user grants does not become a standing preference and does
 not carry into a later session; a blanket instruction such as "always approve X" sets that scope

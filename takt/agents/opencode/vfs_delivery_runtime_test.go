@@ -67,6 +67,8 @@ export const Plugin = { define: definition => definition }
 	// IDs in the same delegation must finish exactly like a clean first try:
 	// same finish request shape, no side channel marking the earlier failure.
 	t.Run("retry_indistinguishable_from_clean", func(t *testing.T) { run(t, "retry") })
+	t.Run("async_delivery_waits_for_child", func(t *testing.T) { run(t, "async_delivery") })
+	t.Run("async_missing_waits_for_child", func(t *testing.T) { run(t, "async_missing") })
 
 	// A producer that never calls deliver_result gets exactly one bounded
 	// nudge, then a failure textually distinct from a validate_results

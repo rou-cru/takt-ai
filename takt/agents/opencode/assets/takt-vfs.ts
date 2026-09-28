@@ -864,7 +864,10 @@ export default Plugin.define({
             const child = childOf.get(key)
             // Bounded to one retry: a producer that forgot deliver_result gets a
             // single nudge, never an unbounded prompt loop.
-            if (child) await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+            if (child) {
+              await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+              await ctx.session.wait({ sessionID: child })
+            }
             if (!deliveries.has(key)) {
               throw new Error("delegation ended without delivering a result via deliver_result")
             }

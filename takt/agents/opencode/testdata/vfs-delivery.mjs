@@ -41,6 +41,7 @@ const hooks = {}
 const sessionHooks = {}
 const promptedSessions = []
 let onPrompt = async (_sessionID, _text) => {}
+let onWait = async (_sessionID) => {}
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -49,6 +50,7 @@ await plugin.setup({
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
+    wait: async ({ sessionID }) => onWait(sessionID),
     synthetic: async () => {},
     interrupt: async () => {},
   },
@@ -104,6 +106,48 @@ if (scenario === "retry") {
   assert.deepEqual(Object.keys(retryFinish).sort(byName), ["action", "dispatch", "event", "session"])
   const validateCalls = dispatched().slice(mark).filter(r => r.action === "validate_results")
   assert.equal(validateCalls.length, 2, "expected one failed and one corrected validate_results call")
+} else if (scenario === "async_delivery") {
+  await delegate("execute.before", "async-result", "call-async", "pm")
+  const nudgeEvent = { agent: "pm", sessionID: "async-result", tools: {}, system: [] }
+  for (const callback of sessionHooks.context) await callback(nudgeEvent)
+  let resume
+  const resumed = new Promise(resolve => { resume = resolve })
+  let release
+  const turn = new Promise(resolve => { release = resolve })
+  onPrompt = async () => { resume() }
+  onWait = async () => {
+    await turn
+    await tools.deliver_result.execute({ result_ids: [2] }, { sessionID: "async-result", agent: "pm" })
+  }
+  let settled = false
+  const completion = delegate("execute.after", "async-result", "call-async", "pm").finally(() => { settled = true })
+  await resumed
+  await Promise.resolve()
+  assert.equal(settled, false, "the parent finished while the producer was still active")
+  assert.equal(dispatched().filter(r => r.action === "finish").length, 0)
+  release()
+  await completion
+  assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "validate_results", "finish"])
+} else if (scenario === "async_missing") {
+  await delegate("execute.before", "async-missing", "call-async-missing", "pm")
+  const nudgeEvent = { agent: "pm", sessionID: "async-missing", tools: {}, system: [] }
+  for (const callback of sessionHooks.context) await callback(nudgeEvent)
+  let resume
+  const resumed = new Promise(resolve => { resume = resolve })
+  let release
+  const turn = new Promise(resolve => { release = resolve })
+  onPrompt = async () => { resume() }
+  onWait = async () => { await turn }
+  let settled = false
+  const completion = delegate("execute.after", "async-missing", "call-async-missing", "pm")
+    .then(() => { settled = true; return undefined }, error => { settled = true; return error })
+  await resumed
+  await Promise.resolve()
+  assert.equal(settled, false, "the parent was told the producer failed before its turn ended")
+  release()
+  const error = await completion
+  assert.match(error.message, /delegation ended without delivering a result via deliver_result/)
+  assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "finish"])
 } else if (scenario === "fallback") {
   // A validate_results transport/network failure must read nothing like a
   // never-delivered fallback failure.
