@@ -255,7 +255,7 @@ export default Plugin.define({
   async setup(ctx) {
     const workspace = ctx.location.directory
     const home = homedir()
-    let codegraphReady = !(await sameDirectory(workspace, home))
+    const codegraphReady = !(await sameDirectory(workspace, home))
     if (!codegraphReady) {
       console.warn(`Takt: CodeGraph was not initialized because OpenCode is open in the home directory (${home}). Open a specific project to enable CodeGraph tools.`)
     } else {

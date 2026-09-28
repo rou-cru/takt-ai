@@ -36,10 +36,6 @@ func installedRoot(t *testing.T) (string, []string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	root := t.TempDir()
-	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
-		t.Fatalf("Run(install) error = %v", err)
-	}
 	components, err := setup.AllComponents()
 	if err != nil {
 		t.Fatalf("AllComponents() error = %v", err)
@@ -47,6 +43,11 @@ func installedRoot(t *testing.T) (string, []string) {
 	names := make([]string, len(components))
 	for i, c := range components {
 		names[i] = string(c)
+	}
+	request := setuputil.TestPlanRequest()
+	request.Components = names
+	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("Run(install) error = %v", err)
 	}
 	return root, names
 }

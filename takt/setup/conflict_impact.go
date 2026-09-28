@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path"
+	"reflect"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
@@ -54,6 +55,59 @@ func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry Ownershi
 		}
 		conflict.Consequence = "Takt cannot guarantee the " + conflict.Affects + " " + kept + "."
 	}
+}
+
+// injectedMCPServers names the MCP server keys InjectEngram and InjectCodegraph
+// (takt/lifecycle) merge into opencode.json after deployment writes the
+// rendered artifact. They are never part of that artifact's own content, so a
+// plain byte comparison against it would read every fresh install as drift.
+var injectedMCPServers = []string{"engram", "codegraph"}
+
+// ContentMatches reports whether current already holds want, the way deploy
+// would leave it: for opencode.json, MCP servers a later injection step owns
+// are excluded first, since want never has them either. Any other path falls
+// back to a plain byte comparison.
+func ContentMatches(artifactPath string, current, want []byte) bool {
+	if artifactPath != opencode.ConfigPath() {
+		return bytes.Equal(current, want)
+	}
+	pruned, ok := withoutInjectedMCPServers(current)
+	if !ok {
+		return bytes.Equal(current, want)
+	}
+	var wantObject map[string]any
+	if json.Unmarshal(want, &wantObject) != nil {
+		return bytes.Equal(current, want)
+	}
+	return reflect.DeepEqual(pruned, wantObject)
+}
+
+// withoutInjectedMCPServers parses raw and drops injectedMCPServers from
+// mcp.servers, pruning now-empty parents so an install that selected no MCP
+// config of its own compares equal to one that never had the key at all.
+func withoutInjectedMCPServers(raw []byte) (map[string]any, bool) {
+	var object map[string]any
+	if json.Unmarshal(raw, &object) != nil {
+		return nil, false
+	}
+	mcp, ok := object["mcp"].(map[string]any)
+	if !ok {
+		return object, true
+	}
+	servers, ok := mcp["servers"].(map[string]any)
+	if !ok {
+		return object, true
+	}
+	for _, name := range injectedMCPServers {
+		delete(servers, name)
+	}
+	if len(servers) == 0 {
+		delete(mcp, "servers")
+	}
+	if len(mcp) == 0 {
+		delete(object, "mcp")
+	}
+	return object, true
 }
 
 // isJSONObject reports whether raw survives filemerge's JSON reading as an

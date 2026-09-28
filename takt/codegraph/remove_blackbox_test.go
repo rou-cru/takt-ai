@@ -11,10 +11,11 @@ import (
 )
 
 func TestManagedMarkerKeyIsStable(t *testing.T) {
-	if got := codegraph.ManagedMarkerKey(); got == "" {
+	first := codegraph.ManagedMarkerKey()
+	if first == "" {
 		t.Fatal("ManagedMarkerKey() = \"\", want a stable non-empty ownership-manifest key")
 	}
-	if codegraph.ManagedMarkerKey() != codegraph.ManagedMarkerKey() {
+	if second := codegraph.ManagedMarkerKey(); first != second {
 		t.Fatal("ManagedMarkerKey() is not stable across calls")
 	}
 }

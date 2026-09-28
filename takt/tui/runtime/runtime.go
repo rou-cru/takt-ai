@@ -2,7 +2,6 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -445,9 +444,7 @@ func (adapter Adapter) PreviewPlan(request PreviewRequest) (InstallPlan, error) 
 				plan.Add = append(plan.Add, artifact.Path)
 			case err != nil:
 				return InstallPlan{}, fmt.Errorf("inspect %q: %w", artifact.Path, err)
-			case !bytes.Equal(current, artifact.Content):
-				// Configuration artifacts always count as modified; a merge-aware
-				// diff belongs in setup.
+			case !setup.ContentMatches(artifact.Path, current, artifact.Content):
 				plan.Modify = append(plan.Modify, artifact.Path)
 			}
 		}

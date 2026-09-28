@@ -1,7 +1,6 @@
 package ui_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
@@ -9,7 +8,6 @@ import (
 
 func TestSpinnerDisabledAnimation(t *testing.T) {
 	t.Setenv("TAKT_NO_ANIMATION", "1")
-	defer os.Unsetenv("TAKT_NO_ANIMATION")
 
 	s := ui.NewSpinner()
 	if cmd := s.Tick(); cmd != nil {

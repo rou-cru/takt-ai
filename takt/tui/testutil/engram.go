@@ -24,7 +24,9 @@ func FakeOpenCodeScript() []byte {
 	return []byte(`#!/bin/sh
 case "$*" in
   'api GET /api/info') printf '%s' '{"version":"2.0.16"}' ;;
-  'api GET /api/model'|'api GET /api/model/default'|'api GET /api/agent'|'api GET /api/skill'|'api GET /api/mcp'|'api GET /api/plugin') printf '%s' '{"location":{},"data":[]}' ;;
+  'api GET /api/model') printf '%s' '{"location":{},"data":[{"id":"fake/fake-model","modelID":"fake-model","providerID":"fake","name":"Fake Model","status":"active","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"limit":{"context":128000,"output":4096},"time":{"released":0},"cost":[]}]}' ;;
+  'api GET /api/model/default') printf '%s' '{"location":{},"data":null}' ;;
+  'api GET /api/agent'|'api GET /api/skill'|'api GET /api/mcp'|'api GET /api/plugin') printf '%s' '{"location":{},"data":[]}' ;;
   'service restart'|'api POST /api/location/reload') exit 0 ;;
   *) echo "unexpected OpenCode invocation: $*" >&2; exit 1 ;;
 esac
