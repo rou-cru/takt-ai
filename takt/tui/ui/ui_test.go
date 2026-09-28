@@ -22,6 +22,15 @@ func TestListNavigationAndRendering(t *testing.T) {
 	}
 }
 
+func TestBusyProgressBarMovesWithoutKnownTotal(t *testing.T) {
+	t.Setenv("TAKT_NO_ANIMATION", "")
+	first := ui.Busy("Installation", false, "*", ui.Progress{Frame: 0})
+	second := ui.Busy("Installation", false, "*", ui.Progress{Frame: 1})
+	if first == second {
+		t.Fatal("indeterminate progress bar did not move between frames")
+	}
+}
+
 func TestHorizontalNavigationUsesLeftAndRight(t *testing.T) {
 	keymap := keys.Default()
 	cursor := 0

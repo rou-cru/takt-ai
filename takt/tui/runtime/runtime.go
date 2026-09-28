@@ -109,6 +109,12 @@ type ActionResultMsg struct {
 	Err     error
 }
 
+// ActionProgressMsg carries one matching action's progress to its screen.
+type ActionProgressMsg struct {
+	Request  ActionRequest
+	Progress setup.DeploymentProgress
+}
+
 // Adapter invokes setup's lifecycle APIs.
 type Adapter struct {
 	lifecycle lifecycle.Runtime
@@ -122,9 +128,13 @@ func NewAdapter() Adapter {
 }
 
 // Command defers a request to a Bubble Tea command.
-func (adapter Adapter) Command(ctx context.Context, request ActionRequest) tea.Cmd {
+func (adapter Adapter) Command(ctx context.Context, request ActionRequest, observers ...func(setup.DeploymentProgress)) tea.Cmd {
 	return func() tea.Msg {
-		result, err := adapter.ExecuteContext(ctx, request)
+		var progress func(setup.DeploymentProgress)
+		if len(observers) > 0 {
+			progress = observers[0]
+		}
+		result, err := adapter.ExecuteContextProgress(ctx, request, progress)
 		result.CancelRequested = ctx.Err() != nil
 		return ActionResultMsg{Request: request, Result: result, Err: err}
 	}
@@ -137,8 +147,13 @@ func (adapter Adapter) Execute(request ActionRequest) (ActionResult, error) {
 
 // ExecuteContext runs a request with cancellation.
 func (adapter Adapter) ExecuteContext(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	return adapter.ExecuteContextProgress(ctx, request, nil)
+}
+
+// ExecuteContextProgress executes a request while reporting lifecycle progress.
+func (adapter Adapter) ExecuteContextProgress(ctx context.Context, request ActionRequest, progress func(setup.DeploymentProgress)) (ActionResult, error) {
 	started := time.Now()
-	result, err := adapter.execute(ctx, request)
+	result, err := adapter.execute(ctx, request, progress)
 	if result.Outcome == "" && err == nil {
 		result.Outcome = lifecycle.OutcomeCompleted
 	}
@@ -149,7 +164,7 @@ func (adapter Adapter) ExecuteContext(ctx context.Context, request ActionRequest
 }
 
 // execute routes a request to its handler so each action keeps one code path.
-func (adapter Adapter) execute(ctx context.Context, request ActionRequest) (ActionResult, error) {
+func (adapter Adapter) execute(ctx context.Context, request ActionRequest, progress func(setup.DeploymentProgress)) (ActionResult, error) {
 	if request.Action == ActionCorrectDrift {
 		return adapter.executeCorrectDrift(ctx, request)
 	}
@@ -163,8 +178,12 @@ func (adapter Adapter) execute(ctx context.Context, request ActionRequest) (Acti
 	// The choice travels on the adapter copy so Run's signature
 	// stays shared with the CLI, whose zero value is Leave.
 	adapter.lifecycle.EngramChoice = request.EngramChoice
+	adapter.lifecycle.Progress = progress
 	result, err := adapter.lifecycle.Run(ctx, string(request.Action), request.RootDir, planRequest, request.PreservePaths...)
 	out := actionResult(request.Action, result)
+	if err == nil && out.Outcome == lifecycle.OutcomeCompleted && progress != nil && (request.Action == ActionInstall || request.Action == ActionSync) {
+		progress(setup.DeploymentProgress{Stage: "preparing", Message: "Verifying installation"})
+	}
 	return adapter.finishExecution(ctx, request, result, out, err)
 }
 

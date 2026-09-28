@@ -1,18 +1,21 @@
 ---
 name: takt-interlocutor-handoff
-description: "Trigger: holding or requesting the borrowed chat interface as a link in the interlocutor stack — opening a lent session, confirming a switch or a handoff with the user, a requirement the convening agent declared but did not deliver, keeping the standard artifact current through the session, and framing an escalation or the session's close. Governs conduct only, not the harness mechanics that enforce it."
+description: "Holding or requesting the borrowed chat interface, as a link in the interlocutor stack: opening a lent session, confirming a switch or handoff with the user, and closing out cleanly."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Takt Interlocutor Handoff
 
 Governs how an agent behaves while it holds, requests, or returns the borrowed chat
 interface: opening a session lent to it, confirming the transitions that move the
-interface, handling a document the convening agent declared but did not deliver, keeping
-its artifact current, and framing what it escalates or hands back.
+interface, keeping its artifact current, and framing what it escalates or hands back.
+
+If something falls outside this protocol — a missing document, an ambiguous reply, an
+outside change, unrelated cleanup, or a mid-session specialist swap — load
+`takt-interlocutor-exceptions`.
 
 **Confirm before the interface moves.** Before calling `dispatch_switch` to lend the
 interface to a specialist, or before proposing `dispatch_handoff` to return it, invoke the
@@ -31,13 +34,6 @@ specialist's own specialty, then yields the turn. It never opens with an empty r
 direction, and never with a barrage of problems, alternatives, or questions laid out for the
 user to sort through — one grounded proposal, not a menu.
 
-**A declared document that is missing is named, not filled in.** If a requirement the
-convening agent said it delivered is not actually there, its content is never invented and
-the session never proceeds as though it had been read. The user is told it is missing, and
-is asked either to supply it or to say whether to postpone. Once the document arrives, or
-the user accepts continuing without it, work returns straight to the specialty — the gap is
-acknowledged once, not revisited.
-
 **The artifact is built as the session runs, not assembled at the end.** The specialist's
 standard artifact is produced and updated progressively through the session so that an
 abrupt or early close still leaves the real state on record, rather than nothing at all. A
@@ -54,29 +50,12 @@ or incomplete is acceptable — but that state is never presented as finished wo
 reaches the user carries context, the implications, and the alternatives already weighed —
 never a raw problem handed off unprocessed for someone else to untangle.
 
-**A freeform reply is not a rejection.** When the user's response to the confirmation question
-is neither the offered accept nor an explicit reject or cancel, the interface does not move;
-the freeform text returns to the agent that asked, for it to weigh and re-ask if still needed.
-
 **`AdditionalContext` explains, it does not dump.** It stays a concise paragraph, never raw
 logs or a full command transcript — those belong in `ExtraArtifacts`, and `AdditionalContext`
 says why each one exists. `Result` attributes cause and never grades the temporary holder:
 `Outraged` prevails over every other value and must carry real evidence — the reference that
 failed, or, absent one, what was delivered and the reaction it drew; never fabricate evidence
 to fill the field. `Aborted` assigns no fault to any agent.
-
-**Requesting a different specialist mid-session reports as an early handoff.** If the user
-asks to bring in someone else before the standard artifact is complete, that is `Early
-Handoff`, not `Aborted` — the session still produced what it could and says so.
-
-**A change from outside the session is named, not absorbed.** If something changes underneath
-a lent session that the specialist did not cause, state the affected scope and the
-preservation or restoration options before proceeding, rather than resolving or discarding the
-uncertainty silently.
-
-**Notice cleanup or maintenance work; relay it, do not run it.** A garbage-collection or
-maintenance opportunity noticed while holding the interface goes back to Takt to schedule — it
-is never started or performed directly.
 
 **Handoff is proposed; abortion never is.** Ending the session outright — no artifact
 produced, no negotiation held — belongs only to the user or to the harness. As the

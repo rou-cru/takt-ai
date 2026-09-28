@@ -150,12 +150,13 @@ if (scenario === "retry") {
 
   // The old hardcoded producer list omitted tpm, so a tpm delegation that
   // never delivered would finish anyway. It must now fail like any other
-  // producer's missing delivery.
+  // producer's missing delivery, and the unit must still settle (finish)
+  // rather than being stranded in flight for a retry to hit.
   mark = dispatched().length
   await delegate("execute.before", "tpm-missing", "call-tpm-missing", "tpm")
   await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
     /delegation ended without delivering a result via deliver_result/)
-  assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch"])
+  assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch", "finish"])
 } else {
   throw new Error(`unknown scenario ${JSON.stringify(scenario)}`)
 }

@@ -65,9 +65,25 @@ type DeploymentResult struct {
 	NotApplied []string `json:"notApplied,omitempty"`
 }
 
+// DeploymentProgress reports one temporary staging or committed artifact.
+// Applied events are provisional until DeployContextProgress returns nil: a
+// later commit failure can roll the transaction back.
+type DeploymentProgress struct {
+	Stage     string
+	Message   string
+	Path      string
+	Completed int
+	Total     int
+}
+
 // DeployContext is Deploy with cooperative cancellation: it returns partial
 // results and ctx.Err() without rolling back what is already installed.
 func DeployContext(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
+	return DeployContextProgress(ctx, rootDir, managedPaths, artifacts, nil)
+}
+
+// DeployContextProgress is DeployContext with optional staging and commit events.
+func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	root, normalized, err := prepareDeployment(rootDir, managedPaths, artifacts)
 	if err != nil {
 		return DeploymentResult{}, err
@@ -78,10 +94,10 @@ func DeployContext(ctx context.Context, rootDir string, managedPaths []string, a
 	}
 
 	transaction := newDeploymentTransaction(pending)
-	if err := transaction.stage(pending); err != nil {
+	if err := transaction.stage(pending, progress); err != nil {
 		return DeploymentResult{}, transaction.abort(err)
 	}
-	if err := transaction.commit(ctx); err != nil {
+	if err := transaction.commit(ctx, progress); err != nil {
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return transaction.stopCancelled(result, err)
 		}
@@ -197,8 +213,11 @@ func newDeploymentTransaction(pending []pendingDeployment) *deploymentTransactio
 
 // stage writes every pending artifact to temp files without touching final locations.
 // Missing directories are created and recorded for commit or rollback.
-func (tx *deploymentTransaction) stage(pending []pendingDeployment) error {
-	for _, pendingFile := range pending {
+func (tx *deploymentTransaction) stage(pending []pendingDeployment, observers ...func(DeploymentProgress)) error {
+	for index, pendingFile := range pending {
+		if len(observers) > 0 && observers[0] != nil {
+			observers[0](DeploymentProgress{Stage: "preparing", Message: "Preparing installation files", Path: pendingFile.path, Completed: index, Total: len(pending)})
+		}
 		file := &stagedDeployment{
 			path:        pendingFile.path,
 			destination: pendingFile.destination,
@@ -272,8 +291,8 @@ func (tx *deploymentTransaction) abort(err error) error {
 }
 
 // commit renames staged files into place in order, stopping early when ctx is cancelled.
-func (tx *deploymentTransaction) commit(ctx context.Context) error {
-	for _, file := range tx.files {
+func (tx *deploymentTransaction) commit(ctx context.Context, observers ...func(DeploymentProgress)) error {
+	for index, file := range tx.files {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -283,6 +302,9 @@ func (tx *deploymentTransaction) commit(ctx context.Context) error {
 		file.installed = true
 		if err := syncDir(filepath.Dir(file.destination)); err != nil {
 			return fmt.Errorf("install managed artifact %q: %w", file.path, err)
+		}
+		if len(observers) > 0 && observers[0] != nil {
+			observers[0](DeploymentProgress{Stage: "applied", Message: "Applying installation files", Path: file.path, Completed: index + 1, Total: len(tx.files)})
 		}
 	}
 	for index := len(tx.createdOrder) - 1; index >= 0; index-- {

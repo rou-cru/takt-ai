@@ -4,7 +4,7 @@ description: "Trigger: development workflow, full cycle, implement feature, DAG 
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "3.0"
+  version: "4.0"
 ---
 
 # Takt SDD & DAG Workflow
@@ -62,22 +62,15 @@ These terms appear inside rules. They carry exactly these meanings and no others
 
 ## 1. Lane Discipline
 
-**The orchestrator does not absorb a reachable lane's judgment.** Architecture, experience,
-specification, proposal, and verdict go to the lane that owns them, whatever dispatching
-that lane is estimated to cost. Everything else is a judgment call the orchestrator makes
-normally: it acts directly when no unit could own the change with a sensible contract (for
-example, a single-line fix with no delegable scope), in the mechanical work of its own
-responsibilities, and when the user asks for it. Acting directly is not a failure of
-orchestration; absorbing an available lane is. If the particular owner is absent, apply
-the crew contract's declared fallback within existing permissions; self-checking cannot
-replace a required independent verdict. A DAG that grows or is revised mid-execution is not
-itself drift; only a changed objective or a blocked path is.
+Architecture, experience, specification, proposal, and verdict go to the lane that owns them
+in the DAG, whatever dispatching that lane is estimated to cost. A DAG that grows or is
+revised mid-execution is not itself drift; only a changed objective or a blocked path is.
 
 Direct execution never skips the DAG's collision discipline: a directly executed change
 still declares and respects `writable_set` like any node would. A unit may read any file it
 does not own, provided no in-flight task writes it — this section constrains judgment and
 writes, not shared access to settled output. A file an in-flight task is writing is off limits in every mode, reading
-included — see §3.4 `allowed_reads` and §6.
+included.
 
 **Generating nothing does not make it a dispatcher.** A dispatcher wastes the agent: it
 introduces leveraged errors, adds process friction, and guarantees no real progress. The
@@ -98,11 +91,11 @@ path, and keep moving.
 
 ---
 
-## 2. Invariant Rules
+## 2. Protocol Rules
 
 1. **Shared Workspace (No Worktrees):** All tasks execute in the root workspace. Isolation
    comes from disjoint file ownership and frozen interface contracts, never from Git
-   branches. See §1.
+   branches.
 2. **Concurrency Ceiling (Max 4):** At most 4 specialists run at once, whatever their lane:
    appliers, verifiers and planning lanes share the same slots. Excess READY tasks queue.
    **4 is an empirical maximum**, derived from running this
@@ -113,7 +106,7 @@ path, and keep moving.
 3. **Exclusive Writable Ownership:** Every task declares an explicit `writable_set`. Two
    in-flight tasks must NEVER have overlapping writable paths.
 4. **Frozen Contracts Before Dispatch:** A task may run in parallel ONLY IF every type,
-   signature, schema, and public interface it consumes is frozen in its contract. See §3.
+   signature, schema, and public interface it consumes is frozen in its contract.
 5. **Single Integration Gate (Targeted Applier Scope):** Appliers execute ONLY
    targeted, isolated tests associated directly with their `writable_set`. They must
    NEVER invoke global test runners, full workspace builds, or whole-repo linters during
@@ -121,8 +114,8 @@ path, and keep moving.
    workspace. Full build, lint, and end-to-end tests run exclusively in the single
    downstream verification applier after all implementation tasks finish. Never parallelize
    global verification, and never insert an intermediate one.
-6. **Zero Silent Drops:** Every task failure triggers explicit retry and escalation per §9.
-   Never drop or skip a task silently.
+6. **Zero Silent Drops:** Every task failure triggers explicit retry; a second failure or a flagged contract
+   defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
 
 ---
 
@@ -141,7 +134,7 @@ Apply this to every candidate dependency. It is the central operation of plannin
 > **Is this edge informational or implementational?**
 > - **Informational → it is not an edge.** It is a signature missing from the contract
 >   root. Move the signature to the root and delete the edge.
-> - **Implementational → it survives** and must be named in §6.
+> - **Implementational → it survives** and must be named as a closed serialization reason.
 
 Apparent linearity is, in the overwhelming majority of cases, uncongealed information. An
 orchestrator that skips this question produces a chain and blames the problem domain.
@@ -197,7 +190,7 @@ grant — it is never assumed from silence.
 
 ## 4. Decomposition — Cutting For Concurrency
 
-This lever operates *before* §6. If the decomposition is cut wrong, the DAG is serial by
+This lever operates before deciding which edges must serialize. If the decomposition is cut wrong, the DAG is serial by
 construction and no serialization matrix will save it.
 
 - **Cut vertically, by sub-objective.** Each task owns its own slice of files across
@@ -220,7 +213,7 @@ Five properties. Each is checkable by looking at the graph.
    *found*; it measures 4 because the root froze the interfaces those four lanes consume. Concurrency is not discovered by
    inspecting tasks — it is **manufactured** by demanding more freezing at the root.
 2. **Zero edges inside a wave.** Siblings never depend on each other. Any horizontal edge
-   between siblings means the cut was by layer; return to §4.
+   between siblings means the cut was by layer; return to Decomposition and re-cut it.
 3. **Every edge is justified against a named node, never against "what came before".** In
    the moment waves are treated as phases, implicit barriers appear and cost whole lanes for
    nothing. A test task depends on the one node whose files it reads, not on the wave. The
@@ -239,8 +232,8 @@ at the bottom. Reference proportions: depth 4–5 at width 4.
 Run both. They are arithmetic, not judgment.
 
 - **First implementation wave must reach 4**, unless total implementation nodes are fewer
-  than 4. If it does not, return to §3.5 and freeze more. If it still does not after
-  freezing, every missing lane must be accounted for by a §6 condition named in writing.
+  than 4. If it does not, demand more freezing at the contract root. If it still does not after
+  freezing, every missing lane must be accounted for by a genuine serialization reason named in writing.
 - **Mean width must be ≥ 2.0.** Below that the plan is a chain: rebuild it. A DAG at depth
   8 and width 2 is wrong even when every single edge is individually defensible — that is
   exactly how one arrives there, one defensible edge at a time.
@@ -252,7 +245,9 @@ Run both. They are arithmetic, not judgment.
 - **Unscoped applier verification:** an applier running global test suites, whole-repo linters, or broad builds instead of targeted checks, inducing tool, cache, or port collisions across concurrent appliers.
 - **Horizontal cut:** decomposition by layer, producing a chain of layer dependencies.
 - **Defensive serialization:** an edge added because a conflict was *not ruled out*, rather
-  than because §6 names it. Rule it out via §3.1 instead.
+  than because a closed serialization reason names it. Rule it out with the Edge Question instead.
+- **Post-failure collapse:** abandoning the plan and folding remaining work into one
+  delegation after a failure, instead of freezing the affected subtree and loading `takt-sdd-recovery`.
 
 ### 5.3 Canonical DAG
 
@@ -283,7 +278,7 @@ Run both. They are arithmetic, not judgment.
                   └─────────────────┘
 ```
 
-Mean width: 5 implementation nodes ÷ 2 waves = 2.5. Passes §5.1.
+Mean width: 5 implementation nodes ÷ 2 waves = 2.5. Passes the wave-width self-check.
 
 Two topological readings that matter more than the labels:
 
@@ -326,7 +321,7 @@ No reason outside this list justifies an edge.
 
 ### Dispatch Logic
 
-1. Collect all READY tasks (per §0).
+1. Collect all READY tasks.
 2. If fewer than 4 specialists are in flight (any lane), dispatch up to the available slots.
 3. When `ready_count > available_slots`, prioritize by **critical path** — longest
    remaining downstream chain first.
@@ -362,12 +357,12 @@ The following is an available route, not a procession required of every change:
 1. **Planning:** use approved intent. Dispatch needed contract owners concurrently only
    where their inputs are settled and scopes independent. Compare their results and return
    conflicts to the owners before consuming them; escalate changes to intent or authority.
-2. **Compilation:** TPM supplies tasks and justified dependencies when needed. Takt compiles
+2. **Validation:** Takt runs the wave-width self-check before `dispatch_commit`, without manufacturing work just to
+   fill concurrency slots.
+3. **Compilation:** TPM supplies tasks and justified dependencies when needed. Takt compiles
    the DAG, commits it with `dispatch_commit` (each node a unit with its contract and
    prerequisites), and assigns each node's contract; no specialist silently changes another's
    judgment.
-3. **Validation:** Takt runs §5.1 before implementation dispatch, without manufacturing work
-   just to fill concurrency slots.
 4. **Execution:** dispatch READY nodes as dependencies clear, each delegation named with its
    node's committed unit identity. Ordinary handoffs reuse approvals; new final designs or scope
    decisions obtain the required user approval.
@@ -379,54 +374,7 @@ The following is an available route, not a procession required of every change:
 
 ---
 
-## 9. Failure & Replanning Protocol
-
-```
-[Minor Failure in Bounds] ──▶ [Retry Once with Error Context]
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼ (Success)                   ▼ (Fails 2nd time or Defective Contract)
-              [Resume DAG]               [Trigger Replanning Circuit]
-                                                  │
-                                                  ├── 1. FREEZE downstream dependent subtree
-                                                  ├── 2. KEEP independent parallel lanes running
-                                                  ├── 3. ESCALATE to relevant contract owner
-                                                  ├── 4. OWNER emits delta; TAKT re-indexes DAG
-                                                  └── 5. UNFREEZE & DISPATCH updated nodes
-```
-
-1. **Initial retry:** for a minor failure within authorized recovery bounds, retry once —
-   discard its staged work, reassign its scope, and delegate the same node name again — with
-   the exact error output and stack trace. A contract defect goes directly to its owner.
-   Predeclare the binary result, failure condition, scope, recoverable point, attempt
-   budget. Do not retry an objective-blocking discovery without direction.
-2. **Freeze subtree** (this is the DAG's backtracking step): on a second failure, or when
-   an applier flags a contract defect, mark the task `BLOCKED` and freeze its downstream
-   dependents. **Do NOT stop independent parallel lanes** — tasks with disjoint write sets and
-   unrelated dependencies keep running. When two in-flight tasks produced conflicting deltas
-   rather than one simply failing, freeze both and escalate the conflict to the owner of the
-   contract they share, keeping both deltas staged so neither is silently dropped.
-3. **Escalate:** structural/interface failure → `architect`; behavioral/acceptance
-   failure → `spec`; experience/identity failure → `product-designer`; scope
-   tradeoff → PM and the user. Provide the failed task ID, evidence, and contract segment.
-4. **Contract delta & re-index:** the owner emits a contract delta, naming the exact prior
-   version it replaces and what it adds or retires; TPM revises affected
-   task decomposition if needed. Takt alone restructures the sub-DAG, commits the revised plan
-   with `dispatch_commit` naming the standing version as its base, checks file ownership
-   against in-flight work, and re-runs §5.1 on the affected region.
-5. **Resume:** re-queue only after correction and any required approval. Budget exhaustion
-   ends the recovery scope; confirm termination and restoration of unconsolidated state before
-   releasing ownership. Preserve unrelated progress. After two consecutive failed recoveries
-   of the same objective, report evidence and alternatives and await the user's continuation
-   decision; escalation itself authorizes no retry. Consolidated work requires forward repair.
-
-**Convergence criterion.** If one node has consumed two contract deltas without
-converging, reassess decomposition under §4 instead of emitting a third delta. This
-diagnostic rule never overrides recovery bounds or authorizes continuation after failure.
-
----
-
-## 10. DAG Presentation
+## 9. DAG Presentation
 
 When presenting DAG state, render clean ASCII only: top-to-bottom flow, boxed
 `[Task ID: 2-5 word label]` nodes, horizontal wave bands, and per-wave width plus a short

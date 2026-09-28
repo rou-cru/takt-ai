@@ -19,7 +19,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -239,13 +238,33 @@ func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	}
 	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets"} {
 		want := filepath.Join(root, filepath.FromSlash(rel))
-		if !slices.Contains(plan.Private, want) {
+		if !containsCanonicalPath(t, plan.Private, want) {
 			t.Errorf("inspection may read %s; private = %v", rel, plan.Private)
 		}
 	}
 	for _, rel := range []string{"src/main.go", "secrets/token"} {
-		if slices.Contains(plan.Private, filepath.Join(root, filepath.FromSlash(rel))) {
+		if containsCanonicalPath(t, plan.Private, filepath.Join(root, filepath.FromSlash(rel))) {
 			t.Errorf("%s listed individually; private = %v", rel, plan.Private)
 		}
 	}
+}
+
+// containsCanonicalPath compares filesystem identities, not macOS's /var and
+// /private/var spellings of the same temporary directory.
+func containsCanonicalPath(t *testing.T, paths []string, want string) bool {
+	t.Helper()
+	want, err := filepath.EvalSymlinks(want)
+	if err != nil {
+		t.Fatalf("resolve expected path: %v", err)
+	}
+	for _, path := range paths {
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			t.Fatalf("resolve private path %q: %v", path, err)
+		}
+		if canonical == want {
+			return true
+		}
+	}
+	return false
 }

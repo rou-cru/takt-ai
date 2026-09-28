@@ -176,6 +176,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.outcome = message
 			return m.apply(eventResult)
 		}
+	case runtime.ActionProgressMsg:
+		if updated, ok := m.run.AcceptProgress(message); ok {
+			m.run = updated
+		}
 	case runtime.CancelRequest:
 		m.run = m.run.Cancel(message)
 	case spinner.TickMsg:
@@ -586,7 +590,7 @@ func (m Model) View() tea.View {
 	switch {
 	case m.run.Busy():
 		operation := map[bool]string{false: ui.TextBusyInstallation, true: ui.TextBusyConfiguration}[m.configuring]
-		frame.Body = ui.Busy(operation, m.run.CancelRequested, m.run.SpinView())
+		frame.Body = ui.Busy(operation, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView())
 		frame.CenterBody = true
 	case m.step == StepConflicts:
 		frame.Body, frame.Footer = m.conflictsBody(), m.conflictsFooter()
@@ -884,6 +888,14 @@ func (m Model) resultSuccess() string {
 	}
 	if result.Verify == nil || !result.Verify.Ready {
 		b.WriteString(ui.Status(ui.StateWarning, ui.TextNotReady) + "\n\n")
+	}
+	if len(result.Incomplete) > 0 {
+		b.WriteString(ui.Status(ui.StateWarning, ui.TextIncompleteWorkIntro) + "\n")
+		b.WriteString(theme.Title.Render(ui.TextIncompleteWorkTitle))
+		for _, item := range result.Incomplete {
+			b.WriteString("\n  " + theme.Label.Render(item))
+		}
+		b.WriteString("\n\n")
 	}
 	// Kept drift is a functional warning, never an operation failure.
 	if uncertain := m.uncertainKept(); len(uncertain) > 0 {

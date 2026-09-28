@@ -70,6 +70,35 @@ func TestEnsureIndexedDoesNotResetBrokenExistingIndex(t *testing.T) {
 	}
 }
 
+func TestEnsureIndexedRefusesHomeBeforeRunningCodegraph(t *testing.T) {
+	home := t.TempDir()
+	workspaceAlias := filepath.Join(t.TempDir(), "home-link")
+	if err := os.Symlink(home, workspaceAlias); err != nil {
+		t.Fatal(err)
+	}
+	originalHomeDir, originalRunCommand := userHomeDir, runCommand
+	userHomeDir = func() (string, error) { return home, nil }
+	calls := 0
+	runCommand = func(context.Context, string, string, ...string) ([]byte, error) {
+		calls++
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		userHomeDir = originalHomeDir
+		runCommand = originalRunCommand
+	})
+
+	for _, workspace := range []string{home, workspaceAlias} {
+		err := EnsureIndexed(context.Background(), "/bin/codegraph", workspace)
+		if err == nil || !strings.Contains(err.Error(), "refusing to initialize CodeGraph in home directory") {
+			t.Errorf("EnsureIndexed(%q) error = %v, want home-directory refusal", workspace, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("CodeGraph commands = %d, want none for HOME or its symlink", calls)
+	}
+}
+
 func script(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

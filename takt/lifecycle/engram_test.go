@@ -68,6 +68,24 @@ func TestRunInstallRecordsCodegraphInstallAction(t *testing.T) {
 	}
 }
 
+func TestRunInstallReportsSandboxDependencyFailure(t *testing.T) {
+	root := t.TempDir()
+	original := installSandboxDependency
+	installSandboxDependency = func(context.Context, string) error { return errors.New("npm unavailable") }
+	t.Cleanup(func() { installSandboxDependency = original })
+
+	result, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Incomplete) != 1 || !strings.Contains(result.Incomplete[0], "npm unavailable") {
+		t.Fatalf("Incomplete = %v, want sandbox dependency failure", result.Incomplete)
+	}
+	if !setup.IsInstalled(root) {
+		t.Fatal("the completed configuration install should still be recorded")
+	}
+}
+
 // TestRunInstallInjectsResolvedCodegraphCommand verifies the MCP entry carries
 // the absolute path Takt resolved, never the bare name a host must find on PATH.
 func TestRunInstallInjectsResolvedCodegraphCommand(t *testing.T) {

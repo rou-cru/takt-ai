@@ -13,6 +13,8 @@ type Run struct {
 	// CancelRequested marks a cancellation asked while the action runs.
 	CancelRequested bool
 	spin            ui.Spinner
+	progress        ui.Progress
+	frames          int
 	busy            bool
 }
 
@@ -30,6 +32,8 @@ func (r Run) Start(request ActionRequest) Run {
 	r.Request = request
 	r.busy = true
 	r.CancelRequested = false
+	r.progress = ui.Progress{}
+	r.frames = 0
 	return r
 }
 
@@ -48,7 +52,36 @@ func (r Run) Tick(msg tea.Msg) (Run, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	r.spin, cmd = r.spin.Update(msg)
+	r.frames++
+	r.progress.Frame = r.frames
 	return r, cmd
+}
+
+// AcceptProgress applies one progress event only when it belongs to this run.
+func (r Run) AcceptProgress(msg ActionProgressMsg) (Run, bool) {
+	if !r.busy || msg.Request.ID != r.Request.ID || msg.Request.Action != r.Request.Action {
+		return r, false
+	}
+	event := msg.Progress
+	r.progress.Message = event.Message
+	if event.Stage == "applied" {
+		r.progress.Completed = event.Completed
+		r.progress.Total = event.Total
+	} else {
+		r.progress.Completed = 0
+		r.progress.Total = 0
+	}
+	if event.Stage == "applied" && event.Path != "" {
+		if len(r.progress.Applied) == 0 || r.progress.Applied[len(r.progress.Applied)-1] != event.Path {
+			r.progress.Applied = append(r.progress.Applied, event.Path)
+		}
+		r.progress.Current = ""
+	} else if event.Path != "" {
+		r.progress.Current = event.Path
+	} else {
+		r.progress.Current = ""
+	}
+	return r, true
 }
 
 // Result reports msg when it answers the running request.
@@ -71,3 +104,6 @@ func (r Run) Busy() bool { return r.busy }
 
 // SpinView renders the current spinner frame.
 func (r Run) SpinView() string { return r.spin.View() }
+
+// ProgressView returns the current progress snapshot for a busy screen.
+func (r Run) ProgressView() ui.Progress { return r.progress }

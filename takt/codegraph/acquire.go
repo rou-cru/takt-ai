@@ -47,6 +47,8 @@ var (
 	lookPath = exec.LookPath
 	// execCommand runs binaries so tests can stub command execution.
 	execCommand = exec.CommandContext
+	// userHomeDir resolves the home directory; tests isolate the home guard.
+	userHomeDir = os.UserHomeDir
 )
 
 // runCommand executes one CodeGraph CLI command from the target workspace.
@@ -124,6 +126,17 @@ func EnsureIndexed(ctx context.Context, binary, workspace string) error {
 	if strings.TrimSpace(workspace) == "" {
 		return fmt.Errorf("workspace directory is required")
 	}
+	home, err := userHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	same, err := sameDirectory(workspace, home)
+	if err != nil {
+		return fmt.Errorf("compare CodeGraph workspace with home directory: %w", err)
+	}
+	if same {
+		return fmt.Errorf("refusing to initialize CodeGraph in home directory %s; open a specific project directory", home)
+	}
 	output, err := runCommand(ctx, binary, workspace, "status", workspace)
 	if err != nil {
 		return fmt.Errorf("check CodeGraph index for %s: %w: %s", workspace, err, strings.TrimSpace(string(output)))
@@ -142,6 +155,24 @@ func EnsureIndexed(ctx context.Context, binary, workspace string) error {
 		return fmt.Errorf("verify CodeGraph index for %s: CodeGraph still reports the workspace as not initialized", workspace)
 	}
 	return nil
+}
+
+func sameDirectory(left, right string) (bool, error) {
+	leftAbs, err := filepath.Abs(left)
+	if err != nil {
+		return false, err
+	}
+	rightAbs, err := filepath.Abs(right)
+	if err != nil {
+		return false, err
+	}
+	if resolved, err := filepath.EvalSymlinks(leftAbs); err == nil {
+		leftAbs = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(rightAbs); err == nil {
+		rightAbs = resolved
+	}
+	return filepath.Clean(leftAbs) == filepath.Clean(rightAbs), nil
 }
 
 // VerifyVersion runs `<binary> --version` so broken installs fail fast with a clear error.

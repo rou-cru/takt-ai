@@ -1,18 +1,18 @@
 ---
 name: takt-invariant-planning
-description: "Trigger: choosing and ordering the planning specialists that generate invariants before implementation (analyst, pm, architect, product-designer, spec), autonomous, with the user, or hybrid. Not the implementation DAG."
+description: "Trigger: choosing and ordering the planning specialists that generate invariants before implementation (analyst, pm, architect, product-designer, spec), autonomous, with the user, or hybrid."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Takt Invariant Planning
 
 Orders the planning lanes (analyst, pm, product-designer, architect, spec) that generate the
-invariants before implementation. It is not the implementation DAG: [takt-sdd-workflow](../takt-sdd-workflow/SKILL.md)
-§5–§6 govern implementation nodes, not these lanes. It applies when two or more lanes must produce
-invariants; whatever is already settled (existing, approved, validated) removes the lane or the edge.
+invariants before implementation. It governs only these lanes, never implementation nodes.
+It applies when two or more lanes must produce invariants; whatever is already settled
+(existing, approved, validated) removes the lane or the edge.
 
 **Order by consumption.** A lane starts once every invariant result it consumes has been recorded;
 lanes whose inputs are all available run together within the four-specialist ceiling. No lane has a
@@ -33,10 +33,14 @@ more lanes consume) and re-dispatch only the other lane with its original docume
 result, the standing document and the contradiction. You decide; the lane rewrites. Two failed
 alignments of one conflict: escalate.
 
+**Specialist unavailable.** If a lane's specialist cannot be dispatched, or its dispatch
+fails past the recovery bounds in OPERATIONS, name that lane blocked per the crew's
+declared fallback and proceed: lanes that do not consume its result keep running per the
+order above, and lanes that do wait on the named gap rather than guessing. Escalate per
+OPERATIONS if the objective cannot be judged without it.
+
 **Mode per lane.** A directly selected specialist or one reached by switch works with the user;
 an ordinary delegation from the orchestrator is autonomous. A lane with the user needs the user's approval before its
 consumers start, and one interlocutor holds the interface at a time. With the order left open,
 refine gradually: context, facts, intent, experience, structure, behavior. If the user starts with a
 given lane, it is the root: its consumers go after it and what it settled is omitted.
-
-With the invariants settled, build the implementation DAG (takt-sdd-workflow).

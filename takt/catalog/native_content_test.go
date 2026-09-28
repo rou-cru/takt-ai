@@ -238,6 +238,27 @@ func TestVFSOnlyMutationSkill(t *testing.T) {
 	assertAgentsDeclareSkill(t, cat, "takt-vfs-mutation", "takt-dev", "takt-fix", "takt-simplify")
 }
 
+// TestNoOrphanSkills operationalizes DOCTRINE's no-orphan-skill norm
+// (STR-13): every skill in the catalog must have at least one real
+// consumer, declared on some agent's skills list.
+func TestNoOrphanSkills(t *testing.T) {
+	cat, err := LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string]bool{}
+	for _, agent := range cat.Agents {
+		for _, s := range agent.Skills {
+			declared[s] = true
+		}
+	}
+	for _, skill := range cat.Skills {
+		if !declared[skill.ID] {
+			t.Errorf("%s skill has no declared consumer in any agent.yaml", skill.ID)
+		}
+	}
+}
+
 // findSkillPackage returns the catalog's skill with the given id, failing
 // the test if it is not found.
 func findSkillPackage(t *testing.T, cat Catalog, id string) *SkillPackage {
@@ -310,7 +331,9 @@ func readAssets(t *testing.T, globs ...string) map[string]string {
 
 func TestAgentProseNeverExplainsMechanism(t *testing.T) {
 	files := readAssets(t, "shared/BASELINE.md", "agents/takt/*.md", "agents/*/OPERATIONS.md",
-		"skills/takt-sdd-workflow/SKILL.md", "skills/takt-memory-*/SKILL.md", "skills/takt-vfs-mutation/SKILL.md")
+		"skills/takt-sdd-workflow/SKILL.md", "skills/takt-sdd-recovery/SKILL.md", "skills/takt-memory-*/SKILL.md", "skills/takt-vfs-mutation/SKILL.md",
+		"skills/takt-bounded-workflow/SKILL.md", "skills/takt-bounded-planning/SKILL.md",
+		"skills/takt-workflow-selection/SKILL.md", "skills/takt-workflow-selection-exceptions/SKILL.md")
 	forbidden := []string{
 		"harness", "admission", "enforce", "nobody reviews", "You write content only",
 		"server instructions", "tool descriptions", "verification controls", "accepted as written",

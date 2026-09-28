@@ -260,7 +260,7 @@ func (m Model) View() tea.View {
 	case m.unavailable():
 		frame = m.unavailableFrame()
 	case m.run.Busy():
-		frame = ui.Frame{Body: ui.Busy(ui.TextModelsBusy, m.run.CancelRequested, m.run.SpinView())}
+		frame = ui.Frame{Body: ui.Busy(ui.TextModelsBusy, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView())}
 	case m.state == StateResult:
 		frame = m.resultFrame()
 	default:

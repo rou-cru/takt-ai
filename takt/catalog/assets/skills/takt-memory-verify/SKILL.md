@@ -23,6 +23,6 @@ only narrows what your role records.
 
 ## Never records
 
-- The verification report: it goes back to Takt in your final answer.
+- The verification report: it belongs to your final answer, not to memory.
 - Passing checks that confirm what memory already holds.
 - Warnings or suggestions about what to do next.

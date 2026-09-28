@@ -26,6 +26,6 @@ only narrows what your role records.
 
 ## Never records
 
-- A checklist or the execution DAG: Takt owns the DAG and compiles it from your task list.
+- A checklist or the execution DAG: it belongs to Takt, not to memory.
 - Task status, progress, or commentary about work outside this breakdown.
 - Your reasoning process. The final task list is the deliverable and is never optional.

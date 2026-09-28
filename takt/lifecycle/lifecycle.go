@@ -134,6 +134,8 @@ type Runtime struct {
 	Reload func(context.Context) error
 	// EngramChoice is EngramLeave (default), EngramRetain or EngramRemove; see above.
 	EngramChoice string
+	// Progress reports phase and artifact events to an interactive caller.
+	Progress func(setup.DeploymentProgress)
 }
 
 // NewRuntime wires the production OpenCode V2 preflight and handoff while
@@ -215,16 +217,19 @@ func (runtime Runtime) Run(ctx context.Context, action string, rootDir string, r
 
 func (runtime Runtime) install(ctx context.Context, action, rootDir string, request setup.PlanRequest, preserve []string) (LifecycleResult, error) {
 	started := time.Now()
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Preparing installation plan"})
 	// Removals were already surfaced to the user by PreviewLifecycle before
 	// this request was authorized; applying does not need to see them again.
 	plans, _, err := installPlans(request)
 	if err != nil {
 		return LifecycleResult{}, err
 	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking OpenCode connection"})
 	if err := runtime.handshake(ctx, request); err != nil {
 		return LifecycleResult{}, err
 	}
 	// Engram is acquired before anything is written: a missing prerequisite leaves root untouched.
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Engram memory capability"})
 	engramCommand, err := acquireEngram(ctx, rootDir)
 	if Cancelled(ctx, err) {
 		return LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil
@@ -232,6 +237,7 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return LifecycleResult{}, fmt.Errorf("engram memory capability unavailable: requires the engram binary %s or newer, which is not on PATH and could not be installed: %w", engram.EngramVersion, err)
 	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking CodeGraph capability"})
 	codegraphCommand, err := acquireCodegraph(ctx, rootDir)
 	if Cancelled(ctx, err) {
 		return LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil
@@ -244,7 +250,8 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 		return LifecycleResult{}, err
 	}
 	defer end()
-	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, preserve...)
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Preparing managed files", Total: len(plannedPaths(plans))})
+	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, runtime.Progress, preserve...)
 	// Files are written from here on: a later failure still reports them
 	// alongside the error, so callers can show partial work honestly.
 	deployed := LifecycleResult{Changed: result.Changed, Unchanged: result.Unchanged, Actions: result.Actions, NotApplied: result.NotApplied, Outcome: OutcomeCompleted}
@@ -267,32 +274,45 @@ func (runtime Runtime) handshake(ctx context.Context, request setup.PlanRequest)
 	return nil
 }
 
-func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPlan, provider setup.ProviderRuntime, preserve ...string) (setup.DeploymentResult, error) {
+func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPlan, provider setup.ProviderRuntime, progress func(setup.DeploymentProgress), preserve ...string) (setup.DeploymentResult, error) {
 	if action == "install" {
-		return setup.ApplyContext(ctx, rootDir, plans, provider, preserve...)
+		return setup.ApplyContextProgress(ctx, rootDir, plans, provider, progress, preserve...)
 	}
-	return setup.SyncContext(ctx, rootDir, plans, provider, preserve...)
+	return setup.SyncContextProgress(ctx, rootDir, plans, provider, progress, preserve...)
 }
 
 func (runtime Runtime) finishInstall(ctx context.Context, rootDir string, request setup.PlanRequest, engramCommand, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing Engram integration"})
 	if err := InjectEngram(rootDir, engramCommand); err != nil {
 		return deployed, err
 	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing CodeGraph integration"})
 	if err := InjectCodegraph(rootDir, codegraphCommand); err != nil {
 		return deployed, fmt.Errorf("inject CodeGraph MCP server: %w", err)
 	}
 	deployed.Actions = append(deployed.Actions, "codegraph-install")
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing sandbox dependency"})
 	if err := installSandboxDependency(ctx, rootDir); err == nil {
 		deployed.Actions = append(deployed.Actions, "sandbox-adapter-npm-install")
+	} else {
+		deployed.Incomplete = append(deployed.Incomplete, fmt.Sprintf("sandbox adapter dependency was not installed: %v", err))
 	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Recording installation"})
 	if err := setup.RecordInstallation(rootDir, request); err != nil {
 		return deployed, err
 	}
 	if runtime.Reload != nil {
+		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Reloading OpenCode"})
 		deployed.ReloadAttempted = true
 		deployed.ReloadError = runtime.Reload(ctx)
 	}
 	return deployed, nil
+}
+
+func (runtime Runtime) report(progress setup.DeploymentProgress) {
+	if runtime.Progress != nil {
+		runtime.Progress(progress)
+	}
 }
 
 // recordCancelled finishes a cancelled deployment, recording it as installed

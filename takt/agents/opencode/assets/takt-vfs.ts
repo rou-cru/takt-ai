@@ -3,14 +3,20 @@
 // write goes through the durable VFS core: staging first, consolidation only
 // after an independent verifier's verdict. One private store per workspace.
 import { createHash, randomUUID } from "node:crypto"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
+import { homedir, tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 import { Plugin } from "@opencode/plugin"
 
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 4
+
+async function sameDirectory(left: string, right: string): Promise<boolean> {
+  const canonical = async (path: string) => realpath(path).catch(() => resolve(path))
+  const [leftPath, rightPath] = await Promise.all([canonical(left), canonical(right)])
+  return leftPath === rightPath
+}
 
 type ToolInput = Record<string, unknown>
 function isToolInput(value: unknown): value is ToolInput {
@@ -248,18 +254,24 @@ export default Plugin.define({
   id: "takt.vfs",
   async setup(ctx) {
     const workspace = ctx.location.directory
-    // MCP tools are catalogued during OpenCode startup. Prepare the index
-    // synchronously here rather than from a later session event, so CodeGraph
-    // is active by the time OpenCode asks its MCP server for tools.
-    const codegraph = Bun.spawn([TAKT_AI, "codegraph", "ensure-index"], {
-      cwd: workspace, stdout: "pipe", stderr: "pipe",
-    })
-    const [codegraphOut, codegraphErr, codegraphExit] = await Promise.all([
-      new Response(codegraph.stdout).text(), new Response(codegraph.stderr).text(), codegraph.exited,
-    ])
-    if (codegraphExit !== 0) {
-      const reason = codegraphErr.trim() || codegraphOut.trim() || `exit ${codegraphExit}`
-      throw new Error(`CodeGraph workspace preparation failed: ${reason}`)
+    const home = homedir()
+    let codegraphReady = !(await sameDirectory(workspace, home))
+    if (!codegraphReady) {
+      console.warn(`Takt: CodeGraph was not initialized because OpenCode is open in the home directory (${home}). Open a specific project to enable CodeGraph tools.`)
+    } else {
+      // MCP tools are catalogued during OpenCode startup. Prepare the index
+      // synchronously here rather than from a later session event, so CodeGraph
+      // is active by the time OpenCode asks its MCP server for tools.
+      const codegraph = Bun.spawn([TAKT_AI, "codegraph", "ensure-index"], {
+        cwd: workspace, stdout: "pipe", stderr: "pipe",
+      })
+      const [codegraphOut, codegraphErr, codegraphExit] = await Promise.all([
+        new Response(codegraph.stdout).text(), new Response(codegraph.stderr).text(), codegraph.exited,
+      ])
+      if (codegraphExit !== 0) {
+        const reason = codegraphErr.trim() || codegraphOut.trim() || `exit ${codegraphExit}`
+        throw new Error(`CodeGraph workspace preparation failed: ${reason}`)
+      }
     }
     // Everything a binding needs to speak for its dispatch. `dispatch` is the
     // session that ran the bind (the child session the subagent tool created for
@@ -635,8 +647,12 @@ export default Plugin.define({
       const parsed: unknown = JSON.parse(out)
       return parseCoordinationResponse(parsed, verb, request.action)
     }
-    const coordinate = (request: Record<string, unknown>): Promise<DispatchResponse> =>
-      exclusive(() => spawnCoordination(["gc", "coordinate"], request))
+    const coordinate = (request: Record<string, unknown>): Promise<DispatchResponse> => {
+      if (!codegraphReady) {
+        return Promise.reject(new Error(`CodeGraph is unavailable because ${workspace} is the home directory; open a specific project directory first.`))
+      }
+      return exclusive(() => spawnCoordination(["gc", "coordinate"], request))
+    }
     // dispatchAction admits and drives ordinary crew work: the same execution
     // history and admission protocol `gc coordinate` uses to gate its own
     // cycle, reached under its own name rather than under GC's.
@@ -840,20 +856,22 @@ export default Plugin.define({
         delegations.delete(delegation)
         await persistDelegations()
         const key = unitKey(d.root, d.unit)
-        if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "") && !deliveries.has(key)) {
-          const child = childOf.get(key)
-          // Bounded to one retry: a producer that forgot deliver_result gets a
-          // single nudge, never an unbounded prompt loop.
-          if (child) await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
-          if (!deliveries.has(key)) {
-            childOf.delete(key)
-            throw new Error("delegation ended without delivering a result via deliver_result")
+        try {
+          if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "") && !deliveries.has(key)) {
+            const child = childOf.get(key)
+            // Bounded to one retry: a producer that forgot deliver_result gets a
+            // single nudge, never an unbounded prompt loop.
+            if (child) await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+            if (!deliveries.has(key)) {
+              throw new Error("delegation ended without delivering a result via deliver_result")
+            }
           }
+        } finally {
+          deliveries.delete(key)
+          childOf.delete(key)
+          await dispatchAction({ action: "finish", event: d.unit, dispatch: delegation, session: d.root })
+          scheduleGC()
         }
-        deliveries.delete(key)
-        childOf.delete(key)
-        await dispatchAction({ action: "finish", event: d.unit, dispatch: delegation, session: d.root })
-        scheduleGC()
       } else if (event.tool.startsWith("vfs_") && !gcChildren.has(event.sessionID)) {
         await initializeGC()
         await coordinate({ action: "tick", session: await rootSession(event.sessionID) })
@@ -970,7 +988,10 @@ export default Plugin.define({
 
     await ctx.tool.transform((editor) => {
       const gc = (name: string, description: string, action: string, input = obj({}, [])) =>
-        editor.add({ name, description, input, execute: (value: unknown, c) => gcTool(action, c, toolInput(value)) })
+        editor.add({ name, description, input, execute: (value: unknown, c) => {
+          if (!codegraphReady) throw new Error(`CodeGraph is unavailable because ${workspace} is the home directory; open a specific project directory first.`)
+          return gcTool(action, c, toolInput(value))
+        } })
 
       gc("gc_baseline", "Verifier: run and record prepared acceptance baseline before mutation.", "baseline")
       gc("gc_findings", "Collector: read persisted findings and cycle declaration.", "findings")
@@ -1384,9 +1405,15 @@ export default Plugin.define({
           if (c.agent !== ORCHESTRATOR_ID) throw new Error("vfs_consolidate belongs to the orchestrator")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
-          await takt("consolidate", {
-            ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
-          })
+          try {
+            await takt("consolidate", {
+              ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
+            })
+          } catch (error) {
+            const e = error as Error
+            if (/physical base changed|recovery required|unresolved collision/.test(e.message)) e.message += "; freeze this path and escalate with the report"
+            throw e
+          }
           await release(b)
           return { content: "Consolidated to workspace" }
         },

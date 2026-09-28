@@ -194,11 +194,12 @@ await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionI
 respond = () => undefined
 
 // A producer that never calls deliver_result never silently finishes: the
-// delegation fails distinctly instead.
+// delegation fails distinctly instead, but its unit still settles so a
+// retry is not blocked behind a stranded in-flight state.
 planningAt = dispatched().length
 await delegate("execute.before", "missing-result", "call-6", "pm")
 await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /delegation ended without delivering a result via deliver_result/)
-assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch"])
+assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "finish"])
 
 // The context hook records a producer's own session as its unit's child. A
 // delegation that ends without a delivery re-prompts that exact child once;

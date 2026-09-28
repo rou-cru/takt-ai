@@ -14,5 +14,11 @@ skills:
 - takt-memory-contract
 - takt-memory-orchestrator
 - takt-sdd-workflow
+- takt-sdd-recovery
+- takt-bounded-planning
+- takt-bounded-workflow
+- takt-workflow-selection
+- takt-workflow-selection-exceptions
 - takt-handoff
 - takt-interlocutor-handoff
+- takt-interlocutor-exceptions

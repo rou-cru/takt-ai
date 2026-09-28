@@ -124,6 +124,44 @@ func TestStaleResultIgnoredAndCancelRequestShown(t *testing.T) {
 	}
 }
 
+func TestInstallProgressListsAppliedArtifactsAndMovesBar(t *testing.T) {
+	m, request := busyModel(t, t.TempDir())
+	for _, event := range []setup.DeploymentProgress{
+		{Stage: "applied", Message: "Applying installation files", Path: "agents/alpha.md", Completed: 1, Total: 3},
+		{Stage: "applied", Message: "Applying installation files", Path: "agents/beta.md", Completed: 2, Total: 3},
+	} {
+		m = update(t, m, runtime.ActionProgressMsg{Request: request, Progress: event})
+	}
+	shown := view(m)
+	for _, path := range []string{"agents/alpha.md", "agents/beta.md"} {
+		if !strings.Contains(shown, path) {
+			t.Errorf("busy screen omitted applied artifact %q:\n%s", path, shown)
+		}
+	}
+	if !strings.Contains(shown, "[██████████░░░░░░]") {
+		t.Errorf("progress bar did not reflect 2 of 3 artifacts:\n%s", shown)
+	}
+	stale := request
+	stale.ID++
+	m = update(t, m, runtime.ActionProgressMsg{Request: stale, Progress: setup.DeploymentProgress{Stage: "applied", Path: "stale.md", Completed: 3, Total: 3}})
+	if strings.Contains(view(m), "stale.md") {
+		t.Fatal("progress for a different request appeared in the install screen")
+	}
+}
+
+func TestInstallResultSurfacesIncompleteOptionalWork(t *testing.T) {
+	m, request := busyModel(t, t.TempDir())
+	m = update(t, m, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{
+		Incomplete: []string{"sandbox adapter dependency was not installed: npm unavailable"},
+	}})
+	shown := view(m)
+	for _, text := range []string{ui.TextIncompleteWorkTitle, "npm unavailable"} {
+		if !strings.Contains(shown, text) {
+			t.Errorf("install result omitted incomplete work %q:\n%s", text, shown)
+		}
+	}
+}
+
 func TestConfigureStartsAtComponentsAndAppliesOnce(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{"context7"}}); err != nil {

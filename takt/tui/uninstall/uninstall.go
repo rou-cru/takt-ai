@@ -422,7 +422,7 @@ func (model Model) View() tea.View {
 func (model Model) fillFrame(frame *ui.Frame) {
 	switch {
 	case model.run.Busy():
-		frame.Body = ui.Busy(ui.TextUninstallBusy, model.run.CancelRequested, model.run.SpinView())
+		frame.Body = ui.Busy(ui.TextUninstallBusy, model.run.CancelRequested, model.run.SpinView(), model.run.ProgressView())
 	case model.state == StateNotInstalled:
 		frame.Body = theme.Label.Render(setup.NotInstalledMessage)
 		frame.Footer = ui.FooterActions(ui.Actions(ui.TextActionBackToMenu), 0, true)

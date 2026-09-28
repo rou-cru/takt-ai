@@ -106,6 +106,8 @@ const (
 	TextUpdatedForFmt       = "The installation was updated for %s."
 	TextFilesChangedFmt     = "Files: %d changed, %d unchanged"
 	TextPreservedFmt        = ", %d preserved"
+	TextIncompleteWorkTitle = "Incomplete work"
+	TextIncompleteWorkIntro = "The installation completed with optional work still pending."
 	TextNotReady            = "Not ready to work: some capabilities are not verified."
 	TextCannotGuaranteeFmt  = "Takt cannot guarantee %s while your versions are kept."
 	TextUseDrift            = "Use Check for drift from the menu to restore these files later."

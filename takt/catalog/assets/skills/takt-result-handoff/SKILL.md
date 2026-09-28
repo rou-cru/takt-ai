@@ -10,8 +10,7 @@ metadata:
 # Takt Result Handoff
 
 In a delegation, `deliver_result` is how you present a complete Engram artifact as your
-final result. While you hold the interface after a switch, the same IDs travel in
-`dispatch_handoff` instead. Record each artifact with `memory_record` first, as its own
+final result. Record each artifact with `memory_record` first, as its own
 dedicated entry; only entries you recorded in this session count as your result.
 `deliver_result` then takes those IDs, one call per batch. Never call it before the
 corresponding `memory_record` has succeeded, and never bundle unrelated entries into one

@@ -82,6 +82,7 @@ type Model struct {
 	width        int
 	height       int
 	guard        guard
+	sendProgress func(tea.Msg)
 }
 
 // guard is the controller-owned pending-change overlay: open
@@ -215,7 +216,15 @@ func Run(input io.Reader, output io.Writer) error {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	// AltScreen is declared on the view, not the program; see Model.View.
-	_, err = tea.NewProgram(New(root), tea.WithInput(input), tea.WithOutput(output)).Run()
+	model := New(root)
+	var program *tea.Program
+	model.sendProgress = func(message tea.Msg) {
+		if program != nil {
+			program.Send(message)
+		}
+	}
+	program = tea.NewProgram(model, tea.WithInput(input), tea.WithOutput(output))
+	_, err = program.Run()
 	return err
 }
 
@@ -246,7 +255,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
-	case runtime.ActionRequest, runtime.ActionResultMsg, runtime.CancelRequest:
+	case runtime.ActionRequest, runtime.ActionProgressMsg, runtime.ActionResultMsg, runtime.CancelRequest:
 		return m.updateAction(message)
 	case ui.BackMsg:
 		return m.leave(false)
@@ -397,7 +406,16 @@ func (m Model) updateAction(message tea.Msg) (tea.Model, tea.Cmd) {
 		// First animation frame for the flow's busy marker; the flow
 		// chains further frames itself while busy. A zero TickMsg is a
 		// valid first tick: no ID means no owner to reject.
-		actionCommand = tea.Batch(m.adapter.Command(ctx, message), func() tea.Msg { return spinner.TickMsg{} })
+		progress := func(event setup.DeploymentProgress) {
+			if m.sendProgress != nil {
+				m.sendProgress(runtime.ActionProgressMsg{Request: message, Progress: event})
+			}
+		}
+		actionCommand = tea.Batch(m.adapter.Command(ctx, message, progress), func() tea.Msg { return spinner.TickMsg{} })
+	case runtime.ActionProgressMsg:
+		if message.Request.ID != m.pendingID {
+			return m, nil
+		}
 	case runtime.ActionResultMsg:
 		// A result this model did not request never ends the running one:
 		// only the matching ID releases its context.

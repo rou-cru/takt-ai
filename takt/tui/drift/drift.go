@@ -339,7 +339,7 @@ func (m Model) Title() string {
 // View renders the active drift step.
 func (m Model) View() tea.View {
 	if m.run.Busy() {
-		return tea.NewView(ui.Shell(ui.Frame{Header: m.Title(), Body: ui.Busy(ui.TextDriftBusy, m.run.CancelRequested, m.run.SpinView()), Width: m.width, Height: m.height}))
+		return tea.NewView(ui.Shell(ui.Frame{Header: m.Title(), Body: ui.Busy(ui.TextDriftBusy, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView()), Width: m.width, Height: m.height}))
 	}
 	switch m.state {
 	case StateNotInstalled:

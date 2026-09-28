@@ -49,6 +49,39 @@ func TestDeployDeterministicResultOrder(t *testing.T) {
 	}
 }
 
+func TestDeployContextProgressReportsPreparedAndAppliedArtifacts(t *testing.T) {
+	root := t.TempDir()
+	var events []DeploymentProgress
+	result, err := DeployContextProgress(context.Background(), root, []string{"a.txt", "b.txt"}, []Artifact{
+		{Path: "b.txt", Content: []byte("b")},
+		{Path: "a.txt", Content: []byte("a")},
+	}, func(event DeploymentProgress) {
+		events = append(events, event)
+		if event.Stage == "applied" {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(event.Path))); err != nil {
+				t.Errorf("applied event for %q before destination exists: %v", event.Path, err)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.Changed, []string{"a.txt", "b.txt"}) {
+		t.Fatalf("changed paths = %v", result.Changed)
+	}
+	if len(events) != 4 {
+		t.Fatalf("progress events = %#v, want 2 preparing and 2 applied", events)
+	}
+	for index, stage := range []string{"preparing", "preparing", "applied", "applied"} {
+		if events[index].Stage != stage || events[index].Total != 2 {
+			t.Errorf("event[%d] = %#v, want stage %q of 2", index, events[index], stage)
+		}
+	}
+	if events[2].Completed != 1 || events[3].Completed != 2 {
+		t.Errorf("applied counts = %d, %d; want 1, 2", events[2].Completed, events[3].Completed)
+	}
+}
+
 func TestDeployRejectsSeparatedArtifactPathConflict(t *testing.T) {
 	root := t.TempDir()
 	_, err := DeployContext(context.Background(), root, []string{"a", "a.foo", "a/b"}, []Artifact{
