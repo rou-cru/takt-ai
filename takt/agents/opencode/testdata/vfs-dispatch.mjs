@@ -13,10 +13,7 @@ globalThis.Bun = {
     assert.equal(argv[0], "/test/takt-ai")
     const call = { verb: argv[1], argv, options }
     calls.push(call)
-    const answer = () => respond(call) ?? {
-      stdout: JSON.stringify(call.argv[2] === "bind" ? { ok: true, key: "k1", attempt_id: "1" } : { ok: true }),
-      stderr: "", code: 0,
-    }
+    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
     return {
       // VFS commands take their request on stdin; coordination takes --request.
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
@@ -25,6 +22,14 @@ globalThis.Bun = {
       get exited() { return Promise.resolve(answer().code) },
     }
   },
+}
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+// defaultAnswer is what takt-ai prints on success when no scenario overrides it.
+function defaultAnswer(call) {
+  if (call.argv[1] === "dispatch") return ["switch", "validate_results"].includes(requestOf(call).action) ? null : coordinator()
+  if (call.argv[1] === "gc" && call.argv[2] === "coordinate") return coordinator()
+  if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
+  return { ok: true }
 }
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
@@ -40,7 +45,7 @@ const sessionHooks = {}
 const synthetic = []
 const interrupted = []
 const promptedSessions = []
-let onPrompt = (_sessionID, _text) => undefined
+let onPrompt = async (_sessionID, _text) => {}
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -53,7 +58,7 @@ await plugin.setup({
     interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
   },
   permission: { hook: async (name, callback) => { permissionHooks[name] ??= []; permissionHooks[name].push(callback); return { dispose() {} } } },
-  agent: { get: async () => ({ permissions: [] }) },
+  agent: { get: async () => ({ data: { permissions: [] } }) },
   shell: { hook: async () => () => {} },
   tool: {
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
@@ -204,7 +209,7 @@ const nudgeEvent = { agent: "pm", sessionID: "nudge", tools: {}, system: [] }
 for (const callback of sessionHooks.context) await callback(nudgeEvent)
 onPrompt = async (sessionID) => { await tools.deliver_result.execute({ result_ids: [789] }, { sessionID, agent: "pm" }) }
 await delegate("execute.after", "nudge", "call-7", "pm")
-onPrompt = () => undefined
+onPrompt = async () => {}
 assert.deepEqual(promptedSessions.slice(-1), ["nudge"])
 assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
 
@@ -227,7 +232,9 @@ await assert.rejects(tools.vfs_consolidate.execute({ author_key: "k1", checkpoin
 // The orchestrator's context carries a maintenance notice only while a cycle
 // is due or running, one closing notice after it, and nothing otherwise.
 const contextFor = async (agent, status) => {
-  respond = (call) => requestOf(call).action === "status" ? { stdout: JSON.stringify(status), stderr: "", code: 0 } : undefined
+  const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false, ...status }
+  if (status.cycle) state.cycle = { plan: { session_id: "root", cycle_id: "context-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" }, phase: status.cycle.phase, scope: [], sessions: {}, report: {}, started: "2026-01-01T00:00:00Z" }
+  respond = (call) => requestOf(call).action === "status" ? { stdout: JSON.stringify(state), stderr: "", code: 0 } : undefined
   const event = { agent, sessionID: "root", system: [] }
   for (const callback of sessionHooks.context) await callback(event)
   return event.system.map(part => part.text)
@@ -319,3 +326,44 @@ const refusals = calls.filter(c => c.verb === "obs" && c.stdin?.attributes?.deci
 for (const want of [["claimed_path", "takt", "u1"], ["missing_unit", "dev", ""], ["missing_claim", "dev", "u9"], ["admission_denied", "pm", "brief-2"]]) {
   assert.ok(refusals.some(r => JSON.stringify(r) === JSON.stringify(want)), `refusal ${want} not observed; saw ${JSON.stringify(refusals)}`)
 }
+
+// GC prepare returns a Plan directly, not a Coordinator wrapper. Its full
+// producer payload must survive the process boundary and reach the tool.
+const plan = { session_id: "root", cycle_id: "cycle-1", mandate_class: "dead-code", delta: [], closure: ["a.go"], reachability: "codegraph", analyzer_metadata: { source: "fixture" } }
+respond = call => call.verb === "gc" && requestOf(call).action === "prepare"
+  ? { stdout: JSON.stringify(plan), stderr: "", code: 0 } : undefined
+const prepared = JSON.parse((await tools.gc_prepare.execute({}, root)).content)
+assert.deepEqual(prepared, plan)
+
+// The remaining GC operations deliberately return three other Go producer
+// shapes: a full Cycle, a StagedView, and Coordinator. Verify routing and that
+// reports/baselines/history survive unchanged across the JSON boundary.
+let gcRequested = false
+let gcPhase = "investigate"
+const fullCycle = (phase = gcPhase, extra = {}) => ({ plan, phase, scope: ["a.go"], sessions: { collector: "gc-collector", verifier: "gc-verifier" }, author_key: "author-key", verifier_key: "verifier-key", baseline: [{ name: "baseline", passed: true }], acceptance: [], report: { findings: [{ id: "finding-1" }] }, investigations: [{ finding: "finding-1", outcome: "confirmed", evidence: "test" }], reason: "", started: "2026-01-01T00:00:00Z", ...extra })
+const fullCoordinator = () => ({ ...coordinator(), cycle: fullCycle(), history: [fullCycle("closed")] })
+const stagedView = { revision: 7, delta_hash: "delta-hash", files: { "a.go": "contents", "deleted.go": null } }
+respond = call => {
+  if (call.verb !== "gc") return undefined
+  const action = requestOf(call).action
+  if (action === "status") return { stdout: JSON.stringify(gcRequested ? fullCoordinator() : coordinator()), stderr: "", code: 0 }
+  if (action === "request") { gcRequested = true; return { stdout: JSON.stringify(coordinator()), stderr: "", code: 0 } }
+  if (["findings", "investigate", "authorize"].includes(action)) return { stdout: JSON.stringify(fullCycle(action === "authorize" ? "collect" : gcPhase)), stderr: "", code: 0 }
+  if (["collected", "delta"].includes(action)) {
+    if (action === "collected") { gcPhase = "verify" }
+    return { stdout: JSON.stringify(stagedView), stderr: "", code: 0 }
+  }
+  if (action === "verdict") return { stdout: JSON.stringify(fullCoordinator()), stderr: "", code: 0 }
+  return undefined
+}
+await tools.gc_request.execute({}, root)
+await new Promise(resolve => setTimeout(resolve, 20))
+const collector = { sessionID: "gc-collector", agent: "simplify" }
+assert.deepEqual(JSON.parse((await tools.gc_findings.execute({}, collector)).content), fullCycle())
+assert.deepEqual(JSON.parse((await tools.gc_investigate.execute({ finding: "finding-1", outcome: "confirmed", evidence: "test" }, collector)).content), fullCycle())
+assert.deepEqual(JSON.parse((await tools.gc_authorize.execute({}, collector)).content), fullCycle("collect"))
+assert.deepEqual(JSON.parse((await tools.gc_collected.execute({}, collector)).content), stagedView)
+await new Promise(resolve => setTimeout(resolve, 20))
+const verifier = { sessionID: "gc-verifier", agent: "verify" }
+assert.deepEqual(JSON.parse((await tools.gc_delta.execute({}, verifier)).content), stagedView)
+assert.deepEqual(JSON.parse((await tools.gc_verdict.execute({ pass: true, evidence: "verified" }, verifier)).content), fullCoordinator())

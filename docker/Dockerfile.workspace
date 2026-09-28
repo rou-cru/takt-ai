@@ -13,12 +13,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./cmd/takt
 
 FROM ubuntu:26.04
 ARG OPENCODE_VERSION=2.0.16
-# ponytail: sha256 of https://opencode.ai/v2/install captured at authoring
-# time. The installer endpoint is shared across all CLI versions and carries
-# no vendor-published checksum of its own, so we pin our own hash and verify
-# it before ever executing the script (docker:S8482). If OpenCode legitimately
-# updates the installer, this check fails closed — re-download, review the
-# diff, and refresh the pin.
+# SHA-256 of https://opencode.ai/v2/install. The installer endpoint is shared
+# across all CLI versions and carries no vendor-published checksum of its own,
+# so this pin substitutes one and the build verifies it before ever executing
+# the script (docker:S8482). When OpenCode legitimately updates the installer,
+# this check fails closed: re-download, review the diff, refresh the pin.
 ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
 ARG PYTHON_VERSION=3.14
 ARG NODE_MAJOR=24
@@ -38,7 +37,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep tar tzdata unzip; \
-    # ponytail: register the NodeSource apt repo via NodeSource's own
+    # Register the NodeSource apt repo via NodeSource's own
     # documented manual steps (GPG-signed key + apt source) instead of piping
     # their setup script to bash: apt then verifies every nodejs package
     # signature against this key before installing anything, so no
@@ -47,8 +46,14 @@ RUN set -eux; \
     curl -fsSL --proto '=https' --tlsv1.2 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
       | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg; \
     chmod 644 /usr/share/keyrings/nodesource.gpg; \
-    printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x\nSuites: nodistro\nComponents: main\nArchitectures: %s\nSigned-By: /usr/share/keyrings/nodesource.gpg\n' \
-      "${NODE_MAJOR}" "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/nodesource.sources; \
+    printf '%s\n' \
+      'Types: deb' \
+      "URIs: https://deb.nodesource.com/node_${NODE_MAJOR}.x" \
+      'Suites: nodistro' \
+      'Components: main' \
+      "Architectures: $(dpkg --print-architecture)" \
+      'Signed-By: /usr/share/keyrings/nodesource.gpg' \
+      > /etc/apt/sources.list.d/nodesource.sources; \
     apt-get update; \
     apt-get install -y --no-install-recommends nodejs; \
     uv python install "${PYTHON_VERSION}"; \

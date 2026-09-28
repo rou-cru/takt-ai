@@ -5,10 +5,18 @@ import plugin from "./takt-vfs.ts"
 // so identity threading can be checked by position, not just by presence.
 const order = []
 const calls = []
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
 let respond = (_call) => undefined
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
   return JSON.parse(call.argv[idx + 1])
+}
+// defaultAnswer is what takt-ai prints on success when no scenario overrides it.
+function defaultAnswer(call) {
+  if (call.verb === "gc" && call.sub === "coordinate") return coordinator()
+  if (call.verb !== "dispatch") return { ok: true }
+  const action = requestOf(call).action
+  return action === "switch" || action === "validate_results" ? null : coordinator()
 }
 globalThis.Bun = {
   spawn(argv, options) {
@@ -17,7 +25,7 @@ globalThis.Bun = {
     const call = { verb: argv[1], sub: argv[2], argv, options }
     calls.push(call)
     if (argv[1] === "dispatch") order.push(`dispatch:${requestOf(call).action}`)
-    const answer = () => respond(call) ?? { stdout: JSON.stringify({ ok: true }), stderr: "", code: 0 }
+    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
       get stdout() { return answer().stdout },
@@ -55,7 +63,7 @@ await plugin.setup({
     synthetic: async (message) => { synthetic.push(message) },
   },
   permission: { hook: async () => () => {} },
-  agent: { get: async () => ({ permissions: [] }) },
+  agent: { get: async () => ({ data: { permissions: [] } }) },
   shell: { hook: async () => () => {} },
   tool: {
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },

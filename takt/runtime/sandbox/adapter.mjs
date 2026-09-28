@@ -2,6 +2,9 @@
 import { SandboxManager, getDefaultWritePaths } from '@anthropic-ai/sandbox-runtime';
 import { isAbsolute } from 'node:path';
 
+// QUOTED_QUOTE closes a single-quoted shell word, emits a literal quote and reopens it.
+const QUOTED_QUOTE = String.raw`'\''`;
+
 // SHELL_ESCAPED_DESCENDANTS is the status a supervised command exits with when a
 // descendant outlived it: nothing confirms the projection is settled, so the
 // delta must stay unimported.
@@ -39,7 +42,7 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
 // group is gone. Without that record the coordinator refuses to import the
 // delta: a surviving process could still be writing into the projection.
 export function supervise(wrapped, confirmPath) {
-  const confirm = `'${confirmPath.replaceAll("'", String.raw`'\''`)}'`;
+  const confirm = `'${confirmPath.replaceAll("'", QUOTED_QUOTE)}'`;
   // Monitor mode is switched off again once the job exists: it is only needed to
   // give the command its own process group, and leaving it on would print job
   // notices into the command's own stderr.

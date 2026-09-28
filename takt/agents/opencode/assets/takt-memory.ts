@@ -9,13 +9,42 @@ const CONTRACT = "Follow the Takt memory contract skill (takt-memory-contract)."
 
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 
-async function takt(command: string, request: Record<string, unknown>): Promise<{ code: number; ok: boolean; result?: any; error?: string }> {
+type MemoryResponse = { code: number; ok: boolean; result?: unknown; error?: string }
+type RecordResult = { id: number; deduplicated: boolean }
+type CloseResult = { end_anchor_id: number; entries: number }
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+function recordResult(value: unknown): RecordResult {
+  if (!isObject(value) || typeof value.id !== "number" || !Number.isSafeInteger(value.id) || value.id <= 0 || typeof value.deduplicated !== "boolean") {
+    throw new Error("takt-ai memory record returned an invalid result")
+  }
+  return { id: value.id, deduplicated: value.deduplicated }
+}
+
+function closeResult(value: unknown): CloseResult {
+  if (!isObject(value) || typeof value.end_anchor_id !== "number" || !Number.isSafeInteger(value.end_anchor_id) || value.end_anchor_id <= 0 || typeof value.entries !== "number" || !Number.isSafeInteger(value.entries) || value.entries < 0) {
+    throw new Error("takt-ai memory close returned an invalid result")
+  }
+  return { end_anchor_id: value.end_anchor_id, entries: value.entries }
+}
+
+async function takt(command: string, request: Record<string, unknown>): Promise<MemoryResponse> {
   const proc = Bun.spawn([TAKT_AI, "memory", command], { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
   proc.stdin.write(JSON.stringify(request))
   proc.stdin.end()
   const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   try {
-    return { code, ...JSON.parse(out) }
+    const parsed: unknown = JSON.parse(out)
+    const response = isObject(parsed) ? parsed : undefined
+    if (!response || typeof response.ok !== "boolean" || response.ok !== (code === 0) || (response.error !== undefined && typeof response.error !== "string")) {
+      return { code, ok: false, error: `takt-ai memory ${command} returned an invalid response` }
+    }
+    const { error, result } = response
+    return { code, ok: response.ok, ...(result === undefined ? {} : { result }), ...(error === undefined ? {} : { error }) }
   } catch {
     return { code, ok: false, error: `takt-ai memory ${command} exited ${code}: ${out || await new Response(proc.stderr).text()}` }
   }
@@ -66,7 +95,7 @@ export default Plugin.define({
 
     // confirm blocks until the user answers. A denial throws, which fails the
     // tool call: nothing is recorded without an explicit approval.
-    async function confirm(action: string, title: string, metadata: Record<string, unknown>, c: { sessionID: string; agent: string; messageID: string; id: string }) {
+    async function confirm(action: string, title: string, metadata: { [key: string]: JsonValue }, c: { sessionID: string; agent: string; messageID: string; id: string }) {
       const api = await confirmations()
       const request = await api.permission.create({
         sessionID: c.sessionID,
@@ -91,7 +120,8 @@ export default Plugin.define({
         const info = await ctx.session.get({ sessionID: current })
         // A switch-created session has no parentID; its root is found through
         // the takt_switch metadata the switch itself recorded instead.
-        const next = info.parentID ?? info.metadata?.takt_switch
+        const metadataParent = info.metadata?.takt_switch
+        const next = info.parentID ?? (typeof metadataParent === "string" ? metadataParent : undefined)
         if (!next) return current
         current = next
       }
@@ -136,27 +166,37 @@ export default Plugin.define({
           required: ["nature", "scope", "title", "content"],
           additionalProperties: false,
         },
-        async execute(args: { nature: string; scope: string; title: string; content: string; evidence?: string; relates_to?: unknown; user_order?: boolean }, c) {
+        async execute(input: unknown, c) {
+          if (!isObject(input)) throw new Error("memory_record input must be an object")
+          const args = input
+          const nature = args.nature as string
+          const scope = args.scope as string
+          const title = args.title as string
+          const content = args.content as string
+          const evidence = args.evidence as string | undefined
+          const userOrderRequested = args.user_order as boolean | undefined
+          const relation = args.relates_to as { id: number; relation: string } | undefined
           let confirmed = false
           let userOrder = false
-          if (args.scope === "personal") {
-            await confirm("memory_personal", args.title, { title: args.title, content: args.content }, c)
+          if (scope === "personal") {
+            await confirm("memory_personal", title, { title, content }, c)
             confirmed = true
           }
-          if (args.user_order === true) {
-            await confirm("memory_user_order", args.title, { title: args.title, content: args.content, question: "Did you order recording this?" }, c)
+          if (userOrderRequested) {
+            await confirm("memory_user_order", title, { title, content, question: "Did you order recording this?" }, c)
             userOrder = true
           }
-          const result = await call("record", c, {
-            nature: args.nature,
-            scope: args.scope,
-            title: args.title,
-            content: args.content,
-            evidence: args.evidence,
-            relates_to: args.relates_to,
+          const value = await call("record", c, {
+            nature,
+            scope,
+            title,
+            content,
+            evidence,
+            relates_to: relation,
             confirmed,
             user_order: userOrder,
           })
+          const result = recordResult(value)
           return { content: result.deduplicated ? `Already recorded #${result.id}` : `Recorded #${result.id}` }
         },
       })
@@ -164,17 +204,25 @@ export default Plugin.define({
         name: "memory_continue_session",
         description: `Link this session to the previous session it resumes. ${CONTRACT}`,
         input: { type: "object", properties: { previous_session_id: str() }, required: ["previous_session_id"], additionalProperties: false },
-        async execute(args: { previous_session_id: string }, c) {
-          await call("continue", c, { previous_session: args.previous_session_id })
-          return { content: `Continues ${args.previous_session_id}` }
+        async execute(input: unknown, c) {
+          if (!isObject(input)) throw new Error("memory_continue_session input must be an object")
+          const args = input
+          const previousSession = args.previous_session_id as string
+          await call("continue", c, { previous_session: previousSession })
+          return { content: `Continues ${previousSession}` }
         },
       })
       editor.add({
         name: "memory_close_session",
         description: `Close this session's memory with its objective and state. ${CONTRACT}`,
         input: { type: "object", properties: { objective: str(), state: str() }, required: ["objective", "state"], additionalProperties: false },
-        async execute(args: { objective: string; state: string }, c) {
-          const result = await call("close", c, { objective: args.objective, state: args.state })
+        async execute(input: unknown, c) {
+          if (!isObject(input)) throw new Error("memory_close_session input must be an object")
+          const args = input
+          const objective = args.objective as string
+          const state = args.state as string
+          const value = await call("close", c, { objective, state })
+          const result = closeResult(value)
           touched.delete(await rootSession(c.sessionID))
           return { content: `Closed session as #${result.end_anchor_id} with ${result.entries} entries` }
         },

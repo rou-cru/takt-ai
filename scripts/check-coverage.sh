@@ -12,8 +12,9 @@ if [[ "$#" -eq 0 ]]; then
     exit 2
 fi
 
-# ponytail: baseline measured at introduction was 63.4% combined; raise this
-# as real coverage grows, never lower it without a documented reason.
+# Minimum total statement coverage. Keep the floor above the combined
+# baseline of 63.4% measured when the gate was introduced; raising it as
+# coverage grows is fine, lowering it requires a documented reason.
 MIN_COVERAGE=60
 
 MERGED=$(mktemp)

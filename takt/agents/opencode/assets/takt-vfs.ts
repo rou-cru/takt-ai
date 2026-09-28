@@ -12,6 +12,141 @@ const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 4
 
+type ToolInput = Record<string, unknown>
+function isToolInput(value: unknown): value is ToolInput {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
+  if (!isToolInput(value)) throw new Error("tool input must be an object")
+  return value as T
+}
+
+type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; capture?: boolean; cwd?: string; confirm?: string }
+type VFSResponse = {
+  ok: boolean; key?: string; content?: string; revision?: number; delta_hash?: string
+  seq?: number; error?: string; attempt_id?: string; invariants_version?: string
+  shell?: VFSShellResponse; claims?: OwnershipClaim[]; collision?: { path: string; owner: string; attempted_by: string }
+}
+type GCPlan = Record<string, unknown> & { session_id: string; cycle_id: string; mandate_class: string; delta: unknown[]; closure: string[]; reachability: string }
+type GCCycle = Record<string, unknown> & { phase: string; plan: GCPlan; scope: string[]; sessions: Record<string, string>; report: unknown; started: string; author_key?: string }
+type StagedView = { revision: number; delta_hash: string; files: Record<string, string | null> }
+type CoordinatorResponse = Record<string, unknown> & {
+  version: number; units: number; mutations: number; cursor: number; deferrals: number
+  next_mandate: number; requested: boolean; draining: boolean; cycle?: GCCycle
+  history?: GCCycle[]
+}
+type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: number[] }
+type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | HandoffEnvelope | null
+function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
+  return value !== null && "version" in value && "units" in value
+}
+function isGCCycleResponse(value: DispatchResponse): value is GCCycle {
+  return value !== null && isResponseObject(value) && isGCCycle(value)
+}
+function isHandoffEnvelope(value: Record<string, unknown>): value is HandoffEnvelope {
+  return typeof value.result === "string" && typeof value.additional_context === "string" &&
+    Array.isArray(value.extra_artifacts) && value.extra_artifacts.every(item => typeof item === "string") &&
+    Array.isArray(value.memory) && value.memory.every(item => typeof item === "number")
+}
+type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; scope?: string[] }
+type CollisionError = { path: string; owner: string; attempted_by: string }
+function isResponseObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === "string")
+}
+// isOptional accepts an absent field or one that passes check.
+function isOptional<T>(value: unknown, check: (value: unknown) => value is T): value is T | undefined {
+  return value === undefined || check(value)
+}
+const isString = (value: unknown): value is string => typeof value === "string"
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean"
+function parseVFSShell(value: unknown): VFSShellResponse | undefined {
+  if (!isResponseObject(value) || (value.decision !== "allow" && value.decision !== "ask" && value.decision !== "deny") ||
+      !isString(value.reason) || !isOptional(value.cwd, isString) || !isOptional(value.scratch, isString) ||
+      !isOptional(value.confirm, isString) || !isOptional(value.capture, isBoolean) ||
+      !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray)) return undefined
+  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths } = value
+  return { decision, reason, ...(isString(cwd) ? { cwd } : {}),
+    ...(isString(scratch) ? { scratch } : {}), ...(isString(confirm) ? { confirm } : {}),
+    ...(isBoolean(capture) ? { capture } : {}),
+    ...(isStringArray(writable) ? { writable } : {}),
+    ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) }
+}
+function responseObject(value: unknown, command: string): Record<string, unknown> {
+  if (!isResponseObject(value)) throw new Error(`takt-ai ${command} returned a non-object response`)
+  return value
+}
+// parseClaim keeps a well-formed ownership claim and drops anything else.
+function parseClaim(item: unknown): OwnershipClaim[] {
+  if (!isResponseObject(item)) return []
+  const claim = item
+  if (typeof claim.key !== "string" || typeof claim.root_session_id !== "string" || typeof claim.work_unit_id !== "string" || typeof claim.agent_id !== "string" || typeof claim.target_instance !== "string") return []
+  return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
+}
+// vfsResponse keeps the fields of a `takt-ai vfs` answer the plugin knows, each only when well typed.
+function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
+  const shell = parseVFSShell(parsed.shell)
+  return {
+    ok,
+    ...(typeof parsed.key === "string" ? { key: parsed.key } : {}),
+    ...(typeof parsed.content === "string" ? { content: parsed.content } : {}),
+    ...(typeof parsed.revision === "number" ? { revision: parsed.revision } : {}),
+    ...(typeof parsed.delta_hash === "string" ? { delta_hash: parsed.delta_hash } : {}),
+    ...(typeof parsed.seq === "number" ? { seq: parsed.seq } : {}),
+    ...(typeof parsed.error === "string" ? { error: parsed.error } : {}),
+    ...(typeof parsed.attempt_id === "string" ? { attempt_id: parsed.attempt_id } : {}),
+    ...(typeof parsed.invariants_version === "string" ? { invariants_version: parsed.invariants_version } : {}),
+    ...(Array.isArray(parsed.claims) ? { claims: parsed.claims.flatMap(parseClaim) } : {}),
+    ...(shell ? { shell } : {}),
+  }
+}
+function isGCPlan(value: Record<string, unknown>): value is GCPlan {
+  return typeof value.session_id === "string" && typeof value.cycle_id === "string" && typeof value.mandate_class === "string" &&
+    Array.isArray(value.delta) && Array.isArray(value.closure) && value.closure.every((path): path is string => typeof path === "string") && typeof value.reachability === "string"
+}
+function isGCCycle(value: Record<string, unknown>): value is GCCycle {
+  return typeof value.phase === "string" && isResponseObject(value.plan) && isGCPlan(value.plan) &&
+    Array.isArray(value.scope) && value.scope.every((path): path is string => typeof path === "string") &&
+    isResponseObject(value.sessions) && Object.values(value.sessions).every((session): session is string => typeof session === "string") &&
+    Object.hasOwn(value, "report") && typeof value.started === "string" &&
+    (value.author_key === undefined || typeof value.author_key === "string")
+}
+function isStagedView(value: Record<string, unknown>): value is StagedView {
+  return typeof value.revision === "number" && typeof value.delta_hash === "string" && isResponseObject(value.files) &&
+    Object.values(value.files).every(file => file === null || typeof file === "string")
+}
+function isCoordinator(value: Record<string, unknown>): value is CoordinatorResponse {
+  return typeof value.version === "number" && typeof value.units === "number" && typeof value.mutations === "number" &&
+    typeof value.cursor === "number" && typeof value.deferrals === "number" && typeof value.next_mandate === "number" &&
+    typeof value.requested === "boolean" && typeof value.draining === "boolean" &&
+    (value.cycle === undefined || isResponseObject(value.cycle) && isGCCycle(value.cycle)) &&
+    (value.history === undefined || Array.isArray(value.history) && value.history.every(item => isResponseObject(item) && isGCCycle(item)))
+}
+// gcCoordinateResponse returns result when it is the shape `gc coordinate` answers action with.
+function gcCoordinateResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
+  switch (action) {
+    case "prepare": return isGCPlan(result) ? result : undefined
+    case "findings": case "investigate": case "authorize": return isGCCycle(result) ? result : undefined
+    case "collected": case "delta": return isStagedView(result) ? result : undefined
+    default: return isCoordinator(result) ? result : undefined
+  }
+}
+function parseCoordinationResponse(value: unknown, verb: string[], action: unknown): DispatchResponse {
+  if (value === null) return null
+  const result = responseObject(value, verb.join(" "))
+  if (isHandoffEnvelope(result)) return result
+  const coordinated = verb[0] === "gc" && verb[1] === "coordinate" ? gcCoordinateResponse(result, action) : undefined
+  if (coordinated !== undefined) return coordinated
+  if (verb[0] === "dispatch") {
+    const acknowledgement = action === "switch" || action === "validate_results"
+    if (acknowledgement && (Object.keys(result).length === 0 || result.ok === true)) return null
+    if (!acknowledgement && isCoordinator(result)) return result
+  }
+  throw new Error(`${verb.join(" ")} ${asString(action, "unknown")} returned an unexpected response shape`)
+}
+
 // orchestratorOnly refuses a claim operation from any agent but the orchestrator.
 const orchestratorOnly = (c: { agent?: string }, operation: string) => {
   if (c.agent !== ORCHESTRATOR_ID) throw new Error(`${operation} belongs to the orchestrator`)
@@ -27,6 +162,9 @@ const MAINTENANCE_DONE = "Maintenance concluded. Delegation and normal work resu
 // command runs at all, because running one unwrapped would be a way around the
 // VFS (PR-HAR-15).
 const SANDBOX_ADAPTER = "./takt-sandbox.mjs"
+
+// QUOTED_QUOTE closes a single-quoted shell word, emits a literal quote and reopens it.
+const QUOTED_QUOTE = String.raw`'\''`
 
 // SHELL_ACTIONS are the permission actions shell execution resolves under; the
 // command itself is the resource the rules and the approval match.
@@ -53,10 +191,8 @@ const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
 // INVARIANT_DOCUMENTS are the governing documents a bind declares, in the
 // precedence order PR-VFS-CSL-3 fixes. AGENTS.md carries the goal and directives
 // the user set for this workspace; the harness pins each document by its content
-// and answers with the resulting set version.
-// ponytail: a dispatch carries no structured declaration of the SDD planning
-// artifacts yet, so only the user's directives are declared; append the artifact
-// paths after them, in precedence order, once dispatch data names them.
+// and answers with the resulting set version. Dispatches carry no structured
+// declaration of SDD planning artifacts, so only user directives are declared.
 const INVARIANT_DOCUMENTS = ["AGENTS.md"]
 
 // BINDINGS_KEY holds the plugin's binding correlation across a runtime restart.
@@ -155,9 +291,10 @@ export default Plugin.define({
     const unitKey = (root: string, unit: string) => `${root}\0${unit}`
     // record keeps the binding, and its durable copy, in step with the harness's
     // answer to an operation.
-    async function record(b: Binding, res: Record<string, any>) {
-      b.revision = res.revision as number
-      b.deltaHash = res.delta_hash as string
+    async function record(b: Binding, res: VFSResponse) {
+      if (typeof res.revision !== "number" || typeof res.delta_hash !== "string") throw new Error("takt-ai VFS mutation response omitted revision or delta_hash")
+      b.revision = res.revision
+      b.deltaHash = res.delta_hash
       await persist()
     }
 
@@ -191,7 +328,8 @@ export default Plugin.define({
         const info = await ctx.session.get({ sessionID: current })
         // A switch-created session has no parentID; its root is found through
         // the takt_switch metadata the switch itself recorded instead.
-        const next = info.parentID ?? info.metadata?.takt_switch
+        const metadataParent = info.metadata?.takt_switch
+        const next = info.parentID ?? (typeof metadataParent === "string" ? metadataParent : undefined)
         if (!next) return current
         current = next
       }
@@ -211,7 +349,7 @@ export default Plugin.define({
     // findClaim returns the claim held for exactly this root session, work unit and
     // agent instance while it is in one of the given states.
     const findClaim = async (root: string, unit: string, agent: string, states: ("pending" | "active")[]) =>
-      ((await takt("claims", { session_id: root })).claims ?? []).find((c: any) =>
+      ((await takt("claims", { session_id: root })).claims ?? []).find((c: OwnershipClaim) =>
         c.root_session_id === root && c.work_unit_id === unit && c.agent_id === agent && c.target_instance === agent && states.some(state => c[state] === true))
 
     // Observability is deliberately a side channel: telemetry failure must never
@@ -250,7 +388,7 @@ export default Plugin.define({
       return error
     }
 
-    async function taktUnlocked(command: string, request: Record<string, unknown>): Promise<Record<string, any>> {
+    async function taktUnlocked(command: string, request: Record<string, unknown>): Promise<VFSResponse> {
       const proc = Bun.spawn([TAKT_AI, "vfs", command, "--workspace", workspace, "--state", stateDir()], {
         stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd: workspace,
       })
@@ -261,9 +399,11 @@ export default Plugin.define({
         new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
       ])
       try {
-        const parsed = JSON.parse(out)
-        if (code !== 0 || parsed.ok === false) throw new Error(parsed.error ?? `takt-ai vfs ${command} exited ${code}: ${err}`)
-        return parsed
+        const output: unknown = JSON.parse(out)
+        const parsed = responseObject(output, `vfs ${command}`)
+        if (code !== 0 || parsed.ok === false) throw new Error(typeof parsed.error === "string" ? parsed.error : `takt-ai vfs ${command} exited ${code}: ${err}`)
+        if (typeof parsed.ok !== "boolean") throw new Error(`takt-ai vfs ${command} returned a response without ok`)
+        return vfsResponse(parsed, parsed.ok)
       } catch (e) {
         if (e instanceof SyntaxError) throw new Error(`takt-ai vfs ${command} exited ${code}: ${err || out}`)
         throw e
@@ -327,17 +467,7 @@ export default Plugin.define({
     // execute.before, create.before swaps the shell executable for a sandboxed
     // one without touching the command text, and evaluate only applies the
     // decision admission already took.
-    type ShellPlan = {
-      decision: "allow" | "ask" | "deny"
-      reason: string
-      cwd: string
-      scratch: string
-      confirm: string
-      writable: string[]
-      protected: string[]
-      private: string[]
-      capture: boolean
-    }
+    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; capture: boolean }
     type AdmittedShell = {
       plan: ShellPlan; callID: string; session: string; key?: string
       started: boolean; evaluated: boolean; wrapper?: string
@@ -378,8 +508,10 @@ export default Plugin.define({
                 agent_id: event.agent, specialist: event.agent }),
           call_id: callID, command,
         })
-        const plan = res.shell as ShellPlan
-        if (plan.decision === "deny") throw refused("shell_denied", event.agent ?? "", event.sessionID, new Error(`Takt refused this shell command: ${plan.reason}`))
+        if (!res.shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
+        if (res.shell.decision === "deny") throw refused("shell_denied", event.agent ?? "", event.sessionID, new Error(`Takt refused this shell command: ${res.shell.reason}`))
+        if (typeof res.shell.cwd !== "string" || typeof res.shell.scratch !== "string" || typeof res.shell.confirm !== "string" || typeof res.shell.capture !== "boolean" || !res.shell.writable || !res.shell.protected || !res.shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
+        const plan: ShellPlan = { decision: res.shell.decision, reason: res.shell.reason, cwd: res.shell.cwd, scratch: res.shell.scratch, confirm: res.shell.confirm, capture: res.shell.capture, writable: res.shell.writable, protected: res.shell.protected, private: res.shell.private }
         admittedShell.set(command, {
           plan, callID, session: event.sessionID, key: b?.key, started: false, evaluated: false,
         })
@@ -397,9 +529,8 @@ export default Plugin.define({
           return // The orchestrator uses OpenCode's native shell permission, not VFS.
         }
         // create.before cannot abort, so an unadmitted command is replaced by its
-        // own refusal. ponytail: this hook carries no session or agent, so a shell
-        // the user opens outside a dispatch is refused too; admit it here once the
-        // hook can tell the two apart.
+        // own refusal. The hook carries no session or agent, so a shell the user
+        // opens outside a dispatch is refused too.
         const admitted = admittedShell.get(input.command)
         if (!admitted || admitted.started) return refuse("this shell command was not admitted")
         const { plan, callID } = admitted
@@ -415,7 +546,7 @@ export default Plugin.define({
           // the supervised command against its projection. A command that
           // mutates gets the sandbox scratch as home and temporary directory;
           // inspection runs in the workspace and keeps the real home.
-          const quote = (s: string) => `'${s.replaceAll("'", String.raw`'\''`)}'`
+          const quote = (s: string) => `'${s.replaceAll("'", QUOTED_QUOTE)}'`
           const dir = await mkdtemp(join(tmpdir(), "takt-shell-"))
           const wrapper = join(dir, "sh")
           await writeFile(wrapper, [
@@ -492,7 +623,7 @@ export default Plugin.define({
     // phases and trigger bookkeeping, `dispatch` for ordinary crew admission
     // and lifecycle. Neither is the model's to choose; each call site below
     // names the one its action belongs to.
-    async function spawnCoordination(verb: string[], request: Record<string, unknown>): Promise<any> {
+    async function spawnCoordination(verb: string[], request: Record<string, unknown>): Promise<DispatchResponse> {
       const proc = Bun.spawn([TAKT_AI, ...verb, "--workspace", workspace,
         "--state", stateDir(), "--request", JSON.stringify(request)], {
         stdin: "ignore", stdout: "pipe", stderr: "pipe", cwd: workspace,
@@ -501,14 +632,15 @@ export default Plugin.define({
         new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
       ])
       if (code !== 0) throw new Error(`${verb.join(" ")} ${asString(request.action, "unknown")}: ${err || out}`)
-      return JSON.parse(out)
+      const parsed: unknown = JSON.parse(out)
+      return parseCoordinationResponse(parsed, verb, request.action)
     }
-    const coordinate = (request: Record<string, unknown>): Promise<any> =>
+    const coordinate = (request: Record<string, unknown>): Promise<DispatchResponse> =>
       exclusive(() => spawnCoordination(["gc", "coordinate"], request))
     // dispatchAction admits and drives ordinary crew work: the same execution
     // history and admission protocol `gc coordinate` uses to gate its own
     // cycle, reached under its own name rather than under GC's.
-    const dispatchAction = (request: Record<string, unknown>): Promise<any> =>
+    const dispatchAction = (request: Record<string, unknown>): Promise<DispatchResponse> =>
       exclusive(async () => {
         const result = await spawnCoordination(["dispatch"], request)
         const action = asString(request.action, "unknown")
@@ -556,8 +688,8 @@ export default Plugin.define({
       // A process restart cannot prove that an old model turn has stopped. Abort
       // known children first, then ask the core to restore its own cycle only.
       const state = await coordinate({ action: "status" })
-      if (state.cycle) {
-        for (const id of Object.values(state.cycle.sessions ?? {}) as string[]) await stopChild(id)
+      if (isCoordinatorResponse(state) && state.cycle) {
+        for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
         await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
       }
       // A host subagent call lives inside the process that started it, so one
@@ -577,8 +709,8 @@ export default Plugin.define({
         gcQueue = gcQueue.then(pumpGC).catch(async error => {
           try {
             const state = await coordinate({ action: "status" })
-            if (state.cycle) {
-              for (const id of Object.values(state.cycle.sessions ?? {}) as string[]) await stopChild(id)
+            if (isCoordinatorResponse(state) && state.cycle) {
+              for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
               await coordinate({ action: "abort", evidence: String(error) })
             }
           } catch (recoveryError) {
@@ -592,15 +724,15 @@ export default Plugin.define({
     async function pumpGC() {
       await initializeGC()
       const state = await coordinate({ action: "status" })
-      const cycle = state.cycle
-      if (!cycle) return
+      const cycle = isCoordinatorResponse(state) ? state.cycle : undefined
+      if (!cycle?.plan) return
       let role: "verifier" | "collector" | undefined
       if (cycle.phase === "baseline" || cycle.phase === "verify" || cycle.phase === "acceptance") role = "verifier"
       else if (cycle.phase === "investigate") role = "collector"
       if (!role) return
       const stamp = `${cycle.plan.cycle_id}:${cycle.phase}`
       if (prompted.has(stamp)) return
-      let child = cycle.sessions[role]
+      let child = cycle.sessions?.[role]
       const agent = role === "collector" ? "simplify" : "verify"
       if (!child) {
         // V2 sessions have no settable parent, so a GC lane is its own session,
@@ -635,9 +767,11 @@ export default Plugin.define({
         throw new Error(`GC ${action} requires the attached ${role} session`)
       const result = await coordinate({ ...fields, action, session: c.sessionID })
       if (action === "authorize") {
-        const cycle = result
-        const b: Binding = { key: cycle.author_key, agent: c.agent, session: cycle.plan.session_id,
-          dispatch: c.sessionID, unit: cycle.plan.cycle_id, revision: 0, deltaHash: "" }
+        if (!isGCCycleResponse(result) || typeof result.author_key !== "string") throw new Error("GC authorization response omitted its binding plan")
+        const authorKey = result.author_key
+        const plan = result.plan
+        const b: Binding = { key: authorKey, agent: c.agent, session: plan.session_id,
+          dispatch: c.sessionID, unit: plan.cycle_id, revision: 0, deltaHash: "" }
         bindings.set(b.key, b)
         await persist()
       }
@@ -736,10 +870,11 @@ export default Plugin.define({
     }
     await ctx.permission.hook("evaluate", async (event: any) => {
       if (event.action !== "edit" || event.effect === "deny") return
-      const resources: string[] = (event.resources ?? [event.resource])
-        .filter((r: unknown): r is string => typeof r === "string" && r.length > 0)
-        .map((r) => workspaceRelative(r))
-      if (resources.length === 0) return
+      const resources: unknown[] = event.resources ?? [event.resource]
+      const relativeResources = resources
+        .filter((resource): resource is string => typeof resource === "string" && resource.length > 0)
+        .map(workspaceRelative)
+      if (relativeResources.length === 0) return
       const session = await rootSession(event.sessionID).catch(() => event.sessionID)
       const claims = await takt("claims", { session_id: session }).then(r => r.claims ?? [], () => undefined)
       if (claims === undefined) {
@@ -750,7 +885,7 @@ export default Plugin.define({
       }
       for (const c of claims) {
         if (c.pending !== true && c.active !== true) continue
-        const held = resources.find(r => (c.scope ?? []).includes(r))
+        const held = relativeResources.find(r => (c.scope ?? []).includes(r))
         if (!held) continue
         event.effect = "deny"
         event.message = `Takt refused this edit: ${held} is held by work unit ${c.work_unit_id} (agent ${c.agent_id}); wait for its consolidation or discard it`
@@ -768,7 +903,7 @@ export default Plugin.define({
       // A failed status read must never break the orchestrator's own request.
       const state = await coordinate({ action: "status" }).catch(() => undefined)
       if (state === undefined) return
-      const active = state.draining === true || state.cycle != null
+      const active = isCoordinatorResponse(state) && (state.draining === true || state.cycle != null)
       if (active) {
         maintenanceAnnounced = true
         event.system.push({ type: "text", text: MAINTENANCE_DUE })
@@ -836,7 +971,7 @@ export default Plugin.define({
 
     await ctx.tool.transform((editor) => {
       const gc = (name: string, description: string, action: string, input = obj({}, [])) =>
-        editor.add({ name, description, input, execute: (args: any, c) => gcTool(action, c, args) })
+        editor.add({ name, description, input, execute: (value: unknown, c) => gcTool(action, c, toolInput(value)) })
 
       gc("gc_baseline", "Verifier: run and record prepared acceptance baseline before mutation.", "baseline")
       gc("gc_findings", "Collector: read persisted findings and cycle declaration.", "findings")
@@ -876,10 +1011,11 @@ export default Plugin.define({
       // dispatch tools below: each is the orchestrator's own declaration, never
       // a specialist's, so every one requires the calling session to be the
       // root interlocutor.
-      const dispatch = (name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: any) => Record<string, unknown>) =>
+      const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>) =>
         editor.add({
           name, description, input,
-          async execute(args: any, c) {
+          async execute(value: unknown, c) {
+            const args = toolInput<Args>(value)
             const session = await rootSession(c.sessionID)
             if (c.sessionID !== session) throw new Error(`${name} belongs to the root orchestrator`)
             const result = await dispatchAction({ action, session, ...fields(args) })
@@ -906,7 +1042,8 @@ export default Plugin.define({
             ...(args.withdraw?.length ? { withdrawals: args.withdraw } : {}),
           }))
 
-      editor.add({ name: "claim_list", description: "List ownership claims for the current root session.", input: obj({}, []), async execute(_args: any, c) {
+      editor.add({ name: "claim_list", description: "List ownership claims for the current root session.", input: obj({}, []), async execute(value: unknown, c) {
+        toolInput(value)
         orchestratorOnly(c, "VFS claims")
         return { content: JSON.stringify(await takt("claims", { session_id: await rootSession(c.sessionID) })) }
       } })
@@ -916,7 +1053,8 @@ export default Plugin.define({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Instance id of the specialist you will launch"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
-      }, ["work_unit_id", "agent", "scope"]), async execute(args: { work_unit_id: string; agent: string; scope: string[] }, c) {
+      }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
+        const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
         return { content: JSON.stringify(await takt("assign", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, scope: args.scope })) }
       } })
@@ -924,15 +1062,17 @@ export default Plugin.define({
         work_unit_id: str("The verifier's own unit, the one its delegation will be named after"),
         agent: str("Instance id of the verifier you will launch"),
         author_key: str("The author_key of the staged work to judge"),
-      }, ["work_unit_id", "agent", "author_key"]), async execute(args: { work_unit_id: string; agent: string; author_key: string }, c) {
+      }, ["work_unit_id", "agent", "author_key"]), async execute(input: unknown, c) {
+        const args = toolInput(input)
         orchestratorOnly(c, "VFS verifier assignment")
         return { content: JSON.stringify(await takt("assign-verifier", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. Release a prior-session claim directly. For a claim in the current root session, first obtain actual user confirmation through the orchestrator's native question mechanism, then set confirmed true only after yes.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true only after actual user confirmation for a claim in this root session" } }, ["claim_key"]), async execute(args: any, c) {
+      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. Release a prior-session claim directly. For a claim in the current root session, first obtain actual user confirmation through the orchestrator's native question mechanism, then set confirmed true only after yes.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true only after actual user confirmation for a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
+        const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
         orchestratorOnly(c, "VFS claim release")
         const session = await rootSession(c.sessionID)
         const claims = await takt("claims", { session_id: session })
-        const claim = (claims.claims ?? []).find((x: any) => x.key === args.claim_key)
+        const claim = (claims.claims ?? []).find((x: OwnershipClaim) => x.key === args.claim_key)
         if (!claim) throw new Error(`unknown claim_key ${args.claim_key}; call claim_list and use an exact listed key`)
         if (claim.root_session_id === session && args.confirmed !== true) {
           let status = "neither active nor pending"
@@ -943,8 +1083,8 @@ export default Plugin.define({
         return { content: JSON.stringify(await takt("release", { session_id: session, claim_key: claim.key })) }
       } })
 
-      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: any) => args)
-      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: any) => args)
+      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
+      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
       dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins: a binary expected result, a prior recoverable point, explicit scope, and both budgets. Present evidence and alternatives to the user and await their decision before a second recovery of the same objective.",
         "recovery",
@@ -956,7 +1096,7 @@ export default Plugin.define({
           actions: { type: "number", description: "Action budget this recovery may consume" },
           attempts: { type: "number", description: "Attempt budget: how many times this recovery may be retried" },
         }, ["objective", "result", "point", "scope", "actions", "attempts"]),
-        (args: any) => args)
+        (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => args)
 
       dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence. Only a demonstrated recovery breaks the objective's failure streak.",
         "recovered",
@@ -983,7 +1123,7 @@ export default Plugin.define({
           objective: str("Recovery objective the exception applies to, if the bound is recovery-scoped"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
         }, ["event", "bound", "allowance"]),
-        (args: any) => args)
+        (args: { event: string; bound: string; objective?: string; allowance: number }) => args)
 
       dispatch("dispatch_contest", "Contest a specifically identified terminal failure by requesting independent verification against the invariants that already applied to it. You request it; you do not choose or re-dispatch the verifier, and a rejected contest leaves the failure standing.",
         "contest",
@@ -1018,7 +1158,8 @@ export default Plugin.define({
           client: str("Client-facing context for the incoming interlocutor"),
           expected_artifact: str("Optional filesystem copy; the result's Engram ID is required at handoff"),
         }, ["target_agent", "objective"]),
-        async execute(args: any, c) {
+        async execute(value: unknown, c) {
+          const args = toolInput<{ target_agent: string; objective: string; requirements?: string; client?: string; expected_artifact?: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_switch belongs to the root orchestrator")
           const text = [
@@ -1032,7 +1173,7 @@ export default Plugin.define({
             agent: args.target_agent,
             metadata: { takt_switch: session },
           })
-          let result: any
+          let result: DispatchResponse
           try {
             result = await dispatchAction({ action: "switch", session, child, agent: args.target_agent, artifact: args.expected_artifact })
           } catch (error) {
@@ -1051,7 +1192,8 @@ export default Plugin.define({
         name: "dispatch_abort_switch",
         description: "Abort the current interlocutor switch and return the interlocutor role to the base. No confirmation required.",
         input: obj({ reason: str("Evidence for aborting the switch") }, ["reason"]),
-        async execute(args: any, c) {
+        async execute(value: unknown, c) {
+          const args = toolInput<{ reason: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_abort_switch belongs to the root orchestrator")
           if (!interlocutorChild) throw new Error("no active interlocutor switch to abort")
@@ -1074,7 +1216,8 @@ export default Plugin.define({
         }, ["result", "additional_context", "extra_artifacts", "result_ids"]),
         // Not built on dispatch(): the caller here is the temporary holder,
         // never the root, so dispatch()'s root-only guard does not apply.
-        async execute(args: any, c) {
+        async execute(value: unknown, c) {
+          const args = toolInput<{ result: string; additional_context: string; extra_artifacts: string[]; result_ids: number[] }>(value)
           const session = await rootSession(c.sessionID)
           // A refused handoff throws here, and its reason is all the holder
           // receives: it corrects and retries.
@@ -1099,19 +1242,21 @@ export default Plugin.define({
           scope: { type: "array", items: { type: "string" }, description: "The exact paths your assignment names" },
           author_key: str("The author_key your assignment names, when it names one"),
         }, ["scope"]),
-        async execute(args: { scope: string[]; author_key?: string }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ scope: string[]; author_key?: string }>(input)
           const session = await rootSession(c.sessionID)
-          const author = args.author_key ? bindings.get(args.author_key) : undefined
-          if (args.author_key && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
+          const authorKey = typeof args.author_key === "string" ? args.author_key : undefined
+          const author = authorKey ? bindings.get(authorKey) : undefined
+          if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
           // A verifier runs as its own unit; the author key alone links it to
           // the staged work it judges.
           const unit = await delegatedUnit(c.sessionID)
-          const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author ? { judges: args.author_key } : {}) }
-          const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope: args.scope, ...(author ? { author_key: args.author_key } : {}) })
-          b.key = res.key as string
+          const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
+          const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope: args.scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
+          b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
           bindings.set(b.key, b)
           await persist()
-          return { content: `Bound as ${b.agent} to scope [${args.scope.join(", ")}]; unit ${unit}, attempt ${res.attempt_id}; invariants ${INVARIANT_DOCUMENTS.join(", ")} at version ${res.invariants_version}; author_key ${b.key}` }
+          return { content: `Bound as ${b.agent} to scope ${JSON.stringify(args.scope)}; unit ${unit}, attempt ${res.attempt_id}; invariants ${INVARIANT_DOCUMENTS.join(", ")} at version ${res.invariants_version}; author_key ${b.key}` }
         },
       })
       editor.add({
@@ -1123,8 +1268,9 @@ export default Plugin.define({
           call_id: str("Unique id for this operation"),
           author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
         }, ["path", "content", "call_id"]),
-        async execute(args: { path: string; content: string; call_id: string; author_key?: string }, c) {
-          const b = await binding(c, args.author_key)
+        async execute(input: unknown, c) {
+          const args = toolInput<{ path: string; content: string; call_id: string; author_key?: string }>(input)
+          const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
           const res = await takt("op", {
             ...identity(b), author_key: b.key, call_id: args.call_id,
             expected_revision: b.revision, action: "create", path: args.path, content: args.content,
@@ -1137,7 +1283,8 @@ export default Plugin.define({
         name: "vfs_read",
         description: "Read a file of your assignment as staged: your own staged view, or the staged work you judge.",
         input: obj({ path: str("Workspace-relative path within your assignment"), call_id: str("Unique id for this operation") }, ["path", "call_id"]),
-        async execute(args: { path: string; call_id: string }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ path: string; call_id: string }>(input)
           const b = own(c)
           const judged = b.judges ? bindings.get(b.judges) : undefined
           if (judged) {
@@ -1146,14 +1293,14 @@ export default Plugin.define({
               ...identity(b), author_key: b.key, view_key: judged.key, call_id: args.call_id,
               expected_revision: judged.revision, action: "read", path: args.path,
             })
-            return { content: (res.content as string) ?? "" }
+            return { content: res.content ?? "" }
           }
           const res = await takt("op", {
             ...identity(b), author_key: b.key, call_id: args.call_id,
             expected_revision: b.revision, action: "read", path: args.path,
           })
           await record(b, res)
-          return { content: (res.content as string) ?? "" }
+          return { content: res.content ?? "" }
         },
       })
       editor.add({
@@ -1164,8 +1311,9 @@ export default Plugin.define({
           call_id: str("Unique id for this operation"),
           author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
         }, ["path", "call_id"]),
-        async execute(args: { path: string; call_id: string; author_key?: string }, c) {
-          const b = await binding(c, args.author_key)
+        async execute(input: unknown, c) {
+          const args = toolInput<{ path: string; call_id: string; author_key?: string }>(input)
+          const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
           const res = await takt("op", {
             ...identity(b), author_key: b.key, call_id: args.call_id,
             expected_revision: b.revision, action: "delete", path: args.path,
@@ -1181,9 +1329,11 @@ export default Plugin.define({
           author_key: str("The author_key of the staged work to discard"),
           call_id: str("Unique id for this operation"),
         }, ["author_key", "call_id"]),
-        async execute(args: { call_id: string; author_key: string }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ author_key: string; call_id: string }>(input)
           // Discarding is the orchestrator's backtracking decision (PR-VFS-CSL-5).
           orchestratorOnly(c, "vfs_discard")
+          if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
           await takt("op", {
@@ -1202,7 +1352,9 @@ export default Plugin.define({
           pass: { type: "boolean" },
           finding: str("What the verdict rests on; required when pass is false"),
         }, ["author_key", "pass", "finding"]),
-        async execute(args: { author_key: string; pass: boolean; finding: string }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ author_key: string; pass: boolean; finding: string }>(input)
+          if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           const author = bindings.get(args.author_key)
           if (!author) throw new Error("author_key does not name an active binding")
           // The verifier is the caller's own gate over exactly this author.
@@ -1225,7 +1377,9 @@ export default Plugin.define({
           author_key: str("The author_key of the staged work to consolidate"),
           checkpoint: str("Short consolidation label hashed into the journal"),
         }, ["author_key", "checkpoint"]),
-        async execute(args: { author_key: string; checkpoint: string }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ author_key: string; checkpoint: string }>(input)
+          if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           // Consolidation is the orchestrator's act over work its own delegations
           // staged (PR-DAG-REP-5); the author's binding speaks for the delta.
           if (c.agent !== ORCHESTRATOR_ID) throw new Error("vfs_consolidate belongs to the orchestrator")
@@ -1244,12 +1398,14 @@ export default Plugin.define({
         input: obj({
           result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Existing Engram entry IDs this delegation delivers" },
         }, ["result_ids"]),
-        async execute(args: { result_ids: number[] }, c) {
+        async execute(input: unknown, c) {
+          const args = toolInput<{ result_ids: number[] }>(input)
           const root = await rootSession(c.sessionID)
           const unit = await delegatedUnit(c.sessionID)
           await dispatchAction({ action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
           deliveries.set(unitKey(root, unit), true)
-          return { content: `Delivered ${args.result_ids.length} result id(s)` }
+          const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
+          return { content: `Delivered ${count} result id(s)` }
         },
       })
     })
@@ -1264,7 +1420,7 @@ export default Plugin.define({
         const info = await ctx.session.get({ sessionID: event.sessionID })
         if (!info.parentID) return
         const agent = await ctx.agent.get({ agentID: event.agent })
-        const rules = agent?.permissions
+        const rules = agent.data.permissions
         const explicitlyAllows = (toolName: string) => {
           if (!Array.isArray(rules)) return false
           let decision: string | undefined

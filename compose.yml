@@ -8,6 +8,8 @@ services:
       args:
         OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.16}
         GO_VERSION: ${GO_VERSION:-1.25.0}
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
     image: takt-ai:dev
     # Match the host user so files written into the bind mount below aren't
     # owned by a container-only uid on Linux. Defaults to 1000 (the common

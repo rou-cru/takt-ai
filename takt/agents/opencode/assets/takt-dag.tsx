@@ -21,6 +21,12 @@ type DagNodeState = "planned" | "in_flight" | "settled" | "withdrawn"
 type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain"
 type DagOutcome = "completed" | "failed" | "backtracked" | "interrupted"
 type DagActivityKind = "orchestrator" | "maintenance"
+type Capture = "current" | "empty" | "uncertain" | "unavailable"
+const DAG_STATES: readonly DagNodeState[] = ["planned", "in_flight", "settled", "withdrawn"]
+const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain"]
+const DAG_OUTCOMES: readonly DagOutcome[] = ["completed", "failed", "backtracked", "interrupted"]
+const DAG_CAPTURES: readonly Capture[] = ["current", "empty", "uncertain", "unavailable"]
+const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "maintenance"]
 
 interface DagNode {
   readonly id: string
@@ -51,7 +57,79 @@ interface DagEdge {
   readonly to: string
 }
 
-type Capture = "current" | "empty" | "uncertain" | "unavailable"
+interface DagUnavailable {
+  readonly capture: "unavailable"
+}
+type DagResponse = DagSnapshot | DagUnavailable
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+const isString = (value: unknown): value is string => typeof value === "string"
+const oneOf = <T extends string>(value: unknown, values: readonly T[]): value is T => {
+  const candidates: readonly string[] = values
+  return typeof value === "string" && candidates.includes(value)
+}
+// isOptional accepts an absent field or one that passes check.
+const isOptional = <T,>(value: unknown, check: (value: unknown) => value is T): value is T | undefined =>
+  value === undefined || check(value)
+const isOneOf = <T extends string>(values: readonly T[]) => (value: unknown): value is T => oneOf(value, values)
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString)
+
+export function decodeSnapshot(value: unknown): DagResponse {
+  const invalid = (): never => { throw new Error("invalid DAG snapshot JSON") }
+  if (isRecord(value) && value.capture === "unavailable") {
+    if (Object.keys(value).length !== 1) return invalid()
+    return { capture: "unavailable" }
+  }
+  if (!isRecord(value) || value.schema_version !== 1 ||
+      !isNonNegativeInteger(value.projection_revision) || !isNonNegativeInteger(value.history_position) ||
+      !isString(value.session_id) || !oneOf(value.capture, DAG_CAPTURES) ||
+      (value.plan_version !== undefined && !isString(value.plan_version)) ||
+      !Array.isArray(value.nodes) || !Array.isArray(value.edges) ||
+      (value.activities !== undefined && !Array.isArray(value.activities))) return invalid()
+  const nodes: DagNode[] = value.nodes.map((raw): DagNode => {
+    if (!isRecord(raw) || !isString(raw.id) || raw.id.length === 0 || !oneOf(raw.state, DAG_STATES) ||
+        !isOptional(raw.node_kind, isOneOf(["delegated"] as const)) ||
+        !isOptional(raw.session_id, isString) ||
+        !isOptional(raw.attempt_id, isString) ||
+        !isOptional(raw.flight, isOneOf(DAG_FLIGHTS)) ||
+        !isOptional(raw.outcome, isOneOf(DAG_OUTCOMES)) ||
+        typeof raw.launched !== "boolean" ||
+        !isOptional(raw.contract, isString) ||
+        !isOptional(raw.prerequisites, isStringArray) ||
+        (raw.state !== "in_flight" && raw.flight !== undefined) ||
+        (raw.state !== "settled" && raw.outcome !== undefined)) return invalid()
+    return { id: raw.id, ...(raw.node_kind === undefined ? {} : { node_kind: raw.node_kind }),
+      ...(raw.session_id === undefined ? {} : { session_id: raw.session_id }),
+      ...(raw.attempt_id === undefined ? {} : { attempt_id: raw.attempt_id }), state: raw.state,
+      ...(raw.flight === undefined ? {} : { flight: raw.flight }),
+      ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }), launched: raw.launched,
+      ...(raw.contract === undefined ? {} : { contract: raw.contract }),
+      ...(raw.prerequisites === undefined ? {} : { prerequisites: raw.prerequisites }) }
+  })
+  const edges: DagEdge[] = value.edges.map((raw): DagEdge => {
+    if (!isRecord(raw) || !isString(raw.from) || !isString(raw.to)) return invalid()
+    return { from: raw.from, to: raw.to }
+  })
+  const activities: DagActivity[] | undefined = value.activities?.map((raw: unknown): DagActivity => {
+    if (!isRecord(raw) || !isString(raw.activity_id) ||
+        !oneOf(raw.node_kind, DAG_ACTIVITY_KINDS) ||
+        (raw.state !== "in_flight" && raw.state !== "settled") ||
+        (raw.flight !== undefined && raw.flight !== "observed_running") ||
+        (raw.outcome !== undefined && !oneOf(raw.outcome, DAG_OUTCOMES)) ||
+        (raw.state !== "in_flight" && raw.flight !== undefined) ||
+        (raw.state !== "settled" && raw.outcome !== undefined)) return invalid()
+    return { activity_id: raw.activity_id, node_kind: raw.node_kind, state: raw.state,
+      ...(raw.flight === undefined ? {} : { flight: "observed_running" }),
+      ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }) }
+  })
+  return { schema_version: 1, projection_revision: value.projection_revision,
+    history_position: value.history_position, session_id: value.session_id,
+    capture: value.capture, ...(value.plan_version === undefined ? {} : { plan_version: value.plan_version }),
+    nodes, edges, ...(activities === undefined ? {} : { activities }) }
+}
 
 interface DagSnapshot {
   readonly schema_version: number
@@ -71,25 +149,20 @@ interface DagSnapshot {
 // never rendered partially.
 // ---------------------------------------------------------------------------
 
+function activityError(activities: readonly DagActivity[]): string | undefined {
+  const activityIDs = new Set<string>()
+  for (const activity of activities) {
+    if (!activity.activity_id || activityIDs.has(activity.activity_id)) return "duplicate or empty activity identity"
+    activityIDs.add(activity.activity_id)
+  }
+  return undefined
+}
+
 function topologyError(snapshot: DagSnapshot): string | undefined {
   const ids = new Set(snapshot.nodes.map((n) => n.id))
   if (ids.size !== snapshot.nodes.length) return "duplicate node identity"
-  for (const node of snapshot.nodes) {
-    if (node.node_kind !== undefined && node.node_kind !== "delegated") {
-      return `work node ${node.id} has a non-delegated node kind`
-    }
-  }
-  const activityIDs = new Set<string>()
-  for (const activity of snapshot.activities ?? []) {
-    if (!activity.activity_id || activityIDs.has(activity.activity_id)) return "duplicate or empty activity identity"
-    activityIDs.add(activity.activity_id)
-    if (activity.node_kind !== "orchestrator" && activity.node_kind !== "maintenance") {
-      return `activity ${activity.activity_id} has an unknown node kind`
-    }
-    if (activity.state !== "in_flight" && activity.state !== "settled") {
-      return `activity ${activity.activity_id} has an unknown state`
-    }
-  }
+  const invalidActivity = activityError(snapshot.activities ?? [])
+  if (invalidActivity) return invalidActivity
   for (const e of snapshot.edges) {
     if (!ids.has(e.from) || !ids.has(e.to)) return `edge ${e.from} -> ${e.to} names an unknown node`
   }
@@ -218,6 +291,32 @@ interface Turn {
   readonly kind: "direct" | "leave" | "enter"
 }
 
+function collectTurns(edges: readonly DagEdge[], depthOf: (id: string) => number): Map<number, Turn[]> {
+  const turns = new Map<number, Turn[]>()
+  const addTurn = (turn: Turn) => turns.set(turn.gap, [...(turns.get(turn.gap) ?? []), turn])
+  for (const edge of edges) {
+    const from = depthOf(edge.from)
+    const to = depthOf(edge.to)
+    if (to === from + 1) addTurn({ edge, gap: from, kind: "direct" })
+    else {
+      addTurn({ edge, gap: from, kind: "leave" })
+      addTurn({ edge, gap: to - 1, kind: "enter" })
+    }
+  }
+  return turns
+}
+
+// A gap holds a stem row, one row per turn, and an arrowhead row.
+function layerOffsets(turns: ReadonlyMap<number, readonly Turn[]>, maxDepth: number, along: number): number[] {
+  const layerY: number[] = []
+  for (let d = 0, y = 0; d <= maxDepth; d++) {
+    layerY[d] = y
+    const count = turns.get(d)?.length ?? 0
+    y += along + (count === 0 ? 1 : count + 2)
+  }
+  return layerY
+}
+
 function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
   const key = topologyKey(snapshot)
   if (previous?.topologyKey === key) return previous
@@ -236,17 +335,7 @@ function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
   // Perpendicular position of a node: its row on screen.
   const xOf = (id: string) => (column.get(id) ?? 0) * g.pitch
 
-  const turns = new Map<number, Turn[]>()
-  const addTurn = (turn: Turn) => turns.set(turn.gap, [...(turns.get(turn.gap) ?? []), turn])
-  for (const edge of snapshot.edges) {
-    const from = depthOf(edge.from)
-    const to = depthOf(edge.to)
-    if (to === from + 1) addTurn({ edge, gap: from, kind: "direct" })
-    else {
-      addTurn({ edge, gap: from, kind: "leave" })
-      addTurn({ edge, gap: to - 1, kind: "enter" })
-    }
-  }
+  const turns = collectTurns(snapshot.edges, depthOf)
   // Longest horizontal run first: a fan-out's far branch leaves above the
   // near one and a fan-in's near branch joins above the far one, so neither
   // crosses its own sibling. Ties break on identity for determinism.
@@ -261,14 +350,8 @@ function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
     list.forEach((turn, index) => rowIndex.set(turn, index))
   }
 
-  // A gap holds a stem row, one row per turn, and an arrowhead row.
   const maxDepth = Math.max(0, ...depths.values())
-  const layerY: number[] = []
-  for (let d = 0, y = 0; d <= maxDepth; d++) {
-    layerY[d] = y
-    const count = turns.get(d)?.length ?? 0
-    y += g.along + (count === 0 ? 1 : count + 2)
-  }
+  const layerY = layerOffsets(turns, maxDepth, g.along)
   const stemRow = (gap: number) => layerY[gap] + g.along
   const arrowRow = (gap: number) => layerY[gap + 1] - 1
   const turnRow = (turn: Turn) => stemRow(turn.gap) + 1 + (rowIndex.get(turn) ?? 0)
@@ -297,8 +380,11 @@ function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
       continue
     }
     const lane = xOf(edge.from) + g.across
-    const leave = turnRow(edgeTurns.find((t) => t.kind === "leave")!)
-    const enter = turnRow(edgeTurns.find((t) => t.kind === "enter")!)
+    const leaveTurn = edgeTurns.find((t) => t.kind === "leave")
+    const enterTurn = edgeTurns.find((t) => t.kind === "enter")
+    if (!leaveTurn || !enterTurn) throw new Error("invalid DAG layout turns")
+    const leave = turnRow(leaveTurn)
+    const enter = turnRow(enterTurn)
     paths.push([start, place(out, leave), place(lane, leave), place(lane, enter), place(inn, enter), end])
   }
 
@@ -338,10 +424,13 @@ function edgeRows(layout: Layout): string[] {
     }
   }
   for (const path of layout.paths) {
+    if (path.length === 0) throw new Error("invalid DAG layout: empty edge path")
     const [sx, sy] = path[0]
     mask[sy][sx] |= LEFT // the stem leaves the parent box
     for (let i = 1; i < path.length; i++) link(path[i - 1], path[i])
-    const [ex, ey] = path.at(-1)!
+    const end = path.at(-1)
+    if (!end) throw new Error("invalid DAG layout: empty edge path")
+    const [ex, ey] = end
     mask[ey][ex] |= RIGHT // the edge runs into the child box
   }
   return mask.map((row) => row.map((m) => LINE_GLYPHS[m] ?? " ").join(""))
@@ -361,8 +450,11 @@ interface Port {
 function edgePorts(layout: Layout): Port[] {
   const ports = new Map<string, Port>()
   for (const path of layout.paths) {
+    if (path.length === 0) throw new Error("invalid DAG layout: empty edge path")
     const [sx, sy] = path[0]
-    const [ex, ey] = path.at(-1)!
+    const end = path.at(-1)
+    if (!end) throw new Error("invalid DAG layout: empty edge path")
+    const [ex, ey] = end
     ports.set(`${sx - 1},${sy}`, { x: sx - 1, y: sy, glyph: "┴" })
     ports.set(`${ex + 1},${ey}`, { x: ex + 1, y: ey, glyph: "▶" })
   }
@@ -590,7 +682,7 @@ export default Plugin.define({
       setHealth(snapshot() ? "stale" : "unavailable")
     }
 
-    const accept = (next: DagSnapshot) => {
+    const accept = (next: DagResponse) => {
       // Takt answering that it cannot project is not a failed query: the last
       // graph stays on screen, but the capture is unavailable, not stale (§11).
       if (next.capture === "unavailable") {
@@ -629,7 +721,8 @@ export default Plugin.define({
         ])
         if (running !== proc) return // disposed while in flight
         if (code !== 0) return fail(err.trim() || `dag status exited ${code}`)
-        accept(JSON.parse(out) as DagSnapshot)
+        const parsed: unknown = JSON.parse(out)
+        accept(decodeSnapshot(parsed))
       } catch (error) {
         if (running === proc) fail(error instanceof Error ? error.message : String(error))
       } finally {
@@ -707,8 +800,8 @@ export default Plugin.define({
         <box flexDirection="column">
           <text fg={context.theme.text.base}>{sidebarHeader(snapshot(), health())}</text>
           <Show when={problem()}>{(reason: Accessor<string>) => <text>{reason()}</text>}</Show>
-          <Show when={snapshot() && hasContent(snapshot()!)}>
-            <GraphView snapshot={snapshot()!} mode="sidebar" />
+          <Show when={snapshot()}>
+            {(shown: Accessor<DagSnapshot>) => hasContent(shown()) && <GraphView snapshot={shown()} mode="sidebar" />}
           </Show>
         </box>
       )

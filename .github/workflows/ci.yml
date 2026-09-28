@@ -48,6 +48,11 @@ jobs:
       - name: Coverage gate
         run: ./scripts/check-coverage.sh coverage.out coverage-containerized.out
 
+      - name: Typecheck (OpenCode plugin assets)
+        run: |
+          npm ci --prefix takt/agents/opencode/assets --ignore-scripts
+          npm run --prefix takt/agents/opencode/assets typecheck
+
       # Only takt/runtime/sandbox has an actual test suite today (probe.test.mjs,
       # documented in docs/verification/vfs-runtime.md as a manual verification
       # step). Non-blocking: that doc explicitly frames it as not release-gating,

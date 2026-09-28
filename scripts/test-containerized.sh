@@ -36,8 +36,8 @@ source "$REPO_ROOT/scripts/test-packages.sh"
 # - RESOLVED_ARGS: an array preserving every argument boundary, with defaults
 #   prepended only when no package was named. -args ends go flag parsing.
 #
-# ponytail: the value-taking flag list covers `go test`'s common flags; add a
-# name here if a new value flag appears and starts eating the next argument.
+# The value-taking flag list covers `go test`'s common flags; extend it when a
+# new value flag appears and starts consuming the next argument.
 compute_go_args() {
     local arg has_packages=0 skip_next=0
     for arg in "$@"; do

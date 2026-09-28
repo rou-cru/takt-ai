@@ -4,16 +4,14 @@ import plugin from "./takt-vfs.ts"
 // Same mocking style as vfs-dispatch.mjs: only Bun.spawn is a double, the
 // rendered artifact runs for real.
 const calls = []
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
 let respond = (_call) => undefined
 globalThis.Bun = {
   spawn(argv, options) {
     assert.equal(argv[0], "/test/takt-ai")
     const call = { verb: argv[1], argv, options }
     calls.push(call)
-    const answer = () => respond(call) ?? {
-      stdout: JSON.stringify(call.argv[2] === "bind" ? { ok: true, key: "k1", attempt_id: "1" } : { ok: true }),
-      stderr: "", code: 0,
-    }
+    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
       get stdout() { return answer().stdout },
@@ -21,6 +19,16 @@ globalThis.Bun = {
       get exited() { return Promise.resolve(answer().code) },
     }
   },
+}
+// defaultAnswer is what takt-ai prints on success when no scenario overrides it.
+function defaultAnswer(call) {
+  if (call.argv[1] === "gc" && call.argv[2] === "coordinate") return coordinator()
+  if (call.argv[1] === "dispatch") {
+    const action = requestOf(call).action
+    return action === "validate_results" || action === "switch" ? null : coordinator()
+  }
+  if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
+  return { ok: true }
 }
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
@@ -32,7 +40,7 @@ const tools = {}
 const hooks = {}
 const sessionHooks = {}
 const promptedSessions = []
-let onPrompt = (_sessionID, _text) => undefined
+let onPrompt = async (_sessionID, _text) => {}
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -45,7 +53,7 @@ await plugin.setup({
     interrupt: async () => {},
   },
   permission: { hook: async () => () => {} },
-  agent: { get: async () => ({ permissions: [] }) },
+  agent: { get: async () => ({ data: { permissions: [] } }) },
   shell: { hook: async () => () => {} },
   tool: {
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },

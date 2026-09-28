@@ -189,8 +189,8 @@ func OpenCodePluginPackageArtifact() Artifact {
 		Type:    "module",
 		Dependencies: map[string]string{
 			"@anthropic-ai/sandbox-runtime": SandboxRuntimeVersion,
-			"@opencode/client":              OpenCodePluginSDKVersion,
-			"@opencode/plugin":              OpenCodePluginSDKVersion,
+			"@opencode/client":              pluginDevDependency("@opencode/client"),
+			"@opencode/plugin":              pluginDevDependency("@opencode/plugin"),
 		},
 	}
 	content, err := json.MarshalIndent(manifest, "", "  ")
@@ -203,9 +203,28 @@ func OpenCodePluginPackageArtifact() Artifact {
 	}
 }
 
+//go:embed assets/package.json
+var pluginPackageJSON []byte
+
+// pluginDevDependency reads a pin from assets/package.json, the single source
+// the plugin assets are also typechecked against.
+func pluginDevDependency(name string) string {
+	var pkg struct {
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(pluginPackageJSON, &pkg); err != nil {
+		panic("parse assets/package.json: " + err.Error())
+	}
+	version, ok := pkg.DevDependencies[name]
+	if !ok {
+		panic("assets/package.json has no devDependency " + name)
+	}
+	return version
+}
+
 // OpenCodePluginSDKVersion pins plugin SDK packages to the deployed OpenCode
 // runtime. Keep client and plugin on the same release.
-const OpenCodePluginSDKVersion = "2.0.16"
+var OpenCodePluginSDKVersion = pluginDevDependency("@opencode/plugin")
 
 func taktPluginArtifact(source, file, taktAIBinary string) Artifact {
 	quoted, _ := json.Marshal(taktAIBinary) // a string always marshals

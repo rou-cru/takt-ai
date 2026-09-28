@@ -50,7 +50,7 @@ func runDag(args []string, stdout, stderr io.Writer) error {
 	// that ever worked there; --session narrows the projection to the one
 	// root session the caller is showing.
 	session := flags.String("session", "", "root session whose plan to project (default: every session in the history)")
-	format := flags.String("format", "json", "output format (json only, for now)")
+	format := flags.String("format", "json", "output format; only json is supported")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}

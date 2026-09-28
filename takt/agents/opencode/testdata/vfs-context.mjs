@@ -33,10 +33,10 @@ await plugin.setup({
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "created" }), prompt: async () => {}, interrupt: async () => {},
   },
-  agent: { async get({ agentID }) { return { id: agentID, permissions: agentID === "dev-none" ? [] : [
+  agent: { async get({ agentID }) { return { data: { id: agentID, permissions: agentID === "dev-none" ? [] : [
     { action: "vfs_read", resource: "*", effect: "allow" },
     { action: "vfs_write", resource: "*", effect: "allow" },
-  ] } } },
+  ] } } } },
   permission: { hook: async () => () => {} }, shell: { hook: async () => () => {} },
   tool: {
     hook: async () => ({ dispose() {} }),

@@ -33,7 +33,7 @@ import (
 )
 
 // fakeEngramScript is an executable answering `version` like the real binary.
-// ponytail: mirrors testutil.FakeEngramScript; kept local to avoid an
+// It mirrors testutil.FakeEngramScript but stays local to avoid an
 // engram→testutil→engram import cycle in this internal test package.
 func fakeEngramScript(version string) []byte {
 	return []byte("#!/bin/sh\necho 'engram " + version + "'\n")

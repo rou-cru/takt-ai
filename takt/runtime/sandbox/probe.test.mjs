@@ -66,11 +66,11 @@ test('shell transformation is capturable as a VFS-staged transaction', async () 
 
     // 1. Projection is prepared outside the sandbox (coordinator side).
     // 2. The command mutates only the projection inside the sandbox.
-    //    ponytail: writes land only on literally-declared PRE-EXISTING files;
-    //    creating files, sed -i and renames are denied by seatbelt, and a
-    //    protected path must never be an ancestor of the projection. The
-    //    viable B21 contract: transform into the sandbox scratch (writable),
-    //    then overwrite the declared target by redirection in one command.
+    //    Writes land only on literally-declared PRE-EXISTING files; creating
+    //    files, sed -i and renames are denied by seatbelt, and a protected
+    //    path must never be an ancestor of the projection. The viable B21
+    //    contract: transform into the sandbox scratch (writable), then
+    //    overwrite the declared target by redirection in one command.
     const workspace = join(root, 'workspace');
     await mkdir(workspace);
     let seq = 0;

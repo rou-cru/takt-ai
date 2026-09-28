@@ -40,6 +40,13 @@ for (const reverse of [false, true]) {
   const messages = []
   let sequence = 0
   let attempt = 0
+  let omitMutationResult = false
+  // mutationResult is the revision a mutating command reports, unless a
+  // scenario simulates a harness that omits it.
+  const mutationResult = command => {
+    if (command !== "op" && command !== "shell-import") return {}
+    return omitMutationResult ? {} : { revision: 1, delta_hash: "identity-delta" }
+  }
   let codegraphReady = false
   globalThis.Bun = {
     spawn(argv, options) {
@@ -61,7 +68,7 @@ for (const reverse of [false, true]) {
         },
         // The attempt and the invariant set's version are issued by the harness,
         // so the plugin can only learn them from this answer.
-        stdout: JSON.stringify({ ok: true, key, attempt_id: String(command === "bind" ? ++attempt : 0), invariants_version: "inv1:test" }),
+        stdout: JSON.stringify({ ok: true, key, attempt_id: String(command === "bind" ? ++attempt : 0), invariants_version: "inv1:test", ...mutationResult(command) }),
         exited: Promise.resolve(0),
       }
     },
@@ -181,4 +188,6 @@ for (const reverse of [false, true]) {
   assert.equal(written.command, "op")
   checkIdentity(written.request, authorA, "author-a")
   assert.equal(written.request.author_key, nextAuthor)
+  omitMutationResult = true
+  await assert.rejects(() => restarted.vfs_write.execute({ path: "file.txt", content: "stale", call_id: "missing-mutation-result" }, authorA), /omitted revision or delta_hash/)
 }

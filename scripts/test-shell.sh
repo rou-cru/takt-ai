@@ -8,8 +8,9 @@ mkdir -p "$TMP/repo/scripts" "$TMP/repo/docker" "$TMP/bin" "$TMP/home"
 cp "$ROOT"/scripts/*.sh "$TMP/repo/scripts/"
 cp "$ROOT/install.sh" "$TMP/repo/"
 cp "$ROOT/Makefile" "$TMP/repo/"
-# Allow the historical runner to reach its argument handling even when its
-# Dockerfile is absent. Fake Docker never builds or executes an image.
+# Let the containerized runner (test-containerized.sh) reach its argument
+# handling even when its Dockerfile is absent. Fake Docker never builds or
+# executes an image.
 printf 'FROM scratch\n' > "$TMP/repo/docker/Dockerfile.test"
 export FIXTURE="$TMP" HOME="$TMP/home"
 export PATH="$TMP/bin:$PATH"

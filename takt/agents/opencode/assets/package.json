@@ -1,0 +1,16 @@
+{
+  "name": "@takt-ai/opencode-plugins",
+  "private": true,
+  "type": "module",
+  "scripts": {"typecheck": "tsc -p ."},
+  "devDependencies": {
+    "@opencode/client": "2.0.16",
+    "@opencode/plugin": "2.0.16",
+    "@opencode/theme": "2.0.16",
+    "@opentui/core": "0.5.12",
+    "@opentui/solid": "0.5.12",
+    "@types/bun": "1.4.2",
+    "solid-js": "1.9.12",
+    "typescript": "5.9.3"
+  }
+}

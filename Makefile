@@ -2,8 +2,8 @@
 .DEFAULT_GOAL := test-host
 
 # Build (if needed) and drop into the disposable dev container.
-# ponytail: exit 130 (128+SIGINT) means the interactive session ended
-# cleanly (^C or `exit` after one); any other code is a real failure.
+# Exit 130 (128+SIGINT) means the interactive session ended cleanly
+# (^C or `exit` after one); any other code is a real failure.
 dev:
 	@set +e; \
 	docker compose run --rm dev; \
