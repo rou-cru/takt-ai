@@ -317,7 +317,7 @@ function layerOffsets(turns: ReadonlyMap<number, readonly Turn[]>, maxDepth: num
   return layerY
 }
 
-function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
+export function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
   const key = topologyKey(snapshot)
   if (previous?.topologyKey === key) return previous
   const g = geometryFor(snapshot)
@@ -411,7 +411,7 @@ const LINE_GLYPHS: Record<number, string> = {
 }
 
 /** Rasterizes every edge path into text rows; cells record their links. */
-function edgeRows(layout: Layout): string[] {
+export function edgeRows(layout: Layout): string[] {
   const mask: number[][] = Array.from({ length: layout.height }, () => new Array<number>(layout.width).fill(0))
   const link = ([ax, ay]: Point, [bx, by]: Point) => {
     for (let y = Math.min(ay, by); y < Math.max(ay, by); y++) {
@@ -447,7 +447,7 @@ interface Port {
  * the parent's bottom-right corner (┘ becomes ┴) and the arrowhead replaces
  * the child's left border.
  */
-function edgePorts(layout: Layout): Port[] {
+export function edgePorts(layout: Layout): Port[] {
   const ports = new Map<string, Port>()
   for (const path of layout.paths) {
     if (path.length === 0) throw new Error("invalid DAG layout: empty edge path")
@@ -554,7 +554,7 @@ type Health = "waiting" | "confirmed" | "stale" | "unavailable" | "invalid"
  * the host's sidebar scrolls vertically, and scrolls sideways within the
  * column; the extra row is the horizontal scrollbar.
  */
-function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode: "route" | "sidebar" }) {
+export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode: "route" | "sidebar" }) {
   // Solid runs a component body once per mount, so this closure carries the
   // last layout across reactive re-runs and a state-only update reuses it.
   let previous: Layout | undefined
@@ -724,7 +724,7 @@ export default Plugin.define({
         const parsed: unknown = JSON.parse(out)
         accept(decodeSnapshot(parsed))
       } catch (error) {
-        if (running === proc) fail(error instanceof Error ? error.message : String(error))
+        if (running === proc) fail(error instanceof Error ? error.message : "Unknown DAG status error")
       } finally {
         if (running === proc) running = undefined
       }

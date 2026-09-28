@@ -90,7 +90,7 @@ var allowedAttributes = map[EventClass][]string{
 	EventDispatch:           {"decision", "specialist", "dispatch_id", "reason_code", "parallelism"},
 	EventUnitLifecycle:      {"transition", "from_state", "to_state", "specialist", "reason_code"},
 	EventToolActivity:       {"platform", "tool", "phase", "outcome", "duration_ms", "path", "path_hash"},
-	EventModelUsage:         {"provider", "model", "message_id", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens", "cache_write_tokens", "cost_usd"},
+	EventModelUsage:         {"provider", "model", "message_id", "usage_event_id", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens", "cache_write_tokens", "cost_usd"},
 	EventGCFindingUnapplied: {"finding_kind", "target", "count", "cycle_id", "mandate_class"},
 	EventProblemRate:        {"signal", "count", "window_seconds", "rate"},
 	EventCycleReedit:        {"cycle_id", "mandate_class", "path_hash"},

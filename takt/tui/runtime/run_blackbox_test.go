@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 )
 
@@ -58,6 +59,53 @@ func TestRunLifecycle(t *testing.T) {
 
 	if view := r.SpinView(); view == "" {
 		t.Error("SpinView() is empty")
+	}
+}
+
+func TestRunAcceptProgressTracksOnlyMatchingRequest(t *testing.T) {
+	request := runtime.ActionRequest{ID: runtime.NextID(), Action: runtime.ActionInstall}
+	run := runtime.NewRun()
+	if _, accepted := run.AcceptProgress(runtime.ActionProgressMsg{Request: request}); accepted {
+		t.Fatal("AcceptProgress() accepted progress while idle")
+	}
+	run = run.Start(request)
+	for _, mismatch := range []runtime.ActionRequest{
+		{ID: request.ID + 1, Action: request.Action},
+		{ID: request.ID, Action: runtime.ActionSync},
+	} {
+		if _, accepted := run.AcceptProgress(runtime.ActionProgressMsg{Request: mismatch}); accepted {
+			t.Errorf("AcceptProgress() accepted mismatched request %#v", mismatch)
+		}
+	}
+
+	preparing := setup.DeploymentProgress{Stage: "preparing", Message: "Staging", Path: "a.txt", Completed: 7, Total: 9}
+	var accepted bool
+	run, accepted = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: preparing})
+	if !accepted {
+		t.Fatal("AcceptProgress() rejected matching preparation progress")
+	}
+	progress := run.ProgressView()
+	if progress.Message != "Staging" || progress.Current != "a.txt" || progress.Completed != 0 || progress.Total != 0 {
+		t.Fatalf("ProgressView() after preparation = %#v", progress)
+	}
+
+	applied := setup.DeploymentProgress{Stage: "applied", Message: "Applying", Path: "a.txt", Completed: 1, Total: 2}
+	run, accepted = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: applied})
+	if !accepted {
+		t.Fatal("AcceptProgress() rejected matching applied progress")
+	}
+	run, _ = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: applied})
+	if got := run.ProgressView(); len(got.Applied) != 1 || got.Applied[0] != "a.txt" || got.Current != "" || got.Completed != 1 || got.Total != 2 {
+		t.Fatalf("ProgressView() after duplicate applied event = %#v", got)
+	}
+
+	run, _ = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: setup.DeploymentProgress{Stage: "preparing", Path: "b.txt"}})
+	if got := run.ProgressView(); got.Current != "b.txt" {
+		t.Fatalf("ProgressView() current path = %q, want b.txt", got.Current)
+	}
+	run, _ = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: setup.DeploymentProgress{Stage: "complete"}})
+	if got := run.ProgressView(); got.Current != "" || got.Completed != 0 || got.Total != 0 {
+		t.Fatalf("ProgressView() after pathless progress = %#v", got)
 	}
 }
 

@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test"
+import { testRender } from "@opentui/solid"
 import {
   activityBoxWidth,
   activityError,
   activityText,
+  computeLayout,
+  edgePorts,
+  edgeRows,
+  GraphView,
   glyphFor,
   hasContent,
   headerLine,
@@ -77,6 +82,43 @@ describe("topologyKey", () => {
   })
 })
 
+describe("graph layout", () => {
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+
+  test("lays out branching depth and layer-skipping edges with deterministic routes", () => {
+    const graph = {
+      ...base,
+      nodes: [node({ id: "a" }), node({ id: "b" }), node({ id: "c" }), node({ id: "d" })],
+      edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "a", to: "c" }, { from: "c", to: "d" }],
+    } as never
+    const layout = computeLayout(graph)
+
+    expect([...layout.nodes.keys()]).toEqual(["a", "b", "c", "d"])
+    expect(layout.nodes.get("a")?.depth).toBe(0)
+    expect(layout.nodes.get("c")?.depth).toBe(2)
+    expect(layout.paths.map((path) => path.length)).toEqual([4, 4, 6, 4])
+    expect(layout.width).toBeGreaterThan(0)
+    expect(layout.height).toBeGreaterThan(0)
+    expect(edgeRows(layout).join("\n")).toContain("┌")
+    expect(edgePorts(layout).some((port) => port.glyph === "▶")).toBe(true)
+    expect(computeLayout(graph, layout)).toBe(layout)
+  })
+
+  test("handles an empty graph and a graph without edges", () => {
+    const empty = computeLayout({ ...base, nodes: [], edges: [] } as never)
+    expect(empty.nodes.size).toBe(0)
+    expect(empty.paths).toEqual([])
+    expect(edgeRows(empty).every((row) => row.trim() === "")).toBe(true)
+    expect(edgePorts(empty)).toEqual([])
+
+    const isolated = computeLayout({ ...base, nodes: [node({ id: "alone" })], edges: [] } as never)
+    expect(isolated.nodes.get("alone")?.depth).toBe(0)
+    expect(isolated.paths).toEqual([])
+    expect(edgeRows(isolated).every((row) => row.trim() === "")).toBe(true)
+  })
+
+})
+
 describe("node presentation", () => {
   test("nodeKindFor defaults to delegated when node_kind is absent", () => {
     expect(nodeKindFor(node())).toBe("delegated")
@@ -103,6 +145,28 @@ describe("node presentation", () => {
 
   test("nodeText composes the kind glyph, state glyph, kind label and id", () => {
     expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("↗ ✓ delegated unit-7")
+  })
+
+  test("renders activity-only and layered graph views in both layouts", async () => {
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+    const activity = { activity_id: "review-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" }
+    const snapshots = [
+      { ...base, nodes: [], edges: [], activities: [activity] },
+      { ...base, nodes: [node({ id: "root" }), node({ id: "child", state: "in_flight" })], edges: [{ from: "root", to: "child" }], activities: [activity] },
+    ]
+    for (const mode of ["route", "sidebar"] as const) {
+      for (const snapshot of snapshots) {
+        const setup = await testRender(() => GraphView({ snapshot: snapshot as never, mode }) as never, { width: 100, height: 30 })
+        try {
+          await setup.renderOnce()
+          const frame = setup.captureCharFrame()
+          expect(frame).toContain("review-1")
+          if (snapshot.nodes.length > 0) expect(frame).toContain("root")
+        } finally {
+          setup.renderer.destroy()
+        }
+      }
+    }
   })
 })
 

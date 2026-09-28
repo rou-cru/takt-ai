@@ -16,11 +16,11 @@ cp "$config" "$tmp/original-config"
 takt-ai setup default-request >"$tmp/request.json"
 
 takt-ai setup install --yes --json <"$tmp/request.json" >"$tmp/install.json"
-test -s "$HOME/.takt-backups/.config/opencode/opencode.json"
+[[ -s "$HOME/.takt-backups/.config/opencode/opencode.json" ]]
 takt-ai setup sync --yes --json <"$tmp/request.json" >"$tmp/sync.json"
 
 artifact=$(jq -r '[.entries | keys[] | select(endswith(".md"))][0] // empty' "$HOME/.takt-manifest.json")
-test -n "$artifact"
+[[ -n "$artifact" ]]
 cp "$HOME/$artifact" "$tmp/original-artifact"
 printf 'user edit\n' >"$HOME/$artifact"
 takt-ai setup sync --plan-only --json <"$tmp/request.json" >"$tmp/conflict.json"
@@ -28,13 +28,13 @@ jq -e --arg path "$artifact" \
     '.Conflicts | any(.[]; .Path == $path and .Reason == "user-edited")' \
     "$tmp/conflict.json" >/dev/null
 takt-ai setup sync --yes --json <"$tmp/request.json" >"$tmp/sync-conflict.json"
-test "$(cat "$HOME/$artifact")" = 'user edit'
+[[ "$(cat "$HOME/$artifact")" = 'user edit' ]]
 cp "$tmp/original-artifact" "$HOME/$artifact"
 
 takt-ai restore >/dev/null
 cmp "$config" "$tmp/original-config"
 takt-ai setup uninstall --yes --json <"$tmp/request.json" >"$tmp/uninstall.json"
-test ! -e "$HOME/.takt-manifest.json"
+[[ ! -e "$HOME/.takt-manifest.json" ]]
 cmp "$config" "$tmp/original-config"
 
 echo 'PASS: install, sync, conflict, backup, restore, uninstall'

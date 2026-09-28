@@ -102,6 +102,20 @@ func TestEnvelope_Validate_SafeAttributes(t *testing.T) {
 	}
 }
 
+func TestEnvelope_Validate_ModelUsageEventID(t *testing.T) {
+	clock := obs.NewClock()
+	env := obs.NewEnvelope(clock, obs.PlanePlatform, "agent-a")
+	env.EventClass = obs.EventModelUsage
+	env.Attributes = map[string]any{
+		"usage_event_id": "evt-1",
+		"input_tokens":   12,
+		"cost_usd":       0.25,
+	}
+	if err := env.Validate(); err != nil {
+		t.Fatalf("Validate() model usage event = %v; want nil", err)
+	}
+}
+
 // ─── Internal Bus ────────────────────────────────────────────────────────────
 
 func TestBus_Publish_AcceptsValidEnvelopes(t *testing.T) {

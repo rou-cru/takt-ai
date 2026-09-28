@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
+import type { OpenCodeEvent } from "@opencode/client"
 import { join, resolve } from "node:path"
 import { Plugin } from "@opencode/plugin"
 
@@ -327,7 +328,7 @@ export default Plugin.define({
       if (gcChildren.has(sessionID)) return sessionID
       const info = await ctx.session.get({ sessionID })
       if (!info.parentID) return sessionID
-      const unit = String(info.title ?? "").trim()
+      const unit = (info.title ?? "").trim()
       if (!unit) throw new Error(`session ${sessionID} carries no work unit identity`)
       return unit
     }
@@ -492,7 +493,8 @@ export default Plugin.define({
     if (VFS_SHELL_ENFORCED) {
       await ctx.tool.hook("execute.before", async (event) => {
         if (!SHELL_ACTIONS.has(event.tool)) return
-        const command = asString((event.input as { command?: unknown })?.command, "")
+        const input = isResponseObject(event.input) ? event.input : {}
+        const command = asString(input.command, "")
         // Correlation into create.before is by command text alone, so a command
         // already pending for another caller would be ambiguous: it could run
         // under the wrong binding's sandbox, or take the orchestrator's direct path.
@@ -727,7 +729,7 @@ export default Plugin.define({
             const state = await coordinate({ action: "status" })
             if (isCoordinatorResponse(state) && state.cycle) {
               for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
-              await coordinate({ action: "abort", evidence: String(error) })
+              await coordinate({ action: "abort", evidence: error instanceof Error ? error.message : "unknown error" })
             }
           } catch (recoveryError) {
             // No blind unlock on failed reconciliation or external divergence.
@@ -807,7 +809,7 @@ export default Plugin.define({
       const root = await rootSession(event.sessionID).catch(() => event.sessionID)
       observe("tool_activity", "takt.platform", event.agent ?? "harness", root, {
         platform: "opencode", tool: event.tool, phase: "after",
-        outcome: String(event.status ?? "completed"),
+        outcome: asString(event.status, "completed"),
         ...(started === undefined ? {} : { duration_ms: Date.now() - started }),
       })
     })
@@ -823,12 +825,12 @@ export default Plugin.define({
       if (event.tool !== "subagent") return
       await initializeGC()
       const root = await rootSession(event.sessionID)
-      const input = event.input as { agent?: string; description?: string }
+      const input = isResponseObject(event.input) ? event.input : {}
       // The delegation's description names the work unit it executes: a planned
       // unit by its committed identity, and a retry by the same name again. The
       // host call identity tells a transport repetition apart from a retry.
-      const unit = (input.description ?? "").trim()
-      const specialist = String(input.agent ?? "")
+      const unit = asString(input.description, "").trim()
+      const specialist = asString(input.agent, "")
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
@@ -836,7 +838,8 @@ export default Plugin.define({
       try {
         await dispatchAction({ action: "admit", event: unit, dispatch: delegation, session: root, agent: specialist })
       } catch (error) {
-        throw refused("admission_denied", specialist, root, error as Error, unit)
+        const cause = error instanceof Error ? error : new Error("dispatch admission failed")
+        throw refused("admission_denied", specialist, root, cause, unit)
       }
       // Only an admitted delegation is remembered: a denied one never ran.
       delegations.set(delegation, { unit, root, agent: specialist })
@@ -930,34 +933,24 @@ export default Plugin.define({
       }
     })
 
-    // OpenCode reports provider usage on message updates. Keep only numeric
+    // OpenCode reports provider usage on session.usage.updated. Keep only numeric
     // accounting fields; message text, prompts and tool output never cross into
-    // Takt telemetry. A message update is emitted once usage is available, so
-    // this avoids counting the same assistant turn on every token delta.
-    const observedUsageMessages = new Set<string>()
-    function observeModelUsage(event: unknown) {
-      if (!isResponseObject(event) || event.type !== "message.updated") return
-      const data = isResponseObject(event.data) ? event.data : isResponseObject(event.properties) ? event.properties : {}
-      const info = isResponseObject(data.info) ? data.info : isResponseObject(data.message) ? data.message : data
-      const tokens = info.tokens
-      if (!isResponseObject(tokens)) return
-      const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0
-      const sessionID = String(info.sessionID ?? data.sessionID ?? "")
-      if (!sessionID || info.role !== "assistant") return
-      const messageID = String(info.id ?? data.messageID ?? "")
-      if (messageID && observedUsageMessages.has(messageID)) return
-      const binding = [...bindings.values()].find((candidate) => candidate.session === sessionID)
-      const cache = isResponseObject(tokens.cache) ? tokens.cache : {}
+    // Takt telemetry. Event IDs prevent duplicate delivery from counting twice.
+    const observedUsageEvents = new Set<string>()
+    function observeModelUsage(event: OpenCodeEvent) {
+      if (event.type !== "session.usage.updated") return
+      if (observedUsageEvents.has(event.id)) return
+      const { sessionID, cost, tokens } = event.data
+      const binding = [...bindings.values()].find((candidate) => candidate.session === sessionID || candidate.dispatch === sessionID)
       const attributes = {
-        provider: String(info.providerID ?? ""), model: String(info.modelID ?? ""),
-        message_id: messageID,
-        input_tokens: numeric(tokens.input), output_tokens: numeric(tokens.output),
-        reasoning_tokens: numeric(tokens.reasoning), cache_read_tokens: numeric(cache.read),
-        cache_write_tokens: numeric(cache.write), cost_usd: numeric(info.cost),
+        usage_event_id: event.id,
+        input_tokens: tokens.input, output_tokens: tokens.output,
+        reasoning_tokens: tokens.reasoning, cache_read_tokens: tokens.cache.read,
+        cache_write_tokens: tokens.cache.write, cost_usd: cost,
       }
-      observe("model_usage", "takt.platform", String(info.agent ?? "harness"), sessionID,
+      observe("model_usage", "takt.platform", binding?.agent ?? "harness", sessionID,
         attributes, binding?.unit ?? "")
-      if (messageID) observedUsageMessages.add(messageID)
+      observedUsageEvents.add(event.id)
     }
 
     const abort = new AbortController()
@@ -1410,9 +1403,9 @@ export default Plugin.define({
               ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
             })
           } catch (error) {
-            const e = error as Error
-            if (/physical base changed|recovery required|unresolved collision/.test(e.message)) e.message += "; freeze this path and escalate with the report"
-            throw e
+            if (error instanceof Error && /physical base changed|recovery required|unresolved collision/.test(error.message))
+              error.message += "; freeze this path and escalate with the report"
+            throw error
           }
           await release(b)
           return { content: "Consolidated to workspace" }

@@ -19,6 +19,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +31,68 @@ import (
 	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/setup"
 )
+
+func TestDeploymentChecksReportsGlobalAndPerTargetMissingFiles(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, "present.txt"), []byte("managed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	present, err := setup.NewOwnershipEntry("present.txt", []byte("managed"), 0o644, false, "", "", setup.TargetOpenCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := setup.NewOwnershipEntry("missing.txt", []byte("expected"), 0o644, false, "", "", setup.TargetSkills)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := setup.NewOwnershipManifest()
+	if err := manifest.Add(present, missing); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.Save(home); err != nil {
+		t.Fatal(err)
+	}
+
+	checks := deploymentChecks(home)
+	if len(checks) != 3 {
+		t.Fatalf("deploymentChecks() returned %d checks, want global and two targets: %#v", len(checks), checks)
+	}
+	if checks[0].Name != "deployment:manifest" || checks[0].Status != CheckStatusWarn || checks[0].Detail != "1 of 2 managed files missing" {
+		t.Fatalf("global deployment check = %#v", checks[0])
+	}
+	if checks[1].Name != "deployment:opencode" || checks[1].Status != CheckStatusPass {
+		t.Fatalf("OpenCode deployment check = %#v", checks[1])
+	}
+	if checks[2].Name != "deployment:skills" || checks[2].Status != CheckStatusWarn {
+		t.Fatalf("skills deployment check = %#v", checks[2])
+	}
+}
+
+func TestDefaultHTTPGetAndStatfsFreeBytes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+		_, _ = w.Write([]byte("health"))
+	}))
+	t.Cleanup(server.Close)
+
+	status, err := defaultHTTPGet(server.URL, time.Second)
+	if err != nil || status != http.StatusNoContent {
+		t.Fatalf("defaultHTTPGet() = (%d, %v), want (%d, nil)", status, err, http.StatusNoContent)
+	}
+	if _, err := defaultHTTPGet("://invalid", time.Second); err == nil {
+		t.Fatal("defaultHTTPGet(invalid URL) returned no error")
+	}
+
+	available, err := statfsFreeBytes(t.TempDir())
+	if err != nil || available == 0 {
+		t.Fatalf("statfsFreeBytes(tempdir) = (%d, %v), want positive bytes and nil error", available, err)
+	}
+	if _, err := statfsFreeBytes(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("statfsFreeBytes(missing path) returned no error")
+	}
+}
 
 // withSeams replaces every doctor seam with deterministic doubles for the
 // duration of the test and restores the originals via t.Cleanup. Nil
