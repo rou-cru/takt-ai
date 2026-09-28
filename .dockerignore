@@ -6,3 +6,11 @@ coverage.out
 takt-ai
 generate-logo
 dist/
+.codegraph/
+.dev/
+.atl/
+.claude/
+**/node_modules/
+**/coverage/
+coverage-containerized.out
+coverage-containerized-audit.out

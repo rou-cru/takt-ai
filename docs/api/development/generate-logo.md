@@ -3,7 +3,7 @@
 # generate\-logo
 
 ```go
-import "github.com/rou-cru/takt-ai/cmd/generate-logo"
+import "github.com/rou-cru/takt-ai/development/generate-logo"
 ```
 
 Package main rebuilds logo data so TUI branding stays matched to the canonical PNG.

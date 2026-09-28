@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Focused, offline regressions. No Docker daemon, network, or host install used.
 set -euo pipefail
-ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/repo/scripts" "$TMP/repo/docker" "$TMP/bin" "$TMP/home"
-cp "$ROOT"/scripts/*.sh "$TMP/repo/scripts/"
+mkdir -p "$TMP/repo/development/testing" "$TMP/bin" "$TMP/home"
+cp "$ROOT"/development/testing/*.sh "$TMP/repo/development/testing/"
 cp "$ROOT/install.sh" "$TMP/repo/"
 cp "$ROOT/Makefile" "$TMP/repo/"
 # Let the containerized runner (test-containerized.sh) reach its argument
 # handling even when its Dockerfile is absent. Fake Docker never builds or
 # executes an image.
-printf 'FROM scratch\n' > "$TMP/repo/docker/Dockerfile.test"
+printf 'FROM scratch\n' > "$TMP/repo/development/testing/Dockerfile"
 export FIXTURE="$TMP" HOME="$TMP/home"
 export PATH="$TMP/bin:$PATH"
 
@@ -52,7 +52,7 @@ assert_args() {
     printf '%s\0' "$@" > "$TMP/expected"
     cmp -s "$file" "$TMP/expected" || fail "argument boundaries differ in $file"
 }
-run_runner() { bash "$TMP/repo/scripts/test-containerized.sh" "$@" > "$TMP/output" 2>&1; }
+run_runner() { bash "$TMP/repo/development/testing/test-containerized.sh" "$@" > "$TMP/output" 2>&1; }
 
 test_runner() {
     local run_arg='Test spaced'
@@ -61,8 +61,8 @@ test_runner() {
     pass 'runner preserves spaces, empty arguments, globs, and shell metacharacters'
 
     # Source only the classification data, not its CLI.
-    # shellcheck source=scripts/test-packages.sh
-    source "$TMP/repo/scripts/test-packages.sh"
+    # shellcheck source=development/testing/test-packages.sh
+    source "$TMP/repo/development/testing/test-packages.sh"
     run_runner
     assert_args "$TMP/go-args" "${CONTAINER_TEST_PKGS[@]}"
     run_runner -run "$run_arg" -ldflags '-s -w'
@@ -103,8 +103,8 @@ test_runner() {
 }
 
 test_packages() {
-    # shellcheck source=scripts/test-packages.sh
-    source "$TMP/repo/scripts/test-packages.sh"
+    # shellcheck source=development/testing/test-packages.sh
+    source "$TMP/repo/development/testing/test-packages.sh"
     # Fake only discovery. The real checker must compare its manifest to it.
     printf '%s\n' "${HOST_TEST_PKGS[@]}" "${CONTAINER_TEST_PKGS[@]}" > "$TMP/packages"
     cat > "$TMP/bin/go" <<'SH'

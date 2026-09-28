@@ -3,7 +3,7 @@
 # profiles (same two files SonarCloud consumes via sonar.go.coverage.reportPaths)
 # and fails the build if the total statement coverage drops below the floor.
 #
-# Usage: scripts/check-coverage.sh <profile.out> [<profile.out> ...]
+# Usage: development/testing/check-coverage.sh <profile.out> [<profile.out> ...]
 
 set -euo pipefail
 
@@ -12,20 +12,28 @@ if [[ "$#" -eq 0 ]]; then
     exit 2
 fi
 
-# Minimum total statement coverage. Keep the floor above the combined
-# baseline of 63.4% measured when the gate was introduced; raising it as
-# coverage grows is fine, lowering it requires a documented reason.
-MIN_COVERAGE=60
+# Current minimum combined statement coverage. Raise it after establishing
+# a new measured baseline; never lower it without a documented reason.
+MIN_COVERAGE=80
 
 MERGED=$(mktemp)
 trap 'rm -f "$MERGED"' EXIT
 
 first=1
 for profile in "$@"; do
+    if [[ ! -s "$profile" ]] || ! head -n 1 "$profile" | grep -Eq '^mode: (set|count|atomic)$' || [[ $(wc -l < "$profile") -lt 2 ]]; then
+        echo "FAIL: missing or invalid coverage profile: $profile" >&2
+        exit 1
+    fi
     if [[ "$first" -eq 1 ]]; then
+        mode=$(head -n 1 "$profile")
         cp "$profile" "$MERGED"
         first=0
     else
+        if [[ $(head -n 1 "$profile") != "$mode" ]]; then
+            echo "FAIL: incompatible coverage mode in $profile" >&2
+            exit 1
+        fi
         tail -n +2 "$profile" >>"$MERGED"
     fi
 done

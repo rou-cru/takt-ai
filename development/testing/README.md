@@ -1,7 +1,7 @@
 # Test runners
 
 - `make test-packages` compares `go list ./...` with the exact host/container
-  package lists in `scripts/test-packages.sh`. New, removed, or duplicated
+  package lists in `development/testing/test-packages.sh`. New, removed, or duplicated
   packages fail the check. Classify new packages explicitly; do not add wildcard
   patterns that would silently put future integration tests on the host.
 - `make test-host` checks classification before running host-safe tests. This is
@@ -14,7 +14,7 @@
   module and build caches are disposable. Classification is checked inside the
   container (no host Go required).
   Images use the Docker daemon's native architecture rather than forcing amd64.
-- `scripts/test-containerized.sh [go test flags and packages...]` preserves
+- `development/testing/test-containerized.sh [go test flags and packages...]` preserves
   argument boundaries. Flags-only invocations retain the container package list;
   explicit packages replace it. Values after `-args` are forwarded to the test
   binary, not interpreted as packages. Common value-taking Go flags support both

@@ -17,7 +17,7 @@ commit ejecutado dentro de OpenCode real.
 
 # Prueba vertical del IPC de mutación: bind, create staged, denegación
 # fuera de scope, inspect del verificador, veredicto, consolidación
- go test ./cmd/takt-ai -run TestVFSMutationIPC -count=1
+ go test ./takt/cli -run TestVFSMutationIPC -count=1
 
 # Prueba nativa de aislamiento y viabilidad de captura shell (no un
 # ejecutor shell de producto)
@@ -25,11 +25,11 @@ commit ejecutado dentro de OpenCode real.
  npm test --prefix takt/runtime/sandbox
 
 # Consulta offline de un store EXISTENTE creado por vfs.Open
- go run ./cmd/takt-ai vfs journal --workspace /ruta/workspace \
+ go run ./takt/cli vfs journal --workspace /ruta/workspace \
    --state /ruta/privada --session sesion --unit unidad --after -1 --limit 100
 
 # Restauración explícita de un flush incompleto; no descarta staging
- go run ./cmd/takt-ai vfs recover --workspace /ruta/workspace \
+ go run ./takt/cli vfs recover --workspace /ruta/workspace \
    --state /ruta/privada --restore
 ```
 
@@ -190,10 +190,10 @@ como diferidos ni se acreditan mediante las pruebas del núcleo.
    y dependencia SQLite; revisar recuperación antes que transporte. No abrir
    stores nuevos con un binario anterior ni borrar stores con recuperación pendiente.
 3. Correlación: `takt/session` y sus pruebas; todos los llamadores se migran juntos.
-4. Evidencia offline: `cmd/takt-ai/vfs*`, despacho en `main.go` y esta guía.
+4. Evidencia offline: `takt/cli/vfs*`, despacho en `main.go` y esta guía.
    Retirarlo no elimina estado ni archivos del workspace.
 5. Prueba vertical F0/F1: `takt-vfs.ts`, su artefacto y prueba en
-   `takt/agents/opencode`, subcomandos de mutación en `cmd/takt-ai/vfs.go`
+   `takt/agents/opencode`, subcomandos de mutación en `takt/cli/vfs.go`
    (con `ipc_version`), check en `takt/doctor`, wiring en
    `takt/setup/components.go` y `TestVFSMutationIPC`; retirarlos revierte
    instalación, recorrido y evidencia del plugin VFS.

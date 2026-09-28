@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package lifecycle dispatches the install, sync, and uninstall orchestration
-// shared by the CLI (cmd/takt-ai) and the TUI runtime. It sits above setup,
+// shared by the CLI (takt/cli) and the TUI runtime. It sits above setup,
 // skills and engram and composes them (hosting this dispatch in setup would
 // create an import cycle through skills).
 package lifecycle

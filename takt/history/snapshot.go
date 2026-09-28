@@ -21,7 +21,7 @@ const SnapshotSchemaVersion = 1
 // §11). CaptureUnavailable is deliberately not produced by Snapshot itself: a
 // failed workspace/history read never reaches Project, so it never reaches a
 // Snapshot value either. The command that opens the history (runDag in
-// cmd/takt-ai/dag.go) builds that JSON object itself on a read failure; the
+// takt/cli/dag.go) builds that JSON object itself on a read failure; the
 // constant lives here only so both sides name the same string.
 const (
 	// CaptureCurrent is a successful, non-empty read of the recorded history.

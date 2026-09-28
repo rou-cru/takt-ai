@@ -405,7 +405,7 @@ export default Plugin.define({
         if (typeof parsed.ok !== "boolean") throw new Error(`takt-ai vfs ${command} returned a response without ok`)
         return vfsResponse(parsed, parsed.ok)
       } catch (e) {
-        if (e instanceof SyntaxError) throw new Error(`takt-ai vfs ${command} exited ${code}: ${err || out}`)
+        if (e instanceof SyntaxError) throw new Error(`takt-ai vfs ${command} exited ${code}: ${err || out}`, { cause: e })
         throw e
       }
     }
@@ -868,11 +868,10 @@ export default Plugin.define({
       const clean = resource.startsWith(workspace + "/") ? resource.slice(workspace.length + 1) : resource
       return clean.replace(/^\.\//, "")
     }
-    await ctx.permission.hook("evaluate", async (event: any) => {
+    await ctx.permission.hook("evaluate", async (event) => {
       if (event.action !== "edit" || event.effect === "deny") return
-      const resources: unknown[] = event.resources ?? [event.resource]
-      const relativeResources = resources
-        .filter((resource): resource is string => typeof resource === "string" && resource.length > 0)
+      const relativeResources = event.resources
+        .filter(resource => resource.length > 0)
         .map(workspaceRelative)
       if (relativeResources.length === 0) return
       const session = await rootSession(event.sessionID).catch(() => event.sessionID)
@@ -918,19 +917,19 @@ export default Plugin.define({
     // Takt telemetry. A message update is emitted once usage is available, so
     // this avoids counting the same assistant turn on every token delta.
     const observedUsageMessages = new Set<string>()
-    function observeModelUsage(event: any) {
-      if (event.type !== "message.updated") return
-      const data = event.data ?? event.properties ?? {}
-      const info = data.info ?? data.message ?? data
+    function observeModelUsage(event: unknown) {
+      if (!isResponseObject(event) || event.type !== "message.updated") return
+      const data = isResponseObject(event.data) ? event.data : isResponseObject(event.properties) ? event.properties : {}
+      const info = isResponseObject(data.info) ? data.info : isResponseObject(data.message) ? data.message : data
       const tokens = info.tokens
-      if (!tokens || typeof tokens !== "object") return
+      if (!isResponseObject(tokens)) return
       const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0
       const sessionID = String(info.sessionID ?? data.sessionID ?? "")
       if (!sessionID || info.role !== "assistant") return
       const messageID = String(info.id ?? data.messageID ?? "")
       if (messageID && observedUsageMessages.has(messageID)) return
       const binding = [...bindings.values()].find((candidate) => candidate.session === sessionID)
-      const cache = tokens.cache ?? {}
+      const cache = isResponseObject(tokens.cache) ? tokens.cache : {}
       const attributes = {
         provider: String(info.providerID ?? ""), model: String(info.modelID ?? ""),
         message_id: messageID,
@@ -1413,7 +1412,7 @@ export default Plugin.define({
     // Delegated VFS context is granted per exact agent instance and only while
     // its exact root/unit/identity claim remains pending or active. Permission
     // rules are read from that instance; no role defaults are inferred here.
-    await ctx.session.hook("context", async (event: any) => {
+    await ctx.session.hook("context", async (event) => {
       if (!event.tools || !event.sessionID || !event.agent) return
       const removeVFS = () => { for (const name of VFS_TOOL_NAMES) delete event.tools[name] }
       try {

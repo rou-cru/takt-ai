@@ -2,15 +2,22 @@
   "name": "@takt-ai/opencode-plugins",
   "private": true,
   "type": "module",
-  "scripts": {"typecheck": "tsc -p ."},
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "lint": "eslint --ext .js,.mjs,.cjs,.ts,.tsx ."
+  },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@opencode/client": "2.0.16",
     "@opencode/plugin": "2.0.16",
     "@opencode/theme": "2.0.16",
     "@opentui/core": "0.5.12",
     "@opentui/solid": "0.5.12",
     "@types/bun": "1.4.2",
+    "eslint": "10.11.0",
+    "globals": "16.5.0",
     "solid-js": "1.9.12",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.1"
   }
 }

@@ -23,3 +23,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "takt-workspace.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}{{- default (printf "sa-%s" (include "takt-workspace.fullname" .)) .Values.serviceAccount.name -}}{{- else -}}{{- default "default" .Values.serviceAccount.name -}}{{- end -}}
 {{- end -}}
+{{- define "takt-workspace.image" -}}
+{{- $repository := required "image.repository must be set to a published workspace image" .Values.image.repository -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" $repository .Values.image.digest -}}
+{{- else -}}
+{{- printf "%s:%v" $repository (required "image.tag or image.digest must be set to a published workspace image" .Values.image.tag) -}}
+{{- end -}}
+{{- end -}}

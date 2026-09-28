@@ -30,7 +30,7 @@ import (
 )
 
 // E2E-C: `gc findings` with the real codegraph binary over a fixture workspace.
-// It runs only in the disposable test container (scripts/test-containerized.sh),
+// It runs only in the disposable test container (development/testing/test-containerized.sh),
 // which installs codegraph and names its binary in TAKT_E2E_CODEGRAPH: indexing
 // mutates the workspace.
 func TestGCFindingsOverRealCodegraph(t *testing.T) {

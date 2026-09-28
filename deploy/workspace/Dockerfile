@@ -9,7 +9,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./cmd/takt-ai
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./takt/cli
 
 FROM ubuntu:26.04
 ARG OPENCODE_VERSION=2.0.16
@@ -80,7 +80,7 @@ RUN set -eux; \
       /home/takt/.cache /home/takt/.config /home/takt/.takt-ai
 
 COPY --from=builder /out/takt-ai /usr/local/bin/takt-ai
-COPY --chmod=0755 docker/workspace-entrypoint.sh /usr/local/bin/workspace-entrypoint
+COPY --chmod=0755 deploy/workspace/entrypoint.sh /usr/local/bin/workspace-entrypoint
 USER takt
 WORKDIR /home/takt
 

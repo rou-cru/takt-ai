@@ -6,7 +6,7 @@
 # other agent tests are pure. generate-logo's current tests are pure transforms;
 # opencodeapi's tests inject a runner (they do not invoke an installed OpenCode).
 HOST_TEST_PKGS=(
-    ./cmd/generate-logo
+    ./development/generate-logo
     ./takt/agents/shared
     ./takt/catalog
     ./takt/dispatch
@@ -32,7 +32,7 @@ HOST_TEST_PKGS=(
     ./takt/tui/uninstall
 )
 CONTAINER_TEST_PKGS=(
-    ./cmd/takt-ai
+    ./takt/cli
     ./takt/agents/opencode
     ./takt/codegraph
     ./takt/doctor
@@ -55,6 +55,9 @@ check_test_packages() {
     discovered=$(go list -f '{{.Dir}}' ./...) || return
     {
         printf '%s\n' "$discovered" | awk -v root="$(pwd -P)" '{
+            # npm dependencies may contain their own Go sources; they are not
+            # packages belonging to this module and must not enter its test manifest.
+            if ($0 ~ /\/node_modules\//) next
             if ($0 == root) print "actual ./"
             else print "actual ./" substr($0, length(root) + 2)
         }'
@@ -78,7 +81,7 @@ check_test_packages() {
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     set -euo pipefail
-    cd -- "$(dirname -- "$0")/.."
+    cd -- "$(dirname -- "$0")/../.."
     case "${1:-check}" in
         host) printf '%s\n' "${HOST_TEST_PKGS[@]}" ;;
         container) printf '%s\n' "${CONTAINER_TEST_PKGS[@]}" ;;

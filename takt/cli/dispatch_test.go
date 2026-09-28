@@ -1176,7 +1176,7 @@ func scrubFakeEngramPath(path string) string {
 // real HTTP API, and drives the real dispatch action against it — the one
 // link the Wave 2 delivery rewrite depends on that no test exercised without
 // a mock. It runs only inside the disposable test container
-// (scripts/test-containerized.sh): it never touches a host data directory.
+// (development/testing/test-containerized.sh): it never touches a host data directory.
 func TestDispatchValidateResultsAgainstRealEngram(t *testing.T) {
 	if _, err := os.Stat("/.dockerenv"); err != nil {
 		t.Skip("E2E-D runs only inside the test container")

@@ -1,6 +1,6 @@
 # PRD: Release Experience Validation
 
-**Actual implementation progress: 25%** — 14 own requirements: 2 complete, 3 partial, 9 not integrated. `docker/Dockerfile.dev` does prepare OpenCode 2.x and Takt without onboarding; `.github/workflows/ci.yml` runs host and containerized tests. I found no evidence of the first-use manual gate and real work, a prepared public release image, native macOS/ARM64 validation, or the visual/recovery matrix of PR-REL-11/12. The tests Dockerfile is a tooling image; it does not replace the user journey.
+**Actual implementation progress: 25%** — 14 own requirements: 2 complete, 3 partial, 9 not integrated. `development/environment/Dockerfile` does prepare OpenCode 2.x and Takt without onboarding; `.github/workflows/ci.yml` runs host and containerized tests. I found no evidence of the first-use manual gate and real work, a prepared public release image, native macOS/ARM64 validation, or the visual/recovery matrix of PR-REL-11/12. The tests Dockerfile is a tooling image; it does not replace the user journey.
 
 ## 1. Problem
 

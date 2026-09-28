@@ -8,7 +8,7 @@ import (
 )
 
 // FirstSkill returns the path and content of the first embedded skill. It is
-// shared between cmd/takt-ai and takt/tui/runtime test suites to avoid
+// shared between takt/cli and takt/tui/runtime test suites to avoid
 // duplicating the same loader in two packages.
 func FirstSkill(t *testing.T) (string, []byte) {
 	t.Helper()

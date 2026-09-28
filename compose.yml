@@ -4,7 +4,7 @@ services:
   dev:
     build:
       context: .
-      dockerfile: docker/Dockerfile.dev
+      dockerfile: development/environment/Dockerfile
       args:
         OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.16}
         GO_VERSION: ${GO_VERSION:-1.25.0}

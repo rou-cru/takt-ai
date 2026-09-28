@@ -17,7 +17,7 @@ Todo pasó con **Go 1.25.14, linux/arm64**, imagen `golang:1.25`:
 | `go test ./...` | PASS |
 | `go test -race ./...` | PASS, sin carreras reportadas |
 | `make test-host` | PASS, ejecutado dentro del contenedor |
-| `scripts/test-containerized.sh` | PASS, paquetes predeterminados, exit 0 |
+| `development/testing/test-containerized.sh` | PASS, paquetes predeterminados, exit 0 |
 
 El host no tenía Go disponible y Git fallaba por `xcrun`; no se instalaron ni
 repararon herramientas del host. CodeGraph se intentó antes de buscar código,
@@ -26,7 +26,7 @@ pero falló al abrir la configuración OpenSSL del sistema, también con escalac
 Se copiaron las fuentes permitidas a `/src` del contenedor
 `takt-refactor-verify`, sin montar el host. El runner existente, sin modificar,
 se ejecutó desde una copia de esas fuentes en `/tmp/takt-refactor-suite`:
-`COPYFILE_DISABLE=1 bash /tmp/takt-refactor-suite/scripts/test-containerized.sh`.
+`COPYFILE_DISABLE=1 bash /tmp/takt-refactor-suite/development/testing/test-containerized.sh`.
 Su contenedor también usa copia por tar y cero montajes del host. Los archivos
 AppleDouble de macOS deben excluirse: se interpretan como paquetes del catálogo.
 La cobertura generada quedó aislada; no se reemplazó `coverage.out` del repositorio.
@@ -41,16 +41,16 @@ Cuando dos unidades comparten un archivo, revertir solamente sus funciones/hunks
 |---|---|---|
 | Cleanup | `filemerge/writer.go`: `StageTempFile`, interfaz/factory privada; `staging_test.go` | `go test ./takt/internal/filemerge` |
 | Persistencia compartida | `memory/ledger.go`, `engram/acquire.go`: escritores y sus nuevos tests de staging | `go test ./takt/memory ./takt/engram` |
-| Política de memoria | Validadores de `memory/memory.go`, casos léxicos/atribución en tests de memoria y CLI; skill de contrato, PIRS y API docs | `go test ./takt/memory ./cmd/takt-ai` |
+| Política de memoria | Validadores de `memory/memory.go`, casos léxicos/atribución en tests de memoria y CLI; skill de contrato, PIRS y API docs | `go test ./takt/memory ./takt/cli` |
 | Refactor de memoria | `Record`, `prepareRecord`, `persistRecord`, `recordLinks`; no revertir validadores | `go test ./takt/memory` |
 | Doctor/backups | Agregación/presentación en `doctor.go`; familia `priorStateFor` en `setup/operations.go`; caracterización de stat | `go test ./takt/doctor ./takt/setup` |
 | Drift | `executeCorrectDrift`, `reinjectDrift`; tests de reinyección y cancelación | `go test ./takt/tui/runtime` |
 | Planes | Builders, `planAssembler`, `resolveEntryAssignment` y `plan_assembly_test.go` | `go test ./takt/setup` |
-| Targets/constantes/generador | `model/targets*` y sus defaults de opciones de agente (antes repartidos en `model/codex_options.go` y `model/claude_model.go`), consumidores setup/catalog/lifecycle/engram; acciones uninstall y tests de orden TUI; `generate-logo` | `go test ./takt/model ./takt/engram ./takt/setup ./takt/tui/... ./cmd/generate-logo` |
+| Targets/constantes/generador | `model/targets*` y sus defaults de opciones de agente (antes repartidos en `model/codex_options.go` y `model/claude_model.go`), consumidores setup/catalog/lifecycle/engram; acciones uninstall y tests de orden TUI; `generate-logo` | `go test ./takt/model ./takt/engram ./takt/setup ./takt/tui/... ./development/generate-logo` |
 | Tiempos | `memory/client.go`, `client_test.go` | `go test ./takt/memory` |
 
 Las rutas abreviadas de paquetes pertenecen a `takt/`, salvo el generador en
-`cmd/generate-logo`. Revertir persistencia no exige retirar el arreglo de cleanup;
+`development/generate-logo`. Revertir persistencia no exige retirar el arreglo de cleanup;
 revertir el refactor de `Record` no exige restaurar el filtro léxico.
 
 ### Escenarios y límites

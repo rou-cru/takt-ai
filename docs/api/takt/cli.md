@@ -3,7 +3,7 @@
 # takt\-ai
 
 ```go
-import "github.com/rou-cru/takt-ai/cmd/takt-ai"
+import "github.com/rou-cru/takt-ai/takt/cli"
 ```
 
 Package main runs the takt\-ai command so users can drive setup from a terminal or scripts.

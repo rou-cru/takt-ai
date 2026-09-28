@@ -5,16 +5,16 @@
 ARG GO_VERSION=1.25.0
 FROM golang:${GO_VERSION}-bookworm AS builder
 # Keep GO_VERSION in sync with the `go` directive in go.mod
-# (CI builds with go-version-file: go.mod). Dev tool pins live in tools/go.mod.
+# (CI builds with go-version-file: go.mod). Dev tool pins live in development/quality/go.mod.
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # Static binary is enough; the final image runs no cgo.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./cmd/takt-ai
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./takt/cli
 # Build once here while network and toolchain exist; the runtime stage only
-# copies binaries (every tool resolves through tools/go.sum, so versions can't float).
-WORKDIR /src/tools
+# copies binaries (every tool resolves through development/quality/go.sum, so versions can't float).
+WORKDIR /src/development/quality
 RUN GOBIN=/out/tools go install tool
 
 FROM ubuntu:26.04
@@ -103,6 +103,8 @@ RUN set -eux; \
 COPY --from=builder /out/takt-ai /usr/local/bin/takt-ai
 USER dev
 WORKDIR /home/dev
+ENV HOME=/home/dev \
+    PATH="/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"
 # Explicit version only: reject anything that is not a 2.x semver (blocks "latest"/empty).
 RUN set -eux; \
     case "${OPENCODE_VERSION}" in \
@@ -115,9 +117,8 @@ RUN set -eux; \
     echo "${OPENCODE_INSTALL_SHA256}  /tmp/opencode-install.sh" | sha256sum -c -; \
     bash /tmp/opencode-install.sh --no-modify-path --version "${OPENCODE_VERSION}"; \
     rm -f /tmp/opencode-install.sh; \
-    /home/dev/.opencode/bin/opencode --version; \
+    opencode --version; \
     takt-ai version
-ENV PATH="/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"
 # /work is the explicit workspace input (bind) or scratch space; writes stay inside.
 WORKDIR /work
 ENTRYPOINT ["bash"]

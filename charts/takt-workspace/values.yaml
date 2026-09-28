@@ -6,8 +6,10 @@ commonLabels: {}
 commonAnnotations: {}
 
 image:
-  repository: 099814429435.dkr.ecr.mx-central-1.amazonaws.com/kaf
-  tag: kaf
+  repository: ""
+  tag: ""
+  # Optional sha256:... digest; when set it pins the image and takes precedence over tag.
+  digest: ""
   pullPolicy: IfNotPresent
   pullSecrets: []
 
@@ -55,6 +57,16 @@ persistence:
   labels: {}
   # Retain the PVC only when explicitly requested; default lifecycle is ephemeral.
   retain: false
+
+# Restricts ingress to the OpenCode port. Egress stays open by default because
+# the agent must reach model providers, git remotes and package registries;
+# set networkPolicy.egress to a list of rules to restrict it.
+networkPolicy:
+  enabled: true
+  # Peers allowed to reach the server (NetworkPolicyPeer list). Empty admits
+  # any source, but only on the server port.
+  ingressFrom: []
+  egress: null
 
 serviceAccount:
   create: true

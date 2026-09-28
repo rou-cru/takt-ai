@@ -3,6 +3,7 @@ apiVersion: {{ .Values.vpa.apiVersion }}
 kind: VerticalPodAutoscaler
 metadata:
   name: {{ include "takt-workspace.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "takt-workspace.labels" . | nindent 4 }}
     {{- with .Values.vpa.labels }}{{ toYaml . | nindent 4 }}{{- end }}

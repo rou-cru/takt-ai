@@ -6,6 +6,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "takt-workspace.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "takt-workspace.labels" . | nindent 4 }}
   {{- with .Values.commonAnnotations }}
@@ -106,7 +107,7 @@ spec:
       {{- end }}
       containers:
         - name: opencode
-          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          image: {{ include "takt-workspace.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.command }}
           command: {{ toYaml . | nindent 12 }}

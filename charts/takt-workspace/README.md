@@ -13,38 +13,42 @@ This chart deploys a disposable OpenCode v2 web workspace with Takt AI preinstal
 
 ## Build the prepared ARM64 image
 
-The workspace image is built by the dedicated `docker/Dockerfile.workspace`; it does not use or modify `docker/Dockerfile.dev`. The Bake target pins OpenCode v2 and targets `linux/arm64` only. It compiles Takt AI and installs/configures OpenCode and its Takt integration during image build.
+The workspace image is built by `deploy/workspace/Dockerfile`; it is separate from the local development image. The root Bake target pins OpenCode v2 and builds the workspace for `linux/arm64`. It compiles Takt AI and installs/configures OpenCode and its Takt integration during image build.
 
 ```sh
 # local ARM64 image (for a matching local cluster)
-docker buildx bake -f docker/docker-bake.hcl workspace --load
+docker buildx bake workspace --load
 
 # publish to the registry configured for your cluster
-WORKSPACE_TAG=099814429435.dkr.ecr.mx-central-1.amazonaws.com/kaf:<tag> \
-  docker buildx bake -f docker/docker-bake.hcl workspace --push
+WORKSPACE_TAG=ghcr.io/your-org/takt-ai-workspace:v0.1.0 \
+  docker buildx bake workspace --push
 ```
 
-Set `image.repository`, `image.tag`, `image.pullPolicy`, and optionally `image.pullSecrets` for your registry. The chart defaults to `099814429435.dkr.ecr.mx-central-1.amazonaws.com/kaf:kaf`.
+Set `image.repository` and `image.tag` to the published image you built, along with `image.pullPolicy` and optionally `image.pullSecrets` for your registry. The chart intentionally has no project-specific registry default. Set `image.digest` (`sha256:...`) to pin the exact image; it takes precedence over `image.tag`.
+
+A `NetworkPolicy` is rendered by default (`networkPolicy.enabled`). It admits ingress only on the server port, from any peer unless `networkPolicy.ingressFrom` lists the allowed `NetworkPolicyPeer`s. Egress is left unrestricted, because the agent needs model providers, git remotes and package registries. Setting `networkPolicy.egress` to a list of rules enforces egress too, and an empty list (`[]`) denies all of it.
 
 ## Install, upgrade, and remove
 
-`scripts/helm-workspace.sh` creates/uses the shared namespace but never places Namespace in an individual Helm release. The default is `takt-workspaces`; override it with `--namespace` or `WORKSPACE_DEFAULT_NAMESPACE`.
+`deploy/workspace/helm.sh` creates/uses the shared namespace but never places Namespace in an individual Helm release. The default is `takt-workspaces`; override it with `--namespace` or `WORKSPACE_DEFAULT_NAMESPACE`.
 
 ```sh
-scripts/helm-workspace.sh install demo \
+deploy/workspace/helm.sh install demo \
+  --set image.repository=ghcr.io/your-org/takt-ai-workspace \
+  --set image.tag=0.1.0 \
   --set server.passwordSecret.name=demo-opencode-auth \
   --set httpRoute.enabled=true \
   --set-string 'httpRoute.parentRefs[0].name=public-gateway' \
   --set-string 'httpRoute.hostnames[0]=workspace.example.test'
 
-scripts/helm-workspace.sh upgrade demo -f workspace-values.yaml
-scripts/helm-workspace.sh uninstall demo
+deploy/workspace/helm.sh upgrade demo -f workspace-values.yaml
+deploy/workspace/helm.sh uninstall demo
 
 # Explicit namespace takes precedence over the default.
-scripts/helm-workspace.sh install demo --namespace takt-workspaces-test -f workspace-values.yaml
+deploy/workspace/helm.sh install demo --namespace takt-workspaces-test -f workspace-values.yaml
 ```
 
-The equivalent default namespace bootstrap manifest is `deploy/workspace-namespace.yaml`. For an explicit namespace, the helper creates it on install/upgrade and leaves it in place on uninstall. Plain `helm install` also works if the namespace already exists; pass `--namespace` explicitly.
+The equivalent default namespace bootstrap manifest is `deploy/workspace/namespace.yaml`. For an explicit namespace, the helper creates it on install/upgrade and leaves it in place on uninstall. Plain `helm install` also works if the namespace already exists; pass `--namespace` explicitly.
 
 ## Repository checkout
 

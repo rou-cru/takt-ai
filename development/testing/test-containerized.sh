@@ -10,8 +10,8 @@
 # disposable container state and are recreated on each run.
 #
 # Usage:
-#   scripts/test-containerized.sh [go test flags and packages...]
-#   scripts/test-containerized.sh            # runs default FS-touching packages
+#   development/testing/test-containerized.sh [go test flags and packages...]
+#   development/testing/test-containerized.sh            # runs default FS-touching packages
 #
 # Passing -coverprofile=<file> (or -coverprofile <file>) copies it out of the
 # disposable container onto the host once tests pass, so CI can feed it to
@@ -19,11 +19,11 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 IMAGE="takt-test:go1.25-node24"
 SEPARATOR="=================================================="
 SRC_DIR="/src"
-source "$REPO_ROOT/scripts/test-packages.sh"
+source "$REPO_ROOT/development/testing/test-packages.sh"
 
 # Resolve the final `go test` argument list.
 #
@@ -84,7 +84,7 @@ fi
 compute_go_args "$@"
 set -- "${RESOLVED_ARGS[@]}"
 
-docker build -f "$REPO_ROOT/docker/Dockerfile.test" -t "$IMAGE" "$REPO_ROOT"
+docker build -f "$REPO_ROOT/development/testing/Dockerfile" -t "$IMAGE" "$REPO_ROOT"
 
 echo "==> containerized test run (source copied in via tar pipe, zero host mounts)"
 echo "==> packages/flags: $*"
@@ -124,7 +124,7 @@ mkdir -p '"$SRC_DIR"'
 tar -x -C '"$SRC_DIR"' 2>/dev/null
 cd '"$SRC_DIR"'
 export GOFLAGS=-mod=readonly GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local TMPDIR=/tmp GOPATH=/go GOCACHE=/go/.cache/go-build GOMODCACHE=/go/pkg/mod
-./scripts/test-packages.sh check
+./development/testing/test-packages.sh check
 go test "$@"
 ' go "$@"
 PIPE_STATUS=("${PIPESTATUS[@]}")

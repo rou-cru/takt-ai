@@ -3,6 +3,7 @@ apiVersion: {{ .Values.httpRoute.apiVersion }}
 kind: HTTPRoute
 metadata:
   name: {{ include "takt-workspace.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "takt-workspace.labels" . | nindent 4 }}
     {{- with .Values.httpRoute.labels }}{{ toYaml . | nindent 4 }}{{- end }}

@@ -9,7 +9,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 )
 
-//go:generate go run ../../../cmd/generate-logo -input ../../../docs/assets/brand/takt-ai.png -output logo_generated.go -blocks-output logo_blocks_generated.go
+//go:generate go run ../../../development/generate-logo -input ../../../docs/assets/brand/takt-ai.png -output logo_generated.go -blocks-output logo_blocks_generated.go
 
 // logoSpan holds one colored text run so logo rows stay compact. The type
 // lives here, hand-written, because both generated datasets share it.

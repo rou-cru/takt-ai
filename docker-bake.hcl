@@ -1,4 +1,4 @@
-# One target today (dev); add more as images grow.
+# Local development and deployable workspace image builds.
 variable "OPENCODE_VERSION" {
   default = "2.0.16"
 }
@@ -14,7 +14,7 @@ variable "WORKSPACE_TAG" {
 
 target "dev" {
   context    = "."
-  dockerfile = "docker/Dockerfile.dev"
+  dockerfile = "development/environment/Dockerfile"
   platforms  = ["linux/arm64", "linux/amd64"]
   tags       = ["${TAG}"]
   args = {
@@ -30,7 +30,7 @@ target "dev" {
 # The Kubernetes workspace currently targets the cluster's ARM64 nodes only.
 target "workspace" {
   context    = "."
-  dockerfile = "docker/Dockerfile.workspace"
+  dockerfile = "deploy/workspace/Dockerfile"
   platforms  = ["linux/arm64"]
   tags       = ["${WORKSPACE_TAG}"]
   args = {

@@ -7,8 +7,8 @@
 ## Architecture
 
 ```
-cmd/takt-ai/          CLI entrypoint: install/sync, doctor, vfs, dispatch, gc, memory, obs, dag
 takt/
+  cli/                CLI entrypoint: install/sync, doctor, vfs, dispatch, gc, memory, obs, dag
   catalog/            Declarative crew: agents, shared BASELINE, skills (single editable source)
   agents/opencode/    OpenCode projection: opencode.json renderer, permissions, plugins
   vfs/                Governed staging: claims, bindings, verdict gate, shell sandbox plans
@@ -20,6 +20,13 @@ takt/
   setup/ lifecycle/   Install, sync, ownership, drift, uninstall
   runtime/sandbox/    Sandbox adapter (@anthropic-ai/sandbox-runtime)
   tui/                Bubbletea TUI
+development/
+  environment/        Local development container
+  testing/            Test runners, fixtures, and disposable-container E2E
+  quality/            Pinned Go developer tools
+  generate-logo/      Branding asset generator
+deploy/workspace/     Workspace image, entrypoint, namespace and Helm helper
+charts/               Publishable Kubernetes chart (kept at repository root)
 ```
 
 ---
@@ -27,17 +34,15 @@ takt/
 ## Testing
 
 ```bash
-# Unit tests
-go test ./...
+# Host-safe tests
+make test-host
 
-# Docker E2E (Ubuntu + Arch, requires Docker)
-RUN_FULL_E2E=1 RUN_BACKUP_TESTS=1 ./e2e/docker-test.sh
+# Filesystem-mutating and external-binary tests (requires Docker)
+make test-containerized
 
-# Dry-run smoke test (macOS/Linux)
-takt-ai install --dry-run --agent opencode --preset minimal
-
-# Dry-run smoke test (Windows PowerShell)
-takt-ai.exe install --dry-run --agent opencode --preset minimal
+# Disposable-host lifecycle E2E (requires Docker)
+docker build -f development/testing/e2e/Dockerfile -t takt-e2e .
+docker run --rm takt-e2e
 ```
 
 Test coverage:

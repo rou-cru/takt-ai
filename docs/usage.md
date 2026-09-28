@@ -270,7 +270,7 @@ takt-ai install --agent opencode --preset full-takt
 ### Homebrew upgrade troubleshooting
 
 Homebrew 6 can require explicit trust for non-official taps and, on Linux, can
-sandbox builds with Bubblewrap. `takt-ai upgrade` and `scripts/install.sh`
+sandbox builds with Bubblewrap. `takt-ai upgrade` and `install.sh`
 auto-trust only the Takt AI formula, but manual upgrades may still need this
 one-time command:
 

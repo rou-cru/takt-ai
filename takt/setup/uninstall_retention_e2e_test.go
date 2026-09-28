@@ -19,7 +19,7 @@ import (
 // TestE2ERetainedMemoryIsReadableFromRealEngramData is E2E-C: real Engram
 // writes the data, a real `engram serve` keeps the database open with committed
 // rows still in its WAL, and the delivered copy must open on its own.
-// It runs only inside the disposable test container (scripts/test-containerized.sh):
+// It runs only inside the disposable test container (development/testing/test-containerized.sh):
 // it downloads the pinned Engram release and never touches a host data directory.
 func TestE2ERetainedMemoryIsReadableFromRealEngramData(t *testing.T) {
 	if _, err := os.Stat("/.dockerenv"); err != nil {

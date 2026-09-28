@@ -17,7 +17,7 @@ RUN go mod download && \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /opt/codegraph /opt/codegraph
 ENV PATH="/opt/codegraph/bin:/opt/tools:$PATH" TAKT_E2E_CODEGRAPH=/opt/codegraph/bin/codegraph TAKT_E2E_DEADCODE=/opt/tools/deadcode CODEGRAPH_TELEMETRY=0
-# scripts/test-containerized.sh always runs this image as the fixed `runner`
+# development/testing/test-containerized.sh always runs this image as `runner`
 # account below (no --user override), so ownership can be scoped to it
 # instead of opened up to everyone.
 RUN go version && node --version && codegraph --version && \
