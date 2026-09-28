@@ -1,0 +1,147 @@
+import { describe, expect, test } from "bun:test"
+import {
+  activityBoxWidth,
+  activityError,
+  activityText,
+  glyphFor,
+  hasContent,
+  headerLine,
+  nodeKindFor,
+  nodeKindGlyph,
+  nodeKindLabel,
+  nodeText,
+  ordinal,
+  sidebarHeader,
+  topologyError,
+  topologyKey,
+} from "./takt-dag"
+
+const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean }> = {}) =>
+  ({ id: "unit-1", state: "planned", launched: false, ...overrides }) as never
+
+describe("ordinal", () => {
+  test("orders strings lexicographically", () => {
+    expect(ordinal("a", "b")).toBe(-1)
+    expect(ordinal("b", "a")).toBe(1)
+    expect(ordinal("a", "a")).toBe(0)
+  })
+})
+
+describe("activityError", () => {
+  test("accepts distinct, non-empty activity identities", () => {
+    expect(activityError([{ activity_id: "a", node_kind: "orchestrator", state: "in_flight" } as never, { activity_id: "b", node_kind: "maintenance", state: "settled" } as never])).toBeUndefined()
+  })
+  test("rejects a duplicate activity identity", () => {
+    expect(activityError([{ activity_id: "a", node_kind: "orchestrator", state: "in_flight" } as never, { activity_id: "a", node_kind: "maintenance", state: "settled" } as never])).toBe("duplicate or empty activity identity")
+  })
+  test("rejects an empty activity identity", () => {
+    expect(activityError([{ activity_id: "", node_kind: "orchestrator", state: "in_flight" } as never])).toBe("duplicate or empty activity identity")
+  })
+})
+
+describe("topologyError", () => {
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+
+  test("accepts a valid acyclic snapshot", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }] } as never
+    expect(topologyError(snapshot)).toBeUndefined()
+  })
+  test("rejects a duplicate node identity", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a" }), node({ id: "a" })], edges: [] } as never
+    expect(topologyError(snapshot)).toBe("duplicate node identity")
+  })
+  test("rejects an edge naming an unknown node", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a" })], edges: [{ from: "a", to: "ghost" }] } as never
+    expect(topologyError(snapshot)).toBe("edge a -> ghost names an unknown node")
+  })
+  test("rejects a prerequisite cycle", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }, { from: "b", to: "a" }] } as never
+    expect(topologyError(snapshot)).toBe("prerequisite cycle")
+  })
+  test("rejects an invalid activity even with valid nodes", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a" })], edges: [], activities: [{ activity_id: "", node_kind: "orchestrator", state: "in_flight" }] } as never
+    expect(topologyError(snapshot)).toBe("duplicate or empty activity identity")
+  })
+})
+
+describe("topologyKey", () => {
+  test("is order-independent and reflects node kind and edges", () => {
+    const forward = { nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }] } as never
+    const reordered = { nodes: [node({ id: "b" }), node({ id: "a" })], edges: [{ from: "a", to: "b" }] } as never
+    expect(topologyKey(forward)).toBe(topologyKey(reordered))
+  })
+  test("changes when the edge set changes", () => {
+    const withEdge = { nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }] } as never
+    const withoutEdge = { nodes: [node({ id: "a" }), node({ id: "b" })], edges: [] } as never
+    expect(topologyKey(withEdge)).not.toBe(topologyKey(withoutEdge))
+  })
+})
+
+describe("node presentation", () => {
+  test("nodeKindFor defaults to delegated when node_kind is absent", () => {
+    expect(nodeKindFor(node())).toBe("delegated")
+    expect(nodeKindFor(node({ node_kind: "delegated" }))).toBe("delegated")
+  })
+  test("nodeKindGlyph / nodeKindLabel are stable", () => {
+    expect(nodeKindGlyph("delegated")).toBe("↗")
+    expect(nodeKindLabel("delegated")).toBe("delegated")
+  })
+
+  test("glyphFor covers every state/flight/outcome combination", () => {
+    expect(glyphFor(node({ state: "planned" }))).toBe("◌")
+    expect(glyphFor(node({ state: "withdrawn" }))).toBe("×")
+    expect(glyphFor(node({ state: "settled", outcome: "failed" }))).toBe("✗")
+    expect(glyphFor(node({ state: "settled", outcome: "backtracked" }))).toBe("↩")
+    expect(glyphFor(node({ state: "settled", outcome: "interrupted" }))).toBe("⊘")
+    expect(glyphFor(node({ state: "settled" }))).toBe("✓")
+    expect(glyphFor(node({ state: "in_flight", flight: "pending_launch" }))).toBe("○")
+    expect(glyphFor(node({ state: "in_flight", flight: "uncertain" }))).toBe("!")
+    expect(glyphFor(node({ state: "in_flight", flight: "suspended" }))).toBe("⏸")
+    expect(glyphFor(node({ state: "in_flight", flight: "cancellation_pending" }))).toBe("↯")
+    expect(glyphFor(node({ state: "in_flight" }))).toBe("●")
+  })
+
+  test("nodeText composes the kind glyph, state glyph, kind label and id", () => {
+    expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("↗ ✓ delegated unit-7")
+  })
+})
+
+describe("activity presentation", () => {
+  test("activityText names running vs settled activities by lane", () => {
+    expect(activityText({ activity_id: "a1", node_kind: "orchestrator", state: "in_flight" } as never)).toBe("◆ direct activity a1 · running")
+    expect(activityText({ activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" } as never)).toBe("◇ GC activity a2 · completed")
+    expect(activityText({ activity_id: "a3", node_kind: "maintenance", state: "settled" } as never)).toBe("◇ GC activity a3 · settled")
+  })
+  test("activityBoxWidth is the text width plus two border columns", () => {
+    const activity = { activity_id: "a1", node_kind: "orchestrator", state: "in_flight" } as never
+    expect(activityBoxWidth(activity)).toBe(activityText(activity).length + 2)
+  })
+})
+
+describe("hasContent / headerLine / sidebarHeader", () => {
+  const base = { schema_version: 1, projection_revision: 3, history_position: 3, session_id: "s", capture: "current", edges: [] } as const
+
+  test("hasContent is true with nodes, activities, or neither", () => {
+    expect(hasContent({ ...base, nodes: [node()] } as never)).toBe(true)
+    expect(hasContent({ ...base, nodes: [], activities: [{ activity_id: "a" }] } as never)).toBe(true)
+    expect(hasContent({ ...base, nodes: [] } as never)).toBe(false)
+  })
+
+  test("headerLine reports the failure health without a snapshot", () => {
+    expect(headerLine(undefined, "unavailable")).toBe("Takt DAG · capture: unavailable")
+  })
+  test("headerLine reports the snapshot's own capture when confirmed", () => {
+    const snapshot = { ...base, nodes: [], plan_version: "plan-9" } as never
+    expect(headerLine(snapshot, "confirmed")).toBe("Takt DAG · projection 3 · plan plan-9 · capture: current")
+  })
+  test("headerLine reports the view's health over the snapshot's capture when stale", () => {
+    const snapshot = { ...base, nodes: [] } as never
+    expect(headerLine(snapshot, "stale")).toBe("Takt DAG · projection 3 · plan — · capture: stale")
+  })
+
+  test("sidebarHeader mirrors headerLine's health precedence in one short line", () => {
+    expect(sidebarHeader(undefined, "waiting")).toBe("Takt DAG · waiting")
+    expect(sidebarHeader({ ...base, nodes: [] } as never, "confirmed")).toBe("Takt DAG · current")
+    expect(sidebarHeader({ ...base, nodes: [] } as never, "invalid")).toBe("Takt DAG · invalid")
+  })
+})

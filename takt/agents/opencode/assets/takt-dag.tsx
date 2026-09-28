@@ -149,7 +149,7 @@ interface DagSnapshot {
 // never rendered partially.
 // ---------------------------------------------------------------------------
 
-function activityError(activities: readonly DagActivity[]): string | undefined {
+export function activityError(activities: readonly DagActivity[]): string | undefined {
   const activityIDs = new Set<string>()
   for (const activity of activities) {
     if (!activity.activity_id || activityIDs.has(activity.activity_id)) return "duplicate or empty activity identity"
@@ -158,7 +158,7 @@ function activityError(activities: readonly DagActivity[]): string | undefined {
   return undefined
 }
 
-function topologyError(snapshot: DagSnapshot): string | undefined {
+export function topologyError(snapshot: DagSnapshot): string | undefined {
   const ids = new Set(snapshot.nodes.map((n) => n.id))
   if (ids.size !== snapshot.nodes.length) return "duplicate node identity"
   const invalidActivity = activityError(snapshot.activities ?? [])
@@ -255,13 +255,13 @@ function geometryFor(snapshot: DagSnapshot): Geometry {
   return { across: NODE_ROWS, along: longest + NODE_CHROME, pitch: NODE_ROWS + NODE_GAP, depart: DEPART_ROW, arrive: ARRIVE_ROW }
 }
 
-function ordinal(a: string, b: string): number {
+export function ordinal(a: string, b: string): number {
   if (a < b) return -1
   if (a > b) return 1
   return 0
 }
 
-function topologyKey(snapshot: DagSnapshot): string {
+export function topologyKey(snapshot: DagSnapshot): string {
   const nodeIds = snapshot.nodes.map((n) => `${n.id}:${nodeKindFor(n)}`).sort(ordinal)
   const edgeKeys = snapshot.edges.map((e) => `${e.from}->${e.to}`).sort(ordinal)
   return `${nodeIds.join(",")}|${edgeKeys.join(",")}`
@@ -468,7 +468,7 @@ function edgePorts(layout: Layout): Port[] {
 // settled distinction collapses into another.
 // ---------------------------------------------------------------------------
 
-function glyphFor(node: DagNode): string {
+export function glyphFor(node: DagNode): string {
   switch (node.state) {
     case "planned":
       return "◌"
@@ -501,31 +501,31 @@ function glyphFor(node: DagNode): string {
   }
 }
 
-function nodeKindGlyph(_kind: "delegated"): string {
+export function nodeKindGlyph(_kind: "delegated"): string {
   return "↗"
 }
 
-function nodeKindFor(node: DagNode): "delegated" {
+export function nodeKindFor(node: DagNode): "delegated" {
   return node.node_kind ?? "delegated"
 }
 
-function nodeKindLabel(_kind: "delegated"): string {
+export function nodeKindLabel(_kind: "delegated"): string {
   return "delegated"
 }
 
-function nodeText(node: DagNode): string {
+export function nodeText(node: DagNode): string {
   const kind = nodeKindFor(node)
   return `${nodeKindGlyph(kind)} ${glyphFor(node)} ${nodeKindLabel(kind)} ${node.id}`
 }
 
-function activityText(activity: DagActivity): string {
+export function activityText(activity: DagActivity): string {
   const glyph = activity.state === "in_flight" ? "◆" : "◇"
   const label = activity.node_kind === "orchestrator" ? "direct activity" : "GC activity"
   const status = activity.state === "in_flight" ? "running" : activity.outcome ?? "settled"
   return `${glyph} ${label} ${activity.activity_id} · ${status}`
 }
 
-function activityBoxWidth(activity: DagActivity): number {
+export function activityBoxWidth(activity: DagActivity): number {
   return Bun.stringWidth(activityText(activity)) + 2
 }
 
@@ -636,18 +636,18 @@ function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode: "rout
 }
 
 /** Work units or activities: an activity-only snapshot still has a lane to draw. */
-function hasContent(snapshot: DagSnapshot): boolean {
+export function hasContent(snapshot: DagSnapshot): boolean {
   return snapshot.nodes.length > 0 || (snapshot.activities?.length ?? 0) > 0
 }
 
-function headerLine(snapshot: DagSnapshot | undefined, health: Health): string {
+export function headerLine(snapshot: DagSnapshot | undefined, health: Health): string {
   if (!snapshot) return `Takt DAG · capture: ${health}`
   const capture = health === "confirmed" ? snapshot.capture : health
   return `Takt DAG · projection ${snapshot.projection_revision} · plan ${snapshot.plan_version ?? "—"} · capture: ${capture}`
 }
 
 /** The sidebar header is one short line: the graph is the content. */
-function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health): string {
+export function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health): string {
   return `Takt DAG · ${snapshot && health === "confirmed" ? snapshot.capture : health}`
 }
 

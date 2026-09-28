@@ -129,6 +129,9 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if !gc.ChecksPass(c.Cycle.Baseline) || len(c.Cycle.Report.Findings) != 1 {
 				t.Fatalf("baseline %+v", c.Cycle)
 			}
+			if fc := invoke(coordinationRequest{Action: "findings", Session: "collect-child"}); fc.Cycle == nil || len(fc.Cycle.Report.Findings) != 1 {
+				t.Fatalf("findings: %+v", fc.Cycle)
+			}
 			if outcome == "no-change" {
 				c = invoke(coordinationRequest{Action: "no-change", Session: "collect-child"})
 				if c.Cycle != nil || len(c.History) != 1 {
@@ -168,6 +171,10 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				t.Fatal(e)
 			}
 			invoke(coordinationRequest{Action: "collected", Session: "collect-child"})
+			if _, e = call(coordinationRequest{Action: "delta", Session: "collect-child"}); e == nil {
+				t.Fatal("collector allowed to inspect delta through the verifier-only action")
+			}
+			invoke(coordinationRequest{Action: "delta", Session: "verify-child"})
 			if _, e = call(coordinationRequest{Action: "verdict", Session: "collect-child", Pass: true, Evidence: "self"}); e == nil {
 				t.Fatal("self verification passed")
 			}

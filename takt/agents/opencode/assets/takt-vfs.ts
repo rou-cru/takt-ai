@@ -19,10 +19,10 @@ async function sameDirectory(left: string, right: string): Promise<boolean> {
 }
 
 type ToolInput = Record<string, unknown>
-function isToolInput(value: unknown): value is ToolInput {
+export function isToolInput(value: unknown): value is ToolInput {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
+export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
   if (!isToolInput(value)) throw new Error("tool input must be an object")
   return value as T
 }
@@ -43,32 +43,32 @@ type CoordinatorResponse = Record<string, unknown> & {
 }
 type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: number[] }
 type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | HandoffEnvelope | null
-function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
+export function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
   return value !== null && "version" in value && "units" in value
 }
-function isGCCycleResponse(value: DispatchResponse): value is GCCycle {
+export function isGCCycleResponse(value: DispatchResponse): value is GCCycle {
   return value !== null && isResponseObject(value) && isGCCycle(value)
 }
-function isHandoffEnvelope(value: Record<string, unknown>): value is HandoffEnvelope {
+export function isHandoffEnvelope(value: Record<string, unknown>): value is HandoffEnvelope {
   return typeof value.result === "string" && typeof value.additional_context === "string" &&
     Array.isArray(value.extra_artifacts) && value.extra_artifacts.every(item => typeof item === "string") &&
     Array.isArray(value.memory) && value.memory.every(item => typeof item === "number")
 }
 type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; scope?: string[] }
 type CollisionError = { path: string; owner: string; attempted_by: string }
-function isResponseObject(value: unknown): value is Record<string, unknown> {
+export function isResponseObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function isStringArray(value: unknown): value is string[] {
+export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => typeof item === "string")
 }
 // isOptional accepts an absent field or one that passes check.
-function isOptional<T>(value: unknown, check: (value: unknown) => value is T): value is T | undefined {
+export function isOptional<T>(value: unknown, check: (value: unknown) => value is T): value is T | undefined {
   return value === undefined || check(value)
 }
-const isString = (value: unknown): value is string => typeof value === "string"
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean"
-function parseVFSShell(value: unknown): VFSShellResponse | undefined {
+export const isString = (value: unknown): value is string => typeof value === "string"
+export const isBoolean = (value: unknown): value is boolean => typeof value === "boolean"
+export function parseVFSShell(value: unknown): VFSShellResponse | undefined {
   if (!isResponseObject(value) || (value.decision !== "allow" && value.decision !== "ask" && value.decision !== "deny") ||
       !isString(value.reason) || !isOptional(value.cwd, isString) || !isOptional(value.scratch, isString) ||
       !isOptional(value.confirm, isString) || !isOptional(value.capture, isBoolean) ||
@@ -80,19 +80,19 @@ function parseVFSShell(value: unknown): VFSShellResponse | undefined {
     ...(isStringArray(writable) ? { writable } : {}),
     ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) }
 }
-function responseObject(value: unknown, command: string): Record<string, unknown> {
+export function responseObject(value: unknown, command: string): Record<string, unknown> {
   if (!isResponseObject(value)) throw new Error(`takt-ai ${command} returned a non-object response`)
   return value
 }
 // parseClaim keeps a well-formed ownership claim and drops anything else.
-function parseClaim(item: unknown): OwnershipClaim[] {
+export function parseClaim(item: unknown): OwnershipClaim[] {
   if (!isResponseObject(item)) return []
   const claim = item
   if (typeof claim.key !== "string" || typeof claim.root_session_id !== "string" || typeof claim.work_unit_id !== "string" || typeof claim.agent_id !== "string" || typeof claim.target_instance !== "string") return []
   return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
 }
 // vfsResponse keeps the fields of a `takt-ai vfs` answer the plugin knows, each only when well typed.
-function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
+export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
   const shell = parseVFSShell(parsed.shell)
   return {
     ok,
@@ -108,22 +108,22 @@ function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse 
     ...(shell ? { shell } : {}),
   }
 }
-function isGCPlan(value: Record<string, unknown>): value is GCPlan {
+export function isGCPlan(value: Record<string, unknown>): value is GCPlan {
   return typeof value.session_id === "string" && typeof value.cycle_id === "string" && typeof value.mandate_class === "string" &&
     Array.isArray(value.delta) && Array.isArray(value.closure) && value.closure.every((path): path is string => typeof path === "string") && typeof value.reachability === "string"
 }
-function isGCCycle(value: Record<string, unknown>): value is GCCycle {
+export function isGCCycle(value: Record<string, unknown>): value is GCCycle {
   return typeof value.phase === "string" && isResponseObject(value.plan) && isGCPlan(value.plan) &&
     Array.isArray(value.scope) && value.scope.every((path): path is string => typeof path === "string") &&
     isResponseObject(value.sessions) && Object.values(value.sessions).every((session): session is string => typeof session === "string") &&
     Object.hasOwn(value, "report") && typeof value.started === "string" &&
     (value.author_key === undefined || typeof value.author_key === "string")
 }
-function isStagedView(value: Record<string, unknown>): value is StagedView {
+export function isStagedView(value: Record<string, unknown>): value is StagedView {
   return typeof value.revision === "number" && typeof value.delta_hash === "string" && isResponseObject(value.files) &&
     Object.values(value.files).every(file => file === null || typeof file === "string")
 }
-function isCoordinator(value: Record<string, unknown>): value is CoordinatorResponse {
+export function isCoordinator(value: Record<string, unknown>): value is CoordinatorResponse {
   return typeof value.version === "number" && typeof value.units === "number" && typeof value.mutations === "number" &&
     typeof value.cursor === "number" && typeof value.deferrals === "number" && typeof value.next_mandate === "number" &&
     typeof value.requested === "boolean" && typeof value.draining === "boolean" &&
@@ -131,7 +131,7 @@ function isCoordinator(value: Record<string, unknown>): value is CoordinatorResp
     (value.history === undefined || Array.isArray(value.history) && value.history.every(item => isResponseObject(item) && isGCCycle(item)))
 }
 // gcCoordinateResponse returns result when it is the shape `gc coordinate` answers action with.
-function gcCoordinateResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
+export function gcCoordinateResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
   switch (action) {
     case "prepare": return isGCPlan(result) ? result : undefined
     case "findings": case "investigate": case "authorize": return isGCCycle(result) ? result : undefined
@@ -139,7 +139,7 @@ function gcCoordinateResponse(result: Record<string, unknown>, action: unknown):
     default: return isCoordinator(result) ? result : undefined
   }
 }
-function parseCoordinationResponse(value: unknown, verb: string[], action: unknown): DispatchResponse {
+export function parseCoordinationResponse(value: unknown, verb: string[], action: unknown): DispatchResponse {
   if (value === null) return null
   const result = responseObject(value, verb.join(" "))
   if (isHandoffEnvelope(result)) return result
@@ -154,7 +154,7 @@ function parseCoordinationResponse(value: unknown, verb: string[], action: unkno
 }
 
 // orchestratorOnly refuses a claim operation from any agent but the orchestrator.
-const orchestratorOnly = (c: { agent?: string }, operation: string) => {
+export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
   if (c.agent !== ORCHESTRATOR_ID) throw new Error(`${operation} belongs to the orchestrator`)
 }
 
@@ -226,7 +226,7 @@ const obj = (properties: Record<string, unknown>, required: string[]) =>
 // instead of letting a non-string value stringify to the useless
 // "[object Object]" (dispatch/shell fields are caller-supplied and only
 // typed unknown because they pass through a Record<string, unknown>).
-const asString = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback)
+export const asString = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback)
 
 // SENSITIVE_READ_GLOBS are the secret-bearing paths no agent reads, injected
 // from the same list the global read rules deny.

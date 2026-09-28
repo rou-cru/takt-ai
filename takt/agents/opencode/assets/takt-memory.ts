@@ -13,19 +13,19 @@ type MemoryResponse = { code: number; ok: boolean; result?: unknown; error?: str
 type RecordResult = { id: number; deduplicated: boolean }
 type CloseResult = { end_anchor_id: number; entries: number }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-function recordResult(value: unknown): RecordResult {
+export function recordResult(value: unknown): RecordResult {
   if (!isObject(value) || typeof value.id !== "number" || !Number.isSafeInteger(value.id) || value.id <= 0 || typeof value.deduplicated !== "boolean") {
     throw new Error("takt-ai memory record returned an invalid result")
   }
   return { id: value.id, deduplicated: value.deduplicated }
 }
 
-function closeResult(value: unknown): CloseResult {
+export function closeResult(value: unknown): CloseResult {
   if (!isObject(value) || typeof value.end_anchor_id !== "number" || !Number.isSafeInteger(value.end_anchor_id) || value.end_anchor_id <= 0 || typeof value.entries !== "number" || !Number.isSafeInteger(value.entries) || value.entries < 0) {
     throw new Error("takt-ai memory close returned an invalid result")
   }
