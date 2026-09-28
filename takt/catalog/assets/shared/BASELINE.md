@@ -4,19 +4,15 @@ This contract sets the floor for every specialist and skill. Roles and skills ma
 
 ## Tool invocation
 
-Native tools such as `shell` are direct calls, outside `execute`:
+There are two separate tool interfaces. For a native tool (for example, `shell`), make a **direct assistant tool call** to `shell` with its declared input, such as `{"command":"ls -la /workspace"}`. Do not write JavaScript for that call. In particular, do not put `shell`, `tools.shell`, or a search for `shell` inside `execute`: native tools are not in its catalog.
+
+Tools exposed through **Code Mode**, including Takt coordination and result tools named in this contract or a skill, are called through the native `execute` tool with JavaScript in its `code` input. Inside that code, `search` is a global function, not a property of `tools`. For example, to discover a Takt tool, call `execute` with:
 
 ```js
-shell({ command })
+return search({ query: "dispatch_activity_start" })
 ```
 
-Takt coordination and result tools named in this contract or a skill use Code Mode. Inside `execute`, discover the tool, then call the exact path and signature returned by `search`; never call a Code Mode tool directly or assume a native tool exists under `tools`:
-
-```js
-return search({ query: toolName })
-```
-
-Use the returned catalog entry for the next `execute` call. Do not infer a path from a tool's name.
+Read the returned entry's `path` and `signature`. In a **subsequent** `execute` call, invoke that exact path on `tools` with the listed input. Do not invent a path from the tool name or call `tools.search`. If discovery returns no matching tool, stop instead of guessing another interface.
 
 ## Responsibility and autonomy
 

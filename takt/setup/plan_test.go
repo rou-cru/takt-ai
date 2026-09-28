@@ -2,10 +2,36 @@ package setup
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/model"
 )
+
+func TestBuildOpenCodePlanShipsToolInvocationGuidance(t *testing.T) {
+	request, err := DefaultPlanRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, _, err := BuildTargetPlans(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := plans[0]
+	baseline := findArtifact(plan, ".config/opencode/takt/shared/BASELINE.md")
+	if !strings.Contains(string(baseline.Content), "return search({ query:") {
+		t.Error("deployed shared baseline lacks Code Mode discovery instructions")
+	}
+	for id, agent := range openCodeAgents(t, plan) {
+		if agent["disabled"] == true {
+			continue
+		}
+		prompt, ok := agent["system"].(string)
+		if !ok || !strings.Contains(prompt, "{file:./takt/shared/BASELINE.md}") {
+			t.Errorf("%s does not load the single shared tool invocation guidance", id)
+		}
+	}
+}
 
 func TestBuildOpenCodePlanAppliesOrchestratorModelOverride(t *testing.T) {
 	request, err := DefaultPlanRequest()

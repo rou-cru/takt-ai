@@ -383,19 +383,20 @@ func TestOrchestratorOperationsNameItsHarnessTools(t *testing.T) {
 
 func TestToolInvocationGuidanceDistinguishesDirectAndCodeMode(t *testing.T) {
 	baseline := readAssets(t, "shared/BASELINE.md")["shared/BASELINE.md"]
-	for _, want := range []string{"shell({ command })", "search({ query: toolName })", "execute", "exact path"} {
+	for _, want := range []string{"direct assistant tool call", "not in its catalog", "return search({ query: \"dispatch_activity_start\" })", "subsequent", "returned entry's `path` and `signature`"} {
 		if !strings.Contains(baseline, want) {
-			t.Errorf("shared guidance missing invocation form %q", want)
+			t.Errorf("shared guidance missing tool boundary %q", want)
 		}
 	}
-	operations := readAssets(t, "agents/takt/OPERATIONS.md")["agents/takt/OPERATIONS.md"]
-	if !strings.Contains(operations, "Code Mode") || !strings.Contains(operations, "dispatch_activity_start") {
-		t.Error("orchestrator must route dispatch tools through Code Mode")
+	for _, fence := range strings.Split(baseline, "```js")[1:] {
+		code, _, _ := strings.Cut(fence, "```")
+		if strings.Contains(code, "tools.") || strings.Contains(code, "shell(") {
+			t.Errorf("shared guidance has an undiscovered or native tool call in executable example: %s", code)
+		}
 	}
-	handoff := readAssets(t, "skills/takt-result-handoff/SKILL.md")["skills/takt-result-handoff/SKILL.md"]
-	for _, want := range []string{"tools.memory_record({", "tools.deliver_result({", "execute"} {
-		if !strings.Contains(handoff, want) {
-			t.Errorf("handoff guidance missing executable form %q", want)
+	for path, body := range readAssets(t, "agents/*/OPERATIONS.md", "skills/*/SKILL.md") {
+		if strings.Contains(body, "return search({ query:") || strings.Contains(body, "tools.shell") || strings.Contains(body, "tools.search") {
+			t.Errorf("%s duplicates shared tool invocation guidance", path)
 		}
 	}
 }
