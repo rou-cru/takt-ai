@@ -30,11 +30,6 @@ the gap, not that the gap needs to be narrowed to keep fitting it.
 route and then finds it no longer fits, it loads `takt-invariant-planning` and continues
 there — the next correct step, not a retry or an apology.
 
-**A user's direct, explicit request is not the orchestrator's to override.** When the user
-asked for this route directly, recognizing it no longer fits does not license switching
-away from it alone. State plainly why it no longer fits and the resulting risk, and
-continue only on the user's answer.
-
 **Stay inside planning.** This skill carries planning only. Implementation belongs to
 whichever route `takt-workflow-selection` picked for that phase — never this skill's
 concern.

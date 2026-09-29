@@ -136,3 +136,43 @@ func TestVFSShellUncapturableDenied(t *testing.T) {
 		t.Fatalf("reason %q does not identify the exact command", prepared.Shell.Reason)
 	}
 }
+
+// An unbound caller carries no author_key, so it must not be refused as an
+// identity mismatch: it may still inspect the workspace.
+func TestVFSShellUnboundCallerInspectAllowed(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	if err := os.WriteFile(filepath.Join(root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+		"call_id": "shell-unbound", "expected_revision": 0, "command": "cat data.txt",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Shell == nil || prepared.Shell.Decision == vfs.ShellDeny {
+		t.Fatalf("shell plan = %+v; want an unbound caller's inspection admitted", prepared.Shell)
+	}
+}
+
+// An unbound caller attempting a mutation is still denied, but with the
+// uncapturable-mutation reason, not a spurious identity mismatch.
+func TestVFSShellUnboundCallerMutationDenied(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+		"call_id": "shell-unbound-mutate", "expected_revision": 0, "command": "printf x > data.txt",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Shell.Decision != vfs.ShellDeny {
+		t.Fatalf("shell plan = %+v; want the mutation denied", prepared.Shell)
+	}
+	if !strings.Contains(prepared.Shell.Reason, "does not modify the workspace through the shell") {
+		t.Fatalf("reason %q; want the uncapturable-mutation reason, not an identity error", prepared.Shell.Reason)
+	}
+}

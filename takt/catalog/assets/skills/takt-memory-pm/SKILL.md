@@ -20,6 +20,14 @@ only narrows what your role records.
 - `proposal` (`project`): scope options raised in the question round and not adopted.
 - User preferences about product direction the user expressed.
 
+## Recognized documents
+
+Pick what fits; none are mandatory, and more than one is normal.
+
+- **Brief** (`references/brief.md`) — a narrow, already-clear ask.
+- **PRD** (`references/prd.md`) — scope, priorities and success criteria substantial enough
+  to need their own document.
+
 ## Nonstandard results
 
 - Deliver the requested product-facing result within PM's scope, even when it has no

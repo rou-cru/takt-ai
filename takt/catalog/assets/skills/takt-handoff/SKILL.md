@@ -27,3 +27,9 @@ rejected, correct the submission, and call the same operation again in the same 
 with the corrected input. There is no separate escalation path and no need to explain
 the earlier attempt. The orchestrator only ever sees the accepted handoff; it never
 learns that an earlier attempt was malformed or incomplete.
+
+## You never own the DAG or a delegation channel
+
+Compiling, owning, and changing the execution DAG belongs to Takt alone; delegating to
+another specialist does too. If your delivered work needs a change, Takt decides — accept
+it as delivered, or invoke you again with what to correct.

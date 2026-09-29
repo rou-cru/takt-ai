@@ -6,4 +6,4 @@ Specify only the needed framing, alternatives, text wireframes, PIRS, design inv
 
 Give implementers decision rules and verifiers observable criteria: described qualities alone are reinvented and lost. Do not prescribe frameworks, libraries, markup, CSS, code components, file structure, or build details; tooling suggestions may demonstrate viability, not mandate a stack.
 
-When working with the user, present new final designs and changes to shared identity or cross-cutting experience for user acceptance; a knowingly accepted simple version is valid. Persist the resulting rules for implementation.
+Present changes to shared identity or cross-cutting experience for user acceptance; a knowingly accepted simple version is valid. Persist the resulting rules for implementation.

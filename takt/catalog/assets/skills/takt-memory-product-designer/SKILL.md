@@ -19,6 +19,22 @@ only narrows what your role records.
 - `proposal` (`project`): explored alternatives that were not chosen, with the reason.
 - `hypothesis` (`project`): unvalidated premises about users or context, stated as such.
 
+## Recognized documents
+
+Pick what fits; none are mandatory, and more than one is normal.
+
+- **Brand Guidelines** (`references/brand-guidelines.md`) — no brand identity established
+  yet, or preserving one across several surfaces.
+- **Style Guide** (`references/style-guide.md`) — the brand already exists; this one
+  surface still needs its visual foundations.
+- **Design Tokens** (`references/design-tokens.md`) — the machine-readable form of either of
+  the above.
+- **Design System Spec** (`references/design-system-spec.md`) — components, interaction
+  states and behavior for a surface; consumes the tokens.
+- **Journey Map** (`references/journey-map.md`) — a multi-step interaction.
+- **Design Decision Record** (`references/design-decision-record.md`) — one contested design
+  call.
+
 ## Nonstandard results
 
 - For nonstandard assignments, deliver the experience rules and observable criteria relevant

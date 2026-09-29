@@ -11,5 +11,6 @@ role: planning_author
 skills:
 - takt-memory-contract
 - takt-memory-analyst
+- takt-invariant-authoring
 - takt-handoff
 - takt-result-handoff

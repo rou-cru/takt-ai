@@ -32,6 +32,11 @@ criteria already governing the routes above it.
 the route for implementation, or the reverse. Re-evaluate at the start of each phase against
 what is actually known then, not against the other phase's choice.
 
+**A user's direct, explicit request is not the orchestrator's to override.** When the user
+asked for this route directly, recognizing it no longer fits does not license switching
+away from it alone. State plainly why it no longer fits and the resulting risk, and
+continue only on the user's answer.
+
 **A route recognizing it no longer fits does not return here.** Once a bounded route is
 running, it names its own orchestrated counterpart directly if it outgrows itself — that
 belongs to its own skill, not to a fresh pass through this table.

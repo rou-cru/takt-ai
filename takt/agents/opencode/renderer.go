@@ -221,12 +221,6 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
 		rules = append(rules, sensitiveEditDenies()...)
 	}
-	if spec.ID == "analyst" {
-		// Unlike spec/tpm, the analyst never authors a document: it only
-		// researches and delivers findings through the handoff channels, so its
-		// inherited planning_author edit-allow is withdrawn.
-		rules = append(rules, permissionRule{"edit", allResources, "deny"})
-	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions
 	// override these denies with session permissions; coordinator admission is

@@ -20,6 +20,11 @@ only narrows what your role records.
 - `observation` (`project`): a dependency fact established by the breakdown, with the shared
   path or entry `#id` as evidence.
 
+## Recognized documents
+
+- **WBS** (`references/wbs.md`) — the task breakdown itself: scope, acceptance, contracts,
+  files and dependencies per task.
+
 ## When
 
 - When the task breakdown is accepted, before you return your result.

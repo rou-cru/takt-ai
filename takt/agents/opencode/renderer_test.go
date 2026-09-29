@@ -56,9 +56,6 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 			if got := effectOf(rules, "dispatch_handoff", "*"); got != want {
 				t.Errorf("handoff = %q, want %q", got, want)
 			}
-			if spec.ID == "analyst" && effectOf(rules, "edit", "*") != "deny" {
-				t.Error("analyst may edit files")
-			}
 			for _, skill := range []string{"takt-handoff", "takt-memory-contract"} {
 				if !slices.Contains(spec.Skills, skill) || effectOf(rules, "skill", skill) == "deny" {
 					t.Errorf("missing accessible %s", skill)
@@ -389,12 +386,8 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 				}
 			}
 			if agent.Role == model.RoleDirectInterlocutor || agent.Role == model.RolePlanningAuthor {
-				want := "allow"
-				if agent.ID == "analyst" {
-					want = "deny"
-				}
-				if got := effectOf(rules, "edit", "*"); got != want {
-					t.Errorf("document author edit = %q, want %q", got, want)
+				if got := effectOf(rules, "edit", "*"); got != "allow" {
+					t.Errorf("document author edit = %q, want %q", got, "allow")
 				}
 			}
 		})

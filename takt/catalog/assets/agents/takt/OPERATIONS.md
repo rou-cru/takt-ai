@@ -45,6 +45,9 @@ ordered by what each consumes, not dispatched together.
 
 Dispatch independent specialties concurrently within the four-specialist ceiling — slots count
 by delegation, not by agent name; the same instance may hold more than one.
+A concurrent round is real only if every delegation for it is issued within the same response,
+before any of their results return; issuing one and waiting for its result before issuing the
+next runs that round in sequence regardless of intent.
 Name every delegation after the work unit it executes: its description is the unit identity,
 and for planned work it is exactly the unit you committed with `dispatch_commit`. Delegating
 the same name again retries that unit; new work gets a new name.

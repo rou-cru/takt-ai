@@ -150,7 +150,7 @@ func memorySkills(t *testing.T) map[string]string {
 	}
 	byPath := map[string]string{}
 	for _, definition := range definitions {
-		if !strings.HasPrefix(definition.Name, "takt-memory-") {
+		if !strings.HasPrefix(definition.Name, "takt-memory-") || definition.FileName != "SKILL.md" {
 			continue
 		}
 		byPath[skillDeploymentPath(definition)] = string(definition.Content)
