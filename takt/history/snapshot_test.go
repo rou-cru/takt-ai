@@ -431,3 +431,17 @@ func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
 		t.Fatalf("empty history drew %+v", empty)
 	}
 }
+
+// TestBuildSnapshotReportsStoppedAndEscalated checks that Snapshot exposes
+// Budgets' own Stopped/Escalated counters, the same way it already does for
+// PlanVersion.
+func TestBuildSnapshotReportsStoppedAndEscalated(t *testing.T) {
+	entries := []Entry{
+		{Author: AuthorOrchestrator, Kind: KindStopped, SessionID: "root", WorkUnitID: "unit-1", AttemptID: FirstAttempt, Cause: CauseNone},
+		{Author: AuthorOrchestrator, Kind: KindEscalated, SessionID: "root", WorkUnitID: "unit-1", AttemptID: FirstAttempt, Cause: CauseNone},
+	}
+	got := BuildSnapshot(entries)
+	if got.Stopped != 1 || got.Escalated != 1 {
+		t.Fatalf("Stopped = %d, Escalated = %d; want 1, 1", got.Stopped, got.Escalated)
+	}
+}

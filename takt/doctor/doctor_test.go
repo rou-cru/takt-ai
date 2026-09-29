@@ -71,19 +71,19 @@ func TestDeploymentChecksReportsGlobalAndPerTargetMissingFiles(t *testing.T) {
 	}
 }
 
-func TestDefaultHTTPGetAndStatfsFreeBytes(t *testing.T) {
+func TestDefaultHTTPFetchAndStatfsFreeBytes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("health"))
 	}))
 	t.Cleanup(server.Close)
 
-	status, err := defaultHTTPGet(server.URL, time.Second)
-	if err != nil || status != http.StatusNoContent {
-		t.Fatalf("defaultHTTPGet() = (%d, %v), want (%d, nil)", status, err, http.StatusNoContent)
+	status, body, err := defaultHTTPFetch(http.MethodGet, server.URL, nil, time.Second)
+	if err != nil || status != http.StatusOK || string(body) != "health" {
+		t.Fatalf("defaultHTTPFetch() = (%d, %q, %v), want (%d, %q, nil)", status, body, err, http.StatusOK, "health")
 	}
-	if _, err := defaultHTTPGet("://invalid", time.Second); err == nil {
-		t.Fatal("defaultHTTPGet(invalid URL) returned no error")
+	if _, _, err := defaultHTTPFetch(http.MethodGet, "://invalid", nil, time.Second); err == nil {
+		t.Fatal("defaultHTTPFetch(invalid URL) returned no error")
 	}
 
 	available, err := statfsFreeBytes(t.TempDir())
@@ -100,12 +100,12 @@ func TestDefaultHTTPGetAndStatfsFreeBytes(t *testing.T) {
 // arguments install passing defaults; an empty home installs a fresh temp dir.
 func withSeams(t *testing.T, home string, look func(string) (string, error), copies func(string) []string, get func(string, time.Duration) (int, error), free func(string) (uint64, error)) {
 	t.Helper()
-	origHome, origLook, origCopies, origGet, origFree, origVersion, origResolve, origControl := userHomeDir, lookPath, toolCopies, httpGet, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth
+	origHome, origLook, origCopies, origFree, origVersion, origResolve, origControl := userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth
 	origCodegraphResolve, origCodegraphVersion, origHandshake := resolveCodegraph, codegraphVersionFn, openCodeHandshake
 	origFetch, origWorkingDir, origResolveProject := httpFetch, workingDir, resolveProject
 	t.Cleanup(func() {
 		resolveCodegraph, codegraphVersionFn, openCodeHandshake = origCodegraphResolve, origCodegraphVersion, origHandshake
-		userHomeDir, lookPath, toolCopies, httpGet, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth = origHome, origLook, origCopies, origGet, origFree, origVersion, origResolve, origControl
+		userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth = origHome, origLook, origCopies, origFree, origVersion, origResolve, origControl
 		httpFetch, workingDir, resolveProject = origFetch, origWorkingDir, origResolveProject
 	})
 	// engram:diagnostics/engram:needs-review default to the empty-body,
@@ -149,10 +149,18 @@ func withSeams(t *testing.T, home string, look func(string) (string, error), cop
 	} else {
 		toolCopies = copies
 	}
-	if get == nil {
-		httpGet = func(string, time.Duration) (int, error) { return 200, nil }
-	} else {
-		httpGet = get
+	// get simulates only the /health probe engramChecks makes; every other
+	// httpFetch call (engram:diagnostics, engram:needs-review) keeps the
+	// clean-pass default installed above, so a health-specific override
+	// never bleeds into the unrelated checks' assertions.
+	if get != nil {
+		httpFetch = func(method, url string, body io.Reader, timeout time.Duration) (int, []byte, error) {
+			if !strings.HasSuffix(url, "/health") {
+				return 200, []byte("{}"), nil
+			}
+			status, err := get(url, timeout)
+			return status, nil, err
+		}
 	}
 	if free == nil {
 		diskFree = func(string) (uint64, error) { return 1024 * 1024 * 1024, nil }

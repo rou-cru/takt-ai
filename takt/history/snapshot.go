@@ -117,7 +117,11 @@ type Snapshot struct {
 	// PlanVersion is the current committed plan's version identity, tracked
 	// per session and carried through untouched by an invalid revision.
 	PlanVersion string `json:"plan_version,omitempty"`
-	Nodes       []Node `json:"nodes"`
+	// Stopped and Escalated mirror Budgets' own counters: distinguishable
+	// from an enabling decision, never inferred from Nodes/Edges.
+	Stopped   int    `json:"stopped,omitempty"`
+	Escalated int    `json:"escalated,omitempty"`
+	Nodes     []Node `json:"nodes"`
 	Edges       []Edge `json:"edges"`
 	// Activities are direct orchestrator and maintenance records. They are
 	// rendered in a separate lane and never participate in graph edges.
@@ -146,6 +150,8 @@ func BuildSnapshot(entries []Entry) Snapshot {
 		SessionID:          session,
 		Capture:            CaptureCurrent,
 		PlanVersion:        p.Budgets(session).PlanVersion,
+		Stopped:            p.Budgets(session).Stopped,
+		Escalated:          p.Budgets(session).Escalated,
 		Nodes:              make([]Node, 0, len(p.Units)),
 		Edges:              []Edge{},
 		Activities:         make([]ActivityNode, 0, len(p.Activities)),

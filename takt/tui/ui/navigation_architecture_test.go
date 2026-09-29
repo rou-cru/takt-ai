@@ -23,7 +23,6 @@ func TestNavigationStateChangesOnlyThroughTransitionTables(t *testing.T) {
 		"install/install.go:apply":                    true,
 		"modelpicker/model_picker.go:applyTransition": true,
 		"models/models.go:applyTransition":            true,
-		"models/models.go:Discard":                    true,
 		"tui.go:applyRoute":                           true,
 		"tui.go:applyGuard":                           true,
 		"uninstall/uninstall.go:New":                  true,

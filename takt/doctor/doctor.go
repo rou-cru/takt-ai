@@ -85,7 +85,6 @@ var (
 	userHomeDir    = os.UserHomeDir
 	lookPath       = exec.LookPath
 	toolCopies     = scanToolCopies
-	httpGet        = defaultHTTPGet
 	httpFetch      = defaultHTTPFetch
 	diskFree       = statfsFreeBytes
 	workingDir     = os.Getwd
@@ -324,7 +323,7 @@ func engramChecks(home string) []CheckResult {
 
 	const name = "engram:reachable"
 	healthURL := engramBaseURL() + "/health"
-	status, err := httpGet(healthURL, doctorHTTPTimeout)
+	status, _, err := httpFetch(http.MethodGet, healthURL, nil, doctorHTTPTimeout)
 	if err != nil {
 		checks = append(checks, CheckResult{
 			Name:   name,
@@ -638,24 +637,6 @@ func diskCheck(home string) CheckResult {
 			Detail: fmt.Sprintf("%d MB free on %s filesystem", megabytes, dir),
 		}
 	}
-}
-
-// defaultHTTPGet performs one GET request and returns the HTTP status code.
-func defaultHTTPGet(url string, timeout time.Duration) (int, error) {
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := (&http.Client{Timeout: timeout}).Do(request)
-	if err != nil {
-		return 0, err
-	}
-	status := resp.StatusCode
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if closeErr := resp.Body.Close(); closeErr != nil {
-		return status, fmt.Errorf("close response body: %w", closeErr)
-	}
-	return status, nil
 }
 
 // defaultHTTPFetch performs one HTTP request and returns status plus body,

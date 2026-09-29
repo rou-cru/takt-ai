@@ -76,13 +76,9 @@ type DeploymentProgress struct {
 	Total     int
 }
 
-// DeployContext is Deploy with cooperative cancellation: it returns partial
-// results and ctx.Err() without rolling back what is already installed.
-func DeployContext(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
-	return DeployContextProgress(ctx, rootDir, managedPaths, artifacts, nil)
-}
-
-// DeployContextProgress is DeployContext with optional staging and commit events.
+// DeployContextProgress deploys with cooperative cancellation and optional
+// staging/commit events: it returns partial results and ctx.Err() without
+// rolling back what is already installed.
 func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	root, normalized, err := prepareDeployment(rootDir, managedPaths, artifacts)
 	if err != nil {

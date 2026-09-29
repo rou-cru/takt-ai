@@ -147,9 +147,18 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
 		return nil, e
 	}
+	// session_entries is a harness-reported fact (MEM-AUT-6), distinct from
+	// "memory" (outcome.ResultIDs, what the specialist itself declared):
+	// every entry recorded in this session, so the receiving agent relates
+	// them without searching.
+	sessionEntries, e := memory.EntryIDsForSession(memoryRoot, root)
+	if e != nil {
+		return nil, e
+	}
 	return map[string]any{
 		"result": outcome.Result, "additional_context": outcome.AdditionalContext,
 		"extra_artifacts": outcome.ExtraArtifacts, "memory": outcome.ResultIDs,
+		"session_entries": sessionEntries,
 	}, nil
 }
 

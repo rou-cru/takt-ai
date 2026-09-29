@@ -19,11 +19,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// NativeSubAgentContent holds target-neutral prose, without model choices.
+// NativeSubAgentContent holds a crew member's target-neutral identity.
 type NativeSubAgentContent struct {
-	ID           string `json:"id" yaml:"id"`
-	Description  string `json:"description" yaml:"description"`
-	Instructions string `json:"instructions" yaml:"instructions"`
 	// Role decides the permission profile and whether users may talk to this specialist directly.
 	Role model.RoleClass `json:"role" yaml:"role"`
 }

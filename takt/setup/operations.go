@@ -63,13 +63,8 @@ func ApplyContextProgress(ctx context.Context, rootDir string, plans []TargetPla
 	return applyPipeline(ctx, rootDir, plans, skipSet(preserve), nil, runtime, progress)
 }
 
-// SyncContext syncs plans with cooperative cancellation; see
-// DeployContext.
-func SyncContext(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, preserve ...string) (DeploymentResult, error) {
-	return SyncContextProgress(ctx, rootDir, plans, runtime, nil, preserve...)
-}
-
-// SyncContextProgress syncs plans and reports staging/commit progress.
+// SyncContextProgress syncs plans with cooperative cancellation and reports
+// staging/commit progress.
 func SyncContextProgress(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, progress func(DeploymentProgress), preserve ...string) (DeploymentResult, error) {
 	if strings.TrimSpace(rootDir) == "" {
 		return DeploymentResult{}, fmt.Errorf("deployment root is required")

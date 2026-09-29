@@ -378,12 +378,15 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fsys := catalog.AssetFS()
 	capabilities := map[string][]model.VFSCapability{}
+	defByInstance := map[string]catalog.AgentDefinition{}
 	for _, def := range pack.Agents {
 		for _, id := range def.Instances {
 			if grant, ok := def.VFSCapabilities(id); ok {
 				capabilities[id] = grant
 			}
+			defByInstance[id] = def
 		}
 	}
 	agents := []opencode.AgentSpec{{ID: "takt", Description: "Orchestrator", Mode: "primary", System: "p", Role: model.RoleOrchestrator, VFSCapabilities: capabilities["takt"]}}
@@ -392,7 +395,12 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 		if !ok {
 			t.Fatalf("instance %q has no VFS capability", id)
 		}
-		agents = append(agents, opencode.AgentSpec{ID: id, Description: instance.Description, Mode: "subagent", System: instance.Instructions, Role: instance.Role, VFSCapabilities: grant})
+		def := defByInstance[id]
+		text, err := def.ComposeText(fsys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		agents = append(agents, opencode.AgentSpec{ID: id, Description: def.Profile(id).Description, Mode: "subagent", System: text, Role: instance.Role, VFSCapabilities: grant})
 	}
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Agents: agents})
 	if err != nil {

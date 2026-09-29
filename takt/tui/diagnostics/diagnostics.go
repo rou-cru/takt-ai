@@ -55,9 +55,6 @@ func New(root string) Model {
 	return m
 }
 
-// State reports the visible step.
-func (m Model) State() State { return m.state }
-
 // Init collects diagnostics without modifying installation files; with
 // nothing installed there is nothing to check, so collection is skipped.
 func (m Model) Init() tea.Cmd {

@@ -39,23 +39,36 @@ func TestLoadNativeContent(t *testing.T) {
 	if len(content) != len(wantIDs) {
 		t.Fatalf("loaded %d entries, want %d: %v", len(content), len(wantIDs), content)
 	}
+	packages, err := LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defByInstance := make(map[string]AgentDefinition)
+	for _, def := range packages.Agents {
+		for _, id := range def.Instances {
+			defByInstance[id] = def
+		}
+	}
 	for _, id := range wantIDs {
-		entry, ok := content[id]
-		if !ok {
+		if _, ok := content[id]; !ok {
 			t.Errorf("missing native content %q", id)
 			continue
 		}
-		if entry.ID != id {
-			t.Errorf("entry %q has ID %q", id, entry.ID)
+		def, ok := defByInstance[id]
+		if !ok {
+			t.Fatalf("no agent definition declares instance %q", id)
 		}
-		if entry.Description == "" || entry.Instructions == "" {
-			t.Errorf("entry %q missing description or instructions", id)
+		if def.Profile(id).Description == "" {
+			t.Errorf("entry %q missing description", id)
+		}
+		if text, err := def.ComposeText(AssetFS()); err != nil || text == "" {
+			t.Errorf("entry %q missing instructions: %v", id, err)
 		}
 	}
 	if _, exposed := content["takt-judge"]; exposed {
 		t.Error("takt-judge must not be exposed on its own, only projected as -a/-b")
 	}
-	if content["judge-a"].Description != content["judge-b"].Description {
+	if defByInstance["judge-a"].Profile("judge-a").Description != defByInstance["judge-b"].Profile("judge-b").Description {
 		t.Error("judge-a and judge-b must share the same content, only the ID differs")
 	}
 }
