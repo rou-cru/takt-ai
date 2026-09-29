@@ -34,8 +34,9 @@ A good entry has a short, searchable `title` that names what happened, and a `co
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
 Engram stores every final planning or research result and every formal invariant. Record
 each complete artifact in one dedicated `project` entry, with no other result, process, or
-commentary mixed in. Keep it under roughly 400 lines, 600 at the ceiling. Genuinely distinct
-artifacts each get their own self-contained entry; a long document never gets cut into
+commentary mixed in. Keep it under roughly 400 lines, 600 at the ceiling, and wrap `content`
+as real prose lines: no single line exceeds 500 words. Genuinely distinct artifacts each
+get their own self-contained entry; a long document never gets cut into
 arbitrary pieces to fit that ceiling. Consumers retrieve that entry directly by its ID; they
 do not search for it or reconstruct it. A requested filesystem copy is a courtesy: produce it once, with the native edit tool, using
 the same content already recorded in the entry — that single write is sufficient. Present its ID through the

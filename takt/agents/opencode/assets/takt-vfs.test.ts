@@ -172,6 +172,11 @@ describe("plugin setup", () => {
       await invokeHook(toolHooks, "execute.before", 0, { tool: "shell", input: { command: directShell.command }, sessionID: "dispatch", agent: "__TAKT_ORCHESTRATOR_ID__" })
       await invokeHook(shellHooks, "create.before", 0, directShell)
       expect(directShell.command).toBe("echo direct")
+      // RESULT_AGENTS is untemplated here, so this placeholder self-matches via .includes().
+      const resultAgentShell = { command: "echo result-agent" }
+      await invokeHook(toolHooks, "execute.before", 0, { tool: "shell", input: { command: resultAgentShell.command }, sessionID: "dispatch", agent: "__TAKT_RESULT_AGENTS__" })
+      await invokeHook(shellHooks, "create.before", 0, resultAgentShell)
+      expect(resultAgentShell.command).toBe("echo result-agent")
       const rejectedPermission: { action: string; effect: string; sessionID: string; agent: string; message?: string } = {
         action: "shell", effect: "allow", sessionID: "dispatch", agent: "dev",
       }

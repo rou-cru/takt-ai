@@ -487,7 +487,7 @@ export default Plugin.define({
     }
     const admittedShell = new Map<string, AdmittedShell>()
     // create.before has no session/agent context, so remember the orchestrator's
-    // native-permission admission by exact command until create.
+    // and RESULT_AGENTS' native-permission admission by exact command until create.
     const directShell = new Map<string, number>()
 
     if (VFS_SHELL_ENFORCED) {
@@ -500,7 +500,7 @@ export default Plugin.define({
         // under the wrong binding's sandbox, or take the orchestrator's direct path.
         const pending = admittedShell.get(command)
         const direct = directShell.has(command)
-        if (event.agent === ORCHESTRATOR_ID) {
+        if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
           if (pending) throw new Error("Takt refused this shell command: an identical specialist command is pending")
           directShell.set(command, (directShell.get(command) ?? 0) + 1)
           return
@@ -583,7 +583,7 @@ export default Plugin.define({
         if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
-        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID) return
+        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) return
         // OpenCode asks over the commands it parsed out of the call, not the call
         // itself, so the admission is found by session. Parallel calls in one
         // session resolve to the strictest decision among them. The decision is
