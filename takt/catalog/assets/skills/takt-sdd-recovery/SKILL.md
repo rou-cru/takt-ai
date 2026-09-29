@@ -51,11 +51,7 @@ which retries in place without this protocol.
    against in-flight work, and re-validates the affected region's wave width and
    first-wave count before dispatching it again.
 5. **Resume:** re-queue only after correction and any required approval. Budget
-   exhaustion ends the recovery scope; confirm termination and restoration of
-   unconsolidated state before releasing ownership. Preserve unrelated progress. After two
-   consecutive failed recoveries of the same objective, report evidence and alternatives
-   and await the user's continuation decision; escalation itself authorizes no retry.
-   Consolidated work requires forward repair.
+   exhaustion ends the recovery scope. Consolidated work requires forward repair.
 
 **Convergence criterion.** If one node has consumed two contract deltas without
 converging, reassess the decomposition cut instead of emitting a third delta. This

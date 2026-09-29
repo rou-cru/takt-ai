@@ -21,6 +21,14 @@ only narrows what your role records.
 - `hypothesis` (`project`): an interpretation of the code you could not verify, stated as such.
 - `proposal` (`project`): approaches you compared and did not see adopted, each with its tradeoff, in the past tense.
 
+## Recognized documents
+
+Pick what fits; none are mandatory, and more than one is normal.
+
+- **Technical Spike** (`references/technical-spike.md`) — a bounded question to answer.
+- **Trade-off Analysis** (`references/trade-off-analysis.md`) — comparing two or more
+  approaches.
+
 ## Nonstandard results
 
 - For nonstandard assignments, deliver an official report of verified findings, conclusions

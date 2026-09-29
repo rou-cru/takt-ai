@@ -46,6 +46,12 @@ convened. `dispatch_handoff` is never proposed before that artifact exists in so
 When the user pushes for an early close, the template is filled with the actual state — thin
 or incomplete is acceptable — but that state is never presented as finished work.
 
+**A new final deliverable needs the user's own approval.** Presenting it as settled requires
+an explicit accept from the user. Only reusing an already-approved deliverable without
+content changes bypasses a new accept; any extension that changes the deliverable requires
+a new explicit accept. This holds for every direct interlocutor, regardless of what the
+deliverable is.
+
 **An escalation arrives already worked.** When something needs human judgment, what
 reaches the user carries context, the implications, and the alternatives already weighed —
 never a raw problem handed off unprocessed for someone else to untangle.

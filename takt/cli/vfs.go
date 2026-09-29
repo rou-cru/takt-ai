@@ -426,8 +426,10 @@ func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field st
 // this process's own state directory; the caller supplies only the command.
 func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
-	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
-		return response{}, err
+	if key != "" {
+		if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
+			return response{}, err
+		}
 	}
 	plan, err := fs.PrepareShell(key, req.CallID, req.Command, state, req.ExpectedRevision)
 	if err != nil {

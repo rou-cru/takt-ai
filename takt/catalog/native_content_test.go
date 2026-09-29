@@ -381,6 +381,28 @@ func TestOrchestratorOperationsNameItsHarnessTools(t *testing.T) {
 	}
 }
 
+// TestToolInvocationGuidanceDistinguishesDirectAndCodeMode checks that the shared
+// baseline owns tool discovery guidance and its examples avoid undiscovered calls.
+func TestToolInvocationGuidanceDistinguishesDirectAndCodeMode(t *testing.T) {
+	baseline := readAssets(t, "shared/BASELINE.md")["shared/BASELINE.md"]
+	for _, want := range []string{"direct assistant tool call", "not in its catalog", "return search({ query: \"dispatch_activity_start\" })", "subsequent", "returned entry's `path` and `signature`"} {
+		if !strings.Contains(baseline, want) {
+			t.Errorf("shared guidance missing tool boundary %q", want)
+		}
+	}
+	for _, fence := range strings.Split(baseline, "```js")[1:] {
+		code, _, _ := strings.Cut(fence, "```")
+		if strings.Contains(code, "tools.") || strings.Contains(code, "shell(") {
+			t.Errorf("shared guidance has an undiscovered or native tool call in executable example: %s", code)
+		}
+	}
+	for path, body := range readAssets(t, "agents/*/OPERATIONS.md", "skills/*/SKILL.md") {
+		if strings.Contains(body, "return search({ query:") || strings.Contains(body, "tools.shell") || strings.Contains(body, "tools.search") {
+			t.Errorf("%s duplicates shared tool invocation guidance", path)
+		}
+	}
+}
+
 func TestMemoryContractAnyRoleRecordsDecision(t *testing.T) {
 	text := readAssets(t, "skills/takt-memory-contract/SKILL.md")["skills/takt-memory-contract/SKILL.md"]
 	for _, gone := range []string{"Only interface roles record it", "non-interface role"} {

@@ -34,10 +34,12 @@ A good entry has a short, searchable `title` that names what happened, and a `co
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
 Engram stores every final planning or research result and every formal invariant. Record
 each complete artifact in one dedicated `project` entry, with no other result, process, or
-commentary mixed in. Consumers retrieve that entry directly by its ID; they do not search
-for it or reconstruct it. A requested filesystem copy must match the entry and never replaces
-it. If the write fails, the result is not delivered. Present its ID through the assigned
-handoff operation, not through a phrase in your final answer.
+commentary mixed in. Keep it under roughly 400 lines, 600 at the ceiling. Genuinely distinct
+artifacts each get their own self-contained entry; a long document never gets cut into
+arbitrary pieces to fit that ceiling. Consumers retrieve that entry directly by its ID; they
+do not search for it or reconstruct it. A requested filesystem copy is a courtesy: produce it once, with the native edit tool, using
+the same content already recorded in the entry — that single write is sufficient. Present its ID through the
+assigned handoff operation, not through a phrase in your final answer.
 Its nature follows §2.
 
 ## 2. Natures
@@ -97,22 +99,8 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
 - Same fact, same nature, still current: record nothing.
 
 Knowledge in another role's domain is still recorded by you when your work produced it.
-The table only helps avoid two roles recording the same thing:
-
-| Domain | Natural writer |
-|---|---|
-| Workspace stack, toolchain, environment facts | analyst |
-| Codebase facts, dependencies, impact | analyst |
-| Product scope and priorities | pm |
-| Behavioral requirements and acceptance rules | spec |
-| Architecture, boundaries, interface contracts | architect |
-| Interaction and UX | product designer |
-| Adopted sequencing and dependency choices | tpm |
-| Non-obvious implementation facts | dev |
-| Defect root causes | fix |
-| Verified acceptance results | verify |
-| Review findings that contradict memory | judges |
-| Session objective and state | orchestrator |
+When unsure who usually writes it, `references/domain-writers.md` names the natural writer
+per domain — consulted only for that doubt, not on every entry.
 
 ## 5. When to record
 
