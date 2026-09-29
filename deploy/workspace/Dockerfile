@@ -1,17 +1,28 @@
 # syntax=docker/dockerfile:1
-# ARM64 runtime image for a disposable, ready-to-use Takt/OpenCode workspace.
+# Multi-arch (linux/amd64, linux/arm64) runtime image for a disposable,
+# ready-to-use Takt/OpenCode workspace, published as docker.io/roucru/takt-ai.
 # This deliberately has its own build definition; Dockerfile.dev remains the
 # unconfigured development example.
+#
+# The builder runs on the target platform on purpose: its Go toolchain is
+# copied into the runtime stage, so it must match the target architecture.
+# Release CI builds each architecture on a native runner.
 
 ARG GO_VERSION=1.25.0
 FROM golang:${GO_VERSION}-bookworm AS builder
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/takt-ai ./takt/cli
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/takt-ai ./takt/cli
 
 FROM ubuntu:26.04
+LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.vendor="Takt AI Contributors" \
+      org.opencontainers.image.title="takt-ai" \
+      org.opencontainers.image.description="Prepared Takt AI + OpenCode v2 workspace runtime"
 ARG OPENCODE_VERSION=2.0.16
 # SHA-256 of https://opencode.ai/v2/install. The installer endpoint is shared
 # across all CLI versions and carries no vendor-published checksum of its own,
@@ -30,7 +41,8 @@ ENV LANG=C.UTF-8 \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python \
     PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:${PATH}"
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Pinned by digest so image builds are reproducible; bump deliberately.
+COPY --from=ghcr.io/astral-sh/uv:0.12.20@sha256:100047e74f30778ab704942321a09750d6158739573ff58bf3924085cc6cd2d8 /uv /uvx /bin/
 COPY --from=builder /usr/local/go /usr/local/go
 
 RUN set -eux; \

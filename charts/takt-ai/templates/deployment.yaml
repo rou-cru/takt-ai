@@ -1,14 +1,14 @@
 {{- $passwordSecret := .Values.server.passwordSecret.name -}}
 {{- if and (not $passwordSecret) .Values.externalSecret.enabled -}}
-{{- $passwordSecret = default (include "takt-workspace.fullname" .) .Values.externalSecret.target.name -}}
+{{- $passwordSecret = default (include "takt-ai.fullname" .) .Values.externalSecret.target.name -}}
 {{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "takt-workspace.fullname" . }}
+  name: {{ include "takt-ai.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- include "takt-ai.labels" . | nindent 4 }}
   {{- with .Values.commonAnnotations }}
   annotations: {{ toYaml . | nindent 4 }}
   {{- end }}
@@ -16,13 +16,13 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "takt-workspace.selectorLabels" . | nindent 6 }}
+      {{- include "takt-ai.selectorLabels" . | nindent 6 }}
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        {{- include "takt-workspace.selectorLabels" . | nindent 8 }}
+        {{- include "takt-ai.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
       {{- with .Values.podAnnotations }}
       annotations: {{ toYaml . | nindent 8 }}
@@ -31,7 +31,7 @@ spec:
       {{- with .Values.priorityClassName }}
       priorityClassName: {{ . | quote }}
       {{- end }}
-      serviceAccountName: {{ include "takt-workspace.serviceAccountName" . }}
+      serviceAccountName: {{ include "takt-ai.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
@@ -107,7 +107,7 @@ spec:
       {{- end }}
       containers:
         - name: opencode
-          image: {{ include "takt-workspace.image" . | quote }}
+          image: {{ include "takt-ai.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.command }}
           command: {{ toYaml . | nindent 12 }}
@@ -219,7 +219,7 @@ spec:
       volumes:
         - name: workspace
           persistentVolumeClaim:
-            claimName: {{ include "takt-workspace.fullname" . }}
+            claimName: {{ include "takt-ai.fullname" . }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}
       {{- end }}
