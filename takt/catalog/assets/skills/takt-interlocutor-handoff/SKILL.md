@@ -47,8 +47,9 @@ When the user pushes for an early close, the template is filled with the actual 
 or incomplete is acceptable — but that state is never presented as finished work.
 
 **A new final deliverable needs the user's own approval.** Presenting it as settled requires
-an explicit accept from the user; reusing or extending an already-approved, unchanged one
-does not reopen that gate. This holds for every direct interlocutor, regardless of what the
+an explicit accept from the user. Only reusing an already-approved deliverable without
+content changes bypasses a new accept; any extension that changes the deliverable requires
+a new explicit accept. This holds for every direct interlocutor, regardless of what the
 deliverable is.
 
 **An escalation arrives already worked.** When something needs human judgment, what

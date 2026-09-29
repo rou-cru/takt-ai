@@ -16,7 +16,10 @@
 package skills
 
 import (
+	"bytes"
+	"io/fs"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,6 +28,98 @@ import (
 	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
+
+// References are part of a skill's public deployment, including distinct files
+// below the same directory. Compare with the embedded assets, not LoadPackages,
+// so dropping a reference in either loading layer cannot pass unnoticed.
+func TestLoadSkillsPreservesAllEmbeddedFiles(t *testing.T) {
+	definitions, err := LoadSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := make(map[string][]byte)
+	for _, definition := range definitions {
+		key := path.Join("skills", definition.Name, definition.FileName)
+		if _, duplicate := loaded[key]; duplicate {
+			t.Fatalf("duplicate skill file %s", key)
+		}
+		loaded[key] = definition.Content
+	}
+	references := 0
+	err = fs.WalkDir(catalog.AssetFS(), "skills", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		want, err := fs.ReadFile(catalog.AssetFS(), name)
+		if err != nil {
+			return err
+		}
+		got, ok := loaded[name]
+		if !ok {
+			t.Errorf("missing embedded skill file %s", name)
+		} else if !bytes.Equal(got, want) {
+			t.Errorf("content changed while loading %s", name)
+		}
+		if strings.Contains(name, "/references/") {
+			references++
+		}
+		delete(loaded, name)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if references == 0 {
+		t.Fatal("no reference files exercised")
+	}
+	for name := range loaded {
+		t.Errorf("unexpected loaded file %s", name)
+	}
+}
+
+func TestBuildSkillPlanManagesReferenceFiles(t *testing.T) {
+	plan, err := BuildSkillPlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts := make(map[string][]byte)
+	var paths []string
+	for _, artifact := range plan.Artifacts {
+		if _, duplicate := artifacts[artifact.Path]; duplicate {
+			t.Fatalf("duplicate artifact %s", artifact.Path)
+		}
+		artifacts[artifact.Path] = artifact.Content
+		paths = append(paths, artifact.Path)
+	}
+	slices.Sort(paths)
+	if !slices.Equal(plan.ManagedPaths, paths) {
+		t.Error("managed paths must contain every artifact exactly once in sorted order")
+	}
+	// Two references from one skill catch flattening/overwriting by skill name;
+	// shared references catch implementations limited to planning role templates.
+	for _, name := range []string{
+		"takt-memory-pm/SKILL.md",
+		"takt-memory-pm/references/brief.md",
+		"takt-memory-pm/references/prd.md",
+		"takt-invariant-authoring/references/generic-artifact.md",
+		"takt-memory-contract/references/domain-writers.md",
+		"takt-sdd-workflow/references/topology-reference.md",
+	} {
+		t.Run(name, func(t *testing.T) {
+			want, err := fs.ReadFile(catalog.AssetFS(), "skills/"+name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deployed := ".opencode/skills/" + name
+			if got, ok := artifacts[deployed]; !ok || !bytes.Equal(got, want) {
+				t.Errorf("%s missing or content differs from embedded reference", deployed)
+			}
+		})
+	}
+}
 
 func TestLoadSkills(t *testing.T) {
 	skills, err := LoadSkills()

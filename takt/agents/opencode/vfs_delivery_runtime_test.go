@@ -69,6 +69,10 @@ export const Plugin = { define: definition => definition }
 	t.Run("retry_indistinguishable_from_clean", func(t *testing.T) { run(t, "retry") })
 	t.Run("async_delivery_waits_for_child", func(t *testing.T) { run(t, "async_delivery") })
 	t.Run("async_missing_waits_for_child", func(t *testing.T) { run(t, "async_missing") })
+	t.Run("wait_error_settles_and_cleans_up", func(t *testing.T) { run(t, "wait_error") })
+	t.Run("prompt_error_does_not_wait", func(t *testing.T) { run(t, "prompt_error") })
+	t.Run("delivered_or_failed_calls_do_not_wait", func(t *testing.T) { run(t, "no_unnecessary_wait") })
+	t.Run("concurrent_deliveries_wait_for_their_own_child", func(t *testing.T) { run(t, "concurrent_delivery") })
 
 	// A producer that never calls deliver_result gets exactly one bounded
 	// nudge, then a failure textually distinct from a validate_results

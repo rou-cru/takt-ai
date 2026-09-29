@@ -381,6 +381,8 @@ func TestOrchestratorOperationsNameItsHarnessTools(t *testing.T) {
 	}
 }
 
+// TestToolInvocationGuidanceDistinguishesDirectAndCodeMode checks that the shared
+// baseline owns tool discovery guidance and its examples avoid undiscovered calls.
 func TestToolInvocationGuidanceDistinguishesDirectAndCodeMode(t *testing.T) {
 	baseline := readAssets(t, "shared/BASELINE.md")["shared/BASELINE.md"]
 	for _, want := range []string{"direct assistant tool call", "not in its catalog", "return search({ query: \"dispatch_activity_start\" })", "subsequent", "returned entry's `path` and `signature`"} {

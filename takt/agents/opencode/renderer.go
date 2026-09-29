@@ -195,6 +195,8 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 	return entry
 }
 
+// agentPermissionRules builds ordered OpenCode permissions from the agent's role,
+// skills, and explicit VFS grants, using maintenance to restrict delegation targets.
 func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule {
 	var rules []permissionRule
 	if spec.Role == model.RoleOrchestrator {

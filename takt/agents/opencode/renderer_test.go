@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -16,6 +17,42 @@ func vfsCaps(capabilities ...model.VFSCapability) []model.VFSCapability {
 	return append([]model.VFSCapability{}, capabilities...)
 }
 
+func TestAnalystDocumentEditsKeepSensitiveDenies(t *testing.T) {
+	r := renderCatalog(t)
+	rules := r.config.Agents["analyst"].Permissions
+	allowIndex := -1
+	for i, rule := range rules {
+		if rule.Action == "edit" && rule.Resource == "*" {
+			if rule.Effect != "allow" {
+				t.Fatalf("analyst document edits overridden by %+v", rule)
+			}
+			allowIndex = i
+		}
+	}
+	if allowIndex < 0 {
+		t.Fatal("analyst lacks native document edit permission")
+	}
+	for _, glob := range shared.SensitivePathGlobs {
+		resource := "**/" + glob
+		if got := effectOf(rules[allowIndex+1:], "edit", resource); got != "deny" {
+			t.Errorf("sensitive path %s must be denied after the edit allow, got %q", resource, got)
+		}
+	}
+	for _, tool := range []string{"vfs_bind", "vfs_write", "vfs_delete", "subagent"} {
+		if got := effectOf(rules, tool, "*"); got != "deny" {
+			t.Errorf("document author gained %s permission: %q", tool, got)
+		}
+	}
+	for _, id := range []string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"} {
+		// Designed skills inherit native access; only excluded skills get a rule.
+		if got := effectOf(r.config.Agents[id].Permissions, "skill", "takt-invariant-authoring"); got == "deny" {
+			t.Errorf("%s cannot access its invariant authoring skill", id)
+		}
+	}
+}
+
+// TestCatalogProjectionEnforcesResponsibilityBoundaries checks that catalog agents
+// receive delegation, handoff, and skill access appropriate to their responsibilities.
 func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	pack, err := catalog.LoadPackages()
 	if err != nil {
@@ -330,6 +367,8 @@ func TestVFSPluginToolsAllHaveRolePermissions(t *testing.T) {
 	}
 }
 
+// TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant checks that VFS tools and
+// mutation skills follow explicit grants while document authors retain native edits.
 func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	content, err := catalog.LoadNativeContent()
 	if err != nil {

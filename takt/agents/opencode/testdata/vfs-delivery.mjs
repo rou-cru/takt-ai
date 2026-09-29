@@ -40,6 +40,7 @@ const tools = {}
 const hooks = {}
 const sessionHooks = {}
 const promptedSessions = []
+const waitedSessions = []
 let onPrompt = async (_sessionID, _text) => {}
 let onWait = async (_sessionID) => {}
 await plugin.setup({
@@ -50,7 +51,7 @@ await plugin.setup({
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
-    wait: async ({ sessionID }) => onWait(sessionID),
+    wait: async ({ sessionID }) => { waitedSessions.push(sessionID); await onWait(sessionID) },
     synthetic: async () => {},
     interrupt: async () => {},
   },
@@ -67,17 +68,98 @@ await plugin.setup({
   event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
 })
 
-const delegate = async (phase, description, id, agent) => {
+const delegate = async (phase, description, id, agent, status = "completed") => {
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
-      input: { agent, description, prompt: "p" }, status: "completed", result: {} })
+      input: { agent, description, prompt: "p" }, status, result: {} })
   }
 }
 const dispatched = () => calls.filter(c => c.verb === "dispatch").map(requestOf)
 
 const scenario = process.env.TAKT_VFS_TEST_SCENARIO
 
-if (scenario === "retry") {
+if (scenario === "wait_error" || scenario === "prompt_error") {
+  const unit = "failed-resume"
+  await delegate("execute.before", unit, "call-failed", "pm")
+  for (const callback of sessionHooks.context) {
+    await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
+  }
+  const failure = new Error(`${scenario}: child session unavailable`)
+  if (scenario === "prompt_error") {
+    onPrompt = async () => { throw failure }
+  } else {
+    onWait = async (sessionID) => {
+      assert.equal(sessionID, unit)
+      // Even a result delivered before wait rejects must be cleared on exit.
+      await tools.deliver_result.execute({ result_ids: [42] }, { sessionID, agent: "pm" })
+      throw failure
+    }
+  }
+  await assert.rejects(delegate("execute.after", unit, "call-failed", "pm"), error => error === failure)
+  assert.deepEqual(promptedSessions, [unit])
+  assert.deepEqual(waitedSessions, scenario === "wait_error" ? [unit] : [])
+  const finishes = dispatched().filter(r => r.action === "finish")
+  assert.deepEqual(finishes, [{ action: "finish", event: unit, dispatch: "root:call-failed", session: "root" }])
+
+  // A repeated host notification must not settle the same delegation twice.
+  await delegate("execute.after", unit, "call-failed", "pm")
+  assert.deepEqual(dispatched().filter(r => r.action === "finish"), finishes)
+
+  onPrompt = async () => { assert.fail("retry reused the previous child") }
+  onWait = async () => { assert.fail("retry waited on the previous child") }
+  await delegate("execute.before", unit, "call-retry", "pm")
+  await assert.rejects(delegate("execute.after", unit, "call-retry", "pm"),
+    /delegation ended without delivering a result via deliver_result/)
+  assert.equal(dispatched().filter(r => r.action === "finish").length, 2,
+    "failed retry must also settle; a stale delivery must not satisfy it")
+} else if (scenario === "no_unnecessary_wait") {
+  onWait = async () => { assert.fail("no child turn was resumed") }
+  for (const status of ["completed", "error", "cancelled"]) {
+    const unit = `no-wait-${status}`
+    await delegate("execute.before", unit, unit, "pm")
+    for (const callback of sessionHooks.context) {
+      await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
+    }
+    if (status === "completed") {
+      await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: unit, agent: "pm" })
+    }
+    await delegate("execute.after", unit, unit, "pm", status)
+  }
+  assert.deepEqual(promptedSessions, [])
+  assert.deepEqual(waitedSessions, [])
+  assert.equal(dispatched().filter(r => r.action === "finish").length, 3)
+} else if (scenario === "concurrent_delivery") {
+  const turns = new Map()
+  const entered = new Map()
+  const releases = new Map()
+  for (const unit of ["first", "second"]) {
+    await delegate("execute.before", unit, `call-${unit}`, "pm")
+    for (const callback of sessionHooks.context) {
+      await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
+    }
+    turns.set(unit, new Promise(resolve => { releases.set(unit, resolve) }))
+    entered.set(unit, Promise.withResolvers())
+  }
+  onWait = async (sessionID) => {
+    assert.ok(turns.has(sessionID), `unexpected child ${sessionID}`)
+    entered.get(sessionID).resolve()
+    await turns.get(sessionID)
+    await tools.deliver_result.execute({ result_ids: [sessionID === "first" ? 1 : 2] }, { sessionID, agent: "pm" })
+  }
+  const first = delegate("execute.after", "first", "call-first", "pm")
+  const second = delegate("execute.after", "second", "call-second", "pm")
+  await Promise.all([...entered.values()].map(entry => entry.promise))
+  assert.equal(dispatched().filter(r => r.action === "finish").length, 0)
+  releases.get("second")()
+  await second
+  assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second"],
+    "one child's result must not finish another waiting delegation")
+  releases.get("first")()
+  await first
+  assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second", "first"])
+  assert.deepEqual([...waitedSessions].sort(), ["first", "second"])
+  assert.deepEqual([...promptedSessions].sort(), ["first", "second"])
+} else if (scenario === "retry") {
   // Baseline: a clean, single-shot delivery.
   let mark = dispatched().length
   await delegate("execute.before", "clean-ok", "call-clean", "pm")
@@ -127,6 +209,8 @@ if (scenario === "retry") {
   assert.equal(dispatched().filter(r => r.action === "finish").length, 0)
   release()
   await completion
+  assert.deepEqual(waitedSessions, ["async-result"])
+  assert.deepEqual(promptedSessions, ["async-result"])
   assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "validate_results", "finish"])
 } else if (scenario === "async_missing") {
   await delegate("execute.before", "async-missing", "call-async-missing", "pm")
@@ -146,6 +230,8 @@ if (scenario === "retry") {
   assert.equal(settled, false, "the parent was told the producer failed before its turn ended")
   release()
   const error = await completion
+  assert.deepEqual(waitedSessions, ["async-missing"])
+  assert.deepEqual(promptedSessions, ["async-missing"])
   assert.match(error.message, /delegation ended without delivering a result via deliver_result/)
   assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "finish"])
 } else if (scenario === "fallback") {
