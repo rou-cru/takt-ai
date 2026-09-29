@@ -16,13 +16,99 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
+
+func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	for _, command := range []string{"cat data.txt", "git diff", "ls"} {
+		t.Run(command, func(t *testing.T) {
+			prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+				"call_id": "inspect", "command": command,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan := prepared.Shell
+			if !prepared.OK || plan == nil || plan.Decision != vfs.ShellAllow {
+				t.Fatalf("inspection plan = %+v", prepared)
+			}
+			if plan.Capture || plan.Cwd != root {
+				t.Errorf("unbound inspection must read the workspace without capturing: %+v", plan)
+			}
+			if plan.Scratch == "" || !slices.Equal(plan.Writable, []string{plan.Scratch}) {
+				t.Errorf("only scratch may be writable: %+v", plan)
+			}
+			if !slices.Contains(plan.Protected, root) || !slices.Contains(plan.Private, state) {
+				t.Errorf("workspace/state protection missing: %+v", plan)
+			}
+		})
+	}
+}
+
+func TestVFSShellSuppliedAuthorKeyStillRequiresIdentity(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+	bound, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"data.txt"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, field, value string
+	}{
+		{"unknown key", "author_key", "not-a-binding"},
+		{"whitespace key", "author_key", " "},
+		{"other session", "session_id", "s2"},
+		{"other unit", "work_unit_id", "u2"},
+		{"other agent", "agent_id", "analyst"},
+		{"other specialist", "specialist", "analyst"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := vfsReq("u1", "dev", map[string]any{
+				"author_key": bound.Key, "call_id": "inspect", "command": "cat data.txt",
+			})
+			req[tc.field] = tc.value
+			if _, err := mutate("shell-prepare", req); !errors.Is(err, vfs.ErrIdentity) {
+				t.Fatalf("shell-prepare error = %v, want identity rejection", err)
+			}
+		})
+	}
+	// A valid key must continue to work after the rejected requests.
+	prepared, err := mutate("shell-prepare", vfsReq("u1", "dev", map[string]any{
+		"author_key": bound.Key, "call_id": "inspect-owner", "command": "cat data.txt",
+	}))
+	if err != nil || prepared.Shell == nil || prepared.Shell.Decision != vfs.ShellAllow || !prepared.Shell.Capture {
+		t.Fatalf("bound owner's inspection = %+v, error = %v", prepared, err)
+	}
+}
+
+func TestVFSShellUnboundStillValidatesRequest(t *testing.T) {
+	for _, tc := range []struct{ name, callID, command string }{
+		{"missing call ID", "", "cat data.txt"},
+		{"empty command", "inspect", ""},
+		{"blank command", "inspect", " \t\n "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutate := newVFSMutator(t, t.TempDir(), filepath.Join(t.TempDir(), "private"))
+			_, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+				"call_id": tc.callID, "command": tc.command,
+			}))
+			if !errors.Is(err, vfs.ErrIdentity) {
+				t.Fatalf("invalid unbound request error = %v, want ErrIdentity", err)
+			}
+		})
+	}
+}
 
 // TestVFSShellIPC drives the shell capture path the plugin uses: the coordinator
 // resolves the sandbox plan from the binding's scope, the command's projection
