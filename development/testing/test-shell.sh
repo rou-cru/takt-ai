@@ -242,6 +242,7 @@ test_version() {
     [[ "$(cd "$repo" && RELEASE_AS=4.5.6 bash "$script" | sed -n 's/^tag=//p')" == v4.5.6 ]] || fail 'RELEASE_AS env'
     expect_failure 'already exists' env -C "$repo" RELEASE_AS=v1.0.0 bash "$script"
     expect_failure 'invalid version' env -C "$repo" RELEASE_AS=1.0 bash "$script"
+    expect_failure 'is not newer than the last release' env -C "$repo" RELEASE_AS=v0.5.0 bash "$script"
     pass 'next-version bumps, skips, and overrides per release rules'
 }
 

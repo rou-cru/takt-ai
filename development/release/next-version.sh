@@ -16,7 +16,8 @@
 #   - major == 0: breaking (! / BREAKING CHANGE) -> minor, anything else -> patch
 #   - major >= 1: breaking -> major, feat -> minor, anything else -> patch
 #
-# RELEASE_AS (env) overrides everything; used by workflow_dispatch.
+# RELEASE_AS (env) overrides everything; used by workflow_dispatch. Must be
+# strictly newer than the last release, same as the Release-As trailer.
 set -euo pipefail
 
 ref=${1:-HEAD}
@@ -30,17 +31,23 @@ emit() {
 	if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
 		die "tag v$v already exists"
 	fi
+	if [[ -n "$last" ]]; then
+		local highest
+		highest=$(printf '%s\n%s\n' "$last" "v$v" | sort -V | tail -n1)
+		[[ "$highest" == "v$v" ]] || die "v$v is not newer than the last release $last"
+	fi
 	printf 'version=%s\ntag=v%s\nskip=%s\n' "$v" "$v" "${2:-false}"
 }
 
 git rev-parse -q --verify "$ref^{commit}" >/dev/null || die "unknown ref '$ref'"
+
+last=$(git tag --list 'v*' --sort=-v:refname --merged "$ref" | grep -E "$semver" | head -n1 || true)
 
 if [[ -n "${RELEASE_AS:-}" ]]; then
 	emit "$RELEASE_AS"
 	exit 0
 fi
 
-last=$(git tag --list 'v*' --sort=-v:refname --merged "$ref" | grep -E "$semver" | head -n1 || true)
 if [[ -z "$last" ]]; then
 	emit 0.0.1
 	exit 0

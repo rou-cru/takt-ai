@@ -353,7 +353,7 @@ install_binary() {
 
     # Download and verify checksum — fail closed unless --insecure is set
     info "Verifying checksum..."
-    if curl -sL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
+    if curl -sfL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
         verify_signature "$tmpdir"
         local expected_checksum
         expected_checksum="$(grep "${archive_name}" "${tmpdir}/checksums.txt" 2>/dev/null | awk '{print $1}' || true)"
