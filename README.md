@@ -25,7 +25,9 @@ Takt AI integrates directly with one coding agent:
 # Script: Linux/macOS; verifies checksums, and the Sigstore signature when cosign is installed
 curl -fsSL https://raw.githubusercontent.com/rou-cru/takt-ai/main/install.sh | bash
 
-# Homebrew
+# Homebrew (trust the tap first — Homebrew 7+ won't load an unofficial cask otherwise)
+brew trust --tap rou-cru/homebrew-takt-ai
+brew trust --cask rou-cru/takt-ai/takt-ai
 brew install --cask rou-cru/takt-ai/takt-ai
 
 # Go

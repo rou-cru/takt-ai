@@ -18,6 +18,7 @@ GITHUB_OWNER="rou-cru"
 GITHUB_REPO="takt-ai"
 BINARY_NAME="takt-ai"
 BREW_TAP="rou-cru/homebrew-takt-ai"
+BREW_CASK="rou-cru/takt-ai/takt-ai"  # fully-qualified form `brew trust --cask` requires
 
 # ============================================================================
 # Color support
@@ -184,6 +185,14 @@ detect_install_method() {
 
 install_brew() {
     step "Installing via Homebrew"
+
+    # Homebrew 7+ requires non-official taps/casks to be explicitly trusted
+    # before it will load them; skip on older Homebrew where the command
+    # doesn't exist.
+    if brew trust --help &>/dev/null; then
+        brew trust --tap "$BREW_TAP" 2>/dev/null || true
+        brew trust --cask "$BREW_CASK" 2>/dev/null || true
+    fi
 
     # Always refresh the tap to pick up new releases
     info "Refreshing ${BREW_TAP}..."
@@ -487,11 +496,11 @@ verify_installation() {
 print_banner() {
     echo ""
     echo -e "${CYAN}${BOLD}"
-    echo "  _____     _    _     ___    _ "
-    echo " |_   _|_ _| | _| |_  |_ _|  / |"
-    echo "   | |/ _\` | |/ / __|  | |   | |"
-    echo "   | | (_| |   <| |_   | |   | |"
-    echo "   |_|\__,_|_|\_\\\\__| |___| |_|"
+    echo " _____     _    _          _    ___ "
+    echo "|_   _|_ _| | _| |_       / \\  |_ _|"
+    echo "  | |/ _\` | |/ / __|____ / _ \\  | | "
+    echo "  | | (_| |   <| ||_____/ ___ \\ | | "
+    echo "  |_|\__,_|_|\_\\\\__|   /_/   \_\___|"
     echo -e "${NC}"
     echo -e "  ${DIM}Takt-AI${NC}"
     echo ""

@@ -136,7 +136,9 @@ release:
     # Script (Linux/macOS, verifies checksums, and signatures when cosign is present)
     curl -fsSL https://raw.githubusercontent.com/rou-cru/takt-ai/main/install.sh | bash
 
-    # Homebrew
+    # Homebrew (trust the tap first — Homebrew 7+ won't load an unofficial cask otherwise)
+    brew trust --tap rou-cru/homebrew-takt-ai
+    brew trust --cask rou-cru/takt-ai/takt-ai
     brew install --cask rou-cru/takt-ai/takt-ai
 
     # Workspace image (linux/amd64, linux/arm64)
