@@ -35,8 +35,10 @@ type SkillDefinition struct {
 	Content  []byte
 }
 
-// LoadSkills reads all skill definitions from the catalog.
-// It returns skills sorted by their deployment path for deterministic output.
+// LoadSkills reads every file in each embedded catalog skill, including reference
+// files. It returns one definition per file, with FileName relative to the skill
+// directory, sorted by deployment path for deterministic output.
+// Catalog loading or validation errors are wrapped and returned with a nil slice.
 func LoadSkills() ([]SkillDefinition, error) {
 	c, err := catalog.LoadPackages()
 	if err != nil {
