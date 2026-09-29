@@ -185,28 +185,9 @@ func TestModelsReturnsStructuredModelsInReportedOrder(t *testing.T) {
 	if first.Ref.String() != "opencode/deepseek-v4.1-flash" {
 		t.Fatalf("first String() = %q", first.Ref.String())
 	}
-	if first.Name != "DeepSeek V4.1 Flash" || first.Status != "active" || !first.Enabled || !first.Tools {
-		t.Fatalf("first model identity/capabilities wrong: %+v", first)
-	}
-	if !reflect.DeepEqual(first.InputTypes, []string{"text", "image"}) {
-		t.Fatalf("input types = %v", first.InputTypes)
-	}
-	if first.ContextLimit != 1000000 || first.OutputLimit != 384000 {
-		t.Fatalf("limits = %d/%d", first.ContextLimit, first.OutputLimit)
-	}
-	if first.ReleasedAt != 1788998400000 {
-		t.Fatalf("released = %d", first.ReleasedAt)
-	}
-	if len(first.Cost) != 1 || first.Cost[0] != (ModelCost{Input: 0.3, Output: 1.2, CacheRead: 0.006, CacheWrite: 0}) {
-		t.Fatalf("first cost = %+v", first.Cost)
-	}
-
 	second := models[1]
 	if second.Ref.String() != "opencode-go/glm-5.3-flash" {
 		t.Fatalf("second String() = %q", second.Ref.String())
-	}
-	if second.Cost[0].TierType != "context" || second.Cost[0].TierSize != 200000 {
-		t.Fatalf("second tier = %+v", second.Cost[0])
 	}
 }
 

@@ -78,19 +78,10 @@ func Resolve(root string) (string, bool) {
 		candidates = append(candidates, onPath)
 	}
 	candidates = append(candidates, ManagedBinaryPath(root))
-	for _, candidate := range candidates {
-		absolute, err := filepath.Abs(candidate)
-		if err != nil {
-			continue
-		}
-		if info, err := os.Stat(absolute); err != nil || info.IsDir() {
-			continue
-		}
-		if version, err := VerifyVersion(absolute); err == nil && compatibleVersion(version) {
-			return absolute, true
-		}
-	}
-	return "", false
+	return shared.ResolveBinary(candidates, func(absolute string) bool {
+		version, err := VerifyVersion(absolute)
+		return err == nil && compatibleVersion(version)
+	})
 }
 
 // Acquire returns Resolve's path when found, or downloads and installs the pinned release.

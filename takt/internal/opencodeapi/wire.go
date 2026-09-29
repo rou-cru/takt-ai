@@ -45,9 +45,9 @@ type wireModel struct {
 	} `json:"cost"`
 }
 
-// toModel converts and validates. Identity and limits are what Takt branches
-// on, so they are strict; status is kept as a raw string because the picker
-// (R1) only surfaces it and a new status must not break listing.
+// toModel converts and validates. Only Ref is carried into Model; the rest of
+// the payload is still validated here so a malformed entry is rejected even
+// though its value is never stored.
 func (w wireModel) toModel() (Model, error) {
 	if w.ProviderID == "" || w.ModelID == "" {
 		return Model{}, fmt.Errorf("model %q is missing providerID or modelID", w.ID)
@@ -56,35 +56,7 @@ func (w wireModel) toModel() (Model, error) {
 		return Model{}, fmt.Errorf("model %s/%s has non-positive limits (context=%d output=%d)",
 			w.ProviderID, w.ModelID, w.Limit.Context, w.Limit.Output)
 	}
-	model := Model{
-		Ref: ModelRef{
-			ProviderID: w.ProviderID,
-			ModelID:    w.ModelID,
-		},
-		Name:         w.Name,
-		Status:       w.Status,
-		Enabled:      w.Enabled,
-		Tools:        w.Capabilities.Tools,
-		InputTypes:   append([]string(nil), w.Capabilities.Input...),
-		OutputTypes:  append([]string(nil), w.Capabilities.Output...),
-		ContextLimit: w.Limit.Context,
-		OutputLimit:  int(w.Limit.Output),
-		ReleasedAt:   int64(w.Time.Released),
-	}
-	for _, cost := range w.Cost {
-		entry := ModelCost{
-			Input:      cost.Input,
-			Output:     cost.Output,
-			CacheRead:  cost.Cache.Read,
-			CacheWrite: cost.Cache.Write,
-		}
-		if cost.Tier != nil {
-			entry.TierType = cost.Tier.Type
-			entry.TierSize = cost.Tier.Size
-		}
-		model.Cost = append(model.Cost, entry)
-	}
-	return model, nil
+	return Model{Ref: ModelRef{ProviderID: w.ProviderID, ModelID: w.ModelID}}, nil
 }
 
 type wireMCPServer struct {
@@ -112,9 +84,6 @@ func (w wireMCPServer) toMCPServer() (MCPServer, error) {
 	server := MCPServer{Name: w.Name, State: state}
 	if w.Status.Error != nil {
 		server.Error = redactSensitiveText(*w.Status.Error)
-	}
-	if w.IntegrationID != nil {
-		server.IntegrationID = *w.IntegrationID
 	}
 	return server, nil
 }
@@ -149,23 +118,12 @@ func (w wireAgent) toAgent() (Agent, error) {
 	if w.ID == "" {
 		return Agent{}, fmt.Errorf("agent entry has no id")
 	}
-	agent := Agent{
-		ID:     w.ID,
-		Name:   w.Name,
-		Mode:   w.Mode,
-		Hidden: w.Hidden,
-	}
-	if w.Description != nil {
-		agent.Description = *w.Description
-	}
 	if w.Model != nil {
-		ref, err := w.Model.toModelRef()
-		if err != nil {
+		if _, err := w.Model.toModelRef(); err != nil {
 			return Agent{}, fmt.Errorf("agent %q: %w", w.ID, err)
 		}
-		agent.Model = &ref
 	}
-	return agent, nil
+	return Agent{ID: w.ID, Mode: w.Mode, Hidden: w.Hidden}, nil
 }
 
 type wireSkill struct {
@@ -179,11 +137,7 @@ func (w wireSkill) toSkill() (Skill, error) {
 	if w.ID == "" {
 		return Skill{}, fmt.Errorf("skill entry has no id")
 	}
-	skill := Skill{ID: w.ID, Name: w.Name, Path: w.Path}
-	if w.Description != nil {
-		skill.Description = *w.Description
-	}
-	return skill, nil
+	return Skill{ID: w.ID}, nil
 }
 
 type wirePlugin struct {

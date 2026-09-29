@@ -18,6 +18,8 @@ package shared
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,32 +34,41 @@ const semverComponents = 3
 // NewManagedPaths returns OpenCode's owned paths, normalized and sorted for
 // stable manifests, so uninstalls never touch user files.
 func NewManagedPaths(generated []string) ([]string, error) {
-	return NormalizeManagedPaths("OpenCode", []string{model.OpenCodeConfigRelativePath}, generated)
-}
-
-// NormalizeManagedPaths cleans, dedupes, and sorts managed paths so manifests stay deterministic.
-func NormalizeManagedPaths(target string, pathGroups ...[]string) ([]string, error) {
-	total := 0
-	for _, group := range pathGroups {
-		total += len(group)
-	}
-	normalized := make([]string, 0, total)
-	seen := make(map[string]struct{}, total)
-	for _, group := range pathGroups {
-		for _, candidate := range group {
-			clean, err := artifacts.NormalizeRelPath(candidate)
-			if err != nil {
-				return nil, fmt.Errorf("invalid %s managed path %s: %w", target, candidate, err)
-			}
-			if _, exists := seen[clean]; exists {
-				return nil, fmt.Errorf("duplicate %s managed path %s", target, clean)
-			}
-			seen[clean] = struct{}{}
-			normalized = append(normalized, clean)
+	all := append([]string{model.OpenCodeConfigRelativePath}, generated...)
+	normalized := make([]string, 0, len(all))
+	seen := make(map[string]struct{}, len(all))
+	for _, candidate := range all {
+		clean, err := artifacts.NormalizeRelPath(candidate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid OpenCode managed path %s: %w", candidate, err)
 		}
+		if _, exists := seen[clean]; exists {
+			return nil, fmt.Errorf("duplicate OpenCode managed path %s", clean)
+		}
+		seen[clean] = struct{}{}
+		normalized = append(normalized, clean)
 	}
 	slices.Sort(normalized)
 	return normalized, nil
+}
+
+// ResolveBinary scans candidates in order and returns the absolute path of
+// the first that exists, is a regular file, and satisfies isCompatible —
+// the scan loop shared by every managed-binary resolver (engram, codegraph).
+func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool) {
+	for _, candidate := range candidates {
+		absolute, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(absolute); err != nil || info.IsDir() {
+			continue
+		}
+		if isCompatible(absolute) {
+			return absolute, true
+		}
+	}
+	return "", false
 }
 
 // VersionAtLeast reports whether the numeric MAJOR.MINOR.PATCH prefix of have

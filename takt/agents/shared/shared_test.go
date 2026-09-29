@@ -9,20 +9,20 @@ import (
 	"testing"
 )
 
-func TestNormalizeManagedPathsSortsAndRejectsUnsafeOrDuplicatePaths(t *testing.T) {
-	got, err := NormalizeManagedPaths("OpenCode", []string{"z/plugin.ts"}, []string{"a/config.json", "m/cli.json"})
+func TestNewManagedPathsSortsAndRejectsUnsafeOrDuplicatePaths(t *testing.T) {
+	got, err := NewManagedPaths([]string{"z/plugin.ts", "a/config.json", "m/cli.json"})
 	if err != nil {
-		t.Fatalf("NormalizeManagedPaths() error = %v", err)
+		t.Fatalf("NewManagedPaths() error = %v", err)
 	}
-	want := []string{"a/config.json", "m/cli.json", "z/plugin.ts"}
+	want := []string{".config/opencode/opencode.json", "a/config.json", "m/cli.json", "z/plugin.ts"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("NormalizeManagedPaths() = %v, want %v", got, want)
+		t.Fatalf("NewManagedPaths() = %v, want %v", got, want)
 	}
 
-	if _, err := NormalizeManagedPaths("OpenCode", []string{"same", "same"}); err == nil || !strings.Contains(err.Error(), "duplicate OpenCode managed path") {
+	if _, err := NewManagedPaths([]string{"same", "same"}); err == nil || !strings.Contains(err.Error(), "duplicate OpenCode managed path") {
 		t.Fatalf("duplicate path error = %v, want duplicate-path error", err)
 	}
-	if _, err := NormalizeManagedPaths("OpenCode", []string{"../outside"}); err == nil || !strings.Contains(err.Error(), "invalid OpenCode managed path") {
+	if _, err := NewManagedPaths([]string{"../outside"}); err == nil || !strings.Contains(err.Error(), "invalid OpenCode managed path") {
 		t.Fatalf("unsafe path error = %v, want invalid-path error", err)
 	}
 }

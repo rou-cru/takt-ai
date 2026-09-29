@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -32,7 +31,7 @@ func TestAnalystDocumentEditsKeepSensitiveDenies(t *testing.T) {
 	if allowIndex < 0 {
 		t.Fatal("analyst lacks native document edit permission")
 	}
-	for _, glob := range shared.SensitivePathGlobs {
+	for _, glob := range model.SensitivePathGlobs {
 		resource := "**/" + glob
 		if got := effectOf(rules[allowIndex+1:], "edit", resource); got != "deny" {
 			t.Errorf("sensitive path %s must be denied after the edit allow, got %q", resource, got)

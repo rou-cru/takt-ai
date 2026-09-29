@@ -41,8 +41,8 @@ func TestOpenCodeContracts(t *testing.T) {
 	check("memory_close", memoryEnvelope{OK: true, Result: memory.CloseResult{EndAnchorID: 43, Entries: 2}})
 	check("memory_error", memoryEnvelope{OK: false, Error: "session is closed"})
 	check("coordinator", gc.Coordinator{Version: 1, Units: 3, Mutations: 1, Cursor: 2, NextMandate: 1, Cycle: &gc.Cycle{Plan: gc.Plan{Request: gc.Request{SessionID: "root-session", CycleID: "cycle-1", Mandate: gc.MandateComplexity}, Delta: []gc.Change{{Path: "src/a.go", Introduced: true}}, Closure: []string{"src/a.go", "src/b.go"}, Reachability: gc.ReachCodegraph}, Phase: "collect", Scope: []string{"src/a.go"}, Sessions: map[string]string{"collector": "session-collector", "verifier": "session-verifier"}}})
-	check("handoff", map[string]any{"result": "Standard", "additional_context": "Implemented the requested change.", "extra_artifacts": []string{"result.md"}, "memory": []int64{42}})
-	check("abort", map[string]any{"result": "Aborted", "additional_context": "User cancelled the task.", "extra_artifacts": []string{}, "memory": []int64{42}})
+	check("handoff", map[string]any{"result": "Standard", "additional_context": "Implemented the requested change.", "extra_artifacts": []string{"result.md"}, "memory": []int64{42}, "artifact_verified": true, "session_entries": []int64{42, 43}})
+	check("abort", map[string]any{"result": "Aborted", "additional_context": "User cancelled the task.", "extra_artifacts": []string{}, "memory": []int64{42}, "artifact_verified": true})
 	check("dispatch_null", any(nil))
 	check("dag_normal", history.BuildSnapshot([]history.Entry{
 		{Seq: 0, Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone, PlanVersion: "plan-1", Contract: "Implement feature"},
