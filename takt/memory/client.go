@@ -192,6 +192,13 @@ func startDetachedServe(binary string) error {
 	return nil
 }
 
+// ResolveProject reports the Engram project name for dir, the same
+// resolution Record/Continue/Close use — exported for read-only callers
+// (e.g. doctor) that need it without writing anything.
+func ResolveProject(ctx context.Context, cfg Config, dir string) string {
+	return newClient(cfg).project(ctx, dir)
+}
+
 // project prefers Engram's own detection when the server honours ?cwd=, else mirrors its core cases.
 func (c *engramClient) project(ctx context.Context, dir string) string {
 	var cur struct {

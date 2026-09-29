@@ -37,8 +37,13 @@ each complete artifact in one dedicated `project` entry, with no other result, p
 commentary mixed in. Keep it under roughly 400 lines, 600 at the ceiling, and wrap `content`
 as real prose lines: no single line exceeds 500 words. Genuinely distinct artifacts each
 get their own self-contained entry; a long document never gets cut into
-arbitrary pieces to fit that ceiling. Consumers retrieve that entry directly by its ID; they
-do not search for it or reconstruct it. A requested filesystem copy is a courtesy: produce it once, with the native edit tool, using
+arbitrary pieces to fit that line ceiling.
+
+Independent of line count, keep the whole entry under roughly **45,000 bytes**;
+`memory_record` rejects past that, since Engram truncates silently beyond 50,000. When one
+artifact must cross it, split into ordered parts, each `supplements` the one before it — that
+split is not the "arbitrary pieces" line count forbids above. Consumers retrieve that entry
+directly by its ID; they do not search for it or reconstruct it. A requested filesystem copy is a courtesy: produce it once, with the native edit tool, using
 the same content already recorded in the entry — that single write is sufficient. Present its ID through the
 assigned handoff operation, not through a phrase in your final answer.
 Its nature follows §2.

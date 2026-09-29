@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,10 +102,16 @@ func withSeams(t *testing.T, home string, look func(string) (string, error), cop
 	t.Helper()
 	origHome, origLook, origCopies, origGet, origFree, origVersion, origResolve, origControl := userHomeDir, lookPath, toolCopies, httpGet, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth
 	origCodegraphResolve, origCodegraphVersion, origHandshake := resolveCodegraph, codegraphVersionFn, openCodeHandshake
+	origFetch, origWorkingDir, origResolveProject := httpFetch, workingDir, resolveProject
 	t.Cleanup(func() {
 		resolveCodegraph, codegraphVersionFn, openCodeHandshake = origCodegraphResolve, origCodegraphVersion, origHandshake
 		userHomeDir, lookPath, toolCopies, httpGet, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth = origHome, origLook, origCopies, origGet, origFree, origVersion, origResolve, origControl
+		httpFetch, workingDir, resolveProject = origFetch, origWorkingDir, origResolveProject
 	})
+	// engram:diagnostics/engram:needs-review default to the empty-body,
+	// zero-value response ({}), which every case below reads as a clean pass.
+	httpFetch = func(string, string, io.Reader, time.Duration) (int, []byte, error) { return 200, []byte("{}"), nil }
+	resolveProject = func(string) string { return "test-project" }
 	// The passing control-plane default keeps the healthy-path test
 	// deterministic; dedicated tests override controlPlaneHealth explicitly.
 	controlPlaneHealth = func() CheckResult {
@@ -267,6 +274,139 @@ func TestRunEngramCheck(t *testing.T) {
 				assertContains(t, out.String(), want)
 			}
 		})
+	}
+}
+
+func TestEngramDiagnosticsCheck(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		fetchErr   error
+		wantStatus CheckStatus
+		wantSubstr []string
+	}{
+		{
+			name: "unknown project passes", status: 404, body: `{"code":"unknown_project","available_projects":["other"]}`,
+			wantStatus: CheckStatusPass, wantSubstr: []string{`no Engram history yet`, "other"},
+		},
+		{
+			name: "clean report passes", status: 200, body: `{"summary":{"total":2,"ok":2}}`,
+			wantStatus: CheckStatusPass, wantSubstr: []string{"2 engram diagnostic check(s), all clean"},
+		},
+		{
+			name:       "warning report warns with remedy",
+			status:     200,
+			body:       `{"summary":{"total":2,"ok":1,"warnings":1},"checks":[{"check_id":"orphaned_observation_session","result":"warning","message":"3 orphaned","safe_next_step":"run cleanup"}]}`,
+			wantStatus: CheckStatusWarn,
+			wantSubstr: []string{"1 warning", "orphaned_observation_session: 3 orphaned"},
+		},
+		{
+			name: "non-2xx warns", status: 500, body: `{"error":"boom"}`,
+			wantStatus: CheckStatusWarn, wantSubstr: []string{"HTTP 500", "boom"},
+		},
+		{
+			name: "transport error warns", fetchErr: errors.New("refused"),
+			wantStatus: CheckStatusWarn, wantSubstr: []string{"unreachable", "refused"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			httpFetch = func(string, string, io.Reader, time.Duration) (int, []byte, error) {
+				return tc.status, []byte(tc.body), tc.fetchErr
+			}
+			got := engramDiagnosticsCheck("proj")
+			if got.Status != tc.wantStatus {
+				t.Fatalf("Status = %q, want %q (detail: %s)", got.Status, tc.wantStatus, got.Detail)
+			}
+			for _, want := range tc.wantSubstr {
+				if !strings.Contains(got.Detail, want) {
+					t.Errorf("Detail = %q, want substring %q", got.Detail, want)
+				}
+			}
+		})
+	}
+}
+
+func TestEngramNeedsReviewCheck(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		fetchErr   error
+		wantStatus CheckStatus
+		wantSubstr []string
+	}{
+		{
+			name: "unknown project passes", status: 404, body: `{"code":"unknown_project"}`,
+			wantStatus: CheckStatusPass, wantSubstr: []string{"no Engram history yet"},
+		},
+		{
+			name: "none due passes", status: 200, body: `{"observations":[],"count":0}`,
+			wantStatus: CheckStatusPass, wantSubstr: []string{"no observations are due"},
+		},
+		{
+			name:       "under limit warns without hedge",
+			status:     200,
+			body:       `{"observations":[{"id":7,"title":"Adopt X","type":"decision"}],"count":1}`,
+			wantStatus: CheckStatusWarn,
+			wantSubstr: []string{`#7 "Adopt X" (decision)`, "memory_record"},
+		},
+		{
+			name:   "at limit hedges",
+			status: 200,
+			body: `{"observations":[{"id":1,"title":"a","type":"decision"},{"id":2,"title":"b","type":"decision"},` +
+				`{"id":3,"title":"c","type":"decision"},{"id":4,"title":"d","type":"decision"},{"id":5,"title":"e","type":"decision"}],"count":5}`,
+			wantStatus: CheckStatusWarn,
+			wantSubstr: []string{"showing first 5"},
+		},
+		{
+			name: "transport error warns", fetchErr: errors.New("refused"),
+			wantStatus: CheckStatusWarn, wantSubstr: []string{"unreachable", "refused"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			httpFetch = func(string, string, io.Reader, time.Duration) (int, []byte, error) {
+				return tc.status, []byte(tc.body), tc.fetchErr
+			}
+			got := engramNeedsReviewCheck("proj")
+			if got.Status != tc.wantStatus {
+				t.Fatalf("Status = %q, want %q (detail: %s)", got.Status, tc.wantStatus, got.Detail)
+			}
+			for _, want := range tc.wantSubstr {
+				if !strings.Contains(got.Detail+got.Remedy, want) {
+					t.Errorf("Detail/Remedy = %q / %q, want substring %q", got.Detail, got.Remedy, want)
+				}
+			}
+		})
+	}
+}
+
+func TestRunIncludesEngramDiagnosticsAndReview(t *testing.T) {
+	home := t.TempDir()
+	withSeams(t, home, nil, nil, nil, nil)
+	var calledProject string
+	resolveProject = func(dir string) string { calledProject = dir; return "takt-ai" }
+	workingDir = func() (string, error) { return "/work/takt-ai", nil }
+
+	var out bytes.Buffer
+	if err := Run(&out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	assertContains(t, out.String(), "engram:diagnostics")
+	assertContains(t, out.String(), "engram:needs-review")
+	if calledProject != "/work/takt-ai" {
+		t.Fatalf("resolveProject called with %q, want the working directory", calledProject)
+	}
+}
+
+func TestWorkingDirOrHomeFallsBackToHome(t *testing.T) {
+	orig := workingDir
+	t.Cleanup(func() { workingDir = orig })
+	workingDir = func() (string, error) { return "", errors.New("no cwd") }
+	if got := workingDirOrHome("/home/x"); got != "/home/x" {
+		t.Fatalf("workingDirOrHome() = %q, want fallback to home", got)
 	}
 }
 

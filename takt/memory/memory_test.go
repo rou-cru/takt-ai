@@ -232,6 +232,7 @@ func TestRecordValidation(t *testing.T) {
 		"personal w/o confirm":     func(r *RecordRequest) { r.Scope = "personal" },
 		"bad relation":             func(r *RecordRequest) { r.RelatesTo = &RelatesTo{ID: 1, Relation: "likes"} },
 		"path session":             func(r *RecordRequest) { r.Session = "../etc" },
+		"content over safe limit":  func(r *RecordRequest) { r.Content = strings.Repeat("x", safeContentLimitBytes+1) },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

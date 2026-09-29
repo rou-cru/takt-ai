@@ -108,6 +108,10 @@ func reject(format string, args ...any) error {
 
 var natures = map[string]bool{"proposal": true, "decision": true, "observation": true, "hypothesis": true}
 
+// safeContentLimitBytes margins Engram's 50,000-byte write cap, which
+// truncates silently past it with no signal on a later read.
+const safeContentLimitBytes = 45000
+
 const (
 	scopeProject  = "project"
 	scopePersonal = "personal"
@@ -436,6 +440,9 @@ func validateRecord(req RecordRequest) error {
 	if err := validateShape(req); err != nil {
 		return err
 	}
+	if err := validateSize(req); err != nil {
+		return err
+	}
 	if err := validateTier(req); err != nil {
 		return err
 	}
@@ -455,6 +462,14 @@ func validateShape(req RecordRequest) error {
 	}
 	if strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Content) == "" {
 		return reject("title and content are required")
+	}
+	return nil
+}
+
+// validateSize measures the exact string Engram will receive.
+func validateSize(req RecordRequest) error {
+	if n := len(renderEntry(req)); n > safeContentLimitBytes {
+		return reject("entry is %d bytes, over the %d-byte limit; split it into supplements", n, safeContentLimitBytes)
 	}
 	return nil
 }
