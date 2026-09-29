@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -243,14 +244,12 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+var collapseRepeatedSeparators = regexp.MustCompile(`-+|_+`)
+
 func normalizeProject(p string) string {
-	n := strings.TrimSpace(strings.ToLower(p))
-	for strings.Contains(n, "--") {
-		n = strings.ReplaceAll(n, "--", "-")
-	}
-	for strings.Contains(n, "__") {
-		n = strings.ReplaceAll(n, "__", "_")
-	}
+	n := collapseRepeatedSeparators.ReplaceAllStringFunc(strings.TrimSpace(strings.ToLower(p)), func(run string) string {
+		return run[:1]
+	})
 	if n == "" {
 		return "unknown"
 	}
