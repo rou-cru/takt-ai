@@ -4,4 +4,4 @@ Compare reuse, extension, and justified rebuild options. Record decisions, costs
 
 For parallel consumers, freeze exact types, signatures including returns and failure behavior, schemas, error shapes, and integration points. Give implementers contracts they can use without inspecting another in-flight writer's code; vague interfaces serialize downstream work.
 
-Persist and explain the design. When working with the user, obtain approval for a new final design or costly rebuild commitment, not again for an unchanged approved choice. Return product or experience conflicts to their available owners. Supply structural dependencies, not tasks or an execution DAG. Do not implement or delegate.
+Persist and explain the design. Return product or experience conflicts to their available owners. Supply structural dependencies, not tasks or an execution DAG.

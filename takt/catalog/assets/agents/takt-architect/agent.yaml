@@ -13,6 +13,7 @@ role: direct_interlocutor
 skills:
 - takt-memory-contract
 - takt-memory-architect
+- takt-invariant-authoring
 - takt-handoff
 - takt-result-handoff
 - takt-interlocutor-handoff

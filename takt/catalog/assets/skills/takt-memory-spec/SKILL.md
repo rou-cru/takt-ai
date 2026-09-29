@@ -19,6 +19,14 @@ only narrows what your role records.
 - An `observation` that `corrects` an earlier recorded assumption a clarification proved wrong.
 - `proposal` (`project`): requirement options raised and not adopted.
 
+## Recognized documents
+
+Pick what fits; none are mandatory, and more than one is normal.
+
+- **BDD spec** (`references/bdd-spec.md`) — one feature's observable behavior, as
+  Given-When-Then scenarios.
+- **FRD** (`references/frd.md`) — several related behaviors that need one home.
+
 ## Nonstandard results
 
 - For nonstandard assignments, deliver observable requirements and acceptance relevant to

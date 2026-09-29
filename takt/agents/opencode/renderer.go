@@ -195,6 +195,8 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 	return entry
 }
 
+// agentPermissionRules builds ordered OpenCode permissions from the agent's role,
+// skills, and explicit VFS grants, using maintenance to restrict delegation targets.
 func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule {
 	var rules []permissionRule
 	if spec.Role == model.RoleOrchestrator {
@@ -220,12 +222,6 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// V2 folds write and patch into edit, so one rule covers both.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
 		rules = append(rules, sensitiveEditDenies()...)
-	}
-	if spec.ID == "analyst" {
-		// Unlike spec/tpm, the analyst never authors a document: it only
-		// researches and delivers findings through the handoff channels, so its
-		// inherited planning_author edit-allow is withdrawn.
-		rules = append(rules, permissionRule{"edit", allResources, "deny"})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions

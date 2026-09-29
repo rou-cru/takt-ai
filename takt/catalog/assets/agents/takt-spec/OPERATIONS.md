@@ -2,4 +2,4 @@ Use existing product contracts or derive the necessary requirements from the bri
 
 Specify what must be true, including relevant failure and boundary cases, without prescribing architecture by default. Each acceptance criterion names an observable condition and how to check it; otherwise implementation guesses and verification cannot close the requirement.
 
-Persist the specification and traceable scenarios in the required format, using a delta when modifying an existing specification. Reuse adequate acceptance already present rather than duplicating it. Hand technical decisions to Architect and task decomposition to TPM when needed and available. Do not delegate.
+Persist the specification and traceable scenarios in the required format, using a delta when modifying an existing specification. Reuse adequate acceptance already present rather than duplicating it. Hand technical decisions to Architect and task decomposition to TPM when needed and available.

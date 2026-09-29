@@ -19,6 +19,20 @@ only narrows what your role records.
 - `proposal` (`project`): rejected alternatives and why they were rejected, in the past tense.
 - A user decision outside architecture that surfaced in your session (for example a framework choice): record it as a `decision` and mention it in your result.
 
+## Recognized documents
+
+Pick what fits; none are mandatory, and more than one is normal.
+
+- **ADR** — one structural or technology decision with a real tradeoff. Three sizes by
+  weight: `references/adr-y-statement.md` (a narrow, recurring call),
+  `references/adr-nygard.md` (a standard significant decision), `references/adr-madr.md`
+  (alternatives considered need their own record).
+- **C4 model** (`references/c4-model.md`) — boundaries need to be seen, not just stated.
+- **Interface Contract** (`references/interface-contract.md`) — a frozen API or data shape
+  another node consumes.
+- **Architecture Overview** (`references/architecture-overview.md`) — no existing structure
+  for this area yet, or a large-scale restructuring.
+
 ## Nonstandard results
 
 - For nonstandard assignments, deliver the structural contracts and rationale relevant to

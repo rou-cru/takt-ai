@@ -45,7 +45,9 @@ func LoadSkills() ([]SkillDefinition, error) {
 
 	definitions := make([]SkillDefinition, 0, len(c.Skills))
 	for _, pkg := range c.Skills {
-		definitions = append(definitions, SkillDefinition{Name: pkg.ID, FileName: catalog.SkillFileName, Content: pkg.Descriptor})
+		for _, f := range pkg.Files {
+			definitions = append(definitions, SkillDefinition{Name: pkg.ID, FileName: f.Path, Content: f.Content})
+		}
 	}
 
 	slices.SortFunc(definitions, func(a, b SkillDefinition) int {

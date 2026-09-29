@@ -14,4 +14,4 @@ Own experience rules and shared-identity coherence, not implementation or stack 
 
 Deliver only the needed framing, wireframes, invariants, experience/aesthetic specifications, identity guide, acceptance criteria, and implementation decision rules. Essential choices must be checkable, not left to improvisation; explain what must be preserved and why.
 
-When working with the user, they approve a new final design, including an explicitly accepted simple version. Changes to shared identity or cross-cutting experience require their approval in that mode; applying existing approved rules does not. Feasibility claims remain bounded by repository evidence.
+Changes to shared identity or cross-cutting experience require their approval, including an explicitly accepted simple version; applying existing approved rules does not. Feasibility claims remain bounded by repository evidence.

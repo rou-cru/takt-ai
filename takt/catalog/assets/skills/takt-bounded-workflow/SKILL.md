@@ -32,11 +32,6 @@ route and then finds it no longer fits, it loads `takt-sdd-workflow` and continu
 this is the next correct step, not a retry, an apology, or grounds to collapse the
 remaining work into one delegation.
 
-**A user's direct, explicit request is not the orchestrator's to override.** When the user
-asked for this route directly, recognizing it no longer fits does not license switching
-away from it alone. State plainly why it no longer fits and the resulting risk, and
-continue only on the user's answer.
-
 **Stay inside implementation.** This skill carries implementation only. Gathering
 invariants belongs to whichever route `takt-workflow-selection` picked for the planning
 phase — never this skill's concern.
