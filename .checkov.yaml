@@ -1,0 +1,16 @@
+# Checkov policy exceptions for the `iac` CI job. Each skip is deliberate and
+# scoped to a finding that does not apply to this project; everything else
+# fails the job. Revisit an entry when its reason stops being true.
+skip-check:
+  # Pull policy Always: production pins the image by digest (image.digest), for
+  # which IfNotPresent is correct and avoids a registry round-trip per start.
+  - CKV_K8S_15
+  # CPU limits: requests are set and VPA is available; a CPU limit throttles the
+  # interactive agent under bursts. The memory limit is set and enforced.
+  - CKV_K8S_11
+  # Read-only root filesystem: OpenCode writes cache/state under $HOME. Needs
+  # dedicated emptyDir mounts per path before it can be enforced (follow-up).
+  - CKV_K8S_22
+  # Docker HEALTHCHECK: test/dev images are one-shot; the workspace image runs
+  # on Kubernetes, which ignores HEALTHCHECK and uses the chart's probes.
+  - CKV_DOCKER_2

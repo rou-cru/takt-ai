@@ -9,40 +9,41 @@ package setup
 
 import (
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/agents/claude"
-	"github.com/rou-cru/takt-ai/takt/agents/codex"
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-const taktTheme = "takt-kanagawa"
-
-// componentOrder lists the selectable artifact-only components in canonical
-// display and planning order. ComponentEngram and ComponentSkills stay
-// reserved but unselectable: engram requires runtime actions that the plan
-// pipeline cannot express, and skills are deployed unconditionally by every
-// install and sync.
-var componentOrder = []model.ComponentID{
-	model.ComponentContext7,
-	model.ComponentPermission,
-	model.ComponentTheme,
-	model.ComponentClaudeTheme,
-	model.ComponentOpenCodeTaktLogo,
+// AllComponents returns every selectable component in display and planning
+// order from the capability manifest. It is the single source of truth for
+// "install everything applicable"; Engram and skills are not selectable.
+func AllComponents() ([]model.ComponentID, error) {
+	order, err := catalog.SelectableOrder()
+	if err != nil {
+		return nil, fmt.Errorf("load selectable component order: %w", err)
+	}
+	return order, nil
 }
 
 // ValidateComponents validates custom-setup component names: every name must
 // be known, non-empty, and unique. The returned list follows the canonical
 // component order regardless of input order.
 func ValidateComponents(names []string) ([]model.ComponentID, error) {
-	seen := make(map[model.ComponentID]struct{}, len(componentOrder))
+	order, err := AllComponents()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[model.ComponentID]struct{}, len(order))
 	for _, name := range names {
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("component name is empty")
 		}
-		component, ok := componentByName(name)
-		if !ok {
+		component := model.ComponentID(name)
+		if !slices.Contains(order, component) {
 			return nil, fmt.Errorf("unknown component %q", name)
 		}
 		if _, exists := seen[component]; exists {
@@ -51,7 +52,7 @@ func ValidateComponents(names []string) ([]model.ComponentID, error) {
 		seen[component] = struct{}{}
 	}
 	ordered := make([]model.ComponentID, 0, len(seen))
-	for _, component := range componentOrder {
+	for _, component := range order {
 		if _, ok := seen[component]; ok {
 			ordered = append(ordered, component)
 		}
@@ -59,84 +60,48 @@ func ValidateComponents(names []string) ([]model.ComponentID, error) {
 	return ordered, nil
 }
 
-func componentByName(name string) (model.ComponentID, bool) {
-	for _, component := range componentOrder {
-		if string(component) == name {
-			return component, true
-		}
+// ResolveComponents validates custom-setup names and drops components whose dependencies are unsatisfied.
+// A dependency the user explicitly deselected is never re-added.
+func ResolveComponents(names []string) ([]model.ComponentID, []catalog.Removal, error) {
+	components, err := ValidateComponents(names)
+	if err != nil {
+		return nil, nil, err
 	}
-	return "", false
-}
-
-// claudeComponentArtifacts applies the selected components to the Claude plan:
-// it returns the standalone artifacts to append and mutates the settings
-// request for components that merge into settings.json. Components scoped to
-// other targets are skipped, mirroring the reference adapter-level no-ops.
-func claudeComponentArtifacts(components []model.ComponentID, settings *claude.SettingsRequest) []Artifact {
-	artifacts := make([]Artifact, 0, len(components))
-	for _, component := range components {
-		switch component {
-		case model.ComponentContext7:
-			rendered := claude.Context7ServerArtifact()
-			artifacts = append(artifacts, Artifact{Path: rendered.Path, Content: rendered.Content})
-		case model.ComponentPermission:
-			permissions := claude.DefaultPermissions()
-			settings.Permissions = &permissions
-		case model.ComponentTheme:
-			if settings.Settings == nil {
-				settings.Settings = make(map[string]any)
-			}
-			settings.Settings["theme"] = taktTheme
-		case model.ComponentClaudeTheme:
-			rendered := claude.TaktThemeArtifact()
-			artifacts = append(artifacts, Artifact{Path: rendered.Path, Content: rendered.Content})
-		default:
-			// opencode-takt-logo is OpenCode-only.
-		}
+	kept, removals, err := catalog.ReconcileSelection(components)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reconcile components: %w", err)
 	}
-	return artifacts
-}
-
-// codexComponentArtifacts applies the selected components to the Codex config
-// request; every applicable Codex component merges into config.toml.
-// Components scoped to other targets are skipped.
-func codexComponentArtifacts(components []model.ComponentID, config *codex.ConfigRequest) {
-	for _, component := range components {
-		switch component {
-		case model.ComponentContext7:
-			config.Context7 = true
-		case model.ComponentPermission:
-			config.Permissions = true
-		default:
-			// theme, claude-theme, and opencode-takt-logo have no Codex
-			// projection.
-		}
-	}
+	return kept, removals, nil
 }
 
 // openCodeComponentArtifacts applies the selected components to the OpenCode
-// plan: config merges plus the standalone Takt logo plugin artifacts.
-// Components scoped to other targets are skipped.
-func openCodeComponentArtifacts(components []model.ComponentID, config *opencode.ConfigRequest) []Artifact {
-	artifacts := make([]Artifact, 0, len(components))
+// plan: config merges plus the standalone Takt logo, memory and VFS plugin
+// artifacts. The artifacts are home-rooted.
+func openCodeComponentArtifacts(components []model.ComponentID, config *opencode.ConfigRequest) ([]Artifact, error) {
+	config.Permissions = true
+	binary, err := taktAIExecutable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve takt-ai executable for the OpenCode memory and VFS plugins: %w", err)
+	}
 	for _, component := range components {
 		switch component {
 		case model.ComponentContext7:
 			config.Context7 = true
-		case model.ComponentPermission:
-			config.Permissions = true
 		case model.ComponentTheme:
 			config.Theme = opencode.TaktTheme
-		case model.ComponentOpenCodeTaktLogo:
-			for _, rendered := range []opencode.Artifact{
-				opencode.TaktLogoPluginArtifact(),
-				opencode.TaktLogoRegistrationArtifact(),
-			} {
-				artifacts = append(artifacts, Artifact{Path: rendered.Path, Content: rendered.Content})
-			}
 		default:
-			// claude-theme is Claude-only.
+			// opencode-takt-logo has no config projection.
 		}
 	}
-	return artifacts
+	// cli.json carries the theme selection, so it is rendered after the
+	// component loop has resolved the theme.
+	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.TaktCLIArtifact(config.Theme), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, opencode.VFSShellEnforced), opencode.TaktSandboxAdapterArtifact()}
+	artifacts := make([]Artifact, 0, len(rendered))
+	for _, r := range rendered {
+		artifacts = append(artifacts, Artifact{Path: r.Path, Content: r.Content})
+	}
+	return artifacts, nil
 }
+
+// taktAIExecutable is the absolute takt-ai path rendered into the session-start hooks and plugins; tests replace it.
+var taktAIExecutable = os.Executable

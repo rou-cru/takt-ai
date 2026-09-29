@@ -10,41 +10,33 @@ Package uninstall provides the target\-scoped managed\-file uninstall screen.
 
 ## Index
 
-- [func SupportedTargets\(\) \[\]modelpkg.AgentID](<#SupportedTargets>)
 - [type Model](<#Model>)
   - [func New\(rootDir string\) Model](<#New>)
-  - [func \(model Model\) BackRequested\(\) bool](<#Model.BackRequested>)
+  - [func \(model Model\) Dirty\(\) bool](<#Model.Dirty>)
   - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
+  - [func \(m Model\) Run\(\) runtime.Run](<#Model.Run>)
   - [func \(model Model\) State\(\) State](<#Model.State>)
-  - [func \(model Model\) Targets\(\) \[\]modelpkg.AgentID](<#Model.Targets>)
+  - [func \(model Model\) Title\(\) string](<#Model.Title>)
   - [func \(model Model\) Update\(message tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(model Model\) View\(\) string](<#Model.View>)
+  - [func \(model Model\) View\(\) tea.View](<#Model.View>)
 - [type State](<#State>)
 
 
-<a name="SupportedTargets"></a>
-## func SupportedTargets
-
-```go
-func SupportedTargets() []modelpkg.AgentID
-```
-
-SupportedTargets are the managed targets that can be selected for uninstall.
-
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L78-L113>)
 
-Model owns only uninstall interaction state. It emits lifecycle action messages; runtime.Adapter owns the setup and filesystem work.
+Model owns only uninstall interaction state. It emits lifecycle action messages; runtime.Adapter owns the uninstall itself as one busy operation, including the retention handoff for modified files.
 
 ```go
 type Model struct {
+    // RootDir is the installation directory the screen operates on.
     RootDir string
     // contains filtered or unexported fields
 }
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L116>)
 
 ```go
 func New(rootDir string) Model
@@ -52,17 +44,17 @@ func New(rootDir string) Model
 
 New creates an uninstall screen rooted at rootDir.
 
-<a name="Model.BackRequested"></a>
-### func \(Model\) BackRequested
+<a name="Model.Dirty"></a>
+### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L155>)
 
 ```go
-func (model Model) BackRequested() bool
+func (model Model) Dirty() bool
 ```
 
-BackRequested reports that the parent route should return to its previous screen.
+Dirty reports answers that have not been applied yet.
 
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L146>)
 
 ```go
 func (Model) Init() tea.Cmd
@@ -70,8 +62,17 @@ func (Model) Init() tea.Cmd
 
 Init has no startup work.
 
+<a name="Model.Run"></a>
+### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L149>)
+
+```go
+func (m Model) Run() runtime.Run
+```
+
+Run exposes the flow's action state so the shell gates quit and cancel.
+
 <a name="Model.State"></a>
-### func \(Model\) State
+### func \(Model\) [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L152>)
 
 ```go
 func (model Model) State() State
@@ -79,17 +80,17 @@ func (model Model) State() State
 
 State returns the visible uninstall step.
 
-<a name="Model.Targets"></a>
-### func \(Model\) Targets
+<a name="Model.Title"></a>
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L400>)
 
 ```go
-func (model Model) Targets() []modelpkg.AgentID
+func (model Model) Title() string
 ```
 
-Targets returns the explicitly selected uninstall targets.
+Title identifies the flow and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L163>)
 
 ```go
 func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
@@ -98,16 +99,16 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update handles interaction and action results without performing lifecycle work.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L416>)
 
 ```go
-func (model Model) View() string
+func (model Model) View() tea.View
 ```
 
 View renders the active uninstall step.
 
 <a name="State"></a>
-## type State
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L21>)
 
 State identifies the visible uninstall step.
 
@@ -115,13 +116,25 @@ State identifies the visible uninstall step.
 type State int
 ```
 
-<a name="StateTargets"></a>
+<a name="StateModified"></a>States are the uninstall flow's screens, in walk order.
 
 ```go
 const (
-    StateTargets State = iota
-    StateConfirmation
+    // StateModified asks what to do with each externally modified managed
+    // file. Skipped when the preview finds none.
+    StateModified State = iota
+    // StateEngram asks what to do with the Engram database, which lives
+    // outside Takt's footprint. Leave is preselected: the safe default with
+    // zero behavior change.
+    StateEngram
+    // StateReview is the commitment point: scope, removals, kept content and
+    // the Uninstall action. There is no second confirmation.
+    StateReview
+    // StateResult is the post-uninstall result screen.
     StateResult
+    // StateNotInstalled short-circuits the flow: there is nothing to
+    // uninstall.
+    StateNotInstalled
 )
 ```
 

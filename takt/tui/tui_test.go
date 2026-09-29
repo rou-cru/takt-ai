@@ -1,108 +1,87 @@
-package tui
+package tui_test
 
 import (
-	"os"
-	"path/filepath"
+	tea "charm.land/bubbletea/v2"
+	"github.com/rou-cru/takt-ai/takt/tui"
+	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"strings"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/rou-cru/takt-ai/takt/model"
-	"github.com/rou-cru/takt-ai/takt/tui/common"
-	"github.com/rou-cru/takt-ai/takt/tui/runtime"
-	syncflow "github.com/rou-cru/takt-ai/takt/tui/sync"
-	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-func TestMenuRoutesAndQuits(t *testing.T) {
-	tests := []struct {
-		name  string
-		keys  []tea.KeyType
-		route Route
-		quit  bool
-	}{
-		{name: "install", keys: []tea.KeyType{tea.KeyEnter}, route: RouteInstall},
-		{name: "sync", keys: []tea.KeyType{tea.KeyDown, tea.KeyEnter}, route: RouteSync},
-		{name: "uninstall", keys: []tea.KeyType{tea.KeyDown, tea.KeyDown, tea.KeyEnter}, route: RouteUninstall},
-		{name: "quit", keys: []tea.KeyType{tea.KeyRunes}, route: RouteMenu, quit: true},
+func TestFreshMenuHidesUnavailableOperations(t *testing.T) {
+	app := tui.New(t.TempDir())
+	for range 8 {
+		app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyDown})
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app := New(t.TempDir())
-			var command tea.Cmd
-			for _, key := range tt.keys {
-				message := tea.KeyMsg{Type: key}
-				if key == tea.KeyRunes {
-					message.Runes = []rune("q")
-				}
-				app, command = update(t, app, message)
-			}
-			if app.CurrentRoute() != tt.route {
-				t.Fatalf("route = %q, want %q", app.CurrentRoute(), tt.route)
-			}
-			if tt.quit {
-				if _, ok := command().(tea.QuitMsg); !ok {
-					t.Fatalf("quit command = %T, want tea.QuitMsg", command())
-				}
-			}
-		})
+	app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if app.CurrentRoute() != tui.RouteInstall {
+		t.Fatal("hidden items remain navigable")
 	}
 }
 
-func TestActionResultReturnsToTheActiveFlowBeforeBack(t *testing.T) {
-	app := New(t.TempDir())
-	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyDown})
-	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyEnter})
-	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyEnter})
-	app, requestCommand := update(t, app, common.AcceptConfirmation{})
-
-	request := testutil.ActionRequest(t, requestCommand)
-	app, actionCommand := update(t, app, request)
-	if actionCommand == nil || !app.runtime.Busy {
-		t.Fatal("action request must be deferred through runtime")
+func TestActionResultAndNavigation(t *testing.T) {
+	app := tui.New(t.TempDir())
+	app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	var cmd tea.Cmd
+	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: tea.KeyEnter}} {
+		app, cmd = update(app, key)
 	}
-
-	app, _ = update(t, app, runtime.ActionResultMsg{
-		Request: request,
-		Result:  runtime.ActionResult{Action: runtime.ActionSync, Changed: []string{".codex/AGENTS.md"}},
-	})
-	if app.runtime.Busy {
-		t.Fatal("runtime remains busy after action result")
+	request := cmd().(runtime.ActionRequest)
+	app, cmd = update(app, request)
+	if cmd == nil {
+		t.Fatal("request not deferred")
 	}
-	if got := app.View(); !strings.Contains(got, "Sync complete") {
-		t.Fatalf("view = %q, want active flow result", got)
-	}
-
-	app, _ = update(t, app, syncflow.BackMsg{})
-	if app.CurrentRoute() != RouteMenu {
-		t.Fatalf("route after back = %q, want menu", app.CurrentRoute())
+	app, _ = update(app, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionInstall}})
+	app, _ = update(app, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	if app.CurrentRoute() != tui.RouteMenu {
+		t.Fatal("did not return to menu")
 	}
 }
 
-func TestActionRequestDoesNotTouchFilesystemDuringUpdate(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "missing")
-	app := New(root)
-	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyDown})
-	app, _ = update(t, app, tea.KeyMsg{Type: tea.KeyEnter})
-	_, command := update(t, app, runtime.ActionRequest{
-		Action:  runtime.ActionSync,
-		RootDir: root,
-		Targets: []model.AgentID{model.AgentCodex},
-	})
-	if command == nil {
-		t.Fatal("action request command = nil")
+func TestQuitIsNavigation(t *testing.T) {
+	_, cmd := update(tui.New(t.TempDir()), tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("missing quit")
 	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) {
-		t.Fatalf("root exists after Update: %v", err)
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("not quit")
 	}
 }
 
-func update(t *testing.T, app Model, message tea.Msg) (Model, tea.Cmd) {
-	t.Helper()
-	next, command := app.Update(message)
-	return next.(Model), command
+func update(app tui.Model, msg tea.Msg) (tui.Model, tea.Cmd) {
+	next, cmd := app.Update(msg)
+	return next.(tui.Model), cmd
 }
 
-// actionRequest extracts the emitted ActionRequest from a command, following
-// tea.Batch wrappers the flow attaches alongside the busy spinner tick.
-
+func TestChildReceivesInitialSizeAndResultHomeReallyReturns(t *testing.T) {
+	app := tui.New(t.TempDir())
+	app, _ = update(app, tea.WindowSizeMsg{Width: 100, Height: 30})
+	app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	assertSize := func() {
+		t.Helper()
+		lines := strings.Split(app.View().Content, "\n")
+		if len(lines) > 30 {
+			t.Fatalf("child exceeded terminal height: %d", len(lines))
+		}
+	}
+	assertSize()
+	var cmd tea.Cmd
+	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: tea.KeyEnter}} {
+		app, cmd = update(app, key)
+	}
+	request := cmd().(runtime.ActionRequest)
+	app, _ = update(app, request)
+	app, _ = update(app, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionInstall}})
+	assertSize()
+	// The result actions are horizontal: move from model assignment to Back.
+	app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyRight})
+	app, cmd = update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Home did not emit navigation")
+	}
+	app, _ = update(app, cmd())
+	if app.CurrentRoute() != tui.RouteMenu {
+		t.Fatal("Home returned to install instead of menu")
+	}
+	assertSize()
+}

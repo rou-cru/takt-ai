@@ -1,0 +1,49 @@
+version: 1
+# F1-4 versioned capability manifest (PR-SET-31): user-facing purpose,
+# core/optional partition, dependencies, and presets.
+# Selection and dependency reconciliation (PR-SET-17) both resolve against
+# this manifest.
+components:
+  - id: context7
+    purpose: Context7 — up-to-date library docs for agents
+    core: false
+    selectable: true
+    deps: []
+  - id: theme
+    purpose: Takt theme — terminal theme for the harness
+    core: false
+    selectable: true
+    deps: []
+  # opencode-takt-logo has no per-selection adapter case: its artifacts are
+  # installed unconditionally for OpenCode regardless of this selection
+  # (see openCodeComponentArtifacts).
+  - id: opencode-takt-logo
+    purpose: Takt branding — OpenCode logo plugin
+    core: false
+    selectable: true
+    deps: []
+  # Reserved, non-omittable core: always installed, never user-selectable.
+  - id: engram
+    purpose: Engram memory/context graph runtime wiring.
+    core: true
+    selectable: false
+    deps: []
+    note: non-omittable (hoy)
+  - id: skills
+    purpose: Skill system deployed unconditionally by every install and sync.
+    core: true
+    selectable: false
+    deps: []
+    note: non-omittable (hoy)
+  - id: specialists
+    purpose: Specialist sub-agent roster rendered from the semantic catalog.
+    core: true
+    selectable: false
+    deps: []
+    note: non-omittable (hoy)
+  - id: codegraph
+    purpose: Codegraph — tree-sitter based codebase exploration for agents (PR-SET-2)
+    core: true
+    selectable: false
+    deps: []
+    note: non-omittable; acquired via npm and wired by Takt with an absolute path (takt/codegraph), like Engram; not a rendered artifact

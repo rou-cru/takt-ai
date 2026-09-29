@@ -6,16 +6,104 @@
 import "github.com/rou-cru/takt-ai/takt/lifecycle"
 ```
 
-Package lifecycle dispatches the install, sync, and uninstall orchestration shared by the CLI \(cmd/takt\-ai\) and the TUI runtime. It lives outside package setup because skills.BuildSkillPlan depends on setup, so hosting this dispatch in setup would create an import cycle; lifecycle sits above both and composes them.
+Package lifecycle dispatches the install, sync, and uninstall orchestration shared by the CLI \(cmd/takt\-ai\) and the TUI runtime. It sits above setup, skills and engram and composes them \(hosting this dispatch in setup would create an import cycle through skills\).
 
 ## Index
 
+- [Constants](<#constants>)
+- [func Cancelled\(ctx context.Context, err error\) bool](<#Cancelled>)
+- [func InjectCodegraph\(rootDir, codegraphCommand string\) error](<#InjectCodegraph>)
+- [func InjectEngram\(rootDir, engramCommand string\) error](<#InjectEngram>)
+- [func InstallCodegraph\(ctx context.Context, rootDir string\) error](<#InstallCodegraph>)
+- [func PreviewLifecycle\(action string, rootDir string, request setup.PlanRequest\) \(any, error\)](<#PreviewLifecycle>)
+- [type InstallPreview](<#InstallPreview>)
 - [type LifecycleResult](<#LifecycleResult>)
-  - [func RunLifecycle\(action string, rootDir string, request setup.PlanRequest\) \(LifecycleResult, error\)](<#RunLifecycle>)
+- [type Outcome](<#Outcome>)
+  - [func CancelledOutcome\(applied int\) Outcome](<#CancelledOutcome>)
+- [type Runtime](<#Runtime>)
+  - [func NewRuntime\(\) Runtime](<#NewRuntime>)
+  - [func \(runtime Runtime\) Run\(ctx context.Context, action string, rootDir string, request setup.PlanRequest, preserve ...string\) \(LifecycleResult, error\)](<#Runtime.Run>)
 
+
+## Constants
+
+<a name="EngramLeave"></a>Engram retention choices for uninstall: the Engram database lives outside Takt's footprint, so uninstall never touches it unless the user explicitly chooses EngramRemove. Empty means EngramLeave.
+
+```go
+const (
+    // EngramLeave keeps the Engram database where it is: zero behavior change.
+    EngramLeave = "leave"
+    // EngramRetain hands a consistent copy of the Engram database to the
+    // retained directory so files and memory share one directory. The database
+    // stays in place.
+    EngramRetain = "retain"
+    // EngramRemove asks for the Engram database to be removed too.
+    EngramRemove = "remove"
+)
+```
+
+<a name="Cancelled"></a>
+## func [Cancelled](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L90>)
+
+```go
+func Cancelled(ctx context.Context, err error) bool
+```
+
+Cancelled reports whether err is ctx's own cancellation, i.e. the operation stopped cooperatively rather than failed.
+
+<a name="InjectCodegraph"></a>
+## func [InjectCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L523>)
+
+```go
+func InjectCodegraph(rootDir, codegraphCommand string) error
+```
+
+InjectCodegraph wires the codegraph MCP server into OpenCode, using codegraphCommand \(from codegraph.Acquire\) verbatim.
+
+<a name="InjectEngram"></a>
+## func [InjectEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L385>)
+
+```go
+func InjectEngram(rootDir, engramCommand string) error
+```
+
+InjectEngram wires the engram MCP server into OpenCode, using engramCommand verbatim. \`engram setup\` is never run: Takt's memory contract skill is the only source of memory rules.
+
+<a name="InstallCodegraph"></a>
+## func [InstallCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L363>)
+
+```go
+func InstallCodegraph(ctx context.Context, rootDir string) error
+```
+
+InstallCodegraph acquires the pinned CodeGraph tool and writes the MCP entry with its resolved absolute path. CodeGraph is a required workspace capability; acquisition or injection errors must be reported to the caller.
+
+<a name="PreviewLifecycle"></a>
+## func [PreviewLifecycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L164>)
+
+```go
+func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) (any, error)
+```
+
+PreviewLifecycle computes what one lifecycle action would do without changing the environment.
+
+<a name="InstallPreview"></a>
+## type [InstallPreview](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L154-L160>)
+
+InstallPreview is the install/sync preview payload: the target plans BuildTargetPlans would apply, plus any conflicts DetectConflicts finds between those plans and what is already on disk.
+
+```go
+type InstallPreview struct {
+    Plans     []setup.TargetPlan
+    Conflicts []setup.ConflictEntry
+    // Removals lists manifest dependencies dropped from the selection, with
+    // the reason each was removed.
+    Removals []catalog.Removal
+}
+```
 
 <a name="LifecycleResult"></a>
-## type LifecycleResult
+## type [LifecycleResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L44-L70>)
 
 LifecycleResult is the union of deploy and uninstall outcomes.
 
@@ -25,16 +113,98 @@ type LifecycleResult struct {
     Unchanged []string
     Removed   []string
     Preserved []string
+    // Restored lists pre-existing files uninstall put back to their
+    // pre-install content (setup.UninstallResult.Restored).
+    Restored []string
+    Actions  []string
+    // Outcome says whether the operation completed or a cancellation stopped
+    // it at a stable point; NotApplied lists the planned work a
+    // cancellation left undone.
+    Outcome    Outcome
+    NotApplied []string
+    // BackupDir is set when a cancelled operation replaced files whose
+    // copies were written to setup.BackupDir during this run.
+    BackupDir string
+    // Incomplete lists requested work that has no supported removal
+    // mechanism, reported honestly instead of failing the operation:
+    // the uninstall completed, this entry did not.
+    Incomplete []string
+    // ReloadAttempted and ReloadError describe the post-deployment OpenCode
+    // handoff separately from file deployment. A reload failure is functional
+    // evidence, not a rollback trigger: the files are already valid on disk.
+    ReloadAttempted bool
+    ReloadError     error
 }
 ```
 
-<a name="RunLifecycle"></a>
-### func RunLifecycle
+<a name="Outcome"></a>
+## type [Outcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L73>)
+
+Outcome is the typed end state of a mutating operation.
 
 ```go
-func RunLifecycle(action string, rootDir string, request setup.PlanRequest) (LifecycleResult, error)
+type Outcome string
 ```
 
-RunLifecycle executes one lifecycle action \("install", "sync", "uninstall"\) for the targets in request. Install and sync build target plans from the request and always deploy the embedded skills alongside them; uninstall converts request.Targets to ownership targets and always removes skills alongside them. Callers without an explicit request build one with setup.DefaultPlanRequest\(targets\).
+<a name="OutcomeCompleted"></a>Outcomes are the closed set of end states a mutating operation can report.
+
+```go
+const (
+    // OutcomeCompleted means every planned change was applied, even if a
+    // cancellation arrived too late to take effect.
+    OutcomeCompleted Outcome = "completed"
+    // OutcomeCancelledPartial means a cancellation stopped the operation at a
+    // stable point after some changes were applied; they stay in place.
+    OutcomeCancelledPartial Outcome = "cancelled-partial"
+    // OutcomeCancelledNothingApplied means a cancellation stopped the
+    // operation before any change was applied.
+    OutcomeCancelledNothingApplied Outcome = "cancelled-nothing-applied"
+)
+```
+
+<a name="CancelledOutcome"></a>
+### func [CancelledOutcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L95>)
+
+```go
+func CancelledOutcome(applied int) Outcome
+```
+
+CancelledOutcome types a cancelled operation by whether it applied anything.
+
+<a name="Runtime"></a>
+## type [Runtime](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L128-L137>)
+
+Runtime carries external provider\-action execution seams.
+
+```go
+type Runtime struct {
+    ProviderActions setup.ProviderRuntime
+    // OpenCodeHandshake is an install preflight. Production constructors set it
+    // to the native V2 API; nil keeps low-level lifecycle tests deterministic.
+    OpenCodeHandshake func(context.Context) error
+    // Reload is the final handoff after a completed OpenCode deployment.
+    Reload func(context.Context) error
+    // EngramChoice is EngramLeave (default), EngramRetain or EngramRemove; see above.
+    EngramChoice string
+}
+```
+
+<a name="NewRuntime"></a>
+### func [NewRuntime](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L141>)
+
+```go
+func NewRuntime() Runtime
+```
+
+NewRuntime wires the production OpenCode V2 preflight and handoff while keeping Runtime's zero value useful for isolated lifecycle tests.
+
+<a name="Runtime.Run"></a>
+### func \(Runtime\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L205>)
+
+```go
+func (runtime Runtime) Run(ctx context.Context, action string, rootDir string, request setup.PlanRequest, preserve ...string) (LifecycleResult, error)
+```
+
+Run executes one lifecycle operation with this runtime's provider\-action seams. preserve names paths to exclude from deployment. A cancellation is a typed Outcome with a nil error, never a failure.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

@@ -1,0 +1,24 @@
+context:
+  operations: OPERATIONS.md
+  persona: PERSONA.md
+  soul: SOUL.md
+description: Integrate the minimum sufficient crew toward the user's objective
+id: takt
+instances:
+- takt
+vfs_capabilities:
+  takt: [claim_list, claim_assign, claim_release, discard, consolidate]
+role: orchestrator
+skills:
+- takt-invariant-planning
+- takt-memory-contract
+- takt-memory-orchestrator
+- takt-sdd-workflow
+- takt-sdd-recovery
+- takt-bounded-planning
+- takt-bounded-workflow
+- takt-workflow-selection
+- takt-workflow-selection-exceptions
+- takt-handoff
+- takt-interlocutor-handoff
+- takt-interlocutor-exceptions

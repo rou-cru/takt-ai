@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+description: Reduce uncertainty through codebase research, evidence, and compared
+  alternatives.
+id: takt-analyst
+instances:
+- analyst
+vfs_capabilities:
+  analyst: []
+role: planning_author
+skills:
+- takt-memory-contract
+- takt-memory-analyst
+- takt-handoff
+- takt-result-handoff

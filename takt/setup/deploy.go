@@ -20,38 +20,70 @@ package setup
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 )
 
+// renameFile swaps staged content into place; tests override it to inject mid-commit failures.
 var renameFile = os.Rename
 
-// Artifact is renderer output ready for deployment. Path is relative to the
-// deployment root; Content is never retained by the deployer.
+// Deployment modes make deployed artifacts user-readable and traversable.
+const (
+	// ManagedFileMode is the mode used for deployed user-readable artifacts.
+	ManagedFileMode os.FileMode = 0o644
+	// ManagedDirectoryMode allows traversal of the deployment tree.
+	ManagedDirectoryMode os.FileMode = 0o755
+)
+
+// Artifact is renderer output ready for deployment.
 type Artifact struct {
-	Path    string
+	// Path is the slash-relative destination under the deployment root.
+	Path string
+	// Content is the exact bytes to write.
 	Content []byte
 }
 
 // DeploymentResult reports the normalized paths changed or left untouched.
 type DeploymentResult struct {
-	Changed   []string `json:"changed"`
+	// Changed lists normalized paths written by this deployment.
+	Changed []string `json:"changed"`
+	// Unchanged lists managed paths already matching deployed content.
 	Unchanged []string `json:"unchanged"`
+	// Actions lists provider actions that completed after deployment.
+	Actions []string `json:"actions,omitempty"`
+	// NotApplied lists planned changes a cancellation left unapplied; empty when the deployment completed.
+	NotApplied []string `json:"notApplied,omitempty"`
 }
 
-// Deploy writes only artifacts listed in managedPaths beneath rootDir.
-// Existing bytes are compared before writing, and paths absent from artifacts
-// are never deleted or modified. Changed artifacts are staged before a batch
-// changes when committing the deployment fails.
-func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
+// DeploymentProgress reports one temporary staging or committed artifact.
+// Applied events are provisional until DeployContextProgress returns nil: a
+// later commit failure can roll the transaction back.
+type DeploymentProgress struct {
+	Stage     string
+	Message   string
+	Path      string
+	Completed int
+	Total     int
+}
+
+// DeployContext is Deploy with cooperative cancellation: it returns partial
+// results and ctx.Err() without rolling back what is already installed.
+func DeployContext(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error) {
+	return DeployContextProgress(ctx, rootDir, managedPaths, artifacts, nil)
+}
+
+// DeployContextProgress is DeployContext with optional staging and commit events.
+func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	root, normalized, err := prepareDeployment(rootDir, managedPaths, artifacts)
 	if err != nil {
 		return DeploymentResult{}, err
@@ -62,10 +94,13 @@ func Deploy(rootDir string, managedPaths []string, artifacts []Artifact) (Deploy
 	}
 
 	transaction := newDeploymentTransaction(pending)
-	if err := transaction.stage(pending); err != nil {
+	if err := transaction.stage(pending, progress); err != nil {
 		return DeploymentResult{}, transaction.abort(err)
 	}
-	if err := transaction.commit(); err != nil {
+	if err := transaction.commit(ctx, progress); err != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+			return transaction.stopCancelled(result, err)
+		}
 		return DeploymentResult{}, transaction.abort(err)
 	}
 	if err := transaction.cleanupTemps(); err != nil {
@@ -134,7 +169,7 @@ func inspectArtifact(root string, artifact Artifact) (pendingDeployment, bool, e
 
 	info, statErr := os.Stat(destination)
 	exists := statErr == nil
-	if statErr != nil && !os.IsNotExist(statErr) {
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		return pendingDeployment{}, false, fmt.Errorf("inspect managed artifact %q: %w", artifact.Path, statErr)
 	}
 	if exists && !info.Mode().IsRegular() {
@@ -144,7 +179,7 @@ func inspectArtifact(root string, artifact Artifact) (pendingDeployment, bool, e
 		return pendingDeployment{
 			path:        artifact.Path,
 			destination: destination,
-			mode:        0o644,
+			mode:        ManagedFileMode,
 			content:     artifact.Content,
 			missingDirs: missingDirs,
 		}, false, nil
@@ -168,6 +203,7 @@ func inspectArtifact(root string, artifact Artifact) (pendingDeployment, bool, e
 	}, false, nil
 }
 
+// newDeploymentTransaction stages a batch of pending writes for atomic commit or rollback.
 func newDeploymentTransaction(pending []pendingDeployment) *deploymentTransaction {
 	return &deploymentTransaction{
 		files:   make([]*stagedDeployment, 0, len(pending)),
@@ -175,11 +211,13 @@ func newDeploymentTransaction(pending []pendingDeployment) *deploymentTransactio
 	}
 }
 
-// stage stages every pending artifact without touching its final location:
-// missing directories are created and content plus backup are written to
-// temporary files.
-func (tx *deploymentTransaction) stage(pending []pendingDeployment) error {
-	for _, pendingFile := range pending {
+// stage writes every pending artifact to temp files without touching final locations.
+// Missing directories are created and recorded for commit or rollback.
+func (tx *deploymentTransaction) stage(pending []pendingDeployment, observers ...func(DeploymentProgress)) error {
+	for index, pendingFile := range pending {
+		if len(observers) > 0 && observers[0] != nil {
+			observers[0](DeploymentProgress{Stage: "preparing", Message: "Preparing installation files", Path: pendingFile.path, Completed: index, Total: len(pending)})
+		}
 		file := &stagedDeployment{
 			path:        pendingFile.path,
 			destination: pendingFile.destination,
@@ -194,6 +232,7 @@ func (tx *deploymentTransaction) stage(pending []pendingDeployment) error {
 	return nil
 }
 
+// stageOne writes one artifact's content and backup to temp files without touching its destination.
 func (tx *deploymentTransaction) stageOne(file *stagedDeployment, pending pendingDeployment) error {
 	if err := createMissingDirectories(pending.missingDirs, tx.created, &tx.createdOrder); err != nil {
 		return fmt.Errorf("prepare managed artifact %q: %w", pending.path, err)
@@ -214,6 +253,7 @@ func (tx *deploymentTransaction) stageOne(file *stagedDeployment, pending pendin
 	return nil
 }
 
+// pendingDeployment is one artifact awaiting install with its current bytes and mode for backup.
 type pendingDeployment struct {
 	path        string
 	destination string
@@ -224,6 +264,7 @@ type pendingDeployment struct {
 	missingDirs []string
 }
 
+// stagedDeployment is one artifact written to temp files, awaiting rename into place.
 type stagedDeployment struct {
 	path        string
 	destination string
@@ -234,12 +275,14 @@ type stagedDeployment struct {
 	installed   bool
 }
 
+// deploymentTransaction tracks staged files and created directories for commit, rollback, or cleanup.
 type deploymentTransaction struct {
 	files        []*stagedDeployment
 	created      map[string]struct{}
 	createdOrder []string
 }
 
+// abort restores installed files and reports the original error with any rollback failure.
 func (tx *deploymentTransaction) abort(err error) error {
 	if rollbackErr := tx.rollback(); rollbackErr != nil {
 		return fmt.Errorf("%w; rollback failed: %v", err, rollbackErr)
@@ -247,14 +290,21 @@ func (tx *deploymentTransaction) abort(err error) error {
 	return err
 }
 
-func (tx *deploymentTransaction) commit() error {
-	for _, file := range tx.files {
+// commit renames staged files into place in order, stopping early when ctx is cancelled.
+func (tx *deploymentTransaction) commit(ctx context.Context, observers ...func(DeploymentProgress)) error {
+	for index, file := range tx.files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := renameFile(file.staged, file.destination); err != nil {
 			return fmt.Errorf("install managed artifact %q: %w", file.path, err)
 		}
 		file.installed = true
 		if err := syncDir(filepath.Dir(file.destination)); err != nil {
 			return fmt.Errorf("install managed artifact %q: %w", file.path, err)
+		}
+		if len(observers) > 0 && observers[0] != nil {
+			observers[0](DeploymentProgress{Stage: "applied", Message: "Applying installation files", Path: file.path, Completed: index + 1, Total: len(tx.files)})
 		}
 	}
 	for index := len(tx.createdOrder) - 1; index >= 0; index-- {
@@ -265,6 +315,26 @@ func (tx *deploymentTransaction) commit() error {
 	return nil
 }
 
+// stopCancelled ends a commit interrupted between artifacts: installed files stay,
+// staged temporaries are discarded, and empty created directories are removed best-effort.
+func (tx *deploymentTransaction) stopCancelled(result DeploymentResult, cause error) (DeploymentResult, error) {
+	for _, file := range tx.files {
+		if file.installed {
+			result.Changed = append(result.Changed, file.path)
+		} else {
+			result.NotApplied = append(result.NotApplied, file.path)
+		}
+	}
+	if err := tx.cleanupTemps(); err != nil {
+		return result, errors.Join(cause, err)
+	}
+	for index := len(tx.createdOrder) - 1; index >= 0; index-- {
+		_ = os.Remove(tx.createdOrder[index]) // non-empty dirs hold installed files and stay
+	}
+	return result, cause
+}
+
+// rollback restores backups, removes new files, and deletes created directories in reverse order.
 func (tx *deploymentTransaction) rollback() error {
 	var rollbackErrors []error
 	for index := len(tx.files) - 1; index >= 0; index-- {
@@ -277,7 +347,7 @@ func (tx *deploymentTransaction) rollback() error {
 	}
 	for index := len(tx.createdOrder) - 1; index >= 0; index-- {
 		directory := tx.createdOrder[index]
-		if err := os.Remove(directory); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(directory); err != nil && !errors.Is(err, os.ErrNotExist) {
 			rollbackErrors = append(rollbackErrors, fmt.Errorf("remove created directory %q: %w", directory, err))
 			continue
 		}
@@ -300,6 +370,7 @@ func (file *stagedDeployment) restore() error {
 	return file.removeInstalled()
 }
 
+// restoreExisting puts back one overwritten file from backup and syncs its parent.
 func (file *stagedDeployment) restoreExisting() error {
 	if err := restoreBackup(file); err != nil {
 		return fmt.Errorf("restore managed artifact %q: %w", file.path, err)
@@ -310,9 +381,10 @@ func (file *stagedDeployment) restoreExisting() error {
 	return nil
 }
 
+// removeInstalled deletes one newly installed file and syncs its parent.
 func (file *stagedDeployment) removeInstalled() error {
 	if err := os.Remove(file.destination); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("remove new managed artifact %q: %w", file.path, err)
@@ -323,6 +395,7 @@ func (file *stagedDeployment) removeInstalled() error {
 	return nil
 }
 
+// cleanupTemps removes staged temp files left by a commit, abort, or cancellation.
 func (tx *deploymentTransaction) cleanupTemps() error {
 	var cleanupErrors []error
 	for _, file := range tx.files {
@@ -330,7 +403,7 @@ func (tx *deploymentTransaction) cleanupTemps() error {
 			if temporary == "" {
 				continue
 			}
-			if err := os.Remove(temporary); err != nil && !os.IsNotExist(err) {
+			if err := os.Remove(temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
 				cleanupErrors = append(cleanupErrors, fmt.Errorf("remove temporary file %q: %w", temporary, err))
 			}
 		}
@@ -344,7 +417,7 @@ func restoreBackup(file *stagedDeployment) error {
 		return nil
 	} else {
 		renameErr := err
-		if removeErr := os.Remove(file.destination); removeErr != nil && !os.IsNotExist(removeErr) {
+		if removeErr := os.Remove(file.destination); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			return fmt.Errorf("rename backup: %v; remove installed file: %w", renameErr, removeErr)
 		}
 		if err := os.Rename(file.backup, file.destination); err != nil {
@@ -369,9 +442,8 @@ func validateArtifactPathConflicts(artifacts []Artifact) error {
 	return nil
 }
 
-// inspectDeploymentPath checks the components of a deployment path and returns
-// missing ancestor directories in parent-first creation order. It returns an
-// error if a path component is a symlink or a non-directory parent.
+// inspectDeploymentPath checks a deployment path and returns missing ancestors in creation order.
+// Symlinks and non-directory parents are an error.
 func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 	var missing []string
 	current := root
@@ -380,7 +452,7 @@ func inspectDeploymentPath(root, relativePath string) ([]string, error) {
 		current = filepath.Join(current, component)
 		info, err := os.Lstat(current)
 		if err != nil {
-			if !os.IsNotExist(err) {
+			if !errors.Is(err, os.ErrNotExist) {
 				return nil, fmt.Errorf("inspect deployment path %q: %w", relativePath, err)
 			}
 			if index < len(components)-1 {
@@ -405,7 +477,7 @@ func createMissingDirectories(directories []string, created map[string]struct{},
 		if _, exists := created[directory]; exists {
 			continue
 		}
-		if err := os.Mkdir(directory, 0o755); err != nil && !os.IsExist(err) {
+		if err := os.Mkdir(directory, ManagedDirectoryMode); err != nil && !os.IsExist(err) {
 			return fmt.Errorf("create parent directory %q: %w", directory, err)
 		}
 		created[directory] = struct{}{}
@@ -449,50 +521,16 @@ func validateArtifacts(managed map[string]struct{}, input []Artifact) ([]Artifac
 		seen[clean] = struct{}{}
 		normalized = append(normalized, Artifact{Path: clean, Content: artifact.Content})
 	}
-	sort.Slice(normalized, func(i, j int) bool { return normalized[i].Path < normalized[j].Path })
+	slices.SortFunc(normalized, func(a, b Artifact) int { return cmp.Compare(a.Path, b.Path) })
 	return normalized, nil
 }
 
-// stageFile creates a temporary file in directory with the specified mode and content.
-// It returns the temporary file's path, or an error if creation, writing, synchronization,
-// or closing fails. Failed operations remove the temporary file.
-func stageFile(directory string, content []byte, mode os.FileMode) (name string, err error) {
-	temporary, err := os.CreateTemp(directory, ".takt-setup-*")
-	if err != nil {
-		return "", err
-	}
-	name = temporary.Name()
-	defer func() {
-		if err != nil {
-			_ = temporary.Close()
-			_ = os.Remove(name)
-		}
-	}()
-	if err = temporary.Chmod(mode); err != nil {
-		return "", err
-	}
-	if _, err = temporary.Write(content); err != nil {
-		return "", err
-	}
-	if err = temporary.Sync(); err != nil {
-		return "", err
-	}
-	if err = temporary.Close(); err != nil {
-		return "", err
-	}
-	return name, nil
+// stageFile creates a temp file with the given mode and content, removing it when any step fails.
+func stageFile(directory string, content []byte, mode os.FileMode) (string, error) {
+	return filemerge.StageTempFile(directory, ".takt-setup-*", content, mode)
 }
 
-// syncDir synchronizes pending changes for the directory at path. It tolerates
-// EINVAL from filesystems that do not support directory synchronization.
+// syncDir delegates to filemerge.SyncDir so directory-sync behavior has one implementation.
 func syncDir(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = directory.Close() }()
-	if err := directory.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
-		return err
-	}
-	return nil
+	return filemerge.SyncDir(path)
 }

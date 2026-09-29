@@ -1,0 +1,31 @@
+name: CI artifact cleanup
+
+# workflow_run workflows must exist on the repository's default branch for this
+# trigger to run. Keep this file on that branch to clean artifacts from CI runs.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  delete-coverage-artifacts:
+    if: ${{ github.event.workflow_run.name == 'CI' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete this CI run's coverage artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          artifact_ids=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" --paginate \
+            --jq '.artifacts[] | select(.name == "coverage-go-host" or .name == "coverage-go-container" or .name == "coverage-js") | .id' \
+          )
+          if [[ -n "$artifact_ids" ]]; then
+            while IFS= read -r artifact_id; do
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+            done <<< "$artifact_ids"
+          fi

@@ -4,30 +4,243 @@ on:
   push:
     branches: [main, stage]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
+  quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: takt/agents/opencode/assets/package-lock.json
+      - name: Go format
+        run: test -z "$(gofmt -l .)"
+      - name: Build and vet
+        run: |
+          go build ./...
+          go vet ./...
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+      - name: Typecheck plugins
+        run: |
+          npm ci --prefix takt/agents/opencode/assets --ignore-scripts
+          npm run --prefix takt/agents/opencode/assets typecheck
+          npm run --prefix takt/agents/opencode/assets lint
+      - name: Validate shell and workflows
+        run: |
+          shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh deploy/workspace/helm.sh
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
+  test-go-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Host unit tests and coverage
         run: make test-host
+      - name: Shell runner regression tests
+        run: make test-shell
+      - name: Upload host coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-go-host
+          path: coverage.out
+          if-no-files-found: error
 
-      - name: Test (containerized)
-        run: ./scripts/test-containerized.sh -coverprofile=coverage-containerized.out
+  test-go-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Isolated Go tests and coverage
+        run: ./development/testing/test-containerized.sh -race -coverprofile=coverage-containerized.out
+      - name: Upload container coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-go-container
+          path: coverage-containerized.out
+          if-no-files-found: error
+
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: |
+            takt/agents/opencode/assets/package-lock.json
+            takt/runtime/sandbox/package-lock.json
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - name: Plugin tests and LCOV
+        run: |
+          npm ci --prefix takt/agents/opencode/assets --ignore-scripts
+          cd takt/agents/opencode/assets
+          bun test --coverage --coverage-reporter=lcov
+          # Bun writes SF paths relative to this package; Sonar reads at repo root.
+          sed -i 's|^SF:|SF:takt/agents/opencode/assets/|' coverage/lcov.info
+      - name: Sandbox adapter
+        run: |
+          # sandbox-runtime requires bubblewrap, socat and ripgrep (checkDependencies);
+          # Ubuntu 24.04 runners restrict unprivileged user namespaces
+          # through AppArmor, which bubblewrap needs.
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat ripgrep
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          npm ci --prefix takt/runtime/sandbox --ignore-scripts
+          node --test --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=coverage-js.lcov \
+            takt/runtime/sandbox/probe.test.mjs
+      - name: Upload JS coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-js
+          path: |
+            takt/agents/opencode/assets/coverage/lcov.info
+            coverage-js.lcov
+          if-no-files-found: error
+
+  e2e-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
+        with:
+          context: .
+          file: development/testing/e2e/Dockerfile
+          load: true
+          tags: takt-e2e:${{ github.sha }}
+          cache-from: type=gha,scope=e2e-runtime
+          cache-to: type=gha,mode=max,scope=e2e-runtime
+      - name: Run mandatory setup CLI E2E contract
+        run: docker run --rm takt-e2e:${{ github.sha }}
+
+  sast:
+    uses: ./.github/workflows/sast.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.0
+      - name: Validate and render chart
+        run: |
+          # Placeholder digest exercises the digest-pinned image path; a
+          # non-default namespace mirrors how the chart is actually installed.
+          args=(--namespace takt-workspace
+                --set image.repository=example.invalid/takt-ai/workspace
+                --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000)
+          mkdir -p "$RUNNER_TEMP/rendered"
+          helm lint charts/takt-workspace "${args[@]}"
+          helm template takt-workspace charts/takt-workspace "${args[@]}" > "$RUNNER_TEMP/rendered/default.yaml"
+          docker compose config --quiet
+      - name: Checkov IaC and rendered manifest scan
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --volume "$RUNNER_TEMP/rendered:/rendered:ro" \
+            --workdir /workspace \
+            bridgecrew/checkov:3.3.20 \
+            --config-file /workspace/.checkov.yaml \
+            --directory /workspace \
+            --directory /rendered \
+            --framework dockerfile github_actions kubernetes
+
+  coverage:
+    needs: [test-go-host, test-go-container]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-go-host
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-go-container
+      - name: Combined coverage gate
+        run: ./development/testing/check-coverage.sh coverage.out coverage-containerized.out
+
+  sonarqube:
+    needs: [test-go-host, test-go-container, test-js]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-go-host
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-go-container
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-js
+      - name: Check required reports
+        run: test -s coverage.out && test -s coverage-containerized.out && test -s takt/agents/opencode/assets/coverage/lcov.info
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  ci-required:
+    if: ${{ always() }}
+    needs: [quality, test-go-host, test-go-container, test-js, e2e-container, sast, iac, coverage, sonarqube]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all mandatory jobs
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(to_entries[]; .value.result == "success")'

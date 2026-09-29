@@ -6,23 +6,21 @@
 import "github.com/rou-cru/takt-ai/takt/agents/shared"
 ```
 
-Package shared holds helpers reused by the Claude, Codex, and OpenCode target adapters. Each adapter keeps its own exported types and API.
+Package shared holds helpers reused by the OpenCode target adapter.
 
 ## Index
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
-- [func NewManagedPaths\(label string, nativePaths, generatedPaths \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
+- [func NewManagedPaths\(generated \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
 - [func NormalizeManagedPaths\(target string, pathGroups ...\[\]string\) \(\[\]string, error\)](<#NormalizeManagedPaths>)
-- [func RenderSorted\[Request, ArtifactT any\]\(requests \[\]Request, render func\(Request\) \(ArtifactT, error\), pathOf func\(ArtifactT\) string, target string\) \(\[\]ArtifactT, error\)](<#RenderSorted>)
-- [func ValidateSubAgentBase\(target, id, description, instructions, model string, validateModel func\(string, string\) error\) error](<#ValidateSubAgentBase>)
+- [func VersionAtLeast\(have, want string\) bool](<#VersionAtLeast>)
 - [type Artifact](<#Artifact>)
-  - [func RenderGlobalPrompt\(target, path, content string\) \(Artifact, error\)](<#RenderGlobalPrompt>)
 
 
 ## Constants
 
-<a name="Context7RemoteURL"></a>Context7RemoteURL is the canonical context7 remote MCP endpoint deployed into agent configs by the context7 component.
+<a name="Context7RemoteURL"></a>Context7RemoteURL is the shared docs\-server endpoint so every target reaches the same library docs.
 
 ```go
 const Context7RemoteURL = "https://mcp.context7.com/mcp"
@@ -30,7 +28,19 @@ const Context7RemoteURL = "https://mcp.context7.com/mcp"
 
 ## Variables
 
-<a name="SensitivePathGlobs"></a>SensitivePathGlobs are the relative glob fragments every target adapter must deny read/write access to. Each adapter prefixes "\*\*/" and wraps the fragment in its own rule syntax.
+<a name="OrchestratorDescription"></a>OrchestratorDescription explains the top\-level agent in every harness.
+
+```go
+var OrchestratorDescription = orchestratorDefinition.Description
+```
+
+<a name="OrchestratorID"></a>OrchestratorID names the selectable top\-level agent across harnesses.
+
+```go
+var OrchestratorID = orchestratorDefinition.ID
+```
+
+<a name="SensitivePathGlobs"></a>SensitivePathGlobs lists secret\-bearing paths every target must block from agent reads and writes.
 
 ```go
 var SensitivePathGlobs = []string{
@@ -49,45 +59,36 @@ var SensitivePathGlobs = []string{
 ```
 
 <a name="NewManagedPaths"></a>
-## func NewManagedPaths
+## func [NewManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L34>)
 
 ```go
-func NewManagedPaths(label string, nativePaths, generatedPaths []string) ([]string, error)
+func NewManagedPaths(generated []string) ([]string, error)
 ```
 
-NewManagedPaths builds a target adapter's list of Takt\-owned paths relative to the user's home directory: the adapter's native paths plus its renderer\-generated paths, normalized and sorted. Every path not listed is outside the adapter's ownership contract and is preserved by future lifecycle consumers. It returns an error if a path is invalid or duplicated.
+NewManagedPaths returns OpenCode's owned paths, normalized and sorted for stable manifests, so uninstalls never touch user files.
 
 <a name="NormalizeManagedPaths"></a>
-## func NormalizeManagedPaths
+## func [NormalizeManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L39>)
 
 ```go
 func NormalizeManagedPaths(target string, pathGroups ...[]string) ([]string, error)
 ```
 
-NormalizeManagedPaths normalizes, deduplicates, and sorts a target adapter's native plus generated managed paths. Errors are labeled with the adapter's target name.
+NormalizeManagedPaths cleans, dedupes, and sorts managed paths so manifests stay deterministic.
 
-<a name="RenderSorted"></a>
-## func RenderSorted
-
-```go
-func RenderSorted[Request, ArtifactT any](requests []Request, render func(Request) (ArtifactT, error), pathOf func(ArtifactT) string, target string) ([]ArtifactT, error)
-```
-
-RenderSorted renders every request and returns the artifacts sorted by deterministic path. It centralizes the identical RenderSubAgents loop of the three target adapters.
-
-<a name="ValidateSubAgentBase"></a>
-## func ValidateSubAgentBase
+<a name="VersionAtLeast"></a>
+## func [VersionAtLeast](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L65>)
 
 ```go
-func ValidateSubAgentBase(target, id, description, instructions, model string, validateModel func(string, string) error) error
+func VersionAtLeast(have, want string) bool
 ```
 
-ValidateSubAgentBase validates the required fields shared by sub\-agent definitions and applies target\-specific model validation. It returns the first validation error encountered.
+VersionAtLeast reports whether the numeric MAJOR.MINOR.PATCH prefix of have is not older than want.
 
 <a name="Artifact"></a>
-## type Artifact
+## type [Artifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/types.go#L19-L22>)
 
-Artifact is a filesystem\-free agent projection. Path is relative to the user's home directory and Content is ready for a later deployer to write. All three target adapters \(Claude, Codex, OpenCode\) share this identical definition.
+Artifact is a file ready to deploy, with its home\-relative path and content.
 
 ```go
 type Artifact struct {
@@ -95,14 +96,5 @@ type Artifact struct {
     Content []byte
 }
 ```
-
-<a name="RenderGlobalPrompt"></a>
-### func RenderGlobalPrompt
-
-```go
-func RenderGlobalPrompt(target, path, content string) (Artifact, error)
-```
-
-RenderGlobalPrompt creates a global prompt artifact with the specified path and content. It requires non\-empty content and ensures the artifact content ends with a newline.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

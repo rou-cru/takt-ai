@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/skills"
 ```
 
-Package skills implements the skill deployment lifecycle: it loads skill definitions from the embedded source directory, renders them as deployment artifacts, and tracks ownership through the shared setup manifest.
+Package skills implements the skill deployment lifecycle: it loads skill definitions from the catalog, renders them as deployment artifacts, and tracks ownership through the shared setup manifest.
 
 ## Index
 
@@ -14,21 +14,11 @@ Package skills implements the skill deployment lifecycle: it loads skill definit
 - [func BuildSkillArtifacts\(definitions \[\]SkillDefinition\) \[\]setup.Artifact](<#BuildSkillArtifacts>)
 - [func BuildSkillManagedPaths\(artifacts \[\]setup.Artifact\) \[\]string](<#BuildSkillManagedPaths>)
 - [func BuildSkillPlan\(\) \(setup.TargetPlan, error\)](<#BuildSkillPlan>)
-- [func GetSkillContent\(name string\) \(\[\]byte, error\)](<#GetSkillContent>)
-- [func ListSkills\(\) \(\[\]string, error\)](<#ListSkills>)
-- [func NormalizeSkillName\(name string\) string](<#NormalizeSkillName>)
-- [type SkillArtifact](<#SkillArtifact>)
 - [type SkillDefinition](<#SkillDefinition>)
   - [func LoadSkills\(\) \(\[\]SkillDefinition, error\)](<#LoadSkills>)
 
 
 ## Constants
-
-<a name="SkillDir"></a>SkillDir is the namespace root for embedded skill definitions.
-
-```go
-const SkillDir = "workflows"
-```
 
 <a name="TargetSkills"></a>TargetSkills is the ownership target for skill files.
 
@@ -37,7 +27,7 @@ const TargetSkills = "skills"
 ```
 
 <a name="BuildSkillArtifacts"></a>
-## func BuildSkillArtifacts
+## func [BuildSkillArtifacts](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L67>)
 
 ```go
 func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
@@ -46,7 +36,7 @@ func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
 BuildSkillArtifacts converts skill definitions into setup.Artifact values ready for deployment.
 
 <a name="BuildSkillManagedPaths"></a>
-## func BuildSkillManagedPaths
+## func [BuildSkillManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L79>)
 
 ```go
 func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
@@ -55,73 +45,34 @@ func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
 BuildSkillManagedPaths returns the sorted list of managed paths for skill artifacts.
 
 <a name="BuildSkillPlan"></a>
-## func BuildSkillPlan
+## func [BuildSkillPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L90>)
 
 ```go
 func BuildSkillPlan() (setup.TargetPlan, error)
 ```
 
-BuildSkillPlan creates a TargetPlan for deploying skills to the .agents/skills/ directory. The plan targets the "skills" ownership target and includes all embedded skill files.
-
-<a name="GetSkillContent"></a>
-## func GetSkillContent
-
-```go
-func GetSkillContent(name string) ([]byte, error)
-```
-
-GetSkillContent returns the content of a specific skill file. The name parameter is the namespace\-qualified skill path \(e.g., "workflows/linear\-workflow"\).
-
-<a name="ListSkills"></a>
-## func ListSkills
-
-```go
-func ListSkills() ([]string, error)
-```
-
-ListSkills returns the names of all available skills in sorted order.
-
-<a name="NormalizeSkillName"></a>
-## func NormalizeSkillName
-
-```go
-func NormalizeSkillName(name string) string
-```
-
-NormalizeSkillName normalizes a skill name for use in paths and identifiers. It converts to lowercase and replaces spaces/special characters with hyphens.
-
-<a name="SkillArtifact"></a>
-## type SkillArtifact
-
-SkillArtifact is a deployment artifact for a skill file. Path is relative to the deployment root \(e.g., ".agents/skills/linear\-workflow/SKILL.md"\).
-
-```go
-type SkillArtifact struct {
-    Path    string
-    Content []byte
-}
-```
+BuildSkillPlan creates a TargetPlan for deploying skills to the .opencode/skills/ directory. The plan targets the "skills" ownership target and includes all embedded skill files.
 
 <a name="SkillDefinition"></a>
-## type SkillDefinition
+## type [SkillDefinition](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L32-L36>)
 
-SkillDefinition holds the raw content of a skill loaded from the embedded filesystem.
+SkillDefinition holds the raw content of a skill loaded from the catalog.
 
 ```go
 type SkillDefinition struct {
-    Name     string // skill path relative to the package (e.g., "workflows/linear-workflow")
+    Name     string // catalog skill ID (e.g., "takt-sdd-workflow")
     FileName string // file name (e.g., "SKILL.md")
     Content  []byte
 }
 ```
 
 <a name="LoadSkills"></a>
-### func LoadSkills
+### func [LoadSkills](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L40>)
 
 ```go
 func LoadSkills() ([]SkillDefinition, error)
 ```
 
-LoadSkills reads all skill definitions from the embedded filesystem. It returns skills sorted by their deployment path for deterministic output.
+LoadSkills reads all skill definitions from the catalog. It returns skills sorted by their deployment path for deterministic output.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

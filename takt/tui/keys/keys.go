@@ -1,42 +1,42 @@
 // Package keys defines the global keyboard grammar for TUI flows.
 package keys
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"slices"
 
-// Binding is a discoverable action and its equivalent key names.
+	tea "charm.land/bubbletea/v2"
+)
+
+// Binding is an action and its equivalent key names.
 type Binding struct {
-	Keys        []string
-	Key         string
-	Description string
+	Keys []string
 }
 
 // Matches reports whether msg activates this binding.
 func (b Binding) Matches(msg tea.Msg) bool {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return false
 	}
-	for _, candidate := range b.Keys {
-		if key.String() == candidate {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(b.Keys, key.String())
 }
 
 // KeyMap is the full interaction grammar.
 type KeyMap struct {
-	Up, Down, Confirm, NextSection, Back, Help Binding
+	Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back Binding
 }
 
 // Default returns the shared navigation bindings.
 func Default() KeyMap {
 	return KeyMap{
-		Up:          Binding{Keys: []string{"up", "k"}, Key: "↑/k", Description: "up"},
-		Down:        Binding{Keys: []string{"down", "j"}, Key: "↓/j", Description: "down"},
-		Confirm:     Binding{Keys: []string{"enter"}, Key: "enter", Description: "confirm"},
-		NextSection: Binding{Keys: []string{"tab"}, Key: "tab", Description: "next section"},
-		Back:        Binding{Keys: []string{"esc"}, Key: "esc", Description: "back"},
-		Help:        Binding{Keys: []string{"?"}, Key: "?", Description: "help"},
+		Up:          Binding{Keys: []string{"up", "k"}},
+		Down:        Binding{Keys: []string{"down", "j"}},
+		Left:        Binding{Keys: []string{"left", "h"}},
+		Right:       Binding{Keys: []string{"right", "l"}},
+		Confirm:     Binding{Keys: []string{"enter"}},
+		Toggle:      Binding{Keys: []string{"space"}},
+		NextSection: Binding{Keys: []string{"tab"}},
+		PrevSection: Binding{Keys: []string{"shift+tab"}},
+		Back:        Binding{Keys: []string{"esc"}},
 	}
 }

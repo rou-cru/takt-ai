@@ -1,0 +1,234 @@
+{{- $passwordSecret := .Values.server.passwordSecret.name -}}
+{{- if and (not $passwordSecret) .Values.externalSecret.enabled -}}
+{{- $passwordSecret = default (include "takt-workspace.fullname" .) .Values.externalSecret.target.name -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "takt-workspace.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takt-workspace.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "takt-workspace.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "takt-workspace.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      serviceAccountName: {{ include "takt-workspace.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.workspace.repository.url }}
+      initContainers:
+        - name: clone-workspace
+          image: {{ .Values.workspace.repository.cloneImage | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              if [ -n "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
+                if [ -d "$WORKSPACE_DIR/.git" ]; then echo 'workspace repository already initialized'; exit 0; fi
+                echo 'workspace volume is not empty and has no .git directory' >&2; exit 1
+              fi
+              clone_dir="$WORKSPACE_DIR/.takt-clone"
+              cleanup() { rm -rf "$clone_dir" /tmp/git-askpass; }
+              trap cleanup EXIT HUP INT TERM
+              mkdir -p "$clone_dir"
+              git -C "$clone_dir" init
+              git -C "$clone_dir" remote add origin "$REPOSITORY_URL"
+              export GIT_TERMINAL_PROMPT=0
+              if [ -n "${GIT_USERNAME:-}" ] && [ -n "${GIT_PASSWORD:-}" ]; then
+                export GIT_ASKPASS=/tmp/git-askpass
+                cat > "$GIT_ASKPASS" <<'ASKPASS'
+              #!/bin/sh
+              case "$1" in
+                *sername*) printf '%s\n' "$GIT_USERNAME" ;;
+                *) printf '%s\n' "$GIT_PASSWORD" ;;
+              esac
+              ASKPASS
+                chmod 0700 "$GIT_ASKPASS"
+              fi
+              git -C "$clone_dir" fetch --depth 1 origin "$REPOSITORY_REVISION"
+              git -C "$clone_dir" checkout --detach FETCH_HEAD
+              cp -a "$clone_dir"/. "$WORKSPACE_DIR"/
+              rm -rf "$clone_dir"
+          env:
+            - name: WORKSPACE_DIR
+              value: {{ .Values.workspace.mountPath | quote }}
+            - name: REPOSITORY_URL
+              value: {{ .Values.workspace.repository.url | quote }}
+            - name: REPOSITORY_REVISION
+              value: {{ .Values.workspace.repository.revision | default "HEAD" | quote }}
+            {{- with .Values.workspace.repository.authSecret.name }}
+            - name: GIT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: {{ $.Values.workspace.repository.authSecret.usernameKey | quote }}
+            - name: GIT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: {{ $.Values.workspace.repository.authSecret.passwordKey | quote }}
+            {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          {{- with .Values.workspace.repository.resources }}
+          resources: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath | quote }}
+              subPath: workspace
+      {{- end }}
+      containers:
+        - name: opencode
+          image: {{ include "takt-workspace.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.command }}
+          command: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - name: TAKT_WORKSPACE_DIR
+              value: {{ .Values.workspace.mountPath | quote }}
+            - name: TAKT_OPENCODE_PORT
+              value: {{ .Values.port | quote }}
+            {{- if $passwordSecret }}
+            - name: OPENCODE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $passwordSecret | quote }}
+                  key: {{ .Values.server.passwordSecret.key | quote }}
+            {{- end }}
+            - name: XDG_DATA_HOME
+              value: /home/takt/.local/share
+            - name: XDG_STATE_HOME
+              value: /home/takt/.local/state
+            - name: XDG_CACHE_HOME
+              value: /home/takt/.cache
+            - name: UV_CACHE_DIR
+              value: /home/takt/.cache/uv
+            - name: npm_config_cache
+              value: /home/takt/.cache/npm
+            - name: GOMODCACHE
+              value: /home/takt/.cache/go/pkg/mod
+            - name: GOCACHE
+              value: /home/takt/.cache/go/build
+            - name: ENGRAM_DATA_DIR
+              value: /home/takt/.local/share/engram
+            {{- with .Values.server.env }}{{ toYaml . | nindent 12 }}{{- end }}
+            {{- with .Values.runtime.env }}{{ toYaml . | nindent 12 }}{{- end }}
+          {{- if or .Values.server.envFrom .Values.runtime.envFrom }}
+          envFrom:
+            {{- with .Values.server.envFrom }}{{ toYaml . | nindent 12 }}{{- end }}
+            {{- with .Values.runtime.envFrom }}{{ toYaml . | nindent 12 }}{{- end }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or .Values.probes.startup.enabled .Values.probes.readiness.enabled .Values.probes.liveness.enabled }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- if .Values.probes.startup.path }}
+            httpGet:
+              path: {{ .Values.probes.startup.path | quote }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            {{- if .Values.probes.readiness.path }}
+            httpGet:
+              path: {{ .Values.probes.readiness.path | quote }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            {{- if .Values.probes.liveness.path }}
+            httpGet:
+              path: {{ .Values.probes.liveness.path | quote }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          {{- end }}
+          {{- end }}
+          # One PVC holds every runtime write, split into sibling subPaths so
+          # private state (VFS store, OpenCode data, Engram) stays outside the
+          # workspace tree the agents operate on.
+          volumeMounts:
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath | quote }}
+              subPath: workspace
+            - name: workspace
+              mountPath: /home/takt/.local/share
+              subPath: data
+            - name: workspace
+              mountPath: /home/takt/.local/state
+              subPath: state
+            - name: workspace
+              mountPath: /home/takt/.cache
+              subPath: cache
+            - name: workspace
+              mountPath: /tmp
+              subPath: tmp
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: {{ include "takt-workspace.fullname" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{ toYaml . | nindent 8 }}
+      {{- end }}

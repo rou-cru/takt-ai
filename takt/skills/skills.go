@@ -14,97 +14,52 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package skills implements the skill deployment lifecycle: it loads skill
-// definitions from the embedded source directory, renders them as deployment
-// artifacts, and tracks ownership through the shared setup manifest.
+// definitions from the catalog, renders them as deployment artifacts, and
+// tracks ownership through the shared setup manifest.
 package skills
 
 import (
-	"embed"
 	"fmt"
-	"io/fs"
 	"path"
-	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
-// nonSkillChars matches any character outside [a-z0-9-] once the name has
-// been lowercased, so punctuation like "/" or "!" collapses to a separator
-// instead of passing through untouched.
-var nonSkillChars = regexp.MustCompile(`[^a-z0-9-]+`)
-
-//go:embed workflows
-var skillsFS embed.FS
-
-// SkillDir is the namespace root for embedded skill definitions.
-const SkillDir = "workflows"
-
-// SkillArtifact is a deployment artifact for a skill file. Path is relative to
-// the deployment root (e.g., ".agents/skills/linear-workflow/SKILL.md").
-type SkillArtifact struct {
-	Path    string
-	Content []byte
-}
-
-// SkillDefinition holds the raw content of a skill loaded from the embedded filesystem.
+// SkillDefinition holds the raw content of a skill loaded from the catalog.
 type SkillDefinition struct {
-	Name     string // skill path relative to the package (e.g., "workflows/linear-workflow")
+	Name     string // catalog skill ID (e.g., "takt-sdd-workflow")
 	FileName string // file name (e.g., "SKILL.md")
 	Content  []byte
 }
 
-// LoadSkills reads all skill definitions from the embedded filesystem.
+// LoadSkills reads all skill definitions from the catalog.
 // It returns skills sorted by their deployment path for deterministic output.
 func LoadSkills() ([]SkillDefinition, error) {
-	return loadSkills(skillsFS)
-}
-
-// loadSkills reads skill definitions from the given filesystem.
-func loadSkills(fsys fs.FS) ([]SkillDefinition, error) {
-	var skills []SkillDefinition
-	seen := make(map[string]struct{})
-	err := fs.WalkDir(fsys, SkillDir, func(filePath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if path.Base(filePath) != "SKILL.md" || path.Dir(filePath) == SkillDir {
-			return fmt.Errorf("unexpected skill file %q", filePath)
-		}
-
-		name := strings.TrimSuffix(filePath, "/SKILL.md")
-		if _, exists := seen[name]; exists {
-			return fmt.Errorf("duplicate skill identity %q", name)
-		}
-		seen[name] = struct{}{}
-
-		content, err := fs.ReadFile(fsys, filePath)
-		if err != nil {
-			return fmt.Errorf("read skill %q: %w", filePath, err)
-		}
-		skills = append(skills, SkillDefinition{Name: name, FileName: "SKILL.md", Content: content})
-		return nil
-	})
+	c, err := catalog.LoadPackages()
 	if err != nil {
-		return nil, fmt.Errorf("walk skills directory: %w", err)
+		return nil, fmt.Errorf("load catalog packages: %w", err)
 	}
 
-	// Sort by deployment path for deterministic output.
-	sort.Slice(skills, func(i, j int) bool {
-		return skillDeploymentPath(skills[i]) < skillDeploymentPath(skills[j])
+	definitions := make([]SkillDefinition, 0, len(c.Skills))
+	for _, pkg := range c.Skills {
+		definitions = append(definitions, SkillDefinition{Name: pkg.ID, FileName: catalog.SkillFileName, Content: pkg.Descriptor})
+	}
+
+	slices.SortFunc(definitions, func(a, b SkillDefinition) int {
+		return strings.Compare(skillDeploymentPath(a), skillDeploymentPath(b))
 	})
 
-	return skills, nil
+	return definitions, nil
 }
 
 // skillDeploymentPath returns the deployment path for a skill definition.
-// The path format is: .agents/skills/<namespace>/<relative-path>/<filename>
+// The path format is the preferred OpenCode V2 location:
+// .opencode/skills/<ID>/<filename>
 func skillDeploymentPath(skill SkillDefinition) string {
-	return path.Join(".agents", "skills", skill.Name, skill.FileName)
+	return path.Join(".opencode", "skills", skill.Name, skill.FileName)
 }
 
 // BuildSkillArtifacts converts skill definitions into setup.Artifact values
@@ -126,11 +81,11 @@ func BuildSkillManagedPaths(artifacts []setup.Artifact) []string {
 	for _, a := range artifacts {
 		paths = append(paths, a.Path)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	return paths
 }
 
-// BuildSkillPlan creates a TargetPlan for deploying skills to the .agents/skills/ directory.
+// BuildSkillPlan creates a TargetPlan for deploying skills to the .opencode/skills/ directory.
 // The plan targets the "skills" ownership target and includes all embedded skill files.
 func BuildSkillPlan() (setup.TargetPlan, error) {
 	definitions, err := LoadSkills()
@@ -153,54 +108,3 @@ func BuildSkillPlan() (setup.TargetPlan, error) {
 
 // TargetSkills is the ownership target for skill files.
 const TargetSkills = "skills"
-
-// ListSkills returns the names of all available skills in sorted order.
-func ListSkills() ([]string, error) {
-	definitions, err := LoadSkills()
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[string]struct{})
-	var names []string
-	for _, def := range definitions {
-		if _, exists := seen[def.Name]; exists {
-			continue
-		}
-		seen[def.Name] = struct{}{}
-		names = append(names, def.Name)
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// GetSkillContent returns the content of a specific skill file.
-// The name parameter is the namespace-qualified skill path (e.g., "workflows/linear-workflow").
-func GetSkillContent(name string) ([]byte, error) {
-	definitions, err := LoadSkills()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, def := range definitions {
-		if def.Name == name {
-			return def.Content, nil
-		}
-	}
-	return nil, fmt.Errorf("skill %q not found", name)
-}
-
-// NormalizeSkillName normalizes a skill name for use in paths and identifiers.
-// It converts to lowercase and replaces spaces/special characters with hyphens.
-func NormalizeSkillName(name string) string {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.ReplaceAll(name, "_", "-")
-	name = nonSkillChars.ReplaceAllString(name, "-")
-	// Remove consecutive hyphens.
-	for strings.Contains(name, "--") {
-		name = strings.ReplaceAll(name, "--", "-")
-	}
-	name = strings.Trim(name, "-")
-	return name
-}
