@@ -2,10 +2,10 @@
 apiVersion: {{ .Values.httpRoute.apiVersion }}
 kind: HTTPRoute
 metadata:
-  name: {{ include "takt-workspace.fullname" . }}
+  name: {{ include "takt-ai.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- include "takt-ai.labels" . | nindent 4 }}
     {{- with .Values.httpRoute.labels }}{{ toYaml . | nindent 4 }}{{- end }}
   {{- with .Values.httpRoute.annotations }}
   annotations: {{ toYaml . | nindent 4 }}
@@ -21,7 +21,7 @@ spec:
     {{- range .Values.httpRoute.rules }}
     - {{ toYaml . | nindent 6 | trim }}
       backendRefs:
-        - name: {{ include "takt-workspace.fullname" $ }}
+        - name: {{ include "takt-ai.fullname" $ }}
           port: {{ $.Values.service.port }}
     {{- end }}
 {{- end }}

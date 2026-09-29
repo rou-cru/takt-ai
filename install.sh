@@ -189,13 +189,20 @@ install_brew() {
     info "Refreshing ${BREW_TAP}..."
     brew untap "$BREW_TAP" 2>/dev/null || true
     if ! brew tap "$BREW_TAP"; then
+        # The tap is optional for releases; auto-detection falls back to the binary.
+        if [ -z "${FORCE_METHOD:-}" ]; then
+            warn "Failed to tap $BREW_TAP — falling back to the pre-built binary"
+            install_binary
+            return
+        fi
         fatal "Failed to tap $BREW_TAP"
     fi
 
-    if brew list "$BINARY_NAME" &>/dev/null; then
+    # Releases publish a cask (goreleaser homebrew_casks), not a formula.
+    if brew list --cask "$BINARY_NAME" &>/dev/null; then
         info "Already installed, upgrading ${BINARY_NAME}..."
         local output
-        if output="$(brew upgrade "$BINARY_NAME" 2>&1)"; then
+        if output="$(brew upgrade --cask "$BINARY_NAME" 2>&1)"; then
             success "Upgraded ${BINARY_NAME} via Homebrew"
         elif printf '%s' "$output" | grep -Eiq 'already.*(up-to-date|installed)|not outdated'; then
             success "${BINARY_NAME} is already at the latest version"
@@ -206,7 +213,7 @@ install_brew() {
     else
         info "Installing ${BINARY_NAME}..."
         local output
-        if output="$(brew install "$BINARY_NAME" 2>&1)"; then
+        if output="$(brew install --cask "$BINARY_NAME" 2>&1)"; then
             success "Installed ${BINARY_NAME} via Homebrew"
         else
             printf '%s\n' "$output" >&2
@@ -226,19 +233,28 @@ install_go() {
     # bash 3.2, so piping `| bash` would fail with "bad substitution".
     local owner_lc
     owner_lc="$(printf '%s' "$GITHUB_OWNER" | tr '[:upper:]' '[:lower:]')"
-    local go_package="github.com/${owner_lc}/${GITHUB_REPO}/cmd/${BINARY_NAME}@latest"
+    local go_package="github.com/${owner_lc}/${GITHUB_REPO}/takt/cli@latest"
 
-    info "Running: go install ${go_package}"
-    if ! go install "$go_package"; then
-        fatal "Failed to install via go install. Make sure Go is properly configured."
-    fi
-
-    # Verify GOBIN / GOPATH/bin is in PATH
     local gobin
     gobin="$(go env GOBIN)"
     if [ -z "$gobin" ]; then
         gobin="$(go env GOPATH)/bin"
     fi
+
+    # The main package lives in takt/cli, so go install names the binary
+    # "cli"; build into a scratch GOBIN and install it under its real name.
+    local tmpbin
+    tmpbin="$(mktemp -d)"
+    trap '[ -n "${tmpbin:-}" ] && rm -rf "$tmpbin"' EXIT
+
+    info "Running: go install ${go_package}"
+    if ! GOBIN="$tmpbin" go install "$go_package"; then
+        fatal "Failed to install via go install. Make sure Go is properly configured."
+    fi
+    mkdir -p "$gobin"
+    mv -f "${tmpbin}/cli" "${gobin}/${BINARY_NAME}" || fatal "Failed to install ${BINARY_NAME} into ${gobin}"
+
+    # Verify GOBIN / GOPATH/bin is in PATH
 
     if [[ ":$PATH:" != *":$gobin:"* ]]; then
         warn "${gobin} is not in your PATH"
@@ -281,6 +297,33 @@ get_latest_version() {
     success "Latest version: ${LATEST_VERSION}"
 }
 
+# Verifies the keyless Sigstore signature of checksums.txt when cosign is
+# available. It proves the checksums (and so every archive) were produced by
+# this repository's release workflow. Without cosign, sha256 still applies.
+verify_signature() {
+    local dir=$1
+    if ! command -v cosign &>/dev/null; then
+        info "cosign not found — skipping signature verification (checksums still verified)"
+        return
+    fi
+    local bundle_url="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${LATEST_VERSION}/checksums.txt.sigstore.json"
+    if ! curl -sfL --proto '=https' -o "${dir}/checksums.txt.sigstore.json" "$bundle_url"; then
+        if [ "$INSECURE" = "true" ]; then
+            warn "Could not download the signature bundle — signature verification skipped (--insecure)"
+            return
+        fi
+        fatal "Could not download ${bundle_url}\nRefusing to install with cosign present but no signature.\nUse --insecure to skip (not recommended)."
+    fi
+    if ! cosign verify-blob \
+        --bundle "${dir}/checksums.txt.sigstore.json" \
+        --certificate-identity-regexp "^https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/.github/workflows/release.yml@" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+        "${dir}/checksums.txt" >/dev/null 2>&1; then
+        fatal "Signature verification of checksums.txt failed"
+    fi
+    success "Signature verified (Sigstore, ${GITHUB_OWNER}/${GITHUB_REPO} release workflow)"
+}
+
 install_binary() {
     step "Installing pre-built binary"
 
@@ -310,7 +353,8 @@ install_binary() {
 
     # Download and verify checksum — fail closed unless --insecure is set
     info "Verifying checksum..."
-    if curl -sL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
+    if curl -sfL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
+        verify_signature "$tmpdir"
         local expected_checksum
         expected_checksum="$(grep "${archive_name}" "${tmpdir}/checksums.txt" 2>/dev/null | awk '{print $1}' || true)"
 

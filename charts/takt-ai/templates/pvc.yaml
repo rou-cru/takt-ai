@@ -5,10 +5,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "takt-workspace.fullname" . }}
+  name: {{ include "takt-ai.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- include "takt-ai.labels" . | nindent 4 }}
     {{- with .Values.persistence.labels }}{{ toYaml . | nindent 4 }}{{- end }}
   {{- if $pvcAnnotations }}
   annotations:
