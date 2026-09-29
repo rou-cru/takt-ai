@@ -10,60 +10,23 @@ Package install provides the focused install selection flow.
 
 ## Index
 
-- [func ClaudeModels\(\) \[\]model.ClaudeModelAlias](<#ClaudeModels>)
-- [func CodexEfforts\(\) \[\]string](<#CodexEfforts>)
-- [func CodexModels\(\) \[\]string](<#CodexModels>)
-- [func SupportedTargets\(\) \[\]model.AgentID](<#SupportedTargets>)
 - [type Model](<#Model>)
   - [func New\(rootDir string\) Model](<#New>)
+  - [func \(m Model\) Dirty\(\) bool](<#Model.Dirty>)
   - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
+  - [func \(m Model\) Run\(\) runtime.Run](<#Model.Run>)
   - [func \(m Model\) Step\(\) Step](<#Model.Step>)
-  - [func \(m Model\) Targets\(\) \[\]model.AgentID](<#Model.Targets>)
+  - [func \(m Model\) Title\(\) string](<#Model.Title>)
   - [func \(m Model\) Update\(message tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(m Model\) View\(\) string](<#Model.View>)
+  - [func \(m Model\) View\(\) tea.View](<#Model.View>)
+- [type OpenModelsMsg](<#OpenModelsMsg>)
 - [type Step](<#Step>)
 
 
-<a name="ClaudeModels"></a>
-## func ClaudeModels
-
-```go
-func ClaudeModels() []model.ClaudeModelAlias
-```
-
-ClaudeModels returns the canonical Claude model aliases displayed by the flow.
-
-<a name="CodexEfforts"></a>
-## func CodexEfforts
-
-```go
-func CodexEfforts() []string
-```
-
-CodexEfforts returns the effort levels accepted by the canonical Codex validation.
-
-<a name="CodexModels"></a>
-## func CodexModels
-
-```go
-func CodexModels() []string
-```
-
-CodexModels returns the canonical Codex model IDs displayed by the flow.
-
-<a name="SupportedTargets"></a>
-## func SupportedTargets
-
-```go
-func SupportedTargets() []model.AgentID
-```
-
-SupportedTargets returns the targets this flow can install.
-
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L93-L111>)
 
-Model is a standalone Bubble Tea install flow. Execution remains at the runtime boundary: this model emits ActionRequest and never plans or writes files.
+Model is a standalone Bubble Tea install flow.
 
 ```go
 type Model struct {
@@ -72,7 +35,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L119>)
 
 ```go
 func New(rootDir string) Model
@@ -80,8 +43,17 @@ func New(rootDir string) Model
 
 New creates an install flow for rootDir.
 
+<a name="Model.Dirty"></a>
+### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L149>)
+
+```go
+func (m Model) Dirty() bool
+```
+
+Dirty reports unapplied selections that differ from the flow's baseline.
+
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L140>)
 
 ```go
 func (Model) Init() tea.Cmd
@@ -89,8 +61,17 @@ func (Model) Init() tea.Cmd
 
 Init has no startup work.
 
+<a name="Model.Run"></a>
+### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L143>)
+
+```go
+func (m Model) Run() runtime.Run
+```
+
+Run exposes the flow's action state so the shell gates quit and cancel.
+
 <a name="Model.Step"></a>
-### func \(Model\) Step
+### func \(Model\) [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L146>)
 
 ```go
 func (m Model) Step() Step
@@ -98,35 +79,44 @@ func (m Model) Step() Step
 
 Step returns the visible screen.
 
-<a name="Model.Targets"></a>
-### func \(Model\) Targets
+<a name="Model.Title"></a>
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L571>)
 
 ```go
-func (m Model) Targets() []model.AgentID
+func (m Model) Title() string
 ```
 
-Targets returns the explicitly selected install targets.
+Title identifies the task and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L170>)
 
 ```go
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 ```
 
-Update advances the flow or emits an install action after explicit confirmation.
+Update advances the flow or emits an install action from the review.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L584>)
 
 ```go
-func (m Model) View() string
+func (m Model) View() tea.View
 ```
 
 View renders the current screen with a visible step and keyboard guidance.
 
+<a name="OpenModelsMsg"></a>
+## type [OpenModelsMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L50>)
+
+OpenModelsMsg signals the user chose "Assign models" from the post\-install result screen and wants the standalone model\-assignment flow.
+
+```go
+type OpenModelsMsg struct{}
+```
+
 <a name="Step"></a>
-## type Step
+## type [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L22>)
 
 Step identifies the currently visible install screen.
 
@@ -134,19 +124,23 @@ Step identifies the currently visible install screen.
 type Step int
 ```
 
-<a name="StepTargets"></a>
+<a name="StepSetupChoice"></a>Steps are the install flow's screens, in walk order.
 
 ```go
 const (
-    StepTargets Step = iota
-    StepClaudeModels
-    StepCodexModels
-    StepSetupChoice
+    // StepSetupChoice is the Default/Custom selection screen.
+    StepSetupChoice Step = iota
+    // StepComponents is the optional component checklist.
     StepComponents
+    // StepConflicts lets the user choose, per conflicting file, whether to
+    // keep their own version or restore Takt's; it is reached only when a
+    // conflict needs a decision.
+    StepConflicts
+    // StepReview is the commitment point: scope, change categories and the
+    // Install / Apply changes action. There is no separate confirmation.
     StepReview
-    StepConfirmation
+    // StepResult is the post-install result screen.
     StepResult
-    StepCanceled
 )
 ```
 

@@ -6,563 +6,274 @@
 import "github.com/rou-cru/takt-ai/takt/model"
 ```
 
-Package model defines the core domain types shared across all Takt target adapters: agent identifiers, model assignments, sub\-agent catalog definitions, and installation selection state.
+Package model keeps one shared vocabulary for agents, components, and assignments so adapters never drift apart.
 
 ## Index
 
 - [Constants](<#constants>)
-- [func ClaudeEffortAllowedForModel\(alias ClaudeModelAlias, effort ClaudeEffort\) bool](<#ClaudeEffortAllowedForModel>)
-- [func CodexAvailableModels\(\) \[\]string](<#CodexAvailableModels>)
-- [func FilterCodexModels\(query string\) \[\]string](<#FilterCodexModels>)
-- [type AgentID](<#AgentID>)
+- [func OpenCodeConfigPath\(home string\) string](<#OpenCodeConfigPath>)
+- [func OpenCodePluginPath\(home, file string\) string](<#OpenCodePluginPath>)
+- [func OpenCodePromptPath\(home string\) string](<#OpenCodePromptPath>)
+- [func ValidateRoleClass\(subject string, r RoleClass\) error](<#ValidateRoleClass>)
 - [type CanonicalSubAgent](<#CanonicalSubAgent>)
-- [type ClaudeEffort](<#ClaudeEffort>)
-  - [func ClaudeEffortsForModel\(alias ClaudeModelAlias\) \[\]ClaudeEffort](<#ClaudeEffortsForModel>)
-  - [func \(e ClaudeEffort\) Valid\(\) bool](<#ClaudeEffort.Valid>)
-- [type ClaudeModelAlias](<#ClaudeModelAlias>)
-  - [func \(a ClaudeModelAlias\) String\(\) string](<#ClaudeModelAlias.String>)
-  - [func \(a ClaudeModelAlias\) Valid\(\) bool](<#ClaudeModelAlias.Valid>)
-- [type CommunityToolID](<#CommunityToolID>)
 - [type ComponentID](<#ComponentID>)
-- [type DeliveryKind](<#DeliveryKind>)
-- [type EngramUninstallScope](<#EngramUninstallScope>)
 - [type InjectionResult](<#InjectionResult>)
-- [type MCPStrategy](<#MCPStrategy>)
 - [type ModelAssignment](<#ModelAssignment>)
-  - [func ResolveSubAgentAssignment\(agent AgentID, subAgent, defaultSubAgent string, overrides, preset map\[string\]ModelAssignment\) \(ModelAssignment, error\)](<#ResolveSubAgentAssignment>)
-  - [func ValidateClaudeModelAssignment\(subAgent string, assignment ModelAssignment\) \(ModelAssignment, error\)](<#ValidateClaudeModelAssignment>)
-  - [func ValidateCodexModelAssignment\(subAgent string, assignment ModelAssignment\) \(ModelAssignment, error\)](<#ValidateCodexModelAssignment>)
-- [type OpenCodeCommunityPluginID](<#OpenCodeCommunityPluginID>)
-- [type OrchestratorProjection](<#OrchestratorProjection>)
-  - [func \(p OrchestratorProjection\) Validate\(\) error](<#OrchestratorProjection.Validate>)
-- [type Selection](<#Selection>)
-  - [func \(s Selection\) HasAgent\(agent AgentID\) bool](<#Selection.HasAgent>)
-  - [func \(s Selection\) HasCommunityTool\(tool CommunityToolID\) bool](<#Selection.HasCommunityTool>)
-  - [func \(s Selection\) HasComponent\(component ComponentID\) bool](<#Selection.HasComponent>)
-  - [func \(s Selection\) IsNonDetected\(agent AgentID\) bool](<#Selection.IsNonDetected>)
-- [type SetupChoice](<#SetupChoice>)
-- [type SkillID](<#SkillID>)
-- [type SyncOverrides](<#SyncOverrides>)
-- [type SystemPromptStrategy](<#SystemPromptStrategy>)
-- [type UninstallMode](<#UninstallMode>)
+- [type RoleClass](<#RoleClass>)
+  - [func \(r RoleClass\) HoldsInterface\(\) bool](<#RoleClass.HoldsInterface>)
+  - [func \(r RoleClass\) Valid\(\) bool](<#RoleClass.Valid>)
+- [type VFSCapability](<#VFSCapability>)
+  - [func \(c VFSCapability\) Valid\(\) bool](<#VFSCapability.Valid>)
 
 
 ## Constants
 
-<a name="CodexModelSol"></a>
+<a name="OpenCodeConfigDir"></a>Home\-relative file and directory names for each harness, plus the plugin filenames Takt deploys into OpenCode's plugin directory.
 
 ```go
 const (
-    CodexModelSol   = "openai/gpt-5.6-sol"
-    CodexModelTerra = "openai/gpt-5.6-terra"
-    CodexModelLuna  = "openai/gpt-5.6-luna"
+    OpenCodeConfigDir  = ".config/opencode"
+    OpenCodeConfigFile = "opencode.json"
+    // OpenCodeConfigRelativePath is the slash-separated manifest path owned by OpenCode.
+    OpenCodeConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeConfigFile
+    AgentsPromptFile           = "AGENTS.md"
+
+    OpenCodePluginsDir = "plugins"
+    EngramPluginFile   = "engram.ts"
+    VFSPluginFile      = "takt-vfs.ts"
 )
 ```
 
-<a name="SubAgentTaktInit"></a>
+<a name="MCPKeyOpenCode"></a>MCP object keys per target native config.
 
 ```go
 const (
-    // Canonical sub-agent identifiers in catalog order.
-    SubAgentTaktInit            = "takt-init"             // project bootstrapping
-    SubAgentTaktDev             = "takt-dev"              // feature implementation
-    SubAgentTaktVerify          = "takt-verify"           // code verification
-    SubAgentTaktAnalyst         = "takt-analyst"          // requirements analysis
-    SubAgentTaktPM              = "takt-pm"               // product management
-    SubAgentTaktSpec            = "takt-spec"             // specification authoring
-    SubAgentTaktArchitect       = "takt-architect"        // architecture design
-    SubAgentTaktTPM             = "takt-tpm"              // technical project management
-    SubAgentTaktProductDesigner = "takt-product-designer" // product design
-    SubAgentTaktFix             = "takt-fix"              // bug fixing
-    SubAgentTaktJudgeA          = "takt-judge-a"          // adversarial judge A
-    SubAgentTaktJudgeB          = "takt-judge-b"          // adversarial judge B
-    SubAgentDefault             = "default"               // fallback sub-agent
-
-    // SkillID aliases for each canonical sub-agent.
-    SkillTaktInit      SkillID = SubAgentTaktInit
-    SkillTaktDev       SkillID = SubAgentTaktDev
-    SkillTaktVerify    SkillID = SubAgentTaktVerify
-    SkillTaktAnalyst   SkillID = SubAgentTaktAnalyst
-    SkillTaktPm        SkillID = SubAgentTaktPM
-    SkillTaktSpec      SkillID = SubAgentTaktSpec
-    SkillTaktArchitect SkillID = SubAgentTaktArchitect
-    SkillTaktTpm       SkillID = SubAgentTaktTPM
-
-    // Orchestrator workflow skills (consumed by orchestrator, not sub-agents).
-    SkillLinearWorkflow SkillID = "takt-linear-workflow"
-
-    // Utility skills.
-    SkillCreator       SkillID = "skill-creator"
-    SkillJudgment      SkillID = "judgment"
-    SkillSkillRegistry SkillID = "skill-registry"
+    // MCPKeyOpenCode is the top-level MCP map key in opencode.json.
+    MCPKeyOpenCode = "mcp"
+    // MCPServersKeyOpenCode is the object under mcp that holds one entry per
+    // server; OpenCode V2 nests them there instead of directly under mcp.
+    MCPServersKeyOpenCode = "servers"
 )
 ```
 
-<a name="ClaudeEffortAllowedForModel"></a>
-## func ClaudeEffortAllowedForModel
-
-```go
-func ClaudeEffortAllowedForModel(alias ClaudeModelAlias, effort ClaudeEffort) bool
-```
-
-ClaudeEffortAllowedForModel reports whether the effort level is supported by the specified Claude model alias.
-
-<a name="CodexAvailableModels"></a>
-## func CodexAvailableModels
-
-```go
-func CodexAvailableModels() []string
-```
-
-CodexAvailableModels returns a copy of the available model IDs.
-
-<a name="FilterCodexModels"></a>
-## func FilterCodexModels
-
-```go
-func FilterCodexModels(query string) []string
-```
-
-FilterCodexModels returns model IDs containing the query, ignoring letter case. A blank query returns all available model IDs.
-
-<a name="AgentID"></a>
-## type AgentID
-
-AgentID identifies a target coding\-agent adapter \(Claude, Codex, OpenCode\).
-
-```go
-type AgentID string
-```
-
-<a name="AgentClaudeCode"></a>
+<a name="EnvEngramURL"></a>Engram endpoint single source of truth: env override name and its default.
 
 ```go
 const (
-    AgentClaudeCode AgentID = "claude-code" // Anthropic Claude Code agent
-    AgentOpenCode   AgentID = "opencode"    // OpenCode agent
-    AgentCodex      AgentID = "codex"       // OpenAI Codex agent
+    // EnvEngramURL names the environment variable overriding the default endpoint.
+    EnvEngramURL = "ENGRAM_BASE_URL"
+    // DefaultEngramURL is the local Engram server endpoint used without the override.
+    DefaultEngramURL = "http://127.0.0.1:7437"
 )
 ```
+
+<a name="AgentOpenCode"></a>AgentOpenCode names the OpenCode adapter, the identifier install, inject and verify agree on.
+
+```go
+const AgentOpenCode = "opencode"
+```
+
+<a name="SectionEngramProtocol"></a>SectionEngramProtocol is the markdown section ID shared by inject and remove.
+
+```go
+const SectionEngramProtocol = "engram-protocol"
+```
+
+<a name="OpenCodeConfigPath"></a>
+## func [OpenCodeConfigPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L58>)
+
+```go
+func OpenCodeConfigPath(home string) string
+```
+
+OpenCodeConfigPath returns \<home\>/.config/opencode/opencode.json.
+
+<a name="OpenCodePluginPath"></a>
+## func [OpenCodePluginPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L68>)
+
+```go
+func OpenCodePluginPath(home, file string) string
+```
+
+OpenCodePluginPath returns \<home\>/.config/opencode/plugins/\<file\>.
+
+<a name="OpenCodePromptPath"></a>
+## func [OpenCodePromptPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L63>)
+
+```go
+func OpenCodePromptPath(home string) string
+```
+
+OpenCodePromptPath returns \<home\>/.config/opencode/AGENTS.md.
+
+<a name="ValidateRoleClass"></a>
+## func [ValidateRoleClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L59>)
+
+```go
+func ValidateRoleClass(subject string, r RoleClass) error
+```
+
+ValidateRoleClass fails fast on missing or unknown classes so bad configs surface before dispatch.
 
 <a name="CanonicalSubAgent"></a>
-## type CanonicalSubAgent
+## type [CanonicalSubAgent](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L43-L46>)
 
-CanonicalSubAgent is the platform\-level definition of a specialist sub\-agent, carrying its per\-target model assignments.
+CanonicalSubAgent names one specialist of the crew every adapter configures.
 
 ```go
 type CanonicalSubAgent struct {
-    Name        string
-    Assignments map[AgentID]ModelAssignment
+    // Name identifies the specialist, stable so assignments can match by name.
+    Name string
 }
 ```
 
-<a name="ClaudeEffort"></a>
-## type ClaudeEffort
-
-ClaudeEffort is a Claude effort level.
-
-```go
-type ClaudeEffort string
-```
-
-<a name="ClaudeEffortDefault"></a>
-
-```go
-const (
-    ClaudeEffortDefault ClaudeEffort = ""
-    ClaudeEffortLow     ClaudeEffort = "low"
-    ClaudeEffortMedium  ClaudeEffort = "medium"
-    ClaudeEffortHigh    ClaudeEffort = "high"
-    ClaudeEffortXHigh   ClaudeEffort = "xhigh"
-    ClaudeEffortMax     ClaudeEffort = "max"
-)
-```
-
-<a name="ClaudeEffortsForModel"></a>
-### func ClaudeEffortsForModel
-
-```go
-func ClaudeEffortsForModel(alias ClaudeModelAlias) []ClaudeEffort
-```
-
-ClaudeEffortsForModel returns the effort levels supported by a model alias. Fable and Opus support all effort levels, Sonnet supports all except xhigh, and other aliases support only the default effort level.
-
-<a name="ClaudeEffort.Valid"></a>
-### func \(ClaudeEffort\) Valid
-
-```go
-func (e ClaudeEffort) Valid() bool
-```
-
-Valid reports whether the effort is a recognized Claude effort level.
-
-<a name="ClaudeModelAlias"></a>
-## type ClaudeModelAlias
-
-ClaudeModelAlias represents one of the Claude model tiers.
-
-```go
-type ClaudeModelAlias string
-```
-
-<a name="ClaudeModelFable"></a>
-
-```go
-const (
-    ClaudeModelFable  ClaudeModelAlias = "fable"
-    ClaudeModelOpus   ClaudeModelAlias = "opus"
-    ClaudeModelSonnet ClaudeModelAlias = "sonnet"
-    ClaudeModelHaiku  ClaudeModelAlias = "haiku"
-)
-```
-
-<a name="ClaudeModelAlias.String"></a>
-### func \(ClaudeModelAlias\) String
-
-```go
-func (a ClaudeModelAlias) String() string
-```
-
-String returns the alias as a lowercase string.
-
-<a name="ClaudeModelAlias.Valid"></a>
-### func \(ClaudeModelAlias\) Valid
-
-```go
-func (a ClaudeModelAlias) Valid() bool
-```
-
-Valid reports whether the alias is a recognized Claude model tier.
-
-<a name="CommunityToolID"></a>
-## type CommunityToolID
-
-CommunityToolID identifies an optional cross\-agent community tool or plugin.
-
-```go
-type CommunityToolID string
-```
-
-<a name="CommunityToolCodeGraph"></a>
-
-```go
-const (
-    CommunityToolCodeGraph CommunityToolID = "codegraph" // code graph analysis tool
-)
-```
-
 <a name="ComponentID"></a>
-## type ComponentID
+## type [ComponentID](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L24>)
 
-ComponentID identifies an installable Takt component injected into a target agent.
+ComponentID names an installable piece so setup and lifecycle can select parts without string guessing.
 
 ```go
 type ComponentID string
 ```
 
-<a name="ComponentEngram"></a>
+<a name="ComponentEngram"></a>Component IDs are the closed set of independently installable pieces.
 
 ```go
 const (
-    ComponentEngram           ComponentID = "engram"             // memory/context graph
-    ComponentSkills           ComponentID = "skills"             // skill system
-    ComponentContext7         ComponentID = "context7"           // context7 integration
-    ComponentPermission       ComponentID = "permissions"        // permission layer
-    ComponentTheme            ComponentID = "theme"              // theme
-    ComponentClaudeTheme      ComponentID = "claude-theme"       // Claude-specific theme
-    ComponentOpenCodeTaktLogo ComponentID = "opencode-takt-logo" // OpenCode Takt branding
-)
-```
-
-<a name="DeliveryKind"></a>
-## type DeliveryKind
-
-DeliveryKind classifies whether an asset is baked in at build time or resolved at runtime.
-
-```go
-type DeliveryKind string
-```
-
-<a name="DeliveryStatic"></a>
-
-```go
-const (
-    DeliveryStatic  DeliveryKind = "static"
-    DeliveryRuntime DeliveryKind = "runtime"
-)
-```
-
-<a name="EngramUninstallScope"></a>
-## type EngramUninstallScope
-
-EngramUninstallScope limits engram removal to a specific scope.
-
-```go
-type EngramUninstallScope string
-```
-
-<a name="EngramUninstallScopeGlobal"></a>
-
-```go
-const (
-    EngramUninstallScopeGlobal  EngramUninstallScope = "global"  // all projects
-    EngramUninstallScopeProject EngramUninstallScope = "project" // current project only
+    // ComponentEngram names the memory-graph piece so installs can toggle memory independently.
+    ComponentEngram ComponentID = "engram"
+    // ComponentSkills names the skills piece so installs can toggle skills independently.
+    ComponentSkills ComponentID = "skills"
+    // ComponentContext7 names the docs-lookup integration so installs can toggle it independently.
+    ComponentContext7 ComponentID = "context7"
+    // ComponentTheme names the shared theme piece so branding stays optional.
+    ComponentTheme ComponentID = "theme"
+    // ComponentOpenCodeTaktLogo names the OpenCode logo piece so branding stays optional per target.
+    ComponentOpenCodeTaktLogo ComponentID = "opencode-takt-logo"
+    // ComponentCodegraph names the codebase-exploration MCP integration, mandatory core like Engram.
+    ComponentCodegraph ComponentID = "codegraph"
 )
 ```
 
 <a name="InjectionResult"></a>
-## type InjectionResult
+## type [InjectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L49-L56>)
 
-InjectionResult is the common return value from component Inject functions.
+InjectionResult reports what an inject or remove changed so callers can record ownership and show honest summaries.
 
 ```go
 type InjectionResult struct {
-    Changed   bool
-    Files     []string
+    // Changed flags whether any file changed, so callers can skip redundant bookkeeping.
+    Changed bool
+    // Files lists touched paths, so ownership and summaries stay accurate.
+    Files []string
+    // Preserved lists paths left for the user, so kept content is never reported as managed.
     Preserved []string
 }
 ```
 
-<a name="MCPStrategy"></a>
-## type MCPStrategy
-
-MCPStrategy defines how MCP server configs are written.
-
-```go
-type MCPStrategy int
-```
-
-<a name="StrategySeparateMCPFiles"></a>
-
-```go
-const (
-    // StrategySeparateMCPFiles writes one JSON file per MCP server.
-    StrategySeparateMCPFiles MCPStrategy = iota
-    // StrategyMergeIntoSettings merges all servers into a settings file.
-    StrategyMergeIntoSettings
-    // StrategyMCPConfigFile writes all servers to a single MCP config file.
-    StrategyMCPConfigFile
-    // StrategyTOMLFile writes MCP config as TOML.
-    StrategyTOMLFile
-)
-```
-
 <a name="ModelAssignment"></a>
-## type ModelAssignment
+## type [ModelAssignment](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/model_assignment.go#L19-L24>)
 
-ModelAssignment is the canonical model and effort assigned to a sub\-agent.
+ModelAssignment pairs one model with its effort so each sub\-agent has a single clear runtime choice.
 
 ```go
 type ModelAssignment struct {
-    Model  string // target-specific model identifier
+    // Model holds the target-specific model id, explicit so typos fail fast instead of silently defaulting.
+    Model string // target-specific model identifier
+    // Effort holds the effort level; empty means target default, so callers can omit what they do not tune.
     Effort string // "" = target default; "low" | "medium" | "high"
 }
 ```
 
-<a name="ResolveSubAgentAssignment"></a>
-### func ResolveSubAgentAssignment
+<a name="RoleClass"></a>
+## type [RoleClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L24>)
+
+RoleClass names one fixed permission profile so every specialist gets exactly the access it needs.
 
 ```go
-func ResolveSubAgentAssignment(agent AgentID, subAgent, defaultSubAgent string, overrides, preset map[string]ModelAssignment) (ModelAssignment, error)
+type RoleClass string
 ```
 
-ResolveSubAgentAssignment applies override and preset precedence to a sub\-agent.
-
-<a name="ValidateClaudeModelAssignment"></a>
-### func ValidateClaudeModelAssignment
-
-```go
-func ValidateClaudeModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error)
-```
-
-ValidateClaudeModelAssignment validates a Claude model and effort pair.
-
-<a name="ValidateCodexModelAssignment"></a>
-### func ValidateCodexModelAssignment
-
-```go
-func ValidateCodexModelAssignment(subAgent string, assignment ModelAssignment) (ModelAssignment, error)
-```
-
-ValidateCodexModelAssignment validates that assignment contains a known Codex model and a recognized effort level.
-
-<a name="OpenCodeCommunityPluginID"></a>
-## type OpenCodeCommunityPluginID
-
-OpenCodeCommunityPluginID identifies an optional OpenCode TUI plugin.
-
-```go
-type OpenCodeCommunityPluginID string
-```
-
-<a name="OpenCodePluginSubAgentStatusline"></a>
+<a name="RoleOrchestrator"></a>Role classes are the closed set of permission profiles.
 
 ```go
 const (
-    OpenCodePluginSubAgentStatusline OpenCodeCommunityPluginID = "sub-agent-statusline" // sub-agent status bar
-    OpenCodePluginTaktLogo           OpenCodeCommunityPluginID = "takt-logo"            // Takt branding logo
+    // RoleOrchestrator names the dispatch owner, the only role with git-write rights so history stays controlled.
+    RoleOrchestrator RoleClass = "orchestrator"
+    // RoleDirectInterlocutor names the user-facing role, the only voice allowed to hold the conversation.
+    RoleDirectInterlocutor RoleClass = "direct_interlocutor"
+    // RolePlanningAuthor names the spec and design author, separate so plans stay reviewable before execution.
+    RolePlanningAuthor RoleClass = "planning_author"
+    // RoleExecution names the contract implementer, fenced to file work so builds stay reproducible.
+    RoleExecution RoleClass = "execution"
+    // RoleVerification names the evidence judge, internal so verdicts stay independent of user chat.
+    RoleVerification RoleClass = "verification"
+    // RoleMaintenance names the harness-controlled cycle runner (GC, dreaming), never invocable as an interlocutor.
+    RoleMaintenance RoleClass = "maintenance"
 )
 ```
 
-<a name="OrchestratorProjection"></a>
-## type OrchestratorProjection
-
-OrchestratorProjection defines the runtime strings the orchestrator harness needs to coordinate delegation, waiting, model selection, and isolation across agents.
+<a name="RoleClass.HoldsInterface"></a>
+### func \(RoleClass\) [HoldsInterface](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L56>)
 
 ```go
-type OrchestratorProjection struct {
-    Platform, Delegate, Wait, Close, Question, Background, Models, Effort, Isolation, SkillRoot string
-}
+func (r RoleClass) HoldsInterface() bool
 ```
 
-<a name="OrchestratorProjection.Validate"></a>
-### func \(OrchestratorProjection\) Validate
+HoldsInterface marks who may speak with the user so only one role can hold the conversation.
+
+<a name="RoleClass.Valid"></a>
+### func \(RoleClass\) [Valid](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L53>)
 
 ```go
-func (p OrchestratorProjection) Validate() error
+func (r RoleClass) Valid() bool
 ```
 
-Validate reports whether every projection field is populated.
+Valid guards dispatch by rejecting unknown classes early instead of failing mid\-run.
 
-<a name="Selection"></a>
-## type Selection
+<a name="VFSCapability"></a>
+## type [VFSCapability](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/vfs_capability.go#L20>)
 
-Selection contains the user's installation and model choices.
+VFSCapability names one VFS operation that an agent instance may use. Instances with no VFS access declare an explicit empty capability list.
 
 ```go
-type Selection struct {
-    Agents             []AgentID
-    Components         []ComponentID
-    Skills             []SkillID
-    Setup              SetupChoice                 // Default or Custom
-    ModelOverrides     map[string]ModelAssignment  // key = canonical sub-agent name
-    OpenCodePlugins    []OpenCodeCommunityPluginID // optional community OpenCode TUI plugins
-    CommunityTools     []CommunityToolID           // optional cross-agent community tools/plugins
-    NonDetectedAgents  []AgentID                   // selected targets that were not detected at runtime
-    PreservedSubagents []string                    // sub-agent names preserved as-is during install/sync
-}
+type VFSCapability string
 ```
 
-<a name="Selection.HasAgent"></a>
-### func \(Selection\) HasAgent
-
-```go
-func (s Selection) HasAgent(agent AgentID) bool
-```
-
-HasAgent reports whether agent is in the selection.
-
-<a name="Selection.HasCommunityTool"></a>
-### func \(Selection\) HasCommunityTool
-
-```go
-func (s Selection) HasCommunityTool(tool CommunityToolID) bool
-```
-
-HasCommunityTool reports whether tool is in the selection.
-
-<a name="Selection.HasComponent"></a>
-### func \(Selection\) HasComponent
-
-```go
-func (s Selection) HasComponent(component ComponentID) bool
-```
-
-HasComponent reports whether component is in the selection.
-
-<a name="Selection.IsNonDetected"></a>
-### func \(Selection\) IsNonDetected
-
-```go
-func (s Selection) IsNonDetected(agent AgentID) bool
-```
-
-IsNonDetected reports whether agent was selected but not detected at runtime.
-
-<a name="SetupChoice"></a>
-## type SetupChoice
-
-SetupChoice selects the installation path: zero\-value defaults to standard setup.
-
-```go
-type SetupChoice string
-```
-
-<a name="SetupDefault"></a>
+<a name="VFSCapabilityClaimList"></a>
 
 ```go
 const (
-    SetupDefault SetupChoice = ""       // standard installation flow
-    SetupCustom  SetupChoice = "custom" // user-configured installation
+    // VFSCapabilityClaimList lets the orchestrator list claims.
+    VFSCapabilityClaimList VFSCapability = "claim_list"
+    // VFSCapabilityClaimAssign lets the orchestrator assign claims.
+    VFSCapabilityClaimAssign VFSCapability = "claim_assign"
+    // VFSCapabilityClaimRelease lets the orchestrator release claims.
+    VFSCapabilityClaimRelease VFSCapability = "claim_release"
+    // VFSCapabilityBind lets an instance establish a VFS binding.
+    VFSCapabilityBind VFSCapability = "bind"
+    // VFSCapabilityWrite lets an instance stage file writes.
+    VFSCapabilityWrite VFSCapability = "write"
+    // VFSCapabilityRead lets an instance read workspace or staged content.
+    VFSCapabilityRead VFSCapability = "read"
+    // VFSCapabilityDelete lets an instance stage file deletions.
+    VFSCapabilityDelete VFSCapability = "delete"
+    // VFSCapabilityDiscard lets the orchestrator discard an author's staged changes.
+    VFSCapabilityDiscard VFSCapability = "discard"
+    // VFSCapabilityVerify lets an instance verify another instance's delta.
+    VFSCapabilityVerify VFSCapability = "verify"
+    // VFSCapabilityConsolidate lets the orchestrator consolidate verified work.
+    VFSCapabilityConsolidate VFSCapability = "consolidate"
 )
 ```
 
-<a name="SkillID"></a>
-## type SkillID
-
-SkillID identifies a Takt skill delivered through the skill system.
+<a name="VFSCapability.Valid"></a>
+### func \(VFSCapability\) [Valid](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/vfs_capability.go#L46>)
 
 ```go
-type SkillID string
+func (c VFSCapability) Valid() bool
 ```
 
-<a name="SyncOverrides"></a>
-## type SyncOverrides
-
-SyncOverrides holds optional selection overrides.
-
-```go
-type SyncOverrides struct {
-    // TargetAgents forces TUI sync to run the adapter(s) affected by the
-    // override, even when persisted install state omits them. This is used by
-    // model/profile configurators, where the user picked a concrete target agent.
-    TargetAgents   []AgentID
-    ModelOverrides map[string]ModelAssignment // nil = no override; empty map = reset to defaults
-}
-```
-
-<a name="SystemPromptStrategy"></a>
-## type SystemPromptStrategy
-
-SystemPromptStrategy defines how an agent system prompt is managed.
-
-```go
-type SystemPromptStrategy int
-```
-
-<a name="StrategyMarkdownSections"></a>
-
-```go
-const (
-    // StrategyMarkdownSections inserts sections into an existing Markdown file.
-    StrategyMarkdownSections SystemPromptStrategy = iota
-    // StrategyFileReplace overwrites the system prompt file entirely.
-    StrategyFileReplace
-    // StrategyAppendToFile appends content to the existing system prompt file.
-    StrategyAppendToFile
-    // StrategySteeringFile writes a standalone steering file.
-    StrategySteeringFile
-)
-```
-
-<a name="UninstallMode"></a>
-## type UninstallMode
-
-UninstallMode controls how much of a previous installation is removed.
-
-```go
-type UninstallMode string
-```
-
-<a name="UninstallModePartial"></a>
-
-```go
-const (
-    UninstallModePartial      UninstallMode = "partial"       // only selected components
-    UninstallModeFull         UninstallMode = "full"          // all Takt-managed files
-    UninstallModeFullRemove   UninstallMode = "full-remove"   // full + delete agent files
-    UninstallModeCleanInstall UninstallMode = "clean-install" // uninstall then fresh install
-)
-```
+Valid reports whether c names one of the closed set of VFS operations.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

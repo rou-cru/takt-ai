@@ -10,68 +10,144 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
 
 ## Index
 
-- [func Tick\(frame int\) tea.Cmd](<#Tick>)
+- [Variables](<#variables>)
+- [func CancelledBody\(result ActionResult\) string](<#CancelledBody>)
+- [func LateCancelNote\(result ActionResult\) string](<#LateCancelNote>)
+- [func NextID\(\) uint64](<#NextID>)
+- [func SameInstalledVersion\(rootDir string\) bool](<#SameInstalledVersion>)
 - [type Action](<#Action>)
 - [type ActionRequest](<#ActionRequest>)
 - [type ActionResult](<#ActionResult>)
+  - [func \(result ActionResult\) Cancelled\(\) bool](<#ActionResult.Cancelled>)
+  - [func \(result ActionResult\) Partial\(\) bool](<#ActionResult.Partial>)
 - [type ActionResultMsg](<#ActionResultMsg>)
 - [type Adapter](<#Adapter>)
-  - [func \(Adapter\) Command\(request ActionRequest\) tea.Cmd](<#Adapter.Command>)
-  - [func \(Adapter\) Execute\(request ActionRequest\) \(ActionResult, error\)](<#Adapter.Execute>)
-- [type Model](<#Model>)
-  - [func NewModel\(\) Model](<#NewModel>)
-  - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
-  - [func \(runtime Model\) Update\(message tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(Model\) View\(\) string](<#Model.View>)
-- [type TickMsg](<#TickMsg>)
+  - [func NewAdapter\(\) Adapter](<#NewAdapter>)
+  - [func \(adapter Adapter\) Command\(ctx context.Context, request ActionRequest\) tea.Cmd](<#Adapter.Command>)
+  - [func \(adapter Adapter\) Execute\(request ActionRequest\) \(ActionResult, error\)](<#Adapter.Execute>)
+  - [func \(adapter Adapter\) ExecuteContext\(ctx context.Context, request ActionRequest\) \(ActionResult, error\)](<#Adapter.ExecuteContext>)
+  - [func \(adapter Adapter\) OpenCodeModels\(\) \(\[\]string, error\)](<#Adapter.OpenCodeModels>)
+  - [func \(adapter Adapter\) PreviewPlan\(request PreviewRequest\) \(InstallPlan, error\)](<#Adapter.PreviewPlan>)
+  - [func \(adapter Adapter\) PreviewUninstall\(rootDir string\) \(setup.UninstallResult, error\)](<#Adapter.PreviewUninstall>)
+  - [func \(adapter Adapter\) ScanDrift\(rootDir string\) \(\[\]setup.ConflictEntry, error\)](<#Adapter.ScanDrift>)
+- [type CancelRequest](<#CancelRequest>)
+- [type InstallPlan](<#InstallPlan>)
+- [type PreviewRequest](<#PreviewRequest>)
+- [type Run](<#Run>)
+  - [func NewRun\(\) Run](<#NewRun>)
+  - [func \(r Run\) Busy\(\) bool](<#Run.Busy>)
+  - [func \(r Run\) Cancel\(msg CancelRequest\) Run](<#Run.Cancel>)
+  - [func \(r Run\) End\(\) Run](<#Run.End>)
+  - [func \(r Run\) Result\(msg ActionResultMsg\) \(ActionResultMsg, bool\)](<#Run.Result>)
+  - [func \(r Run\) SpinView\(\) string](<#Run.SpinView>)
+  - [func \(r Run\) Start\(request ActionRequest\) Run](<#Run.Start>)
+  - [func \(r Run\) Tick\(msg tea.Msg\) \(Run, tea.Cmd\)](<#Run.Tick>)
+- [type Runner](<#Runner>)
 
 
-<a name="Tick"></a>
-## func Tick
+## Variables
+
+<a name="ErrVersionMismatch"></a>ErrVersionMismatch blocks drift correction built from the wrong definitions.
 
 ```go
-func Tick(frame int) tea.Cmd
+var ErrVersionMismatch = errors.New("the installed version's definitions are not available in this build")
 ```
 
-Tick schedules the next spinner frame.
+<a name="CancelledBody"></a>
+## func [CancelledBody](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/cancel.go#L13>)
+
+```go
+func CancelledBody(result ActionResult) string
+```
+
+CancelledBody explains a cancelled result so users know what stayed applied.
+
+<a name="LateCancelNote"></a>
+## func [LateCancelNote](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/cancel.go#L38>)
+
+```go
+func LateCancelNote(result ActionResult) string
+```
+
+LateCancelNote explains a result that finished before cancellation took effect.
+
+<a name="NextID"></a>
+## func [NextID](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L100>)
+
+```go
+func NextID() uint64
+```
+
+NextID allocates a process\-unique request ID.
+
+<a name="SameInstalledVersion"></a>
+## func [SameInstalledVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L290>)
+
+```go
+func SameInstalledVersion(rootDir string) bool
+```
+
+SameInstalledVersion checks whether the installed version matches this build.
 
 <a name="Action"></a>
-## type Action
+## type [Action](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L26>)
 
-Action identifies a setup lifecycle operation.
+Action names a lifecycle operation.
 
 ```go
 type Action string
 ```
 
-<a name="ActionInstall"></a>
+<a name="ActionInstall"></a>Actions are the closed set of lifecycle operations the UI can request.
 
 ```go
 const (
-    ActionInstall   Action = "install"
-    ActionSync      Action = "sync"
+    // ActionInstall deploys managed artifacts so a fresh root becomes usable.
+    ActionInstall Action = "install"
+    // ActionSync redeploys changed artifacts while preserving local edits.
+    ActionSync Action = "sync"
+    // ActionUninstall removes managed configuration so a root returns to user content.
     ActionUninstall Action = "uninstall"
+    // ActionCorrectDrift restores selected paths so drift correction stays scoped.
+    ActionCorrectDrift Action = "correct-drift"
+    // ActionReassignModels updates one target's overrides so unchanged agents stay untouched.
+    ActionReassignModels Action = "reassign-models"
 )
 ```
 
 <a name="ActionRequest"></a>
-## type ActionRequest
+## type [ActionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L43-L63>)
 
-ActionRequest is the asynchronous boundary between a lifecycle screen and setup.
+ActionRequest carries a screen's operation to the runtime.
 
 ```go
 type ActionRequest struct {
-    Action     Action
-    RootDir    string
-    Targets    []model.AgentID
-    Components []string
+    // ID matches a result to its request so stale results are ignored.
+    ID                     uint64
+    Action                 Action
+    RootDir                string
+    Components             []string
+    OpenCodeModelOverrides map[string]model.ModelAssignment
+    // PreservePaths excludes artifacts from deployment so a "keep mine" choice survives.
+    PreservePaths []string
+    // AcceptedRisks records conflicts the user kept so a later audit can explain them.
+    AcceptedRisks []setup.RiskAcceptance
+    // SelectedDriftPaths scopes drift correction so untouched paths stay untouched.
+    SelectedDriftPaths []string
+    // RetainPaths and RemovePaths carry uninstall decisions so kept files move aside instead of vanishing.
+    RetainPaths []string
+    RemovePaths []string
+    // EngramChoice carries the Engram database decision (lifecycle.EngramLeave, EngramRetain or EngramRemove) so uninstall honors it without new plumbing.
+    EngramChoice string
+    // ReassignOverrides names the reassignment the adapter diffs.
+    ReassignOverrides map[string]model.ModelAssignment
 }
 ```
 
 <a name="ActionResult"></a>
-## type ActionResult
+## type [ActionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L66-L91>)
 
-ActionResult reports the paths affected by an action.
+ActionResult reports affected paths from a lifecycle operation.
 
 ```go
 type ActionResult struct {
@@ -80,13 +156,50 @@ type ActionResult struct {
     Unchanged []string
     Removed   []string
     Preserved []string
+    Actions   []string
+    // Unresolved lists drift paths missing from the installed plan so review can explain them.
+    Unresolved []string
+    // Restored lists files put back to pre-install content so users see what returned.
+    Restored []string
+    // Retained, RetainedDir and Incomplete describe the uninstall handoff so kept files stay findable.
+    Retained    []string
+    RetainedDir string
+    // RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
+    RetainedMemory string
+    Incomplete     []string
+    Verify         *verify.Report
+    // Outcome, NotApplied, BackupDir and CancelRequested describe cancellation so screens report honestly.
+    Outcome         lifecycle.Outcome
+    NotApplied      []string
+    BackupDir       string
+    CancelRequested bool
+    ReloadAttempted bool
+    ReloadError     error
 }
 ```
 
-<a name="ActionResultMsg"></a>
-## type ActionResultMsg
+<a name="ActionResult.Cancelled"></a>
+### func \(ActionResult\) [Cancelled](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/outcome.go#L8>)
 
-ActionResultMsg returns an action result to Bubble Tea's event loop.
+```go
+func (result ActionResult) Cancelled() bool
+```
+
+Cancelled reports a cancellation that stopped the action before completion.
+
+<a name="ActionResult.Partial"></a>
+### func \(ActionResult\) [Partial](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/outcome.go#L13>)
+
+```go
+func (result ActionResult) Partial() bool
+```
+
+Partial reports a cancellation that left changes applied so callers warn honestly.
+
+<a name="ActionResultMsg"></a>
+## type [ActionResultMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L106-L110>)
+
+ActionResultMsg delivers an action result to the event loop.
 
 ```go
 type ActionResultMsg struct {
@@ -97,88 +210,223 @@ type ActionResultMsg struct {
 ```
 
 <a name="Adapter"></a>
-## type Adapter
+## type [Adapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L113-L115>)
 
-Adapter invokes setup's lifecycle APIs. It owns no planning or filesystem logic.
-
-```go
-type Adapter struct{}
-```
-
-<a name="Adapter.Command"></a>
-### func \(Adapter\) Command
+Adapter invokes setup's lifecycle APIs.
 
 ```go
-func (Adapter) Command(request ActionRequest) tea.Cmd
-```
-
-Command returns a Bubble Tea command that performs request after Update returns.
-
-<a name="Adapter.Execute"></a>
-### func \(Adapter\) Execute
-
-```go
-func (Adapter) Execute(request ActionRequest) (ActionResult, error)
-```
-
-Execute invokes the requested setup lifecycle operation.
-
-<a name="Model"></a>
-## type Model
-
-Model is the minimal Bubble Tea runtime state shared by lifecycle screens.
-
-```go
-type Model struct {
-    Busy         bool
-    Presentation common.Presentation
+type Adapter struct {
     // contains filtered or unexported fields
 }
 ```
 
-<a name="NewModel"></a>
-### func NewModel
+<a name="NewAdapter"></a>
+### func [NewAdapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L120>)
 
 ```go
-func NewModel() Model
+func NewAdapter() Adapter
 ```
 
-NewModel creates a runtime model.
+NewAdapter wires the production lifecycle, including OpenCode V2 preflight and reload. Tests may continue using Adapter\{\} or NewTestAdapter with a zero lifecycle to avoid external processes.
 
-<a name="Model.Init"></a>
-### func \(Model\) Init
+<a name="Adapter.Command"></a>
+### func \(Adapter\) [Command](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L125>)
 
 ```go
-func (Model) Init() tea.Cmd
+func (adapter Adapter) Command(ctx context.Context, request ActionRequest) tea.Cmd
 ```
 
-Init has no startup work.
+Command defers a request to a Bubble Tea command.
 
-<a name="Model.Update"></a>
-### func \(Model\) Update
+<a name="Adapter.Execute"></a>
+### func \(Adapter\) [Execute](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L134>)
 
 ```go
-func (runtime Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
+func (adapter Adapter) Execute(request ActionRequest) (ActionResult, error)
 ```
 
-Update starts actions asynchronously and records their eventual result.
+Execute runs a lifecycle operation to completion.
 
-<a name="Model.View"></a>
-### func \(Model\) View
+<a name="Adapter.ExecuteContext"></a>
+### func \(Adapter\) [ExecuteContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L139>)
 
 ```go
-func (Model) View() string
+func (adapter Adapter) ExecuteContext(ctx context.Context, request ActionRequest) (ActionResult, error)
 ```
 
-View is intentionally empty until a lifecycle screen owns visible content.
+ExecuteContext runs a request with cancellation.
 
-<a name="TickMsg"></a>
-## type TickMsg
-
-TickMsg advances shared busy\-state animation.
+<a name="Adapter.OpenCodeModels"></a>
+### func \(Adapter\) [OpenCodeModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L452>)
 
 ```go
-type TickMsg struct{ Frame int }
+func (adapter Adapter) OpenCodeModels() ([]string, error)
+```
+
+OpenCodeModels reports the models the local OpenCode installation offers; asking the binary is execution, so it stays at the runtime boundary.
+
+<a name="Adapter.PreviewPlan"></a>
+### func \(Adapter\) [PreviewPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L406>)
+
+```go
+func (adapter Adapter) PreviewPlan(request PreviewRequest) (InstallPlan, error)
+```
+
+PreviewPlan resolves request's plan and classifies every planned file against disk, without writing anything: previewing stays read\-only.
+
+<a name="Adapter.PreviewUninstall"></a>
+### func \(Adapter\) [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L441>)
+
+```go
+func (adapter Adapter) PreviewUninstall(rootDir string) (setup.UninstallResult, error)
+```
+
+PreviewUninstall computes what uninstalling would remove or preserve without touching disk.
+
+<a name="Adapter.ScanDrift"></a>
+### func \(Adapter\) [ScanDrift](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L317>)
+
+```go
+func (adapter Adapter) ScanDrift(rootDir string) ([]setup.ConflictEntry, error)
+```
+
+ScanDrift reports drift without writing.
+
+<a name="CancelRequest"></a>
+## type [CancelRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L103>)
+
+CancelRequest asks a running action to stop.
+
+```go
+type CancelRequest struct{ ID uint64 }
+```
+
+<a name="InstallPlan"></a>
+## type [InstallPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L397-L402>)
+
+InstallPlan is the resolved install/sync plan a review screen shows before commitment: the lifecycle preview plus how each planned file relates to what is on disk now.
+
+```go
+type InstallPlan struct {
+    lifecycle.InstallPreview
+    // Add lists planned paths absent on disk; Modify lists present paths whose
+    // bytes differ. Files already identical appear in neither.
+    Add, Modify []string
+}
+```
+
+<a name="PreviewRequest"></a>
+## type [PreviewRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L387-L392>)
+
+PreviewRequest asks what install/sync would face so review shows real conflicts.
+
+```go
+type PreviewRequest struct {
+    Action                 Action
+    RootDir                string
+    Components             []string
+    OpenCodeModelOverrides map[string]model.ModelAssignment
+}
+```
+
+<a name="Run"></a>
+## type [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L9-L17>)
+
+Run is one screen's action state: the pending request, its spinner, and the cancel flag.
+
+```go
+type Run struct {
+    // Request is the in-flight action; screens read it back after End, e.g.
+    // to name the affected targets in the result view.
+    Request ActionRequest
+    // CancelRequested marks a cancellation asked while the action runs.
+    CancelRequested bool
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewRun"></a>
+### func [NewRun](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L20>)
+
+```go
+func NewRun() Run
+```
+
+NewRun returns a Run ready to start an action.
+
+<a name="Run.Busy"></a>
+### func \(Run\) [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L70>)
+
+```go
+func (r Run) Busy() bool
+```
+
+Busy reports that an action is running.
+
+<a name="Run.Cancel"></a>
+### func \(Run\) [Cancel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L37>)
+
+```go
+func (r Run) Cancel(msg CancelRequest) Run
+```
+
+Cancel records a cancellation for the running request; repeated presses add nothing.
+
+<a name="Run.End"></a>
+### func \(Run\) [End](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L63>)
+
+```go
+func (r Run) End() Run
+```
+
+End clears the running flags once the result was consumed.
+
+<a name="Run.Result"></a>
+### func \(Run\) [Result](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L55>)
+
+```go
+func (r Run) Result(msg ActionResultMsg) (ActionResultMsg, bool)
+```
+
+Result reports msg when it answers the running request.
+
+<a name="Run.SpinView"></a>
+### func \(Run\) [SpinView](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L73>)
+
+```go
+func (r Run) SpinView() string
+```
+
+SpinView renders the current spinner frame.
+
+<a name="Run.Start"></a>
+### func \(Run\) [Start](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L29>)
+
+```go
+func (r Run) Start(request ActionRequest) Run
+```
+
+Start marks request as running until its result arrives.
+
+<a name="Run.Tick"></a>
+### func \(Run\) [Tick](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L45>)
+
+```go
+func (r Run) Tick(msg tea.Msg) (Run, tea.Cmd)
+```
+
+Tick advances the spinner while an action runs; otherwise it is a no\-op.
+
+<a name="Runner"></a>
+## type [Runner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L23-L26>)
+
+Runner is a flow with an in\-flight action.
+
+```go
+type Runner interface {
+    // Run exposes the flow's action state.
+    Run() Run
+}
 ```
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

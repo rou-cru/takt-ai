@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Takt AI - TUI</title>
+<style>
+:root{--bg-canvas:#101B20;--bg-surface:#18262C;--text-primary:#F5F7F7;--text-secondary:#D2DCDD;--text-muted:#ADBDC0;--brand-ink:#80C3CB;--border-subtle:#35464D;--border-control:#82979C;--focus-ring:#80C3CB;--selection-bg:#1E3B46;--selection-fg:#D9EEF0;--selection-border:#80C3CB;--warning-bg:#451A03;--warning-fg:#FCD34D;--danger-bg:#450A0A;--danger-fg:#FCA5A5;--success-bg:#022C22;--success-fg:#6EE7B7;}body:has(#light:checked){--bg-canvas:#F5F7F7;--bg-surface:#FFFFFF;--text-primary:#18262C;--text-secondary:#35464D;--text-muted:#485C63;--brand-ink:#205566;--border-subtle:#D2DCDD;--border-control:#61777E;--focus-ring:#226A7D;--selection-bg:#D9EEF0;--selection-fg:#1E3B46;--selection-border:#226A7D;--warning-bg:#FFFBEB;--warning-fg:#92400E;--danger-bg:#FEF2F2;--danger-fg:#B91C1C;--success-bg:#ECFDF5;--success-fg:#065F46;}
+*{box-sizing:border-box}body{margin:0;padding:24px;background:var(--bg-canvas);color:var(--text-primary);font:16px/1.5 system-ui,sans-serif}main{max-width:1280px;margin:auto}h1{font-size:28px;margin:0 0 12px}h2{font-size:19px;margin:0 0 12px}p{max-width:90ch}a{color:var(--brand-ink)}small{font-size:14px;color:var(--text-secondary);font-weight:400}
+fieldset{border:1px solid var(--border-control);padding:8px 16px;margin:20px 0}label{display:inline-block;padding:8px}nav{display:flex;flex-wrap:wrap;gap:8px 24px;margin:24px 0}nav a{padding:4px 0}section{margin:40px 0;scroll-margin-top:16px}
+.viewport{overflow:auto;padding:3px}.terminal{--cell:20px;position:relative;width:calc(var(--cols) * 1ch);height:calc(var(--rows) * var(--cell));font:14px/20px ui-monospace,Menlo,Consolas,monospace;background:#0d0d0d;outline:1px solid var(--border-control)}
+.panel{position:absolute;border:1px solid var(--border-control);border-radius:0;background:var(--bg-surface)}.panel-label{position:absolute;top:-.55em;left:2ch;padding:0 1ch;background:var(--bg-surface);color:var(--text-secondary)}.panel.selected{background:var(--selection-bg);border-color:var(--selection-border)}
+.logo{position:absolute;object-fit:contain}.row{position:absolute;white-space:pre;height:var(--cell)}.heading,.brand{font-weight:600}.brand{color:var(--brand-ink)}.muted{color:var(--text-muted)}.marker,.status{color:var(--focus-ring)}.focus{font-weight:600}
+.warning{color:var(--warning-fg);background:var(--warning-bg)}.danger{color:var(--danger-fg);background:var(--danger-bg)}.success{color:var(--success-fg);background:var(--success-bg)}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}body:has(#mono:checked) .terminal{filter:grayscale(1)}
+@media print{body{padding:0}nav,fieldset{display:none}section{break-inside:avoid}.terminal{font-size:10px;--cell:15px;line-height:15px}.viewport{overflow:visible}}
+</style></head><body><main>
+<h1>Takt AI - TUI</h1>
+<section id="01-home" aria-labelledby="title-01-home">
+<h2 id="title-01-home">Home / composición principal <small>120×32 · L03</small></h2>
+<div class="viewport" aria-label="Wireframe Home / composición principal; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel selected" style="left:62ch;top:calc(11 * var(--cell));width:43ch;height:calc(3 * var(--cell))"></div>
+<div aria-hidden="true" class="panel panel" style="left:62ch;top:calc(15 * var(--cell));width:43ch;height:calc(3 * var(--cell))"></div>
+<div aria-hidden="true" class="panel panel" style="left:62ch;top:calc(19 * var(--cell));width:43ch;height:calc(3 * var(--cell))"></div>
+<img class="logo" src="../../assets/brand/takt-ai.png" alt="Logo canónico Takt AI, referencia visual; rasterización terminal pendiente" style="left:14ch;top:calc(7 * var(--cell));width:34ch;height:calc(16 * var(--cell))">
+<div class="row focus" style="left:65ch;top:calc(12 * var(--cell))"><b class="marker">&gt;</b> Instalar setup</div>
+<div class="row text" style="left:67ch;top:calc(16 * var(--cell))">Ajustar configuración</div>
+<div class="row text" style="left:67ch;top:calc(20 * var(--cell))">Salir</div>
+<div class="row brand" style="left:55ch;top:calc(28 * var(--cell))">Takt AI</div>
+</div></div></section>
+<section id="03-home-narrow" aria-labelledby="title-03-home-narrow">
+<h2 id="title-03-home-narrow">Home / terminal estrecho <small>60×20 · L03 adaptado</small></h2>
+<div class="viewport" aria-label="Wireframe Home / terminal estrecho; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:60;--rows:20">
+<div aria-hidden="true" class="panel selected" style="left:15ch;top:calc(10 * var(--cell));width:32ch;height:calc(3 * var(--cell))"></div>
+<img class="logo" src="../../assets/brand/takt-ai.png" alt="Logo canónico Takt AI, referencia visual; rasterización terminal pendiente" style="left:22ch;top:calc(0 * var(--cell));width:16ch;height:calc(8 * var(--cell))">
+<div class="row focus" style="left:17ch;top:calc(11 * var(--cell))"><b class="marker">&gt;</b> Instalar setup</div>
+<div class="row text" style="left:19ch;top:calc(14 * var(--cell))">Ajustar configuración</div>
+<div class="row text" style="left:19ch;top:calc(16 * var(--cell))">Salir</div>
+<div class="row brand" style="left:26ch;top:calc(19 * var(--cell))">Takt AI</div>
+</div></div></section>
+<section id="04-selection" aria-labelledby="title-04-selection">
+<h2 id="title-04-selection">Elegir setup / lista y detalle <small>120×32 · L05 + selector</small></h2>
+<div class="viewport" aria-label="Wireframe Elegir setup / lista y detalle; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:3ch;top:calc(5 * var(--cell));width:38ch;height:calc(17 * var(--cell))"><span class="panel-label">Setups</span></div>
+<div aria-hidden="true" class="panel panel" style="left:44ch;top:calc(5 * var(--cell));width:73ch;height:calc(17 * var(--cell))"><span class="panel-label">Detalle del foco</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:108ch;top:calc(1 * var(--cell))">Selección</div>
+<div class="row focus" style="left:6ch;top:calc(8 * var(--cell))"><b class="marker">&gt;</b> ( ) Setup B</div>
+<div class="row text" style="left:6ch;top:calc(12 * var(--cell))">  (x) Setup A</div>
+<div class="row text" style="left:6ch;top:calc(16 * var(--cell))">  ( ) Setup C</div>
+<div class="row heading" style="left:47ch;top:calc(8 * var(--cell))">Setup B</div>
+<div class="row text" style="left:47ch;top:calc(11 * var(--cell))">Agentes       3</div>
+<div class="row text" style="left:47ch;top:calc(13 * var(--cell))">Capacidades   2</div>
+<div class="row text" style="left:47ch;top:calc(17 * var(--cell))">Principal     Modelo A</div>
+<div class="row text" style="left:47ch;top:calc(19 * var(--cell))">Revisión      Modelo B</div>
+<div class="row text" style="left:44ch;top:calc(27 * var(--cell))">[ Volver ]</div>
+<div class="row text" style="left:58ch;top:calc(27 * var(--cell))">[ Revisar setup ]</div>
+</div></div></section>
+<section id="05-edit" aria-labelledby="title-05-edit">
+<h2 id="title-05-edit">Personalizar / controles agrupados <small>120×32 · L04</small></h2>
+<div class="viewport" aria-label="Wireframe Personalizar / controles agrupados; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:3ch;top:calc(5 * var(--cell));width:55ch;height:calc(18 * var(--cell))"><span class="panel-label">Agentes</span></div>
+<div aria-hidden="true" class="panel panel" style="left:62ch;top:calc(5 * var(--cell));width:55ch;height:calc(18 * var(--cell))"><span class="panel-label">Capacidades</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:105ch;top:calc(1 * var(--cell))">Personalizar</div>
+<div class="row heading" style="left:6ch;top:calc(8 * var(--cell))">Principal</div>
+<div class="row text" style="left:6ch;top:calc(11 * var(--cell))">Modelo     [ Modelo A       v ]</div>
+<div class="row heading" style="left:6ch;top:calc(15 * var(--cell))">Revisión</div>
+<div class="row text" style="left:6ch;top:calc(18 * var(--cell))">Modelo     [ Modelo B       v ]</div>
+<div class="row focus" style="left:65ch;top:calc(9 * var(--cell))"><b class="marker">&gt;</b> [x] Memoria</div>
+<div class="row text" style="left:65ch;top:calc(13 * var(--cell))">  [ ] Navegación</div>
+<div class="row text" style="left:42ch;top:calc(27 * var(--cell))">[ Cancelar ]</div>
+<div class="row text" style="left:58ch;top:calc(27 * var(--cell))">[ Revisar cambios ]</div>
+</div></div></section>
+<section id="06-review" aria-labelledby="title-06-review">
+<h2 id="title-06-review">Revisión / setup antes de aplicar <small>120×32 · L05</small></h2>
+<div class="viewport" aria-label="Wireframe Revisión / setup antes de aplicar; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:3ch;top:calc(5 * var(--cell));width:34ch;height:calc(19 * var(--cell))"><span class="panel-label">Destino</span></div>
+<div aria-hidden="true" class="panel panel" style="left:40ch;top:calc(5 * var(--cell));width:77ch;height:calc(19 * var(--cell))"><span class="panel-label">Cambios</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:109ch;top:calc(1 * var(--cell))">Revisión</div>
+<div class="row heading" style="left:6ch;top:calc(8 * var(--cell))">Setup A</div>
+<div class="row text" style="left:6ch;top:calc(11 * var(--cell))">Harness A</div>
+<div class="row text" style="left:6ch;top:calc(13 * var(--cell))">Usuario</div>
+<div class="row muted" style="left:6ch;top:calc(17 * var(--cell))">Efecto</div>
+<div class="row text" style="left:6ch;top:calc(19 * var(--cell))">Próxima sesión</div>
+<div class="row text" style="left:43ch;top:calc(8 * var(--cell))">+ Agente principal</div>
+<div class="row text" style="left:43ch;top:calc(11 * var(--cell))">~ Modelo A → Modelo B</div>
+<div class="row text" style="left:43ch;top:calc(14 * var(--cell))">= Exclusión de Navegación</div>
+<div class="row text" style="left:43ch;top:calc(17 * var(--cell))">- Agente experimental</div>
+<div class="row warning" style="left:43ch;top:calc(21 * var(--cell))">Se perderá su personalización.</div>
+<div class="row text" style="left:33ch;top:calc(27 * var(--cell))">[ Volver ]</div>
+<div class="row text" style="left:47ch;top:calc(27 * var(--cell))">[ Personalizar ]</div>
+<div class="row focus" style="left:67ch;top:calc(27 * var(--cell))"><b class="marker">&gt;</b> [ Instalar setup ]</div>
+</div></div></section>
+<section id="07-review-narrow" aria-labelledby="title-07-review-narrow">
+<h2 id="title-07-review-narrow">Revisión / terminal estrecho <small>60×20 · L05 adaptado</small></h2>
+<div class="viewport" aria-label="Wireframe Revisión / terminal estrecho; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:60;--rows:20">
+<div aria-hidden="true" class="panel panel" style="left:2ch;top:calc(3 * var(--cell));width:56ch;height:calc(3 * var(--cell))"><span class="panel-label">Destino</span></div>
+<div aria-hidden="true" class="panel panel" style="left:2ch;top:calc(6 * var(--cell));width:56ch;height:calc(10 * var(--cell))"><span class="panel-label">Cambios</span></div>
+
+<div class="row brand" style="left:2ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:50ch;top:calc(1 * var(--cell))">Revisión</div>
+<div class="row text" style="left:4ch;top:calc(4 * var(--cell))">Setup A · Harness A · Usuario</div>
+<div class="row text" style="left:4ch;top:calc(7 * var(--cell))">+ Agente principal</div>
+<div class="row text" style="left:4ch;top:calc(9 * var(--cell))">~ Modelo A → B</div>
+<div class="row text" style="left:4ch;top:calc(11 * var(--cell))">= Exclusión de Navegación</div>
+<div class="row text" style="left:4ch;top:calc(13 * var(--cell))">- Agente experimental</div>
+<div class="row warning" style="left:4ch;top:calc(14 * var(--cell))">Se perderá su personalización.</div>
+<div class="row muted" style="left:2ch;top:calc(16 * var(--cell))">Efecto: próxima sesión</div>
+<div class="row text" style="left:5ch;top:calc(17 * var(--cell))">[ Volver ]</div>
+<div class="row text" style="left:17ch;top:calc(17 * var(--cell))">[ Personalizar ]</div>
+<div class="row focus" style="left:35ch;top:calc(17 * var(--cell))"><b class="marker">&gt;</b> [ Instalar setup ]</div>
+</div></div></section>
+<section id="08-progress" aria-labelledby="title-08-progress">
+<h2 id="title-08-progress">Aplicación / estado de trabajo <small>120×32 · L08</small></h2>
+<div class="viewport" aria-label="Wireframe Aplicación / estado de trabajo; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:29ch;top:calc(6 * var(--cell));width:62ch;height:calc(17 * var(--cell))"><span class="panel-label">Operación</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:106ch;top:calc(1 * var(--cell))">Instalación</div>
+<div class="row heading" style="left:37ch;top:calc(9 * var(--cell))">Aplicando Setup A</div>
+<div class="row text" style="left:37ch;top:calc(13 * var(--cell))">[x] Preparar</div>
+<div class="row status" style="left:37ch;top:calc(16 * var(--cell))"> <b class="marker">&gt;</b>  Escribir configuración</div>
+<div class="row text" style="left:37ch;top:calc(19 * var(--cell))">[ ] Verificar</div>
+<div class="row focus" style="left:51ch;top:calc(27 * var(--cell))"><b class="marker">&gt;</b> [ Ver detalles ]</div>
+</div></div></section>
+<section id="09-success" aria-labelledby="title-09-success">
+<h2 id="title-09-success">Resultado / cierre compacto <small>120×32 · L08</small></h2>
+<div class="viewport" aria-label="Wireframe Resultado / cierre compacto; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:25ch;top:calc(8 * var(--cell));width:70ch;height:calc(17 * var(--cell))"><span class="panel-label">Completado</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:106ch;top:calc(1 * var(--cell))">Instalación</div>
+<div class="row success" style="left:43ch;top:calc(11 * var(--cell))">Setup A instalado</div>
+<div class="row focus" style="left:38ch;top:calc(21 * var(--cell))"><b class="marker">&gt;</b> [ Volver al inicio ]</div>
+<div class="row text" style="left:65ch;top:calc(21 * var(--cell))">[ Ver detalles ]</div>
+</div></div></section>
+<section id="10-partial" aria-labelledby="title-10-partial">
+<h2 id="title-10-partial">Resultado parcial / recuperación <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Resultado parcial / recuperación; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:23ch;top:calc(7 * var(--cell));width:74ch;height:calc(19 * var(--cell))"><span class="panel-label">Parcial</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:110ch;top:calc(1 * var(--cell))">Parcial</div>
+<div class="row text" style="left:27ch;top:calc(10 * var(--cell))">[x] Agente principal</div>
+<div class="row warning" style="left:27ch;top:calc(13 * var(--cell))">[!] Memoria: descarga interrumpida</div>
+<div class="row text" style="left:27ch;top:calc(17 * var(--cell))">Reintentar solo descarga Memoria.</div>
+<div class="row focus" style="left:35ch;top:calc(23 * var(--cell))"><b class="marker">&gt;</b> [ Reintentar ]</div>
+<div class="row text" style="left:55ch;top:calc(23 * var(--cell))">[ Diagnóstico ]</div>
+<div class="row text" style="left:74ch;top:calc(23 * var(--cell))">[ Volver ]</div>
+</div></div></section>
+<section id="11-conflict" aria-labelledby="title-11-conflict">
+<h2 id="title-11-conflict">Cambio externo / comparación <small>120×32 · L07</small></h2>
+<div class="viewport" aria-label="Wireframe Cambio externo / comparación; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:3ch;top:calc(6 * var(--cell));width:55ch;height:calc(14 * var(--cell))"><span class="panel-label">Tu versión</span></div>
+<div aria-hidden="true" class="panel panel" style="left:62ch;top:calc(6 * var(--cell));width:55ch;height:calc(14 * var(--cell))"><span class="panel-label">Canónica</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:108ch;top:calc(1 * var(--cell))">Conflicto</div>
+<div class="row text" style="left:7ch;top:calc(10 * var(--cell))">Modelo personalizado</div>
+<div class="row text" style="left:66ch;top:calc(10 * var(--cell))">Modelo distribuido</div>
+<div class="row warning" style="left:7ch;top:calc(14 * var(--cell))">Compatibilidad no verificada</div>
+<div class="row warning" style="left:7ch;top:calc(22 * var(--cell))">Restaurar reemplaza tu personalización.</div>
+<div class="row focus" style="left:29ch;top:calc(27 * var(--cell))"><b class="marker">&gt;</b> [ Ver diff ]</div>
+<div class="row text" style="left:47ch;top:calc(27 * var(--cell))">[ Conservar ]</div>
+<div class="row text" style="left:64ch;top:calc(27 * var(--cell))">[ Restaurar ]</div>
+<div class="row text" style="left:81ch;top:calc(27 * var(--cell))">[ Volver ]</div>
+</div></div></section>
+<section id="12-unsaved" aria-labelledby="title-12-unsaved">
+<h2 id="title-12-unsaved">Cambios pendientes / decisión <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Cambios pendientes / decisión; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:26ch;top:calc(8 * var(--cell));width:68ch;height:calc(17 * var(--cell))"><span class="panel-label">Cambios sin aplicar</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:105ch;top:calc(1 * var(--cell))">Personalizar</div>
+<div class="row heading" style="left:33ch;top:calc(11 * var(--cell))">Descartar los cambios de esta edición?</div>
+<div class="row text" style="left:33ch;top:calc(15 * var(--cell))">Modelo A → B · Memoria activada</div>
+<div class="row focus" style="left:40ch;top:calc(21 * var(--cell))"><b class="marker">&gt;</b> [ Seguir editando ]</div>
+<div class="row text" style="left:66ch;top:calc(21 * var(--cell))">[ Descartar ]</div>
+</div></div></section>
+<section id="13-empty" aria-labelledby="title-13-empty">
+<h2 id="title-13-empty">Sin coincidencias / estado vacío <small>120×32 · L03</small></h2>
+<div class="viewport" aria-label="Wireframe Sin coincidencias / estado vacío; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:3ch;top:calc(9 * var(--cell));width:114ch;height:calc(16 * var(--cell))"><span class="panel-label">Setups</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:108ch;top:calc(1 * var(--cell))">Selección</div>
+<div class="row text" style="left:6ch;top:calc(6 * var(--cell))">Buscar  [ criterio                    ]</div>
+<div class="row heading" style="left:42ch;top:calc(14 * var(--cell))">Sin coincidencias</div>
+<div class="row focus" style="left:41ch;top:calc(18 * var(--cell))"><b class="marker">&gt;</b> [ Limpiar filtro ]</div>
+<div class="row text" style="left:55ch;top:calc(27 * var(--cell))">[ Volver ]</div>
+</div></div></section>
+<section id="14-blocked" aria-labelledby="title-14-blocked">
+<h2 id="title-14-blocked">Incompatibilidad / acción viable <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Incompatibilidad / acción viable; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel panel" style="left:25ch;top:calc(7 * var(--cell));width:70ch;height:calc(18 * var(--cell))"><span class="panel-label">No se puede aplicar</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:110ch;top:calc(1 * var(--cell))">Bloqueo</div>
+<div class="row danger" style="left:29ch;top:calc(10 * var(--cell))">Memoria no es compatible con Harness A.</div>
+<div class="row text" style="left:29ch;top:calc(14 * var(--cell))">Cambia el harness o excluye Memoria.</div>
+<div class="row focus" style="left:44ch;top:calc(21 * var(--cell))"><b class="marker">&gt;</b> [ Editar setup ]</div>
+<div class="row text" style="left:66ch;top:calc(21 * var(--cell))">[ Volver ]</div>
+</div></div></section>
+<section id="15-selection-medium" aria-labelledby="title-15-selection-medium">
+<h2 id="title-15-selection-medium">Selección / detalle anidado <small>80×24 · L05 adaptado</small></h2>
+<div class="viewport" aria-label="Wireframe Selección / detalle anidado; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:80;--rows:24">
+<div aria-hidden="true" class="panel panel" style="left:4ch;top:calc(4 * var(--cell));width:72ch;height:calc(12 * var(--cell))"><span class="panel-label">Setups</span></div>
+
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:68ch;top:calc(1 * var(--cell))">Selección</div>
+<div class="row focus" style="left:8ch;top:calc(7 * var(--cell))"><b class="marker">&gt;</b> ( ) Setup B</div>
+<div class="row text" style="left:8ch;top:calc(10 * var(--cell))">  (x) Setup A</div>
+<div class="row text" style="left:8ch;top:calc(13 * var(--cell))">  ( ) Setup C</div>
+<div class="row text" style="left:16ch;top:calc(20 * var(--cell))">[ Volver ]</div>
+<div class="row text" style="left:28ch;top:calc(20 * var(--cell))">[ Ver detalle ]</div>
+<div class="row text" style="left:45ch;top:calc(20 * var(--cell))">[ Revisar setup ]</div>
+</div></div></section>
+</main></body></html>

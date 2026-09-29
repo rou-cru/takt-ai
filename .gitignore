@@ -7,6 +7,7 @@
 
 # Test binary
 *.test
+!development/testing/Dockerfile
 
 # Output of go coverage
 *.out
@@ -24,18 +25,24 @@ Thumbs.db
 
 # Docker
 *.tar
-cmd/takt-ai/main
-cmd/takt-ai/takt-ai
+takt/cli/main
+takt/cli/takt-ai
 dist/
+first-test/
 
 # Agent tooling metadata (generated per-user, not product code)
 .atl/
 .pi/
 .codegraph/
 .agents/
+.claude/
 
 # Environment (local overrides — never committed)
 .env
+
+# Dev scratch (bind-mounted at /work in compose.yml)
+.dev/*
+!/.dev/.gitkeep
 
 # Engram local runtime state (project sync chunks are intentionally versioned)
 .engram/engram.db
@@ -49,3 +56,8 @@ graphify-out/*
 !graphify-out/manifest.json
 !graphify-out/.gitignore
 !graphify-out/.graphify_labels.json
+
+# Local JavaScript adapter dependencies
+node_modules/
+# Bun's local test coverage (uploaded by CI as an artifact)
+coverage/

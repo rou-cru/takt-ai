@@ -13,20 +13,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package shared holds helpers reused by the Claude, Codex, and OpenCode
-// target adapters. Each adapter keeps its own exported types and API.
+// Package shared holds helpers reused by the OpenCode target adapter.
 package shared
 
 import (
 	"fmt"
-	"sort"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// NormalizeManagedPaths normalizes, deduplicates, and sorts a target adapter's
-// native plus generated managed paths. Errors are labeled with the adapter's
-// target name.
+// semverComponents is the number of numeric components in a semantic version.
+const semverComponents = 3
+
+// NewManagedPaths returns OpenCode's owned paths, normalized and sorted for
+// stable manifests, so uninstalls never touch user files.
+func NewManagedPaths(generated []string) ([]string, error) {
+	return NormalizeManagedPaths("OpenCode", []string{model.OpenCodeConfigRelativePath}, generated)
+}
+
+// NormalizeManagedPaths cleans, dedupes, and sorts managed paths so manifests stay deterministic.
 func NormalizeManagedPaths(target string, pathGroups ...[]string) ([]string, error) {
 	total := 0
 	for _, group := range pathGroups {
@@ -47,21 +56,40 @@ func NormalizeManagedPaths(target string, pathGroups ...[]string) ([]string, err
 			normalized = append(normalized, clean)
 		}
 	}
-	sort.Strings(normalized)
+	slices.Sort(normalized)
 	return normalized, nil
 }
 
-// RenderSorted renders every request and returns the artifacts sorted by
-// deterministic path. It centralizes the identical RenderSubAgents loop of
-// the three target adapters.
-func RenderSorted[Request, ArtifactT any](requests []Request, render func(Request) (ArtifactT, error), pathOf func(ArtifactT) string, target string) ([]ArtifactT, error) {
-	rendered := make([]ArtifactT, 0, len(requests))
-	for _, request := range requests {
-		artifact, err := render(request)
-		if err != nil {
-			return nil, err
-		}
-		rendered = append(rendered, artifact)
+// VersionAtLeast reports whether the numeric MAJOR.MINOR.PATCH prefix of have
+// is not older than want.
+func VersionAtLeast(have, want string) bool {
+	parsedHave, ok := parseSemver(have)
+	if !ok {
+		return false
 	}
-	return artifacts.SortUniqueByPath(rendered, pathOf, target)
+	parsedWant, _ := parseSemver(want)
+	for i := range parsedHave {
+		if parsedHave[i] != parsedWant[i] {
+			return parsedHave[i] > parsedWant[i]
+		}
+	}
+	return true
+}
+
+// parseSemver accepts numeric MAJOR.MINOR.PATCH; pre-release tags are rejected as not yet the pinned release.
+func parseSemver(value string) ([3]int, bool) {
+	var parsed [3]int
+	value, _, _ = strings.Cut(strings.TrimPrefix(value, "v"), "+")
+	parts := strings.Split(value, ".")
+	if len(parts) != semverComponents {
+		return parsed, false
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return parsed, false
+		}
+		parsed[i] = n
+	}
+	return parsed, true
 }

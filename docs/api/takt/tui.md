@@ -16,21 +16,21 @@ Package tui composes Takt's interactive lifecycle flows.
   - [func \(m Model\) CurrentRoute\(\) Route](<#Model.CurrentRoute>)
   - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
   - [func \(m Model\) Update\(message tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(m Model\) View\(\) string](<#Model.View>)
+  - [func \(m Model\) View\(\) tea.View](<#Model.View>)
 - [type Route](<#Route>)
 
 
 <a name="Run"></a>
-## func Run
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L212>)
 
 ```go
 func Run(input io.Reader, output io.Writer) error
 ```
 
-Run starts the TUI with explicit streams so callers can control program I/O.
+Run starts the TUI with explicit streams.
 
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L71-L85>)
 
 Model owns navigation and the action boundary shared by lifecycle flows.
 
@@ -41,7 +41,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L207>)
 
 ```go
 func New(root string) Model
@@ -50,16 +50,16 @@ func New(root string) Model
 New creates the top\-level TUI rooted at root.
 
 <a name="Model.CurrentRoute"></a>
-### func \(Model\) CurrentRoute
+### func \(Model\) [CurrentRoute](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L226>)
 
 ```go
 func (m Model) CurrentRoute() Route
 ```
 
-CurrentRoute returns the visible route.
+CurrentRoute returns the active route.
 
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L223>)
 
 ```go
 func (Model) Init() tea.Cmd
@@ -68,7 +68,7 @@ func (Model) Init() tea.Cmd
 Init has no startup work.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L237>)
 
 ```go
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
@@ -77,16 +77,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update routes input to the visible screen and action messages through runtime.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L444>)
 
 ```go
-func (m Model) View() string
+func (m Model) View() tea.View
 ```
 
 View renders the menu or the active lifecycle flow.
 
 <a name="Route"></a>
-## type Route
+## type [Route](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L27>)
 
 Route identifies a screen in the top\-level application.
 
@@ -94,14 +94,22 @@ Route identifies a screen in the top\-level application.
 type Route string
 ```
 
-<a name="RouteMenu"></a>
+<a name="RouteMenu"></a>Routes are the closed set of top\-level screens.
 
 ```go
 const (
-    RouteMenu      Route = "menu"
-    RouteInstall   Route = "install"
-    RouteSync      Route = "sync"
+    // RouteMenu is the main menu screen.
+    RouteMenu Route = "menu"
+    // RouteInstall is the install flow screen.
+    RouteInstall Route = "install"
+    // RouteDiagnostics shows reusable functional checks.
+    RouteDiagnostics Route = "diagnostics"
+    // RouteDrift shows read-only drift inspection against the ownership manifest.
+    RouteDrift Route = "drift"
+    // RouteUninstall is the uninstall flow screen.
     RouteUninstall Route = "uninstall"
+    // RouteModels is the model-reassignment flow screen.
+    RouteModels Route = "models"
 )
 ```
 

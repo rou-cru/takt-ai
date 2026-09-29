@@ -1,0 +1,16 @@
+version: 1
+# GC cycle cadence (PR-MNT-6, PR-OBS-BUS-4). Cadence is proportional to pace:
+# a cycle is due once units dispatched and workspace mutations since the last
+# cycle add up to one full budget. Error rate is deliberately not a parameter.
+cadence:
+  # Units dispatched since the last cycle that alone make a cycle due.
+  units_per_cycle: 8
+  # Counted mutations since the last cycle that alone make a cycle due.
+  mutations_per_cycle: 40
+  # Consecutive deferrals of a due cycle after which it is aborted instead of
+  # skipped again, so a starved cycle is declared afresh rather than run late.
+  max_deferrals: 3
+
+limits:
+  findings: 3
+  files: 5

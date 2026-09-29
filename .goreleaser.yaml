@@ -7,7 +7,7 @@ before:
   - go mod tidy
 
 builds:
-- main: ./cmd/takt-ai
+- main: ./takt/cli
   binary: takt-ai
   env:
   - CGO_ENABLED=0

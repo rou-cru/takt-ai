@@ -1,0 +1,19 @@
+version: 1
+concurrency:
+  # PR-HAR-16: first-release concurrent-specialist ceiling, counting admitted
+  # work pending launch, running work, and work pending termination that can
+  # still act.
+  specialists: 4
+budgets:
+  # PR-HAR-19: distinct work units admitted without plan coverage, per session.
+  unplanned_units: 4
+  # PR-HAR-20: distinct contests admitted per session, upheld ones included.
+  contests: 3
+  # PR-HAR-21: consecutive failed recoveries of the same objective.
+  recovery_failures: 2
+recovery:
+  # PR-ORQ-13 declares both recovery budgets per recovery, so what is canonical
+  # policy data is the admissible ceiling of each declaration, never a default:
+  # a declaration above its ceiling is unbounded recovery in disguise.
+  max_actions: 200
+  max_attempts: 3

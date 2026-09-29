@@ -3,7 +3,7 @@ package keys_test
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/tui/keys"
 )
 
@@ -11,13 +11,14 @@ func TestDefaultNavigationMatchesArrowsAndVim(t *testing.T) {
 	km := keys.Default()
 	for _, test := range []struct {
 		name string
-		msg  tea.KeyMsg
+		msg  tea.KeyPressMsg
 		key  keys.Binding
 	}{
-		{"up", tea.KeyMsg{Type: tea.KeyUp}, km.Up},
-		{"vim up", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}, km.Up},
-		{"down", tea.KeyMsg{Type: tea.KeyDown}, km.Down},
-		{"vim down", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, km.Down},
+		{"up", tea.KeyPressMsg{Code: tea.KeyUp}, km.Up},
+		{"vim up", tea.KeyPressMsg{Code: 'k', Text: "k"}, km.Up},
+		{"down", tea.KeyPressMsg{Code: tea.KeyDown}, km.Down},
+		{"vim down", tea.KeyPressMsg{Code: 'j', Text: "j"}, km.Down},
+		{"toggle", tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}, km.Toggle},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if !test.key.Matches(test.msg) {

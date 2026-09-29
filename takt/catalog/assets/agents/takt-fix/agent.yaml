@@ -1,0 +1,14 @@
+context:
+  operations: OPERATIONS.md
+description: Confirm defect causality and repair only the authorized defect scope.
+id: takt-fix
+instances:
+- fix
+vfs_capabilities:
+  fix: [bind, write, read, delete]
+role: execution
+skills:
+- takt-memory-contract
+- takt-memory-fix
+- takt-handoff
+- takt-vfs-mutation

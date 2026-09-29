@@ -1,0 +1,4 @@
+Workspace release {{ .Release.Name }} is installed in namespace {{ .Release.Namespace }}.
+OpenCode v2 listens on Service {{ include "takt-workspace.fullname" . }}:{{ .Values.service.port }}.
+If HTTPRoute is enabled, verify its Accepted/ResolvedRefs conditions in the target Gateway controller.
+The release PVC is removed on uninstall unless persistence.retain is set; PV data behavior follows its StorageClass reclaim policy.

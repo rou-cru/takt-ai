@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Takt AI - TUI</title>
+<style>
+:root{--bg-canvas:#101B20;--bg-surface:#18262C;--text-primary:#F5F7F7;--text-secondary:#D2DCDD;--text-muted:#ADBDC0;--brand-ink:#226A7D;--border-subtle:#35464D;--border-control:#82979C;--focus-ring:#80C3CB;--selection-bg:#1E3B46;--selection-fg:#D9EEF0;--selection-border:#80C3CB;--warning-bg:#451A03;--warning-fg:#FCD34D;--danger-bg:#450A0A;--danger-fg:#FCA5A5;--success-bg:#022C22;--success-fg:#6EE7B7;}body:has(#light:checked){--bg-canvas:#F5F7F7;--bg-surface:#FFFFFF;--text-primary:#18262C;--text-secondary:#35464D;--text-muted:#485C63;--brand-ink:#205566;--border-subtle:#D2DCDD;--border-control:#61777E;--focus-ring:#226A7D;--selection-bg:#D9EEF0;--selection-fg:#1E3B46;--selection-border:#226A7D;--warning-bg:#FFFBEB;--warning-fg:#92400E;--danger-bg:#FEF2F2;--danger-fg:#B91C1C;--success-bg:#ECFDF5;--success-fg:#065F46;}
+*{box-sizing:border-box}body{margin:0;padding:24px;background:var(--bg-canvas);color:var(--text-primary);font:16px/1.5 system-ui,sans-serif}main{max-width:1280px;margin:auto}h1{font-size:28px;margin:0 0 12px}h2{font-size:19px;margin:0 0 12px}p{max-width:90ch}a{color:var(--brand-ink)}small{font-size:14px;color:var(--text-secondary);font-weight:400}
+fieldset{border:1px solid var(--border-control);padding:8px 16px;margin:20px 0}label{display:inline-block;padding:8px}nav{display:flex;flex-wrap:wrap;gap:8px 24px;margin:24px 0}nav a{padding:4px 0}section{margin:40px 0;scroll-margin-top:16px}
+.viewport{overflow:auto;padding:3px}.terminal{--cell:20px;position:relative;width:calc(var(--cols) * 1ch);height:calc(var(--rows) * var(--cell));font:14px/20px ui-monospace,Menlo,Consolas,monospace;background:#0d0d0d;outline:1px solid var(--border-control)}
+.panel{position:absolute;border:1px solid var(--border-control);border-radius:0;background:var(--bg-surface)}.panel-label{position:absolute;top:-.55em;left:2ch;padding:0 1ch;background:var(--bg-surface);color:var(--text-secondary)}.panel.selected{background:var(--selection-bg);border-color:var(--selection-border)}
+.logo{position:absolute;object-fit:contain}.row{position:absolute;white-space:pre;height:var(--cell)}.heading,.brand{font-weight:600}.brand{color:var(--brand-ink)}.muted{color:var(--text-muted)}.marker,.status{color:var(--focus-ring)}.focus{font-weight:600;color:var(--focus-ring)}.checked{color:var(--success-fg)}.bar{color:var(--focus-ring)}.btn{color:var(--text-secondary)}.btn-focus{color:var(--bg-canvas);background:var(--focus-ring);font-weight:600}
+.warning{color:var(--warning-fg);background:var(--warning-bg)}.danger{color:var(--danger-fg);background:var(--danger-bg)}.success{color:var(--success-fg);background:var(--success-bg)}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}body:has(#mono:checked) .terminal{filter:grayscale(1)}
+@media print{body{padding:0}nav,fieldset{display:none}section{break-inside:avoid}.terminal{font-size:10px;--cell:15px;line-height:15px}.viewport{overflow:visible}}
+</style></head><body><main>
+<h1>Takt AI - TUI</h1>
+<section id="01-home" aria-labelledby="title-01-home">
+<h2 id="title-01-home">Home / menú completo <small>120×32 · L03</small></h2>
+<div class="viewport" aria-label="Wireframe Home / menú completo; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<img class="logo" src="../../assets/brand/takt-ai.png" alt="Logo canónico Takt AI, referencia visual; rasterización terminal pendiente" style="left:29ch;top:calc(7 * var(--cell));width:34ch;height:calc(16 * var(--cell))">
+<div class="row focus" style="left:65ch;top:calc(12 * var(--cell))"><b class="marker">&gt;</b> Configure installation</div>
+<div class="row text" style="left:65ch;top:calc(13 * var(--cell))">Assign models</div>
+<div class="row text" style="left:65ch;top:calc(14 * var(--cell))">Check for drift</div>
+<div class="row text" style="left:65ch;top:calc(15 * var(--cell))">Uninstall</div>
+<div class="row text" style="left:65ch;top:calc(16 * var(--cell))">Diagnostics</div>
+<div class="row text" style="left:65ch;top:calc(17 * var(--cell))">Quit</div>
+<div class="row brand" style="left:42ch;top:calc(23 * var(--cell))">Takt AI</div>
+</div></div></section>
+<section id="03-home-narrow" aria-labelledby="title-03-home-narrow">
+<h2 id="title-03-home-narrow">Home / terminal estrecho <small>60×20 · L03 adaptado</small></h2>
+<div class="viewport" aria-label="Wireframe Home / terminal estrecho; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:60;--rows:20">
+<img class="logo" src="../../assets/brand/takt-ai.png" alt="Logo canónico Takt AI, referencia visual; rasterización terminal pendiente" style="left:24ch;top:calc(3 * var(--cell));width:12ch;height:calc(6 * var(--cell))">
+<div class="row brand" style="left:26ch;top:calc(9 * var(--cell))">Takt AI</div>
+<div class="row focus" style="left:17ch;top:calc(11 * var(--cell))"><b class="marker">&gt;</b> Configure installation</div>
+<div class="row text" style="left:17ch;top:calc(12 * var(--cell))">Assign models</div>
+<div class="row text" style="left:17ch;top:calc(13 * var(--cell))">Check for drift</div>
+<div class="row text" style="left:17ch;top:calc(14 * var(--cell))">Uninstall</div>
+<div class="row text" style="left:17ch;top:calc(15 * var(--cell))">Diagnostics</div>
+<div class="row text" style="left:17ch;top:calc(16 * var(--cell))">Quit</div>
+</div></div></section>
+<section id="04-setup-default" aria-labelledby="title-04-setup-default">
+<h2 id="title-04-setup-default">Install · Setup — Default enfocado <small>120×32 · L05 + selector</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Setup — Default enfocado; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:35ch;top:calc(13 * var(--cell));width:50ch;height:calc(9 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:112ch;top:calc(1 * var(--cell))">Setup</div>
+<div class="row bar" style="left:37ch;top:calc(15 * var(--cell))">┃</div>
+<div class="row bar" style="left:37ch;top:calc(16 * var(--cell))">┃</div>
+<div class="row focus" style="left:39ch;top:calc(15 * var(--cell))"><b class="marker">&gt;</b> Default</div>
+<div class="row muted" style="left:41ch;top:calc(16 * var(--cell))">install the recommended stack</div>
+<div class="row text" style="left:41ch;top:calc(18 * var(--cell))">Custom</div>
+<div class="row muted" style="left:41ch;top:calc(19 * var(--cell))">choose what to include</div>
+</div></div></section>
+<section id="15-setup-custom" aria-labelledby="title-15-setup-custom">
+<h2 id="title-15-setup-custom">Install · Setup — Custom enfocado <small>80×24 · L05 + selector</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Setup — Custom enfocado; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:80;--rows:24">
+<div aria-hidden="true" class="panel" style="left:15ch;top:calc(9 * var(--cell));width:50ch;height:calc(9 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:72ch;top:calc(1 * var(--cell))">Setup</div>
+<div class="row text" style="left:21ch;top:calc(11 * var(--cell))">Default</div>
+<div class="row muted" style="left:21ch;top:calc(12 * var(--cell))">install the recommended stack</div>
+<div class="row bar" style="left:17ch;top:calc(14 * var(--cell))">┃</div>
+<div class="row bar" style="left:17ch;top:calc(15 * var(--cell))">┃</div>
+<div class="row focus" style="left:19ch;top:calc(14 * var(--cell))"><b class="marker">&gt;</b> Custom</div>
+<div class="row muted" style="left:21ch;top:calc(15 * var(--cell))">choose what to include</div>
+</div></div></section>
+<section id="05-components" aria-labelledby="title-05-components">
+<h2 id="title-05-components">Install · Components <small>120×32 · L04</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Components; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:21ch;top:calc(11 * var(--cell));width:78ch;height:calc(13 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:107ch;top:calc(1 * var(--cell))">Components</div>
+<div class="row muted" style="left:23ch;top:calc(13 * var(--cell))">Choose what to include. Takt agents and core skills are always installed.</div>
+<div class="row bar" style="left:23ch;top:calc(15 * var(--cell))">┃</div>
+<div class="row bar" style="left:23ch;top:calc(16 * var(--cell))">┃</div>
+<div class="row muted" style="left:25ch;top:calc(15 * var(--cell))"><b class="marker">&gt;</b> [x]</div>
+<div class="row checked" style="left:31ch;top:calc(15 * var(--cell))">Context7</div>
+<div class="row muted" style="left:31ch;top:calc(16 * var(--cell))">up-to-date library docs for agents</div>
+<div class="row muted" style="left:25ch;top:calc(18 * var(--cell))">  [ ]</div>
+<div class="row text" style="left:31ch;top:calc(18 * var(--cell))">Takt theme</div>
+<div class="row muted" style="left:31ch;top:calc(19 * var(--cell))">terminal theme for the harness</div>
+<div class="row muted" style="left:25ch;top:calc(21 * var(--cell))">  [x]</div>
+<div class="row checked" style="left:31ch;top:calc(21 * var(--cell))">Sub-agent status line</div>
+</div></div></section>
+<section id="06-review" aria-labelledby="title-06-review">
+<h2 id="title-06-review">Install · Review — Default <small>120×32 · L05</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Review — Default; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:34ch;top:calc(11 * var(--cell));width:52ch;height:calc(10 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:111ch;top:calc(1 * var(--cell))">Review</div>
+<div class="row muted" style="left:36ch;top:calc(13 * var(--cell))">Scope</div>
+<div class="row text" style="left:49ch;top:calc(13 * var(--cell))">OpenCode</div>
+<div class="row muted" style="left:36ch;top:calc(15 * var(--cell))">Components</div>
+<div class="row text" style="left:49ch;top:calc(15 * var(--cell))">Default (all recommended)</div>
+<div class="row muted" style="left:36ch;top:calc(16 * var(--cell))">Add</div>
+<div class="row text" style="left:49ch;top:calc(16 * var(--cell))">16 new files</div>
+<div class="row text" style="left:49ch;top:calc(17 * var(--cell))">  4 agent definitions</div>
+<div class="row text" style="left:49ch;top:calc(18 * var(--cell))">  1 skill</div>
+<div class="row btn" style="left:45ch;top:calc(22 * var(--cell))">  Personalize  </div>
+<div class="row btn-focus" style="left:62ch;top:calc(22 * var(--cell))">  Install  </div>
+</div></div></section>
+<section id="07-review-narrow" aria-labelledby="title-07-review-narrow">
+<h2 id="title-07-review-narrow">Install · Review — Custom <small>60×20 · L05 adaptado</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Review — Custom; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:60;--rows:20">
+<div aria-hidden="true" class="panel" style="left:5ch;top:calc(7 * var(--cell));width:50ch;height:calc(7 * var(--cell))"></div>
+<div class="row brand" style="left:2ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:52ch;top:calc(1 * var(--cell))">Review</div>
+<div class="row muted" style="left:7ch;top:calc(9 * var(--cell))">Scope</div>
+<div class="row text" style="left:20ch;top:calc(9 * var(--cell))">OpenCode</div>
+<div class="row muted" style="left:7ch;top:calc(10 * var(--cell))">Components</div>
+<div class="row text" style="left:20ch;top:calc(10 * var(--cell))">Context7</div>
+<div class="row text" style="left:20ch;top:calc(11 * var(--cell))">Sub-agent status line</div>
+<div class="row btn" style="left:15ch;top:calc(15 * var(--cell))">  Personalize  </div>
+<div class="row btn-focus" style="left:32ch;top:calc(15 * var(--cell))">  Install  </div>
+</div></div></section>
+<section id="08-progress" aria-labelledby="title-08-progress">
+<h2 id="title-08-progress">Install · Installing <small>120×32 · L08</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Installing; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:36ch;top:calc(12 * var(--cell));width:48ch;height:calc(10 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:107ch;top:calc(1 * var(--cell))">Installing</div>
+<div class="row text" style="left:38ch;top:calc(14 * var(--cell))">████████████░░░░░░░░░░░░░░░░  40%</div>
+<div class="row checked" style="left:38ch;top:calc(16 * var(--cell))">✓ Checking existing files</div>
+<div class="row checked" style="left:38ch;top:calc(17 * var(--cell))">✓ Installing agent definitions</div>
+<div class="row heading" style="left:38ch;top:calc(18 * var(--cell))">⠋ Installing skills</div>
+<div class="row muted" style="left:38ch;top:calc(19 * var(--cell))">  Configuring OpenCode</div>
+<div class="row muted" style="left:38ch;top:calc(20 * var(--cell))">  Installing plugins</div>
+</div></div></section>
+<section id="09-success" aria-labelledby="title-09-success">
+<h2 id="title-09-success">Install · Result — éxito <small>120×32 · L08</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Result — éxito; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:24ch;top:calc(12 * var(--cell));width:71ch;height:calc(9 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:111ch;top:calc(1 * var(--cell))">Result</div>
+<div class="row success" style="left:26ch;top:calc(14 * var(--cell))">Takt was installed for OpenCode.</div>
+<div class="row text" style="left:26ch;top:calc(16 * var(--cell))">Files: 12 changed, 4 unchanged</div>
+<div class="row text" style="left:26ch;top:calc(18 * var(--cell))">Changes take effect the next time you start OpenCode.</div>
+<div class="row btn-focus" style="left:37ch;top:calc(22 * var(--cell))">  Assign models  </div>
+<div class="row btn" style="left:56ch;top:calc(22 * var(--cell))">  Back to menu  </div>
+<div class="row btn" style="left:74ch;top:calc(22 * var(--cell))">  Quit  </div>
+</div></div></section>
+<section id="10-result-cancelled" aria-labelledby="title-10-result-cancelled">
+<h2 id="title-10-result-cancelled">Install · Result — cancelado <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Result — cancelado; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:19ch;top:calc(13 * var(--cell));width:82ch;height:calc(7 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:111ch;top:calc(1 * var(--cell))">Result</div>
+<div class="row warning" style="left:21ch;top:calc(15 * var(--cell))">Installation cancelled before all steps finished.</div>
+<div class="row text" style="left:21ch;top:calc(17 * var(--cell))">Review again checks the actual files first, then applies what is still missing.</div>
+<div class="row btn-focus" style="left:38ch;top:calc(21 * var(--cell))">  Review again  </div>
+<div class="row btn" style="left:56ch;top:calc(21 * var(--cell))">  Back to menu  </div>
+<div class="row btn" style="left:74ch;top:calc(21 * var(--cell))">  Quit  </div>
+</div></div></section>
+<section id="11-conflicts" aria-labelledby="title-11-conflicts">
+<h2 id="title-11-conflicts">Install · Existing files <small>120×32 · L07</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Existing files; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:31ch;top:calc(12 * var(--cell));width:58ch;height:calc(10 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:108ch;top:calc(1 * var(--cell))">Conflicts</div>
+<div class="row heading" style="left:33ch;top:calc(14 * var(--cell))">~/.config/opencode/takt/agents/takt-dev/OPERATIONS.md</div>
+<div class="row muted" style="left:33ch;top:calc(15 * var(--cell))">Source: edited after installation</div>
+<div class="row muted" style="left:33ch;top:calc(16 * var(--cell))">Affects: takt-dev sub-agent persona and instructions</div>
+<div class="row warning" style="left:33ch;top:calc(17 * var(--cell))">local edits may drift from the supported behavior</div>
+<div class="row bar" style="left:33ch;top:calc(18 * var(--cell))">┃</div>
+<div class="row focus" style="left:35ch;top:calc(18 * var(--cell))"><b class="marker">&gt;</b> Keep my version</div>
+<div class="row text" style="left:37ch;top:calc(19 * var(--cell))">Restore Takt version</div>
+</div></div></section>
+<section id="12-result-error" aria-labelledby="title-12-result-error">
+<h2 id="title-12-result-error">Install · Result — error <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Result — error; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:27ch;top:calc(13 * var(--cell));width:65ch;height:calc(7 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:111ch;top:calc(1 * var(--cell))">Result</div>
+<div class="row danger" style="left:29ch;top:calc(15 * var(--cell))">Failed: permission denied writing ~/.config/opencode/takt/agents/takt-dev/OPERATIONS.md</div>
+<div class="row text" style="left:29ch;top:calc(17 * var(--cell))">Review the error, then retry the installation.</div>
+<div class="row btn-focus" style="left:40ch;top:calc(21 * var(--cell))">  Retry  </div>
+<div class="row btn" style="left:52ch;top:calc(21 * var(--cell))">  Back to menu  </div>
+<div class="row btn" style="left:70ch;top:calc(21 * var(--cell))">  Quit  </div>
+</div></div></section>
+<section id="13-targets-invalid" aria-labelledby="title-13-targets-invalid">
+<h2 id="title-13-targets-invalid">Install · Harnesses — sin selección <small>120×32 · L03</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Harnesses — sin selección; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:35ch;top:calc(13 * var(--cell));width:50ch;height:calc(9 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:108ch;top:calc(1 * var(--cell))">Harnesses</div>
+<div class="row bar" style="left:37ch;top:calc(15 * var(--cell))">┃</div>
+<div class="row muted" style="left:39ch;top:calc(15 * var(--cell))"><b class="marker">&gt;</b> [ ]</div>
+<div class="row text" style="left:45ch;top:calc(15 * var(--cell))">OpenCode</div>
+<div class="row danger" style="left:37ch;top:calc(19 * var(--cell))"> * Select at least one harness to continue.</div>
+</div></div></section>
+<section id="14-review-blocked" aria-labelledby="title-14-review-blocked">
+<h2 id="title-14-review-blocked">Install · Review — bloqueado <small>120×32 · L09</small></h2>
+<div class="viewport" aria-label="Wireframe Install · Review — bloqueado; lienzo de tamaño fijo, desplazable en esta galería">
+<div class="terminal" style="--cols:120;--rows:32">
+<div aria-hidden="true" class="panel" style="left:19ch;top:calc(13 * var(--cell));width:82ch;height:calc(7 * var(--cell))"></div>
+<div class="row brand" style="left:3ch;top:calc(1 * var(--cell))">Takt AI</div>
+<div class="row heading" style="left:111ch;top:calc(1 * var(--cell))">Review</div>
+<div class="row danger" style="left:21ch;top:calc(15 * var(--cell))">Cannot prepare the review: existing takt.yaml is unreadable (permission denied)</div>
+<div class="row text" style="left:21ch;top:calc(17 * var(--cell))">Nothing was changed. Personalize your choices, or go back and try again.</div>
+<div class="row btn-focus" style="left:52ch;top:calc(21 * var(--cell))">  Personalize  </div>
+</div></div></section></main></body></html>

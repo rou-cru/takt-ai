@@ -15,19 +15,9 @@
 
 package shared
 
-// SensitivePathGlobs are the relative glob fragments every target adapter
-// must deny read/write access to. Each adapter prefixes "**/" and wraps the
-// fragment in its own rule syntax.
-var SensitivePathGlobs = []string{
-	".env",
-	".env.*",
-	".ssh/**",
-	".credentials/**",
-	"Library/Keychains/**",
-	".aws/credentials",
-	".config/gh/hosts.yml",
-	"*.pem",
-	"*.key",
-	"secrets/**",
-	"credentials.json",
-}
+import "github.com/rou-cru/takt-ai/takt/model"
+
+// SensitivePathGlobs lists secret-bearing paths every target must block from
+// agent reads and writes; the list itself lives in model so the VFS shell
+// sandbox and the native permission rules share one source.
+var SensitivePathGlobs = model.SensitivePathGlobs

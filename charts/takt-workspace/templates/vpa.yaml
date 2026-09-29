@@ -1,0 +1,24 @@
+{{- if .Values.vpa.enabled }}
+apiVersion: {{ .Values.vpa.apiVersion }}
+kind: VerticalPodAutoscaler
+metadata:
+  name: {{ include "takt-workspace.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- with .Values.vpa.labels }}{{ toYaml . | nindent 4 }}{{- end }}
+  {{- with .Values.vpa.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "takt-workspace.fullname" . }}
+  {{- with .Values.vpa.updatePolicy }}
+  updatePolicy: {{ toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.vpa.resourcePolicy }}
+  resourcePolicy: {{ toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

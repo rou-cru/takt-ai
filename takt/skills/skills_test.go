@@ -16,9 +16,13 @@
 package skills
 
 import (
+	"path"
+	"strings"
 	"testing"
-	"testing/fstest"
 
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -55,51 +59,18 @@ func TestLoadSkillsSorted(t *testing.T) {
 	}
 
 	// Verify skills are sorted by deployment path.
-	for i := 1; i < len(skills); i++ {
-		prev := skillDeploymentPath(skills[i-1])
-		curr := skillDeploymentPath(skills[i])
-		if prev > curr {
-			t.Errorf("skills not sorted: %s > %s", prev, curr)
+	for i, curr := range skills[1:] {
+		prevPath := skillDeploymentPath(skills[i])
+		currPath := skillDeploymentPath(curr)
+		if prevPath > currPath {
+			t.Errorf("skills not sorted: %s > %s", prevPath, currPath)
 		}
-	}
-}
-
-func TestLoadSkillsRecursivelyPreservesWorkflowPaths(t *testing.T) {
-	definitions, err := loadSkills(fstest.MapFS{
-		"workflows/SDD/SKILL.md":          {Data: []byte("# SDD")},
-		"workflows/examples/SDD/SKILL.md": {Data: []byte("# Example SDD")},
-		"workflows/flat/SKILL.md":         {Data: []byte("# Flat")},
-	})
-	if err != nil {
-		t.Fatalf("loadSkills() error = %v", err)
-	}
-
-	got := make([]string, len(definitions))
-	for i, definition := range definitions {
-		got[i] = skillDeploymentPath(definition)
-	}
-	want := []string{
-		".agents/skills/workflows/SDD/SKILL.md",
-		".agents/skills/workflows/examples/SDD/SKILL.md",
-		".agents/skills/workflows/flat/SKILL.md",
-	}
-	if !equalStrings(got, want) {
-		t.Errorf("deployment paths = %q, want %q", got, want)
-	}
-}
-
-func TestLoadSkillsRejectsUnexpectedFiles(t *testing.T) {
-	_, err := loadSkills(fstest.MapFS{
-		"workflows/SDD/README.md": {Data: []byte("unexpected")},
-	})
-	if err == nil {
-		t.Fatal("loadSkills() error = nil, want unexpected file error")
 	}
 }
 
 func TestBuildSkillArtifacts(t *testing.T) {
 	definitions := []SkillDefinition{
-		{Name: "workflows/test-skill", FileName: "SKILL.md", Content: []byte("# Test Skill\n")},
+		{Name: "takt-test-skill", FileName: "SKILL.md", Content: []byte("# Test Skill\n")},
 	}
 
 	artifacts := BuildSkillArtifacts(definitions)
@@ -108,7 +79,7 @@ func TestBuildSkillArtifacts(t *testing.T) {
 	}
 
 	artifact := artifacts[0]
-	expectedPath := ".agents/skills/workflows/test-skill/SKILL.md"
+	expectedPath := ".opencode/skills/takt-test-skill/SKILL.md"
 	if artifact.Path != expectedPath {
 		t.Errorf("artifact path = %q, want %q", artifact.Path, expectedPath)
 	}
@@ -119,8 +90,8 @@ func TestBuildSkillArtifacts(t *testing.T) {
 
 func TestBuildSkillManagedPaths(t *testing.T) {
 	artifacts := []setup.Artifact{
-		{Path: ".agents/skills/b-skill/SKILL.md"},
-		{Path: ".agents/skills/a-skill/SKILL.md"},
+		{Path: ".opencode/skills/b-skill/SKILL.md"},
+		{Path: ".opencode/skills/a-skill/SKILL.md"},
 	}
 
 	paths := BuildSkillManagedPaths(artifacts)
@@ -129,11 +100,11 @@ func TestBuildSkillManagedPaths(t *testing.T) {
 	}
 
 	// Verify paths are sorted.
-	if paths[0] != ".agents/skills/a-skill/SKILL.md" {
-		t.Errorf("paths[0] = %q, want %q", paths[0], ".agents/skills/a-skill/SKILL.md")
+	if paths[0] != ".opencode/skills/a-skill/SKILL.md" {
+		t.Errorf("paths[0] = %q, want %q", paths[0], ".opencode/skills/a-skill/SKILL.md")
 	}
-	if paths[1] != ".agents/skills/b-skill/SKILL.md" {
-		t.Errorf("paths[1] = %q, want %q", paths[1], ".agents/skills/b-skill/SKILL.md")
+	if paths[1] != ".opencode/skills/b-skill/SKILL.md" {
+		t.Errorf("paths[1] = %q, want %q", paths[1], ".opencode/skills/b-skill/SKILL.md")
 	}
 }
 
@@ -157,93 +128,103 @@ func TestBuildSkillPlan(t *testing.T) {
 	}
 }
 
-func TestListSkills(t *testing.T) {
-	names, err := ListSkills()
-	if err != nil {
-		t.Fatalf("ListSkills() error = %v", err)
-	}
-	if len(names) == 0 {
-		t.Fatal("ListSkills() returned no names")
-	}
-
-	// Verify names are sorted.
-	for i := 1; i < len(names); i++ {
-		if names[i-1] > names[i] {
-			t.Errorf("names not sorted: %s > %s", names[i-1], names[i])
-		}
-	}
-}
-
-func TestGetSkillContent(t *testing.T) {
-	// First, get the list of skills to find a valid name.
-	names, err := ListSkills()
-	if err != nil {
-		t.Fatalf("ListSkills() error = %v", err)
-	}
-	if len(names) == 0 {
-		t.Skip("no skills to test")
-	}
-
-	// Test getting content for an existing skill.
-	content, err := GetSkillContent(names[0])
-	if err != nil {
-		t.Fatalf("GetSkillContent(%q) error = %v", names[0], err)
-	}
-	if len(content) == 0 {
-		t.Errorf("GetSkillContent(%q) returned empty content", names[0])
-	}
-
-	// Test getting content for a non-existent skill.
-	_, err = GetSkillContent("non-existent-skill")
-	if err == nil {
-		t.Error("GetSkillContent(non-existent) should return error")
-	}
-}
-
-func TestNormalizeSkillName(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"linear-workflow", "linear-workflow"},
-		{"Linear Workflow", "linear-workflow"},
-		{"linear_workflow", "linear-workflow"},
-		{"linear--workflow", "linear-workflow"},
-		{"  linear-workflow  ", "linear-workflow"},
-		{"LINEAR-WORKFLOW", "linear-workflow"},
-		{"review/v2!", "review-v2"},
-		{"foo@bar#baz", "foo-bar-baz"},
-	}
-
-	for _, tc := range tests {
-		got := NormalizeSkillName(tc.input)
-		if got != tc.want {
-			t.Errorf("NormalizeSkillName(%q) = %q, want %q", tc.input, got, tc.want)
-		}
-	}
-}
-
 func TestSkillDeploymentPath(t *testing.T) {
 	skill := SkillDefinition{
-		Name:     "workflows/linear-workflow",
+		Name:     "takt-sdd-workflow",
 		FileName: "SKILL.md",
 	}
 
 	got := skillDeploymentPath(skill)
-	want := ".agents/skills/workflows/linear-workflow/SKILL.md"
+	want := ".opencode/skills/takt-sdd-workflow/SKILL.md"
 	if got != want {
 		t.Errorf("skillDeploymentPath() = %q, want %q", got, want)
 	}
 }
 
-func equalStrings(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
+// memorySkills indexes deployed memory skills by path so tests check what agents actually read.
+func memorySkills(t *testing.T) map[string]string {
+	t.Helper()
+	definitions, err := LoadSkills()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
+	byPath := map[string]string{}
+	for _, definition := range definitions {
+		if !strings.HasPrefix(definition.Name, "takt-memory-") {
+			continue
+		}
+		byPath[skillDeploymentPath(definition)] = string(definition.Content)
+	}
+	return byPath
+}
+
+// TestEveryAuthorHasExactlyOneMemoryRoleSkill verifies no specialist ships without memory rules and no role skill is orphaned.
+func TestEveryAuthorHasExactlyOneMemoryRoleSkill(t *testing.T) {
+	skills := memorySkills(t)
+	if _, ok := skills[engram.ContractSkillPath]; !ok {
+		t.Fatalf("contract skill missing at %s", engram.ContractSkillPath)
+	}
+	content, err := catalog.LoadNativeContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	authors := []string{shared.OrchestratorID}
+	for id := range content {
+		authors = append(authors, id)
+	}
+	used := map[string]bool{engram.ContractSkillPath: true}
+	for _, author := range authors {
+		rolePath := engram.MemorySkillPath(author)
+		if _, ok := skills[rolePath]; !ok {
+			t.Errorf("author %s has no memory skill at %s", author, rolePath)
+		}
+		used[rolePath] = true
+	}
+	for deployed := range skills {
+		if !used[deployed] {
+			t.Errorf("memory skill %s belongs to no author", deployed)
 		}
 	}
-	return true
+}
+
+// TestMemoryRoleSkillsLinkContractWithoutRestatingIt verifies shared rules stay in the contract alone.
+func TestMemoryRoleSkillsLinkContractWithoutRestatingIt(t *testing.T) {
+	for deployed, content := range memorySkills(t) {
+		assertMemorySkillAsksNoHarnessMetadata(t, deployed, content)
+		if deployed == engram.ContractSkillPath {
+			continue
+		}
+		assertMemorySkillLinksContractWithoutRestating(t, deployed, content)
+	}
+}
+
+// assertMemorySkillAsksNoHarnessMetadata checks that the deployed skill at
+// content never asks the agent to supply harness-owned metadata, and carries
+// no Next Steps section (every memory-role skill's rule, including the
+// contract skill itself).
+func assertMemorySkillAsksNoHarnessMetadata(t *testing.T, deployed, content string) {
+	t.Helper()
+	for _, metadata := range []string{"mem_save", "mem_session_", "`session_id`", "**Author**:", "Memory: "} {
+		if strings.Contains(content, metadata) {
+			t.Errorf("%s asks the agent for harness metadata %q", deployed, metadata)
+		}
+	}
+	if strings.Contains(strings.ToLower(content), "## next steps") {
+		t.Errorf("%s carries a Next Steps section", deployed)
+	}
+}
+
+// assertMemorySkillLinksContractWithoutRestating checks that a non-contract
+// memory-role skill links the memory contract skill rather than restating
+// its rules.
+func assertMemorySkillLinksContractWithoutRestating(t *testing.T, deployed, content string) {
+	t.Helper()
+	if !strings.Contains(content, "takt-memory-contract/SKILL.md") {
+		t.Errorf("%s does not link the contract", path.Dir(deployed))
+	}
+	for _, shared := range []string{"| `proposal` |", "`proposal`, `decision`", "memory_record(", "relates_to", "mem_search", "mem_save", "Memory: ~"} {
+		if strings.Contains(content, shared) {
+			t.Errorf("%s restates contract rule %q", path.Dir(deployed), shared)
+		}
+	}
 }
