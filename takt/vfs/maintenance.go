@@ -8,15 +8,7 @@ import (
 // PendingOrdinaryDeltas counts unresolved ordinary deltas across the workspace,
 // not just the requesting session or the proposed maintenance scope.
 func (f *FS) PendingOrdinaryDeltas() int {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	n := 0
-	for key, delta := range f.staged {
-		if f.bindings[key].CycleID == "" && len(delta.files) > 0 {
-			n++
-		}
-	}
-	return n
+	return len(f.PendingOrdinaryDeltaIdentities())
 }
 
 // PendingOrdinaryDeltaIdentities names the identity behind each unresolved

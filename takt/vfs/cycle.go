@@ -139,37 +139,19 @@ func (f *FS) DiscardCycle(cycleID string) (restored []string, err error) {
 }
 
 func (f *FS) applyDiscard(snap *cycleSnapshot, cycleID string, m *recoveryManifest) error {
-	f.recovery = m
-	if err := partial(f.checkpointLocked("discard/prepared")); err != nil {
-		return err
-	}
-	if err := f.createDirs(m.Dirs); err != nil {
-		return err
-	}
-	if err := f.replaceItems(m); err != nil {
-		return err
-	}
-	for _, item := range m.Items {
-		if err := f.checkBase(item.Path, item.After); err != nil {
-			return err
-		}
-	}
-	if err := partial(f.checkpointLocked("discard/verified")); err != nil {
-		return err
-	}
-	for _, item := range m.Items {
-		f.appendJournalLocked(JournalEntry{
-			Agent: snap.Agent, Path: item.Path, Operation: OpFlush, Outcome: discardedOutcome,
-			CycleID: cycleID, MandateClass: snap.MandateClass,
-			BeforeHash: hashOf(item.Before.Content, item.Before.Present),
-			AfterHash:  hashOf(item.After.Content, item.After.Present),
-		})
-	}
-	if err := f.cleanupCycleLocked(m, snap); err != nil {
-		return err
-	}
-	f.recovery = nil
-	return nil
+	return f.applyFlush(m, flushHooks{
+		preparedLabel: "discard/prepared",
+		verifiedLabel: "discard/verified",
+		journalEntry: func(item recoveryItem) JournalEntry {
+			return JournalEntry{
+				Agent: snap.Agent, Path: item.Path, Operation: OpFlush, Outcome: discardedOutcome,
+				CycleID: cycleID, MandateClass: snap.MandateClass,
+				BeforeHash: hashOf(item.Before.Content, item.Before.Present),
+				AfterHash:  hashOf(item.After.Content, item.After.Present),
+			}
+		},
+		postStep: func(m *recoveryManifest) error { return f.cleanupCycleLocked(m, snap) },
+	})
 }
 
 // planDiscard turns the snapshot into a flush manifest that puts the pre-cycle

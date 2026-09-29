@@ -1096,7 +1096,7 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	defer server.Close()
 	t.Setenv("ENGRAM_BASE_URL", server.URL)
 	seedMemoryIndex(t, "root", map[int64]string{123: "pm", 124: "dev", 999: "pm"})
-	_, _, call := dispatchHarnessRaw(t)
+	root, _, call := dispatchHarnessRaw(t)
 	if _, e := call(coordinationRequest{Action: "validate_results", Session: "root", Agent: "pm", ResultIDs: []int64{999}}); e == nil {
 		t.Fatal("autonomous result validator accepted a nonexistent ID")
 	}
@@ -1113,6 +1113,13 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-1", Agent: "pm", Artifact: artifact}); e != nil {
 		t.Fatalf("switch: %v", e)
 	}
+	// The standard artifact exists throughout this test on purpose: it
+	// isolates the Engram result-ID gate under test here from PR-HAR-24's
+	// artifact-existence gate, covered separately by
+	// TestDispatchInterlocutorHandoffArtifactExistenceGate.
+	if err := os.WriteFile(filepath.Join(root, artifact), []byte("# PRD\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	handoff := coordinationRequest{Action: "handoff", Session: "root", Child: "child-1", Agent: "pm", Result: "Standard"}
 	if _, e := call(handoff); e == nil || !strings.Contains(e.Error(), "Engram ID") {
 		t.Fatalf("handoff without a result ID was not denied: %v", e)
@@ -1124,7 +1131,7 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	handoff.ResultIDs = []int64{123}
 	resp, e := call(handoff)
 	if e != nil {
-		t.Fatalf("handoff denied with a valid ID and no file: %v", e)
+		t.Fatalf("handoff denied with a valid ID and the artifact present: %v", e)
 	}
 	if resp["result"] != "Standard" {
 		t.Fatalf("handoff result missing: %+v", resp)
@@ -1152,6 +1159,48 @@ func TestDispatchInterlocutorAbortSwitchByUser(t *testing.T) {
 	// The envelope carries what the holder recorded, not the whole session's memory.
 	if ids, ok := resp["memory"].([]any); !ok || len(ids) != 1 || ids[0] != float64(41) {
 		t.Fatalf("abort_switch memory is not the holder's entries: %+v", resp)
+	}
+	// PR-HAR-24: the artifact is never required to abort, but its absence is
+	// still verified and reported.
+	if resp["artifact_verified"] != false {
+		t.Fatalf("abort with no artifact on disk must report artifact_verified = false: %+v", resp)
+	}
+}
+
+// TestDispatchInterlocutorHandoffArtifactExistenceGate wires PR-HAR-24: a
+// missing standard artifact denies the first handoff attempt and keeps the
+// session active, a second consecutive miss stops denying and reports the
+// harness's own verification inside the envelope instead, and a present
+// artifact reports verified without ever denying.
+func TestDispatchInterlocutorHandoffArtifactExistenceGate(t *testing.T) {
+	root, _, call := dispatchHarnessRaw(t)
+	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-1", Agent: "pm", Artifact: "missing.md"}); e != nil {
+		t.Fatalf("switch: %v", e)
+	}
+	handoff := coordinationRequest{Action: "handoff", Session: "root", Child: "child-1", Agent: "pm", Result: "TechFault"}
+	if _, e := call(handoff); e == nil || !strings.Contains(e.Error(), "missing.md") {
+		t.Fatalf("first missing-artifact handoff was not denied: %v", e)
+	}
+	resp, e := call(handoff)
+	if e != nil {
+		t.Fatalf("second missing-artifact handoff must escalate, not deny again: %v", e)
+	}
+	if resp["artifact_verified"] != false {
+		t.Fatalf("escalated handoff must report artifact_verified = false: %+v", resp)
+	}
+
+	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-2", Agent: "pm", Artifact: "present.md"}); e != nil {
+		t.Fatalf("second switch: %v", e)
+	}
+	if err := os.WriteFile(filepath.Join(root, "present.md"), []byte("draft"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resp, e = call(coordinationRequest{Action: "handoff", Session: "root", Child: "child-2", Agent: "pm", Result: "TechFault"})
+	if e != nil {
+		t.Fatalf("handoff with the artifact present must succeed: %v", e)
+	}
+	if resp["artifact_verified"] != true {
+		t.Fatalf("present artifact must report artifact_verified = true: %+v", resp)
 	}
 }
 

@@ -76,8 +76,39 @@ func (f *FS) materializeLocked(agent AgentID, d *agentDelta) error {
 }
 
 func (f *FS) applyManifest(agent AgentID, m *recoveryManifest) error {
+	return f.applyFlush(m, flushHooks{
+		preparedLabel: "prepared",
+		verifiedLabel: "verified",
+		journalEntry: func(item recoveryItem) JournalEntry {
+			return JournalEntry{Agent: agent, Path: item.Path, Operation: OpFlush,
+				BeforeHash: hashOf(item.Before.Content, item.Before.Present),
+				AfterHash:  hashOf(item.After.Content, item.After.Present)}
+		},
+		postStep: func(m *recoveryManifest) error {
+			// A maintenance cycle stays discardable until it closes, so what
+			// it overwrote outlives the manifest that is about to go (PR-MNT-16).
+			f.retainCycleLocked(agent, m)
+			return nil
+		},
+	})
+}
+
+// flushHooks parameterizes applyFlush over what varies between a normal
+// flush and a cycle discard: checkpoint labels, the journal entry shape, and
+// the step that runs after journaling (retain vs. clean up the cycle).
+type flushHooks struct {
+	preparedLabel, verifiedLabel string
+	journalEntry                 func(recoveryItem) JournalEntry
+	postStep                     func(*recoveryManifest) error
+}
+
+// applyFlush runs the prepare→createDirs→replaceItems→checkBase→checkpoint→
+// journal sequence every manifest application shares; h supplies what
+// differs. Removal of the manifest and staged delta is committed together by
+// the caller's finishLocked. A crash before that commit rolls back on Recover.
+func (f *FS) applyFlush(m *recoveryManifest, h flushHooks) error {
 	f.recovery = m
-	if err := partial(f.checkpointLocked("prepared")); err != nil {
+	if err := partial(f.checkpointLocked(h.preparedLabel)); err != nil {
 		return err
 	}
 	if err := f.createDirs(m.Dirs); err != nil {
@@ -91,17 +122,15 @@ func (f *FS) applyManifest(agent AgentID, m *recoveryManifest) error {
 			return err
 		}
 	}
-	if err := partial(f.checkpointLocked("verified")); err != nil {
+	if err := partial(f.checkpointLocked(h.verifiedLabel)); err != nil {
 		return err
 	}
 	for _, item := range m.Items {
-		f.appendJournalLocked(JournalEntry{Agent: agent, Path: item.Path, Operation: OpFlush, BeforeHash: hashOf(item.Before.Content, item.Before.Present), AfterHash: hashOf(item.After.Content, item.After.Present)})
+		f.appendJournalLocked(h.journalEntry(item))
 	}
-	// A maintenance cycle stays discardable until it closes, so what it
-	// overwrote outlives the manifest that is about to go (PR-MNT-16).
-	f.retainCycleLocked(agent, m)
-	// Removal of the manifest and staged delta is committed together by the
-	// caller's finishLocked. A crash before that commit rolls back on Recover.
+	if err := h.postStep(m); err != nil {
+		return err
+	}
 	f.recovery = nil
 	return nil
 }
