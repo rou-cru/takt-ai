@@ -1,8 +1,7 @@
 name: Release
 
-# Every push to main that passes CI becomes a release. Nothing public is
-# created until the images build; the GitHub release stays a draft until the
-# binaries, image and chart are all published. See docs/releasing.md.
+# Every push to main that passes CI computes one version, then publishes the
+# binary, image and chart independently. See docs/releasing.md.
 on:
   workflow_run:
     workflows: [CI]
@@ -142,7 +141,7 @@ jobs:
           retention-days: 1
 
   tag:
-    needs: [version, image]
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,7 +217,7 @@ jobs:
             dist/checksums.txt
 
   image-publish:
-    needs: [version, tag]
+    needs: [version, image]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -317,7 +316,7 @@ jobs:
           readme-filepath: deploy/workspace/README.md
 
   chart:
-    needs: [version, tag, image-publish, goreleaser]
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -359,18 +358,13 @@ jobs:
           echo "$out"
           digest=$(sed -n 's/^Digest: //p' <<<"$out")
           cosign sign --yes "${CHART_REGISTRY#oci://}/takt-ai@$digest"
-      - name: Attach chart to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ needs.version.outputs.version }}
-        run: gh release upload "$TAG" "$RUNNER_TEMP/chart/takt-ai-$VERSION.tgz" --clobber
       - name: Update Helm repository index (gh-pages)
         env:
           TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG"
+          url="https://rou-cru.github.io/takt-ai"
           if git fetch --depth=1 origin gh-pages; then
             git worktree add --detach "$RUNNER_TEMP/pages" FETCH_HEAD
             cd "$RUNNER_TEMP/pages"
@@ -382,16 +376,19 @@ jobs:
           fi
           merge=()
           [[ -f index.yaml ]] && merge=(--merge index.yaml)
+          cp "$RUNNER_TEMP/chart/takt-ai-$VERSION.tgz" .
           helm repo index "$RUNNER_TEMP/chart" --url "$url" "${merge[@]}"
           mv "$RUNNER_TEMP/chart/index.yaml" index.yaml
-          git add index.yaml
+          git add index.yaml "takt-ai-$VERSION.tgz"
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -m "chore: publish takt-ai chart $TAG"
           git push origin HEAD:gh-pages
 
+  # Binary release must not be gated on image/chart jobs.
   publish:
-    needs: [version, goreleaser, image-publish, chart]
+    name: Publish binary release
+    needs: [version, goreleaser]
     runs-on: ubuntu-latest
     permissions:
       contents: write

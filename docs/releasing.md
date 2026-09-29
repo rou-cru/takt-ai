@@ -5,17 +5,9 @@ Every merge to `main` that passes CI is released automatically by
 
 ## Flow
 
-1. **CI** runs on the push to `main`. Release starts only when CI succeeds (`workflow_run`).
-2. **version**: `development/release/next-version.sh` computes the next version from the commits since the last `v*` tag. If there is nothing to release, everything else is skipped.
-3. **image**: the workspace image (`deploy/workspace/Dockerfile`) is built on native `amd64` and `arm64` runners and pushed **by digest only**, with BuildKit SBOM and `mode=max` SLSA provenance. A build failure stops the release before anything public exists.
-4. **tag**: the annotated tag `vX.Y.Z` is created on the released commit.
-5. In parallel:
-   - **goreleaser** builds the binaries and packages, generates SBOMs, signs `checksums.txt` with cosign (keyless), attests build provenance, and opens a **draft** GitHub release.
-   - **image-publish** tags the multi-arch manifest in Docker Hub and GHCR, signs it with cosign, scans it with grype (report only, results go to code scanning), and refreshes the Docker Hub description.
-6. **chart** packages `charts/takt-ai` with `version = appVersion = X.Y.Z`, pushes and signs it at `oci://ghcr.io/rou-cru/charts`, attaches the `.tgz` to the release, and updates the Helm index on `gh-pages`.
-7. **publish** makes the draft public (and `latest`) only when all of the above succeeded. `install.sh` reads `releases/latest`, so it never sees a partial release.
+CI on `main` computes one version and tag. Binary, image and chart publishing then run independently: binary waits only for the tag, image publication for its platform builds, and chart publication for the version. A lane's failure does not block the others. The chart archive and index are both served from `gh-pages` at `https://rou-cru.github.io/takt-ai`.
 
-If a job fails after the tag exists, the release stays a draft. Re-run the failed jobs: every step is idempotent for the same version.
+Re-run only the failed lane for the same version.
 
 ## Artifacts per release
 
@@ -30,7 +22,7 @@ If a job fails after the tag exists, the release stays a draft. Re-run the faile
 | Homebrew cask `rou-cru/takt-ai/takt-ai` (only when `HOMEBREW_TAP_TOKEN` is set) | `rou-cru/homebrew-takt-ai` |
 | Image `X.Y.Z`, `X.Y`, `X` (from 1.0), `latest`, `sha-<commit>`, signed, with SBOM and provenance | `docker.io/roucru/takt-ai`, `ghcr.io/rou-cru/takt-ai` |
 | Helm chart `takt-ai` (signed OCI) | `oci://ghcr.io/rou-cru/charts/takt-ai` |
-| Helm chart (classic repository) | `https://rou-cru.github.io/takt-ai` and the release `.tgz` |
+| Helm chart (classic repository) | `https://rou-cru.github.io/takt-ai` (index and `.tgz` on `gh-pages`) |
 
 ## Version rules
 
