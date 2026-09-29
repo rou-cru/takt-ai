@@ -95,7 +95,12 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
       throw failure
     }
   }
-  await assert.rejects(delegate("execute.after", unit, "call-failed", "pm"), error => error === failure)
+  try {
+    await delegate("execute.after", unit, "call-failed", "pm")
+    assert.fail("expected delegate to reject")
+  } catch (error) {
+    assert.equal(error, failure)
+  }
   assert.deepEqual(promptedSessions, [unit])
   assert.deepEqual(waitedSessions, scenario === "wait_error" ? [unit] : [])
   const finishes = dispatched().filter(r => r.action === "finish")
@@ -108,8 +113,12 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   onPrompt = async () => { assert.fail("retry reused the previous child") }
   onWait = async () => { assert.fail("retry waited on the previous child") }
   await delegate("execute.before", unit, "call-retry", "pm")
-  await assert.rejects(delegate("execute.after", unit, "call-retry", "pm"),
-    /delegation ended without delivering a result via deliver_result/)
+  try {
+    await delegate("execute.after", unit, "call-retry", "pm")
+    assert.fail("expected delegate to reject")
+  } catch (error) {
+    assert.match(error.message, /delegation ended without delivering a result via deliver_result/)
+  }
   assert.equal(dispatched().filter(r => r.action === "finish").length, 2,
     "failed retry must also settle; a stale delivery must not satisfy it")
 } else if (scenario === "no_unnecessary_wait") {
@@ -157,8 +166,9 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   releases.get("first")()
   await first
   assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second", "first"])
-  assert.deepEqual([...waitedSessions].sort(), ["first", "second"])
-  assert.deepEqual([...promptedSessions].sort(), ["first", "second"])
+  const byName = (a, b) => a.localeCompare(b)
+  assert.deepEqual([...waitedSessions].sort(byName), ["first", "second"])
+  assert.deepEqual([...promptedSessions].sort(byName), ["first", "second"])
 } else if (scenario === "retry") {
   // Baseline: a clean, single-shot delivery.
   let mark = dispatched().length

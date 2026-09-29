@@ -28,22 +28,20 @@ components:
     core: true
     selectable: false
     deps: []
-    note: non-omittable (hoy)
   - id: skills
     purpose: Skill system deployed unconditionally by every install and sync.
     core: true
     selectable: false
     deps: []
-    note: non-omittable (hoy)
   - id: specialists
     purpose: Specialist sub-agent roster rendered from the semantic catalog.
     core: true
     selectable: false
     deps: []
-    note: non-omittable (hoy)
+  # Non-omittable: acquired via npm and wired by Takt with an absolute path
+  # (takt/codegraph), like Engram; not a rendered artifact.
   - id: codegraph
     purpose: Codegraph — tree-sitter based codebase exploration for agents (PR-SET-2)
     core: true
     selectable: false
     deps: []
-    note: non-omittable; acquired via npm and wired by Takt with an absolute path (takt/codegraph), like Engram; not a rendered artifact

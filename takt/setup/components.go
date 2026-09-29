@@ -95,7 +95,7 @@ func openCodeComponentArtifacts(components []model.ComponentID, config *opencode
 	}
 	// cli.json carries the theme selection, so it is rendered after the
 	// component loop has resolved the theme.
-	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.TaktCLIArtifact(config.Theme), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, opencode.VFSShellEnforced), opencode.TaktSandboxAdapterArtifact()}
+	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.TaktCLIArtifact(config.Theme), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, true), opencode.TaktSandboxAdapterArtifact()}
 	artifacts := make([]Artifact, 0, len(rendered))
 	for _, r := range rendered {
 		artifacts = append(artifacts, Artifact{Path: r.Path, Content: r.Content})

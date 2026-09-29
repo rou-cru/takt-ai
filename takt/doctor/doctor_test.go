@@ -142,7 +142,7 @@ func withSeams(t *testing.T, home string, look func(string) (string, error), cop
 	codegraphVersionFn = func(string) (string, error) { return "1.6.0", nil }
 	// Takt's plugins target the V2 API, so the check needs a fixed version.
 	openCodeHandshake = func() (opencodeapi.Handshake, error) {
-		return opencodeapi.Handshake{Version: "2.0.16", Major: 2, ModelRoutes: true}, nil
+		return opencodeapi.Handshake{Version: "2.0.16", Major: 2}, nil
 	}
 	if copies == nil {
 		toolCopies = func(string) []string { return []string{"/bin"} }
@@ -587,7 +587,7 @@ func TestOpenCodeVersionCheckFailsBelowV2(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			openCodeHandshake = func() (opencodeapi.Handshake, error) {
-				return opencodeapi.Handshake{Version: fmt.Sprintf("%d.0.0", tc.major), Major: tc.major, ModelRoutes: tc.err == nil}, tc.err
+				return opencodeapi.Handshake{Version: fmt.Sprintf("%d.0.0", tc.major), Major: tc.major}, tc.err
 			}
 			if got := opencodeVersionCheck().Status; got != tc.status {
 				t.Fatalf("status = %v, want %v", got, tc.status)

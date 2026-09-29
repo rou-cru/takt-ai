@@ -60,9 +60,8 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	var specs []opencode.AgentSpec
 	for _, def := range pack.Agents {
 		for _, id := range def.Instances {
-			profile := def.Profile(id)
 			grants, _ := def.VFSCapabilities(id)
-			specs = append(specs, opencode.AgentSpec{ID: id, Description: profile.Description, Mode: opencode.AgentMode(profile.Role), System: opencode.ComposePrompt(def, id), Role: profile.Role, VFSCapabilities: grants, Skills: def.Skills})
+			specs = append(specs, opencode.AgentSpec{ID: id, Description: def.Description, Mode: opencode.AgentMode(def.Role), System: opencode.ComposePrompt(def, id), Role: def.Role, VFSCapabilities: grants, Skills: def.Skills})
 		}
 	}
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Agents: specs})
@@ -399,7 +398,7 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		agents = append(agents, opencode.AgentSpec{ID: id, Description: def.Profile(id).Description, Mode: "subagent", System: text, Role: instance.Role, VFSCapabilities: grant})
+		agents = append(agents, opencode.AgentSpec{ID: id, Description: def.Description, Mode: "subagent", System: text, Role: instance.Role, VFSCapabilities: grant})
 	}
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Agents: agents})
 	if err != nil {

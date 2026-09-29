@@ -209,10 +209,10 @@ func newDeploymentTransaction(pending []pendingDeployment) *deploymentTransactio
 
 // stage writes every pending artifact to temp files without touching final locations.
 // Missing directories are created and recorded for commit or rollback.
-func (tx *deploymentTransaction) stage(pending []pendingDeployment, observers ...func(DeploymentProgress)) error {
+func (tx *deploymentTransaction) stage(pending []pendingDeployment, progress func(DeploymentProgress)) error {
 	for index, pendingFile := range pending {
-		if len(observers) > 0 && observers[0] != nil {
-			observers[0](DeploymentProgress{Stage: "preparing", Message: "Preparing installation files", Path: pendingFile.path, Completed: index, Total: len(pending)})
+		if progress != nil {
+			progress(DeploymentProgress{Stage: "preparing", Message: "Preparing installation files", Path: pendingFile.path, Completed: index, Total: len(pending)})
 		}
 		file := &stagedDeployment{
 			path:        pendingFile.path,
@@ -287,7 +287,7 @@ func (tx *deploymentTransaction) abort(err error) error {
 }
 
 // commit renames staged files into place in order, stopping early when ctx is cancelled.
-func (tx *deploymentTransaction) commit(ctx context.Context, observers ...func(DeploymentProgress)) error {
+func (tx *deploymentTransaction) commit(ctx context.Context, progress func(DeploymentProgress)) error {
 	for index, file := range tx.files {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -299,8 +299,8 @@ func (tx *deploymentTransaction) commit(ctx context.Context, observers ...func(D
 		if err := syncDir(filepath.Dir(file.destination)); err != nil {
 			return fmt.Errorf("install managed artifact %q: %w", file.path, err)
 		}
-		if len(observers) > 0 && observers[0] != nil {
-			observers[0](DeploymentProgress{Stage: "applied", Message: "Applying installation files", Path: file.path, Completed: index + 1, Total: len(tx.files)})
+		if progress != nil {
+			progress(DeploymentProgress{Stage: "applied", Message: "Applying installation files", Path: file.path, Completed: index + 1, Total: len(tx.files)})
 		}
 	}
 	for index := len(tx.createdOrder) - 1; index >= 0; index-- {

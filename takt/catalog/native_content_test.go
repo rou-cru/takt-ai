@@ -58,7 +58,7 @@ func TestLoadNativeContent(t *testing.T) {
 		if !ok {
 			t.Fatalf("no agent definition declares instance %q", id)
 		}
-		if def.Profile(id).Description == "" {
+		if def.Description == "" {
 			t.Errorf("entry %q missing description", id)
 		}
 		if text, err := def.ComposeText(AssetFS()); err != nil || text == "" {
@@ -67,9 +67,6 @@ func TestLoadNativeContent(t *testing.T) {
 	}
 	if _, exposed := content["takt-judge"]; exposed {
 		t.Error("takt-judge must not be exposed on its own, only projected as -a/-b")
-	}
-	if defByInstance["judge-a"].Profile("judge-a").Description != defByInstance["judge-b"].Profile("judge-b").Description {
-		t.Error("judge-a and judge-b must share the same content, only the ID differs")
 	}
 }
 
@@ -158,27 +155,6 @@ func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeS
 	for _, retired := range []string{"simplify-align", "simplify-plan", "simplify-verify", "simplify-gc"} {
 		if _, ok := content[retired]; ok {
 			t.Errorf("retired instance %q still exposed", retired)
-		}
-	}
-}
-
-func TestInstanceProfileValidation(t *testing.T) {
-	base := "id: x\ninstances: [x, y]\ndescription: d\nrole: execution\nvfs_capabilities: {x: [bind, write], y: []}\ncontext: {operations: OPERATIONS.md}\n"
-	for name, tc := range map[string]struct{ extra, want string }{
-		"undeclared instance": {"instance_profiles: {z: {role: verification}}\n", "undeclared instance"},
-		"unknown role":        {"instance_profiles: {y: {role: janitor}}\n", "unknown role class"},
-		"orchestrator":        {"instance_profiles: {y: {role: orchestrator}}\n", "not a specialty role"},
-		"unknown field":       {"instance_profiles: {y: {mode: all}}\n", "field mode not found"},
-	} {
-		fsys := fstest.MapFS{
-			"README.md":              {Data: []byte("r")},
-			BaselinePath:             {Data: []byte("b")},
-			"skills/s/SKILL.md":      {Data: []byte("---\nname: s\ndescription: d\n---\n")},
-			"agents/x/agent.yaml":    {Data: []byte(base + tc.extra)},
-			"agents/x/OPERATIONS.md": {Data: []byte("ops")},
-		}
-		if _, err := LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
 		}
 	}
 }

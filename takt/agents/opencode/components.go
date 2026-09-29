@@ -23,10 +23,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
-// into opencode.json by the context7 component.
-const Context7RemoteURL = shared.Context7RemoteURL
-
 // TaktTheme is the OpenCode theme deployed by the theme component.
 const TaktTheme = "takt"
 
@@ -39,7 +35,7 @@ func context7Config() map[string]any {
 		"servers": map[string]any{
 			string(model.ComponentContext7): map[string]any{
 				"type":     "remote",
-				"url":      Context7RemoteURL,
+				"url":      shared.Context7RemoteURL,
 				"disabled": false,
 			},
 		},
@@ -106,10 +102,6 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact {
 
 //go:embed assets/takt-vfs.ts
 var taktVFSPluginSource string
-
-// VFSShellEnforced controls whether the VFS plugin intercepts specialist shell
-// commands (PR-HAR-15). File edits stay VFS-governed either way.
-const VFSShellEnforced = true
 
 // TaktVFSPluginArtifact returns the OpenCode plugin exposing the governed
 // VFS tools; taktAIBinary is the absolute takt-ai path the plugin spawns and

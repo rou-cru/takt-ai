@@ -21,7 +21,7 @@ func orchestratorDescription(t *testing.T) string {
 	}
 	for _, def := range pkgs.Agents {
 		if def.ID == shared.OrchestratorID {
-			return def.Profile(shared.OrchestratorID).Description
+			return def.Description
 		}
 	}
 	t.Fatalf("no agent definition with ID %q", shared.OrchestratorID)

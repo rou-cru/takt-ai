@@ -256,7 +256,7 @@ func TestMCPStatusMapsEveryReportedState(t *testing.T) {
 	want := []MCPServer{
 		{Name: "aws-cost-management", State: MCPDisabled},
 		{Name: "codegraph", State: MCPConnected},
-		{Name: "context7", State: MCPConnected, IntegrationID: "mcp_0123456789abcdef"},
+		{Name: "context7", State: MCPConnected},
 		{Name: "ci-gateway", State: MCPFailed, Error: "connect ECONNREFUSED 127.0.0.1:8080"},
 		{Name: "obsidian", State: MCPNeedsAuth, Error: "authorization required"},
 		{Name: "warming", State: MCPPending},
@@ -278,7 +278,7 @@ func TestMCPStatusRejectsAnUnknownState(t *testing.T) {
 	}
 }
 
-func TestAgentsReturnsRegisteredAgentsWithOptionalModel(t *testing.T) {
+func TestAgentsReturnsRegisteredAgents(t *testing.T) {
 	client, _ := stubClient(map[string]stubResponse{"GET /api/agent": {stdout: agentsBody}})
 
 	agents, err := client.Agents(context.Background())
@@ -288,15 +288,14 @@ func TestAgentsReturnsRegisteredAgentsWithOptionalModel(t *testing.T) {
 	if len(agents) != 2 {
 		t.Fatalf("len(agents) = %d, want 2", len(agents))
 	}
-	if agents[0].ID != "build" || agents[0].Name != "Build" || agents[0].Model != nil {
+	if agents[0].ID != "build" || agents[0].Mode != "primary" || agents[0].Hidden {
 		t.Fatalf("first agent = %+v", agents[0])
 	}
-	pinned := agents[1]
-	if pinned.ID != "takt-orchestrator" {
-		t.Fatalf("second agent id = %q", pinned.ID)
-	}
-	if pinned.Model == nil || pinned.Model.String() != "opencode-go/glm-5.3-flash#max" {
-		t.Fatalf("second agent model = %+v", pinned.Model)
+	// The second entry pins a model ("opencode-go/glm-5.3-flash#max"); Agent
+	// no longer carries that ref (nothing reads it), but toAgent still
+	// validates the pin, so a malformed one would fail parsing here.
+	if agents[1].ID != "takt-orchestrator" {
+		t.Fatalf("second agent id = %q", agents[1].ID)
 	}
 }
 
@@ -320,10 +319,10 @@ func TestSkillsReturnsDiscoveredSkills(t *testing.T) {
 	if len(skills) != 2 {
 		t.Fatalf("len(skills) = %d, want 2", len(skills))
 	}
-	if skills[0].ID != "opencode" || skills[0].Description == "" {
+	if skills[0].ID != "opencode" {
 		t.Fatalf("first skill = %+v", skills[0])
 	}
-	if skills[1].ID != "sdd-verify" || skills[1].Description != "" || skills[1].Path == "" {
+	if skills[1].ID != "sdd-verify" {
 		t.Fatalf("second skill = %+v", skills[1])
 	}
 }
@@ -409,7 +408,7 @@ func TestHandshakePassesOnAV2ServerWithWorkingRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handshake() error = %v", err)
 	}
-	if handshake.Version != "2.0.16" || handshake.Major != 2 || !handshake.ModelRoutes {
+	if handshake.Version != "2.0.16" || handshake.Major != 2 {
 		t.Fatalf("handshake = %+v", handshake)
 	}
 	// The probe order is the failure ladder: identity first, mechanism last.

@@ -53,9 +53,9 @@ type TargetPlan struct {
 }
 
 // ApplyContext applies plans with cooperative cancellation; see
-// DeployContext. Provider actions run only after a complete deployment.
+// DeployContextProgress. Provider actions run only after a complete deployment.
 func ApplyContext(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, preserve ...string) (DeploymentResult, error) {
-	return applyPipeline(ctx, rootDir, plans, skipSet(preserve), nil, runtime)
+	return applyPipeline(ctx, rootDir, plans, skipSet(preserve), nil, runtime, nil)
 }
 
 // ApplyContextProgress applies plans and reports staging/commit progress.
@@ -85,15 +85,11 @@ func SyncContextProgress(ctx context.Context, rootDir string, plans []TargetPlan
 }
 
 // applyPipeline runs the shared preflight→apply→provider-actions spine so
-// ApplyContext and SyncContext differ only in how they build the skip set.
-func applyPipeline(ctx context.Context, rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest, runtime ProviderRuntime, observers ...func(DeploymentProgress)) (DeploymentResult, error) {
+// ApplyContext and SyncContextProgress differ only in how they build the skip set.
+func applyPipeline(ctx context.Context, rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest, runtime ProviderRuntime, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	actions, err := preflightProviderActions(plans, runtime)
 	if err != nil {
 		return DeploymentResult{}, err
-	}
-	var progress func(DeploymentProgress)
-	if len(observers) > 0 {
-		progress = observers[0]
 	}
 	result, err := applyPlans(ctx, rootDir, plans, skip, manifest, progress)
 	if err != nil {
@@ -634,7 +630,7 @@ func pruneEmptyDirs(root, directory string) {
 
 // applyPlans deploys the supplied plans, records ownership for deployed artifacts, and saves the ownership manifest.
 // Paths listed in skip are reported as unchanged and are excluded from deployment. If manifest is nil, it is loaded or created.
-func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest, observers ...func(DeploymentProgress)) (DeploymentResult, error) {
+func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	activePaths, activeArtifacts, targetByPath, manifest, err := prepareApply(rootDir, plans, skip, manifest)
 	if err != nil {
 		return DeploymentResult{}, err
@@ -651,10 +647,6 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 		return DeploymentResult{}, err
 	}
 
-	var progress func(DeploymentProgress)
-	if len(observers) > 0 {
-		progress = observers[0]
-	}
 	result, err := DeployContextProgress(ctx, rootDir, activePaths, activeArtifacts, progress)
 	cancelled := deploymentCancelled(ctx, err)
 	if err != nil && !cancelled {
