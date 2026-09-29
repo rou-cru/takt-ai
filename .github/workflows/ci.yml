@@ -46,7 +46,7 @@ jobs:
           npm run --prefix takt/agents/opencode/assets lint
       - name: Validate shell and workflows
         run: |
-          shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh deploy/workspace/helm.sh
+          shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh development/release/next-version.sh deploy/workspace/helm.sh
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
   test-go-host:
@@ -171,11 +171,14 @@ jobs:
           # Placeholder digest exercises the digest-pinned image path; a
           # non-default namespace mirrors how the chart is actually installed.
           args=(--namespace takt-workspace
-                --set image.repository=example.invalid/takt-ai/workspace
+                --set image.repository=example.invalid/takt-ai
                 --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000)
           mkdir -p "$RUNNER_TEMP/rendered"
-          helm lint charts/takt-workspace "${args[@]}"
-          helm template takt-workspace charts/takt-workspace "${args[@]}" > "$RUNNER_TEMP/rendered/default.yaml"
+          helm lint charts/takt-ai "${args[@]}"
+          helm template takt-ai charts/takt-ai "${args[@]}" > "$RUNNER_TEMP/rendered/default.yaml"
+          # Defaults alone must render: the published image at the chart's appVersion.
+          helm template takt-ai charts/takt-ai --namespace takt-workspace \
+            | grep -Fq 'image: "docker.io/roucru/takt-ai:0.0.0-dev"'
           docker compose config --quiet
       - name: Checkov IaC and rendered manifest scan
         run: |
@@ -188,6 +191,32 @@ jobs:
             --directory /workspace \
             --directory /rendered \
             --framework dockerfile github_actions kubernetes
+
+  # Catches what would break the release workflow before it reaches main.
+  release-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      - name: Next version
+        run: ./development/release/next-version.sh HEAD
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish,sign
+      - name: Check snapshot artifacts
+        run: |
+          ls dist
+          for pattern in '*.tar.gz' '*.deb' '*.rpm' '*.apk' '*.pkg.tar.zst' '*.sbom.json' checksums.txt; do
+            compgen -G "dist/$pattern" >/dev/null || { echo "::error::missing dist/$pattern"; exit 1; }
+          done
 
   coverage:
     needs: [test-go-host, test-go-container]
@@ -235,7 +264,7 @@ jobs:
 
   ci-required:
     if: ${{ always() }}
-    needs: [quality, test-go-host, test-go-container, test-js, e2e-container, sast, iac, coverage, sonarqube]
+    needs: [quality, test-go-host, test-go-container, test-js, e2e-container, sast, iac, release-check, coverage, sonarqube]
     runs-on: ubuntu-latest
     steps:
       - name: Check all mandatory jobs

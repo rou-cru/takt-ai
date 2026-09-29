@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "takt-workspace.fullname" . }}
+  name: {{ include "takt-ai.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- include "takt-ai.labels" . | nindent 4 }}
     {{- with .Values.service.labels }}{{ toYaml . | nindent 4 }}{{- end }}
   {{- with .Values.service.annotations }}
   annotations: {{ toYaml . | nindent 4 }}
@@ -12,7 +12,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   selector:
-    {{- include "takt-workspace.selectorLabels" . | nindent 4 }}
+    {{- include "takt-ai.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.service.port }}

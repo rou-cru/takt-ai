@@ -9,7 +9,10 @@ variable "TAG" {
   default = "takt-ai:dev"
 }
 variable "WORKSPACE_TAG" {
-  default = "takt-ai:workspace"
+  default = "roucru/takt-ai:dev"
+}
+variable "VERSION" {
+  default = "dev"
 }
 
 target "dev" {
@@ -27,18 +30,16 @@ target "dev" {
   }
 }
 
-# The Kubernetes workspace currently targets the cluster's ARM64 nodes only.
+# Published as docker.io/roucru/takt-ai by the release workflow, which builds
+# each platform on a native runner (the builder stage is target-arch).
 target "workspace" {
   context    = "."
   dockerfile = "deploy/workspace/Dockerfile"
-  platforms  = ["linux/arm64"]
+  platforms  = ["linux/amd64", "linux/arm64"]
   tags       = ["${WORKSPACE_TAG}"]
   args = {
     OPENCODE_VERSION = "${OPENCODE_VERSION}"
     GO_VERSION       = "${GO_VERSION}"
-  }
-  labels = {
-    "org.opencontainers.image.title"       = "takt ephemeral workspace"
-    "org.opencontainers.image.description" = "Prepared Takt AI + OpenCode v2 workspace runtime for Kubernetes"
+    VERSION          = "${VERSION}"
   }
 }

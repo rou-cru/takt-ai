@@ -175,6 +175,24 @@ SH
     grep -Fq 'Checksum verified' "$TMP/output" || fail 'checksum not checked'
     pass 'valid sub-1000-byte archive installs into an isolated spaced directory'
 
+    # With cosign on PATH the Sigstore bundle is mandatory and must verify.
+    # shellcheck disable=SC2016 # expanded by the fake at run time
+    printf '#!/bin/sh\nexit "${FAKE_COSIGN_STATUS:-0}"\n' > "$TMP/bin/cosign"
+    chmod +x "$TMP/bin/cosign"
+    rm "$TMP/install bin/takt-ai"
+    expect_failure 'no signature' install_fixture
+    printf '{}\n' > "$TMP/release/checksums.txt.sigstore.json"
+    install_fixture > "$TMP/output" 2>&1 || { cat "$TMP/output"; fail 'signed archive rejected'; }
+    grep -Fq 'Signature verified' "$TMP/output" || fail 'signature not checked'
+    rm "$TMP/install bin/takt-ai"
+    export FAKE_COSIGN_STATUS=1
+    expect_failure 'Signature verification of checksums.txt failed' install_fixture
+    [[ ! -e "$TMP/install bin/takt-ai" ]] || fail 'installed with a bad signature'
+    unset FAKE_COSIGN_STATUS
+    rm "$TMP/bin/cosign"
+    pass 'cosign, when present, requires and verifies the checksums signature'
+
+    install_fixture > "$TMP/output" 2>&1 || { cat "$TMP/output"; fail 'reinstall without cosign'; }
     rm "$TMP/install bin/takt-ai"
     printf '%064d  %s\n' 0 "$archive" > "$TMP/release/checksums.txt"
     expect_failure 'Checksum mismatch' install_fixture
@@ -192,10 +210,46 @@ SH
     pass 'checksum mismatch, corrupt archive, missing binary, and missing checksum fail closed'
 }
 
+test_version() {
+    local repo="$TMP/version-repo" script="$ROOT/development/release/next-version.sh"
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'Stage (#6)'
+    commit() { git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty "$@"; }
+    next() { (cd "$repo" && bash "$script") | sed -n "s/^$1=//p"; }
+    expect_next() { [[ "$(next tag)" == "$1" ]] || fail "expected $1, got '$(next tag)' ($2)"; }
+
+    expect_next v0.0.1 'first release'
+    git -C "$repo" tag v0.0.1
+    [[ "$(next skip)" == true ]] || fail 'tagged HEAD must skip'
+    commit -m 'docs: readme'
+    [[ "$(next skip)" == true ]] || fail 'docs-only range must skip'
+    commit -m 'Stage (#7)'
+    expect_next v0.0.2 'untyped subject bumps patch'
+    commit -m 'feat: new command'
+    expect_next v0.0.2 'pre-1.0 feat bumps patch'
+    commit -m 'feat!: drop flag'
+    expect_next v0.1.0 'pre-1.0 breaking bumps minor'
+    commit -m 'fix: thing' -m 'Release-As: v0.3.0'
+    expect_next v0.3.0 'Release-As trailer'
+    git -C "$repo" tag v1.0.0
+    commit -m 'feat: x'
+    expect_next v1.1.0 'post-1.0 feat bumps minor'
+    commit -m 'refactor(cli)!: y'
+    expect_next v2.0.0 'post-1.0 breaking bumps major'
+    commit -m 'fix: z' -m 'Release: skip'
+    [[ "$(next skip)" == true ]] || fail 'Release: skip trailer'
+    [[ "$(cd "$repo" && RELEASE_AS=4.5.6 bash "$script" | sed -n 's/^tag=//p')" == v4.5.6 ]] || fail 'RELEASE_AS env'
+    expect_failure 'already exists' env -C "$repo" RELEASE_AS=v1.0.0 bash "$script"
+    expect_failure 'invalid version' env -C "$repo" RELEASE_AS=1.0 bash "$script"
+    pass 'next-version bumps, skips, and overrides per release rules'
+}
+
 case "${1:-all}" in
     runner) test_runner ;;
     packages) test_packages ;;
     install) test_install ;;
-    all) test_runner; test_packages; test_install ;;
-    *) fail 'usage: test-shell.sh [runner|packages|install]' ;;
+    version) test_version ;;
+    all) test_runner; test_packages; test_install; test_version ;;
+    *) fail 'usage: test-shell.sh [runner|packages|install|version]' ;;
 esac
