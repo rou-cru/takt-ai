@@ -16,6 +16,8 @@ func vfsCaps(capabilities ...model.VFSCapability) []model.VFSCapability {
 	return append([]model.VFSCapability{}, capabilities...)
 }
 
+// TestCatalogProjectionEnforcesResponsibilityBoundaries checks that catalog agents
+// receive delegation, handoff, and skill access appropriate to their responsibilities.
 func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	pack, err := catalog.LoadPackages()
 	if err != nil {
@@ -330,6 +332,8 @@ func TestVFSPluginToolsAllHaveRolePermissions(t *testing.T) {
 	}
 }
 
+// TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant checks that VFS tools and
+// mutation skills follow explicit grants while document authors retain native edits.
 func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	content, err := catalog.LoadNativeContent()
 	if err != nil {

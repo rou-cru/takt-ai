@@ -8,6 +8,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
+// TestBuildOpenCodePlanShipsToolInvocationGuidance verifies that the deployment
+// includes shared discovery instructions and every enabled agent loads them.
 func TestBuildOpenCodePlanShipsToolInvocationGuidance(t *testing.T) {
 	request, err := DefaultPlanRequest()
 	if err != nil {
