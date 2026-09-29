@@ -851,6 +851,15 @@ export default Plugin.define({
       scheduleGC()
     })
 
+    /**
+     * Settles tracked delegations and advances GC after ordinary VFS tool calls.
+     * A completed result producer with no delivery gets one reminder if its child
+     * is known; the hook waits for that turn before rejecting a missing result.
+     * Delivery checks clear the child and result tracking and attempt to finish
+     * the delegation even on failure. Storage, session, and coordination errors
+     * propagate; a failed finish can replace a delivery or session error.
+     * GC children and untracked delegations are ignored.
+     */
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool === "subagent" && !gcChildren.has(event.sessionID)) {
         const delegation = `${event.sessionID}:${event.id}`
