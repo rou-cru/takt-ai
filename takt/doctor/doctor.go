@@ -653,9 +653,9 @@ func defaultHTTPFetch(method, url string, body io.Reader, timeout time.Duration)
 	if err != nil {
 		return 0, nil, err
 	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	return resp.StatusCode, data, err
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
+	return resp.StatusCode, data, errors.Join(readErr, closeErr)
 }
 
 // statfsFreeBytes reports bytes available to unprivileged users on dir's
