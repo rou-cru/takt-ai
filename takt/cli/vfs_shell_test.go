@@ -28,6 +28,10 @@ import (
 
 func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
 	root := t.TempDir()
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	state := filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
 	for _, command := range []string{"cat data.txt", "git diff", "ls"} {
@@ -42,13 +46,13 @@ func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
 			if !prepared.OK || plan == nil || plan.Decision != vfs.ShellAllow {
 				t.Fatalf("inspection plan = %+v", prepared)
 			}
-			if plan.Capture || plan.Cwd != root {
+			if plan.Capture || plan.Cwd != canonicalRoot {
 				t.Errorf("unbound inspection must read the workspace without capturing: %+v", plan)
 			}
 			if plan.Scratch == "" || !slices.Equal(plan.Writable, []string{plan.Scratch}) {
 				t.Errorf("only scratch may be writable: %+v", plan)
 			}
-			if !slices.Contains(plan.Protected, root) || !slices.Contains(plan.Private, state) {
+			if !slices.Contains(plan.Protected, canonicalRoot) || !slices.Contains(plan.Private, state) {
 				t.Errorf("workspace/state protection missing: %+v", plan)
 			}
 		})
