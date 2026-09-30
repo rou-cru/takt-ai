@@ -125,7 +125,7 @@ func PublishVFSEvent(bus *Bus, clock *Clock, agent, journalRef, workUnitID strin
 PublishVFSEvent constructs and publishes an envelope referencing a VFS journal entry by ref, describing it through attributes without content.
 
 <a name="StorePath"></a>
-## func [StorePath](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L94>)
+## func [StorePath](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L98>)
 
 ```go
 func StorePath(workspace string) (string, error)
@@ -421,7 +421,7 @@ const (
 ```
 
 <a name="Store"></a>
-## type [Store](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L75-L77>)
+## type [Store](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L79-L81>)
 
 Store persists events and control actions in one workspace\-local SQLite file so separate process invocations share a single stream. Row id is the order.
 
@@ -432,7 +432,7 @@ type Store struct {
 ```
 
 <a name="OpenStore"></a>
-### func [OpenStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L104>)
+### func [OpenStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L108>)
 
 ```go
 func OpenStore(workspace string) (*Store, error)
@@ -441,7 +441,7 @@ func OpenStore(workspace string) (*Store, error)
 OpenStore opens \(creating if absent\) the workspace event database in WAL mode with a busy timeout, so concurrent invocations wait for each other instead of failing.
 
 <a name="Store.Actions"></a>
-### func \(\*Store\) [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L261>)
+### func \(\*Store\) [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L265>)
 
 ```go
 func (s *Store) Actions(sessionID string, action ActionClass, afterID, beforeID int64, limit int) (out []StoredAction, err error)
@@ -450,7 +450,7 @@ func (s *Store) Actions(sessionID string, action ActionClass, afterID, beforeID 
 Actions returns up to limit persisted control actions for sessionID with id in \(afterID, beforeID\], in id order. action filters to one ActionClass; the zero value matches every action. beforeID of 0 means no upper bound; limit of 0 means no limit.
 
 <a name="Store.AppendAction"></a>
-### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L319>)
+### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L323>)
 
 ```go
 func (s *Store) AppendAction(r ControlRecord) (int64, error)
@@ -459,7 +459,7 @@ func (s *Store) AppendAction(r ControlRecord) (int64, error)
 AppendAction validates then writes one control action and returns its id.
 
 <a name="Store.AppendEvent"></a>
-### func \(\*Store\) [AppendEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L137>)
+### func \(\*Store\) [AppendEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L141>)
 
 ```go
 func (s *Store) AppendEvent(e Envelope) (int64, error)
@@ -468,7 +468,7 @@ func (s *Store) AppendEvent(e Envelope) (int64, error)
 AppendEvent validates then writes one event under its own session and returns its id. The session clock is not stored: it restarts each process, so row id is the order.
 
 <a name="Store.Close"></a>
-### func \(\*Store\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L133>)
+### func \(\*Store\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L137>)
 
 ```go
 func (s *Store) Close() error
@@ -477,7 +477,7 @@ func (s *Store) Close() error
 Close releases the database handle.
 
 <a name="Store.CountActions"></a>
-### func \(\*Store\) [CountActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L302>)
+### func \(\*Store\) [CountActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L306>)
 
 ```go
 func (s *Store) CountActions(sessionID string, action ActionClass, afterID, beforeID int64) (int64, error)
@@ -486,7 +486,7 @@ func (s *Store) CountActions(sessionID string, action ActionClass, afterID, befo
 CountActions reports how many actions Actions would return for the same filters, without loading them.
 
 <a name="Store.CountEvents"></a>
-### func \(\*Store\) [CountEvents](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L237>)
+### func \(\*Store\) [CountEvents](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L241>)
 
 ```go
 func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error)
@@ -495,7 +495,7 @@ func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeI
 CountEvents reports how many events Events would return for the same filters, without loading them, so a consumer can derive a rate's numerator or denominator \(a count of registered work, per PR\-MNT\-9/PR\-MNT\-11\) over one row\-id range cheaply.
 
 <a name="Store.Events"></a>
-### func \(\*Store\) [Events](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L176>)
+### func \(\*Store\) [Events](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L180>)
 
 ```go
 func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int64, limit int) (out []StoredEvent, err error)
@@ -504,7 +504,7 @@ func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int
 Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in id order \(the order AppendEvent assigns, i.e. the order work was registered — never wall\-clock time, per PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass; the zero value matches every class. beforeID of 0 means no upper bound; limit of 0 means no limit.
 
 <a name="StoredAction"></a>
-## type [StoredAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L87-L91>)
+## type [StoredAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L91-L95>)
 
 StoredAction is one persisted control action with its row id and write time.
 
@@ -517,7 +517,7 @@ type StoredAction struct {
 ```
 
 <a name="StoredEvent"></a>
-## type [StoredEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L80-L84>)
+## type [StoredEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L84-L88>)
 
 StoredEvent is one persisted event with its row id and write time, so readers can resume by id.
 

@@ -4,7 +4,9 @@ project_name: takt-ai
 
 before:
   hooks:
-  - go mod tidy
+  # Fail on drift instead of mutating the tree mid-release.
+  - go mod verify
+  - go mod tidy -diff
 
 builds:
 - main: ./takt/cli
@@ -17,33 +19,149 @@ builds:
   goarch:
   - amd64
   - arm64
+  flags:
+  - -trimpath
   ldflags:
   - -s -w -X main.version={{.Version}}
+  # Reproducible archives: file times come from the commit, not the runner.
+  mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
 - formats:
   - tar.gz
   name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  files:
+  - LICENSE
+  - README.md
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
+
+nfpms:
+- id: packages
+  package_name: takt-ai
+  file_name_template: "{{ .ConventionalFileName }}"
+  vendor: Takt AI Contributors
+  homepage: https://github.com/rou-cru/takt-ai
+  maintainer: Takt AI Contributors <https://github.com/rou-cru/takt-ai/issues>
+  description: Meta-harness for AI coding assistants.
+  license: AGPL-3.0-or-later
+  formats:
+  - deb
+  - rpm
+  - apk
+  - archlinux
+  contents:
+  - src: LICENSE
+    dst: /usr/share/licenses/takt-ai/LICENSE
+  - src: README.md
+    dst: /usr/share/doc/takt-ai/README.md
 
 checksum:
   name_template: "checksums.txt"
 
+# One SPDX SBOM per archive plus one for the source tarball (requires syft).
+sboms:
+- id: archives
+  artifacts: archive
+- id: source
+  artifacts: source
+
+# Keyless Sigstore signature over the checksums file; every artifact it
+# lists is transitively covered. Verify with:
+#   cosign verify-blob --bundle checksums.txt.sigstore.json \
+#     --certificate-identity-regexp '^https://github.com/rou-cru/takt-ai/.github/workflows/release.yml@' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+signs:
+- cmd: cosign
+  artifacts: checksum
+  signature: "${artifact}.sigstore.json"
+  args:
+  - sign-blob
+  - --bundle=${signature}
+  - --yes
+  - ${artifact}
+
+homebrew_casks:
+- name: takt-ai
+  repository:
+    owner: rou-cru
+    name: homebrew-takt-ai
+    token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+  directory: Casks
+  homepage: https://github.com/rou-cru/takt-ai
+  description: Meta-harness for AI coding assistants.
+  license: AGPL-3.0-or-later
+  commit_msg_template: "chore: update takt-ai cask to {{ .Tag }}"
+  # The tap is optional: without its token the release still completes.
+  skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
+  hooks:
+    post:
+      install: |
+        if OS.mac? && system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/takt-ai"]
+        end
+
 changelog:
+  use: github
   sort: asc
+  groups:
+  - title: Breaking changes
+    regexp: '^.*?\w+(\(.+\))?!:.+$'
+    order: 0
+  - title: Features
+    regexp: '^.*?feat(\(.+\))?:.+$'
+    order: 1
+  - title: Fixes
+    regexp: '^.*?fix(\(.+\))?:.+$'
+    order: 2
+  - title: Others
+    order: 999
   filters:
     exclude:
     - "^docs:"
     - "^test:"
     - "^ci:"
 
-brews:
-- repository:
-    owner: rou-cru
-    name: homebrew-takt-ai
-    token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-  directory: Formula
-  name: takt-ai
-  homepage: "https://github.com/rou-cru/takt-ai"
-  description: "Takt-AI — Coding agents."
-  license: "AGPL-3.0"
-  commit_msg_template: "chore: update takt-ai formula to {{ .Tag }}"
+release:
+  # The release workflow publishes it once the image and chart are out too.
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```sh
+    # Script (Linux/macOS, verifies checksums, and signatures when cosign is present)
+    curl -fsSL https://raw.githubusercontent.com/rou-cru/takt-ai/main/install.sh | bash
+
+    # Homebrew (trust the tap first — Homebrew 7+ won't load an unofficial cask otherwise)
+    brew trust --tap rou-cru/homebrew-takt-ai
+    brew trust --cask rou-cru/takt-ai/takt-ai
+    brew install --cask rou-cru/takt-ai/takt-ai
+
+    # Workspace image (linux/amd64, linux/arm64)
+    docker pull docker.io/roucru/takt-ai:{{ .Version }}
+
+    # Helm chart
+    helm install takt-ai oci://ghcr.io/rou-cru/charts/takt-ai --version {{ .Version }}
+    ```
+
+    Linux `.deb`, `.rpm`, `.apk` and Arch packages are attached below.
+
+    ## Verify
+
+    ```sh
+    cosign verify-blob --bundle checksums.txt.sigstore.json \
+      --certificate-identity-regexp '^https://github.com/rou-cru/takt-ai/.github/workflows/release.yml@' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+    sha256sum --ignore-missing -c checksums.txt
+    gh attestation verify takt-ai_{{ .Version }}_linux_amd64.tar.gz --repo rou-cru/takt-ai
+    cosign verify docker.io/roucru/takt-ai:{{ .Version }} \
+      --certificate-identity-regexp '^https://github.com/rou-cru/takt-ai/.github/workflows/release.yml@' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    ```
+
+    SBOMs: `*.sbom.json` (SPDX) for every archive and the source tarball; the image
+    carries BuildKit SBOM and SLSA provenance attestations.

@@ -61,7 +61,8 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func Investigate\(plan Plan, report Report, prior \[\]Investigation, r Investigation\) \(\[\]Investigation, error\)](<#Investigate>)
 - [type MandateClass](<#MandateClass>)
 - [type MandateRateDecision](<#MandateRateDecision>)
-  - [func EvaluateMandateReversionRate\(store \*obs.Store, bus \*obs.Bus, clock \*obs.Clock, agent, sessionID string, mandate MandateClass, afterID, beforeID int64, workUnitID string\) \(MandateRateDecision, error\)](<#EvaluateMandateReversionRate>)
+  - [func EvaluateMandateReversionRate\(store \*obs.Store, bus \*obs.Bus, clock \*obs.Clock, in MandateReversionRateInput\) \(MandateRateDecision, error\)](<#EvaluateMandateReversionRate>)
+- [type MandateReversionRateInput](<#MandateReversionRateInput>)
 - [type Outcome](<#Outcome>)
 - [type Plan](<#Plan>)
   - [func Declare\(ctx context.Context, entries \[\]vfs.JournalEntry, req Request, reach Reach\) \(Plan, error\)](<#Declare>)
@@ -221,7 +222,7 @@ func AuthorizedFinding(f Finding, rs []Investigation) bool
 AuthorizedFinding reports whether a confirmed investigation with evidence stands behind f and the finding itself is eligible for mutation. This is the gate between analysis and source edits.
 
 <a name="AuthorizedScope"></a>
-## func [AuthorizedScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L289>)
+## func [AuthorizedScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L290>)
 
 ```go
 func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation) ([]string, error)
@@ -230,7 +231,7 @@ func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigati
 AuthorizedScope bounds mutation paths, never truncates causal context.
 
 <a name="ChecksPass"></a>
-## func [ChecksPass](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L321>)
+## func [ChecksPass](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L324>)
 
 ```go
 func ChecksPass(checks []CheckEvidence) bool
@@ -313,7 +314,7 @@ type AdmissionPolicy = dispatch.AdmissionPolicy
 ```
 
 <a name="Analyzer"></a>
-## type [Analyzer](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L39-L46>)
+## type [Analyzer](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L42-L49>)
 
 Analyzer is one project\-declared analysis tool with the exact version and commands that produce and report its version.
 
@@ -427,7 +428,7 @@ func SessionDelta(entries []vfs.JournalEntry, sessionID string) []Change
 SessionDelta returns the paths the session changed and did not roll back.
 
 <a name="CheckEvidence"></a>
-## type [CheckEvidence](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L59-L74>)
+## type [CheckEvidence](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L62-L77>)
 
 CheckEvidence is the recorded outcome of one acceptance check command.
 
@@ -451,7 +452,7 @@ type CheckEvidence struct {
 ```
 
 <a name="RunChecks"></a>
-### func [RunChecks](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L308>)
+### func [RunChecks](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L311>)
 
 ```go
 func RunChecks(ctx context.Context, workspace string, p Preparation) []CheckEvidence
@@ -562,7 +563,7 @@ func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agen
 Admit is GC's own admission barrier composed with the generic dispatch protocol: the collector's own dispatch never goes through ordinary admission \(it is attached to the cycle directly, via Attach\), and every other admission is held while a maintenance cycle is in flight. Everything else — concurrency, plan coverage, recovery budgets — is package dispatch's concern, not GC's.
 
 <a name="Coordinator.Advance"></a>
-### func \(\*Coordinator\) [Advance](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L174>)
+### func \(\*Coordinator\) [Advance](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L175>)
 
 ```go
 func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, session string, reach Reach) (Decision, BarrierVerdict, error)
@@ -571,7 +572,7 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 Advance starts at most one cycle per trigger; the whole causal closure remains context.
 
 <a name="Coordinator.Attach"></a>
-### func \(\*Coordinator\) [Attach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L260>)
+### func \(\*Coordinator\) [Attach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L261>)
 
 ```go
 func (c *Coordinator) Attach(role, session string) error
@@ -580,7 +581,7 @@ func (c *Coordinator) Attach(role, session string) error
 Attach records the API\-created child before prompting it. Identities are never model arguments.
 
 <a name="Coordinator.Close"></a>
-### func \(\*Coordinator\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L247>)
+### func \(\*Coordinator\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L248>)
 
 ```go
 func (c *Coordinator) Close(reason string)
@@ -607,7 +608,7 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry)
 Observe consumes each effective ordinary journal mutation exactly once.
 
 <a name="Coordinator.Require"></a>
-### func \(\*Coordinator\) [Require](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L281>)
+### func \(\*Coordinator\) [Require](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L282>)
 
 ```go
 func (c *Coordinator) Require(session, role string) error
@@ -849,13 +850,29 @@ type MandateRateDecision struct {
 ```
 
 <a name="EvaluateMandateReversionRate"></a>
-### func [EvaluateMandateReversionRate](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L153>)
+### func [EvaluateMandateReversionRate](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L166>)
 
 ```go
-func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, agent, sessionID string, mandate MandateClass, afterID, beforeID int64, workUnitID string) (MandateRateDecision, error)
+func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
 ```
 
 EvaluateMandateReversionRate measures how often mandate's consolidated work gets reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires.
+
+<a name="MandateReversionRateInput"></a>
+## type [MandateReversionRateInput](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L152-L159>)
+
+MandateReversionRateInput is what EvaluateMandateReversionRate measures a mandate class's reversion rate over: the class and session, the registered range \(afterID, beforeID\], the acting agent recorded on any resulting CONTAIN effect, and the work unit that effect is attributed to.
+
+```go
+type MandateReversionRateInput struct {
+    Agent      string
+    SessionID  string
+    Mandate    MandateClass
+    AfterID    int64
+    BeforeID   int64
+    WorkUnitID string
+}
+```
 
 <a name="Outcome"></a>
 ## type [Outcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L81>)
@@ -919,7 +936,7 @@ type PlanUnit = dispatch.PlanUnit
 ```
 
 <a name="Preparation"></a>
-## type [Preparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L50-L56>)
+## type [Preparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L53-L59>)
 
 Preparation is the frozen environment evidence: source snapshots, reviewed config and dependency digests captured before the cycle runs.
 
@@ -934,7 +951,7 @@ type Preparation struct {
 ```
 
 <a name="LoadPreparation"></a>
-### func [LoadPreparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L285>)
+### func [LoadPreparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L288>)
 
 ```go
 func LoadPreparation(workspace, state string) (Preparation, error)
@@ -943,7 +960,7 @@ func LoadPreparation(workspace, state string) (Preparation, error)
 LoadPreparation reloads persisted preparation after verifying its digests: any dependency or config change since Prepare fails the cycle instead of running acceptance against a moved baseline.
 
 <a name="Prepare"></a>
-### func [Prepare](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L171>)
+### func [Prepare](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L174>)
 
 ```go
 func Prepare(ctx context.Context, workspace, state, session string) (Preparation, error)
@@ -952,7 +969,7 @@ func Prepare(ctx context.Context, workspace, state, session string) (Preparation
 Prepare validates the project config, digests its locks, verifies every analyzer's exact version and snapshots the sources under state, so acceptance always compares like with like.
 
 <a name="ProjectConfig"></a>
-## type [ProjectConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L26-L35>)
+## type [ProjectConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L29-L38>)
 
 ProjectConfig is reviewed project configuration, never supplied by the collector. Executables must already be installed by the project's ordinary preparation.
 

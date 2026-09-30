@@ -1,28 +1,404 @@
 name: Release
 
+# Every push to main that passes CI computes one version, then publishes the
+# binary, image and chart independently. See docs/releasing.md.
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact version to release (e.g. 0.1.0); empty computes it from commits'
+        required: false
+        type: string
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE_DOCKERHUB: docker.io/roucru/takt-ai
+  IMAGE_GHCR: ghcr.io/rou-cru/takt-ai
+  CHART_REGISTRY: oci://ghcr.io/rou-cru/charts
+  SIGNER_IDENTITY: '^https://github.com/rou-cru/takt-ai/.github/workflows/release.yml@'
+  OIDC_ISSUER: https://token.actions.githubusercontent.com
 
 jobs:
-  goreleaser:
+  version:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.next.outputs.sha }}
+      short_sha: ${{ steps.next.outputs.short_sha }}
+      version: ${{ steps.next.outputs.version }}
+      tag: ${{ steps.next.outputs.tag }}
+      skip: ${{ steps.next.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/heads/main
           fetch-depth: 0
+          persist-credentials: false
+      - id: next
+        env:
+          RELEASE_AS: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
+          { echo "sha=$sha"; echo "short_sha=${sha:0:7}"; ./development/release/next-version.sh "$sha"; } | tee -a "$GITHUB_OUTPUT"
+      - name: Package source tree
+        if: steps.next.outputs.skip != 'true'
+        run: tar -cf "$RUNNER_TEMP/source-tree.tar" .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.next.outputs.skip != 'true'
+        with:
+          name: source-tree
+          path: ${{ runner.temp }}/source-tree.tar
+          if-no-files-found: error
+          retention-days: 1
 
-      - uses: actions/setup-go@v5
+  image:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: source-tree
+          path: ${{ runner.temp }}
+      - name: Extract source tree
+        run: tar -xf "$RUNNER_TEMP/source-tree.tar" -C "$GITHUB_WORKSPACE"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.IMAGE_DOCKERHUB }}
+            ${{ env.IMAGE_GHCR }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.version.outputs.sha }}
+      # Pushed by digest only: no tag exists until every platform succeeds.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
+        with:
+          context: .
+          file: deploy/images/Dockerfile
+          target: workspace
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ env.IMAGE_DOCKERHUB }},${{ env.IMAGE_GHCR }}",push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=workspace-${{ matrix.runner }}
+          cache-to: type=gha,mode=max,scope=workspace-${{ matrix.runner }}
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.runner }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  tag:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null); then
+            remote=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq .object.sha)
+            [[ "$remote" == "$SHA" ]] || { echo "::error::$TAG exists on $remote, not $SHA"; exit 1; }
+            echo "$TAG already points at $SHA (re-run)"
+            exit 0
+          fi
+          tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$TAG" \
+            -f message="Release $TAG" \
+            -f object="$SHA" \
+            -f type=commit \
+            -f "tagger[name]=github-actions[bot]" \
+            -f "tagger[email]=41898282+github-actions[bot]@users.noreply.github.com" \
+            --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$tag_sha"
+
+  goreleaser:
+    needs: [version, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: source-tree
+          path: ${{ runner.temp }}
+      - name: Extract source tree
+        run: tar -xf "$RUNNER_TEMP/source-tree.tar" -C "$GITHUB_WORKSPACE"
+      - name: Tag release locally
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG" "$SHA"
+          git checkout "$TAG"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-
-      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+          cache: true
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/*.pkg.tar.zst
+            dist/checksums.txt
+
+  image-publish:
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: source-tree
+          path: ${{ runner.temp }}
+      - name: Extract source tree
+        run: tar -xf "$RUNNER_TEMP/source-tree.tar" -C "$GITHUB_WORKSPACE"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.IMAGE_DOCKERHUB }}
+            ${{ env.IMAGE_GHCR }}
+          flavor: latest=true
+          # workflow_run's github.sha is main's tip, not the released commit,
+          # so the sha tag is derived from the resolved commit instead.
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.version.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.version.outputs.tag }}
+            type=raw,value=sha-${{ needs.version.outputs.short_sha }}
+      - id: manifest
+        name: Tag multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag_args=()
+          while IFS= read -r t; do [[ -n "$t" ]] && tag_args+=(-t "$t"); done <<<"$TAGS"
+          for image in "$IMAGE_DOCKERHUB" "$IMAGE_GHCR"; do
+            refs=()
+            for d in *; do refs+=("$image@sha256:$d"); done
+            own=()
+            for ((i = 0; i < ${#tag_args[@]}; i += 2)); do
+              [[ "${tag_args[i+1]}" == "$image:"* ]] && own+=(-t "${tag_args[i+1]}")
+            done
+            docker buildx imagetools create "${own[@]}" "${refs[@]}"
+          done
+          digest=$(docker buildx imagetools inspect "$IMAGE_DOCKERHUB:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Sign image
+        env:
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          cosign sign --yes "$IMAGE_DOCKERHUB@$DIGEST"
+          cosign sign --yes "$IMAGE_GHCR@$DIGEST"
+          cosign verify "$IMAGE_DOCKERHUB@$DIGEST" \
+            --certificate-identity-regexp "$SIGNER_IDENTITY" --certificate-oidc-issuer "$OIDC_ISSUER" >/dev/null
+      # Report-only for now: findings land in code scanning, not as a gate.
+      - id: scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.manifest.outputs.digest }}
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: true
+          output-format: sarif
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+          category: grype-image
+      - name: Update Docker Hub description
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: roucru/takt-ai
+          short-description: Takt AI + OpenCode v2 workspace runtime
+          readme-filepath: deploy/workspace/README.md
+
+  chart:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: source-tree
+          path: ${{ runner.temp }}
+      - name: Extract source tree
+        run: tar -xf "$RUNNER_TEMP/source-tree.tar" -C "$GITHUB_WORKSPACE"
+      - name: Configure git push credentials
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Package chart
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chart"
+          helm lint charts/takt-ai
+          helm package charts/takt-ai --version "$VERSION" --app-version "$VERSION" --destination "$RUNNER_TEMP/chart"
+      - name: Push chart to GHCR
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GH_ACTOR" --password-stdin
+          printf '%s' "$GH_TOKEN" | cosign login ghcr.io --username "$GH_ACTOR" --password-stdin
+          out=$(helm push "$RUNNER_TEMP/chart/takt-ai-$VERSION.tgz" "$CHART_REGISTRY" 2>&1)
+          echo "$out"
+          digest=$(sed -n 's/^Digest: //p' <<<"$out")
+          cosign sign --yes "${CHART_REGISTRY#oci://}/takt-ai@$digest"
+      - name: Update Helm repository index (gh-pages)
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          url="https://rou-cru.github.io/takt-ai"
+          if git fetch --depth=1 origin gh-pages; then
+            git worktree add --detach "$RUNNER_TEMP/pages" FETCH_HEAD
+            cd "$RUNNER_TEMP/pages"
+          else
+            # First release: start the Pages branch with only the index.
+            git worktree add --detach "$RUNNER_TEMP/pages"
+            cd "$RUNNER_TEMP/pages"
+            git switch --orphan gh-pages-new
+          fi
+          merge=()
+          [[ -f index.yaml ]] && merge=(--merge index.yaml)
+          cp "$RUNNER_TEMP/chart/takt-ai-$VERSION.tgz" .
+          helm repo index "$RUNNER_TEMP/chart" --url "$url" "${merge[@]}"
+          mv "$RUNNER_TEMP/chart/index.yaml" index.yaml
+          git add index.yaml "takt-ai-$VERSION.tgz"
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore: publish takt-ai chart $TAG"
+          git push origin HEAD:gh-pages
+
+  # Binary release must not be gated on image/chart jobs.
+  publish:
+    name: Publish binary release
+    needs: [version, goreleaser]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          flags=(--draft=false)
+          [[ "$TAG" == *-* ]] || flags+=(--latest)
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

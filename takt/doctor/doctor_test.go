@@ -139,7 +139,7 @@ func withSeams(t *testing.T, home string, look func(string) (string, error), cop
 	resolveEngram = func(string) (string, bool) { return "/bin/engram", true }
 	engramVersionFn = func(string) (string, error) { return "test-version", nil }
 	resolveCodegraph = func(string) (string, bool) { return "/bin/codegraph", true }
-	codegraphVersionFn = func(string) (string, error) { return "1.6.0", nil }
+	codegraphVersionFn = func(string) (string, error) { return codegraph.CodegraphVersion, nil }
 	// Takt's plugins target the V2 API, so the check needs a fixed version.
 	openCodeHandshake = func() (opencodeapi.Handshake, error) {
 		return opencodeapi.Handshake{Version: "2.0.16", Major: 2}, nil
@@ -226,7 +226,7 @@ func TestCodegraphChecksUseResolvedBinary(t *testing.T) {
 	managed := codegraph.ManagedBinaryPath(home)
 	resolveCodegraph = func(string) (string, bool) { return managed, true }
 	var ran string
-	codegraphVersionFn = func(binary string) (string, error) { ran = binary; return "1.6.0", nil }
+	codegraphVersionFn = func(binary string) (string, error) { ran = binary; return codegraph.CodegraphVersion, nil }
 	checks = codegraphChecks(home)
 	if len(checks) != 2 || checks[0].Status != CheckStatusPass || checks[1].Status != CheckStatusPass || ran != managed {
 		t.Fatalf("checks = %+v, version ran %q; want managed binary", checks, ran)

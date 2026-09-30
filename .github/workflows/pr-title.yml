@@ -1,0 +1,26 @@
+name: PR title
+
+# Squash merges use the PR title as the commit subject on main, and the
+# release workflow derives the next version from those subjects
+# (development/release/next-version.sh). Keep them conventional.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check conventional commit title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|revert|docs|test|ci|build|chore|style)(\([a-z0-9._/-]+\))?!?: [^ ].*$'
+          if [[ "$TITLE" =~ $pattern ]]; then
+            echo "ok: $TITLE"
+          else
+            echo "::error::PR title must be a conventional commit, e.g. 'feat(cli): add doctor --json' or 'fix!: drop legacy flag'. Got: $TITLE"
+            exit 1
+          fi

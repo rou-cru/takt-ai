@@ -1,30 +1,47 @@
-# Takt/OpenCode workspace chart
+# takt-ai chart
 
 This chart deploys a disposable OpenCode v2 web workspace with Takt AI preinstalled. Each Helm release receives its own PVC; the optional repository checkout and OpenCode/Takt writable data live on that claim. Use a distinct release name for each workspace. The default is one replica; `replicaCount` remains configurable.
 
+## Get the chart
+
+Every release publishes the chart, versioned in lockstep with the image it deploys (`appVersion` = `docker.io/roucru/takt-ai` tag):
+
+```sh
+# OCI (signed with cosign)
+helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --version 0.0.1 --namespace takt-workspaces
+
+# Classic Helm repository (GitHub Pages)
+helm repo add takt-ai https://rou-cru.github.io/takt-ai
+helm install demo takt-ai/takt-ai --version 0.0.1 --namespace takt-workspaces
+```
+
+The `.tgz` is also attached to each GitHub release. With no image values set, the chart runs `docker.io/roucru/takt-ai:<appVersion>`.
+
 ## Prerequisites
 
-- Kubernetes nodes with ARM64 (`linux/arm64`) capacity. The workspace image and chart default node selector target ARM64 only.
+- Kubernetes nodes on `linux/amd64` or `linux/arm64`; the image is multi-arch. Use `nodeSelector` (for example `kubernetes.io/arch: arm64`) to pin a node pool.
 - A default StorageClass or `persistence.storageClassName` that provisions the requested `persistence.size`; choose a reclaim policy appropriate for disposable work.
 - Gateway API `HTTPRoute` CRD and controller only when `httpRoute.enabled=true`.
 - External Secrets Operator CRDs/controller and a SecretStore or ClusterSecretStore only when `externalSecret.enabled=true`.
 - VPA CRD/controller only when `vpa.enabled=true`.
 - Optionally, a Kubernetes Secret for OpenCode server authentication. The Secret name/key are references only; secret bytes are not chart values.
 
-## Build the prepared ARM64 image
+## Image
 
-The workspace image is built by `deploy/workspace/Dockerfile`; it is separate from the local development image. The root Bake target pins OpenCode v2 and builds the workspace for `linux/arm64`. It compiles Takt AI and installs/configures OpenCode and its Takt integration during image build.
+Releases publish `docker.io/roucru/takt-ai` (mirrored at `ghcr.io/rou-cru/takt-ai`) for `linux/amd64` and `linux/arm64`, signed with cosign and carrying SBOM and SLSA provenance attestations. The image is built by the `workspace` target of `deploy/images/Dockerfile`; it compiles Takt AI and installs/configures OpenCode and its Takt integration during the build.
+
+To build your own instead:
 
 ```sh
-# local ARM64 image (for a matching local cluster)
-docker buildx bake workspace --load
+# local image for the host platform
+docker buildx bake workspace --set '*.platform=' --load
 
-# publish to the registry configured for your cluster
-WORKSPACE_TAG=ghcr.io/your-org/takt-ai-workspace:v0.1.0 \
+# publish to your registry
+WORKSPACE_TAG=registry.example/takt-ai:custom VERSION=custom \
   docker buildx bake workspace --push
 ```
 
-Set `image.repository` and `image.tag` to the published image you built, along with `image.pullPolicy` and optionally `image.pullSecrets` for your registry. The chart intentionally has no project-specific registry default. Set `image.digest` (`sha256:...`) to pin the exact image; it takes precedence over `image.tag`.
+Override `image.repository` and `image.tag`, along with `image.pullPolicy` and optionally `image.pullSecrets`. Set `image.digest` (`sha256:...`) to pin the exact image; it takes precedence over `image.tag`.
 
 A `NetworkPolicy` is rendered by default (`networkPolicy.enabled`). It admits ingress only on the server port, from any peer unless `networkPolicy.ingressFrom` lists the allowed `NetworkPolicyPeer`s. Egress is left unrestricted, because the agent needs model providers, git remotes and package registries. Setting `networkPolicy.egress` to a list of rules enforces egress too, and an empty list (`[]`) denies all of it.
 
@@ -34,8 +51,6 @@ A `NetworkPolicy` is rendered by default (`networkPolicy.enabled`). It admits in
 
 ```sh
 deploy/workspace/helm.sh install demo \
-  --set image.repository=ghcr.io/your-org/takt-ai-workspace \
-  --set image.tag=0.1.0 \
   --set server.passwordSecret.name=demo-opencode-auth \
   --set httpRoute.enabled=true \
   --set-string 'httpRoute.parentRefs[0].name=public-gateway' \

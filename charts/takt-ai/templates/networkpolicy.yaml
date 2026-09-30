@@ -2,17 +2,17 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "takt-workspace.fullname" . }}
+  name: {{ include "takt-ai.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "takt-workspace.labels" . | nindent 4 }}
+    {{- include "takt-ai.labels" . | nindent 4 }}
   {{- with .Values.commonAnnotations }}
   annotations: {{ toYaml . | nindent 4 }}
   {{- end }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "takt-workspace.selectorLabels" . | nindent 6 }}
+      {{- include "takt-ai.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
     {{- if kindIs "slice" .Values.networkPolicy.egress }}

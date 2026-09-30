@@ -114,7 +114,7 @@ type AgentDefinition struct {
 ```
 
 <a name="AgentDefinition.ComposeText"></a>
-### func \(AgentDefinition\) [ComposeText](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L440>)
+### func \(AgentDefinition\) [ComposeText](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L449>)
 
 ```go
 func (a AgentDefinition) ComposeText(fsys fs.FS) (string, error)
@@ -123,7 +123,7 @@ func (a AgentDefinition) ComposeText(fsys fs.FS) (string, error)
 ComposeText joins this agent's context files \(see ContextPaths\) into one flat prompt body.
 
 <a name="AgentDefinition.ContextPaths"></a>
-### func \(AgentDefinition\) [ContextPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L429>)
+### func \(AgentDefinition\) [ContextPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L438>)
 
 ```go
 func (a AgentDefinition) ContextPaths() []string

@@ -6,7 +6,8 @@ commonLabels: {}
 commonAnnotations: {}
 
 image:
-  repository: ""
+  repository: docker.io/roucru/takt-ai
+  # Empty uses the chart's appVersion, which releases set to the image version.
   tag: ""
   # Optional sha256:... digest; when set it pins the image and takes precedence over tag.
   digest: ""
@@ -160,8 +161,9 @@ vpa:
   labels: {}
   annotations: {}
 
-nodeSelector:
-  kubernetes.io/arch: arm64
+# The image is multi-arch (linux/amd64, linux/arm64); pin nodes here if needed,
+# e.g. kubernetes.io/arch: arm64.
+nodeSelector: {}
 tolerations: []
 affinity: {}
 topologySpreadConstraints: []

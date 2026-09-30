@@ -31,7 +31,7 @@ const CodegraphVersion = "1.6.0"
 ```
 
 <a name="Acquire"></a>
-## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L98>)
+## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L100>)
 
 ```go
 func Acquire(ctx context.Context, root string) (string, error)
@@ -40,7 +40,7 @@ func Acquire(ctx context.Context, root string) (string, error)
 Acquire returns Resolve's path when found; otherwise installs the pinned npm package into ManagedPrefix\(root\) so the MCP entry can point at an absolute path instead of relying on PATH.
 
 <a name="EnsureIndexed"></a>
-## func [EnsureIndexed](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L120>)
+## func [EnsureIndexed](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L122>)
 
 ```go
 func EnsureIndexed(ctx context.Context, binary, workspace string) error
@@ -58,7 +58,7 @@ func Inject(homeDir, command string) (model.InjectionResult, error)
 Inject wires the codegraph MCP server in; command is the resolved absolute binary, written verbatim.
 
 <a name="ManagedBinaryPath"></a>
-## func [ManagedBinaryPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L69>)
+## func [ManagedBinaryPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L71>)
 
 ```go
 func ManagedBinaryPath(root string) string
@@ -67,7 +67,7 @@ func ManagedBinaryPath(root string) string
 ManagedBinaryPath is the launcher npm links inside the managed prefix.
 
 <a name="ManagedMarkerKey"></a>
-## func [ManagedMarkerKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L61>)
+## func [ManagedMarkerKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L63>)
 
 ```go
 func ManagedMarkerKey() string
@@ -76,7 +76,7 @@ func ManagedMarkerKey() string
 ManagedMarkerKey returns the ownership\-manifest key for the managed install, so tests assert the same slash\-path lifecycle records.
 
 <a name="ManagedPrefix"></a>
-## func [ManagedPrefix](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L64>)
+## func [ManagedPrefix](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L66>)
 
 ```go
 func ManagedPrefix(root string) string
@@ -94,7 +94,7 @@ func Remove(homeDir string) (model.InjectionResult, error)
 Remove strips the codegraph MCP entry so uninstalls leave no orphan keys or files.
 
 <a name="Resolve"></a>
-## func [Resolve](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L75>)
+## func [Resolve](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L77>)
 
 ```go
 func Resolve(root string) (string, bool)
@@ -103,7 +103,7 @@ func Resolve(root string) (string, bool)
 Resolve is read\-only. Order: \(1\) \`codegraph\` on PATH whose \`\-\-version\` \>= CodegraphVersion, \(2\) ManagedBinaryPath\(root\) if it exists and reports \>= CodegraphVersion. Returns absolute path.
 
 <a name="VerifyVersion"></a>
-## func [VerifyVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L148>)
+## func [VerifyVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L179>)
 
 ```go
 func VerifyVersion(binary string) (string, error)

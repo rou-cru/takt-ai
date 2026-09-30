@@ -13,7 +13,7 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 - [Constants](<#constants>)
 - [func InjectMCPServer\(path, name string, command \[\]string\) \(model.InjectionResult, error\)](<#InjectMCPServer>)
 - [func InjectMarkdownSection\(existing, sectionID, content string\) string](<#InjectMarkdownSection>)
-- [func MergeJSONObjects\(baseJSON \[\]byte, overlayJSON \[\]byte\) \(\[\]byte, error\)](<#MergeJSONObjects>)
+- [func MergeJSONObjects\(baseJSON, overlayJSON \[\]byte\) \(\[\]byte, error\)](<#MergeJSONObjects>)
 - [func ReadFileOrEmpty\(path string\) \(string, error\)](<#ReadFileOrEmpty>)
 - [func RemoveJSONKey\(path string, key string, parents ...string\) \(bool, error\)](<#RemoveJSONKey>)
 - [func RemoveMCPServer\(path, name string\) \(model.InjectionResult, error\)](<#RemoveMCPServer>)
@@ -67,7 +67,7 @@ InjectMarkdownSection replaces or appends the section marked with HTML comments 
 ## func [MergeJSONObjects](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/json_merge.go#L28>)
 
 ```go
-func MergeJSONObjects(baseJSON []byte, overlayJSON []byte) ([]byte, error)
+func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error)
 ```
 
 MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on conflicts; a malformed base is treated as an empty object.
