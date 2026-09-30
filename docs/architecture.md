@@ -45,27 +45,6 @@ docker build -f development/testing/e2e/Dockerfile -t takt-e2e .
 docker run --rm takt-e2e
 ```
 
-Test coverage:
-
-- **26 test packages** across the codebase
-- **260+ test functions** covering all agent adapters, components, and system detection
-- **78 E2E test functions** running in Docker containers (Ubuntu + Arch)
-- **17 golden files** for snapshot testing component output
-- Full pipeline tested: detection, planning, execution, backup, restore, verification
-- The OpenCode agent adapter has unit tests with cross-platform path validation
-
----
-
-## Relationship to Takt.Dots
-
-| | Takt.Dots | Takt AI Stack |
-|--|---------------|-----------------|
-| **Purpose** | Dev environment (editors, shells, terminals) | AI development layer (agents, memory, skills) |
-| **Installs** | Neovim, Fish/Zsh, Tmux/Zellij, Ghostty | Configures OpenCode |
-| **Overlap** | None — complementary | None — different layer |
-
-Install Takt.Dots first for your dev environment, then Takt AI Stack for the AI layer on top.
-
 ---
 
 ## License

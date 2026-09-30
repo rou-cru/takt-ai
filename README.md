@@ -18,3 +18,16 @@ It's not a standalone agent, an LLM, or a simple collection of prompt plugins. I
 Takt AI integrates directly with one coding agent:
 
 - **OpenCode**
+
+## Documentation
+
+- [Intended usage](docs/intended-usage.md) — the mental model
+- [Usage](docs/usage.md) — commands and flags
+- [Supported agents](docs/agents.md)
+- [Trigger rules](docs/trigger-rules.md)
+- [Architecture](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md)
+
+## License
+
+[AGPL-3.0](LICENSE)
