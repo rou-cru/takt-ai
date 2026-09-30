@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /usr/local/bin/takt-ai ./takt/cli
 FROM node:24-bookworm-slim
 # Takt requires the OpenCode v2 API (`opencode api`), which is not published to
 # npm; install the same pinned release, through the same checksum-verified
-# installer, as deploy/workspace/Dockerfile. Keep both pins in sync.
+# installer, as deploy/images/Dockerfile. Keep both pins in sync.
 ARG OPENCODE_VERSION=2.0.20
 ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl jq && \

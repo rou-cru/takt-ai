@@ -4,7 +4,8 @@ services:
   dev:
     build:
       context: .
-      dockerfile: development/environment/Dockerfile
+      dockerfile: deploy/images/Dockerfile
+      target: dev
       args:
         OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.20}
         GO_VERSION: ${GO_VERSION:-1.27.1}
@@ -33,5 +34,5 @@ services:
     volumes:
       - type: bind
         source: ${DEV_REPO:-./.dev}
-        target: /work
-    working_dir: /work
+        target: /workspace
+    working_dir: /workspace
