@@ -1,9 +1,9 @@
 # Dedicated test runtime: Node executes the rendered OpenCode TypeScript plugin.
 FROM node:24-bookworm-slim AS node
 # Real codegraph for the E2E-C tests (dead-code findings over fixture workspaces).
-# 1.6.0 is the release the gc adapter's JSON surface was verified against; the
+# 1.6.1 is the release the gc adapter's JSON surface was verified against; the
 # product itself resolves any release at or above takt/codegraph.CodegraphVersion.
-ARG CODEGRAPH_VERSION=1.6.0
+ARG CODEGRAPH_VERSION=1.6.1
 RUN npm install -g --prefix /opt/codegraph --no-fund --no-audit --loglevel=error --ignore-scripts \
       "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 

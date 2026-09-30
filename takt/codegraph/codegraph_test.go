@@ -117,7 +117,7 @@ func isolate(t *testing.T) string {
 }
 
 func TestCompatibleVersion(t *testing.T) {
-	for version, want := range map[string]bool{"1.6.0": true, "1.6.1\n": true, "2.0.0": true, "1.3.1": false, "1.5.9": false, "0.9.9": false, "dev": false, "1.6.0-beta": false, "": false} {
+	for version, want := range map[string]bool{"1.6.0": false, "1.6.1\n": true, "2.0.0": true, "1.3.1": false, "1.5.9": false, "0.9.9": false, "dev": false, "1.6.0-beta": false, "": false} {
 		if got := compatibleVersion(version); got != want {
 			t.Errorf("compatibleVersion(%q) = %v, want %v", version, got, want)
 		}
@@ -126,7 +126,7 @@ func TestCompatibleVersion(t *testing.T) {
 
 func TestResolveReusesCompatibleBinaryOnPath(t *testing.T) {
 	bin := isolate(t)
-	script(t, filepath.Join(bin, "codegraph"), "echo 1.6.0")
+	script(t, filepath.Join(bin, "codegraph"), "echo 1.6.1")
 	got, found := Resolve(t.TempDir())
 	if !found || got != filepath.Join(bin, "codegraph") {
 		t.Fatalf("Resolve = %q, %v", got, found)
