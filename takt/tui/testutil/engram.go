@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/engram"
 )
 
@@ -16,6 +17,12 @@ const executableFileMode os.FileMode = 0o755
 // so version-output drift fails in one place instead of four.
 func FakeEngramScript(version string) []byte {
 	return []byte("#!/bin/sh\necho 'engram " + version + "'\n")
+}
+
+// FakeCodegraphScript is the single fake `codegraph --version` stub, so a
+// CodegraphVersion bump cannot leave a stale fixture below the minimum.
+func FakeCodegraphScript(version string) []byte {
+	return []byte("#!/bin/sh\necho " + version + "\n")
 }
 
 // FakeOpenCodeScript provides the V2 read/reload surface used by lifecycle
@@ -57,7 +64,7 @@ func RunWithFakeEngram(m *testing.M) int {
 	}
 	// A compatible codegraph on PATH is reused as-is, which keeps install/sync
 	// off npm and the network without needing a Go-level seam here.
-	if err := os.WriteFile(filepath.Join(dir, "codegraph"), []byte("#!/bin/sh\necho 1.6.0\n"), executableFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "codegraph"), FakeCodegraphScript(codegraph.CodegraphVersion), executableFileMode); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

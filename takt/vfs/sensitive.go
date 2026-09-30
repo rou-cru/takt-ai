@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -89,12 +90,7 @@ func addHomeSensitivePaths(home string, add func(string)) {
 }
 
 func isSkipDir(name string) bool {
-	for _, skip := range sensitiveSkipDirs {
-		if name == skip {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(sensitiveSkipDirs, name)
 }
 
 // matchesSensitive reports whether rel (slash-separated, workspace-relative)

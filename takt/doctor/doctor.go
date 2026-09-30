@@ -20,10 +20,12 @@ package doctor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +38,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -79,12 +82,19 @@ var doctorTools = []string{"takt-ai", "opencode", "engram"}
 
 // Injected seams, swapped in tests with t.Cleanup restore.
 var (
-	userHomeDir = os.UserHomeDir
-	lookPath    = exec.LookPath
-	toolCopies  = scanToolCopies
-	httpGet     = defaultHTTPGet
-	diskFree    = statfsFreeBytes
+	userHomeDir    = os.UserHomeDir
+	lookPath       = exec.LookPath
+	toolCopies     = scanToolCopies
+	httpFetch      = defaultHTTPFetch
+	diskFree       = statfsFreeBytes
+	workingDir     = os.Getwd
+	resolveProject = defaultResolveProject
 )
+
+// defaultResolveProject mirrors memory_record's own project detection, read-only.
+func defaultResolveProject(dir string) string {
+	return memory.ResolveProject(context.Background(), memory.Config{}, dir)
+}
 
 // controlPlaneHealth reports control-plane/bus health. Injectable seam so
 // doctor stays decoupled from session/obs (importing session here would risk
@@ -112,6 +122,8 @@ func Run(stdout io.Writer) error {
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
 	report.Checks = append(report.Checks, engramChecks(home)...)
 	report.Checks = append(report.Checks, engramNativePluginCheck(home))
+	project := resolveProject(workingDirOrHome(home))
+	report.Checks = append(report.Checks, engramDiagnosticsCheck(project), engramNeedsReviewCheck(project))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
@@ -310,17 +322,13 @@ func engramChecks(home string) []CheckResult {
 	}
 
 	const name = "engram:reachable"
-	base := os.Getenv(model.EnvEngramURL)
-	if base == "" {
-		base = model.DefaultEngramURL
-	}
-	url := strings.TrimRight(base, "/") + "/health"
-	status, err := httpGet(url, doctorHTTPTimeout)
+	healthURL := engramBaseURL() + "/health"
+	status, _, err := httpFetch(http.MethodGet, healthURL, nil, doctorHTTPTimeout)
 	if err != nil {
 		checks = append(checks, CheckResult{
 			Name:   name,
 			Status: CheckStatusFail,
-			Detail: fmt.Sprintf("engram health endpoint unreachable at %s: %s", url, err),
+			Detail: fmt.Sprintf("engram health endpoint unreachable at %s: %s", healthURL, err),
 			Remedy: "Start engram or check that it is configured as an MCP server",
 		})
 		return checks
@@ -329,14 +337,14 @@ func engramChecks(home string) []CheckResult {
 		checks = append(checks, CheckResult{
 			Name:   name,
 			Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram health endpoint %s returned HTTP %d", url, status),
+			Detail: fmt.Sprintf("engram health endpoint %s returned HTTP %d", healthURL, status),
 		})
 		return checks
 	}
 	checks = append(checks, CheckResult{
 		Name:   name,
 		Status: CheckStatusPass,
-		Detail: fmt.Sprintf("engram reachable at %s", url),
+		Detail: fmt.Sprintf("engram reachable at %s", healthURL),
 	})
 	return checks
 }
@@ -355,6 +363,151 @@ func engramNativePluginCheck(home string) CheckResult {
 		Remedy: "Remove it to keep Takt's memory contract the only source: delete " +
 			"~/" + model.OpenCodeConfigDir + "/" + model.OpenCodePluginsDir + "/" + model.EngramPluginFile,
 	}
+}
+
+// engramBaseURL resolves the Engram HTTP endpoint the same way every engram check does.
+func engramBaseURL() string {
+	base := os.Getenv(model.EnvEngramURL)
+	if base == "" {
+		base = model.DefaultEngramURL
+	}
+	return strings.TrimRight(base, "/")
+}
+
+// workingDirOrHome resolves the directory doctor should report a project
+// for. os.Getwd() failing is rare and not worth failing Run() over.
+func workingDirOrHome(home string) string {
+	if dir, err := workingDir(); err == nil {
+		return dir
+	}
+	return home
+}
+
+// unknownProjectDetail reports whether status/body is Engram's 404 for a
+// project it has never seen — the normal case for a brand-new repository,
+// which must read as pass, not warn.
+func unknownProjectDetail(status int, body []byte) (unknown bool, available []string) {
+	if status != http.StatusNotFound {
+		return false, nil
+	}
+	var payload struct {
+		Code      string   `json:"code"`
+		Available []string `json:"available_projects"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return false, nil
+	}
+	return payload.Code == "unknown_project", payload.Available
+}
+
+// errMessage extracts Engram's {"error": "..."} body, or the raw body when it isn't that shape.
+func errMessage(body []byte) string {
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
+		return payload.Error
+	}
+	return strings.TrimSpace(string(body))
+}
+
+// engramDiagnosticsCheck surfaces Engram's own /doctor report — data-integrity
+// checks (e.g. orphaned sessions) that engramChecks' plain /health probe never sees.
+func engramDiagnosticsCheck(project string) CheckResult {
+	const name = "engram:diagnostics"
+	u := engramBaseURL() + "/doctor?project=" + url.QueryEscape(project)
+	status, body, err := httpFetch(http.MethodGet, u, nil, doctorHTTPTimeout)
+	if err != nil {
+		return CheckResult{Name: name, Status: CheckStatusWarn,
+			Detail: fmt.Sprintf("engram diagnostics unreachable at %s: %s", u, err)}
+	}
+	if unknown, available := unknownProjectDetail(status, body); unknown {
+		return CheckResult{Name: name, Status: CheckStatusPass,
+			Detail: fmt.Sprintf("project %q has no Engram history yet (known: %s)", project, strings.Join(available, ", "))}
+	}
+	if status < 200 || status >= 300 {
+		return CheckResult{Name: name, Status: CheckStatusWarn,
+			Detail: fmt.Sprintf("engram /doctor returned HTTP %d: %s", status, errMessage(body))}
+	}
+	var report struct {
+		Summary struct{ Total, OK, Warnings, Blocked, Errors int } `json:"summary"`
+		Checks  []struct {
+			CheckID      string `json:"check_id"`
+			Result       string `json:"result"`
+			Message      string `json:"message"`
+			SafeNextStep string `json:"safe_next_step"`
+		} `json:"checks"`
+	}
+	if json.Unmarshal(body, &report) != nil {
+		return CheckResult{Name: name, Status: CheckStatusWarn, Detail: "could not parse engram /doctor response"}
+	}
+	if report.Summary.Warnings+report.Summary.Blocked+report.Summary.Errors == 0 {
+		return CheckResult{Name: name, Status: CheckStatusPass,
+			Detail: fmt.Sprintf("%d engram diagnostic check(s), all clean", report.Summary.Total)}
+	}
+	var issues []string
+	var remedy string
+	for _, c := range report.Checks {
+		if c.Result == "ok" {
+			continue
+		}
+		issues = append(issues, fmt.Sprintf("%s: %s", c.CheckID, c.Message))
+		if remedy == "" {
+			remedy = c.SafeNextStep
+		}
+		if len(issues) == 3 {
+			break
+		}
+	}
+	return CheckResult{Name: name, Status: CheckStatusWarn,
+		Detail: fmt.Sprintf("engram diagnostics: %d ok, %d warning, %d blocked, %d error across %d check(s) — %s",
+			report.Summary.OK, report.Summary.Warnings, report.Summary.Blocked, report.Summary.Errors, report.Summary.Total, strings.Join(issues, "; ")),
+		Remedy: remedy}
+}
+
+// engramNeedsReviewCheck surfaces decisions Engram auto-flagged for review
+// (review_after passed) that nothing in Takt otherwise reads.
+func engramNeedsReviewCheck(project string) CheckResult {
+	const name = "engram:needs-review"
+	const limit = 5
+	u := fmt.Sprintf("%s/review?project=%s&limit=%d", engramBaseURL(), url.QueryEscape(project), limit)
+	status, body, err := httpFetch(http.MethodGet, u, nil, doctorHTTPTimeout)
+	if err != nil {
+		return CheckResult{Name: name, Status: CheckStatusWarn,
+			Detail: fmt.Sprintf("engram review list unreachable at %s: %s", u, err)}
+	}
+	if unknown, _ := unknownProjectDetail(status, body); unknown {
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("project %q has no Engram history yet", project)}
+	}
+	if status < 200 || status >= 300 {
+		return CheckResult{Name: name, Status: CheckStatusWarn,
+			Detail: fmt.Sprintf("engram /review returned HTTP %d: %s", status, errMessage(body))}
+	}
+	var resp struct {
+		Observations []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+			Type  string `json:"type"`
+		} `json:"observations"`
+		Count int `json:"count"`
+	}
+	if json.Unmarshal(body, &resp) != nil {
+		return CheckResult{Name: name, Status: CheckStatusWarn, Detail: "could not parse engram /review response"}
+	}
+	if resp.Count == 0 {
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no observations are due for review"}
+	}
+	titles := make([]string, 0, len(resp.Observations))
+	for _, o := range resp.Observations {
+		titles = append(titles, fmt.Sprintf("#%d %q (%s)", o.ID, o.Title, o.Type))
+	}
+	hedge := ""
+	if resp.Count == limit {
+		hedge = fmt.Sprintf(" (showing first %d; more may exist)", limit)
+	}
+	return CheckResult{Name: name, Status: CheckStatusWarn,
+		Detail: fmt.Sprintf("%d observation(s) due for review%s: %s", resp.Count, hedge, strings.Join(titles, "; ")),
+		Remedy: "Record a fresh decision or observation via memory_record that reconfirms or supersedes the stale entry"}
 }
 
 func checkStatusForError(err error) CheckStatus {
@@ -486,22 +639,23 @@ func diskCheck(home string) CheckResult {
 	}
 }
 
-// defaultHTTPGet performs one GET request and returns the HTTP status code.
-func defaultHTTPGet(url string, timeout time.Duration) (int, error) {
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+// defaultHTTPFetch performs one HTTP request and returns status plus body,
+// capped so a misbehaving server can't exhaust memory.
+func defaultHTTPFetch(method, url string, body io.Reader, timeout time.Duration) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(context.Background(), method, url, body)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	resp, err := (&http.Client{Timeout: timeout}).Do(request)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	status := resp.StatusCode
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if closeErr := resp.Body.Close(); closeErr != nil {
-		return status, fmt.Errorf("close response body: %w", closeErr)
-	}
-	return status, nil
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
+	return resp.StatusCode, data, errors.Join(readErr, closeErr)
 }
 
 // statfsFreeBytes reports bytes available to unprivileged users on dir's

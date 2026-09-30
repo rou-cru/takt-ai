@@ -36,7 +36,6 @@ type Capability struct {
 	Core       bool     `yaml:"core"`
 	Selectable bool     `yaml:"selectable"`
 	Deps       []string `yaml:"deps"`
-	Note       string   `yaml:"note"`
 }
 
 // Capabilities is the versioned install manifest installers reconcile user selections against.

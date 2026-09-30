@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
@@ -67,6 +68,57 @@ func journalRef(entries []vfs.JournalEntry) string {
 		return ""
 	}
 	return entries[len(entries)-1].Ref()
+}
+
+// checkArtifact reports whether the standard artifact the active
+// interlocutor switch for session declared exists under workspace. Nothing
+// declared (no active switch, or none named) reports verified: PR-HAR-24
+// checks existence only when a standard artifact was named.
+func checkArtifact(h *history.History, workspace, session string) bool {
+	path := protocol.ExpectedArtifact(h, session)
+	if path == "" {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(workspace, path))
+	return err == nil
+}
+
+// handoffWithArtifactGate enforces PR-HAR-24: a missing standard artifact
+// denies the first handoff attempt (deterministic error, session stays
+// active); a second consecutive miss stops denying and reports the miss
+// inside the envelope instead, so the confirmation the specialist already
+// shows before every handoff (IR-20) is the escalation, not a second harness
+// query.
+func handoffWithArtifactGate(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
+	verified := checkArtifact(h, workspace, r.Session)
+	if !verified && protocol.ArtifactMisses(h, r.Session) == 0 {
+		if e := protocol.DenyArtifactMissing(h, ref, r.Session, r.Child, r.Agent); e != nil {
+			return nil, e
+		}
+		return nil, fmt.Errorf("dispatch: standard artifact %q does not exist; the session stays active for a retry", protocol.ExpectedArtifact(h, r.Session))
+	}
+	envelope, e := protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
+		Result: r.Result, AdditionalContext: r.AdditionalContext,
+		ExtraArtifacts: r.ExtraArtifacts, ResultIDs: r.ResultIDs,
+	})
+	if e != nil {
+		return nil, e
+	}
+	envelope["artifact_verified"] = verified
+	return envelope, nil
+}
+
+// abortWithArtifactReport assembles the abort envelope: the standard
+// artifact is never required to abort (PR-HAR-24), but its presence is still
+// checked and reported so what survived the abandoned switch is known.
+func abortWithArtifactReport(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
+	verified := checkArtifact(h, workspace, r.Session)
+	envelope, e := protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
+	if e != nil {
+		return nil, e
+	}
+	envelope["artifact_verified"] = verified
+	return envelope, nil
 }
 
 func coordinateRoutineAction(h *history.History, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, bool, error) {
@@ -206,15 +258,8 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"validate_results": func() (any, error) {
 			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
 		},
-		"handoff": func() (any, error) {
-			return protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
-				Result: r.Result, AdditionalContext: r.AdditionalContext,
-				ExtraArtifacts: r.ExtraArtifacts, ResultIDs: r.ResultIDs,
-			})
-		},
-		"abort_switch": func() (any, error) {
-			return protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
-		},
+		"handoff":      func() (any, error) { return handoffWithArtifactGate(h, ref, workspace, r) },
+		"abort_switch": func() (any, error) { return abortWithArtifactReport(h, ref, workspace, r) },
 		"contest": func() (any, error) {
 			p, e := protocol.LoadAdmissionPolicy()
 			if e != nil {

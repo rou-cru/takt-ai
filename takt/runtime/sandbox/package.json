@@ -3,5 +3,5 @@
   "private": true,
   "type": "module",
   "scripts": {"test": "node --test probe.test.mjs"},
-  "dependencies": {"@anthropic-ai/sandbox-runtime": "0.0.76"}
+  "dependencies": {"@anthropic-ai/sandbox-runtime": "0.0.77"}
 }

@@ -26,6 +26,3 @@ var orchestratorDefinition = mustLoadOrchestrator()
 
 // OrchestratorID names the selectable top-level agent across harnesses.
 var OrchestratorID = orchestratorDefinition.ID
-
-// OrchestratorDescription explains the top-level agent in every harness.
-var OrchestratorDescription = orchestratorDefinition.Description

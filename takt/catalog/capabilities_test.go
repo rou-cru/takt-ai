@@ -43,7 +43,7 @@ func TestCapabilitiesReservedCore(t *testing.T) {
 
 // assertCapabilityEntryReservation checks one manifest entry's reserved/core
 // status is consistent, and, for a reserved entry, records it in reserved and
-// checks its note, purpose and deps meet the reserved-core shape.
+// checks its purpose and deps meet the reserved-core shape.
 func assertCapabilityEntryReservation(t *testing.T, entry Capability, reserved map[string]bool) {
 	t.Helper()
 	if entry.Selectable {
@@ -55,9 +55,6 @@ func assertCapabilityEntryReservation(t *testing.T, entry Capability, reserved m
 	reserved[entry.ID] = entry.Core
 	if !entry.Core {
 		t.Errorf("reserved entry %q must be core", entry.ID)
-	}
-	if !strings.Contains(entry.Note, "non-omittable") {
-		t.Errorf("reserved entry %q note = %q, want non-omittable marker", entry.ID, entry.Note)
 	}
 	if strings.TrimSpace(entry.Purpose) == "" {
 		t.Errorf("reserved entry %q has no purpose", entry.ID)

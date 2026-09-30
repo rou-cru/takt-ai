@@ -7,8 +7,26 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
+
+// orchestratorDescription resolves the description the same way plan.go
+// does, through AgentDefinition.Profile, instead of a shortcut var.
+func orchestratorDescription(t *testing.T) string {
+	t.Helper()
+	pkgs, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range pkgs.Agents {
+		if def.ID == shared.OrchestratorID {
+			return def.Description
+		}
+	}
+	t.Fatalf("no agent definition with ID %q", shared.OrchestratorID)
+	return ""
+}
 
 // rule mirrors one entry of OpenCode V2's ordered permissions array.
 type rule struct {
@@ -61,7 +79,7 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
 		Permissions: true,
 		Agents: []opencode.AgentSpec{
-			{ID: shared.OrchestratorID, Description: shared.OrchestratorDescription, Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
+			{ID: shared.OrchestratorID, Description: orchestratorDescription(t), Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
 		},
 	})
 	if err != nil {
@@ -111,7 +129,7 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 func TestOrchestratorSubagentPermissionExcludesMaintenanceAgents(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
-			{ID: shared.OrchestratorID, Description: shared.OrchestratorDescription, Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
+			{ID: shared.OrchestratorID, Description: orchestratorDescription(t), Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
 			{ID: "takt-gc", Description: "GC cycle", Mode: "subagent", System: "Collect.", Role: model.RoleMaintenance, VFSCapabilities: vfsCaps(model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete)},
 			{ID: "dev", Description: "Dev", Mode: "subagent", System: "Work.", Role: model.RoleExecution, VFSCapabilities: vfsCaps(model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete)},
 		},

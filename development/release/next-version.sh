@@ -8,7 +8,8 @@
 #   tag=vX.Y.Z
 #   skip=true|false
 #
-# Rules (the squash-merge subject is the PR title, a conventional commit):
+# Rules (the squash-merge subject is the PR title, a conventional commit),
+# relative to the highest v* tag in the repo, reachable from REF or not:
 #   - no v* tag yet                        -> v0.0.1
 #   - "Release-As: vX.Y.Z" trailer         -> exactly that version
 #   - "Release: skip" trailer, or only
@@ -23,11 +24,16 @@ set -euo pipefail
 ref=${1:-HEAD}
 semver='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
+# Printed with 'printf %b' so the \n escapes become real newlines; consumers of
+# these outputs expect the three lines even when there is nothing to release.
+skip_output='version=\ntag=\nskip=true\n'
+
 die() { printf 'next-version: %s\n' "$*" >&2; exit 1; }
 
 emit() {
-	local v=${1#v}
-	[[ "v$v" =~ $semver ]] || die "invalid version '$1'"
+	local requested=$1 skip=${2:-false} v
+	v=${requested#v}
+	[[ "v$v" =~ $semver ]] || die "invalid version '$requested'"
 	if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
 		die "tag v$v already exists"
 	fi
@@ -36,12 +42,14 @@ emit() {
 		highest=$(printf '%s\n%s\n' "$last" "v$v" | sort -V | tail -n1)
 		[[ "$highest" == "v$v" ]] || die "v$v is not newer than the last release $last"
 	fi
-	printf 'version=%s\ntag=v%s\nskip=%s\n' "$v" "$v" "${2:-false}"
+	printf 'version=%s\ntag=v%s\nskip=%s\n' "$v" "$v" "$skip"
 }
 
 git rev-parse -q --verify "$ref^{commit}" >/dev/null || die "unknown ref '$ref'"
 
-last=$(git tag --list 'v*' --sort=-v:refname --merged "$ref" | grep -E "$semver" | head -n1 || true)
+# Tags are repo-global: a branch that diverged before the latest release
+# (e.g. beta vs main) must still bump past it, never reuse its number.
+last=$(git tag --list 'v*' --sort=-v:refname | grep -E "$semver" | head -n1 || true)
 
 if [[ -n "${RELEASE_AS:-}" ]]; then
 	emit "$RELEASE_AS"
@@ -54,12 +62,12 @@ if [[ -z "$last" ]]; then
 fi
 
 if [[ -n "$(git tag --points-at "$ref" --list 'v*')" ]]; then
-	printf 'version=\ntag=\nskip=true\n'
+	printf '%b' "$skip_output"
 	exit 0
 fi
 
 log=$(git log --format='%B%x1e' "$last..$ref")
-[[ -n "$log" ]] || { printf 'version=\ntag=\nskip=true\n'; exit 0; }
+[[ -n "$log" ]] || { printf '%b' "$skip_output"; exit 0; }
 
 forced=$(grep -E '^Release-As:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' <<<"$log" | head -n1 | sed -E 's/^Release-As:[[:space:]]*//; s/[[:space:]]*$//' || true)
 if [[ -n "$forced" ]]; then
@@ -68,13 +76,13 @@ if [[ -n "$forced" ]]; then
 fi
 
 if grep -qE '^Release:[[:space:]]*skip[[:space:]]*$' <<<"$log"; then
-	printf 'version=\ntag=\nskip=true\n'
+	printf '%b' "$skip_output"
 	exit 0
 fi
 
 subjects=$(git log --format='%s' "$last..$ref")
 if ! grep -qvE '^(docs|ci|test|chore)(\([^)]*\))?:' <<<"$subjects"; then
-	printf 'version=\ntag=\nskip=true\n'
+	printf '%b' "$skip_output"
 	exit 0
 fi
 

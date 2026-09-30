@@ -109,11 +109,11 @@ func validateProviderActionFields(action ProviderAction) error {
 }
 
 // executeProviderActions runs validated actions after deployment and records completed IDs.
-func executeProviderActions(result DeploymentResult, actions []ProviderAction, runtime ProviderRuntime, observers ...func(DeploymentProgress)) (DeploymentResult, error) {
+func executeProviderActions(result DeploymentResult, actions []ProviderAction, runtime ProviderRuntime, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	runtime = runtime.normalized()
 	for index, action := range actions {
-		if len(observers) > 0 && observers[0] != nil {
-			observers[0](DeploymentProgress{Stage: "preparing", Message: "Running integration actions", Path: action.ID, Completed: index, Total: len(actions)})
+		if progress != nil {
+			progress(DeploymentProgress{Stage: "preparing", Message: "Running integration actions", Path: action.ID, Completed: index, Total: len(actions)})
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), runtime.Timeout)
 		output, err := runtime.Run(ctx, action.Program, action.Args...)

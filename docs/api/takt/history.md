@@ -106,7 +106,7 @@ const (
 )
 ```
 
-<a name="CaptureCurrent"></a>Capture states the snapshot contract distinguishes \(PRD\_DAG\_TUI.md §7.4, §11\). CaptureUnavailable is deliberately not produced by Snapshot itself: a failed workspace/history read never reaches Project, so it never reaches a Snapshot value either. The command that opens the history \(runDag in cmd/takt\-ai/dag.go\) builds that JSON object itself on a read failure; the constant lives here only so both sides name the same string.
+<a name="CaptureCurrent"></a>Capture states the snapshot contract distinguishes \(PRD\_DAG\_TUI.md §7.4, §11\). CaptureUnavailable is deliberately not produced by Snapshot itself: a failed workspace/history read never reaches Project, so it never reaches a Snapshot value either. The command that opens the history \(runDag in takt/cli/dag.go\) builds that JSON object itself on a read failure; the constant lives here only so both sides name the same string.
 
 ```go
 const (
@@ -181,7 +181,7 @@ type ActivityNode struct {
 ```
 
 <a name="Author"></a>
-## type [Author](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L46>)
+## type [Author](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L47>)
 
 Author is the semantic author of an entry \(PR\-DAG\-REP\-5\). It says whose act the entry records, never who physically appended it.
 
@@ -204,7 +204,7 @@ const (
 ```
 
 <a name="AuthorOf"></a>
-### func [AuthorOf](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L199>)
+### func [AuthorOf](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L200>)
 
 ```go
 func AuthorOf(k Kind) Author
@@ -273,7 +273,7 @@ type Edge struct {
 ```
 
 <a name="Entry"></a>
-## type [Entry](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L227-L306>)
+## type [Entry](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L228-L307>)
 
 Entry is one recorded act. Its Seq is assigned by Append: the harness is the sole sequencer. Entries carry references, never copies of referenced content.
 
@@ -396,7 +396,7 @@ func (f Flight) MarshalJSON() ([]byte, error)
 MarshalJSON emits the flight's wire name.
 
 <a name="History"></a>
-## type [History](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L310-L313>)
+## type [History](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L311-L314>)
 
 History is the append\-only store. All access is serialized by the workspace lock the caller already holds through vfs.Open.
 
@@ -407,7 +407,7 @@ type History struct {
 ```
 
 <a name="Open"></a>
-### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L317>)
+### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L318>)
 
 ```go
 func Open(stateDir string) (*History, error)
@@ -416,7 +416,7 @@ func Open(stateDir string) (*History, error)
 Open opens the execution history under the private state directory, creating it if absent. A corrupt or incomplete record is an error, never a reset.
 
 <a name="History.Append"></a>
-### func \(\*History\) [Append](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L381>)
+### func \(\*History\) [Append](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L382>)
 
 ```go
 func (h *History) Append(e Entry) error
@@ -425,7 +425,7 @@ func (h *History) Append(e Entry) error
 Append assigns the next position and durably records the entry. A rejected entry is not recorded: an invalid state never becomes representable here.
 
 <a name="History.Close"></a>
-### func \(\*History\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L347>)
+### func \(\*History\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L348>)
 
 ```go
 func (h *History) Close() error
@@ -434,7 +434,7 @@ func (h *History) Close() error
 Close releases the store handle.
 
 <a name="History.Entries"></a>
-### func \(\*History\) [Entries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L374>)
+### func \(\*History\) [Entries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L375>)
 
 ```go
 func (h *History) Entries() []Entry
@@ -443,7 +443,7 @@ func (h *History) Entries() []Entry
 Entries returns the recorded prefix in its total order.
 
 <a name="History.Project"></a>
-### func \(\*History\) [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L377>)
+### func \(\*History\) [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L378>)
 
 ```go
 func (h *History) Project() Projection
@@ -452,7 +452,7 @@ func (h *History) Project() Projection
 Project derives the current projection from the whole recorded prefix.
 
 <a name="Kind"></a>
-## type [Kind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L75>)
+## type [Kind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L76>)
 
 Kind is the recorded act. Kinds carry no authority: they describe lifecycle facts, never dispatch eligibility.
 
@@ -563,7 +563,7 @@ type Node struct {
 ```
 
 <a name="NodeKind"></a>
-## type [NodeKind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L61>)
+## type [NodeKind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L62>)
 
 NodeKind identifies the source of a projected work unit or non\-unit activity. It is descriptive metadata only: it does not grant authority or scheduling.
 

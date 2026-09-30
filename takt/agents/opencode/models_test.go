@@ -84,7 +84,7 @@ func TestHandshakeRequiresV2Routes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handshake() error = %v", err)
 	}
-	if result.Version != "2.0.16" || result.Major != 2 || !result.ModelRoutes {
+	if result.Version != "2.0.16" || result.Major != 2 {
 		t.Fatalf("Handshake() = %+v, want functional v2 result", result)
 	}
 }

@@ -185,28 +185,9 @@ func TestModelsReturnsStructuredModelsInReportedOrder(t *testing.T) {
 	if first.Ref.String() != "opencode/deepseek-v4.1-flash" {
 		t.Fatalf("first String() = %q", first.Ref.String())
 	}
-	if first.Name != "DeepSeek V4.1 Flash" || first.Status != "active" || !first.Enabled || !first.Tools {
-		t.Fatalf("first model identity/capabilities wrong: %+v", first)
-	}
-	if !reflect.DeepEqual(first.InputTypes, []string{"text", "image"}) {
-		t.Fatalf("input types = %v", first.InputTypes)
-	}
-	if first.ContextLimit != 1000000 || first.OutputLimit != 384000 {
-		t.Fatalf("limits = %d/%d", first.ContextLimit, first.OutputLimit)
-	}
-	if first.ReleasedAt != 1788998400000 {
-		t.Fatalf("released = %d", first.ReleasedAt)
-	}
-	if len(first.Cost) != 1 || first.Cost[0] != (ModelCost{Input: 0.3, Output: 1.2, CacheRead: 0.006, CacheWrite: 0}) {
-		t.Fatalf("first cost = %+v", first.Cost)
-	}
-
 	second := models[1]
 	if second.Ref.String() != "opencode-go/glm-5.3-flash" {
 		t.Fatalf("second String() = %q", second.Ref.String())
-	}
-	if second.Cost[0].TierType != "context" || second.Cost[0].TierSize != 200000 {
-		t.Fatalf("second tier = %+v", second.Cost[0])
 	}
 }
 
@@ -275,7 +256,7 @@ func TestMCPStatusMapsEveryReportedState(t *testing.T) {
 	want := []MCPServer{
 		{Name: "aws-cost-management", State: MCPDisabled},
 		{Name: "codegraph", State: MCPConnected},
-		{Name: "context7", State: MCPConnected, IntegrationID: "mcp_0123456789abcdef"},
+		{Name: "context7", State: MCPConnected},
 		{Name: "ci-gateway", State: MCPFailed, Error: "connect ECONNREFUSED 127.0.0.1:8080"},
 		{Name: "obsidian", State: MCPNeedsAuth, Error: "authorization required"},
 		{Name: "warming", State: MCPPending},
@@ -297,7 +278,7 @@ func TestMCPStatusRejectsAnUnknownState(t *testing.T) {
 	}
 }
 
-func TestAgentsReturnsRegisteredAgentsWithOptionalModel(t *testing.T) {
+func TestAgentsReturnsRegisteredAgents(t *testing.T) {
 	client, _ := stubClient(map[string]stubResponse{"GET /api/agent": {stdout: agentsBody}})
 
 	agents, err := client.Agents(context.Background())
@@ -307,15 +288,14 @@ func TestAgentsReturnsRegisteredAgentsWithOptionalModel(t *testing.T) {
 	if len(agents) != 2 {
 		t.Fatalf("len(agents) = %d, want 2", len(agents))
 	}
-	if agents[0].ID != "build" || agents[0].Name != "Build" || agents[0].Model != nil {
+	if agents[0].ID != "build" || agents[0].Mode != "primary" || agents[0].Hidden {
 		t.Fatalf("first agent = %+v", agents[0])
 	}
-	pinned := agents[1]
-	if pinned.ID != "takt-orchestrator" {
-		t.Fatalf("second agent id = %q", pinned.ID)
-	}
-	if pinned.Model == nil || pinned.Model.String() != "opencode-go/glm-5.3-flash#max" {
-		t.Fatalf("second agent model = %+v", pinned.Model)
+	// The second entry pins a model ("opencode-go/glm-5.3-flash#max"); Agent
+	// no longer carries that ref (nothing reads it), but toAgent still
+	// validates the pin, so a malformed one would fail parsing here.
+	if agents[1].ID != "takt-orchestrator" {
+		t.Fatalf("second agent id = %q", agents[1].ID)
 	}
 }
 
@@ -339,10 +319,10 @@ func TestSkillsReturnsDiscoveredSkills(t *testing.T) {
 	if len(skills) != 2 {
 		t.Fatalf("len(skills) = %d, want 2", len(skills))
 	}
-	if skills[0].ID != "opencode" || skills[0].Description == "" {
+	if skills[0].ID != "opencode" {
 		t.Fatalf("first skill = %+v", skills[0])
 	}
-	if skills[1].ID != "sdd-verify" || skills[1].Description != "" || skills[1].Path == "" {
+	if skills[1].ID != "sdd-verify" {
 		t.Fatalf("second skill = %+v", skills[1])
 	}
 }
@@ -428,7 +408,7 @@ func TestHandshakePassesOnAV2ServerWithWorkingRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handshake() error = %v", err)
 	}
-	if handshake.Version != "2.0.16" || handshake.Major != 2 || !handshake.ModelRoutes {
+	if handshake.Version != "2.0.16" || handshake.Major != 2 {
 		t.Fatalf("handshake = %+v", handshake)
 	}
 	// The probe order is the failure ladder: identity first, mechanism last.

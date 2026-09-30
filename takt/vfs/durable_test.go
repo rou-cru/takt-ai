@@ -108,7 +108,7 @@ func readForTest(f *FS, agent AgentID, path string) (data []byte, err error) {
 			data = nil
 		}
 	}()
-	return f.readLocked(agent, path)
+	return f.readLockedAs(agent, path, false)
 }
 
 func stagedCount(f *FS, key AgentID) int {

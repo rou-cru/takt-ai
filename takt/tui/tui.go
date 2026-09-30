@@ -403,15 +403,20 @@ func (m Model) updateAction(message tea.Msg) (tea.Model, tea.Cmd) {
 		// busy state and receives the request it emitted.
 		ctx, cancel := context.WithCancel(context.Background())
 		m.pendingID, m.actionCancel = message.ID, cancel
-		// First animation frame for the flow's busy marker; the flow
-		// chains further frames itself while busy. A zero TickMsg is a
-		// valid first tick: no ID means no owner to reject.
 		progress := func(event setup.DeploymentProgress) {
 			if m.sendProgress != nil {
 				m.sendProgress(runtime.ActionProgressMsg{Request: message, Progress: event})
 			}
 		}
-		actionCommand = tea.Batch(m.adapter.Command(ctx, message, progress), func() tea.Msg { return spinner.TickMsg{} })
+		cmds := []tea.Cmd{m.adapter.Command(ctx, message, progress)}
+		if theme.Animation() {
+			// First animation frame for the flow's busy marker; the flow
+			// chains further frames itself via runtime.Run.Tick while busy.
+			// A zero TickMsg is a valid first tick: no ID means no owner to
+			// reject (bubbles/spinner semantics).
+			cmds = append(cmds, func() tea.Msg { return spinner.TickMsg{} })
+		}
+		actionCommand = tea.Batch(cmds...)
 	case runtime.ActionProgressMsg:
 		if message.Request.ID != m.pendingID {
 			return m, nil

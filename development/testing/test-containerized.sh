@@ -20,7 +20,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
-IMAGE="takt-test:go1.25-node24"
+IMAGE="takt-test:go1.27-node24"
 SEPARATOR="=================================================="
 SRC_DIR="/src"
 source "$REPO_ROOT/development/testing/test-packages.sh"
@@ -103,6 +103,11 @@ for arg in "$@"; do
         -args|--args|--) break ;;
         -coverprofile) cover_next=1 ;;
         -coverprofile=*) COVER_FILE="${arg#-coverprofile=}" ;;
+        # Any other argument (another go test flag, a package path) carries no
+        # coverage target, so COVER_FILE is left untouched. This arm must stay
+        # a no-op: the loop scans every argument, including ordinary ones like
+        # -race, so failing here would abort a normal, valid test run.
+        *) ;;
     esac
 done
 CONTAINER_NAME="takt-test-containerized-$$"

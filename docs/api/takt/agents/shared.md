@@ -40,22 +40,10 @@ var OrchestratorDescription = orchestratorDefinition.Description
 var OrchestratorID = orchestratorDefinition.ID
 ```
 
-<a name="SensitivePathGlobs"></a>SensitivePathGlobs lists secret\-bearing paths every target must block from agent reads and writes.
+<a name="SensitivePathGlobs"></a>SensitivePathGlobs lists secret\-bearing paths every target must block from agent reads and writes; the list itself lives in model so the VFS shell sandbox and the native permission rules share one source.
 
 ```go
-var SensitivePathGlobs = []string{
-    ".env",
-    ".env.*",
-    ".ssh/**",
-    ".credentials/**",
-    "Library/Keychains/**",
-    ".aws/credentials",
-    ".config/gh/hosts.yml",
-    "*.pem",
-    "*.key",
-    "secrets/**",
-    "credentials.json",
-}
+var SensitivePathGlobs = model.SensitivePathGlobs
 ```
 
 <a name="NewManagedPaths"></a>

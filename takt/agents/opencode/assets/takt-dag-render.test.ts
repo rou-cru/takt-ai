@@ -17,6 +17,7 @@ import {
   nodeText,
   ordinal,
   sidebarHeader,
+  SidebarGraph,
   topologyError,
   topologyKey,
 } from "./takt-dag"
@@ -207,5 +208,61 @@ describe("hasContent / headerLine / sidebarHeader", () => {
     expect(sidebarHeader(undefined, "waiting")).toBe("Takt DAG · waiting")
     expect(sidebarHeader({ ...base, nodes: [] } as never, "confirmed")).toBe("Takt DAG · current")
     expect(sidebarHeader({ ...base, nodes: [] } as never, "invalid")).toBe("Takt DAG · invalid")
+  })
+})
+
+// A bare <Show> under a <box> (no <text>-typed fallback) throws "Orphan text
+// error" the moment its condition is false: Solid's off-state placeholder
+// needs a <text> parent. These render the exact falsy branches that used to
+// crash — no activities, no problem, no snapshot yet.
+describe("crash regressions: falsy branches under a plain box", () => {
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+
+  test("GraphView renders without throwing when there are no activities", async () => {
+    const build = (activities: unknown) =>
+      ({ ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }], activities }) as never
+    for (const activities of [undefined, []]) {
+      const setup = await testRender(() => GraphView({ snapshot: build(activities), mode: "route" }) as never, { width: 60, height: 20 })
+      try {
+        await setup.renderOnce()
+        const frame = setup.captureCharFrame()
+        expect(frame).toContain("a")
+        expect(frame).not.toContain("Activities")
+      } finally {
+        setup.renderer.destroy()
+      }
+    }
+  })
+
+  test("SidebarGraph renders nothing without throwing when there is no snapshot yet", async () => {
+    const setup = await testRender(() => SidebarGraph({ snapshot: undefined }) as never, { width: 60, height: 20 })
+    try {
+      await setup.renderOnce()
+      expect(setup.captureCharFrame().trim()).toBe("")
+    } finally {
+      setup.renderer.destroy()
+    }
+  })
+
+  test("SidebarGraph renders nothing without throwing for an empty DAG", async () => {
+    const snapshot = { ...base, nodes: [], edges: [] } as never
+    const setup = await testRender(() => SidebarGraph({ snapshot }) as never, { width: 60, height: 20 })
+    try {
+      await setup.renderOnce()
+      expect(setup.captureCharFrame().trim()).toBe("")
+    } finally {
+      setup.renderer.destroy()
+    }
+  })
+
+  test("SidebarGraph renders the graph once there is content", async () => {
+    const snapshot = { ...base, nodes: [node({ id: "solo" })], edges: [] } as never
+    const setup = await testRender(() => SidebarGraph({ snapshot }) as never, { width: 60, height: 20 })
+    try {
+      await setup.renderOnce()
+      expect(setup.captureCharFrame()).toContain("solo")
+    } finally {
+      setup.renderer.destroy()
+    }
   })
 })

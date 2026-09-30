@@ -31,8 +31,8 @@ export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
 type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; capture?: boolean; cwd?: string; confirm?: string }
 type VFSResponse = {
   ok: boolean; key?: string; content?: string; revision?: number; delta_hash?: string
-  seq?: number; error?: string; attempt_id?: string; invariants_version?: string
-  shell?: VFSShellResponse; claims?: OwnershipClaim[]; collision?: { path: string; owner: string; attempted_by: string }
+  error?: string; attempt_id?: string; invariants_version?: string
+  shell?: VFSShellResponse; claims?: OwnershipClaim[]
 }
 type GCPlan = Record<string, unknown> & { session_id: string; cycle_id: string; mandate_class: string; delta: unknown[]; closure: string[]; reachability: string }
 type GCCycle = Record<string, unknown> & { phase: string; plan: GCPlan; scope: string[]; sessions: Record<string, string>; report: unknown; started: string; author_key?: string }
@@ -56,7 +56,6 @@ export function isHandoffEnvelope(value: Record<string, unknown>): value is Hand
     Array.isArray(value.memory) && value.memory.every(item => typeof item === "number")
 }
 type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; scope?: string[] }
-type CollisionError = { path: string; owner: string; attempted_by: string }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -101,7 +100,6 @@ export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSRe
     ...(typeof parsed.content === "string" ? { content: parsed.content } : {}),
     ...(typeof parsed.revision === "number" ? { revision: parsed.revision } : {}),
     ...(typeof parsed.delta_hash === "string" ? { delta_hash: parsed.delta_hash } : {}),
-    ...(typeof parsed.seq === "number" ? { seq: parsed.seq } : {}),
     ...(typeof parsed.error === "string" ? { error: parsed.error } : {}),
     ...(typeof parsed.attempt_id === "string" ? { attempt_id: parsed.attempt_id } : {}),
     ...(typeof parsed.invariants_version === "string" ? { invariants_version: parsed.invariants_version } : {}),
@@ -487,7 +485,7 @@ export default Plugin.define({
     }
     const admittedShell = new Map<string, AdmittedShell>()
     // create.before has no session/agent context, so remember the orchestrator's
-    // native-permission admission by exact command until create.
+    // and RESULT_AGENTS' native-permission admission by exact command until create.
     const directShell = new Map<string, number>()
 
     if (VFS_SHELL_ENFORCED) {
@@ -500,7 +498,7 @@ export default Plugin.define({
         // under the wrong binding's sandbox, or take the orchestrator's direct path.
         const pending = admittedShell.get(command)
         const direct = directShell.has(command)
-        if (event.agent === ORCHESTRATOR_ID) {
+        if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
           if (pending) throw new Error("Takt refused this shell command: an identical specialist command is pending")
           directShell.set(command, (directShell.get(command) ?? 0) + 1)
           return
@@ -583,7 +581,7 @@ export default Plugin.define({
         if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
-        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID) return
+        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) return
         // OpenCode asks over the commands it parsed out of the call, not the call
         // itself, so the admission is found by session. Parallel calls in one
         // session resolve to the strictest decision among them. The decision is
@@ -851,6 +849,15 @@ export default Plugin.define({
       scheduleGC()
     })
 
+    /**
+     * Settles tracked delegations and advances GC after ordinary VFS tool calls.
+     * A completed result producer with no delivery gets one reminder if its child
+     * is known; the hook waits for that turn before rejecting a missing result.
+     * Delivery checks clear the child and result tracking and attempt to finish
+     * the delegation even on failure. Storage, session, and coordination errors
+     * propagate; a failed finish can replace a delivery or session error.
+     * GC children and untracked delegations are ignored.
+     */
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool === "subagent" && !gcChildren.has(event.sessionID)) {
         const delegation = `${event.sessionID}:${event.id}`

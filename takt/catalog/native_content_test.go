@@ -39,24 +39,34 @@ func TestLoadNativeContent(t *testing.T) {
 	if len(content) != len(wantIDs) {
 		t.Fatalf("loaded %d entries, want %d: %v", len(content), len(wantIDs), content)
 	}
+	packages, err := LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defByInstance := make(map[string]AgentDefinition)
+	for _, def := range packages.Agents {
+		for _, id := range def.Instances {
+			defByInstance[id] = def
+		}
+	}
 	for _, id := range wantIDs {
-		entry, ok := content[id]
-		if !ok {
+		if _, ok := content[id]; !ok {
 			t.Errorf("missing native content %q", id)
 			continue
 		}
-		if entry.ID != id {
-			t.Errorf("entry %q has ID %q", id, entry.ID)
+		def, ok := defByInstance[id]
+		if !ok {
+			t.Fatalf("no agent definition declares instance %q", id)
 		}
-		if entry.Description == "" || entry.Instructions == "" {
-			t.Errorf("entry %q missing description or instructions", id)
+		if def.Description == "" {
+			t.Errorf("entry %q missing description", id)
+		}
+		if text, err := def.ComposeText(AssetFS()); err != nil || text == "" {
+			t.Errorf("entry %q missing instructions: %v", id, err)
 		}
 	}
 	if _, exposed := content["takt-judge"]; exposed {
 		t.Error("takt-judge must not be exposed on its own, only projected as -a/-b")
-	}
-	if content["judge-a"].Description != content["judge-b"].Description {
-		t.Error("judge-a and judge-b must share the same content, only the ID differs")
 	}
 }
 
@@ -145,27 +155,6 @@ func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeS
 	for _, retired := range []string{"simplify-align", "simplify-plan", "simplify-verify", "simplify-gc"} {
 		if _, ok := content[retired]; ok {
 			t.Errorf("retired instance %q still exposed", retired)
-		}
-	}
-}
-
-func TestInstanceProfileValidation(t *testing.T) {
-	base := "id: x\ninstances: [x, y]\ndescription: d\nrole: execution\nvfs_capabilities: {x: [bind, write], y: []}\ncontext: {operations: OPERATIONS.md}\n"
-	for name, tc := range map[string]struct{ extra, want string }{
-		"undeclared instance": {"instance_profiles: {z: {role: verification}}\n", "undeclared instance"},
-		"unknown role":        {"instance_profiles: {y: {role: janitor}}\n", "unknown role class"},
-		"orchestrator":        {"instance_profiles: {y: {role: orchestrator}}\n", "not a specialty role"},
-		"unknown field":       {"instance_profiles: {y: {mode: all}}\n", "field mode not found"},
-	} {
-		fsys := fstest.MapFS{
-			"README.md":              {Data: []byte("r")},
-			BaselinePath:             {Data: []byte("b")},
-			"skills/s/SKILL.md":      {Data: []byte("---\nname: s\ndescription: d\n---\n")},
-			"agents/x/agent.yaml":    {Data: []byte(base + tc.extra)},
-			"agents/x/OPERATIONS.md": {Data: []byte("ops")},
-		}
-		if _, err := LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
 		}
 	}
 }

@@ -41,9 +41,8 @@ func renderCatalog(t *testing.T) renderedCatalog {
 	r := renderedCatalog{pack: pack, loaders: map[string][]string{}}
 	for _, def := range pack.Agents {
 		for _, id := range def.Instances {
-			profile := def.Profile(id)
 			grants, _ := def.VFSCapabilities(id)
-			r.specs = append(r.specs, opencode.AgentSpec{ID: id, Description: profile.Description, Mode: opencode.AgentMode(profile.Role), System: opencode.ComposePrompt(def, id), Role: profile.Role, VFSCapabilities: grants, Skills: def.Skills})
+			r.specs = append(r.specs, opencode.AgentSpec{ID: id, Description: def.Description, Mode: opencode.AgentMode(def.Role), System: opencode.ComposePrompt(def, id), Role: def.Role, VFSCapabilities: grants, Skills: def.Skills})
 			for _, p := range def.ContextPaths() {
 				r.loaders[p] = append(r.loaders[p], id)
 			}

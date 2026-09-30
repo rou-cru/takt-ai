@@ -155,7 +155,7 @@ func (c *Client) Handshake(ctx context.Context) (Handshake, error) {
 	if _, err := c.Models(ctx); err != nil {
 		return Handshake{}, fmt.Errorf("%w: model routes probe failed: %s", ErrUnavailable, redactSensitiveText(err.Error()))
 	}
-	return Handshake{Version: info.Version, Major: major, ModelRoutes: true}, nil
+	return Handshake{Version: info.Version, Major: major}, nil
 }
 
 // parseMajor reads the leading integer of the first version-like token, so a

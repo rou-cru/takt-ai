@@ -27,32 +27,11 @@ func (r ModelRef) String() string {
 	return r.ProviderID + "/" + r.ModelID + "#" + r.Variant
 }
 
-// ModelCost is one price tier of a model, in USD per million tokens. A model
-// can report several tiers; TierType is empty when the entry is untiered.
-type ModelCost struct {
-	TierType   string
-	TierSize   int
-	Input      float64
-	Output     float64
-	CacheRead  float64
-	CacheWrite float64
-}
-
-// Model is the structured replacement for parsing "opencode models" text:
-// identity, lifecycle status, tool support, limits and cost. Unknown API
-// fields are ignored by design.
+// Model is the structured replacement for parsing "opencode models" text.
+// Only Ref is read anywhere; the rest of the wire payload (name, status,
+// capabilities, limits, cost) is validated on decode but not carried.
 type Model struct {
-	Ref          ModelRef
-	Name         string
-	Status       string // "alpha", "beta", "deprecated" or "active"
-	Enabled      bool
-	Tools        bool
-	InputTypes   []string // e.g. ["text", "image"]
-	OutputTypes  []string // e.g. ["text"]
-	ContextLimit int
-	OutputLimit  int
-	ReleasedAt   int64 // milliseconds since the Unix epoch, as reported by the API
-	Cost         []ModelCost
+	Ref ModelRef
 }
 
 // MCPState is the connection state OpenCode reports for an MCP server. An
@@ -72,29 +51,21 @@ const (
 // MCPServer is one configured MCP server with the connection state OpenCode
 // actually observes — not what configuration files claim.
 type MCPServer struct {
-	Name          string
-	State         MCPState
-	Error         string // why the server failed or needs auth; empty when healthy
-	IntegrationID string // set for remote servers registered as OAuth integrations
+	Name  string
+	State MCPState
+	Error string // why the server failed or needs auth; empty when healthy
 }
 
-// Agent is one agent OpenCode has registered, including the model reference
-// it is pinned to (nil when it inherits the session or default model).
+// Agent is one agent OpenCode has registered.
 type Agent struct {
-	ID          string
-	Name        string
-	Description string
-	Mode        string // "subagent", "primary" or "all"
-	Hidden      bool
-	Model       *ModelRef
+	ID     string
+	Mode   string // "subagent", "primary" or "all"
+	Hidden bool
 }
 
 // Skill is one skill OpenCode has discovered and made loadable.
 type Skill struct {
-	ID          string
-	Name        string
-	Description string
-	Path        string
+	ID string
 }
 
 // Plugin is one server plugin with its loading result. Status is a decision
@@ -112,9 +83,4 @@ type Plugin struct {
 type Handshake struct {
 	Version string
 	Major   int
-	// ModelRoutes reports that the experimental model routes answered — the
-	// V2 mechanism Takt relies on. A v2 binary whose model routes fail is
-	// installed but not functional for Takt, and that distinction is exactly
-	// what the handshake exists to make.
-	ModelRoutes bool
 }

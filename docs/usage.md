@@ -4,317 +4,276 @@
 
 ---
 
-## Persona Modes
-
-| Persona   | ID          | Description                                                                       |
-| --------- | ----------- | --------------------------------------------------------------------------------- |
-| Takt | `takt` | Teaching-oriented mentor persona — pushes back on bad practices, explains the why |
-| Neutral   | `neutral`   | Same teacher, same philosophy, no regional language — warm and professional       |
-| Custom    | `custom`    | Keep your existing persona/config unmanaged — takt-ai does not inject a persona |
-
-`custom` is a compatibility/ownership choice, not a persona editor. Use it when you already have your own persona instructions and want takt-ai to leave them alone.
-
----
+`takt-ai` has two faces: an interactive TUI when run with no arguments in a
+terminal, and a small command set for scripts. It configures one supported
+agent: **OpenCode**. There are no other agent targets, personas, or presets.
 
 ## Interactive TUI
 
-Just run it — the Bubbletea TUI guides you through agent selection, components, skills, presets, and managed uninstall flows:
+Run it in a terminal:
 
 ```bash
 takt-ai
 ```
 
-The uninstall flow is also available from the TUI menu. It lets you:
+The main menu offers, depending on whether Takt is already installed:
 
-- select one or more configured agents
-- select which managed components to remove (for example `sdd`, `persona`, or `context7`)
-- confirm the exact uninstall scope before applying changes
+| Screen | What it does |
+| --- | --- |
+| Install / Configure installation | Full first install, or re-apply and adjust the managed setup |
+| Assign models | Reassign the models OpenCode sub-agents use |
+| Check for drift | Read-only inspection of managed files against the ownership manifest |
+| Uninstall | Remove Takt's managed configuration (with preservation choices) |
+| Diagnostics | Reusable functional checks |
 
-Before any managed file is modified, `takt-ai` creates a backup snapshot so the configuration can be restored later if needed.
+A cancelled operation stops at a stable point: either nothing was applied, or
+the applied changes stay in place and are reported. Replaced files that already
+existed are backed up under `<root>/.takt-backups/`.
 
 ---
 
 ## CLI Commands
 
-### install
-
-First-time setup — detects your tools, configures agents, injects all components. When installing a single agent with `--agent X`, takt-ai **merges** the new agent into the existing `installed_agents` list in `state.json` and **preserves** any existing `model_assignments` — it does not overwrite the full state.
-
-```bash
-# Full ecosystem
-takt-ai install \
-  --agent opencode \
-  --preset full-takt
-
-# Minimal setup for Cursor
-takt-ai install \
-  --agent cursor \
-  --preset minimal
-
-# Pick specific components and skills
-takt-ai install \
-  --agent opencode \
-  --component engram,sdd,skills,context7,persona,permissions \
-  --skill go-testing,skill-creator,branch-pr,issue-creation \
-  --persona takt
-
-# Dry-run first (preview plan without applying changes)
-takt-ai install --dry-run \
-  --agent opencode \
-  --preset full-takt
+```
+takt-ai version | doctor | setup install|sync|uninstall|image
+       | setup default-request | memory record|continue|close
+       | codegraph ensure-index | restore | dispatch | dag status
+       | vfs journal|recover|claims|assign|assign-verifier|release|bind|op|verify|consolidate|resolve|shell-prepare|shell-import
+       | obs ingest | gc plan|findings|refute|acceptance|coordinate
 ```
 
-### sync
+`takt-ai` with no arguments and no terminal prints this usage and exits.
 
-Refresh managed assets to the current version. Use after `brew upgrade gentle-ai` or when you want your local configs aligned with the latest release. Does NOT reinstall binaries (engram, GGA) — only updates prompt content, skills, MCP configs, and SDD orchestrators.
-
-> **Important:** `takt-ai sync` updates the agents recorded as installed by Takt AI, not every AI agent config directory on your machine.
->
-> Takt AI stores your selected install targets in `~/.takt-ai/state.json`. Future `sync` runs use that stored selection so Takt AI does not accidentally write into tools you did not choose to manage. If you rerun install and select only one agent, that new selection becomes the default sync scope.
->
-> Before syncing, you can preview the active scope with `takt-ai sync --dry-run`. If you want to sync agents outside the stored selection, pass them explicitly with `--agent`.
+### version
 
 ```bash
-# Preview which agents sync will update
-takt-ai sync --dry-run
-
-# Sync the agents currently registered in ~/.takt-ai/state.json
-takt-ai sync
-
-# Sync a specific agent explicitly
-takt-ai sync --agent opencode
+takt-ai version    # also: --version, -v
 ```
-
-Sync is safe and idempotent — running it twice produces no changes the second time. When files change, the summary reports the changed file count and lists the changed file paths.
-
-`sync` refreshes the managed component set for the selected agents. It does not support `--component`; use `--include-permissions` or `--include-theme` for the opt-in components that are excluded from the default sync scope.
-
-For Hermes, takt-ai is detect-only: it cannot install Hermes. Install Hermes manually first. Detection is driven by the `~/.hermes` config directory (the binary being on `PATH` is reported separately). Once Hermes is detected, `takt-ai install --agent hermes` injects context7 and Engram MCP blocks into `~/.hermes/config.yaml`, writes the SDD orchestrator and persona into `~/.hermes/SOUL.md`, and copies skills to `~/.hermes/skills/`. Use `takt-ai sync --agent hermes` to update the managed configuration after upgrades.
-
-### uninstall
-
-Remove only the `takt-ai` managed configuration from one or more agents. This does not uninstall external packages or binaries — it removes managed prompt sections, MCP entries, skills/config fragments, and other managed files, then updates `state.json` accordingly.
-
-Before any change is applied, `takt-ai` creates a backup snapshot of the affected files.
-
-```bash
-# Partial uninstall for a specific agent
-takt-ai uninstall \
-  --agent opencode
-
-# Partial uninstall for specific components only
-takt-ai uninstall \
-  --agent opencode \
-  --component sdd,persona,context7
-
-# Complete uninstall of managed config from all supported agents
-takt-ai uninstall --all
-
-# Skip confirmation prompt
-takt-ai uninstall --agent cursor --component skills --yes
-```
-
-If no `--component` flag is provided for a partial uninstall, `takt-ai` removes all managed uninstallable components for the selected agent set.
-
-### update / upgrade
-
-Check for and install new versions of `takt-ai` itself. The pre-upgrade backup snapshot covers only the agents recorded in `state.InstalledAgents` (`~/.takt-ai/state.json`) — not every agent config directory that exists on your machine.
-
-```bash
-# Check if a newer version is available
-takt-ai update
-
-# Upgrade to the latest release (downloads new binary, replaces current)
-takt-ai upgrade
-```
-
-After upgrading, run `takt-ai sync` to refresh all managed assets to the new version's content.
-
-If GitHub rate-limits update checks, export `GITHUB_TOKEN` or `GH_TOKEN` before running `takt-ai update`/`upgrade`.
-
-If Homebrew refuses an upgrade from an untrusted tap, trust only the artifact Homebrew names and retry the upgrade:
-
-```bash
-# Formula tools, for example takt-ai
-brew trust --formula gentleman-programming/tap/gentle-ai
-brew upgrade gentle-ai
-
-# Cask tools, for example engram
-brew trust --cask gentleman-programming/tap/engram
-brew upgrade engram
-```
-
-**Self-update prompt behavior** (changed in v1.x slice 5 — `TAKT_AI_CONFIRM_UPDATE` removed):
-
-| Situation | Behavior |
-|-----------|----------|
-| Interactive terminal (TTY) | Always prompts `Apply now? [Y/n]`. Empty Enter accepts. |
-| Non-TTY (CI, pipe, script) | Auto-declines — never hangs. |
-| `TAKT_AI_YES=1` | Auto-accepts without prompting (for scripted upgrades). This variable is inherited by subprocesses, so scope it to a single invocation when needed (e.g. `TAKT_AI_YES=1 takt-ai …`). |
-| `TAKT_AI_NO_SELF_UPDATE=1` | Skips the self-update check entirely. |
-
-`TAKT_AI_CONFIRM_UPDATE` was removed in slice 5. It is now ignored if set.
-
-`TAKT_AI_SELF_UPDATE_DONE` is an internal loop guard and should not be set manually.
-
-### model assignment
-
-The TUI **Configure Models** screen can assign different models to SDD phases, `sdd-onboard`, and Judgment Day agents (`jd-judge-a`, `jd-judge-b`, `jd-fix-agent`) when the selected agent supports those slots. This lets you keep review or apply phases on stronger models while routing cheaper phases to faster models.
 
 ### doctor
 
-Read-only ecosystem health diagnostics — no changes made to your configuration:
+Read-only ecosystem health check — no changes made to your configuration:
 
 ```bash
 takt-ai doctor
 ```
 
-Checks performed:
-
 | Check | What it verifies |
-|-------|-----------------|
+|-------|------------------|
 | Tool binaries | Required tools present on `PATH`; shadow detection (wrong binary resolves first) |
-| `state.json` validity | Parses `~/.takt-ai/state.json` and reports any schema/corruption issues |
-| Engram MCP reachability | Confirms the Engram MCP server responds |
+| Deployment state | Ownership-manifest state of Takt's managed files |
+| Engram reachability | The Engram memory server responds |
 | Disk space | Warns when available space is critically low |
 
 Each check reports **pass**, **warn**, or **fail** with an optional remedy hint. Run `doctor` first when troubleshooting an unexpected install or sync result.
 
-### version
+### setup install / sync / uninstall / image
+
+First-time setup, refresh, and removal of Takt's managed configuration for OpenCode. The request is a strict JSON document on stdin or `--input`:
 
 ```bash
-takt-ai version
-takt-ai --version
-takt-ai -v
+# Preview the plan without applying changes
+takt-ai setup default-request | takt-ai setup install --plan-only
+
+# Full install (requires explicit --yes to change anything)
+takt-ai setup default-request | takt-ai setup install --yes
+
+# Custom component selection (see "Components" below)
+echo '{"components":["context7","theme"]}' | takt-ai setup install --yes
+
+# Refresh managed assets to the current version
+takt-ai setup sync --yes
+
+# Remove only Takt's managed configuration
+takt-ai setup uninstall --yes
 ```
+
+Flags:
+
+| Flag | Applies to | Description |
+| --- | --- | --- |
+| `--root <dir>` | all | Install root (default: your home directory) |
+| `--input <file-or--->` | setup | JSON request file, or `-` for stdin (default) |
+| `--plan-only` | setup | Preview the plan without touching the environment |
+| `--yes` | setup | Required to apply any change; refuses otherwise |
+| `--json` | setup | One JSON value on stdout; diagnostics move to stderr |
+
+Behavior:
+
+- **install** acquires prerequisites first (Engram, CodeGraph), then deploys
+  the OpenCode configuration, catalog agents, skills, and plugins, records the
+  installation, and attempts an OpenCode reload. A reload failure is reported
+  as evidence; files are already valid on disk.
+- **sync** redeploys the same managed set idempotently — re-running it twice
+  produces no change the second time.
+- **uninstall** removes managed files, restores pre-existing content it had
+  taken over, and forgets the installation record. The Engram database lives
+  outside Takt's footprint and is never removed.
+- **image** is the install variant used when building the container image; it
+  skips probing or reloading a live OpenCode process.
+- A previously interrupted operation prints a warning notice on the next run;
+  every command re-checks the actual files before acting.
+- User-modified managed files are preserved (never silently overwritten on
+  uninstall); conflicts with pre-existing content must be resolved through the
+  TUI or by choosing what to preserve.
+
+### Components
+
+The installable pieces (see `takt/catalog/capabilities.yaml`):
+
+| Component | Core | Selectable | Purpose |
+| --- | --- | --- | --- |
+| `engram` | yes | no | Memory/context graph runtime wiring (MCP) |
+| `codegraph` | yes | no | Tree-sitter codebase exploration for agents (MCP) |
+| `skills` | yes | no | Skill system deployed by every install and sync |
+| `specialists` | yes | no | Specialist sub-agent roster rendered from the catalog |
+| `context7` | no | yes | Up-to-date library docs for agents (MCP) |
+| `theme` | no | yes | Takt terminal theme for the harness |
+| `opencode-takt-logo` | no | yes | OpenCode logo plugin (artifacts install regardless of selection) |
+
+`takt-ai setup default-request` prints the request selecting every component, so scripts can pipe it into `setup install --input`.
+
+### memory
+
+Machine interface for the OpenCode memory plugin: one strict JSON request on
+stdin, one JSON line on stdout. Not meant for interactive use — your agent
+manages memory automatically through Engram's MCP tools.
+
+```bash
+takt-ai memory record   < request.json   # record observations in a session
+takt-ai memory continue < request.json   # resume with prior session context
+takt-ai memory close    < request.json   # close a session
+```
+
+A malformed request exits with status 2 and a validation-error line; other
+failures exit 1.
+
+### codegraph ensure-index
+
+Prepares the current directory's CodeGraph index before the MCP server can
+expose its tools. Run from the workspace root:
+
+```bash
+takt-ai codegraph ensure-index
+```
+
+### restore
+
+Restores pre-existing content Takt had taken over, so a deployment can be
+undone safely:
+
+```bash
+takt-ai restore [--root <dir>]
+```
+
+### dispatch / gc coordinate
+
+Harness IPC that admits and drives crew work through the execution history.
+`dispatch` serves the ordinary orchestrator actions (admit, finish, tick,
+launch, commit, switch, handoff, abort_switch, contest, recovery, exception,
+…); maintenance-cycle actions belong to `gc coordinate`. Both read a JSON
+request and answer JSON:
+
+```bash
+takt-ai dispatch --workspace <dir> --state <private-dir> --request '{"action":"admit",...}'
+takt-ai gc coordinate --workspace <dir> --state <private-dir> --request '...'
+```
+
+### dag status
+
+Read-only DAG snapshot of the execution history — it never selects, admits, or
+mutates work. Consumed by the OpenCode TUI DAG plugin, which parses stdout as
+JSON: on a control-plane read failure it emits `{"capture":"unavailable"}` and
+exits 0 rather than rendering a fake empty graph.
+
+```bash
+takt-ai dag status --workspace <dir> --state <private-dir> [--session <root-session>] --format json
+```
+
+### vfs
+
+Transactional file operations and evidence for the OpenCode `takt-vfs`
+plugin. Offline subcommands inspect or repair; the rest consume one strict
+JSON request on stdin (the `ipc_version` wire contract is checked and
+reported on mismatch):
+
+```bash
+# Journal pagination and explicit recovery (requires --restore)
+takt-ai vfs journal  --workspace <dir> --state <private-dir> [--after N] [--limit N] [--session id] [--unit id]
+takt-ai vfs recover  --workspace <dir> --state <private-dir> --restore
+
+# Claim control (orchestrator capability)
+takt-ai vfs claims   --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs assign   --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs assign-verifier --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs release  --workspace <dir> --state <private-dir> < request.json
+
+# Bound mutation IPC
+takt-ai vfs bind          --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs op            --workspace <dir> --state <private-dir> < request.json   # read|create|patch|delete|rollback
+takt-ai vfs verify        --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs consolidate   --workspace <dir> --state <private-dir> < request.json
+takt-ai vfs resolve       --workspace <dir> --state <private-dir> < request.json   # collision resolution
+takt-ai vfs shell-prepare --workspace <dir> --state <private-dir> < request.json   # sandbox plan for one command
+takt-ai vfs shell-import  --workspace <dir> --state <private-dir> < request.json   # admit the captured result
+```
+
+### obs ingest
+
+Appends externally observed, content-free events to the workspace event store.
+Only the four plugin-visible classes are accepted (`dispatch`,
+`unit_lifecycle`, `tool_activity`, `model_usage`), each from its declared
+source plane; everything else is produced inside Takt and rejected here:
+
+```bash
+takt-ai obs ingest --workspace <dir> < event.json
+```
+
+### gc
+
+Workspace GC cycle declaration, findings, and acceptance. A cycle declares
+exactly one mandate: `dead-code`, `complexity`, `duplication`, `documentation`,
+or `analyzer-integrity`.
+
+```bash
+takt-ai gc plan       --workspace <dir> --state <private-dir> --session <id> --cycle <id> --mandate <class>
+takt-ai gc findings   --workspace <dir> --state <private-dir> --session <id> --cycle <id> --mandate <class>
+takt-ai gc refute     ... --finding <id> --class <evidence-class> --evidence <text> --instance <id>
+takt-ai gc acceptance --workspace <dir> --state <private-dir> --cycle <id> --result pass|regress
+```
+
+Findings are candidates, not mutation authority: independent investigation and
+explicit authorization still apply, and refutations attach evidence classes
+for what the analysis could not see.
 
 ---
 
-## CLI Flags (install)
+## What Takt installs
 
-| Flag                          | Description                                                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `--agent`, `--agents`         | Agents to configure (comma-separated)                                                                             |
-| `--component`, `--components` | Components to install (comma-separated)                                                                           |
-| `--skill`, `--skills`         | Skills to install (comma-separated)                                                                               |
-| `--persona`                   | Persona mode: `takt`, `neutral`, `custom` (`custom` keeps your existing persona unmanaged)                   |
-| `--preset`                    | Preset: `full-takt`, `ecosystem-only`, `minimal`, `custom` (`custom` means manual component/skill selection) |
-| `--sdd-mode`                  | SDD orchestrator mode: `single` or `multi`                                                                        |
-| `--scope`                     | Install scope for agent-scoped files: `global` (default, writes to each selected agent's global config directory) or `workspace` (writes to the current project root). Also settable via `TAKT_AI_INSTALL_SCOPE` env var for CI/non-interactive use. |
-| `--dry-run`                   | Preview the install plan without applying changes                                                                 |
+Managed files live under your install root (home by default):
 
-## CLI Flags (sync)
+| Path | Content |
+| --- | --- |
+| `~/.config/opencode/opencode.json` | Agents, permissions, MCP servers (Engram, CodeGraph, context7), session-start hooks |
+| `~/.config/opencode/cli.json` | Terminal preferences: Takt theme selection |
+| `~/.config/opencode/AGENTS.md` | Short "Takt Memory" section (Engram wiring) |
+| `~/.config/opencode/plugins/` | `takt-vfs.ts`, memory plugin, `takt-sandbox.mjs`, `takt-dag/tui.tsx`, `package.json` |
+| `~/.config/opencode/takt/` | Catalog agent context files (BASELINE, PERSONA, SOUL, OPERATIONS) |
+| `~/.opencode/skills/` | Takt skills, discovered by OpenCode on demand |
+| `~/.takt-manifest.json` | Ownership manifest: every managed file with hashes and owners |
+| `~/.takt-backups/` | Preserved copies of pre-existing content taken over by an operation |
 
-| Flag                     | Description                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `--agent`, `--agents`    | Agents to sync (defaults to all installed agents)                                                    |
-| `--skill`, `--skills`    | Skills to sync (comma-separated; defaults to selected preset skills)                                  |
-| `--sdd-mode`             | SDD orchestrator mode: `single` or `multi`                                                           |
-| `--strict-tdd`           | Enable Strict TDD Mode for SDD agents                                                                |
-| `--profile`              | Create or update an SDD profile: `name:provider/model` (sets the default model for all phases)       |
-| `--profile-phase`        | Override a specific phase in a profile: `name:phase:provider/model`                                  |
-| `--sdd-profile-strategy` | OpenCode profile sync strategy: `generated-multi` or `external-single-active`                        |
-| `--include-permissions`  | Include permissions sync (opt-in)                                                                    |
-| `--include-theme`        | Include theme sync (opt-in)                                                                          |
-| `--dry-run`              | Preview the sync plan without applying changes                                                       |
-
-**Profile examples:**
-
-```bash
-# Create a "cheap" profile using a free model for all phases
-takt-ai sync --profile cheap:openrouter/qwen/qwen3-30b-a3b:free
-
-# Override the design phase to use a stronger model
-takt-ai sync --profile-phase cheap:sdd-design:anthropic/claude-sonnet-4-20250514
-
-# Create multiple profiles in one command
-takt-ai sync \
-  --profile cheap:openrouter/qwen/qwen3-30b-a3b:free \
-  --profile premium:anthropic/claude-sonnet-4-20250514
-
-# Use compatibility mode with an external OpenCode profile manager
-takt-ai sync --agent opencode --sdd-profile-strategy external-single-active
-```
-
-See [OpenCode SDD Profiles](opencode-profiles.md) for the full guide.
-
-## CLI Flags (uninstall)
-
-| Flag                          | Description                                                             |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `--agent`, `--agents`         | Agents to uninstall managed config from (required unless using `--all`) |
-| `--component`, `--components` | Managed components to remove only from the selected agents              |
-| `--all`                       | Remove managed configuration from all supported agents                  |
-| `--yes`, `-y`                 | Skip the confirmation prompt                                            |
-
----
-
-## Typical Workflow
-
-```bash
-# First time: install everything
-brew install gentleman-programming/tap/gentle-ai
-takt-ai install --agent opencode --preset full-takt
-
-# After a new release: upgrade + sync
-brew upgrade gentle-ai
-takt-ai sync
-
-# Remove only managed SDD + persona config
-takt-ai uninstall --agent opencode --component sdd,persona
-
-# Re-apply the full preset later
-takt-ai install --agent opencode --preset full-takt
-```
-
-### Homebrew upgrade troubleshooting
-
-Homebrew 6 can require explicit trust for non-official taps and, on Linux, can
-sandbox builds with Bubblewrap. `takt-ai upgrade` and `install.sh`
-auto-trust only the Takt AI formula, but manual upgrades may still need this
-one-time command:
-
-```bash
-brew trust --formula gentleman-programming/tap/gentle-ai
-brew upgrade gentle-ai
-```
-
-On Linux, if Homebrew reports that Bubblewrap cannot create a rootless sandbox,
-there is nothing for Takt AI to install: Bubblewrap is already present, but the
-host blocks the rootless namespace primitives it needs. This is a security
-tradeoff and should be an explicit admin decision. If your policy allows it,
-fix the host namespace policy first:
-
-```bash
-sudo sysctl -w kernel.unprivileged_userns_clone=1
-sudo sysctl -w user.max_user_namespaces=28633
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-```
-
-Use `HOMEBREW_NO_SANDBOX_LINUX=1 brew upgrade gentle-ai` only as a final
-workaround when your distro policy forbids the namespace settings; it disables
-Homebrew's Linux sandbox for that command.
-
-
----
-
-## Dependency Management
-
-`takt-ai` auto-detects prerequisites before installation and provides platform-specific guidance:
-
-- **Detected tools**: git, curl, node, npm, brew, go
-- **Version checks**: validates minimum versions where applicable
-- **Platform-aware hints**: suggests `brew install`, `apt install`, `pacman -S`, `dnf install`, or `winget install` depending on your OS
-- **Node LTS alignment**: on apt/dnf systems, Node.js hints use NodeSource LTS bootstrap before package install
-- **Dependency-first approach**: detects what's installed, calculates what's needed, shows the full dependency tree before installing anything, then verifies each dependency after installation
+Editing an installed Markdown file takes effect on the next OpenCode load, not
+necessarily in an active session. To refresh managed content after upgrading
+the binary, re-run `takt-ai setup sync --yes` (or re-run the TUI).
 
 ---
 
 ## OpenCode V2 Diagnostics
 
-When an `install` or `sync` result looks wrong, check what the running
-OpenCode V2 server actually sees — never infer health from files on disk.
-Every command below is read-only.
+When an install or sync result looks wrong, check what the running OpenCode V2
+server actually sees — never infer health from files on disk. Every command
+below is read-only.
 
 ```bash
 # 1. Is the background service alive? Prints its URL when healthy.

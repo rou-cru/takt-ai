@@ -17,8 +17,8 @@ import (
 
 func TestNotInstalledDiagnosticsSkipsCollectionAndReturnsToMenu(t *testing.T) {
 	model := New(t.TempDir())
-	if model.State() != StateNotInstalled {
-		t.Fatalf("State() = %v, want StateNotInstalled", model.State())
+	if model.state != StateNotInstalled {
+		t.Fatalf("state = %v, want StateNotInstalled", model.state)
 	}
 	if model.Init() != nil {
 		t.Fatal("Init() should skip collection when nothing is installed")
@@ -37,7 +37,7 @@ func TestNotInstalledDiagnosticsSkipsCollectionAndReturnsToMenu(t *testing.T) {
 	if _, ok := command().(ui.BackMsg); !ok {
 		t.Fatal("Escape did not request BackMsg")
 	}
-	if updated.(Model).State() != StateNotInstalled {
+	if updated.(Model).state != StateNotInstalled {
 		t.Fatal("navigation changed the diagnostics state")
 	}
 }
@@ -54,8 +54,8 @@ func TestDiagnosticsCollectingAndReportViews(t *testing.T) {
 	empty := verify.Report{FinalNote: "No capabilities were reported."}
 	updated, command := model.Update(empty)
 	model = updated.(Model)
-	if command != nil || model.State() != StateReport {
-		t.Fatalf("Update(report) = state %v, command %v; want report and no command", model.State(), command)
+	if command != nil || model.state != StateReport {
+		t.Fatalf("Update(report) = state %v, command %v; want report and no command", model.state, command)
 	}
 	if got := model.Title(); got != ui.TextDiagReportTitle {
 		t.Fatalf("Title() = %q, want %q", got, ui.TextDiagReportTitle)
@@ -91,7 +91,7 @@ func TestDiagnosticsForwardsResizeAndIgnoresUnrelatedMessages(t *testing.T) {
 		t.Fatalf("resize = (%d, %d), command %v; want (100, 30), nil", model.width, model.height, command)
 	}
 	updated, command = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if command != nil || updated.(Model).State() != StateCollecting {
+	if command != nil || updated.(Model).state != StateCollecting {
 		t.Fatal("unrelated input changed state or emitted a command")
 	}
 }

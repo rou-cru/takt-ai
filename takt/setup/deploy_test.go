@@ -18,12 +18,12 @@ func TestDeployPreflightsEveryDestinationBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := DeployContext(context.Background(), root, []string{"a.txt", "blocked/b.txt"}, []Artifact{
+	_, err := DeployContextProgress(context.Background(), root, []string{"a.txt", "blocked/b.txt"}, []Artifact{
 		{Path: "a.txt", Content: []byte("must not be deployed\n")},
 		{Path: "blocked/b.txt", Content: []byte("must not be deployed\n")},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not a directory") {
-		t.Fatalf("DeployContext() error = %v, want blocking parent error", err)
+		t.Fatalf("DeployContextProgress() error = %v, want blocking parent error", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(root, "a.txt")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("a.txt stat error = %v, want absent", statErr)
@@ -37,10 +37,10 @@ func TestDeployPreflightsEveryDestinationBeforeWriting(t *testing.T) {
 func TestDeployDeterministicResultOrder(t *testing.T) {
 	root := t.TempDir()
 	managed := []string{"b.txt", "a.txt"}
-	result, err := DeployContext(context.Background(), root, managed, []Artifact{
+	result, err := DeployContextProgress(context.Background(), root, managed, []Artifact{
 		{Path: "b.txt", Content: []byte("b")},
 		{Path: "a.txt", Content: []byte("a")},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,13 +84,13 @@ func TestDeployContextProgressReportsPreparedAndAppliedArtifacts(t *testing.T) {
 
 func TestDeployRejectsSeparatedArtifactPathConflict(t *testing.T) {
 	root := t.TempDir()
-	_, err := DeployContext(context.Background(), root, []string{"a", "a.foo", "a/b"}, []Artifact{
+	_, err := DeployContextProgress(context.Background(), root, []string{"a", "a.foo", "a/b"}, []Artifact{
 		{Path: "a", Content: []byte("file")},
 		{Path: "a.foo", Content: []byte("sibling")},
 		{Path: "a/b", Content: []byte("child")},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), `artifact path "a" conflicts with child artifact "a/b"`) {
-		t.Fatalf("DeployContext() error = %v, want separated parent/child conflict", err)
+		t.Fatalf("DeployContextProgress() error = %v, want separated parent/child conflict", err)
 	}
 }
 
@@ -118,9 +118,9 @@ func TestDeployRejectsInvalidInputWithoutWriting(t *testing.T) {
 			if tc.name == "unmanaged artifact" {
 				artifacts = append([]Artifact{{Path: "managed.txt", Content: []byte("must not write")}}, artifacts...)
 			}
-			_, err := DeployContext(context.Background(), root, tc.managed, artifacts)
+			_, err := DeployContextProgress(context.Background(), root, tc.managed, artifacts, nil)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("DeployContext() error = %v, want substring %q", err, tc.wantErr)
+				t.Fatalf("DeployContextProgress() error = %v, want substring %q", err, tc.wantErr)
 			}
 			entries, readErr := os.ReadDir(root)
 			if readErr != nil {
@@ -139,7 +139,7 @@ func TestDeployPreservesExistingManagedModeWhenReplacing(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DeployContext(context.Background(), root, []string{"managed.txt"}, []Artifact{{Path: "managed.txt", Content: []byte("new")}}); err != nil {
+	if _, err := DeployContextProgress(context.Background(), root, []string{"managed.txt"}, []Artifact{{Path: "managed.txt", Content: []byte("new")}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -168,12 +168,12 @@ func TestDeployRollsBackWhenCommitFailsMidBatch(t *testing.T) {
 		return os.Rename(from, to)
 	}
 
-	_, err := DeployContext(context.Background(), root, []string{"a.txt", "new/z.txt"}, []Artifact{
+	_, err := DeployContextProgress(context.Background(), root, []string{"a.txt", "new/z.txt"}, []Artifact{
 		{Path: "a.txt", Content: []byte("updated\n")},
 		{Path: "new/z.txt", Content: []byte("fresh\n")},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "new/z.txt") {
-		t.Fatalf("DeployContext() error = %v, want error mentioning new/z.txt", err)
+		t.Fatalf("DeployContextProgress() error = %v, want error mentioning new/z.txt", err)
 	}
 
 	if got, readErr := os.ReadFile(existingPath); readErr != nil || string(got) != "old\n" {
@@ -192,7 +192,7 @@ func TestDeployFsyncCreatedDirectoriesOnSuccess(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "a", "b", "c.txt")
 
-	result, err := DeployContext(context.Background(), root, []string{"a/b/c.txt"}, []Artifact{{Path: "a/b/c.txt", Content: []byte("durable\n")}})
+	result, err := DeployContextProgress(context.Background(), root, []string{"a/b/c.txt"}, []Artifact{{Path: "a/b/c.txt", Content: []byte("durable\n")}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
@@ -30,7 +31,7 @@ func installedRoot(t *testing.T) (string, []string) {
 	if err := os.WriteFile(filepath.Join(dir, "opencode"), testutil.FakeOpenCodeScript(), 0o755); err != nil {
 		t.Fatalf("WriteFile(opencode) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "codegraph"), []byte("#!/bin/sh\necho 1.6.0\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "codegraph"), testutil.FakeCodegraphScript(codegraph.CodegraphVersion), 0o755); err != nil {
 		t.Fatalf("WriteFile(codegraph) error = %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))

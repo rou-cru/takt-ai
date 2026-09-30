@@ -15,6 +15,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func AllComponents\(\) \(\[\]model.ComponentID, error\)](<#AllComponents>)
 - [func BackupsSince\(rootDir string, since time.Time\) string](<#BackupsSince>)
 - [func BeginOperation\(rootDir, action string\) \(func\(\), error\)](<#BeginOperation>)
+- [func ContentMatches\(artifactPath string, current, want \[\]byte\) bool](<#ContentMatches>)
 - [func DriftLabel\(reason string\) \(label, severity, explanation string\)](<#DriftLabel>)
 - [func EngramDataDir\(\) \(string, error\)](<#EngramDataDir>)
 - [func ForgetInstallation\(rootDir string\) error](<#ForgetInstallation>)
@@ -30,11 +31,15 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [type Artifact](<#Artifact>)
 - [type ConflictEntry](<#ConflictEntry>)
   - [func DetectConflicts\(rootDir string, plans \[\]TargetPlan\) \(\[\]ConflictEntry, error\)](<#DetectConflicts>)
+- [type DeploymentProgress](<#DeploymentProgress>)
 - [type DeploymentResult](<#DeploymentResult>)
   - [func ApplyContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, preserve ...string\) \(DeploymentResult, error\)](<#ApplyContext>)
+  - [func ApplyContextProgress\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, progress func\(DeploymentProgress\), preserve ...string\) \(DeploymentResult, error\)](<#ApplyContextProgress>)
   - [func ApplyModelOverrideChange\(ctx context.Context, rootDir string, subAgentID string, assignment model.ModelAssignment, runtime ProviderRuntime\) \(DeploymentResult, error\)](<#ApplyModelOverrideChange>)
   - [func DeployContext\(ctx context.Context, rootDir string, managedPaths \[\]string, artifacts \[\]Artifact\) \(DeploymentResult, error\)](<#DeployContext>)
+  - [func DeployContextProgress\(ctx context.Context, rootDir string, managedPaths \[\]string, artifacts \[\]Artifact, progress func\(DeploymentProgress\)\) \(DeploymentResult, error\)](<#DeployContextProgress>)
   - [func SyncContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, preserve ...string\) \(DeploymentResult, error\)](<#SyncContext>)
+  - [func SyncContextProgress\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, progress func\(DeploymentProgress\), preserve ...string\) \(DeploymentResult, error\)](<#SyncContextProgress>)
 - [type DriftCorrectionResult](<#DriftCorrectionResult>)
   - [func CorrectDriftContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, selectedPaths \[\]string, runtime ProviderRuntime\) \(DriftCorrectionResult, error\)](<#CorrectDriftContext>)
 - [type OpenCodePlanOptions](<#OpenCodePlanOptions>)
@@ -200,6 +205,15 @@ func BeginOperation(rootDir, action string) (func(), error)
 
 BeginOperation records action as in progress under rootDir and returns the func that clears the record once the operation has returned.
 
+<a name="ContentMatches"></a>
+## func [ContentMatches](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/conflict_impact.go#L70>)
+
+```go
+func ContentMatches(artifactPath string, current, want []byte) bool
+```
+
+ContentMatches reports whether current already holds want, the way deploy would leave it: for opencode.json, MCP servers a later injection step owns are excluded first, since want never has them either. Any other path falls back to a plain byte comparison.
+
 <a name="DriftLabel"></a>
 ## func [DriftLabel](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/drift_labels.go#L20>)
 
@@ -323,7 +337,7 @@ type Artifact struct {
 ```
 
 <a name="ConflictEntry"></a>
-## type [ConflictEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L150-L170>)
+## type [ConflictEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L164-L184>)
 
 ConflictEntry is a plan artifact whose on\-disk content differs from what Takt would deploy, in a case where the automatic resolution is not obviously right for every user; see DetectConflicts.
 
@@ -352,13 +366,28 @@ type ConflictEntry struct {
 ```
 
 <a name="DetectConflicts"></a>
-### func [DetectConflicts](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L174>)
+### func [DetectConflicts](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L188>)
 
 ```go
 func DetectConflicts(rootDir string, plans []TargetPlan) ([]ConflictEntry, error)
 ```
 
 DetectConflicts previews where deploying would overwrite unowned content or discard a user edit, without writing or mutating state.
+
+<a name="DeploymentProgress"></a>
+## type [DeploymentProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L71-L77>)
+
+DeploymentProgress reports one temporary staging or committed artifact. Applied events are provisional until DeployContextProgress returns nil: a later commit failure can roll the transaction back.
+
+```go
+type DeploymentProgress struct {
+    Stage     string
+    Message   string
+    Path      string
+    Completed int
+    Total     int
+}
+```
 
 <a name="DeploymentResult"></a>
 ## type [DeploymentResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L57-L66>)
@@ -387,6 +416,15 @@ func ApplyContext(ctx context.Context, rootDir string, plans []TargetPlan, runti
 
 ApplyContext applies plans with cooperative cancellation; see DeployContext. Provider actions run only after a complete deployment.
 
+<a name="ApplyContextProgress"></a>
+### func [ApplyContextProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L62>)
+
+```go
+func ApplyContextProgress(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, progress func(DeploymentProgress), preserve ...string) (DeploymentResult, error)
+```
+
+ApplyContextProgress applies plans and reports staging/commit progress.
+
 <a name="ApplyModelOverrideChange"></a>
 ### func [ApplyModelOverrideChange](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/model_overrides.go#L28>)
 
@@ -397,7 +435,7 @@ func ApplyModelOverrideChange(ctx context.Context, rootDir string, subAgentID st
 ApplyModelOverrideChange reassigns one sub\-agent's model starting from the real installed configuration, redeploying only the artifacts it changes.
 
 <a name="DeployContext"></a>
-### func [DeployContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L70>)
+### func [DeployContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L81>)
 
 ```go
 func DeployContext(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact) (DeploymentResult, error)
@@ -405,14 +443,32 @@ func DeployContext(ctx context.Context, rootDir string, managedPaths []string, a
 
 DeployContext is Deploy with cooperative cancellation: it returns partial results and ctx.Err\(\) without rolling back what is already installed.
 
+<a name="DeployContextProgress"></a>
+### func [DeployContextProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/deploy.go#L86>)
+
+```go
+func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, progress func(DeploymentProgress)) (DeploymentResult, error)
+```
+
+DeployContextProgress is DeployContext with optional staging and commit events.
+
 <a name="SyncContext"></a>
-### func [SyncContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L63>)
+### func [SyncContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L68>)
 
 ```go
 func SyncContext(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, preserve ...string) (DeploymentResult, error)
 ```
 
 SyncContext syncs plans with cooperative cancellation; see DeployContext.
+
+<a name="SyncContextProgress"></a>
+### func [SyncContextProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L73>)
+
+```go
+func SyncContextProgress(ctx context.Context, rootDir string, plans []TargetPlan, runtime ProviderRuntime, progress func(DeploymentProgress), preserve ...string) (DeploymentResult, error)
+```
+
+SyncContextProgress syncs plans and reports staging/commit progress.
 
 <a name="DriftCorrectionResult"></a>
 ## type [DriftCorrectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/drift_correction.go#L21-L25>)
@@ -778,7 +834,7 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, []catalog.Removal, err
 BuildTargetPlans validates the request and builds the OpenCode plan with path\-sorted artifacts. The returned removals are the manifest dependencies dropped from the selection, if any.
 
 <a name="UninstallResult"></a>
-## type [UninstallResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L602-L614>)
+## type [UninstallResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L616-L628>)
 
 UninstallResult reports what manifest\-driven removal did per file.
 
@@ -799,7 +855,7 @@ type UninstallResult struct {
 ```
 
 <a name="PreviewUninstall"></a>
-### func [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L280>)
+### func [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L294>)
 
 ```go
 func PreviewUninstall(rootDir string, targets ...OwnershipTarget) (UninstallResult, error)
@@ -808,7 +864,7 @@ func PreviewUninstall(rootDir string, targets ...OwnershipTarget) (UninstallResu
 PreviewUninstall classifies what Uninstall would do without touching disk. Callers present this plan before requiring explicit authorization to apply it.
 
 <a name="UninstallContext"></a>
-### func [UninstallContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L243>)
+### func [UninstallContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/operations.go#L257>)
 
 ```go
 func UninstallContext(ctx context.Context, rootDir string, targets ...OwnershipTarget) (UninstallResult, error)

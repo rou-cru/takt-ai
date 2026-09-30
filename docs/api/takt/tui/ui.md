@@ -13,7 +13,7 @@ Package ui contains reusable terminal UI primitives.
 - [Constants](<#constants>)
 - [func Back\(\) tea.Msg](<#Back>)
 - [func BodyHeight\(height int\) int](<#BodyHeight>)
-- [func Busy\(operation string, cancelRequested bool, marker string\) string](<#Busy>)
+- [func Busy\(operation string, cancelRequested bool, marker string, updates ...Progress\) string](<#Busy>)
 - [func CheckList\(items \[\]Item, cursor int, focused bool\) string](<#CheckList>)
 - [func FooterActions\(actions \[\]FooterAction, cursor int, focused bool\) string](<#FooterActions>)
 - [func InnerWidth\(width int\) int](<#InnerWidth>)
@@ -33,6 +33,7 @@ Package ui contains reusable terminal UI primitives.
   - [func Actions\(labels ...string\) \[\]FooterAction](<#Actions>)
 - [type Frame](<#Frame>)
 - [type Item](<#Item>)
+- [type Progress](<#Progress>)
 - [type Section](<#Section>)
   - [func SwitchSection\(current Section, keymap keys.KeyMap, message tea.Msg\) \(Section, bool\)](<#SwitchSection>)
 - [type Spinner](<#Spinner>)
@@ -102,7 +103,7 @@ const (
     TextActionRetry           = "Retry"
     TextActionReviewAgain     = "Review again"
     TextActionKeepCurrent     = "Keep current state"
-    TextActionAssignModels    = "Assign models"
+    TextActionAssignModels    = TextMenuAssignModels
     TextActionBack            = "Back"
     TextActionUninstall       = "Uninstall"
     TextActionSelectFiles     = "Select files to restore"
@@ -170,6 +171,8 @@ const (
     TextUpdatedForFmt       = "The installation was updated for %s."
     TextFilesChangedFmt     = "Files: %d changed, %d unchanged"
     TextPreservedFmt        = ", %d preserved"
+    TextIncompleteWorkTitle = "Incomplete work"
+    TextIncompleteWorkIntro = "The installation completed with optional work still pending."
     TextNotReady            = "Not ready to work: some capabilities are not verified."
     TextCannotGuaranteeFmt  = "Takt cannot guarantee %s while your versions are kept."
     TextUseDrift            = "Use Check for drift from the menu to restore these files later."
@@ -266,7 +269,7 @@ const (
     // Models flow.
     TextModelsBusy        = "Model assignment"
     TextModelsResultTitle = "Assign models · Result"
-    TextModelsTitle       = "Assign models"
+    TextModelsTitle       = TextMenuAssignModels
     TextModelsLoadFail    = "Could not load the installed configuration: "
     TextModelsNothingKept = "Nothing was changed. Esc returns to the menu."
     TextModelsNothing     = "Nothing installed yet. Install Takt before assigning models."
@@ -337,10 +340,10 @@ func BodyHeight(height int) int
 BodyHeight returns usable content height.
 
 <a name="Busy"></a>
-## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L41>)
+## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L53>)
 
 ```go
-func Busy(operation string, cancelRequested bool, marker string) string
+func Busy(operation string, cancelRequested bool, marker string, updates ...Progress) string
 ```
 
 Busy shows a running operation with a step marker and cancellation path.
@@ -427,7 +430,7 @@ func Shell(frame Frame) string
 Shell composes the signature header, the paneled body and the action row so every screen shares one layout. No key bar is rendered.
 
 <a name="Status"></a>
-## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L23>)
+## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L28>)
 
 ```go
 func Status(state State, message string) string
@@ -538,6 +541,22 @@ type Item struct {
 }
 ```
 
+<a name="Progress"></a>
+## type [Progress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L43-L50>)
+
+Progress describes the latest operation phase and its committed artifact list.
+
+```go
+type Progress struct {
+    Message   string
+    Current   string
+    Completed int
+    Total     int
+    Applied   []string
+    Frame     int
+}
+```
+
 <a name="Section"></a>
 ## type [Section](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L12>)
 
@@ -615,7 +634,7 @@ func (s Spinner) View() string
 View renders the current frame, or the ASCII baseline when disabled.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L6>)
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L11>)
 
 State names a result in words.
 

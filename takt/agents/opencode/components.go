@@ -23,10 +23,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// Context7RemoteURL is the canonical context7 remote MCP endpoint deployed
-// into opencode.json by the context7 component.
-const Context7RemoteURL = shared.Context7RemoteURL
-
 // TaktTheme is the OpenCode theme deployed by the theme component.
 const TaktTheme = "takt"
 
@@ -39,7 +35,7 @@ func context7Config() map[string]any {
 		"servers": map[string]any{
 			string(model.ComponentContext7): map[string]any{
 				"type":     "remote",
-				"url":      Context7RemoteURL,
+				"url":      shared.Context7RemoteURL,
 				"disabled": false,
 			},
 		},
@@ -86,7 +82,7 @@ func permissionsConfig() []permissionRule {
 		{"read", "*.env", "deny"},
 		{"read", "*.env.*", "deny"},
 	}
-	for _, glob := range shared.SensitivePathGlobs {
+	for _, glob := range model.SensitivePathGlobs {
 		rules = append(rules, permissionRule{"read", "**/" + glob, "deny"})
 	}
 	// Native write tools are denied: every workspace mutation must go
@@ -107,19 +103,15 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact {
 //go:embed assets/takt-vfs.ts
 var taktVFSPluginSource string
 
-// VFSShellEnforced controls whether the VFS plugin intercepts specialist shell
-// commands (PR-HAR-15). File edits stay VFS-governed either way.
-const VFSShellEnforced = true
-
 // TaktVFSPluginArtifact returns the OpenCode plugin exposing the governed
 // VFS tools; taktAIBinary is the absolute takt-ai path the plugin spawns and
 // shellEnforced decides whether it intercepts specialist shell commands.
 func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	artifact := taktPluginArtifact(taktVFSPluginSource, model.VFSPluginFile, taktAIBinary)
-	enforced, _ := json.Marshal(shellEnforced)              // a bool always marshals
-	vfsAgents, _ := json.Marshal(vfsAgentIDs())             // a string slice always marshals
-	resultAgents, _ := json.Marshal(resultAgentIDs())       // a string slice always marshals
-	sensitive, _ := json.Marshal(shared.SensitivePathGlobs) // a string slice always marshals
+	enforced, _ := json.Marshal(shellEnforced)             // a bool always marshals
+	vfsAgents, _ := json.Marshal(vfsAgentIDs())            // a string slice always marshals
+	resultAgents, _ := json.Marshal(resultAgentIDs())      // a string slice always marshals
+	sensitive, _ := json.Marshal(model.SensitivePathGlobs) // a string slice always marshals
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
 	content = strings.Replace(content, `"__TAKT_SENSITIVE_READ_GLOBS__"`, string(sensitive), 1)
 	content = strings.Replace(content, `"__TAKT_VFS_AGENTS__"`, string(vfsAgents), 1)

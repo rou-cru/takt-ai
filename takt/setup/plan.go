@@ -78,16 +78,15 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 			if !ok {
 				assignment = model.ModelAssignment{Model: modelID}
 			}
-			profile := def.Profile(instanceID)
 			vfsCapabilities, _ := def.VFSCapabilities(instanceID) // the catalog rejects an undeclared grant on load
 			specs = append(specs, opencode.AgentSpec{
 				ID:              instanceID,
-				Description:     profile.Description,
-				Mode:            opencode.AgentMode(profile.Role),
+				Description:     def.Description,
+				Mode:            opencode.AgentMode(def.Role),
 				System:          opencode.ComposePrompt(def, instanceID),
 				Model:           assignment.Model,
 				Variant:         assignment.Effort,
-				Role:            profile.Role,
+				Role:            def.Role,
 				VFSCapabilities: vfsCapabilities,
 				Skills:          def.Skills,
 			})

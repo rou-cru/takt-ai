@@ -613,9 +613,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
             </text>
           )}
         </For>
-        <Show when={activities().length > 0}>
-          <text position="absolute" left={0} top={workHeight()}>{ACTIVITY_HEADER}</text>
-        </Show>
+        <text position="absolute" left={0} top={workHeight()}>{activities().length > 0 ? ACTIVITY_HEADER : ""}</text>
         <For each={activities()}>
           {(activity, index) => (
             <box
@@ -649,6 +647,24 @@ export function headerLine(snapshot: DagSnapshot | undefined, health: Health): s
 /** The sidebar header is one short line: the graph is the content. */
 export function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health): string {
   return `Takt DAG · ${snapshot && health === "confirmed" ? snapshot.capture : health}`
+}
+
+/**
+ * The sidebar's graph, or nothing: unlike the route view it never explains
+ * why (no confirmed projection, empty DAG), the header line already does.
+ * Every branch below must resolve to a <text>, never to `false`/`undefined`
+ * directly under <box> — Show's own off-state placeholder needs one too.
+ */
+export function SidebarGraph(props: { readonly snapshot: DagSnapshot | undefined }) {
+  return (
+    <Show when={props.snapshot} fallback={<text></text>}>
+      {(shown: Accessor<DagSnapshot>) => (
+        <Show when={hasContent(shown())} fallback={<text></text>}>
+          <GraphView snapshot={shown()} mode="sidebar" />
+        </Show>
+      )}
+    </Show>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -774,7 +790,7 @@ export default Plugin.define({
         // so the header and legend always stay visible above the prompt.
         <box flexDirection="column" flexGrow={1} minWidth={0} minHeight={0}>
           <text flexShrink={0} fg={context.theme.text.base}>{headerLine(snapshot(), health())}</text>
-          <Show when={problem()}>{(reason: Accessor<string>) => <text flexShrink={0}>{reason()}</text>}</Show>
+          <text flexShrink={0}>{problem() ?? ""}</text>
           <text flexShrink={0}> </text>
           <Show
             when={snapshot()}
@@ -799,10 +815,8 @@ export default Plugin.define({
       return (
         <box flexDirection="column">
           <text fg={context.theme.text.base}>{sidebarHeader(snapshot(), health())}</text>
-          <Show when={problem()}>{(reason: Accessor<string>) => <text>{reason()}</text>}</Show>
-          <Show when={snapshot()}>
-            {(shown: Accessor<DagSnapshot>) => hasContent(shown()) && <GraphView snapshot={shown()} mode="sidebar" />}
-          </Show>
+          <text>{problem() ?? ""}</text>
+          <SidebarGraph snapshot={snapshot()} />
         </box>
       )
     }

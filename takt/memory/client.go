@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -192,6 +193,13 @@ func startDetachedServe(binary string) error {
 	return nil
 }
 
+// ResolveProject reports the Engram project name for dir, the same
+// resolution Record/Continue/Close use — exported for read-only callers
+// (e.g. doctor) that need it without writing anything.
+func ResolveProject(ctx context.Context, cfg Config, dir string) string {
+	return newClient(cfg).project(ctx, dir)
+}
+
 // project prefers Engram's own detection when the server honours ?cwd=, else mirrors its core cases.
 func (c *engramClient) project(ctx context.Context, dir string) string {
 	var cur struct {
@@ -236,14 +244,12 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+var collapseRepeatedSeparators = regexp.MustCompile(`-+|_+`)
+
 func normalizeProject(p string) string {
-	n := strings.TrimSpace(strings.ToLower(p))
-	for strings.Contains(n, "--") {
-		n = strings.ReplaceAll(n, "--", "-")
-	}
-	for strings.Contains(n, "__") {
-		n = strings.ReplaceAll(n, "__", "_")
-	}
+	n := collapseRepeatedSeparators.ReplaceAllStringFunc(strings.TrimSpace(strings.ToLower(p)), func(run string) string {
+		return run[:1]
+	})
 	if n == "" {
 		return "unknown"
 	}

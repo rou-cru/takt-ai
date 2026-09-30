@@ -28,7 +28,7 @@ The `.tgz` is also attached to each GitHub release. With no image values set, th
 
 ## Image
 
-Releases publish `docker.io/roucru/takt-ai` (mirrored at `ghcr.io/rou-cru/takt-ai`) for `linux/amd64` and `linux/arm64`, signed with cosign and carrying SBOM and SLSA provenance attestations. The image is built by `deploy/workspace/Dockerfile`, separate from the local development image; it compiles Takt AI and installs/configures OpenCode and its Takt integration during the build.
+Releases publish `docker.io/roucru/takt-ai` (mirrored at `ghcr.io/rou-cru/takt-ai`) for `linux/amd64` and `linux/arm64`, signed with cosign and carrying SBOM and SLSA provenance attestations. The image is built by the `workspace` target of `deploy/images/Dockerfile`; it compiles Takt AI and installs/configures OpenCode and its Takt integration during the build.
 
 To build your own instead:
 

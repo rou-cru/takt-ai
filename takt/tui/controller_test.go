@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
@@ -172,6 +173,41 @@ func TestCtrlCWhileBusyRequestsCancellationOnce(t *testing.T) {
 	m, _ = step(t, m, runtime.ActionResultMsg{Request: runtime.ActionRequest{ID: 7}})
 	if m.flowRun().Busy() || m.flowRun().CancelRequested {
 		t.Fatal("result did not reset busy/cancel state")
+	}
+}
+
+// The first animation frame for a busy action respects TAKT_NO_ANIMATION:
+// the adapter command always runs, but the manual spinner tick is only
+// batched alongside it when animation is enabled. tea.Batch of a single
+// non-nil command returns that command directly rather than wrapping it, so
+// hasTick handles both the wrapped and unwrapped shapes.
+func TestUpdateActionSpinnerTickRespectsNoAnimation(t *testing.T) {
+	hasTick := func(cmd tea.Cmd) bool {
+		msg := cmd()
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			_, isTick := msg.(spinner.TickMsg)
+			return isTick
+		}
+		for _, sub := range batch {
+			if _, isTick := sub().(spinner.TickMsg); isTick {
+				return true
+			}
+		}
+		return false
+	}
+
+	m := withStack(newStub(false))
+	_, cmd := step(t, m, runtime.ActionRequest{ID: 42})
+	if !hasTick(cmd) {
+		t.Fatal("animated action command did not batch a spinner tick")
+	}
+
+	t.Setenv("TAKT_NO_ANIMATION", "1")
+	m2 := withStack(newStub(false))
+	_, cmd2 := step(t, m2, runtime.ActionRequest{ID: 43})
+	if hasTick(cmd2) {
+		t.Fatal("TAKT_NO_ANIMATION action command still batched a spinner tick")
 	}
 }
 

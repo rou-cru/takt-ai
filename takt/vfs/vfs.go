@@ -355,10 +355,6 @@ func (f *FS) stageLocked(agent AgentID, path string, content []byte) error {
 	return nil
 }
 
-func (f *FS) readLocked(agent AgentID, path string) ([]byte, error) {
-	return f.readLockedAs(agent, path, false)
-}
-
 // readLockedAs checks workspace ownership for ordinary reads. ReadAs reaches
 // this helper only after admitLocked has authorized the verifier's staged view.
 func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool) ([]byte, error) {

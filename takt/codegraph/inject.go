@@ -23,10 +23,8 @@ import (
 // name is the MCP server key codegraph is stored under.
 const name = "codegraph"
 
-// mcpArgs starts codegraph as a stdio MCP server.
-func mcpArgs() []string { return []string{"serve", "--mcp"} }
-
 // Inject wires the codegraph MCP server in; command is the resolved absolute binary, written verbatim.
+// Args start codegraph as a stdio MCP server ("serve --mcp").
 func Inject(homeDir, command string) (model.InjectionResult, error) {
-	return filemerge.InjectMCPServer(model.OpenCodeConfigPath(homeDir), name, append([]string{command}, mcpArgs()...))
+	return filemerge.InjectMCPServer(model.OpenCodeConfigPath(homeDir), name, []string{command, "serve", "--mcp"})
 }

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -32,7 +31,7 @@ func TestAnalystDocumentEditsKeepSensitiveDenies(t *testing.T) {
 	if allowIndex < 0 {
 		t.Fatal("analyst lacks native document edit permission")
 	}
-	for _, glob := range shared.SensitivePathGlobs {
+	for _, glob := range model.SensitivePathGlobs {
 		resource := "**/" + glob
 		if got := effectOf(rules[allowIndex+1:], "edit", resource); got != "deny" {
 			t.Errorf("sensitive path %s must be denied after the edit allow, got %q", resource, got)
@@ -61,9 +60,8 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	var specs []opencode.AgentSpec
 	for _, def := range pack.Agents {
 		for _, id := range def.Instances {
-			profile := def.Profile(id)
 			grants, _ := def.VFSCapabilities(id)
-			specs = append(specs, opencode.AgentSpec{ID: id, Description: profile.Description, Mode: opencode.AgentMode(profile.Role), System: opencode.ComposePrompt(def, id), Role: profile.Role, VFSCapabilities: grants, Skills: def.Skills})
+			specs = append(specs, opencode.AgentSpec{ID: id, Description: def.Description, Mode: opencode.AgentMode(def.Role), System: opencode.ComposePrompt(def, id), Role: def.Role, VFSCapabilities: grants, Skills: def.Skills})
 		}
 	}
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Agents: specs})
@@ -378,12 +376,15 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fsys := catalog.AssetFS()
 	capabilities := map[string][]model.VFSCapability{}
+	defByInstance := map[string]catalog.AgentDefinition{}
 	for _, def := range pack.Agents {
 		for _, id := range def.Instances {
 			if grant, ok := def.VFSCapabilities(id); ok {
 				capabilities[id] = grant
 			}
+			defByInstance[id] = def
 		}
 	}
 	agents := []opencode.AgentSpec{{ID: "takt", Description: "Orchestrator", Mode: "primary", System: "p", Role: model.RoleOrchestrator, VFSCapabilities: capabilities["takt"]}}
@@ -392,7 +393,12 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 		if !ok {
 			t.Fatalf("instance %q has no VFS capability", id)
 		}
-		agents = append(agents, opencode.AgentSpec{ID: id, Description: instance.Description, Mode: "subagent", System: instance.Instructions, Role: instance.Role, VFSCapabilities: grant})
+		def := defByInstance[id]
+		text, err := def.ComposeText(fsys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		agents = append(agents, opencode.AgentSpec{ID: id, Description: def.Description, Mode: "subagent", System: text, Role: instance.Role, VFSCapabilities: grant})
 	}
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Agents: agents})
 	if err != nil {

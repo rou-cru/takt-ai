@@ -118,7 +118,8 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: .
-          file: deploy/workspace/Dockerfile
+          file: deploy/images/Dockerfile
+          target: workspace
           platforms: ${{ matrix.platform }}
           build-args: VERSION=${{ needs.version.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}

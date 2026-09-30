@@ -19,7 +19,7 @@ maintainers:
   - name: Takt AI Contributors
     url: https://github.com/rou-cru/takt-ai
 annotations:
-  takt-ai/opencode-version: "2.0.16"
+  takt-ai/opencode-version: "2.0.20"
   artifacthub.io/license: AGPL-3.0-or-later
   artifacthub.io/images: |
     - name: takt-ai

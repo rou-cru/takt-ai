@@ -44,18 +44,11 @@ func buildNativeContent(c Catalog) (map[string]NativeSubAgentContent, error) {
 		if def.Role == model.RoleOrchestrator {
 			continue
 		}
-		text, err := def.ComposeText(fsys)
-		if err != nil {
+		if _, err := def.ComposeText(fsys); err != nil {
 			return nil, err
 		}
 		for _, instanceID := range def.Instances {
-			profile := def.Profile(instanceID)
-			content[instanceID] = NativeSubAgentContent{
-				ID:           instanceID,
-				Description:  profile.Description,
-				Instructions: text,
-				Role:         profile.Role,
-			}
+			content[instanceID] = NativeSubAgentContent{Role: def.Role}
 		}
 	}
 	return content, nil

@@ -28,7 +28,7 @@ import (
 )
 
 // CodegraphVersion is the minimum codegraph release Takt configures and the one it installs.
-const CodegraphVersion = "1.6.0"
+const CodegraphVersion = "1.6.1"
 
 const (
 	// codegraphDirectoryMode keeps the installed tool directory traversable by its owner.
@@ -80,19 +80,10 @@ func Resolve(root string) (string, bool) {
 		candidates = append(candidates, onPath)
 	}
 	candidates = append(candidates, ManagedBinaryPath(root))
-	for _, candidate := range candidates {
-		absolute, err := filepath.Abs(candidate)
-		if err != nil {
-			continue
-		}
-		if info, err := os.Stat(absolute); err != nil || info.IsDir() {
-			continue
-		}
-		if version, err := VerifyVersion(absolute); err == nil && compatibleVersion(version) {
-			return absolute, true
-		}
-	}
-	return "", false
+	return shared.ResolveBinary(candidates, func(absolute string) bool {
+		version, err := VerifyVersion(absolute)
+		return err == nil && compatibleVersion(version)
+	})
 }
 
 // Acquire returns Resolve's path when found; otherwise installs the pinned npm package into
@@ -158,21 +149,15 @@ func EnsureIndexed(ctx context.Context, binary, workspace string) error {
 }
 
 func sameDirectory(left, right string) (bool, error) {
-	leftAbs, err := filepath.Abs(left)
+	leftInfo, err := os.Stat(left)
 	if err != nil {
 		return false, err
 	}
-	rightAbs, err := filepath.Abs(right)
+	rightInfo, err := os.Stat(right)
 	if err != nil {
 		return false, err
 	}
-	if resolved, err := filepath.EvalSymlinks(leftAbs); err == nil {
-		leftAbs = resolved
-	}
-	if resolved, err := filepath.EvalSymlinks(rightAbs); err == nil {
-		rightAbs = resolved
-	}
-	return filepath.Clean(leftAbs) == filepath.Clean(rightAbs), nil
+	return os.SameFile(leftInfo, rightInfo), nil
 }
 
 // VerifyVersion runs `<binary> --version` so broken installs fail fast with a clear error.

@@ -157,8 +157,12 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   releases.get("first")()
   await first
   assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second", "first"])
-  assert.deepEqual([...waitedSessions].sort(), ["first", "second"])
-  assert.deepEqual([...promptedSessions].sort(), ["first", "second"])
+  // Locale-independent ordering: the default `sort()` compares strings in
+  // code-unit order, which is fine here but Sonar's S2871 wants the invariant
+  // spelled out so the assertion never depends on host collation.
+  const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+  assert.deepEqual([...waitedSessions].sort(byCodeUnit), ["first", "second"])
+  assert.deepEqual([...promptedSessions].sort(byCodeUnit), ["first", "second"])
 } else if (scenario === "retry") {
   // Baseline: a clean, single-shot delivery.
   let mark = dispatched().length

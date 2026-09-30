@@ -261,8 +261,8 @@ func modelRef(spec AgentSpec) any {
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.
 func sensitiveEditDenies() []permissionRule {
-	rules := make([]permissionRule, 0, len(shared.SensitivePathGlobs))
-	for _, glob := range shared.SensitivePathGlobs {
+	rules := make([]permissionRule, 0, len(model.SensitivePathGlobs))
+	for _, glob := range model.SensitivePathGlobs {
 		rules = append(rules, permissionRule{"edit", "**/" + glob, "deny"})
 	}
 	return rules

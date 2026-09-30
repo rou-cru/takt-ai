@@ -26,24 +26,13 @@ type ContextFiles struct {
 	Operations string `yaml:"operations"`
 }
 
-// InstanceProfile is what one instance may differ in from its definition: one
-// role class and a description saying when to pick it. Empty fields inherit
-// the definition's.
-type InstanceProfile struct {
-	Description string          `yaml:"description"`
-	Role        model.RoleClass `yaml:"role"`
-}
-
 // AgentDefinition retains references until the target adapter composes its
-// prompt. Role profiles may inherit definition defaults; VFS grants are always
-// declared separately by exact instance ID.
+// prompt. VFS grants are always declared separately by exact instance ID.
 type AgentDefinition struct {
 	// ID is the agent's stable identifier, the key adapters compose prompts from.
 	ID string `yaml:"id"`
 	// Instances lists the deployable instances sharing this definition.
 	Instances []string `yaml:"instances"`
-	// InstanceProfiles overrides description and role per instance.
-	InstanceProfiles map[string]InstanceProfile `yaml:"instance_profiles"`
 	// VFSGrants declares an explicit VFS capability list for every instance ID.
 	// Grants never inherit from the definition or role.
 	VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
@@ -55,18 +44,6 @@ type AgentDefinition struct {
 	Context ContextFiles `yaml:"context"`
 	// Skills lists the skill package IDs the agent may use.
 	Skills []string `yaml:"skills"`
-}
-
-// Profile resolves one instance's description and role: its override where set, the definition's otherwise.
-func (a AgentDefinition) Profile(instance string) InstanceProfile {
-	p := a.InstanceProfiles[instance]
-	if p.Description == "" {
-		p.Description = a.Description
-	}
-	if p.Role == "" {
-		p.Role = a.Role
-	}
-	return p
 }
 
 // VFSCapabilities returns the grants declared for this exact instance ID. The
@@ -323,9 +300,6 @@ func loadAgent(files pkgFiles, id string, skills, instances map[string]bool) (Ag
 	if err := claimInstances(a, instances); err != nil {
 		return a, err
 	}
-	if err := validateProfiles(a); err != nil {
-		return a, err
-	}
 	if err := validateVFSCapabilities(a); err != nil {
 		return a, err
 	}
@@ -348,24 +322,6 @@ func claimInstances(a AgentDefinition, instances map[string]bool) error {
 			return fmt.Errorf("invalid or duplicate agent instance %q", instance)
 		}
 		instances[instance] = true
-	}
-	return nil
-}
-
-func validateProfiles(a AgentDefinition) error {
-	for instance, profile := range a.InstanceProfiles {
-		if !slices.Contains(a.Instances, instance) {
-			return fmt.Errorf("agent %q profiles undeclared instance %q", a.ID, instance)
-		}
-		if profile.Role == "" {
-			continue
-		}
-		if err := model.ValidateRoleClass(instance, profile.Role); err != nil {
-			return err
-		}
-		if profile.Role == model.RoleOrchestrator {
-			return fmt.Errorf("instance %q: the orchestrator is not a specialty role", instance)
-		}
 	}
 	return nil
 }
