@@ -20,12 +20,17 @@ BINARY_NAME="takt-ai"
 BREW_TAP="rou-cru/homebrew-takt-ai"
 BREW_CASK="rou-cru/takt-ai/takt-ai"  # fully-qualified form `brew trust --cask` requires
 
+# Every curl call is restricted to HTTPS only, via `curl --proto "=https"`.
+CURL_PROTO_HTTPS="=https"
+# Preferred system-wide install directory, also probed when verifying an install.
+USR_LOCAL_BIN="/usr/local/bin"
+
 # ============================================================================
 # Color support
 # ============================================================================
 
 setup_colors() {
-    if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then
+    if [[ -t 1 ]] && [[ "${TERM:-}" != "dumb" ]]; then
         RED='\033[0;31m'
         GREEN='\033[0;32m'
         YELLOW='\033[1;33m'
@@ -141,7 +146,7 @@ check_prerequisites() {
         missing+=("git")
     fi
 
-    if [ ${#missing[@]} -gt 0 ]; then
+    if [[ ${#missing[@]} -gt 0 ]]; then
         fatal "Missing required tools: ${missing[*]}. Please install them and try again."
     fi
 
@@ -153,7 +158,7 @@ check_prerequisites() {
 # ============================================================================
 
 detect_install_method() {
-    if [ -n "${FORCE_METHOD:-}" ]; then
+    if [[ -n "${FORCE_METHOD:-}" ]]; then
         case "$FORCE_METHOD" in
             brew|go|binary) INSTALL_METHOD="$FORCE_METHOD" ;;
             *) fatal "Unknown install method: $FORCE_METHOD. Use: brew, go, or binary" ;;
@@ -199,7 +204,7 @@ install_brew() {
     brew untap "$BREW_TAP" 2>/dev/null || true
     if ! brew tap "$BREW_TAP"; then
         # The tap is optional for releases; auto-detection falls back to the binary.
-        if [ -z "${FORCE_METHOD:-}" ]; then
+        if [[ -z "${FORCE_METHOD:-}" ]]; then
             warn "Failed to tap $BREW_TAP — falling back to the pre-built binary"
             install_binary
             return
@@ -246,7 +251,7 @@ install_go() {
 
     local gobin
     gobin="$(go env GOBIN)"
-    if [ -z "$gobin" ]; then
+    if [[ -z "$gobin" ]]; then
         gobin="$(go env GOPATH)/bin"
     fi
 
@@ -254,7 +259,7 @@ install_go() {
     # "cli"; build into a scratch GOBIN and install it under its real name.
     local tmpbin
     tmpbin="$(mktemp -d)"
-    trap '[ -n "${tmpbin:-}" ] && rm -rf "$tmpbin"' EXIT
+    trap '[[ -n "${tmpbin:-}" ]] && rm -rf "$tmpbin"' EXIT
 
     info "Running: go install ${go_package}"
     if ! GOBIN="$tmpbin" go install "$go_package"; then
@@ -283,20 +288,20 @@ get_latest_version() {
     info "Fetching latest release from GitHub..."
 
     local response
-    response="$(curl -sL --proto '=https' -w "\n%{http_code}" "$url")" || fatal "Failed to fetch latest release"
+    response="$(curl -sL --proto "$CURL_PROTO_HTTPS" -w "\n%{http_code}" "$url")" || fatal "Failed to fetch latest release"
 
     local http_code body
     http_code="$(echo "$response" | tail -n1)"
     body="$(echo "$response" | sed '$d')"
 
-    if [ "$http_code" != "200" ]; then
+    if [[ "$http_code" != "200" ]]; then
         fatal "GitHub API returned HTTP $http_code. Rate limited? Try again later or use --method brew/go"
     fi
 
     # Extract tag_name — works without jq
     LATEST_VERSION="$(echo "$body" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 
-    if [ -z "$LATEST_VERSION" ]; then
+    if [[ -z "$LATEST_VERSION" ]]; then
         fatal "Could not determine latest version from GitHub API response"
     fi
 
@@ -310,14 +315,14 @@ get_latest_version() {
 # available. It proves the checksums (and so every archive) were produced by
 # this repository's release workflow. Without cosign, sha256 still applies.
 verify_signature() {
-    local dir=$1
+    local dir="$1"
     if ! command -v cosign &>/dev/null; then
         info "cosign not found — skipping signature verification (checksums still verified)"
         return
     fi
     local bundle_url="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${LATEST_VERSION}/checksums.txt.sigstore.json"
-    if ! curl -sfL --proto '=https' -o "${dir}/checksums.txt.sigstore.json" "$bundle_url"; then
-        if [ "$INSECURE" = "true" ]; then
+    if ! curl -sfL --proto "$CURL_PROTO_HTTPS" -o "${dir}/checksums.txt.sigstore.json" "$bundle_url"; then
+        if [[ "$INSECURE" = "true" ]]; then
             warn "Could not download the signature bundle — signature verification skipped (--insecure)"
             return
         fi
@@ -346,11 +351,11 @@ install_binary() {
     # Create temp directory — clean up on exit
     local tmpdir
     tmpdir="$(mktemp -d)"
-    trap '[ -n "${tmpdir:-}" ] && rm -rf "$tmpdir"' EXIT
+    trap '[[ -n "${tmpdir:-}" ]] && rm -rf "$tmpdir"' EXIT
 
     # Download archive
     info "Downloading ${archive_name}..."
-    if ! curl -sfL --proto '=https' -o "${tmpdir}/${archive_name}" "$download_url"; then
+    if ! curl -sfL --proto "$CURL_PROTO_HTTPS" -o "${tmpdir}/${archive_name}" "$download_url"; then
         fatal "Failed to download ${download_url}"
     fi
 
@@ -362,19 +367,19 @@ install_binary() {
 
     # Download and verify checksum — fail closed unless --insecure is set
     info "Verifying checksum..."
-    if curl -sfL --proto '=https' -o "${tmpdir}/checksums.txt" "$checksums_url"; then
+    if curl -sfL --proto "$CURL_PROTO_HTTPS" -o "${tmpdir}/checksums.txt" "$checksums_url"; then
         verify_signature "$tmpdir"
         local expected_checksum
         expected_checksum="$(grep "${archive_name}" "${tmpdir}/checksums.txt" 2>/dev/null | awk '{print $1}' || true)"
 
-        if [ -n "$expected_checksum" ]; then
+        if [[ -n "$expected_checksum" ]]; then
             local actual_checksum
             if command -v sha256sum &>/dev/null; then
                 actual_checksum="$(sha256sum "${tmpdir}/${archive_name}" | awk '{print $1}')"
             elif command -v shasum &>/dev/null; then
                 actual_checksum="$(shasum -a 256 "${tmpdir}/${archive_name}" | awk '{print $1}')"
             else
-                if [ "$INSECURE" = "true" ]; then
+                if [[ "$INSECURE" = "true" ]]; then
                     warn "No sha256sum or shasum found — checksum verification skipped (--insecure)"
                     actual_checksum="$expected_checksum"
                 else
@@ -382,19 +387,19 @@ install_binary() {
                 fi
             fi
 
-            if [ "$actual_checksum" != "$expected_checksum" ]; then
+            if [[ "$actual_checksum" != "$expected_checksum" ]]; then
                 fatal "Checksum mismatch!\n  Expected: ${expected_checksum}\n  Got:      ${actual_checksum}"
             fi
             success "Checksum verified"
         else
-            if [ "$INSECURE" = "true" ]; then
+            if [[ "$INSECURE" = "true" ]]; then
                 warn "Archive '${archive_name}' not found in checksums.txt — checksum verification skipped (--insecure)"
             else
                 fatal "Archive '${archive_name}' not found in checksums.txt. Refusing to install unverified binary.\nUse --insecure to skip (not recommended)."
             fi
         fi
     else
-        if [ "$INSECURE" = "true" ]; then
+        if [[ "$INSECURE" = "true" ]]; then
             warn "Could not download checksums.txt — checksum verification skipped (--insecure)"
         else
             fatal "Could not download checksums.txt from:\n  ${checksums_url}\nRefusing to install without integrity verification.\nUse --insecure to skip (not recommended)."
@@ -407,18 +412,18 @@ install_binary() {
         fatal "Failed to extract archive"
     fi
 
-    if [ ! -f "${tmpdir}/${BINARY_NAME}" ]; then
+    if [[ ! -f "${tmpdir}/${BINARY_NAME}" ]]; then
         fatal "Binary '${BINARY_NAME}' not found in archive"
     fi
 
     # Determine install directory
     local install_dir="${INSTALL_DIR:-}"
 
-    if [ -z "$install_dir" ]; then
-        if [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
-            install_dir="/usr/local/bin"
-        elif [ "$(id -u)" = "0" ]; then
-            install_dir="/usr/local/bin"
+    if [[ -z "$install_dir" ]]; then
+        if [[ -d "$USR_LOCAL_BIN" ]] && [[ -w "$USR_LOCAL_BIN" ]]; then
+            install_dir="$USR_LOCAL_BIN"
+        elif [[ "$(id -u)" = "0" ]]; then
+            install_dir="$USR_LOCAL_BIN"
         else
             install_dir="${HOME}/.local/bin"
         fi
@@ -470,13 +475,13 @@ verify_installation() {
 
     # Check common locations even if not in PATH
     local locations=(
-        "/usr/local/bin/${BINARY_NAME}"
+        "${USR_LOCAL_BIN}/${BINARY_NAME}"
         "${HOME}/.local/bin/${BINARY_NAME}"
         "$(go env GOPATH 2>/dev/null || echo "")/bin/${BINARY_NAME}"
     )
 
     for loc in "${locations[@]}"; do
-        if [ -n "$loc" ] && [ -x "$loc" ]; then
+        if [[ -n "$loc" ]] && [[ -x "$loc" ]]; then
             local version_output
             version_output="$("$loc" version 2>&1 || true)"
             success "Found ${BINARY_NAME} at ${loc}: ${version_output}"
@@ -531,14 +536,15 @@ main() {
     INSTALL_DIR=""
     INSECURE="false"
 
-    while [ $# -gt 0 ]; do
-        case "$1" in
+    while [[ $# -gt 0 ]]; do
+        local arg="$1"
+        case "$arg" in
             --method)
-                [ $# -lt 2 ] && fatal "--method requires an argument"
+                [[ $# -lt 2 ]] && fatal "--method requires an argument"
                 FORCE_METHOD="$2"; shift 2
                 ;;
             --dir)
-                [ $# -lt 2 ] && fatal "--dir requires an argument"
+                [[ $# -lt 2 ]] && fatal "--dir requires an argument"
                 INSTALL_DIR="$2"; shift 2
                 ;;
             --insecure)
@@ -550,7 +556,7 @@ main() {
                 exit 0
                 ;;
             *)
-                fatal "Unknown option: $1. Use --help for usage."
+                fatal "Unknown option: $arg. Use --help for usage."
                 ;;
         esac
     done
@@ -567,6 +573,7 @@ main() {
         brew)   install_brew ;;
         go)     install_go ;;
         binary) install_binary ;;
+        *)      fatal "Unexpected install method: ${INSTALL_METHOD}. Expected: brew, go, or binary" ;;
     esac
 
     verify_installation
