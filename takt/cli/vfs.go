@@ -422,8 +422,14 @@ func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field st
 }
 
 // prepareShell resolves the sandbox plan for one command. The writable paths,
-// the private scratch and the protected paths come from the binding's scope and
-// this process's own state directory; the caller supplies only the command.
+// private scratch, and protected paths are derived from the binding's scope,
+// workspace, state directory, and call ID. Preparation may create scratch and
+// projection files; it does not execute the command.
+// An empty AuthorKey skips identity verification and uses an unbound plan that
+// keeps the workspace write-protected. A supplied key must match identity, and
+// ExpectedRevision must match that binding's revision.
+// Identity and preparation errors propagate to the caller. A policy denial is
+// instead returned with OK true and Shell.Decision set to deny.
 func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if key != "" {

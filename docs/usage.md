@@ -66,7 +66,7 @@ takt-ai install --dry-run \
 
 ### sync
 
-Refresh managed assets to the current version. Use after `brew upgrade gentle-ai` or when you want your local configs aligned with the latest release. Does NOT reinstall binaries (engram, GGA) — only updates prompt content, skills, MCP configs, and SDD orchestrators.
+Refresh managed assets to the current version. Use after `takt-ai upgrade` or when you want your local configs aligned with the latest release. Does NOT reinstall binaries (engram, GGA) — only updates prompt content, skills, MCP configs, and SDD orchestrators.
 
 > **Important:** `takt-ai sync` updates the agents recorded as installed by Takt AI, not every AI agent config directory on your machine.
 >
@@ -131,18 +131,6 @@ takt-ai upgrade
 After upgrading, run `takt-ai sync` to refresh all managed assets to the new version's content.
 
 If GitHub rate-limits update checks, export `GITHUB_TOKEN` or `GH_TOKEN` before running `takt-ai update`/`upgrade`.
-
-If Homebrew refuses an upgrade from an untrusted tap, trust only the artifact Homebrew names and retry the upgrade:
-
-```bash
-# Formula tools, for example takt-ai
-brew trust --formula gentleman-programming/tap/gentle-ai
-brew upgrade gentle-ai
-
-# Cask tools, for example engram
-brew trust --cask gentleman-programming/tap/engram
-brew upgrade engram
-```
 
 **Self-update prompt behavior** (changed in v1.x slice 5 — `TAKT_AI_CONFIRM_UPDATE` removed):
 
@@ -236,8 +224,6 @@ takt-ai sync \
 takt-ai sync --agent opencode --sdd-profile-strategy external-single-active
 ```
 
-See [OpenCode SDD Profiles](opencode-profiles.md) for the full guide.
-
 ## CLI Flags (uninstall)
 
 | Flag                          | Description                                                             |
@@ -253,11 +239,10 @@ See [OpenCode SDD Profiles](opencode-profiles.md) for the full guide.
 
 ```bash
 # First time: install everything
-brew install gentleman-programming/tap/gentle-ai
 takt-ai install --agent opencode --preset full-takt
 
 # After a new release: upgrade + sync
-brew upgrade gentle-ai
+takt-ai upgrade
 takt-ai sync
 
 # Remove only managed SDD + persona config
@@ -266,35 +251,6 @@ takt-ai uninstall --agent opencode --component sdd,persona
 # Re-apply the full preset later
 takt-ai install --agent opencode --preset full-takt
 ```
-
-### Homebrew upgrade troubleshooting
-
-Homebrew 6 can require explicit trust for non-official taps and, on Linux, can
-sandbox builds with Bubblewrap. `takt-ai upgrade` and `install.sh`
-auto-trust only the Takt AI formula, but manual upgrades may still need this
-one-time command:
-
-```bash
-brew trust --formula gentleman-programming/tap/gentle-ai
-brew upgrade gentle-ai
-```
-
-On Linux, if Homebrew reports that Bubblewrap cannot create a rootless sandbox,
-there is nothing for Takt AI to install: Bubblewrap is already present, but the
-host blocks the rootless namespace primitives it needs. This is a security
-tradeoff and should be an explicit admin decision. If your policy allows it,
-fix the host namespace policy first:
-
-```bash
-sudo sysctl -w kernel.unprivileged_userns_clone=1
-sudo sysctl -w user.max_user_namespaces=28633
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-```
-
-Use `HOMEBREW_NO_SANDBOX_LINUX=1 brew upgrade gentle-ai` only as a final
-workaround when your distro policy forbids the namespace settings; it disables
-Homebrew's Linux sandbox for that command.
-
 
 ---
 

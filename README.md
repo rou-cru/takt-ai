@@ -59,3 +59,16 @@ docker run --rm -p 4096:4096 -e OPENCODE_PASSWORD=change-me -v "$PWD:/workspace"
 ```sh
 helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspaces --create-namespace
 ```
+
+## Documentation
+
+- [Intended usage](docs/intended-usage.md) — the mental model
+- [Usage](docs/usage.md) — commands and flags
+- [Supported agents](docs/agents.md)
+- [Trigger rules](docs/trigger-rules.md)
+- [Architecture](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md)
+
+## License
+
+[AGPL-3.0](LICENSE)

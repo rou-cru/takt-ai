@@ -43,4 +43,4 @@ knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
-      - ".sdd/rules/development.md"
+      - "CONTRIBUTING.md"

@@ -1,4 +1,8 @@
-# Engineering practices
+# Contributing
+
+Thanks for your interest in Takt AI. Run `make test-host` before opening a pull request.
+
+## Engineering practices
 
 These practices guide work in this repository when they are relevant. They do
 not prescribe a universal planning or delivery workflow.

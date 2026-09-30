@@ -51,8 +51,6 @@ Here's how it actually works:
 
 The agent handles all the phases internally. You just review and approve at key decision points.
 
-If you want the project-level OpenSpec config convention SDD phases use for conventions, strict TDD, and testing metadata, see [OpenSpec Config for SDD](openspec-config.md).
-
 ---
 
 ## Multi-mode SDD (OpenCode SDD Profiles)
@@ -72,8 +70,6 @@ If you want multi-mode in OpenCode:
 You can create multiple profiles (e.g., "cheap" for experimentation, "premium" for production) and switch between them freely.
 
 If you prefer a **runtime profile manager** that keeps profiles outside `opencode.json`, use an explicit Takt-managed profiles directory. OpenCode V2 does not auto-detect `~/.config/opencode/profiles/*.json`; discovery is limited to global/project `opencode.json(c)` plus `.opencode/opencode.json(c)` overrides.
-
-**Full step-by-step guide**: [OpenCode SDD Profiles](opencode-profiles.md)
 
 ---
 
