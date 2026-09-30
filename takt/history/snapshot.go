@@ -122,7 +122,7 @@ type Snapshot struct {
 	Stopped   int    `json:"stopped,omitempty"`
 	Escalated int    `json:"escalated,omitempty"`
 	Nodes     []Node `json:"nodes"`
-	Edges       []Edge `json:"edges"`
+	Edges     []Edge `json:"edges"`
 	// Activities are direct orchestrator and maintenance records. They are
 	// rendered in a separate lane and never participate in graph edges.
 	Activities []ActivityNode `json:"activities"`

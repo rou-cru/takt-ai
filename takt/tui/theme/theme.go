@@ -66,9 +66,9 @@ var Dark = Palette{
 	BrandInk: lipgloss.Color(hexBrandTeal), FocusRing: lipgloss.Color(hexBrandTeal),
 	BorderControl: lipgloss.Color("#82979C"), BorderSubtle: lipgloss.Color("#35464D"),
 	SelectionFg: lipgloss.Color("#D9EEF0"), SelectionBg: lipgloss.Color("#1E3B46"),
-	SuccessFg: lipgloss.Color("#6EE7B7"),
-	WarningFg: lipgloss.Color("#FCD34D"),
-	DangerFg: lipgloss.Color("#FCA5A5"),
+	SuccessFg:  lipgloss.Color("#6EE7B7"),
+	WarningFg:  lipgloss.Color("#FCD34D"),
+	DangerFg:   lipgloss.Color("#FCA5A5"),
 	DisabledBg: lipgloss.Color("#25343A"), DisabledFg: lipgloss.Color("#ADBDC0"),
 	ActionDangerBg: lipgloss.Color("#FCA5A5"), ActionDangerFg: lipgloss.Color("#450A0A"),
 }
