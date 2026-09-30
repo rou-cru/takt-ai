@@ -243,6 +243,19 @@ test_version() {
     expect_failure 'already exists' env -C "$repo" RELEASE_AS=v1.0.0 bash "$script"
     expect_failure 'invalid version' env -C "$repo" RELEASE_AS=1.0 bash "$script"
     expect_failure 'is not newer than the last release' env -C "$repo" RELEASE_AS=v0.5.0 bash "$script"
+
+    local fork="$TMP/version-fork"
+    mkdir -p "$fork"
+    git -C "$fork" init -q -b main
+    fork_commit() { git -C "$fork" -c user.name=t -c user.email=t@t commit -q --allow-empty "$@"; }
+    fork_commit -m 'Stage (#1)'
+    git -C "$fork" tag v0.0.1
+    git -C "$fork" branch side
+    fork_commit -m 'fix: released on main'
+    git -C "$fork" tag v0.0.2
+    git -C "$fork" checkout -q side
+    fork_commit -m 'fix: only on side'
+    [[ "$(cd "$fork" && bash "$script" | sed -n 's/^tag=//p')" == v0.0.3 ]] || fail 'diverged branch must bump past tags it does not contain'
     pass 'next-version bumps, skips, and overrides per release rules'
 }
 

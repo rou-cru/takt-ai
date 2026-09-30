@@ -8,7 +8,8 @@
 #   tag=vX.Y.Z
 #   skip=true|false
 #
-# Rules (the squash-merge subject is the PR title, a conventional commit):
+# Rules (the squash-merge subject is the PR title, a conventional commit),
+# relative to the highest v* tag in the repo, reachable from REF or not:
 #   - no v* tag yet                        -> v0.0.1
 #   - "Release-As: vX.Y.Z" trailer         -> exactly that version
 #   - "Release: skip" trailer, or only
@@ -41,7 +42,9 @@ emit() {
 
 git rev-parse -q --verify "$ref^{commit}" >/dev/null || die "unknown ref '$ref'"
 
-last=$(git tag --list 'v*' --sort=-v:refname --merged "$ref" | grep -E "$semver" | head -n1 || true)
+# Tags are repo-global: a branch that diverged before the latest release
+# (e.g. beta vs main) must still bump past it, never reuse its number.
+last=$(git tag --list 'v*' --sort=-v:refname | grep -E "$semver" | head -n1 || true)
 
 if [[ -n "${RELEASE_AS:-}" ]]; then
 	emit "$RELEASE_AS"
