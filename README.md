@@ -15,33 +15,47 @@ It's not a standalone agent, an LLM, or a simple collection of prompt plugins. I
 
 ## Supported Agents
 
-Takt AI integrates directly with one coding agent:
+Takt AI integrates directly with agents:
 
 - **OpenCode**
 
 ## Install
 
+### Linux/macOS
+
 ```sh
-# Script: Linux/macOS; verifies checksums, and the Sigstore signature when cosign is installed
 curl -fsSL https://raw.githubusercontent.com/rou-cru/takt-ai/main/install.sh | bash
-
-# Homebrew (trust the tap first — Homebrew 7+ won't load an unofficial cask otherwise)
-brew trust --tap rou-cru/homebrew-takt-ai
-brew trust --cask rou-cru/takt-ai/takt-ai
-brew install --cask rou-cru/takt-ai/takt-ai
-
-# Go
-go install github.com/rou-cru/takt-ai/takt/cli@latest   # binary is named "cli"; install.sh --method go renames it
 ```
+
+### Homebrew
+
+```sh
+brew trust --tap rou-cru/homebrew-takt-ai
+brew install --cask rou-cru/takt-ai/takt-ai
+```
+
+### Go
+
+> Note: The binary is named "cli"; install.sh --method go renames it.
+
+```sh
+go install github.com/rou-cru/takt-ai/takt/cli@latest   
+```
+
+### Manual
 
 Linux `.deb`, `.rpm`, `.apk` and Arch packages are attached to every [release](https://github.com/rou-cru/takt-ai/releases), together with SBOMs and signatures.
 
-### Workspace on Docker or Kubernetes
+### Docker & Kubernetes
+
+> Plug & play without changing your current tools. Great for isolated testing, trials, or working on the go.
 
 ```sh
 docker run --rm -p 4096:4096 -e OPENCODE_PASSWORD=change-me -v "$PWD:/workspace" roucru/takt-ai:latest
-
-helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspaces --create-namespace
 ```
 
-See [`charts/takt-ai`](charts/takt-ai/README.md) and [`docs/releasing.md`](docs/releasing.md) for versioning and artifact verification.
+> Enterprise-grade. Provides Takt AI as a standard environment for organizations and engineering teams.
+
+```sh
+helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspaces --create-namespace
+```
