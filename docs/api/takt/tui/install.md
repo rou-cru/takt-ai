@@ -80,7 +80,7 @@ func (m Model) Step() Step
 Step returns the visible screen.
 
 <a name="Model.Title"></a>
-### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L571>)
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L575>)
 
 ```go
 func (m Model) Title() string
@@ -98,7 +98,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update advances the flow or emits an install action from the review.
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L584>)
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L588>)
 
 ```go
 func (m Model) View() tea.View

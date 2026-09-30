@@ -11,6 +11,7 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func OpenCodeConfigPath\(home string\) string](<#OpenCodeConfigPath>)
 - [func OpenCodePluginPath\(home, file string\) string](<#OpenCodePluginPath>)
 - [func OpenCodePromptPath\(home string\) string](<#OpenCodePromptPath>)
@@ -77,6 +78,26 @@ const AgentOpenCode = "opencode"
 
 ```go
 const SectionEngramProtocol = "engram-protocol"
+```
+
+## Variables
+
+<a name="SensitivePathGlobs"></a>SensitivePathGlobs lists secret\-bearing paths every target must block from agent reads and writes.
+
+```go
+var SensitivePathGlobs = []string{
+    ".env",
+    ".env.*",
+    ".ssh/**",
+    ".credentials/**",
+    "Library/Keychains/**",
+    ".aws/credentials",
+    ".config/gh/hosts.yml",
+    "*.pem",
+    "*.key",
+    "secrets/**",
+    "credentials.json",
+}
 ```
 
 <a name="OpenCodeConfigPath"></a>

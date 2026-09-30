@@ -6,8 +6,8 @@ services:
       context: .
       dockerfile: development/environment/Dockerfile
       args:
-        OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.16}
-        GO_VERSION: ${GO_VERSION:-1.25.0}
+        OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.20}
+        GO_VERSION: ${GO_VERSION:-1.27.1}
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}
     image: takt-ai:dev

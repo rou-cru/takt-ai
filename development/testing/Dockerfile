@@ -7,7 +7,7 @@ ARG CODEGRAPH_VERSION=1.6.0
 RUN npm install -g --prefix /opt/codegraph --no-fund --no-audit --loglevel=error --ignore-scripts \
       "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 
-FROM golang:1.25
+FROM golang:1.27.1
 # deadcode's version is pinned by the module's own `tool` directive
 # (go.mod) and its checksum by go.sum — no separate ARG to drift from it.
 WORKDIR /tmp/takt-module

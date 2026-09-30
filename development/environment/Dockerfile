@@ -2,7 +2,7 @@
 # Disposable dev image for B03 first-use runs: takt-ai CLI + OpenCode ready,
 # onboarding NOT completed (never run `takt-ai setup install` here).
 
-ARG GO_VERSION=1.25.0
+ARG GO_VERSION=1.27.1
 FROM golang:${GO_VERSION}-bookworm AS builder
 # Keep GO_VERSION in sync with the `go` directive in go.mod
 # (CI builds with go-version-file: go.mod). Dev tool pins live in development/quality/go.mod.
@@ -19,7 +19,7 @@ RUN GOBIN=/out/tools go install tool
 
 FROM ubuntu:26.04
 # Pinned to OpenCode 2.x on purpose; never "latest".
-ARG OPENCODE_VERSION=2.0.16
+ARG OPENCODE_VERSION=2.0.20
 # SHA-256 of https://opencode.ai/v2/install. The installer endpoint is shared
 # across all CLI versions and carries no vendor-published checksum of its own,
 # so this pin substitutes one and the build verifies it before ever executing

@@ -27,7 +27,7 @@ const TargetSkills = "skills"
 ```
 
 <a name="BuildSkillArtifacts"></a>
-## func [BuildSkillArtifacts](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L67>)
+## func [BuildSkillArtifacts](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L69>)
 
 ```go
 func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
@@ -36,7 +36,7 @@ func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
 BuildSkillArtifacts converts skill definitions into setup.Artifact values ready for deployment.
 
 <a name="BuildSkillManagedPaths"></a>
-## func [BuildSkillManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L79>)
+## func [BuildSkillManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L81>)
 
 ```go
 func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
@@ -45,7 +45,7 @@ func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
 BuildSkillManagedPaths returns the sorted list of managed paths for skill artifacts.
 
 <a name="BuildSkillPlan"></a>
-## func [BuildSkillPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L90>)
+## func [BuildSkillPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L92>)
 
 ```go
 func BuildSkillPlan() (setup.TargetPlan, error)

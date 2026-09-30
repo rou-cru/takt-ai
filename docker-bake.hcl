@@ -1,9 +1,9 @@
 # Local development and deployable workspace image builds.
 variable "OPENCODE_VERSION" {
-  default = "2.0.16"
+  default = "2.0.20"
 }
 variable "GO_VERSION" {
-  default = "1.25.0"
+  default = "1.27.1"
 }
 variable "TAG" {
   default = "takt-ai:dev"

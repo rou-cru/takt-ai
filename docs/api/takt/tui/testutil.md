@@ -44,7 +44,7 @@ func FakeOpenCodeScript() []byte
 FakeOpenCodeScript provides the V2 read/reload surface used by lifecycle verification tests without invoking a developer's real OpenCode process.
 
 <a name="RunWithFakeEngram"></a>
-## func [RunWithFakeEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L36>)
+## func [RunWithFakeEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L38>)
 
 ```go
 func RunWithFakeEngram(m *testing.M) int
