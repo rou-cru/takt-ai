@@ -34,18 +34,18 @@ A good entry has a short, searchable `title` that names what happened, and a `co
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
 Engram stores every final planning or research result and every formal invariant. Record
 each complete artifact in one dedicated `project` entry, with no other result, process, or
-commentary mixed in. Keep it under roughly 400 lines, 600 at the ceiling, and wrap `content`
-as real prose lines: no single line exceeds 500 words. Genuinely distinct artifacts each
-get their own self-contained entry; a long document never gets cut into
-arbitrary pieces to fit that line ceiling.
+commentary mixed in. Keep it under roughly 400 lines, with 600 as the ceiling, and wrap
+`content` as real prose lines of no more than 500 words. Independently, keep the whole entry
+under roughly **45,000 bytes**; `memory_record` rejects past that, and Engram truncates
+silently beyond 50,000 bytes. Genuinely distinct artifacts each get their own self-contained
+entry; never split an artifact merely to satisfy the line ceiling. If an artifact exceeds the
+byte limit, split it into ordered parts, each `supplements` the previous one.
 
-Independent of line count, keep the whole entry under roughly **45,000 bytes**;
-`memory_record` rejects past that, since Engram truncates silently beyond 50,000. When one
-artifact must cross it, split into ordered parts, each `supplements` the one before it — that
-split is not the "arbitrary pieces" line count forbids above. Consumers retrieve that entry
-directly by its ID; they do not search for it or reconstruct it. A requested filesystem copy is a courtesy: produce it once, with the native edit tool, using
-the same content already recorded in the entry — that single write is sufficient. Present its ID through the
-assigned handoff operation, not through a phrase in your final answer.
+Consumers retrieve each entry directly by its ID; they do not search for it or reconstruct
+it. The Engram write must succeed before the result is delivered. A requested filesystem
+copy is a courtesy: produce it once, with the native edit tool, using the content already
+recorded in Engram. A failed courtesy copy does not invalidate the recorded entry. Present
+its ID through the assigned handoff operation, not through a phrase in your final answer.
 Its nature follows §2.
 
 ## 2. Natures

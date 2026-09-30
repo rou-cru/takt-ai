@@ -15,7 +15,7 @@ It's not a standalone agent, an LLM, or a simple collection of prompt plugins. I
 
 ## Supported Agents
 
-Takt AI integrates directly with agents:
+Takt AI integrates directly with coding agents:
 
 - **OpenCode**
 
