@@ -6,6 +6,9 @@
     "typecheck": "tsc -p .",
     "lint": "eslint --ext .js,.mjs,.cjs,.ts,.tsx ."
   },
+  "overrides": {
+    "@babel/core": "7.29.6"
+  },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@opencode/client": "2.0.16",
