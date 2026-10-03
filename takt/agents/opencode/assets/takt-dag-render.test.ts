@@ -124,9 +124,6 @@ describe("node presentation", () => {
     expect(nodeKindFor(node())).toBe("delegated")
     expect(nodeKindFor(node({ node_kind: "delegated" }))).toBe("delegated")
   })
-  test("nodeKindGlyph / nodeKindLabel are stable", () => {
-  })
-
   test("glyphFor covers every state/flight/outcome combination", () => {
     expect(glyphFor(node({ state: "planned" }))).toBe("◌")
     expect(glyphFor(node({ state: "withdrawn" }))).toBe("×")
