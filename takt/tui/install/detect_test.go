@@ -35,11 +35,11 @@ func stubLookPath(t *testing.T, found ...string) {
 }
 
 // A missing OpenCode binary is a notice on the first screen, never a block:
-// the flow still starts on the setup choice with the full install scope.
+// the flow still opens on the review of the full install scope.
 func TestMissingOpenCodeNoticesWithoutBlocking(t *testing.T) {
 	stubLookPath(t)
 	m := New(t.TempDir())
-	if m.Step() != StepSetupChoice {
+	if m.Step() != StepReview {
 		t.Fatalf("step = %v", m.Step())
 	}
 	if m.notice != ui.TextOpenCodeNotFound {

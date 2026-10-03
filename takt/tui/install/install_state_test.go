@@ -15,6 +15,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
+	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
@@ -51,7 +52,8 @@ func stateConflicts() []setup.ConflictEntry {
 func planModel(t *testing.T, step Step, plan runtime.InstallPlan) Model {
 	t.Helper()
 	m := New(t.TempDir())
-	m.plan, m.step = plan, step
+	m.plan = plan
+	m.step, m.cursor = step, m.cursorFor(step)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: stateWidth, Height: stateHeight})
 	return next.(Model)
 }
@@ -67,20 +69,20 @@ func plain(m Model) string { return ansi.Strip(m.View().Content) }
 func mustContain(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	for _, want := range wants {
-		if !strings.Contains(got, want) {
+		if !testutil.Shows(got, want) {
 			t.Errorf("view missing %q:\n%s", want, got)
 		}
 	}
 }
 
-func TestConfiguringAnExistingInstallStartsOnComponents(t *testing.T) {
+func TestConfiguringAnExistingInstallStartsOnReview(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	m := New(root)
-	if m.Step() != StepComponents || !m.configuring {
-		t.Fatalf("step = %v configuring = %v, want configure on the components step", m.Step(), m.configuring)
+	if m.Step() != StepReview || !m.configuring {
+		t.Fatalf("step = %v configuring = %v, want configure on review", m.Step(), m.configuring)
 	}
 	if !strings.HasPrefix(m.Title(), ui.TextTitleConfigure) {
 		t.Errorf("Title() = %q, want the configure title", m.Title())
@@ -99,7 +101,7 @@ func TestConfiguringAnExistingInstallStartsOnComponents(t *testing.T) {
 
 func TestComponentChecklistTogglesMovesAndMakesFlowDirty(t *testing.T) {
 	m := planModel(t, StepComponents, runtime.InstallPlan{})
-	mustContain(t, plain(m), ui.TextComponentsIntro, string(model.ComponentContext7), string(model.ComponentTheme))
+	mustContain(t, plain(m), ui.TextComponentsIntro, "Context7")
 
 	before := len(m.components)
 	m, _ = step(t, m, kSpace)
@@ -111,25 +113,12 @@ func TestComponentChecklistTogglesMovesAndMakesFlowDirty(t *testing.T) {
 		t.Error("Dirty() after toggling back = true, want the baseline restored")
 	}
 
-	// Moving up past the first row and down past the last enters the footer.
-	m, _ = step(t, m, kUp)
-	if m.focus != ui.SectionFooter {
-		t.Fatalf("focus after up at the top = %v, want footer", m.focus)
-	}
-	m, _ = step(t, m, kDown)
-	if m.focus != ui.SectionBody || m.cursor != 0 {
-		t.Errorf("focus = %v cursor = %v, want body row 0 after down from the footer", m.focus, m.cursor)
-	}
-	m, _ = step(t, m, kTab)
-	m, _ = step(t, m, kUp)
-	if m.focus != ui.SectionBody || m.cursor != m.rows()-1 {
-		t.Errorf("focus = %v cursor = %v, want the last body row after up from the footer", m.focus, m.cursor)
-	}
-	// Space in the footer toggles nothing.
-	m, _ = step(t, m, kTab)
-	snapshot := len(m.components)
-	if m, _ = step(t, m, kSpace); len(m.components) != snapshot {
-		t.Error("Space on the footer toggled a component")
+	// Components submits with Enter and draws no footer: focus never leaves
+	// the checklist, so the cursor can never land somewhere invisible.
+	for _, k := range []tea.KeyPressMsg{kUp, kDown, kTab} {
+		if m, _ = step(t, m, k); m.focus != ui.SectionBody || m.cursor >= m.rows() {
+			t.Fatalf("focus = %v cursor = %v after %v, want a visible checklist row", m.focus, m.cursor, k)
+		}
 	}
 }
 
@@ -162,29 +151,35 @@ func TestConflictsScreenBlocksUntilIncompatibleFileIsRestored(t *testing.T) {
 		t.Fatalf("decisions = %d, want only the incompatible and uncertain undecided files", got)
 	}
 
-	// Continue is refused while the incompatible file is kept.
-	m, _ = step(t, m, kTab)
+	// Enter on each file keeps it and moves on; on the last file it would
+	// advance, but the kept incompatible file holds the flow here.
+	m, _ = step(t, m, kEnter)
+	if m.Step() != StepConflicts || m.cursor != conflictChoiceCount {
+		t.Fatalf("step = %v cursor = %d, want the second file focused", m.Step(), m.cursor)
+	}
 	if m, _ = step(t, m, kEnter); m.Step() != StepConflicts {
-		t.Fatalf("step = %v, want Continue blocked", m.Step())
+		t.Fatalf("step = %v, want the flow held while agents/bad.md is kept", m.Step())
 	}
 
-	// Choose Restore Takt for the incompatible file (second row of the first conflict).
-	m, _ = step(t, m, kTab)
-	m, _ = step(t, m, kDown)
+	// Restore Takt for the incompatible file (second row of the first file).
+	m, _ = step(t, m, kUp)
 	m, _ = step(t, m, kEnter)
 	if len(m.restorePaths) != 1 || m.restorePaths[0] != "agents/bad.md" || !m.Dirty() {
 		t.Fatalf("restorePaths = %v, want agents/bad.md restored", m.restorePaths)
 	}
+	if !strings.Contains(plain(m), theme.Icon.Chosen+ui.TextRestoreTakt) {
+		t.Errorf("the restored file's choice is not visible once focus moved:\n%s", plain(m))
+	}
 	// Choosing Keep again clears it.
+	m, _ = step(t, m, kUp)
 	m, _ = step(t, m, kUp)
 	m, _ = step(t, m, kEnter)
 	if len(m.restorePaths) != 0 {
 		t.Fatalf("restorePaths = %v, want Keep to clear the restore", m.restorePaths)
 	}
-	m, _ = step(t, m, kDown)
+	// Restore it again, then Enter on the last file advances to review.
+	m, _ = step(t, m, kUp)
 	m, _ = step(t, m, kEnter)
-
-	m, _ = step(t, m, kTab)
 	if m, _ = step(t, m, kEnter); m.Step() != StepReview {
 		t.Fatalf("step = %v, want review once the blocker is restored", m.Step())
 	}
@@ -196,9 +191,11 @@ func TestConflictsScreenBlocksUntilIncompatibleFileIsRestored(t *testing.T) {
 	if m, _ = step(t, m, kEsc); m.Step() != StepConflicts {
 		t.Errorf("step = %v, want Esc on review to return to conflicts", m.Step())
 	}
-	// Conflicts' Back returns to the step that prepared the plan.
-	if m, _ = step(t, m, kEsc); m.Step() != StepSetupChoice {
-		t.Errorf("step = %v, want Esc on conflicts to return to the setup choice", m.Step())
+	// Conflicts are the flow's first step here, so Back leaves the flow.
+	if _, cmd := step(t, m, kEsc); cmd == nil {
+		t.Error("Esc on the first step must leave the flow")
+	} else if _, ok := cmd().(ui.BackMsg); !ok {
+		t.Error("Esc on the first step must request BackMsg")
 	}
 }
 
@@ -216,35 +213,44 @@ func TestReviewListsEveryChangeCategory(t *testing.T) {
 		InstallPreview: lifecycle.InstallPreview{
 			Conflicts: stateConflicts(),
 			Removals:  []catalog.Removal{{Component: model.ComponentContext7, Reason: "needs network"}},
-			Plans:     []setup.TargetPlan{{Target: model.AgentOpenCode, Actions: []setup.ProviderAction{{ID: "plugin-x"}}}},
 		},
 		Add:    []string{"opencode/agents/one.md", "opencode/skills/alpha/SKILL.md", "opencode/other.txt"},
-		Modify: []string{"agents/bad.md", "opencode/changed.md"},
+		Modify: []string{"agents/bad.md", "cfg/opencode.json", "cfg/cli.json"},
+		Summary: runtime.InstallSummary{
+			Agents: []runtime.AgentModel{
+				{Name: "takt", Role: model.RoleOrchestrator, Model: "openai/gpt-6-luna"},
+				{Name: "dev", Role: model.RoleExecution, Model: "openai/gpt-6-luna"},
+				{Name: "judge-a", Role: model.RoleVerification},
+			},
+			Skills:       27,
+			MCPServers:   []string{"codegraph", "context7", "engram"},
+			Integrations: []string{"DAG panel", "memory"},
+			Configs:      []runtime.ConfigChange{{Path: "cfg/opencode.json", Merged: true}, {Path: "cfg/cli.json"}},
+		},
 	}
 	m := planModel(t, StepReview, plan)
-	m.setupCustom = true
-	m.components = nil
-	m.restorePaths = []string{"opencode/changed.md"}
 	got := plain(m)
 	mustContain(t, got,
-		fmt.Sprintf(ui.TextNewFilesFmt, 3)+fmt.Sprintf(ui.TextAgentSkillsFmt, 1, 1),
-		fmt.Sprintf(ui.TextPluginFmt, "plugin-x", ui.OpenCodeLabel),
-		"opencode/changed.md"+ui.TextReplacesYours,
+		ui.TextDestinationValue,
+		fmt.Sprintf(ui.TextAgentsFmt, 3, 1, 2),
+		fmt.Sprintf(ui.TextAgentModelsFmt, 2, "openai/gpt-6-luna"),
+		fmt.Sprintf(ui.TextAgentModelsFmt, 1, ui.TextInheritedModel),
+		"27", "codegraph · context7 · engram", "DAG panel · memory",
+		fmt.Sprintf(ui.TextFilesCountFmt, 3, 2),
+		"opencode.json — "+ui.TextConfigMerged, "cli.json — "+ui.TextConfigUpdated,
 		fmt.Sprintf(ui.TextRemovalFmt, model.ComponentContext7, "needs network"),
-		ui.TextSectionPreserve, "agents/bad.md"+ui.TextYourVersionKept,
+		"agents/bad.md"+ui.TextYourVersionKept,
 		"agents/far.md"+ui.TextNotAffectedNote, "agents/old.md"+ui.TextPreviouslyKeptNote,
-		ui.TextSectionUncertain, "review may drift",
-		ui.TextNotIncludedIntro,
-		ui.TextNone,
+		"review may drift",
 		ui.TextActionPersonalize, ui.TextActionInstall)
 
-	// Default setup summarizes as all recommended components.
-	m.setupCustom = false
-	mustContain(t, plain(m), ui.TextDefaultAll)
-	m.setupCustom, m.components = true, []model.ComponentID{model.ComponentContext7}
-	if got := m.componentSummary(); got == ui.TextNone || got == ui.TextDefaultAll {
-		t.Errorf("componentSummary() with one component = %q, want its name", got)
-	}
+	// Restoring Takt's version of a config says it replaces the user's.
+	m.restorePaths = []string{"cfg/cli.json"}
+	mustContain(t, plain(m), "cli.json — replaces your version")
+
+	// One shared model reads as "all on".
+	m.plan.Summary.Agents = m.plan.Summary.Agents[:2]
+	mustContain(t, plain(m), fmt.Sprintf(ui.TextAgentModelsAllFmt, "openai/gpt-6-luna"))
 }
 
 func TestReviewWithNothingToChangeAndWithPlanError(t *testing.T) {
@@ -258,14 +264,14 @@ func TestReviewWithNothingToChangeAndWithPlanError(t *testing.T) {
 	}
 
 	// Personalize is the only action and goes to the component checklist;
-	// Back from there returns to the setup choice.
+	// Back from there returns to review with the choices kept.
 	m.cursor = 0
 	m, _ = step(t, m, kEnter)
 	if m.Step() != StepComponents || !m.setupCustom {
 		t.Fatalf("step = %v custom = %v, want the components checklist", m.Step(), m.setupCustom)
 	}
-	if m, _ = step(t, m, kEsc); m.Step() != StepSetupChoice || m.cursor != 1 {
-		t.Errorf("step = %v cursor = %d, want the setup choice on Custom", m.Step(), m.cursor)
+	if m, _ = step(t, m, kEsc); m.Step() != StepReview || !m.setupCustom {
+		t.Errorf("step = %v custom = %v, want review with the personalized choices", m.Step(), m.setupCustom)
 	}
 }
 
@@ -273,8 +279,12 @@ func TestReviewBackSkipsConflictsWhenPlanFailed(t *testing.T) {
 	m := planModel(t, StepReview, runtime.InstallPlan{})
 	m.plan.Conflicts = stateConflicts()
 	m.previewErr = errors.New("boom")
-	if m, _ = step(t, m, kEsc); m.Step() != StepSetupChoice {
-		t.Errorf("step = %v, want Esc to skip the conflicts of a failed plan", m.Step())
+	next, cmd := step(t, m, kEsc)
+	if next.Step() != StepReview || cmd == nil {
+		t.Fatalf("step = %v, want Esc to skip the conflicts of a failed plan and leave", next.Step())
+	}
+	if _, ok := cmd().(ui.BackMsg); !ok {
+		t.Error("Esc on a failed review must request BackMsg")
 	}
 }
 

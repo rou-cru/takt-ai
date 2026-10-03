@@ -275,7 +275,8 @@ func TestRunEngramCheck(t *testing.T) {
 				return tc.status, tc.getErr
 			}, nil)
 			var out bytes.Buffer
-			if err := Run(&out); err != nil {
+			// A failing check makes Run report ErrUnhealthy after writing the report.
+			if err := Run(&out); err != nil && !errors.Is(err, ErrUnhealthy) {
 				t.Fatalf("Run() error = %v", err)
 			}
 			for _, want := range tc.wantSubstr {
@@ -455,7 +456,8 @@ func TestRunDiskCheck(t *testing.T) {
 			home := t.TempDir()
 			withSeams(t, home, nil, nil, nil, tc.free)
 			var out bytes.Buffer
-			if err := Run(&out); err != nil {
+			// A failing check makes Run report ErrUnhealthy after writing the report.
+			if err := Run(&out); err != nil && !errors.Is(err, ErrUnhealthy) {
 				t.Fatalf("Run() error = %v", err)
 			}
 			for _, want := range tc.wantSubstr {
@@ -536,7 +538,8 @@ func TestRunControlPlaneCheck(t *testing.T) {
 			withSeams(t, t.TempDir(), nil, nil, nil, nil)
 			controlPlaneHealth = tc.health
 			var out bytes.Buffer
-			if err := Run(&out); err != nil {
+			// A failing check makes Run report ErrUnhealthy after writing the report.
+			if err := Run(&out); err != nil && !errors.Is(err, ErrUnhealthy) {
 				t.Fatalf("Run() error = %v", err)
 			}
 			for _, want := range tc.wantSubstr {

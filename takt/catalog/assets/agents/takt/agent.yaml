@@ -13,6 +13,7 @@ skills:
 - takt-invariant-planning
 - takt-memory-contract
 - takt-memory-orchestrator
+- takt-session-resume
 - takt-sdd-workflow
 - takt-sdd-recovery
 - takt-bounded-planning
@@ -22,3 +23,4 @@ skills:
 - takt-handoff
 - takt-interlocutor-handoff
 - takt-interlocutor-exceptions
+- takt-git-commit

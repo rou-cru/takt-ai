@@ -68,9 +68,6 @@ type ConfigRequest struct {
 	Context7 bool
 	// Permissions adds the canonical bash/read permission rules.
 	Permissions bool
-	// Theme names the OpenCode theme when non-empty. V2 keeps theme selection in
-	// cli.json, so this reaches TaktCLIArtifact rather than opencode.json.
-	Theme string
 	// Agents are Takt instances registered natively in opencode.json.
 	Agents []AgentSpec
 }

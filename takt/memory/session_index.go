@@ -37,13 +37,15 @@ const (
 )
 
 type sessionIndex struct {
-	Session     string              `json:"session"`
-	Project     string              `json:"project"`
-	Directory   string              `json:"directory"`
-	StartAnchor int64               `json:"start_anchor"`
-	EndAnchor   int64               `json:"end_anchor"`
-	Continues   string              `json:"continues"`
-	Entries     []sessionIndexEntry `json:"entries"`
+	Session     string `json:"session"`
+	Project     string `json:"project"`
+	Directory   string `json:"directory"`
+	StartAnchor int64  `json:"start_anchor"`
+	EndAnchor   int64  `json:"end_anchor"`
+	Continues   string `json:"continues"`
+	// PendingContinues is a declared continuity not yet fixed by a first entry.
+	PendingContinues string              `json:"pending_continues,omitempty"`
+	Entries          []sessionIndexEntry `json:"entries"`
 }
 
 type sessionIndexEntry struct {

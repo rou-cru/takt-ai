@@ -1,6 +1,8 @@
 package ui_test
 
 import (
+	"github.com/charmbracelet/x/ansi"
+	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"strings"
 	"testing"
 
@@ -31,25 +33,23 @@ func TestStatusContainsStateAndMessage(t *testing.T) {
 	}
 }
 
-func TestBusyShowsCancelHintByDefault(t *testing.T) {
-	got := ui.Busy("Installing", false, "1/3")
-	if !strings.Contains(got, ui.TextCancelHint) {
-		t.Errorf("Busy() without cancel requested = %q, want it to contain the cancel hint", got)
+func TestBusyListsPhasesAndTheCurrentOne(t *testing.T) {
+	got := ansi.Strip(ui.Busy("Installation", "*", ui.Progress{Done: []string{"Checking OpenCode connection"}, Message: "Applying installation files", Current: "a.md", Completed: 1, Total: 2}))
+	for _, want := range []string{theme.Icon.Done + " Checking OpenCode connection", "* Applying installation files", "50%", "a.md"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Busy() = %q, want it to contain %q", got, want)
+		}
 	}
-	if strings.Contains(got, ui.TextCancelRequested) {
-		t.Errorf("Busy() without cancel requested = %q, should not mention cancellation already requested", got)
-	}
-	if !strings.Contains(got, "1/3") {
-		t.Errorf("Busy() = %q, want it to contain the marker", got)
-	}
-	if !strings.Contains(got, "Installing"+ui.TextInProgressSuffix) {
-		t.Errorf("Busy() = %q, want it to contain the operation and in-progress suffix", got)
+	if first := ansi.Strip(ui.Busy("Installation", "*", ui.Progress{})); !strings.Contains(first, "* Installation") {
+		t.Errorf("Busy() before any phase = %q, want the operation as the current phase", first)
 	}
 }
 
-func TestBusyShowsCancelRequested(t *testing.T) {
-	got := ui.Busy("Installing", true, "1/3")
-	if !strings.Contains(got, ui.TextCancelRequested) {
-		t.Errorf("Busy() with cancel requested = %q, want it to contain the cancel-requested notice", got)
+func TestBusyFooterOffersCancelUntilRequested(t *testing.T) {
+	if got := ansi.Strip(ui.BusyFooter(false)); !strings.Contains(got, ui.TextActionCancel) || strings.Contains(got, ui.TextUnavailableIntro) {
+		t.Errorf("BusyFooter(false) = %q, want an available Cancel", got)
+	}
+	if got := ansi.Strip(ui.BusyFooter(true)); !strings.Contains(got, ui.TextUnavailableIntro+ui.TextCancelRequested) {
+		t.Errorf("BusyFooter(true) = %q, want Cancel unavailable while the phase finishes", got)
 	}
 }

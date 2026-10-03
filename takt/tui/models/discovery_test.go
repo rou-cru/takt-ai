@@ -26,7 +26,7 @@ func assertOpenCodeDiscoveryOutcome(t *testing.T, fail bool) {
 	bin := t.TempDir()
 	script := `#!/bin/sh
 case "$*" in
-  'api GET /api/model') printf '%s' '{"location":{},"data":[{"providerID":"opencode","modelID":"big-pickle","limit":{"context":1000,"output":100}},{"providerID":"provider","modelID":"jk-model","limit":{"context":2000,"output":200}}]}' ;;
+  'api GET /api/model') printf '%s' '{"location":{},"data":[{"providerID":"opencode","id":"big-pickle","modelID":"big-pickle","limit":{"context":1000,"output":100}},{"providerID":"provider","id":"jk-model","modelID":"jk-model","limit":{"context":2000,"output":200}}]}' ;;
   *) echo "unexpected OpenCode invocation: $*" >&2; exit 1 ;;
 esac
 `

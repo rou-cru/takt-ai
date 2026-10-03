@@ -25,10 +25,6 @@ const (
 	StateReport
 )
 
-// actionMenu is the screen's only action: diagnostics change nothing, so the
-// visible action is the way back.
-const actionMenu = ui.TextActionBackToMenu
-
 const (
 	// eventReport carries the collected report into the report screen.
 	eventReport = "report"
@@ -44,7 +40,15 @@ type Model struct {
 	keymap        keys.KeyMap
 	width, height int
 	scroll        int
+	cursor        int
 }
+
+// OpenRepairMsg asks the controller to open the configure flow, whose sync
+// re-applies Takt's configuration, after a capability failed its check.
+type OpenRepairMsg struct{}
+
+// eventRepair opens the configure flow from a failed report.
+const eventRepair = "repair"
 
 // New creates a diagnostic screen rooted at the installation directory.
 func New(root string) Model {
@@ -77,6 +81,9 @@ func transitions() ui.Table[State, Model] {
 		{From: StateCollecting, Event: eventBack}:   back(StateCollecting),
 		{From: StateNotInstalled, Event: eventBack}: back(StateNotInstalled),
 		{From: StateReport, Event: eventBack}:       back(StateReport),
+		{From: StateReport, Event: eventRepair}: func(*Model) (State, tea.Cmd) {
+			return StateReport, func() tea.Msg { return OpenRepairMsg{} }
+		},
 	}
 }
 
@@ -100,13 +107,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scroll = scroll
 			return m, nil
 		}
+		actions := m.actions()
+		if ui.NudgeHorizontal(&m.cursor, len(actions), m.keymap, msg) {
+			return m, nil
+		}
 		switch {
+		case m.keymap.Confirm.Matches(msg) && actions[min(m.cursor, len(actions)-1)] == ui.TextActionRepair:
+			return m.applyTransition(eventRepair)
 		case m.keymap.Back.Matches(msg), m.keymap.Confirm.Matches(msg):
-			// The only action is the way back, so Esc and Enter agree.
 			return m.applyTransition(eventBack)
 		}
 	}
 	return m, nil
+}
+
+// actions offers Repair first when a capability failed its check; the way
+// back is always available.
+func (m Model) actions() []string {
+	if m.state == StateReport && m.report != nil && m.report.Failed() {
+		return []string{ui.TextActionRepair, ui.TextActionBackToMenu}
+	}
+	return []string{ui.TextActionBackToMenu}
 }
 
 // Title identifies the task and current step for the stable header region.
@@ -120,7 +141,7 @@ func (m Model) Title() string {
 // View renders the checking state, the empty report, or the collected
 // report inside the shared screen shell.
 func (m Model) View() tea.View {
-	body := ui.Status(ui.StatePending, ui.TextDiagBusy)
+	body := theme.Caption.Render(ui.TextDiagBusy)
 	switch {
 	case m.state == StateNotInstalled:
 		body = theme.Label.Render(setup.NotInstalledMessage)
@@ -132,7 +153,7 @@ func (m Model) View() tea.View {
 	return tea.NewView(ui.Shell(ui.Frame{
 		Header: m.Title(),
 		Body:   body,
-		Footer: ui.FooterActions(ui.Actions(actionMenu), 0, true),
+		Footer: ui.FooterActions(ui.Actions(m.actions()...), min(m.cursor, len(m.actions())-1), true),
 		Width:  m.width,
 		Height: m.height,
 		Scroll: m.scroll,

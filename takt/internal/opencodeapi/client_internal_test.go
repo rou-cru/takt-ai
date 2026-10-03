@@ -63,6 +63,23 @@ func TestExecRunnerUsesEnvironmentAndDirectoryAndReturnsProcessErrors(t *testing
 	}
 }
 
+// opencode truncates bodies written to a pipe, so the runner must hand it a
+// regular file as stdout.
+func TestExecRunnerGivesStdoutAsRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "opencode")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nif [ -p /dev/stdout ]; then printf pipe; else printf file; fi\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err := execRunner(binary, nil, dir)(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("execRunner() error = %v", err)
+	}
+	if string(stdout) != "file" {
+		t.Fatalf("opencode stdout is a %q, want a regular file", stdout)
+	}
+}
+
 func TestExecRunnerReportsMissingBinary(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	_, _, err := execRunner("opencode-binary-that-does-not-exist", nil, "")(context.Background(), nil)

@@ -243,7 +243,7 @@ Application rules:
 - A disabled action keeps an accessible explanation. Do not use global opacity or faint color as the only signal of unavailability.
 - Brand color may identify the logo, header, and structural regions of the product, not only commercial presentations. Its extent answers to composition and does not hide states or content. A validated text pair is required, e.g. `P100` on `P900`.
 - Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use must be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
-- In the dark TUI, signature and header use Petrol `P600`. `P300` is reserved for `focus.ring` so brand is not confused with focus. Single dark theme; no light variant exists.
+- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas (6.63:1); `brand.ink` keeps its shared value because `P400` falls below 4.5:1 on `N800`. `P300` is reserved for `focus.ring` so brand is not confused with focus. Single dark theme; no light variant exists.
 
 ### 5.4 Verified contrast and limits
 
@@ -256,6 +256,7 @@ The following values were computed with sRGB relative luminance; they are shown 
 | `N50` / `N800` | 11.97:1 | Primary text on raised dark surface |
 | `P700` / `N50` | 7.65:1 | Link or signature on light |
 | `P300` / `N800` | 6.49:1 | Link or signature on raised dark surface |
+| `P400` / TUI canvas `#0D0D0D` | 6.63:1 | TUI signature |
 | `white` / `P600` | 6.13:1 | Light primary action on hover |
 | `P950` / `P400` | 5.34:1 | Dark primary action pressed |
 | `P900` / `P100` | 9.86:1 | Light selection; the inverse pair serves on dark |

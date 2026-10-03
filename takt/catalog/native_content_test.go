@@ -320,7 +320,7 @@ func readAssets(t *testing.T, globs ...string) map[string]string {
 
 func TestAgentProseNeverExplainsMechanism(t *testing.T) {
 	files := readAssets(t, "shared/BASELINE.md", "agents/takt/*.md", "agents/*/OPERATIONS.md",
-		"skills/takt-sdd-workflow/SKILL.md", "skills/takt-sdd-recovery/SKILL.md", "skills/takt-memory-*/SKILL.md", "skills/takt-vfs-mutation/SKILL.md",
+		"skills/takt-sdd-workflow/SKILL.md", "skills/takt-sdd-recovery/SKILL.md", "skills/takt-memory-*/SKILL.md", "skills/takt-session-resume/SKILL.md", "skills/takt-vfs-mutation/SKILL.md",
 		"skills/takt-bounded-workflow/SKILL.md", "skills/takt-bounded-planning/SKILL.md",
 		"skills/takt-workflow-selection/SKILL.md", "skills/takt-workflow-selection-exceptions/SKILL.md")
 	forbidden := []string{

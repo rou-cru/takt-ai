@@ -32,6 +32,8 @@ func (r ModelRef) String() string {
 // capabilities, limits, cost) is validated on decode but not carried.
 type Model struct {
 	Ref ModelRef
+	// Name is the human label OpenCode shows ("GPT-6 Luna Fast").
+	Name string
 }
 
 // MCPState is the connection state OpenCode reports for an MCP server. An

@@ -25,6 +25,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,13 +36,19 @@ import (
 
 const (
 	// chafaVersion pins the renderer so logo output stays identical everywhere.
-	chafaVersion = "1.18.2"
+	chafaVersion = "1.18.3"
 	// whiteFloor marks near-white pixels so border cleanup ignores shading.
 	whiteFloor = 245
 	// borderBlackLuma is the luminance ceiling for border padding: the source
 	// artwork's dark background clears to transparent so the logo blends with
 	// the terminal canvas instead of drawing its own rectangle.
 	borderBlackLuma = 24.0
+	// innerRingCrop is the radius, as a fraction of half the image's shorter
+	// side, inside which artwork is kept. The canonical PNG has a dark outer
+	// band (luma ~46), a black gap, then the bright inner ring; measured on
+	// both axes the gap sits at ~0.86. Cutting there keeps one crisp ring: at
+	// terminal resolution the outer band only renders as a ragged fringe.
+	innerRingCrop = 0.86
 	// rgbaShift converts the 16-bit color channels returned by RGBA to 8-bit channels.
 	rgbaShift = 8
 	// redLumaWeight, greenLumaWeight, and blueLumaWeight implement the sRGB luma approximation.
@@ -54,6 +61,19 @@ const (
 	sgrForegroundTrueColor, sgrBackgroundTrueColor       = 38, 48
 	// sgrTrueColorParameters is the number of parameters consumed by a truecolor selector.
 	sgrTrueColorParameters = 4
+	// petrolHue is the hue of the brand's petrol family (P400–P600, ~188–193°).
+	// Blue-to-indigo artwork (blueHueMin..blueHueMax, at least
+	// recolorMinSaturation) is rotated onto it, keeping lightness and
+	// saturation, so the terminal mark speaks the brand's single blue.
+	petrolHue, blueHueMin, blueHueMax = 190.0, 200.0, 280.0
+	recolorMinSaturation              = 0.12
+	// fullSize, compactSize and installerSize are the Chafa boxes of the
+	// datasets: the home logo, its variant for short terminals, and the mark
+	// the installer prints.
+	fullSize, compactSize, installerSize = "48x20", "24x10", "32x14"
+	// installerBegin and installerEnd delimit the generated mark in install.sh.
+	installerBegin = "# BEGIN GENERATED LOGO (development/generate-logo; DO NOT EDIT)"
+	installerEnd   = "# END GENERATED LOGO"
 )
 
 // span holds one colored text run so logo rows stay compact.
@@ -68,11 +88,12 @@ func main() {
 	input := flag.String("input", "", "input PNG path")
 	output := flag.String("output", "takt/tui/styles/logo_generated.go", "generated Go file path (Braille mono dataset)")
 	blocksOutput := flag.String("blocks-output", "takt/tui/styles/logo_blocks_generated.go", "generated Go file path (half-block color dataset)")
+	installer := flag.String("installer", "", "install.sh to embed the installer mark into (optional)")
 	flag.Parse()
 	if *input == "" {
 		fatal(errors.New("-input is required"))
 	}
-	if err := generate(*input, *output, *blocksOutput); err != nil {
+	if err := generate(*input, *output, *blocksOutput, *installer); err != nil {
 		fatal(err)
 	}
 }
@@ -84,7 +105,11 @@ func fatal(err error) {
 }
 
 // generate rebuilds logo data so checked-in branding matches the source image.
-func generate(input, output, blocksOutput string) error {
+// Each Go file holds a full and a compact dataset: Braille art whose shape
+// survives mono mode, and half-block art where every cell carries foreground
+// and background truecolor. installer, when set, receives a small half-block
+// mark between its generated-logo markers.
+func generate(input, output, blocksOutput, installer string) error {
 	chafaPath, err := requireChafa()
 	if err != nil {
 		return err
@@ -98,27 +123,37 @@ func generate(input, output, blocksOutput string) error {
 		return err
 	}
 	defer removeTemporaryImage(temporaryName)
-	// Height capped at 20 rows regardless of source aspect ratio: the welcome
-	// screen only shows the logo when terminal height covers rows + tagline +
-	// menu, so a square/portrait source must not render taller than a
-	// landscape one did. Two datasets ship from one source: Braille art whose
-	// shape survives mono mode, and half-block art where every cell carries
-	// foreground and background truecolor.
-	brailleLines, err := renderChafa(chafaPath, temporaryName, "braille", true)
+	render := func(symbols string, fgOnly bool, size string) ([][]span, error) {
+		return renderChafa(chafaPath, temporaryName, symbols, fgOnly, size)
+	}
+	files := []struct {
+		output, name, symbols string
+		fgOnly                bool
+	}{
+		{output, "generatedLogo", "braille", true},
+		{blocksOutput, "generatedLogoBlocks", "block", false},
+	}
+	for _, file := range files {
+		full, err := render(file.symbols, file.fgOnly, fullSize)
+		if err != nil {
+			return err
+		}
+		compact, err := render(file.symbols, file.fgOnly, compactSize)
+		if err != nil {
+			return err
+		}
+		if err := writeGenerated(file.output, dataset{file.name, full}, dataset{file.name + "Compact", compact}); err != nil {
+			return err
+		}
+	}
+	if installer == "" {
+		return nil
+	}
+	mark, err := render("block", false, installerSize)
 	if err != nil {
 		return err
 	}
-	blockLines, err := renderChafa(chafaPath, temporaryName, "block", false)
-	if err != nil {
-		return err
-	}
-	if err := writeGenerated(output, brailleLines, "generatedLogo"); err != nil {
-		return err
-	}
-	if err := writeGenerated(blocksOutput, blockLines, "generatedLogoBlocks"); err != nil {
-		return err
-	}
-	return nil
+	return embedInstallerMark(installer, mark)
 }
 
 func decodeInputImage(input string) (image.Image, error) {
@@ -144,7 +179,7 @@ func writeTemporaryImage(source image.Image) (string, error) {
 		return "", err
 	}
 	name := temporary.Name()
-	if err := png.Encode(temporary, removeBorderPadding(source)); err != nil {
+	if err := png.Encode(temporary, recolorToPetrol(removeBorderPadding(cropToInnerRing(source)))); err != nil {
 		if cerr := temporary.Close(); cerr != nil {
 			fmt.Fprintf(os.Stderr, "warning: closing temp file: %v\n", cerr)
 		}
@@ -166,12 +201,12 @@ func removeTemporaryImage(name string) {
 
 // renderChafa runs Chafa with one symbol set and returns validated, trimmed
 // logo lines so both datasets share the same pipeline.
-func renderChafa(chafaPath, source, symbols string, fgOnly bool) ([][]span, error) {
+func renderChafa(chafaPath, source, symbols string, fgOnly bool, size string) ([][]span, error) {
 	args := []string{"--format=symbols", "--symbols=" + symbols, "--colors=full"}
 	if fgOnly {
 		args = append(args, "--fg-only")
 	}
-	args = append(args, "--size=48x20", source)
+	args = append(args, "--size="+size, source)
 	ansi, err := exec.Command(chafaPath, args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("run chafa: %w", err)
@@ -212,11 +247,11 @@ func trimBlankRows(lines [][]span) [][]span {
 func requireChafa() (string, error) {
 	path, err := exec.LookPath("chafa")
 	if err != nil {
-		return "", errors.New("chafa 1.18.2 is required to regenerate the logo; install it outside the release binary")
+		return "", fmt.Errorf("chafa %s is required to regenerate the logo; install it outside the release binary", chafaVersion)
 	}
 	output, err := exec.Command(path, "--version").Output()
 	if err != nil {
-		return "", errors.New("chafa 1.18.2 is required to regenerate the logo; install it outside the release binary")
+		return "", fmt.Errorf("chafa %s is required to regenerate the logo; install it outside the release binary", chafaVersion)
 	}
 	if !strings.Contains(string(output), "Chafa version "+chafaVersion) {
 		return "", fmt.Errorf("chafa %s is required, got %q", chafaVersion, strings.TrimSpace(string(output)))
@@ -277,6 +312,96 @@ func isBorderPadding(c color.Color) bool {
 	}
 	luma := redLumaWeight*float64(r8) + greenLumaWeight*float64(g8) + blueLumaWeight*float64(b8)
 	return luma <= borderBlackLuma
+}
+
+// cropToInnerRing clears everything outside the inner ring (innerRingCrop) so
+// the outer band never reaches the terminal.
+func cropToInnerRing(source image.Image) *image.NRGBA {
+	bounds := source.Bounds()
+	result := image.NewNRGBA(bounds)
+	centerX := float64(bounds.Min.X+bounds.Max.X) / 2
+	centerY := float64(bounds.Min.Y+bounds.Max.Y) / 2
+	radius := innerRingCrop * float64(min(bounds.Dx(), bounds.Dy())) / 2
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if math.Hypot(float64(x)+0.5-centerX, float64(y)+0.5-centerY) <= radius {
+				result.Set(x, y, source.At(x, y))
+			}
+		}
+	}
+	return result
+}
+
+// recolorToPetrol rotates the artwork's blue-to-indigo tones onto the petrol
+// hue, keeping lightness and saturation; neutrals (the white body, the dark
+// interior) and transparent padding are untouched.
+func recolorToPetrol(source *image.NRGBA) *image.NRGBA {
+	bounds := source.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			pixel := source.NRGBAAt(x, y)
+			if pixel.A == 0 {
+				continue
+			}
+			hue, saturation, lightness := toHSL(pixel)
+			if saturation < recolorMinSaturation || hue < blueHueMin || hue > blueHueMax {
+				continue
+			}
+			r, g, b := fromHSL(petrolHue, saturation, lightness)
+			source.SetNRGBA(x, y, color.NRGBA{R: r, G: g, B: b, A: pixel.A})
+		}
+	}
+	return source
+}
+
+// toHSL converts an 8-bit color to hue (degrees), saturation and lightness.
+func toHSL(c color.NRGBA) (float64, float64, float64) {
+	r, g, b := float64(c.R)/255, float64(c.G)/255, float64(c.B)/255
+	high, low := max(r, g, b), min(r, g, b)
+	lightness := (high + low) / 2
+	if high == low {
+		return 0, 0, lightness
+	}
+	delta := high - low
+	saturation := delta / (1 - math.Abs(2*lightness-1))
+	var hue float64
+	switch high {
+	case r:
+		hue = math.Mod((g-b)/delta, 6)
+	case g:
+		hue = (b-r)/delta + 2
+	default:
+		hue = (r-g)/delta + 4
+	}
+	hue *= 60
+	if hue < 0 {
+		hue += 360
+	}
+	return hue, saturation, lightness
+}
+
+// fromHSL converts hue (degrees), saturation and lightness to 8-bit RGB.
+func fromHSL(hue, saturation, lightness float64) (uint8, uint8, uint8) {
+	chroma := (1 - math.Abs(2*lightness-1)) * saturation
+	x := chroma * (1 - math.Abs(math.Mod(hue/60, 2)-1))
+	offset := lightness - chroma/2
+	var r, g, b float64
+	switch {
+	case hue < 60:
+		r, g, b = chroma, x, 0
+	case hue < 120:
+		r, g, b = x, chroma, 0
+	case hue < 180:
+		r, g, b = 0, chroma, x
+	case hue < 240:
+		r, g, b = 0, x, chroma
+	case hue < 300:
+		r, g, b = x, 0, chroma
+	default:
+		r, g, b = chroma, 0, x
+	}
+	channel := func(v float64) uint8 { return uint8(math.Round(min(1, max(0, v+offset)) * 255)) }
+	return channel(r), channel(g), channel(b)
 }
 
 // splitCSI splits the escape sequence at the start of input into its
@@ -459,23 +584,32 @@ func validateColor(color, name string) error {
 	return nil
 }
 
+// dataset is one generated logo variable.
+type dataset struct {
+	name  string
+	lines [][]span
+}
+
 // writeGenerated saves formatted Go so checked-in output never drifts from
 // gofmt. The logoSpan type is hand-written in logo.go; generated files carry
 // only data.
-func writeGenerated(output string, lines [][]span, varName string) error {
+func writeGenerated(output string, datasets ...dataset) error {
 	if err := os.MkdirAll(filepath.Dir(output), generatedDirectoryMode); err != nil {
 		return err
 	}
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "// Code generated by development/generate-logo; DO NOT EDIT.\n\npackage styles\n\nvar %s = [][]logoSpan{\n", varName)
-	for _, line := range lines {
-		b.WriteString("\t{")
-		for _, span := range line {
-			fmt.Fprintf(&b, "{Text: %q, Color: %q, Bg: %q},", span.Text, span.Color, span.Bg)
+	b.WriteString("// Code generated by development/generate-logo; DO NOT EDIT.\n\npackage styles\n")
+	for _, data := range datasets {
+		fmt.Fprintf(&b, "\nvar %s = [][]logoSpan{\n", data.name)
+		for _, line := range data.lines {
+			b.WriteString("\t{")
+			for _, span := range line {
+				fmt.Fprintf(&b, "{Text: %q, Color: %q, Bg: %q},", span.Text, span.Color, span.Bg)
+			}
+			b.WriteString("},\n")
 		}
-		b.WriteString("},\n")
+		b.WriteString("}\n")
 	}
-	b.WriteString("}\n")
 	// Emit gofmt-clean output so the checked-in file never drifts from the
 	// formatter's expectation.
 	formatted, err := format.Source(b.Bytes())
@@ -483,4 +617,48 @@ func writeGenerated(output string, lines [][]span, varName string) error {
 		return fmt.Errorf("format generated Go: %w", err)
 	}
 	return os.WriteFile(output, formatted, generatedFileMode)
+}
+
+// embedInstallerMark replaces the block between the installer's markers with
+// a function printing the mark as truecolor half-blocks.
+func embedInstallerMark(path string, lines [][]span) error {
+	script, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	before, rest, found := strings.Cut(string(script), installerBegin)
+	_, after, closed := strings.Cut(rest, installerEnd)
+	if !found || !closed {
+		return fmt.Errorf("%s lacks the generated-logo markers", path)
+	}
+	var b strings.Builder
+	b.WriteString(installerBegin + "\nprint_logo() {\n")
+	for _, line := range lines {
+		var row strings.Builder
+		for _, span := range line {
+			row.WriteString(sgrFor(span) + span.Text)
+		}
+		row.WriteString("\\033[0m")
+		fmt.Fprintf(&b, "    printf '%%b\\n' '%s'\n", strings.ReplaceAll(row.String(), "'", "'\\''"))
+	}
+	b.WriteString("}\n" + installerEnd)
+	return os.WriteFile(path, []byte(before+b.String()+after), generatedFileMode)
+}
+
+// sgrFor is the escape selecting a span's colors, written as printf %b text.
+func sgrFor(s span) string {
+	codes := []string{"0"}
+	for _, selector := range []struct {
+		code  int
+		color string
+	}{{sgrForegroundTrueColor, s.Color}, {sgrBackgroundTrueColor, s.Bg}} {
+		if len(selector.color) != len("#rrggbb") {
+			continue
+		}
+		r, _ := strconv.ParseUint(selector.color[1:3], 16, 8)
+		g, _ := strconv.ParseUint(selector.color[3:5], 16, 8)
+		b, _ := strconv.ParseUint(selector.color[5:7], 16, 8)
+		codes = append(codes, fmt.Sprintf("%d;2;%d;%d;%d", selector.code, r, g, b))
+	}
+	return "\\033[" + strings.Join(codes, ";") + "m"
 }

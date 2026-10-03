@@ -20,6 +20,7 @@ var (
 	tab   = tea.KeyPressMsg{Code: tea.KeyTab}
 	down  = tea.KeyPressMsg{Code: tea.KeyDown}
 	right = tea.KeyPressMsg{Code: tea.KeyRight}
+	left  = tea.KeyPressMsg{Code: tea.KeyLeft}
 	esc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 )
 
@@ -68,12 +69,11 @@ func TestFlowStartsOnEngramWithFixedScope(t *testing.T) {
 func TestEngramRemoveChoiceCarriedIntoRequest(t *testing.T) {
 	root := installedRoot(t)
 	screen := New(root)
-	screen = update(t, update(t, update(t, screen, down), down), enter) // choose Remove
-	screen = update(t, update(t, screen, tab), enter)                   // continue to review
+	screen = update(t, update(t, update(t, screen, down), down), enter) // choose Remove, advancing to review
 	if screen.State() != StateReview {
 		t.Fatalf("state = %v, want review", screen.State())
 	}
-	_, command := screen.Update(enter)
+	_, command := update(t, screen, left).Update(enter) // Uninstall
 	if got := testutil.ActionRequest(t, command).EngramChoice; got != lifecycle.EngramRemove {
 		t.Fatalf("request EngramChoice = %q, want %q", got, lifecycle.EngramRemove)
 	}
@@ -84,15 +84,14 @@ func TestEngramRemoveChoiceCarriedIntoRequest(t *testing.T) {
 func TestEngramRetainChoiceCarriedIntoRequest(t *testing.T) {
 	root := installedRoot(t)
 	screen := New(root)
-	screen = update(t, update(t, screen, down), enter) // choose Retain
-	screen = update(t, update(t, screen, tab), enter)  // continue to review
+	screen = update(t, update(t, screen, down), enter) // choose Retain, advancing to review
 	if screen.State() != StateReview {
 		t.Fatalf("state = %v, want review", screen.State())
 	}
-	if v := view(screen); !strings.Contains(v, ui.TextUninstallEngramRetains) || !strings.Contains(v, filepath.Join(root, setup.RetainedDirName)) {
+	if v := view(screen); !testutil.Shows(v, ui.TextUninstallEngramRetains) || !testutil.Shows(v, filepath.Join(root, setup.RetainedDirName)) {
 		t.Fatalf("review must say the memory is retained and where: %s", v)
 	}
-	_, command := screen.Update(enter)
+	_, command := update(t, screen, left).Update(enter) // Uninstall
 	if got := testutil.ActionRequest(t, command).EngramChoice; got != lifecycle.EngramRetain {
 		t.Fatalf("request EngramChoice = %q, want %q", got, lifecycle.EngramRetain)
 	}
@@ -202,8 +201,8 @@ func TestFailedResultAndActions(t *testing.T) {
 
 func busyReview(t *testing.T) Model {
 	t.Helper()
-	screen := update(t, update(t, New(installedRoot(t)), tab), enter) // Continue with Leave
-	return update(t, screen, enter)                                   // Uninstall
+	screen := update(t, New(installedRoot(t)), enter) // choose Leave, advancing to review
+	return update(t, update(t, screen, left), enter)  // Uninstall (focus starts on Back)
 }
 
 func update(t *testing.T, screen Model, message tea.Msg) Model {

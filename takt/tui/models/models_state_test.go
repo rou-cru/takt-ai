@@ -11,6 +11,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/tui/modelpicker"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
@@ -179,14 +180,17 @@ func TestResultScreenBodies(t *testing.T) {
 			want:   []string{ui.TextModelsNoChanges},
 		},
 		{
-			name:   "success lists changed files and when they apply",
-			result: runtime.ActionResult{Changed: []string{"agents/one.md", "agents/two.md"}, CancelRequested: true},
-			want:   []string{ui.TextModelsChangedHead, "agents/one.md", "agents/two.md", ui.TextModelsTakeEffect + ui.OpenCodeLabel, ui.TextLateCancel},
+			name:   "success lists each agent's new model and when it applies",
+			result: runtime.ActionResult{Changed: []string{".config/opencode/opencode.json"}, CancelRequested: true},
+			want:   []string{ui.AgentsAssigned(2), "analyst", "provider/one", "dev", "provider/two", ui.TextModelsTakeEffect + ui.OpenCodeLabel, ui.TextLateCancel},
+			absent: []string{".config/opencode/opencode.json"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := plain(resultModel(t, tt.result, tt.err))
+			m := resultModel(t, tt.result, tt.err)
+			m.changes = []modelpicker.Change{{Agent: "analyst", To: "provider/one"}, {Agent: "dev", To: "provider/two"}}
+			got := plain(m)
 			for _, want := range tt.want {
 				if !strings.Contains(got, want) {
 					t.Errorf("View() = %q, want it to contain %q", got, want)

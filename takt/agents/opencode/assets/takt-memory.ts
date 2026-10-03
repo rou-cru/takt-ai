@@ -202,20 +202,43 @@ export default Plugin.define({
       })
       editor.add({
         name: "memory_continue_session",
-        description: `Link this session to the previous session it resumes. ${CONTRACT}`,
-        input: { type: "object", properties: { previous_session_id: str() }, required: ["previous_session_id"], additionalProperties: false },
+        description:
+          "Declare the closed previous session this session's work continues, so the memory narrative stays unbroken. " +
+          "The link becomes permanent with this session's first new memory entry; until then a new call replaces the declaration " +
+          "and an empty id withdraws it. Only a closed session can be declared, from any workspace, and only before this session's first entry. " +
+          `Resuming previous work never depends on this link. ${CONTRACT}`,
+        input: {
+          type: "object",
+          properties: {
+            previous_session_id: str(
+              "Id from the previous session's `[takt] Session <id> closed` memory anchor, or one the user gave; never inferred. Empty withdraws the declaration.",
+            ),
+          },
+          required: ["previous_session_id"],
+          additionalProperties: false,
+        },
         async execute(input: unknown, c) {
           if (!isObject(input)) throw new Error("memory_continue_session input must be an object")
           const args = input
           const previousSession = args.previous_session_id as string
           await call("continue", c, { previous_session: previousSession })
-          return { content: `Continues ${previousSession}` }
+          return { content: previousSession ? `Will continue ${previousSession} from the first new entry` : "No previous session declared" }
         },
       })
       editor.add({
         name: "memory_close_session",
-        description: `Close this session's memory with its objective and state. ${CONTRACT}`,
-        input: { type: "object", properties: { objective: str(), state: str() }, required: ["objective", "state"], additionalProperties: false },
+        description:
+          "Close this session's memory with its objective and state, once: when the user ends the session or the requested work is reported. " +
+          `A context compaction is not a session close. ${CONTRACT}`,
+        input: {
+          type: "object",
+          properties: {
+            objective: str("What the user asked for in this session, in one or two sentences."),
+            state: str("What is true now, in present tense: governing decisions, open disputes as facts, what was delivered. No next steps."),
+          },
+          required: ["objective", "state"],
+          additionalProperties: false,
+        },
         async execute(input: unknown, c) {
           if (!isObject(input)) throw new Error("memory_close_session input must be an object")
           const args = input

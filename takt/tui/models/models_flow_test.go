@@ -27,7 +27,7 @@ var (
 // real model choices, so a reassignment has something new to pick.
 const fakeOpenCodeModelsScript = `#!/bin/sh
 case "$*" in
-  'api GET /api/model') printf '%s' '{"location":{},"data":[{"providerID":"opencode","modelID":"big-pickle","limit":{"context":1000,"output":100}},{"providerID":"provider","modelID":"other-model","limit":{"context":2000,"output":200}}]}' ;;
+  'api GET /api/model') printf '%s' '{"location":{},"data":[{"providerID":"opencode","id":"big-pickle","modelID":"big-pickle","limit":{"context":1000,"output":100}},{"providerID":"provider","id":"other-model","modelID":"other-model","limit":{"context":2000,"output":200}}]}' ;;
   *) echo "unexpected OpenCode invocation: $*" >&2; exit 1 ;;
 esac
 `

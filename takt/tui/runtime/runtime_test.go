@@ -154,17 +154,16 @@ func TestAdapterExecuteCarriesComponents(t *testing.T) {
 	if _, err := adapter.Execute(runtime.ActionRequest{
 		Action:     runtime.ActionInstall,
 		RootDir:    root,
-		Components: []string{"theme"},
+		Components: []string{"context7"},
 	}); err != nil {
 		t.Fatalf("install with components error = %v", err)
 	}
-	// V2 keeps theme selection in the terminal client's own cli.json.
-	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "cli.json"))
+	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "opencode.json"))
 	if err != nil {
-		t.Fatalf("read cli.json: %v", err)
+		t.Fatalf("read opencode.json: %v", err)
 	}
-	if !bytes.Contains(config, []byte(`"name": "takt"`)) {
-		t.Fatalf("cli.json missing component merge:\n%s", config)
+	if !bytes.Contains(config, []byte(`"context7"`)) {
+		t.Fatalf("opencode.json missing component merge:\n%s", config)
 	}
 
 	plain, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionSync, RootDir: root})

@@ -44,16 +44,17 @@ const (
 
 // menuItem is one main-menu entry and the route it opens.
 type menuItem struct {
-	route Route
-	label string
+	route       Route
+	label       string
+	description string
 }
 
 var menuItems = []menuItem{
-	{RouteInstall, ui.TextMenuInstall},
-	{RouteModels, ui.TextMenuAssignModels},
-	{RouteDrift, ui.TextMenuCheckDrift},
-	{RouteUninstall, ui.TextMenuUninstall},
-	{RouteDiagnostics, ui.TextMenuDiagnostics},
+	{RouteInstall, ui.TextMenuInstall, ui.TextMenuInstallDesc},
+	{RouteModels, ui.TextMenuAssignModels, ui.TextMenuAssignModelsDesc},
+	{RouteDrift, ui.TextMenuCheckDrift, ui.TextMenuCheckDriftDesc},
+	{RouteUninstall, ui.TextMenuUninstall, ""},
+	{RouteDiagnostics, ui.TextMenuDiagnostics, ui.TextMenuDiagnosticsDesc},
 }
 
 // visibleMenu exposes only operations that can actually run.
@@ -63,7 +64,7 @@ func (m Model) visibleMenu() []menuItem {
 		return menuItems[:1]
 	}
 	items := append([]menuItem(nil), menuItems...)
-	items[0].label = ui.TextMenuConfigure
+	items[0].label, items[0].description = ui.TextMenuConfigure, ui.TextMenuConfigureDesc
 	return items
 }
 
@@ -104,6 +105,7 @@ const (
 const (
 	eventClose         = "close"
 	eventReplaceModels = "replace-models"
+	eventRepair        = "repair"
 	eventGuardBack     = "guard-back"
 	eventGuardQuit     = "guard-quit"
 	eventGuardKeep     = "guard-keep"
@@ -162,6 +164,11 @@ func routeTransitions() ui.Table[Route, Model] {
 		{From: RouteDrift, Event: eventClose}:                 closeScreen,
 		{From: RouteUninstall, Event: eventClose}:             closeScreen,
 		{From: RouteModels, Event: eventClose}:                closeScreen,
+		{From: RouteDiagnostics, Event: eventRepair}: func(m *Model) (Route, tea.Cmd) {
+			m.stack, m.routes = nil, nil
+			m.push(RouteInstall, install.New(m.root))
+			return RouteInstall, m.active().Init()
+		},
 		{From: RouteInstall, Event: eventReplaceModels}: func(m *Model) (Route, tea.Cmd) {
 			m.stack, m.routes = nil, nil
 			m.push(RouteModels, models.New(m.root))
@@ -261,8 +268,14 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.leave(false)
 	case install.OpenModelsMsg:
 		return m, m.applyRoute(eventReplaceModels)
+	case diagnostics.OpenRepairMsg:
+		return m, m.applyRoute(eventRepair)
 	case tea.WindowSizeMsg:
 		return m.resize(message)
+	case tea.ColorProfileMsg:
+		// The program's detected profile, not env hints, selects the palette.
+		theme.SetMode(theme.ModeFor(message.Profile))
+		return m, nil
 	case tea.KeyPressMsg:
 		if next, cmd, handled := m.globalKey(message); handled {
 			return next, cmd
@@ -315,6 +328,12 @@ func (m Model) globalKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		} else {
 			next, cmd = m.leave(true)
 		}
+	case "enter":
+		// While an action runs, Cancel is the only (focused) action.
+		if !m.flowRun().Busy() {
+			return m, nil, false
+		}
+		next, cmd = m.cancel()
 	case "ctrl+b":
 		next, cmd = m.leave(false)
 	default:
@@ -364,9 +383,9 @@ func (m Model) cancel() (tea.Model, tea.Cmd) {
 
 func (m Model) updateGuard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
-	case "up", "k":
+	case "up", "k", "left", "h":
 		m.guard.cursor = ui.MoveCursor(m.guard.cursor, len(guardOptions), -1)
-	case "down", "j":
+	case "down", "j", "right", "l":
 		m.guard.cursor = ui.MoveCursor(m.guard.cursor, len(guardOptions), 1)
 	case "esc":
 		return m, m.applyGuard(eventGuardKeep)
@@ -381,8 +400,10 @@ func (m Model) updateGuard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // guardView renders the pending-change overlay.
 func (m Model) guardView() string {
-	body := theme.Label.Render(ui.TextGuardDiscardBody) + "\n\n" + ui.Options(guardOptions, m.guard.cursor, true)
-	return ui.Shell(ui.Frame{Header: m.guardTitle(), Body: body, Width: m.width, Height: m.height})
+	// Keeping is the safe default; discarding loses edits, so it reads as danger.
+	actions := []ui.FooterAction{{Label: guardOptions[0]}, {Label: guardOptions[1], Danger: true}}
+	footer := ui.FooterActions(actions, m.guard.cursor, true)
+	return ui.Shell(ui.Frame{Header: m.guardTitle(), Body: theme.Label.Render(ui.TextGuardDiscardBody), Footer: footer, Width: m.width, Height: m.height})
 }
 
 // guardTitle names the interrupted task.
@@ -496,38 +517,57 @@ func (Model) paintCanvas(v *tea.View) {
 	v.ForegroundColor = theme.TextPrimary
 }
 
-// menuBody renders the logo beside the task list.
+// homeGap separates the logo mark from the menu in the side-by-side home.
+const homeGap = 6
+
+// menuBody composes the home (PR-UX-2A): the logo with the signature centered
+// under it, the menu beside it (stacked when narrow), the whole block centered
+// in the screen. A terminal too small for the logo keeps the signature.
 func (m Model) menuBody() string {
-	labels := []string{}
+	described, plain := []ui.Item{}, []ui.Item{}
 	for _, item := range m.visibleMenu() {
-		labels = append(labels, item.label)
+		described = append(described, ui.Item{Label: item.label, Description: item.description})
+		plain = append(plain, ui.Item{Label: item.label})
 	}
-	labels = append(labels, ui.TextMenuQuit)
-	menu := ui.Options(labels, min(m.cursor, len(labels)-1), true)
-	notice := m.incompleteNotice()
-
-	logo := styles.RenderLogo()
-	inner := ui.InnerWidth(m.width)
-	logoWidth, logoHeight := lipgloss.Width(logo), lipgloss.Height(logo)
-	menuWidth := lipgloss.Width(menu)
-
-	const gap = "  "
-	const minMenuHeight = 4
-	bodyHeight := ui.BodyHeight(m.height)
-	showLogo := bodyHeight <= 0 || bodyHeight > logoHeight+minMenuHeight
-	twoColumn := inner > 0 && logoWidth+lipgloss.Width(gap)+menuWidth <= inner
-
-	// Left-aligned, not centered: Shell's wrapBody infers each line's hanging
-	// indent from its own leading whitespace (the focus gutter convention), so
-	// centering here would read as an oversized indent and wrap the menu.
-	switch {
-	case !showLogo:
-		return notice + menu
-	case twoColumn:
-		return notice + lipgloss.JoinHorizontal(lipgloss.Top, logo, gap, menu)
-	default:
-		return notice + logo + "\n\n" + menu
+	described = append(described, ui.Item{Label: ui.TextMenuQuit})
+	plain = append(plain, ui.Item{Label: ui.TextMenuQuit})
+	cursor := min(m.cursor, len(plain)-1)
+	menu := func(items []ui.Item) string {
+		return solid(strings.TrimRight(ui.Choices(items, cursor, true), "\n"))
 	}
+
+	inner, rows := ui.InnerWidth(m.width), ui.HomeRows(m.height)
+	signature := theme.SignatureText.Render(ui.TextBrand)
+	// The logo is mandatory on the home; descriptions are not, so they go
+	// first when space runs out, then the full logo gives way to the compact
+	// one (PR-UX-2A).
+	block := lipgloss.JoinVertical(lipgloss.Center, signature, "", menu(plain))
+	var candidates []string
+	for _, logo := range []string{styles.RenderLogo(), styles.RenderCompactLogo()} {
+		mark := lipgloss.JoinVertical(lipgloss.Center, logo, signature)
+		candidates = append(candidates,
+			lipgloss.JoinHorizontal(lipgloss.Center, mark, strings.Repeat(" ", homeGap), menu(described)),
+			lipgloss.JoinVertical(lipgloss.Center, mark, "", menu(described)),
+			lipgloss.JoinHorizontal(lipgloss.Center, mark, strings.Repeat(" ", homeGap), menu(plain)),
+			lipgloss.JoinVertical(lipgloss.Center, mark, "", menu(plain)),
+		)
+	}
+	for _, candidate := range candidates {
+		if lipgloss.Width(candidate) <= inner && lipgloss.Height(candidate) <= rows {
+			block = candidate
+			break
+		}
+	}
+	if notice := m.incompleteNotice(); notice != "" {
+		block = lipgloss.JoinVertical(lipgloss.Center, solid(notice), "", block)
+	}
+	return lipgloss.Place(inner, rows, lipgloss.Center, lipgloss.Center, block)
+}
+
+// solid pads every line to the block's width so joining centers the block as
+// a whole while its own lines stay left-aligned.
+func solid(block string) string {
+	return lipgloss.NewStyle().Width(lipgloss.Width(block)).Render(block)
 }
 
 // incompleteNotice warns that a mutating operation ended abruptly.
@@ -537,5 +577,5 @@ func (m Model) incompleteNotice() string {
 		return ""
 	}
 	lines := record.Notice(m.root)
-	return ui.Status(ui.StateWarning, lines[0]) + "\n" + theme.Label.Render(lines[1]) + "\n\n"
+	return ui.Status(ui.StateWarning, lines[0]) + "\n" + theme.Label.Render(lines[1])
 }

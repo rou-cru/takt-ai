@@ -55,7 +55,7 @@ func TestRunWithoutTerminalRefusesTUI(t *testing.T) {
 	if err := run(nil, strings.NewReader(""), &stdout, &stderr); err == nil {
 		t.Fatal("run() error = nil, want non-terminal refusal")
 	}
-	if !strings.Contains(stderr.String(), "usage:") || !strings.Contains(stderr.String(), "requires a terminal") {
+	if !strings.Contains(stderr.String(), "Usage:") || !strings.Contains(stderr.String(), "requires a terminal") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
@@ -170,11 +170,11 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 
 // TestDecodeRequestAcceptsComponents verifies component selection passes through decoding.
 func TestDecodeRequestAcceptsComponents(t *testing.T) {
-	request, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["theme","context7"]}`))
+	request, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["context7"]}`))
 	if err != nil {
 		t.Fatalf("decodeStrict() error = %v", err)
 	}
-	want := []string{"theme", "context7"}
+	want := []string{"context7"}
 	if !slices.Equal(request.Components, want) {
 		t.Fatalf("components = %v, want %v", request.Components, want)
 	}
@@ -182,7 +182,7 @@ func TestDecodeRequestAcceptsComponents(t *testing.T) {
 
 // TestDecodeRequestStillRejectsUnknownFields verifies typos in input fail instead of being ignored.
 func TestDecodeRequestStillRejectsUnknownFields(t *testing.T) {
-	if _, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["theme"],"bogus":true}`)); err == nil {
+	if _, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["context7"],"bogus":true}`)); err == nil {
 		t.Fatal("decodeStrict() error = nil, want unknown field rejection")
 	}
 }
@@ -199,7 +199,7 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	if err := json.Unmarshal(payload, &request); err != nil {
 		t.Fatal(err)
 	}
-	request.Components = []string{"theme", "opencode-takt-logo"}
+	request.Components = []string{"context7"}
 	payload, err = json.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
@@ -210,21 +210,18 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 		t.Fatalf("install run() error = %v", err)
 	}
 
-	// V2 keeps theme selection in the terminal client's own cli.json.
-	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "cli.json"))
+	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "opencode.json"))
 	if err != nil {
-		t.Fatalf("read cli.json: %v", err)
+		t.Fatalf("read opencode.json: %v", err)
 	}
-	if !bytes.Contains(config, []byte(`"name": "takt"`)) {
-		t.Fatalf("cli.json missing theme selection:\n%s", config)
+	if !bytes.Contains(config, []byte(`"context7"`)) {
+		t.Fatalf("opencode.json missing the selected component:\n%s", config)
 	}
-	for _, deployed := range []string{
-		filepath.Join(root, ".config", "opencode", "cli.json"),
-		filepath.Join(root, ".config", "opencode", "plugins", "takt-dag", "tui.tsx"),
-	} {
-		if _, err := os.Stat(deployed); err != nil {
-			t.Errorf("deployed component artifact: %v", err)
-		}
+	if _, err := os.Stat(filepath.Join(root, ".config", "opencode", "plugins", "takt-dag", "tui.tsx")); err != nil {
+		t.Errorf("deployed component artifact: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".config", "opencode", "cli.json")); err == nil {
+		t.Error("cli.json was deployed, but Takt has nothing to write there")
 	}
 }
 

@@ -18,10 +18,11 @@ import (
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
 
-func TestFlowStartsOnSetupChoiceAndEscLeaves(t *testing.T) {
+// The flow opens on the prepared plan: review, with its commit focused.
+func TestFlowStartsOnReviewAndEscLeaves(t *testing.T) {
 	m := install.New(t.TempDir())
-	if m.Step() != install.StepSetupChoice {
-		t.Fatalf("step = %v", m.Step())
+	if m.Step() != install.StepReview {
+		t.Fatalf("step = %v, want review", m.Step())
 	}
 	_, command := m.Update(key("esc"))
 	if command == nil {
@@ -32,16 +33,13 @@ func TestFlowStartsOnSetupChoiceAndEscLeaves(t *testing.T) {
 	}
 }
 
-func TestSetupChoiceIsSingleSelector(t *testing.T) {
-	m := choiceModel(t, t.TempDir())
-	if m.Step() != install.StepSetupChoice {
-		t.Fatalf("step = %v, want setup choice", m.Step())
-	}
-	if next := press(t, m, "enter"); next.Step() != install.StepReview {
-		t.Fatalf("Default: step = %v, want review", next.Step())
-	}
-	if next := press(t, m, "down", "enter"); next.Step() != install.StepComponents {
-		t.Fatalf("Custom: step = %v, want components", next.Step())
+// Personalize opens the checklist; Enter there returns to review.
+func TestPersonalizeOpensComponentsAndEnterReviews(t *testing.T) {
+	m := reviewModel(t, t.TempDir())
+	if next := press(t, m, "left", "enter"); next.Step() != install.StepComponents {
+		t.Fatalf("Personalize: step = %v, want components", next.Step())
+	} else if back := press(t, next, "enter"); back.Step() != install.StepReview {
+		t.Fatalf("Enter on components: step = %v, want review", back.Step())
 	}
 }
 
@@ -124,21 +122,25 @@ func TestStaleResultIgnoredAndCancelRequestShown(t *testing.T) {
 	}
 }
 
-func TestInstallProgressListsAppliedArtifactsAndMovesBar(t *testing.T) {
+func TestInstallProgressShowsPhasesBarAndCurrentFile(t *testing.T) {
 	m, request := busyModel(t, t.TempDir())
 	for _, event := range []setup.DeploymentProgress{
+		{Stage: "preparing", Message: "Checking OpenCode connection"},
 		{Stage: "applied", Message: "Applying installation files", Path: "agents/alpha.md", Completed: 1, Total: 3},
 		{Stage: "applied", Message: "Applying installation files", Path: "agents/beta.md", Completed: 2, Total: 3},
 	} {
 		m = update(t, m, runtime.ActionProgressMsg{Request: request, Progress: event})
 	}
 	shown := view(m)
-	for _, path := range []string{"agents/alpha.md", "agents/beta.md"} {
-		if !strings.Contains(shown, path) {
-			t.Errorf("busy screen omitted applied artifact %q:\n%s", path, shown)
+	for _, want := range []string{"✓ Checking OpenCode connection", "Applying installation files", "agents/beta.md", ui.TextActionCancel} {
+		if !strings.Contains(shown, want) {
+			t.Errorf("busy screen missing %q:\n%s", want, shown)
 		}
 	}
-	if !strings.Contains(shown, "[██████████░░░░░░]") {
+	if strings.Contains(shown, "agents/alpha.md") {
+		t.Errorf("busy screen lists finished files instead of the current one:\n%s", shown)
+	}
+	if !strings.Contains(shown, "67%") {
 		t.Errorf("progress bar did not reflect 2 of 3 artifacts:\n%s", shown)
 	}
 	stale := request
@@ -162,31 +164,32 @@ func TestInstallResultSurfacesIncompleteOptionalWork(t *testing.T) {
 	}
 }
 
-func TestConfigureStartsAtComponentsAndAppliesOnce(t *testing.T) {
+func TestConfigurePersonalizesAndAppliesOnce(t *testing.T) {
 	root := t.TempDir()
-	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{"context7"}}); err != nil {
+	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{}}); err != nil {
 		t.Fatal(err)
 	}
 	m := install.New(root)
-	if m.Step() != install.StepComponents || m.Title() != "Configure installation · Components" || m.Dirty() {
+	if m.Step() != install.StepReview || m.Title() != "Configure installation · Review" || m.Dirty() {
 		t.Fatalf("step %v title %q dirty %v", m.Step(), m.Title(), m.Dirty())
 	}
-	if v := view(m); !strings.Contains(v, "[x] Context7") || !strings.Contains(v, "[ ] Takt theme") {
+	m = press(t, m, "left", "enter") // Personalize
+	if v := view(m); m.Step() != install.StepComponents || !strings.Contains(v, "[ ] Context7") {
 		t.Fatalf("installed selections not preloaded:\n%s", v)
 	}
-	m = press(t, m, "down", "space")
+	if press(t, press(t, m, "space"), "space").Dirty() {
+		t.Fatal("reverted edit still dirty")
+	}
+	m = press(t, m, "space")
 	if !m.Dirty() {
 		t.Fatal("edit not dirty")
-	}
-	if press(t, m, "space").Dirty() {
-		t.Fatal("reverted edit still dirty")
 	}
 	m = press(t, m, "enter")
 	if m.Step() != install.StepReview || !strings.Contains(view(m), "Apply changes") {
 		t.Fatalf("configure review:\n%s", view(m))
 	}
 	request := testutil.ActionRequest(t, commit(t, m))
-	if !slices.Equal(request.Components, []string{"context7", "theme"}) {
+	if !slices.Equal(request.Components, []string{"context7"}) {
 		t.Fatalf("components = %v", request.Components)
 	}
 	_, command := install.New(root).Update(key("esc"))
@@ -208,18 +211,9 @@ func commit(t *testing.T, m install.Model) tea.Cmd {
 	return command
 }
 
-func choiceModel(t *testing.T, root string) install.Model {
-	t.Helper()
-	m := install.New(root)
-	if m.Step() != install.StepSetupChoice {
-		t.Fatalf("step = %v, want setup choice", m.Step())
-	}
-	return m
-}
-
 func reviewModel(t *testing.T, root string) install.Model {
 	t.Helper()
-	m := press(t, choiceModel(t, root), "enter")
+	m := install.New(root)
 	if m.Step() != install.StepReview {
 		t.Fatalf("step = %v, want review", m.Step())
 	}

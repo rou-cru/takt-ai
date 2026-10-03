@@ -2,12 +2,16 @@
 package modelpicker
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
+	"charm.land/lipgloss/v2"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/tui/keys"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
@@ -25,8 +29,8 @@ const (
 )
 
 const (
-	// assignmentListOverhead reserves the heading and spacing above assignments.
-	assignmentListOverhead = 4
+	// assignmentListOverhead reserves the position row under the table.
+	assignmentListOverhead = 1
 	// modelListOverhead reserves headings, search, and status rows above models.
 	modelListOverhead = 6
 )
@@ -53,14 +57,17 @@ type Model struct {
 	modelCursor int
 	search      string
 
-	// Available holds the discovered model options for targets without a
-	// fixed catalog; the caller runs discovery itself and fills these in.
+	// Available holds the discovered model references (provider/id); the
+	// caller runs discovery itself and fills these in, with Names mapping a
+	// reference to the display name OpenCode reports.
 	Available []string
+	Names     map[string]string
 	// LoadErr reports a failed model discovery.
 	LoadErr error
 	// Loading marks model discovery still running.
 	Loading bool
-	// Height sizes the visible list window.
+	// Height is the terminal height; the list window derives from it through
+	// the shell's own layout so the two never disagree.
 	Height int
 }
 
@@ -115,11 +122,11 @@ func (p *Model) Update(key tea.KeyPressMsg) (done, back bool) {
 	switch {
 	case p.keymap.Up.Matches(key):
 		if p.focus == ui.SectionBody {
-			p.cursor = ui.MoveCursor(p.cursor, len(p.agents), -1)
+			p.cursor = ui.MoveCursor(p.cursor, len(p.agents)+1, -1)
 		}
 	case p.keymap.Down.Matches(key):
 		if p.focus == ui.SectionBody {
-			p.cursor = ui.MoveCursor(p.cursor, len(p.agents), 1)
+			p.cursor = ui.MoveCursor(p.cursor, len(p.agents)+1, 1)
 		}
 	case p.keymap.Confirm.Matches(key):
 		if p.focus == ui.SectionFooter {
@@ -137,7 +144,10 @@ func (p *Model) Update(key tea.KeyPressMsg) (done, back bool) {
 func transitions() ui.Table[phase, Model] {
 	return ui.Table[phase, Model]{
 		{From: phaseAssignments, Event: eventOpenModels}: func(p *Model) (phase, tea.Cmd) {
-			name := p.agents[p.cursor].Name
+			name := allAgents
+			if p.cursor > 0 {
+				name = p.agents[p.cursor-1].Name
+			}
 			if name != p.selected {
 				// The filter belongs to one specialist's edit session.
 				p.search = ""
@@ -233,16 +243,47 @@ func (p *Model) Paste(text string) {
 	p.search, p.modelCursor = p.search+text, 0
 }
 
-// save records one specialist's choice and returns to the list.
+// allAgents selects the row that assigns one model to every agent at once.
+const allAgents = ""
+
+// save records the choice for the selected agent, or for every agent when the
+// All agents row is selected; individual rows stay editable afterwards.
 func (p *Model) save(assignment model.ModelAssignment) {
 	if assignment.Model == p.inheritLabel() {
 		assignment = model.ModelAssignment{}
 	}
-	if assignment.Model == "" {
-		delete(p.overrides, p.selected)
-	} else {
-		p.overrides[p.selected] = assignment
+	targets := []string{p.selected}
+	if p.selected == allAgents {
+		targets = targets[:0]
+		for _, agent := range p.agents {
+			targets = append(targets, agent.Name)
+		}
 	}
+	for _, name := range targets {
+		if assignment.Model == "" {
+			delete(p.overrides, name)
+		} else {
+			p.overrides[name] = assignment
+		}
+	}
+}
+
+// Change is one agent whose draft model differs from the installed one.
+type Change struct {
+	Agent, From, To string
+}
+
+// Pending lists the agents whose draft model differs from the installed
+// baseline, in roster order, as their user-facing labels.
+func (p Model) Pending() []Change {
+	var changes []Change
+	for _, agent := range p.agents {
+		before, after := p.base[agent.Name], p.overrides[agent.Name]
+		if before != after {
+			changes = append(changes, Change{Agent: displayAgentName(agent.Name), From: p.assignmentLabel(before), To: p.assignmentLabel(after)})
+		}
+	}
+	return changes
 }
 
 // Changes counts specialists whose draft assignment differs from the installed baseline.
@@ -261,10 +302,32 @@ func (p Model) Changes() int {
 	return count
 }
 
-// current is the selected specialist's effective draft assignment.
+// current is the selected agent's effective draft assignment; for All
+// agents, the assignment they share, or a "different models" marker.
 func (p Model) current() model.ModelAssignment {
 	// No catalog defaults: a missing override inherits the harness model.
-	return p.overrides[p.selected]
+	if p.selected != allAgents {
+		return p.overrides[p.selected]
+	}
+	shared, ok := p.sharedAssignment()
+	if !ok {
+		return model.ModelAssignment{Model: ui.TextPickerMixed}
+	}
+	return shared
+}
+
+// sharedAssignment is the assignment every agent has, if they all agree.
+func (p Model) sharedAssignment() (model.ModelAssignment, bool) {
+	if len(p.agents) == 0 {
+		return model.ModelAssignment{}, true
+	}
+	shared := p.overrides[p.agents[0].Name]
+	for _, agent := range p.agents[1:] {
+		if p.overrides[agent.Name] != shared {
+			return model.ModelAssignment{}, false
+		}
+	}
+	return shared, true
 }
 
 // inheritLabel names the choice that keeps the harness default.
@@ -275,19 +338,19 @@ func (p Model) inheritLabel() string {
 // models lists the filtered choices, keeping the harness default as a
 // choice when discovery fails.
 func (p Model) models() []string {
-	return filterModels(append([]string{p.inheritLabel()}, p.Available...), p.search)
+	return filterModels(append([]string{p.inheritLabel()}, p.Available...), p.search, p.Names)
 }
 
 // filterModels keeps the choices matching query, case-insensitively; an empty
 // query keeps every choice.
-func filterModels(all []string, query string) []string {
+func filterModels(all []string, query string, names map[string]string) []string {
 	if strings.TrimSpace(query) == "" {
 		return all
 	}
 	needle := strings.ToLower(query)
 	out := make([]string, 0, len(all))
 	for _, id := range all {
-		if strings.Contains(strings.ToLower(id), needle) {
+		if strings.Contains(strings.ToLower(id), needle) || strings.Contains(strings.ToLower(names[id]), needle) {
 			out = append(out, id)
 		}
 	}
@@ -313,7 +376,10 @@ func (p Model) Detail() string {
 	if p.phase == phaseAssignments {
 		return ""
 	}
-	return p.selected
+	if p.selected == allAgents {
+		return ui.TextPickerAllAgents
+	}
+	return displayAgentName(p.selected)
 }
 
 // Searching reports that the search field owns printable keys.
@@ -340,19 +406,37 @@ func (p Model) footer() string {
 	return ui.FooterActions([]ui.FooterAction{action}, 0, p.focus == ui.SectionFooter)
 }
 
-// assignmentsView renders the specialist list with effective assignments.
+// assignmentsView is the agent | model table, led by the All agents row;
+// a • marks agents whose model changes when applied.
 func (p Model) assignmentsView() string {
-	var b strings.Builder
-	b.WriteString(theme.Label.Render(ui.TextPickerChoose))
-	b.WriteString("\n\n")
-	rows := make([]string, len(p.agents))
-	for index, agent := range p.agents {
-		assignment := p.overrides[agent.Name]
-		rows[index] = displayAgentName(agent.Name) + ui.TextPickerSep + p.assignmentLabel(assignment)
+	width := lipgloss.Width(ui.TextPickerAllAgents)
+	for _, agent := range p.agents {
+		width = max(width, lipgloss.Width(displayAgentName(agent.Name)))
 	}
-	b.WriteString(p.options(rows, p.cursor, p.focus == ui.SectionBody, assignmentListOverhead))
-	return b.String()
+	row := func(name, marker, value string) string {
+		return name + strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + marker + value
+	}
+	allValue := ui.TextPickerMixed
+	if shared, ok := p.sharedAssignment(); ok {
+		allValue = p.assignmentLabel(shared)
+	}
+	rows := []string{row(ui.TextPickerAllAgents, unchangedMark, allValue)}
+	for _, agent := range p.agents {
+		marker := unchangedMark
+		if p.overrides[agent.Name] != p.base[agent.Name] {
+			marker = ui.TextPickerChangedMark
+		}
+		rows = append(rows, row(displayAgentName(agent.Name), marker, p.assignmentLabel(p.overrides[agent.Name])))
+	}
+	return p.options(rows, p.cursor, p.focus == ui.SectionBody, assignmentListOverhead)
 }
+
+// columnGap separates the agent column from the model column; unchangedMark
+// keeps unchanged rows aligned with the changed-row marker.
+const (
+	columnGap     = 2
+	unchangedMark = "  "
+)
 
 // displayAgentName presents internal catalog IDs as concise user-facing names.
 func displayAgentName(name string) string {
@@ -371,6 +455,15 @@ func (p Model) assignmentLabel(assignment model.ModelAssignment) string {
 	return assignment.Model
 }
 
+// loadFailReason names why the catalog is missing in the user's terms; the
+// adapter's error chain is diagnostic detail, not a reason.
+func loadFailReason(err error) string {
+	if errors.Is(err, opencodeapi.ErrBinaryMissing) {
+		return ui.TextPickerNotInstalled
+	}
+	return ui.TextPickerNoAnswer
+}
+
 // modelsView renders the model list with search, loading, and failure states.
 func (p Model) modelsView() string {
 	var b strings.Builder
@@ -381,11 +474,11 @@ func (p Model) modelsView() string {
 		return b.String()
 	}
 	if p.LoadErr != nil {
-		b.WriteString(ui.Status(ui.StateWarning, fmt.Sprintf(ui.TextPickerLoadFailFmt, ui.OpenCodeLabel, p.LoadErr.Error())))
+		b.WriteString(ui.Status(ui.StateWarning, fmt.Sprintf(ui.TextPickerLoadFailFmt, ui.OpenCodeLabel, loadFailReason(p.LoadErr))))
 		b.WriteString("\n\n")
 	}
 	if p.Searching() {
-		b.WriteString(theme.Focus.Render(theme.Icon.FieldBar) + theme.Label.Render(ui.TextPickerSearchIntro+p.search+"_"))
+		b.WriteString(theme.Focus.Render(theme.Icon.FieldBar) + theme.Label.Render(ui.TextPickerSearchIntro+p.search) + searchCursor())
 		b.WriteString("\n\n")
 	}
 	models := p.models()
@@ -393,8 +486,38 @@ func (p Model) modelsView() string {
 		b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextPickerNoMatchFmt, p.search)))
 		return b.String()
 	}
-	b.WriteString(p.options(models, p.modelCursor, true, modelListOverhead))
+	b.WriteString(p.options(p.modelRows(models), p.modelCursor, true, modelListOverhead))
 	return b.String()
+}
+
+// modelRows shows each model's display name beside its reference, names in
+// one aligned column, so a list of provider/id strings reads as models.
+func (p Model) modelRows(models []string) []string {
+	width := 0
+	for _, ref := range models {
+		width = max(width, lipgloss.Width(p.Names[ref]))
+	}
+	rows := make([]string, len(models))
+	for index, ref := range models {
+		name := p.Names[ref]
+		// Unnamed choices (inheriting the default) read on their own from the
+		// first column instead of floating in the reference column.
+		if name == "" {
+			rows[index] = ref
+			continue
+		}
+		rows[index] = name + strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + ref
+	}
+	return rows
+}
+
+// searchCursor marks where typing lands: a focus-colored block, or an
+// underscore when color is off.
+func searchCursor() string {
+	if theme.Mono() {
+		return "_"
+	}
+	return theme.ButtonFocus.Render(" ")
 }
 
 // SparseOverrides returns the draft overrides, or nil when there are none.
@@ -414,9 +537,13 @@ func (p Model) SparseOverrides() map[string]model.ModelAssignment {
 func (p Model) options(items []string, cursor int, focused bool, overhead int) string {
 	height := p.Height
 	if height <= 0 {
-		height = 14
+		height = ui.DefaultHeight
 	}
-	count := max(1, height-overhead)
+	footer := 0
+	if p.phase == phaseAssignments {
+		footer = lipgloss.Height(p.footer())
+	}
+	count := max(1, ui.ContentRows(height, footer)-overhead)
 	start := max(0, cursor-count+1)
 	end := min(len(items), start+count)
 	out := ui.Options(items[start:end], cursor-start, focused)

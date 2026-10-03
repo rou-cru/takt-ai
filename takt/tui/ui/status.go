@@ -1,8 +1,13 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
+
+	"charm.land/lipgloss/v2"
+
+	progressbar "charm.land/bubbles/v2/progress"
 
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 )
@@ -26,72 +31,84 @@ const (
 
 // Status prefixes a message with its state.
 func Status(state State, message string) string {
-	color := theme.TextPrimary
+	style := theme.StatusInfo
 	switch state {
 	case StateSuccess:
-		color = theme.SuccessFg
+		style = theme.StatusSuccess
 	case StatePartial, StateWarning:
-		color = theme.WarningFg
+		style = theme.StatusWarning
 	case StateFailed:
-		color = theme.DangerFg
+		style = theme.StatusDanger
 	}
-	// theme.Title carries the weight, so mono emits no styling at all.
-	return theme.Title.Foreground(color).Render(string(state)+":") + " " + theme.Label.Render(message)
+	return style.Render(string(state)+":") + " " + theme.Label.Render(message)
 }
 
-// Progress describes the latest operation phase and its committed artifact list.
+// Progress is a running operation's phases: the ones already finished, the
+// current one with its real counts, and the file it is on.
 type Progress struct {
+	Done      []string
 	Message   string
 	Current   string
 	Completed int
 	Total     int
-	Applied   []string
 	Frame     int
 }
 
-// Busy shows a running operation with a step marker and cancellation path.
-func Busy(operation string, cancelRequested bool, marker string, updates ...Progress) string {
-	body := theme.Title.Render(marker) + " " + Status(StatePending, operation+TextInProgressSuffix)
-	progress := Progress{}
-	if len(updates) > 0 {
-		progress = updates[0]
+// maxVisibleDone bounds the finished phases shown, so the current phase stays
+// on screen at the smallest supported size.
+const maxVisibleDone = 6
+
+// Busy shows the finished phases, the current one with its marker and, when
+// its total is known, a real progress bar and the file it is on. operation
+// names the work until the first phase is reported.
+func Busy(operation string, marker string, progress Progress) string {
+	var body strings.Builder
+	done := progress.Done
+	if hidden := len(done) - maxVisibleDone; hidden > 0 {
+		body.WriteString(theme.Caption.Render(fmt.Sprintf(TextEarlierPhasesFmt, hidden)) + "\n")
+		done = done[hidden:]
 	}
-	if progress.Message != "" {
-		body += "\n\n" + theme.Label.Render(progress.Message)
+	for _, phase := range done {
+		body.WriteString(theme.SuccessText.Render(theme.Icon.Done) + " " + theme.Secondary.Render(phase) + "\n")
 	}
-	body += "\n\n" + progressBar(progress)
+	current := cmp.Or(progress.Message, operation)
+	body.WriteString(theme.Focus.Render(marker) + " " + theme.Label.Render(current))
+	indent := strings.Repeat(" ", lipgloss.Width(marker)+1)
+	if bar := progressBar(progress); bar != "" {
+		body.WriteString("\n" + indent + bar)
+	}
 	if progress.Current != "" {
-		body += "\n" + theme.Caption.Render(progress.Current)
+		body.WriteString("\n" + indent + theme.Caption.Render(progress.Current))
 	}
-	if len(progress.Applied) > 0 {
-		body += "\n\n" + theme.Title.Render("Applied")
-		const maxVisibleApplied = 6
-		start := max(0, len(progress.Applied)-maxVisibleApplied)
-		if start > 0 {
-			body += "\n  … and " + theme.Label.Render(fmt.Sprint(start)) + " earlier"
-		}
-		for _, path := range progress.Applied[start:] {
-			body += "\n  ✓ " + theme.Label.Render(path)
-		}
-	}
-	if cancelRequested {
-		return body + "\n\n" + theme.Label.Foreground(theme.WarningFg).Render(TextCancelRequested)
-	}
-	return body + "\n\n" + theme.Caption.Render(TextCancelHint)
+	return body.String()
 }
 
-const progressTrackWidth = 16
-const progressBlockWidth = 4
-
-func progressBar(progress Progress) string {
-	filled := 0
-	if progress.Total > 0 {
-		filled = min(progressTrackWidth, progress.Completed*progressTrackWidth/progress.Total)
-	} else if theme.Animation() {
-		position := progress.Frame % (progressTrackWidth - progressBlockWidth + 1)
-		return "[" + strings.Repeat("░", position) + strings.Repeat("█", progressBlockWidth) + strings.Repeat("░", progressTrackWidth-position-progressBlockWidth) + "]"
-	} else {
-		filled = progressBlockWidth
+// BusyFooter offers cancellation while an operation runs; once requested it
+// stays visible but unavailable, saying the current phase must finish.
+func BusyFooter(cancelRequested bool) string {
+	action := FooterAction{Label: TextActionCancel}
+	if cancelRequested {
+		action.Unavailable = TextCancelRequested
 	}
-	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", progressTrackWidth-filled) + "]"
+	return FooterActions([]FooterAction{action}, 0, true)
+}
+
+// progressBarWidth fits the bar and its percentage inside the narrowest
+// panel content width (60 columns minus margins, border and padding).
+const progressBarWidth = 40
+
+// progressBar renders real progress only: without a known total the spinner
+// marker carries activity, so no bar pretends to measure anything.
+func progressBar(progress Progress) string {
+	if progress.Total <= 0 {
+		return ""
+	}
+	bar := progressbar.New(
+		progressbar.WithWidth(progressBarWidth),
+		progressbar.WithColors(theme.FocusRing),
+		progressbar.WithFillCharacters('█', '░'),
+	)
+	bar.EmptyColor = theme.BorderSubtle
+	bar.PercentageStyle = theme.Caption
+	return bar.ViewAs(float64(min(progress.Completed, progress.Total)) / float64(progress.Total))
 }

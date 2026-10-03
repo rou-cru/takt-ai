@@ -1,6 +1,6 @@
 ---
 name: takt-memory-simplify
-description: "Trigger: before using memory as simplify. What this role records, when, and what it never records."
+description: "Before using memory as simplify. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt

@@ -23,9 +23,10 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// ApplyModelOverrideChange reassigns one sub-agent's model starting from the
-// real installed configuration, redeploying only the artifacts it changes.
-func ApplyModelOverrideChange(ctx context.Context, rootDir string, subAgentID string, assignment model.ModelAssignment, runtime ProviderRuntime) (DeploymentResult, error) {
+// ApplyModelOverrideChanges reassigns every changed sub-agent in one
+// deployment, starting from the real installed configuration and redeploying
+// only the artifacts the changes touch. An empty Model clears an override.
+func ApplyModelOverrideChanges(ctx context.Context, rootDir string, changes map[string]model.ModelAssignment, runtime ProviderRuntime) (DeploymentResult, error) {
 	request, err := LoadInstalledConfig(rootDir)
 	if err != nil {
 		return DeploymentResult{}, err
@@ -35,7 +36,7 @@ func ApplyModelOverrideChange(ctx context.Context, rootDir string, subAgentID st
 		return DeploymentResult{}, err
 	}
 
-	request.OpenCodeModelOverrides = mergedOverrides(request.OpenCodeModelOverrides, subAgentID, assignment)
+	request.OpenCodeModelOverrides = mergedOverrides(request.OpenCodeModelOverrides, changes)
 
 	after, _, err := BuildTargetPlans(request)
 	if err != nil {
@@ -71,14 +72,16 @@ func unchangedPaths(paths []string, changed map[string]bool) []string {
 	return preserve
 }
 
-// mergedOverrides copies existing and applies one change: set the override, or clear it when Model is empty.
-func mergedOverrides(existing map[string]model.ModelAssignment, subAgentID string, assignment model.ModelAssignment) map[string]model.ModelAssignment {
-	merged := make(map[string]model.ModelAssignment, len(existing)+1)
+// mergedOverrides copies existing and applies changes: set each override, or clear it when Model is empty.
+func mergedOverrides(existing, changes map[string]model.ModelAssignment) map[string]model.ModelAssignment {
+	merged := make(map[string]model.ModelAssignment, len(existing)+len(changes))
 	maps.Copy(merged, existing)
-	if assignment.Model == "" {
-		delete(merged, subAgentID)
-	} else {
-		merged[subAgentID] = assignment
+	for subAgentID, assignment := range changes {
+		if assignment.Model == "" {
+			delete(merged, subAgentID)
+		} else {
+			merged[subAgentID] = assignment
+		}
 	}
 	return merged
 }

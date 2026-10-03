@@ -172,9 +172,21 @@ func summarize(checks []CheckResult) Report {
 	for _, check := range checks {
 		report.Ready = report.Ready && check.State == Verified
 	}
-	report.FinalNote = "Functional availability is not verified. Review the capability checks; installation success is a separate result."
+	// Only a ready report needs a note: it states the scope the checks do not
+	// cover. Otherwise the verdict line and the failed checks say it all.
 	if report.Ready {
-		report.FinalNote = "Managed MCP connections and orchestrator selection verified. LLM execution and Takt runtime enforcement were not tested."
+		report.FinalNote = "LLM execution and Takt runtime enforcement were not tested."
 	}
 	return report
+}
+
+// Failed reports whether any capability failed its check. A check that could
+// not run (NotVerifiable) leaves its capability unconfirmed, not failed.
+func (r Report) Failed() bool {
+	for _, check := range r.Checks {
+		if check.State == NotVerified {
+			return true
+		}
+	}
+	return false
 }

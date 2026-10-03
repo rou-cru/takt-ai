@@ -16,9 +16,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
-// defaultDriftHeight is the fallback viewport used when checking checklist overflow.
-const defaultDriftHeight = 24
-
 // State identifies the visible drift step.
 type State int
 
@@ -207,11 +204,19 @@ func transitions() ui.Table[State, Model] {
 // applyTransition applies one table rule, resetting the footer action and
 // scroll on a screen change.
 func (m Model) applyTransition(event string) (tea.Model, tea.Cmd) {
+	previous := m.state
 	next, cmd, _ := transitions().Apply(&m, m.state, event)
 	if next != m.state {
-		m.action, m.scroll = 0, 0
+		m.scroll = 0
 	}
 	m.state = next
+	if next != previous {
+		m.action = 0
+		if next == StateReview {
+			// The destructive restore is never the default action.
+			m.action = slices.Index(m.actions(), actionReselect)
+		}
+	}
 	return m, cmd
 }
 
@@ -339,7 +344,7 @@ func (m Model) Title() string {
 // View renders the active drift step.
 func (m Model) View() tea.View {
 	if m.run.Busy() {
-		return tea.NewView(ui.Shell(ui.Frame{Header: m.Title(), Body: ui.Busy(ui.TextDriftBusy, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView()), Width: m.width, Height: m.height}))
+		return tea.NewView(ui.Shell(ui.Frame{Header: m.Title(), Body: ui.Busy(ui.TextDriftBusy, m.run.SpinView(), m.run.ProgressView()), Footer: ui.BusyFooter(m.run.CancelRequested), Width: m.width, Height: m.height}))
 	}
 	switch m.state {
 	case StateNotInstalled:
@@ -411,12 +416,7 @@ func (m Model) selectView() string {
 	if len(m.selected) == 0 {
 		body += "\n\n" + theme.Label.Render(ui.TextDriftSelectStar)
 	}
-
-	footer := ""
-	if strings.Count(body, "\n")+1 > ui.BodyHeight(max(m.height, defaultDriftHeight)) {
-		footer = theme.Caption.Render(fmt.Sprintf(ui.TextPickerPosFmt, m.cursor+1, len(items)))
-	}
-	return ui.Shell(ui.Frame{Header: m.Title(), Body: body, Footer: footer, Width: m.width, Height: m.height, Scroll: m.scroll})
+	return ui.Shell(ui.Frame{Header: m.Title(), Body: body, Width: m.width, Height: m.height, Scroll: m.scroll})
 }
 
 // review is the commitment point: scope, restored files, and preserved files.
@@ -559,11 +559,11 @@ func consequence(reason string) string {
 // row renders one drift entry with a textual label, path, and explanation.
 func row(conflict setup.ConflictEntry) string {
 	label, severity, explanation := setup.DriftLabel(conflict.Reason)
-	color := theme.WarningFg
+	style := theme.WarningText
 	if severity == "danger" {
-		color = theme.DangerFg
+		style = theme.DangerText
 	}
-	return theme.Label.Foreground(color).Render("["+label+"]") + " " + theme.Label.Render(conflict.Path+" - "+explanation)
+	return style.Render("["+label+"]") + " " + theme.Label.Render(conflict.Path+" - "+explanation)
 }
 
 // versionUnavailable is why restoring is blocked when the installed version

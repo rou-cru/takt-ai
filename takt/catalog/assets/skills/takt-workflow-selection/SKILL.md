@@ -21,7 +21,7 @@ instruction conflicts with what the scenario needs, this table does not resolve 
 | --- | --- | --- |
 | Planning | `takt-bounded-planning` | The invariants still needed are few and low-risk enough for the orchestrator to settle directly, or the user directly and explicitly asked for no specialist involvement in planning. |
 | Planning | `takt-invariant-planning` | Two or more planning lanes are genuinely needed, or what's missing needs a specialist's judgment rather than a fact the orchestrator can establish itself. |
-| Implementation | `takt-bounded-workflow` | The work is one bounded, independently deliverable unit with no cross-file integration risk, or the user directly and explicitly asked for no delegation. |
+| Implementation | `takt-bounded-workflow` | The user directly and explicitly asked for no delegation. |
 | Implementation | `takt-sdd-workflow` | Implementation units must integrate into one delivered result, or delegation would exceed four independently deliverable units in one concurrent round. |
 
 **A new route extends this table, never its logic.** A future workflow framework, for

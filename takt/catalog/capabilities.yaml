@@ -9,39 +9,26 @@ components:
     core: false
     selectable: true
     deps: []
-  - id: theme
-    purpose: Takt theme — terminal theme for the harness
-    core: false
-    selectable: true
-    deps: []
-  # opencode-takt-logo has no per-selection adapter case: its artifacts are
-  # installed unconditionally for OpenCode regardless of this selection
-  # (see openCodeComponentArtifacts).
-  - id: opencode-takt-logo
-    purpose: Takt branding — OpenCode logo plugin
-    core: false
-    selectable: true
-    deps: []
   # Reserved, non-omittable core: always installed, never user-selectable.
   - id: engram
-    purpose: Engram memory/context graph runtime wiring.
+    purpose: Engram — persistent memory for agents
     core: true
     selectable: false
     deps: []
   - id: skills
-    purpose: Skill system deployed unconditionally by every install and sync.
+    purpose: Takt skills — workflows and conventions agents load on demand
     core: true
     selectable: false
     deps: []
   - id: specialists
-    purpose: Specialist sub-agent roster rendered from the semantic catalog.
+    purpose: Takt specialists — the orchestrator and its specialist agents
     core: true
     selectable: false
     deps: []
   # Non-omittable: acquired via npm and wired by Takt with an absolute path
   # (takt/codegraph), like Engram; not a rendered artifact.
   - id: codegraph
-    purpose: Codegraph — tree-sitter based codebase exploration for agents (PR-SET-2)
+    purpose: CodeGraph — codebase navigation for agents
     core: true
     selectable: false
     deps: []

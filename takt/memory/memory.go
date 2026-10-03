@@ -72,7 +72,8 @@ type RecordResult struct {
 	Deduplicated bool  `json:"deduplicated"`
 }
 
-// ContinueRequest resumes an earlier session so later memories stay anchored to it.
+// ContinueRequest declares the earlier session this one continues; an empty
+// PreviousSession withdraws the declaration.
 type ContinueRequest struct {
 	Author          string `json:"author"`
 	Session         string `json:"session"`
@@ -239,7 +240,7 @@ func lock(cfg Config, session string) (*openSession, error) {
 }
 
 func (s *openSession) resolveProject(ctx context.Context, directory string) string {
-	if s.index != nil {
+	if s.index != nil && s.index.Project != "" {
 		return s.index.Project
 	}
 	if s.project == "" {
@@ -248,15 +249,25 @@ func (s *openSession) resolveProject(ctx context.Context, directory string) stri
 	return s.project
 }
 
-// start lazily creates the Engram session and its start anchor; callers run ensureServe first.
+// start lazily creates the Engram session and its start anchor, then fixes any
+// declared continuity; callers run ensureServe first.
 func (s *openSession) start(ctx context.Context, cfg Config, session, directory string) error {
-	if s.index != nil && s.index.StartAnchor != 0 {
-		return nil
+	if s.index == nil || s.index.StartAnchor == 0 {
+		if err := s.anchorStart(ctx, cfg, session, directory); err != nil {
+			return err
+		}
 	}
+	return s.fixContinuity(ctx, cfg)
+}
+
+func (s *openSession) anchorStart(ctx context.Context, cfg Config, session, directory string) error {
 	l := s.index
 	if l == nil {
-		l = &sessionIndex{Session: session, Directory: directory, Project: s.resolveProject(ctx, directory), Entries: []sessionIndexEntry{}}
+		l = &sessionIndex{Session: session, Directory: directory, Entries: []sessionIndexEntry{}}
 		s.index = l
+	}
+	if l.Project == "" {
+		l.Project = s.resolveProject(ctx, directory)
 	}
 	body := map[string]string{"id": session, "project": l.Project, "directory": l.Directory}
 	if _, err := s.client.call(ctx, http.MethodPost, "/sessions", body, nil); err != nil {
@@ -275,6 +286,25 @@ func (s *openSession) start(ctx context.Context, cfg Config, session, directory 
 		return err
 	}
 	l.StartAnchor = id
+	return saveSessionIndex(cfg.Root, l)
+}
+
+// fixContinuity links the start anchor to the declared previous session. It
+// runs on the session's first entry: reaching it without the user objecting is
+// what confirms the continuity, so the declaration stays revocable until then.
+func (s *openSession) fixContinuity(ctx context.Context, cfg Config) error {
+	l := s.index
+	if l.PendingContinues == "" {
+		return nil
+	}
+	prev, err := loadPreviousSessionIndex(cfg, l.PendingContinues)
+	if err != nil {
+		return err
+	}
+	if err := s.client.link(ctx, l.StartAnchor, prev.EndAnchor, "related", "takt:continues", harnessTool); err != nil {
+		return err
+	}
+	l.Continues, l.PendingContinues = l.PendingContinues, ""
 	return saveSessionIndex(cfg.Root, l)
 }
 
@@ -538,38 +568,38 @@ func renderEntry(req RecordRequest) string {
 		req.Author, req.Nature, tierOf(req.Scope), authority, req.Session, relation, req.Content)
 }
 
-// Continue links the orchestrator's current session to a previous one so later
-// memories stay anchored to that lineage.
+// Continue declares the previous session the current one continues; an empty
+// PreviousSession withdraws the declaration. The link is fixed by start on the
+// session's first entry, so a wrong declaration never becomes permanent. The
+// previous session may belong to any project: one objective can span several.
 func Continue(ctx context.Context, cfg Config, req ContinueRequest) (err error) {
 	if err := validateContinueRequest(req); err != nil {
 		return err
 	}
-	prev, err := loadPreviousSessionIndex(cfg, req)
-	if err != nil {
-		return err
+	if req.PreviousSession != "" {
+		if _, err := loadPreviousSessionIndex(cfg, req.PreviousSession); err != nil {
+			return err
+		}
 	}
 	s, err := lock(cfg, req.Session)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, s.lock.Close()) }()
-	if s.index != nil && s.index.Continues != "" {
-		return reject("this session already continues %q", s.index.Continues)
-	}
-	if err := s.client.ensureServe(ctx); err != nil {
-		return err
-	}
-	if project := s.resolveProject(ctx, req.Directory); prev.Project != project {
-		return reject("previous session %q belongs to project %q, not %q", req.PreviousSession, prev.Project, project)
-	}
-	if err := s.start(ctx, cfg, req.Session, req.Directory); err != nil {
-		return err
-	}
 	l := s.index
-	if err := s.client.link(ctx, l.StartAnchor, prev.EndAnchor, "related", "takt:continues", harnessTool); err != nil {
-		return err
+	if l != nil && l.Continues != "" {
+		return reject("this session already continues %q", l.Continues)
 	}
-	l.Continues = req.PreviousSession
+	if l != nil && l.StartAnchor != 0 {
+		return reject("this session already recorded memory; continuity is declared before its first entry")
+	}
+	if l == nil {
+		if req.PreviousSession == "" {
+			return nil
+		}
+		l = &sessionIndex{Session: req.Session, Directory: req.Directory, Entries: []sessionIndexEntry{}}
+	}
+	l.PendingContinues = req.PreviousSession
 	return saveSessionIndex(cfg.Root, l)
 }
 
@@ -580,6 +610,9 @@ func validateContinueRequest(req ContinueRequest) error {
 	if err := requireSession(req.Session, req.Directory); err != nil {
 		return err
 	}
+	if req.PreviousSession == "" {
+		return nil
+	}
 	if err := requireSession(req.PreviousSession, req.Directory); err != nil {
 		return err
 	}
@@ -589,13 +622,13 @@ func validateContinueRequest(req ContinueRequest) error {
 	return nil
 }
 
-func loadPreviousSessionIndex(cfg Config, req ContinueRequest) (*sessionIndex, error) {
-	prev, err := loadSessionIndex(cfg.Root, req.PreviousSession)
+func loadPreviousSessionIndex(cfg Config, previous string) (*sessionIndex, error) {
+	prev, err := loadSessionIndex(cfg.Root, previous)
 	if err != nil {
 		return nil, err
 	}
 	if prev == nil || prev.EndAnchor == 0 {
-		return nil, reject("previous session %q has no closed record to continue from", req.PreviousSession)
+		return nil, reject("previous session %q has no closed record to continue from", previous)
 	}
 	return prev, nil
 }

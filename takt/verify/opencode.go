@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
@@ -73,16 +74,23 @@ func nativeSkillsCheck(ctx context.Context, client *opencodeapi.Client) CheckRes
 	for _, entry := range actual {
 		seen[entry.ID] = true
 	}
-	var missing []string
+	// LoadSkills yields one definition per file; a skill is its distinct name.
+	names := make([]string, 0, len(expected))
 	for _, entry := range expected {
-		if !seen[entry.Name] {
-			missing = append(missing, entry.Name)
+		names = append(names, entry.Name)
+	}
+	slices.Sort(names)
+	names = slices.Compact(names)
+	var missing []string
+	for _, name := range names {
+		if !seen[name] {
+			missing = append(missing, name)
 		}
 	}
 	if len(missing) > 0 {
 		return CheckResult{id, NotVerified, "Native OpenCode is missing Takt skills: " + strings.Join(missing, ", ")}
 	}
-	return CheckResult{id, Verified, fmt.Sprintf("Native OpenCode discovered all %d Takt skills.", len(expected))}
+	return CheckResult{id, Verified, fmt.Sprintf("Native OpenCode discovered all %d Takt skills.", len(names))}
 }
 
 func nativePluginsCheck(ctx context.Context, client *opencodeapi.Client) CheckResult {

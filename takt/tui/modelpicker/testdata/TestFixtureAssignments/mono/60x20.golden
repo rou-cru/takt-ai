@@ -1,0 +1,20 @@
+  Takt AI                                           Agents  
+                                                            
+  ┌──────────────────────────────────────────────────────┐  
+  │   All agents          different models               │  
+  │   takt                openai/gpt-6-luna              │  
+  │ > analyst             openai/gpt-6-luna              │  
+  │   architect           inherits OpenCode default      │  
+  │   dev               • opencode-go/hy4-preview        │  
+  │   fix                 inherits OpenCode default      │  
+  │   judge-a             inherits OpenCode default      │  
+  │   judge-b             inherits OpenCode default      │  
+  │   pm                  inherits OpenCode default      │  
+  │   product-designer    inherits OpenCode default      │  
+  │   simplify            inherits OpenCode default      │  
+  │   spec                inherits OpenCode default      │  
+  │ 3 / 14                                               │  
+  └──────────────────────────────────────────────────────┘  
+                                                            
+                       Apply changes                        
+                                                            

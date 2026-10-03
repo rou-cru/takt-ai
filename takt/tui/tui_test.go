@@ -22,10 +22,8 @@ func TestFreshMenuHidesUnavailableOperations(t *testing.T) {
 func TestActionResultAndNavigation(t *testing.T) {
 	app := tui.New(t.TempDir())
 	app, _ = update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
-	var cmd tea.Cmd
-	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: tea.KeyEnter}} {
-		app, cmd = update(app, key)
-	}
+	// The install flow opens on review with Install focused.
+	app, cmd := update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	request := cmd().(runtime.ActionRequest)
 	app, cmd = update(app, request)
 	if cmd == nil {
@@ -65,10 +63,8 @@ func TestChildReceivesInitialSizeAndResultHomeReallyReturns(t *testing.T) {
 		}
 	}
 	assertSize()
-	var cmd tea.Cmd
-	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: tea.KeyEnter}} {
-		app, cmd = update(app, key)
-	}
+	// The install flow opens on review with Install focused.
+	app, cmd := update(app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	request := cmd().(runtime.ActionRequest)
 	app, _ = update(app, request)
 	app, _ = update(app, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionInstall}})
