@@ -48,8 +48,6 @@ const (
 	doctorCheckCapacity = 3
 	// doctorHTTPTimeout bounds each remote health probe.
 	doctorHTTPTimeout = 3 * time.Second
-	// doctorRuleWidth is the separator width used by the human-readable report.
-	doctorRuleWidth = 39
 )
 
 // CheckStatus is the outcome of a single doctor check.
@@ -680,8 +678,7 @@ var checkIcons = map[CheckStatus]string{
 // and overall status.
 func render(w io.Writer, report DoctorReport) error {
 	var out strings.Builder
-	out.WriteString("takt-ai doctor — system health check\n")
-	out.WriteString(strings.Repeat("=", doctorRuleWidth) + "\n\n")
+	out.WriteString("Takt AI doctor\n\n")
 
 	var passed, failed, warnings int
 	for _, check := range report.Checks {
@@ -708,6 +705,15 @@ func render(w io.Writer, report DoctorReport) error {
 	}
 	fmt.Fprintf(&out, "Status:  %s\n", status)
 
-	_, err := io.WriteString(w, out.String())
-	return err
+	if _, err := io.WriteString(w, out.String()); err != nil {
+		return err
+	}
+	if failed > 0 {
+		return ErrUnhealthy
+	}
+	return nil
 }
+
+// ErrUnhealthy reports that at least one check failed, so scripts can act on
+// the exit status; the report itself was already written.
+var ErrUnhealthy = errors.New("doctor: unhealthy")

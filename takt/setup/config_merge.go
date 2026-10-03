@@ -17,12 +17,14 @@ package setup
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 )
 
@@ -36,6 +38,50 @@ import (
 // the only merge format.
 func isMergeableConfig(path string) bool {
 	return strings.HasSuffix(path, ".json")
+}
+
+// carryInjectedMCPServers copies the injected MCP servers already on disk into
+// a rendered opencode.json artifact. The rendered content never holds them, so
+// without this any partial redeploy (e.g. a model reassignment) would silently
+// drop memory and codegraph until the next full install re-injected them.
+func carryInjectedMCPServers(rootDir string, artifact Artifact) (Artifact, error) {
+	if artifact.Path != opencode.ConfigPath() {
+		return artifact, nil
+	}
+	existing, err := os.ReadFile(filepath.Join(rootDir, filepath.FromSlash(artifact.Path)))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return artifact, nil
+		}
+		return Artifact{}, fmt.Errorf("read existing config %q: %w", artifact.Path, err)
+	}
+	var current struct {
+		MCP struct {
+			Servers map[string]json.RawMessage `json:"servers"`
+		} `json:"mcp"`
+	}
+	if json.Unmarshal(existing, &current) != nil {
+		return artifact, nil
+	}
+	carried := map[string]any{}
+	for _, name := range injectedMCPServers {
+		if server, ok := current.MCP.Servers[name]; ok {
+			carried[name] = server
+		}
+	}
+	if len(carried) == 0 {
+		return artifact, nil
+	}
+	overlay, err := json.Marshal(map[string]any{"mcp": map[string]any{"servers": carried}})
+	if err != nil {
+		return Artifact{}, err
+	}
+	merged, err := filemerge.MergeJSONObjects(artifact.Content, overlay)
+	if err != nil {
+		return Artifact{}, fmt.Errorf("carry injected MCP servers into %q: %w", artifact.Path, err)
+	}
+	artifact.Content = merged
+	return artifact, nil
 }
 
 // mergePreexistingConfig returns artifact with its content merged over an

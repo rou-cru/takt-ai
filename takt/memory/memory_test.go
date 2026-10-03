@@ -650,8 +650,20 @@ func TestContinue(t *testing.T) {
 		t.Fatal(err)
 	}
 	l, _ := loadSessionIndex(cfg.Root, "ses_2")
-	if l.Continues != "ses_1" {
-		t.Fatalf("continues = %q", l.Continues)
+	if l.PendingContinues != "ses_1" || l.Continues != "" || l.StartAnchor != 0 {
+		t.Fatalf("declaration = %+v, want pending ses_1 and no anchor", l)
+	}
+
+	next := base()
+	next.Session = "ses_2"
+	next.Directory = dir
+	next.Title = "Second session entry"
+	if _, err := Record(ctx, cfg, next); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = loadSessionIndex(cfg.Root, "ses_2")
+	if l.Continues != "ses_1" || l.PendingContinues != "" {
+		t.Fatalf("after first entry = %+v, want continues ses_1", l)
 	}
 	want := []fakeEdge{{l.StartAnchor, prev.EndAnchorID, "related", "takt:continues", "takt-harness"}}
 	if got := f.edgesFrom(l.StartAnchor); fmt.Sprint(got) != fmt.Sprint(want) {
@@ -665,6 +677,69 @@ func TestContinue(t *testing.T) {
 	}
 	if c := f.byID(res.EndAnchorID).Content; !strings.Contains(c, "**Continues**: ses_1\n") {
 		t.Fatalf("close content:\n%s", c)
+	}
+}
+
+func TestContinueDeclarationIsRevocableUntilFirstEntry(t *testing.T) {
+	f, cfg := newFake(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	for _, prev := range []string{"ses_a", "ses_b"} {
+		writeIndex(t, cfg.Root, prev, `{"session":"`+prev+`","project":"elsewhere","start_anchor":7,"end_anchor":8,"entries":[]}`)
+	}
+	cont := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_a"}
+	for _, previous := range []string{"ses_a", "ses_b", "", "ses_b"} {
+		cont.PreviousSession = previous
+		if err := Continue(ctx, cfg, cont); err != nil {
+			t.Fatalf("declare %q: %v", previous, err)
+		}
+	}
+	if len(f.edges) != 0 || len(f.obs) != 0 {
+		t.Fatalf("a declaration wrote to engram: edges=%v obs=%d", f.edges, len(f.obs))
+	}
+
+	res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, _ := loadSessionIndex(cfg.Root, "ses_2")
+	if l.Continues != "ses_b" {
+		t.Fatalf("continues = %q, want the last declaration", l.Continues)
+	}
+	if got := f.edgesFrom(l.StartAnchor); len(got) != 1 || got[0].B != 8 {
+		t.Fatalf("edges = %v, want one link to the other project's end anchor", got)
+	}
+	if c := f.byID(res.EndAnchorID).Content; !strings.Contains(c, "**Continues**: ses_b\n") {
+		t.Fatalf("close content:\n%s", c)
+	}
+}
+
+func TestContinueWithdrawnLeavesNoLink(t *testing.T) {
+	f, cfg := newFake(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	writeIndex(t, cfg.Root, "ses_1", `{"session":"ses_1","project":"demo","start_anchor":7,"end_anchor":8,"entries":[]}`)
+	cont := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir}
+	if err := Continue(ctx, cfg, cont); err != nil { // withdrawing nothing is a no-op
+		t.Fatal(err)
+	}
+	cont.PreviousSession = "ses_1"
+	if err := Continue(ctx, cfg, cont); err != nil {
+		t.Fatal(err)
+	}
+	cont.PreviousSession = ""
+	if err := Continue(ctx, cfg, cont); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir, Fallback: true}); err != nil || res != (CloseResult{}) {
+		t.Fatalf("fallback close of a declaration-only session = %+v, %v", res, err)
+	}
+	if _, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := loadSessionIndex(cfg.Root, "ses_2")
+	if l.Continues != "" || len(f.edgesFrom(l.StartAnchor)) != 0 {
+		t.Fatalf("withdrawn declaration linked: %+v", l)
 	}
 }
 

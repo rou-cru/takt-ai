@@ -33,13 +33,41 @@ import (
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui"
+	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
 
 const cancelledExitStatus = 130
 
-// usage lists valid commands so users can recover after a mistake.
-const usage = "usage: takt-ai version | doctor | setup install|sync|uninstall|image [--root <dir>] [--input <json-file-or->] [--plan-only] [--yes] [--json] | setup default-request | memory record|continue|close < request.json | codegraph ensure-index | restore [--root <dir>] | vfs journal|recover|bind|op|verify|consolidate|resolve --workspace <dir> --state <private-dir> | obs ingest --workspace <dir> < event.json | gc plan|findings --workspace <dir> --state <private-dir> --session <id> --cycle <id> --mandate <class>"
+// usage is the public help: the commands a person runs, grouped. Commands
+// Takt's OpenCode plugins call (memory, vfs, obs, gc, dispatch, dag,
+// codegraph, setup image) are internal and documented with their callers.
+const usage = `Takt AI — meta harness for agent teams, on top of OpenCode v2.
+
+Usage:
+  takt-ai                  open the interactive setup
+  takt-ai <command> [flags]
+
+Commands:
+  setup install|sync|uninstall   apply Takt to OpenCode without the TUI
+      --plan-only                show what would change; change nothing
+      --yes                      apply the change (required unless --plan-only)
+      --input FILE               setup request JSON, or - for stdin
+                                 (default on a terminal: the recommended setup)
+      --root DIR                 home directory to act on (default: $HOME)
+      --json                     machine-readable output
+  setup default-request          print the recommended setup request
+  restore [--root DIR]           put back the files Takt replaced
+  doctor                         check tools, configuration and capabilities
+  version                        print the version
+  help                           show this help`
+
+// usageExitStatus is the exit status for a command line that names no command.
+const usageExitStatus = 2
+
+// publicCommands are the commands a person runs; anything else that is not an
+// internal command is a usage mistake.
+var publicCommands = map[string]bool{"setup": true, "restore": true, "doctor": true, "version": true, "--version": true, "-v": true}
 
 // version holds the release version so users can report what they run.
 var version = "dev"
@@ -48,6 +76,13 @@ var version = "dev"
 var runTUI = tui.Run
 
 // isInteractive checks both streams so the TUI never starts where no one can see it.
+// isTerminal reports whether r is a terminal, so a missing --input on a
+// terminal means the recommended setup rather than a request to read.
+var isTerminal = func(r io.Reader) bool {
+	file, ok := r.(*os.File)
+	return ok && term.IsTerminal(file.Fd())
+}
+
 var isInteractive = func(in io.Reader, out io.Writer) bool {
 	inFile, inOK := in.(*os.File)
 	outFile, outOK := out.(*os.File)
@@ -133,11 +168,20 @@ func dispatchInteractive(stdin io.Reader, stdout io.Writer) error {
 
 func dispatchCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	switch args[0] {
+	case "help", "--help", "-h":
+		_, err := fmt.Fprintln(stdout, usage)
+		return err
 	case "version", "--version", "-v":
 		_, err := fmt.Fprintf(stdout, "takt-ai %s\n", resolveVersion(version))
 		return err
 	case "doctor":
-		return doctor.Run(stdout)
+		if err := doctor.Run(stdout); errors.Is(err, doctor.ErrUnhealthy) {
+			// The report already says what failed; the status lets scripts act.
+			return exitCode(1)
+		} else if err != nil {
+			return err
+		}
+		return nil
 	case "restore":
 		return runRestore(args[1:], stdout)
 	case "vfs":
@@ -155,6 +199,12 @@ func dispatchCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) e
 	case "codegraph":
 		return runCodegraph(args[1:])
 	}
+	if !publicCommands[args[0]] {
+		if _, err := fmt.Fprintf(stderr, "unknown command %q; run `takt-ai help` to see the commands\n", args[0]); err != nil {
+			return err
+		}
+		return exitCode(usageExitStatus)
+	}
 	return runSetup(args, stdin, stdout, stderr)
 }
 
@@ -164,6 +214,15 @@ func runSetup(args []string, stdin io.Reader, stdout, stderr io.Writer) (err err
 	if err != nil {
 		return err
 	}
+	// Run by hand without --input, stdin is the terminal, not a request: the
+	// recommended setup is what a person means.
+	if invocation.inputPath == "-" && !invocation.inputSet && isTerminal(stdin) {
+		request, err := setup.DefaultPlanRequest()
+		if err != nil {
+			return err
+		}
+		return continueSetup(invocation, request, stdout, stderr)
+	}
 	input, closeInput, err := openRequestInput(invocation.inputPath, stdin)
 	if err != nil {
 		return fmt.Errorf("open input: %w", err)
@@ -171,7 +230,7 @@ func runSetup(args []string, stdin io.Reader, stdout, stderr io.Writer) (err err
 	defer func() { err = errors.Join(err, closeInput()) }()
 	request, err := decodeStrict[setup.PlanRequest](input)
 	if err != nil {
-		return fmt.Errorf("invalid input: %w", err)
+		return fmt.Errorf("invalid setup request: %w (pass --input FILE, or omit it on a terminal for the recommended setup)", err)
 	}
 	return continueSetup(invocation, request, stdout, stderr)
 }
@@ -218,7 +277,16 @@ func planSetup(invocation setupInvocation, request setup.PlanRequest, stdout io.
 	if err != nil {
 		return err
 	}
-	return emit(invocation, stdout, plan, func() error { return renderPlanText(stdout, invocation.command, plan) })
+	return emit(invocation, stdout, plan, func() error {
+		if preview, ok := plan.(lifecycle.InstallPreview); ok {
+			summary, err := runtime.Summarize(invocation.root, request, preview)
+			if err != nil {
+				return err
+			}
+			return renderInstallPlanText(stdout, invocation.command, preview, summary)
+		}
+		return renderPlanText(stdout, invocation.command, plan)
+	})
 }
 
 // previewSetup plans the operation without touching the environment.
@@ -337,9 +405,11 @@ type setupInvocation struct {
 	command   string
 	root      string
 	inputPath string
-	planOnly  bool
-	yes       bool
-	json      bool
+	// inputSet records an explicit --input, so `--input -` still reads stdin.
+	inputSet bool
+	planOnly bool
+	yes      bool
+	json     bool
 }
 
 // parseSetupInvocation validates setup flags so bad input fails before touching files.
@@ -367,10 +437,13 @@ func parseSetupInvocation(args []string) (setupInvocation, error) {
 	if err != nil {
 		return setupInvocation{}, err
 	}
+	inputSet := false
+	flags.Visit(func(f *flag.Flag) { inputSet = inputSet || f.Name == "input" })
 	return setupInvocation{
 		command:   args[1],
 		root:      resolvedRoot,
 		inputPath: *inputPath,
+		inputSet:  inputSet,
 		planOnly:  *planOnly,
 		yes:       *yes,
 		json:      *jsonOutput,

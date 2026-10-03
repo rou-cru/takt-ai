@@ -302,13 +302,14 @@ func TestContinueRejections(t *testing.T) {
 		})
 	}
 
-	t.Run("previous session in another project", func(t *testing.T) {
-		writeIndex(t, cfg.Root, "ses_1",
-			`{"session":"ses_1","project":"`+otherProject+`","start_anchor":7,"end_anchor":8,"entries":[]}`)
+	t.Run("session already recorded memory", func(t *testing.T) {
+		writeIndex(t, cfg.Root, "ses_1", `{"session":"ses_1","project":"demo","start_anchor":7,"end_anchor":8,"entries":[]}`)
+		writeIndex(t, cfg.Root, "ses_2", `{"session":"ses_2","project":"demo","start_anchor":9,"entries":[]}`)
+		defer func() { _ = os.Remove(sessionIndexPath(cfg.Root, "ses_2")) }()
 		err := Continue(ctx, cfg, request)
 		wantValidation(t, err)
-		if !strings.Contains(err.Error(), "belongs to project") {
-			t.Errorf("error = %v, want the project mismatch", err)
+		if !strings.Contains(err.Error(), "before its first entry") {
+			t.Errorf("error = %v, want the late declaration", err)
 		}
 		if len(f.sessions) != 0 {
 			t.Errorf("a rejected continue opened sessions: %v", f.sessions)
@@ -323,7 +324,7 @@ func TestContinueRejections(t *testing.T) {
 	})
 }
 
-func TestContinueSurfacesEngramFailures(t *testing.T) {
+func TestContinuityFixSurfacesEngramFailures(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	request := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_1"}
@@ -333,20 +334,19 @@ func TestContinueSurfacesEngramFailures(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			cfg := failingEngram(t, route)
 			writeIndex(t, cfg.Root, "ses_1", prev)
-			if err := Continue(ctx, cfg, request); err == nil || !strings.Contains(err.Error(), "status 500") {
-				t.Fatalf("Continue() error = %v, want the engram 500", err)
+			if err := Continue(ctx, cfg, request); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
+			if err == nil || !strings.Contains(err.Error(), "status 500") {
+				t.Fatalf("Close() error = %v, want the engram 500", err)
+			}
+			l, _ := loadSessionIndex(cfg.Root, "ses_2")
+			if l.Continues != "" {
+				t.Fatalf("a failed link was marked as fixed: %+v", l)
 			}
 		})
 	}
-
-	t.Run("engram unreachable", func(t *testing.T) {
-		_, cfg := newFake(t)
-		writeIndex(t, cfg.Root, "ses_1", prev)
-		cfg.EngramURL = unusedPort
-		if err := Continue(ctx, cfg, request); err == nil {
-			t.Fatal("Continue() with no engram error = nil")
-		}
-	})
 }
 
 func TestCloseSurfacesEngramFailures(t *testing.T) {

@@ -45,18 +45,22 @@ type wireModel struct {
 	} `json:"cost"`
 }
 
-// toModel converts and validates. Only Ref is carried into Model; the rest of
-// the payload is still validated here so a malformed entry is rejected even
-// though its value is never stored.
+// toModel converts and validates. Only Ref and Name are carried into Model;
+// the rest of the payload is still validated here so a malformed entry is
+// rejected even though its value is never stored.
 func (w wireModel) toModel() (Model, error) {
-	if w.ProviderID == "" || w.ModelID == "" {
-		return Model{}, fmt.Errorf("model %q is missing providerID or modelID", w.ID)
+	if w.ProviderID == "" || w.ID == "" {
+		return Model{}, fmt.Errorf("model %q is missing providerID or id", w.ID)
 	}
 	if w.Limit.Context <= 0 || w.Limit.Output <= 0 {
 		return Model{}, fmt.Errorf("model %s/%s has non-positive limits (context=%d output=%d)",
 			w.ProviderID, w.ModelID, w.Limit.Context, w.Limit.Output)
 	}
-	return Model{Ref: ModelRef{ProviderID: w.ProviderID, ModelID: w.ModelID}}, nil
+	// The ref uses id, the model's key in the provider config, not modelID,
+	// the upstream API name: variants such as "gpt-6-luna-fast" share
+	// modelID with their base and are only distinguishable, and selectable,
+	// by id.
+	return Model{Ref: ModelRef{ProviderID: w.ProviderID, ModelID: w.ID}, Name: w.Name}, nil
 }
 
 type wireMCPServer struct {

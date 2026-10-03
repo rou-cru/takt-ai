@@ -75,7 +75,7 @@ func ResolveComponents(names []string) ([]model.ComponentID, []catalog.Removal, 
 }
 
 // openCodeComponentArtifacts applies the selected components to the OpenCode
-// plan: config merges plus the standalone Takt logo, memory and VFS plugin
+// plan: config merges plus the standalone DAG, memory and VFS plugin
 // artifacts. The artifacts are home-rooted.
 func openCodeComponentArtifacts(components []model.ComponentID, config *opencode.ConfigRequest) ([]Artifact, error) {
 	config.Permissions = true
@@ -87,15 +87,9 @@ func openCodeComponentArtifacts(components []model.ComponentID, config *opencode
 		switch component {
 		case model.ComponentContext7:
 			config.Context7 = true
-		case model.ComponentTheme:
-			config.Theme = opencode.TaktTheme
-		default:
-			// opencode-takt-logo has no config projection.
 		}
 	}
-	// cli.json carries the theme selection, so it is rendered after the
-	// component loop has resolved the theme.
-	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.TaktCLIArtifact(config.Theme), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, true), opencode.TaktSandboxAdapterArtifact()}
+	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, true), opencode.TaktSandboxAdapterArtifact()}
 	artifacts := make([]Artifact, 0, len(rendered))
 	for _, r := range rendered {
 		artifacts = append(artifacts, Artifact{Path: r.Path, Content: r.Content})

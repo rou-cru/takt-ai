@@ -32,7 +32,7 @@ func TestRunRejectsUnsupportedAction(t *testing.T) {
 func TestRunInstallPersistsCustomInstalledConfig(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	request.Components = []string{"theme", "opencode-takt-logo"}
+	request.Components = []string{"context7"}
 
 	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run() error = %v", err)

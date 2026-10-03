@@ -690,6 +690,9 @@ func prepareApply(rootDir string, plans []TargetPlan, skip map[string]bool, mani
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
+		if merged, err = carryInjectedMCPServers(rootDir, merged); err != nil {
+			return nil, nil, nil, nil, err
+		}
 		activeArtifacts[index] = merged
 	}
 	return activePaths, activeArtifacts, targetByPath, manifest, nil

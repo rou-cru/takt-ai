@@ -31,10 +31,6 @@ const (
 	ComponentSkills ComponentID = "skills"
 	// ComponentContext7 names the docs-lookup integration so installs can toggle it independently.
 	ComponentContext7 ComponentID = "context7"
-	// ComponentTheme names the shared theme piece so branding stays optional.
-	ComponentTheme ComponentID = "theme"
-	// ComponentOpenCodeTaktLogo names the OpenCode logo piece so branding stays optional per target.
-	ComponentOpenCodeTaktLogo ComponentID = "opencode-takt-logo"
 	// ComponentCodegraph names the codebase-exploration MCP integration, mandatory core like Engram.
 	ComponentCodegraph ComponentID = "codegraph"
 )

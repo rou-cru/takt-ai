@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestRenderPlans(t *testing.T) {
 		if err := renderPlanText(&output, "install", plan); err != nil {
 			t.Fatal(err)
 		}
-		if got := output.String(); !strings.Contains(got, "1 target(s), 2 managed file(s)") || !strings.Contains(got, "No conflicts") {
+		if got := output.String(); !strings.Contains(got, "Plan for install") || !strings.Contains(got, "2 managed") {
 			t.Fatalf("renderPlanText() = %q", got)
 		}
 	})
@@ -87,7 +88,7 @@ func TestRenderCancelledTextReportsNothingAndPartialChanges(t *testing.T) {
 }
 
 func TestRenderPlanPropagatesWriterErrors(t *testing.T) {
-	if err := renderInstallPlanText(failingWriter{}, "install", lifecycle.InstallPreview{}); !errors.Is(err, errWriteFailed) {
+	if err := renderInstallPlanText(failingWriter{}, "install", lifecycle.InstallPreview{}, runtime.InstallSummary{}); !errors.Is(err, errWriteFailed) {
 		t.Fatalf("renderInstallPlanText() error = %v, want %v", err, errWriteFailed)
 	}
 }
@@ -168,3 +169,20 @@ var errWriteFailed = errors.New("write failed")
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
+
+// The plan states what the install sets up, in the TUI review's terms.
+func TestRenderInstallPlanStatesTheSummary(t *testing.T) {
+	var output strings.Builder
+	summary := runtime.InstallSummary{Agents: make([]runtime.AgentModel, 13), Skills: 27, MCPServers: []string{"codegraph", "engram"}}
+	if err := renderInstallPlanText(&output, "install", lifecycle.InstallPreview{}, summary); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Agents        13", "Skills        27", "MCP servers   codegraph, engram"} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("plan output lacks %q:\n%s", want, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "Integrations") {
+		t.Errorf("an empty group was printed:\n%s", output.String())
+	}
+}

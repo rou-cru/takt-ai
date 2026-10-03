@@ -130,14 +130,29 @@ func execRunner(binary string, env []string, dir string) runner {
 		if _, err := exec.LookPath(binary); err != nil {
 			return nil, nil, fmt.Errorf("looking up %q: %w", binary, err)
 		}
+		// stdout goes to a file, not a pipe: opencode exits before draining a
+		// pipe, truncating large bodies at a 64 KiB boundary (GET /api/skill
+		// returns ~1 MiB), which surfaced as "unexpected end of JSON input".
+		stdout, err := os.CreateTemp("", "takt-opencode-api-*")
+		if err != nil {
+			return nil, nil, fmt.Errorf("create stdout capture: %w", err)
+		}
+		defer func() {
+			_ = stdout.Close()
+			_ = os.Remove(stdout.Name())
+		}()
 		cmd := exec.CommandContext(ctx, binary, args...)
 		cmd.Env = append(os.Environ(), env...)
 		cmd.Dir = dir
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
+		var stderr bytes.Buffer
+		cmd.Stdout = stdout
 		cmd.Stderr = &stderr
-		err := cmd.Run()
-		return stdout.Bytes(), stderr.Bytes(), err
+		runErr := cmd.Run()
+		body, err := os.ReadFile(stdout.Name())
+		if err != nil {
+			return nil, stderr.Bytes(), fmt.Errorf("read stdout capture: %w", err)
+		}
+		return body, stderr.Bytes(), runErr
 	}
 }
 

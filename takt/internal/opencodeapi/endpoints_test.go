@@ -103,8 +103,8 @@ func routesFor(body string) map[string]stubResponse {
 
 func TestListEndpointContracts(t *testing.T) {
 	testListEndpoint(t, "/api/model", (*Client).Models,
-		`{"modelID":"m","providerID":"p","limit":{"context":1,"output":1}}`,
-		`{"modelID":"m","providerID":"p","limit":{"context":0,"output":1}}`, "non-positive limits")
+		`{"id":"m","modelID":"m","providerID":"p","limit":{"context":1,"output":1}}`,
+		`{"id":"m","modelID":"m","providerID":"p","limit":{"context":0,"output":1}}`, "non-positive limits")
 	testListEndpoint(t, "/api/mcp", (*Client).MCPStatus,
 		`{"name":"m","status":{"status":"connected"}}`,
 		`{"name":"m","status":{"status":"half-open"}}`, "unknown state")
@@ -188,6 +188,25 @@ func TestModelsReturnsStructuredModelsInReportedOrder(t *testing.T) {
 	second := models[1]
 	if second.Ref.String() != "opencode-go/glm-5.3-flash" {
 		t.Fatalf("second String() = %q", second.Ref.String())
+	}
+}
+
+// A variant shares modelID with its base; only id tells them apart and is
+// what OpenCode config references.
+func TestModelsRefsVariantsByID(t *testing.T) {
+	body := `{"data":[
+	  {"id":"gpt-6-luna","modelID":"gpt-6-luna","providerID":"openai","name":"GPT-6 Luna","limit":{"context":1,"output":1}},
+	  {"id":"gpt-6-luna-fast","modelID":"gpt-6-luna","providerID":"openai","name":"GPT-6 Luna Fast","limit":{"context":1,"output":1}}]}`
+	client, _ := stubClient(map[string]stubResponse{"GET /api/model": {stdout: body}})
+	models, err := client.Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models() error = %v", err)
+	}
+	if len(models) != 2 || models[0].Ref.String() != "openai/gpt-6-luna" || models[1].Ref.String() != "openai/gpt-6-luna-fast" {
+		t.Fatalf("refs = %+v, want base and variant distinguished by id", models)
+	}
+	if models[1].Name != "GPT-6 Luna Fast" {
+		t.Fatalf("name = %q", models[1].Name)
 	}
 }
 
