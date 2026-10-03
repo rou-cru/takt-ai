@@ -1,6 +1,6 @@
 # VDS: TUI Surface Profile — Takt AI
 
-**Actual implementation progress: 79%** — 28 own requirements: 17 complete, 10 partial, 1 not integrated. `takt/tui/theme/theme.go` implements the full dark semantic token set with no per-screen hex values (verified: no hex literal anywhere under `takt/tui/install|uninstall|drift|models|modelpicker|diagnostics|ui`), `takt/tui/ui/shell.go` gives every screen the shared header/panel/footer layout with no key bar, `takt/tui/styles/logo.go` renders the canonical PNG-derived logo with a Braille mono fallback, and `takt/tui/ui/verification.go` + `takt/verify` implement the `[verified]`/`[not verified]`/`[not verifiable]` states verbatim (PR-UX-27). Several requirements are only partly true once rendered: `ui/shell.go:199-204`'s `margin()` returns 2 columns at full width and 1 at reduced width, not the 3/2 the spec names (PR-UX-8), and a live render at width 200 shows the bordered panel tight-fit and flush against the left margin, never centered, contradicting PR-UX-2's "centered with bounded width"; `ui/list.go:42-49`'s `markedList` styles a checked `[x]` with `theme.Selected` (the petroleum selection pair) and renders the label itself in plain `theme.Label`, never `theme.SuccessFg`, so PR-UX-4's "green ... checked options" and PR-UX-16's "checked labels use success.fg" are not what the code does; `ui/status.go`'s `Busy()` is one static indeterminate bar plus a spinner glyph, with no per-step done/current/pending list anywhere in `takt/tui` (grep for a checkmark or step-state constant returns nothing), so PR-UX-6's execution-step markers and PR-UX-17's "progress bar and the list of steps" are unimplemented while the rest of both requirements (ASCII glyph vocabulary, review/result state text) is solid; a live render of the home screen at multiple widths shows "Takt AI" only once, in the shared top header row also used by every other screen (`tui.go` `headerRow`/`menuBody`) — there is no separate signature line placed directly below and centered on the logo, so PR-UX-2A's specific composition rule is not met even though the logo itself, its placement beside/above the task list, and its mono fallback are; and `theme.DetectMode` (`theme.go:34-39`) only reads `NO_COLOR`/`TERM=dumb`, with no Bubble Tea query of the real terminal background/version and no intermediate 256/16-color mapping tier, so PR-UX-26's capability-policy reference is partly unimplemented even though the binary color/mono fallback itself never blocks startup. The one not-integrated requirement is PR-UX-21: `takt/catalog/capabilities.go` and `takt/setup/components.go` do have a `ReconcileSelection`/dependency-preserving mechanism, but the install flow's own toggle handler (`install.go` `toggle()`) calls only `ui.Toggle` directly and never surfaces any reconciliation explanation to the user, so no TUI screen ever shows the "affected capabilities and reasons" feedback the requirement describes.
+**Actual implementation progress: 79%** — 28 own requirements: 17 complete, 10 partial, 1 not integrated. `takt/tui/theme/theme.go` implements the full dark semantic token set with no per-screen hex values (verified: no hex literal anywhere under `takt/tui/install|uninstall|drift|models|modelpicker|diagnostics|ui`), `takt/tui/ui/shell.go` gives every screen the shared header/panel/footer layout with no key bar, `takt/tui/styles/logo.go` renders the canonical PNG-derived logo with a Braille mono fallback, and `takt/tui/ui/verification.go` + `takt/verify` implement the `[verified]`/`[not verified]`/`[not verifiable]` states verbatim (PR-UX-27). Several requirements are only partly true once rendered: `ui/shell.go`'s `margin()` returns 2 columns at full width and 1 at reduced width, not the 3/2 the spec names (PR-UX-8), and a live render at width 200 shows the bordered panel tight-fit and flush against the left margin, never centered, contradicting PR-UX-2's "centered with bounded width"; `ui/list.go:42-49`'s `markedList` styles a checked `[x]` with `theme.Selected` (the petroleum selection pair) and renders the label itself in plain `theme.Label`, never `theme.SuccessFg`, so PR-UX-4's "green ... checked options" and PR-UX-16's "checked labels use success.fg" are not what the code does; `ui/status.go`'s `Busy()` is one static indeterminate bar plus a spinner glyph, with no per-step done/current/pending list anywhere in `takt/tui` (grep for a checkmark or step-state constant returns nothing), so PR-UX-6's execution-step markers and PR-UX-17's "progress bar and the list of steps" are unimplemented while the rest of both requirements (ASCII glyph vocabulary, review/result state text) is solid; a live render of the home screen at multiple widths shows "Takt AI" only once, in the shared top header row also used by every other screen (`tui.go` `headerRow`/`menuBody`) — there is no separate signature line placed directly below and centered on the logo, so PR-UX-2A's specific composition rule is not met even though the logo itself, its placement beside/above the task list, and its mono fallback are; and `theme.DetectMode` (`theme.go:34-39`) only reads `NO_COLOR`/`TERM=dumb`, with no Bubble Tea query of the real terminal background/version and no intermediate 256/16-color mapping tier, so PR-UX-26's capability-policy reference is partly unimplemented even though the binary color/mono fallback itself never blocks startup. The one not-integrated requirement is PR-UX-21: `takt/catalog/capabilities.go` and `takt/setup/components.go` do have a `ReconcileSelection`/dependency-preserving mechanism, but the install flow's own toggle handler (`install.go` `toggle()`) calls only `ui.Toggle` directly and never surfaces any reconciliation explanation to the user, so no TUI screen ever shows the "affected capabilities and reasons" feedback the requirement describes.
 
 **Surface/version:** installation and configuration TUI/CLI, profile 3.0.
 
@@ -70,7 +70,7 @@ Apply the owning setup/installation requirement, then this profile, for any new 
 
 | ID | Requirement |
 | --- | --- |
-| PR-UX-16 | Checklists MUST show `[x]`/`[ ]` independent of focus; checked labels use `success.fg`. Each option shows its name and, when useful, a muted description on the line below. A single selector has no separate value marker: the option under `>` is the value. Overflowing lists keep focus visible and show position `n / total`; filtering preserves the chosen value and provides a distinct no-results state. |
+| PR-UX-16 | Checklists MUST show `[x]`/`[ ]` independent of focus; checked labels use `success.fg`. Each option shows its name and, when useful, a muted description on the line below. A single selector has no separate value marker: the option under `>` is the value. A screen holding several single selectors (one per file) keeps each one's chosen value visible with the selection pair and a `•` marker, apart from the `>` cursor; `Enter` records the focused file's choice and moves to the next file, and after the last one advances unless a kept choice cannot work, whose reason stays shown. Overflowing lists keep focus visible and show position `n / total`; filtering preserves the chosen value and provides a distinct no-results state. |
 | PR-UX-17 | Review MUST expose the flow-required scope and consequences, separating additions, modifications, preserved content, and removals while omitting empty categories. Destructive commitment MUST name affected objects and consequences before the explicit action, not add a second confirmation automatically. Execution shows a progress bar and the list of steps with done, current and pending state, with percentages only for real denominators. Results distinguish success, partial, failure and functional readiness, with real recovery actions and their limits. |
 | PR-UX-28 | A nested selection (for example a model and effort for one specialist) MUST identify that object and keep parent draft state. `Esc` returns without losing parent selection, filter, or cursor; completing detail makes the new value visible in the parent. Unrelated assignments MUST NOT be rebuilt or applied by this edit. |
 
@@ -87,7 +87,7 @@ Apply the owning setup/installation requirement, then this profile, for any new 
 | --- | --- |
 | PR-UX-22 | Relevant external modification MUST carry a discreet textual indication, not color alone. Takt-managed choices are not drift. Drift unrelated to the operation MUST NOT interrupt it. |
 | PR-UX-23 | A conflict view MUST explain source, affected scope and known versus uncertain compatibility before offering feasible retention/restoration choices with neutral decision hierarchy. Known deterministic incompatibility blocks the invalid composition and explains an alternative; unusual preference alone does not. A full diff is secondary, but decisive risk stays visible. |
-| PR-UX-27 | Under `Functional availability`, list each capability assessed by PR-SET-32 as `[verified]` (success), `[not verified]` (danger for a failed check), or `[not verifiable]` (warning for inability to assess), plus explanation. Conclude with what was and was not checked. Lack of evidence MUST NOT be presented as either verified success or a failed check. |
+| PR-UX-27 | Under `Capabilities`, list each capability assessed by PR-SET-32 once, by its user-facing name (memory, code navigation, library docs, orchestrator, default model, skills, plugins, reload), never by its check identifier. A marker that reads without color states the result: `✓` verified (success), `✗` not working (danger, a failed check), `?` not checked (warning, inability to assess); only the last two add their textual state and explanation. One verdict line precedes the list and is never repeated: not ready when a capability failed, unconfirmed when checks could not run. When every check passed, one line states what was not tested. Lack of evidence MUST NOT be presented as either verified success or a failed check. |
 | PR-UX-24 | Results MUST distinguish changes applied from functional readiness. Completed changes with acknowledged uncertainty show operation success and a separate functional warning, not unqualified readiness or an invented execution failure. State when changes take effect without promising a live-session reload that is not supported. |
 
 ### 2.7 Cancellation Feedback
@@ -104,7 +104,7 @@ This table maps terminal roles to the shared semantic token names; it does not d
 | --- | --- | --- |
 | Painted canvas and panels | `#0d0d0d` for the terminal canvas (neutral black, the TUI's native canvas — darker than `bg.canvas`); `bg.surface` (`N900`) inside panels; `border.control` for the panel border | Untitled panels; no shadows |
 | Heading/content/help | `text.primary`, `text.secondary`, `text.muted` | Order, bold when supported, explicit labels |
-| Home logo and signature | `brand.ink` rendered as `P600` in the dark TUI (signature rule); logo beside the task list and one-line `Takt AI` signature directly below it, centered, per PR-UX-2A | Canonical logo per PR-UX-2A; signature always sits below the logo, not as a logo fallback |
+| Home logo and signature | `P400` on the canvas in the dark TUI (brand.md §5.3 signature rule); logo beside the task list and one-line `Takt AI` signature directly below it, centered, per PR-UX-2A | Canonical logo per PR-UX-2A; signature always sits below the logo, not as a logo fallback |
 | Focus | `focus.ring` for `>` and the focused field bar | `>` beside the focused option; bar beside the focused field |
 | Checked option | `success.fg` label; `text.muted` marker | `[x]`, independent of focus; single selection is the option under `>` |
 | Focused action button | `bg.canvas` text on `focus.ring` fill | Concrete verb/object label; fill marks focus |
@@ -123,6 +123,7 @@ Hover and pointer behavior are not required in this keyboard profile. If added, 
 3. In an interactive TTY the TUI renders its single dark theme. Respect `NO_COLOR` for no-color rendering and provide an explicit monochrome choice.
 4. The dark theme requires true-color capability and paints the owned backgrounds with the full theme. Capability hints such as `TERM`/`COLORTERM` are fallible; query the actual terminal background and version through the event loop instead of inferring the background or certifying contrast from hints. The queried background MUST NOT select a theme or palette: the single dark theme stands regardless. Provide an override and record the queried configuration in tests, fixing color profile and window size with explicit program options.
 5. Limited-color mode preserves roles through a tested mapping on declared terminals. Unverified mappings fall back to monochrome/native default text, not approximate colors declared compliant by distance. User-controlled colors require actual environment validation for a contrast claim.
+   Declared matrix: the color profile reported by the event loop selects the mode. True color renders the full theme (iTerm2, Ghostty, Kitty, WezTerm). 256-color renders a declared token-to-xterm-256 table whose every §5.4 pair is recomputed on the mapped values (macOS Terminal.app). 16-color and below render monochrome.
 6. ASCII and nonanimated textual progress must remain available and is the baseline: terminal-native progress indicators and animated spinners MAY supplement it when the terminal supports them, with a documented animation-free mode. No-color mode must preserve hierarchy, focus, selection, warnings, and recovery. Linear output never emits spinners, cursor movement, or ANSI styling; it does not claim interactive tasks requiring TUI-only risk decisions are automatically accessible.
 
 ## 4. Task composition and semantic prototypes
@@ -132,7 +133,7 @@ These examples illustrate the required design. Brackets denote illustrative cont
 | Task | Pattern and commitment | Return/context |
 | --- | --- | --- |
 | Choose task | L03; Enter opens destination, no mutation | Preserve menu position |
-| First install | L05 → optional L04/L06 → review → L08 → L09; `Install` after review | Personalize and return without losing prepared choices |
+| First install | Opens on the review of the prepared plan (L05), with the files needing a decision (L07) first when any; `Personalize` opens the component checklist (L04) and Enter returns to review; `Install` → L08 → L09. No setup-choice step | Personalize and return without losing prepared choices |
 | Adjust installation or one specialist | L04/L06 → L08 → L09; apply scoped changes once | Preserve unrelated values and filters; no onboarding restart |
 | Resolve external modification | L07; human summary, viable choices, then scoped application | Preserve chosen content; do not require repair for unrelated work |
 | Restore canonical asset / uninstall | L07 or focused review; identify objects/version and loss before commitment | Restore is not exact undo; show actual recovery availability |
@@ -142,25 +143,17 @@ These examples illustrate the required design. Brackets denote illustrative cont
 ### Menu and multi-selection
 
 ```text
-  [Canonical logo]        > Configure installation
-  Takt AI                    Assign models
-                             Check for drift
-                             Uninstall
-                             Diagnostics
-                             Quit
+                                     > Configure installation
+                                       Change components or reapply Takt's files
+            [Canonical logo]           Assign models
+                                       Choose the model each agent runs on
+                                       Check for drift
+                                       Uninstall
+                Takt AI                Diagnostics
+                                       Quit
 ```
 
-The bracketed block is the canonical logo (or its terminal representation), placed beside the task list at width and stacked above it when narrow, per PR-UX-2A. The one-line `Takt AI` signature sits directly below the logo as part of the entry composition, not as a logo fallback.
-
-```text
-  Takt AI                                        OpenCode v2
-
-  ┌──────────────────────────────────────────────────────┐
-  │  OpenCode v2 / user-global installation               │
-  │                                                      │
-  │  * OpenCode v2 is the official runtime target.        │
-  └──────────────────────────────────────────────────────┘
-```
+The home has no header row: the bracketed logo (or its terminal representation) carries the identity, with the one-line `Takt AI` signature directly below it, centered on it. Logo and menu form one block centered in the screen; the menu is centered vertically against the logo and stacks below it when narrow. A muted description follows an option only where it tells options apart. When space runs out, descriptions are dropped before the logo; below the logo's size the signature alone remains (PR-UX-2A).
 
 ### Review and nested edit
 
@@ -168,28 +161,57 @@ The bracketed block is the canonical logo (or its terminal representation), plac
   Takt AI                                           Review
 
   ┌──────────────────────────────────────────────────────┐
-  │  Scope        [OpenCode v2 / user-global installation]│
-  │  Components   [selected capabilities]                │
-  │  Add          [new files and supporting assets]      │
-  │  Preserve     [existing content / exclusions]        │
+  │ Destination   ~/.config/opencode, for every project  │
+  │ Agents        13: 1 orchestrator, 12 specialists     │
+  │               [n] on [provider/model]                │
+  │               [n] on OpenCode's default model        │
+  │ Skills        [count]                                │
+  │ MCP servers   codegraph · context7 · engram          │
+  │ Integrations  DAG panel · memory · VFS · sandbox     │
+  │ Files         [n] new, [n] updated                   │
+  │ Your config   opencode.json — merged; your settings  │
+  │               are kept                               │
+  │ Kept          [path (your version is kept)]          │
   └──────────────────────────────────────────────────────┘
 
                ░ Personalize ░  █ Install █
 ```
 
+Review states what the install sets up in the user's terms, never as file categories or internal tier labels. Labels form one secondary column and values align after it; empty groups are omitted. Agents are counted and grouped by the model they run on. A configuration file the user owned before Takt is merged and says so; one Takt owns is updated.
+
 ```text
-  Takt AI                          Assign models · [specialist]
+  Takt AI                                           Agents
 
   ┌──────────────────────────────────────────────────────┐
-  │ ┃ Current: [provider/model]                          │
-  │ ┃ Search: [query]                                    │
-  │ ┃   [current provider/model]                         │
-  │ ┃ > [alternative provider/model]                     │
-  │   2 / 12                                             │
+  │   All agents          [shared model | different models]
+  │   takt                [provider/model]               │
+  │ > analyst             [provider/model]               │
+  │   dev               • [newly chosen provider/model]  │
+  │   judge-a             inherits OpenCode default      │
   └──────────────────────────────────────────────────────┘
+
+                   ░ Apply changes ░
 ```
 
-Choosing the model returns to the parent draft; `Apply changes` there commits only the intended assignments. When search owns focus, printable keys write instead of acting as shortcuts.
+`All agents` opens the same model picker and records its choice for every agent as pending; individual rows stay editable before applying. `•` marks agents whose model changes when applied. The table keeps one width whatever row is visible. Choosing a model returns to this draft; `Apply changes` commits every pending assignment in one change. When search owns focus, printable keys write instead of acting as shortcuts.
+
+### Execution
+
+```text
+  Takt AI                                       Installing
+
+  ┌──────────────────────────────────────────────────────┐
+  │ ✓ Checking OpenCode connection                       │
+  │ ✓ Preparing managed files                            │
+  │ ⠋ Applying installation files                        │
+  │   ████████████████████░░░░░░░░░░  67%                │
+  │   [current file]                                     │
+  └──────────────────────────────────────────────────────┘
+
+                       █ Cancel █
+```
+
+Finished phases carry `✓`; the current phase carries the activity marker and, when its total is known, a bar with the real percentage and the file in progress. Unknown future phases are not invented. `Cancel` is the action while work runs; once requested it stays visible but unavailable, saying the current phase must finish.
 
 ### Conflict and partial result
 
@@ -219,6 +241,23 @@ Selection of a conflict choice updates the plan; if that row is itself the commi
        █ [Available next action] █  ░ Back to menu ░  ░ Quit ░
 ```
 
+```text
+  ┌──────────────────────────────────────────────────────┐
+  │ Success: Takt AI is installed in OpenCode.           │
+  │ Warning: Some checks could not run, so those         │
+  │ capabilities are unconfirmed, not failed.            │
+  │                                                      │
+  │ Capabilities                                         │
+  │ ✓ Memory                                             │
+  │ ✗ Code navigation — not working                      │
+  │   [why]                                              │
+  │ ? Skills — not checked                               │
+  │   [why]                                              │
+  └──────────────────────────────────────────────────────┘
+```
+
+The verdict line appears once, above the capabilities (PR-UX-27). The take-effect sentence appears only when OpenCode was not reloaded. Diagnostics shows the same block and adds `Repair`, which opens the configure flow, when a capability failed its check.
+
 Result text follows what happened → what changed → what can be done. Do not call `Restore` an undo, hide partial work behind an error, or show a rollback action without its implementation guarantee.
 
 ## 5. Component state contract
@@ -240,6 +279,8 @@ Unavailable references never silently substitute a newer canonical version. Load
 ## 6. Verification and release evidence
 
 For every test record build/revision, OS/architecture, terminal/version, font/glyph mode, capability hints/overrides, theme, dimensions, input sequence, observed state, and evidence location. Render captures are committed fixtures with color profile and window size fixed by program options, not ad-hoc dumps. The matrix below declares required validation profiles.
+
+Fixtures live in each package's `testdata/` as golden files, one per screen state, size (120×32, 80×24, 60×20, 160×24) and mode (true color, 256-color, monochrome), and regenerate with `go test ./takt/tui/... -update`. A regenerated fixture is reviewed visually before it is committed.
 
 | Axis | Minimum evidence |
 | --- | --- |

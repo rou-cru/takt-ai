@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Trigger: development workflow, full cycle, implement feature, DAG orchestration, plan the work, parallel tasks. Plans work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max 4 concurrent specialists, no worktrees. Orchestrator-only guide."
+description: "Plans development work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max 4 concurrent specialists, no worktrees. Orchestrator-only guide."
 license: AGPL-3.0
 metadata:
   author: takt

@@ -1,6 +1,6 @@
 ---
 name: takt-handoff
-description: "Trigger: before submitting any delivery to the orchestrator. What a handoff is, how submitted content is checked, and how to correct a rejected attempt."
+description: "Before submitting any delivery to the orchestrator. What a handoff is, how submitted content is checked, and how to correct a rejected attempt."
 license: AGPL-3.0
 metadata:
   author: takt

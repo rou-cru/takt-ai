@@ -1,6 +1,6 @@
 ---
 name: takt-invariant-authoring
-description: "Trigger: before authoring a deliverable you will record in memory. The generic
+description: "Before authoring a deliverable you will record in memory. The generic
   skeleton for a document that matches none of your role's recognized types, and how many
   documents one result needs — never an arbitrary length cut of one document."
 license: AGPL-3.0

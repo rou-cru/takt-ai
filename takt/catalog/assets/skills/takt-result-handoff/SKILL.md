@@ -1,6 +1,6 @@
 ---
 name: takt-result-handoff
-description: "Trigger: before presenting a finished result to the orchestrator. How a producer agent delivers a completed Engram artifact through deliver_result."
+description: "Before presenting a finished result to the orchestrator. How a producer agent delivers a completed Engram artifact through deliver_result."
 license: AGPL-3.0
 metadata:
   author: takt

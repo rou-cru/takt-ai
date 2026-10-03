@@ -1,6 +1,6 @@
 ---
 name: takt-invariant-planning
-description: "Trigger: choosing and ordering the planning specialists that generate invariants before implementation (analyst, pm, architect, product-designer, spec), autonomous, with the user, or hybrid."
+description: "Choosing and ordering the planning specialists that generate invariants before implementation."
 license: AGPL-3.0
 metadata:
   author: takt
