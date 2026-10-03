@@ -85,7 +85,7 @@ func TestRunAcceptProgressTracksOnlyMatchingRequest(t *testing.T) {
 		t.Fatal("AcceptProgress() rejected matching preparation progress")
 	}
 	progress := run.ProgressView()
-	if progress.Message != "Staging" || progress.Current != "a.txt" || progress.Completed != 0 || progress.Total != 0 {
+	if progress.Message != "Staging" || progress.Current != "a.txt" || progress.Completed != 7 || progress.Total != 9 {
 		t.Fatalf("ProgressView() after preparation = %#v", progress)
 	}
 
@@ -95,7 +95,8 @@ func TestRunAcceptProgressTracksOnlyMatchingRequest(t *testing.T) {
 		t.Fatal("AcceptProgress() rejected matching applied progress")
 	}
 	run, _ = run.AcceptProgress(runtime.ActionProgressMsg{Request: request, Progress: applied})
-	if got := run.ProgressView(); len(got.Applied) != 1 || got.Applied[0] != "a.txt" || got.Current != "" || got.Completed != 1 || got.Total != 2 {
+	// A new message closes the previous phase once; a repeated one adds none.
+	if got := run.ProgressView(); len(got.Done) != 1 || got.Done[0] != "Staging" || got.Message != "Applying" || got.Completed != 1 || got.Total != 2 {
 		t.Fatalf("ProgressView() after duplicate applied event = %#v", got)
 	}
 

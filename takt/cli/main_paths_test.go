@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,7 @@ func TestParseSetupInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := setupInvocation{command: "sync", root: "/r", inputPath: "in.json", planOnly: true, yes: true, json: true}
+	want := setupInvocation{command: "sync", root: "/r", inputPath: "in.json", inputSet: true, planOnly: true, yes: true, json: true}
 	if got != want {
 		t.Fatalf("parseSetupInvocation() = %+v, want %+v", got, want)
 	}
@@ -206,7 +207,7 @@ func TestRunSetupInputErrors(t *testing.T) {
 		t.Fatalf("missing input error = %v, stderr = %q", err, stderr.String())
 	}
 	err = run([]string{"setup", "install", "--root", t.TempDir()}, strings.NewReader(`{"unknown":true}`), &stdout, &stderr)
-	if err == nil || !strings.Contains(err.Error(), "invalid input") {
+	if err == nil || !strings.Contains(err.Error(), "invalid setup request") || !strings.Contains(err.Error(), "--input FILE") {
 		t.Fatalf("invalid input error = %v", err)
 	}
 }
@@ -333,10 +334,42 @@ func TestDispatchRoutesDefaultRequestAndRejectsBadArgs(t *testing.T) {
 // TestRunPrintsErrorAndSkipsSilentOnes verifies plain errors reach stderr while cancellation and exit codes stay quiet.
 func TestRunPrintsErrorAndSkipsSilentOnes(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if err := run([]string{"bogus"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(stderr.String(), "usage:") {
+	var code exitCode
+	if err := run([]string{"bogus"}, strings.NewReader(""), &stdout, &stderr); !errors.As(err, &code) || code != usageExitStatus || !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Fatalf("bogus error = %v, stderr = %q", err, stderr.String())
 	}
 	if err := run([]string{"bogus"}, strings.NewReader(""), &stdout, failingWriter{}); !errors.Is(err, errWriteFailed) {
 		t.Fatalf("stderr write failure error = %v", err)
+	}
+}
+
+// Help is a request, not a mistake: it prints the public commands and exits 0.
+func TestHelpPrintsPublicCommandsOnly(t *testing.T) {
+	for _, arg := range []string{"help", "--help", "-h"} {
+		var stdout, stderr bytes.Buffer
+		if err := run([]string{arg}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("%s error = %v", arg, err)
+		}
+		for _, want := range []string{"setup install|sync|uninstall", "doctor", "restore"} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Errorf("%s output lacks %q:\n%s", arg, want, stdout.String())
+			}
+		}
+		for _, internal := range []string{"vfs", "obs ingest", "gc plan", "memory record"} {
+			if strings.Contains(stdout.String(), internal) {
+				t.Errorf("%s output lists the internal command %q", arg, internal)
+			}
+		}
+	}
+}
+
+// By hand on a terminal, setup without --input means the recommended setup.
+func TestSetupOnATerminalUsesTheRecommendedRequest(t *testing.T) {
+	original := isTerminal
+	isTerminal = func(io.Reader) bool { return true }
+	t.Cleanup(func() { isTerminal = original })
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"setup", "install", "--root", t.TempDir(), "--plan-only"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("setup on a terminal error = %v, stderr = %q", err, stderr.String())
 	}
 }

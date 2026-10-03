@@ -53,16 +53,21 @@ func TestRenderVerificationText(t *testing.T) {
 		t.Fatalf("nil report output = %q, %v", out.String(), err)
 	}
 	report := &verify.Report{
-		Checks:    []verify.CheckResult{{ID: "opencode", State: "verified", Explanation: "responds"}},
+		Checks:    []verify.CheckResult{{ID: "opencode", State: "verified", Explanation: "responds"}, {ID: "skills", State: verify.NotVerified, Explanation: "missing"}},
 		FinalNote: "note",
 	}
 	if err := renderVerificationText(&out, report); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Verification:", "[verified] opencode — responds", "Not ready: some capabilities are not verified.", "  note"} {
+	for _, want := range []string{"Verification:", "[verified] opencode — responds", "Not ready: some capabilities failed their check.", "  note"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("not-ready output = %q; missing %q", out.String(), want)
 		}
+	}
+	out.Reset()
+	report.Checks[1].State = verify.NotVerifiable
+	if err := renderVerificationText(&out, report); err != nil || !strings.Contains(out.String(), "Unconfirmed:") || strings.Contains(out.String(), "Not ready") {
+		t.Errorf("unverifiable-only output = %q, %v; want unconfirmed, not failed", out.String(), err)
 	}
 	out.Reset()
 	report.Ready = true

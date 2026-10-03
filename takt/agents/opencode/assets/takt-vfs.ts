@@ -1090,7 +1090,7 @@ export default Plugin.define({
         orchestratorOnly(c, "VFS verifier assignment")
         return { content: JSON.stringify(await takt("assign-verifier", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. Release a prior-session claim directly. For a claim in the current root session, first obtain actual user confirmation through the orchestrator's native question mechanism, then set confirmed true only after yes.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true only after actual user confirmation for a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
+      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. Release a prior-session claim directly. For a claim in the current root session, first ask the user through the orchestrator's native question mechanism and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
         orchestratorOnly(c, "VFS claim release")
         const session = await rootSession(c.sessionID)
@@ -1121,7 +1121,7 @@ export default Plugin.define({
         }, ["objective", "result", "point", "scope", "actions", "attempts"]),
         (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => args)
 
-      dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence. Only a demonstrated recovery breaks the objective's failure streak.",
+      dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
@@ -1138,17 +1138,17 @@ export default Plugin.define({
         }, ["objective", "author_key"]),
         (args: { objective: string; author_key: string }) => ({ objective: args.objective, key: args.author_key }))
 
-      dispatch("dispatch_exception", "Record a scoped user exception raising one bound by a finite additional allowance, after the user has explicitly granted it. Never grant this yourself from inference; it must reflect a decision the user actually made.",
+      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted.",
         "exception",
         obj({
           event: str("Work unit the exception applies to"),
-          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, named exactly as a denial reports it: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts" },
+          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, one of: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts" },
           objective: str("Recovery objective the exception applies to, if the bound is recovery-scoped"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
         }, ["event", "bound", "allowance"]),
         (args: { event: string; bound: string; objective?: string; allowance: number }) => args)
 
-      dispatch("dispatch_contest", "Contest a specifically identified terminal failure by requesting independent verification against the invariants that already applied to it. You request it; you do not choose or re-dispatch the verifier, and a rejected contest leaves the failure standing.",
+      dispatch("dispatch_contest", "Contest a specifically identified terminal failure by requesting independent verification against the invariants that already applied to it. You request it; you do not choose or re-dispatch the verifier.",
         "contest",
         obj({
           event: str("The work unit whose recorded terminal failure is contested"),

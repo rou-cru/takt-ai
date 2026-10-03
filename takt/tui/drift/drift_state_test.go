@@ -3,7 +3,7 @@ package drift
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
 	"testing"
 
 	"charm.land/bubbles/v2/spinner"
@@ -13,6 +13,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
@@ -26,6 +27,7 @@ const (
 )
 
 var (
+	keyLeft  = tea.KeyPressMsg{Code: tea.KeyLeft}
 	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 	keyRight = tea.KeyPressMsg{Code: tea.KeyRight}
@@ -63,7 +65,7 @@ func text(m Model) string { return ansi.Strip(m.View().Content) }
 func requireContains(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	for _, want := range wants {
-		if !strings.Contains(got, want) {
+		if !testutil.Shows(got, want) {
 			t.Errorf("view missing %q:\n%s", want, got)
 		}
 	}
@@ -152,7 +154,10 @@ func TestSelectShowsPositionWhenListOverflows(t *testing.T) {
 	m := scanned(many, "", nil)
 	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: shortHeight})
 	m, _ = send(t, m, keyEnter)
-	requireContains(t, text(m), fmt.Sprintf(ui.TextPickerPosFmt, 1, manyConflicts))
+	// The shell shows which rows are visible once the checklist overflows.
+	if !regexp.MustCompile(`\d+–\d+ / \d+`).MatchString(text(m)) {
+		t.Fatalf("overflowing checklist shows no position:\n%s", text(m))
+	}
 }
 
 func TestPageKeysScrollTheBody(t *testing.T) {
@@ -203,7 +208,7 @@ func TestRestoreIsBlockedWhenInstalledVersionDiffers(t *testing.T) {
 }
 
 func TestRestoreStartsCorrectionForSelectedPaths(t *testing.T) {
-	m := reviewScreen(t, setup.BuildVersion)
+	m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft) // focus starts on the safe action
 	m, cmd := send(t, m, keyEnter)
 	if !m.Run().Busy() || cmd == nil {
 		t.Fatalf("busy = %v cmd = %v, want a running correction", m.Run().Busy(), cmd != nil)
@@ -283,7 +288,7 @@ func TestResultBodies(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := reviewScreen(t, setup.BuildVersion)
+			m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft)
 			m, cmd := send(t, m, keyEnter)
 			request := cmd().(runtime.ActionRequest)
 			m, _ = send(t, m, runtime.ActionResultMsg{Request: request, Result: tt.correction, Err: tt.err})
@@ -301,7 +306,7 @@ func TestResultBodies(t *testing.T) {
 func TestResultActionsRescanAndLeave(t *testing.T) {
 	result := func(t *testing.T, correction runtime.ActionResult) Model {
 		t.Helper()
-		m := reviewScreen(t, setup.BuildVersion)
+		m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft)
 		m, cmd := send(t, m, keyEnter)
 		m, _ = send(t, m, runtime.ActionResultMsg{Request: cmd().(runtime.ActionRequest), Result: correction})
 		return m

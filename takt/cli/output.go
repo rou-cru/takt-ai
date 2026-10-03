@@ -18,6 +18,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"io"
 	"slices"
 	"strings"
@@ -41,7 +42,7 @@ const labeledLineFmt = "  [%s] %s — %s\n"
 func renderPlanText(w io.Writer, command string, plan any) error {
 	switch p := plan.(type) {
 	case lifecycle.InstallPreview:
-		return renderInstallPlanText(w, command, p)
+		return renderInstallPlanText(w, command, p, runtime.InstallSummary{})
 	case setup.UninstallResult:
 		return renderUninstallPlanText(w, p)
 	default:
@@ -49,17 +50,29 @@ func renderPlanText(w io.Writer, command string, plan any) error {
 	}
 }
 
-// renderInstallPlanText lists planned files and conflicts so users know what needs a decision.
-func renderInstallPlanText(w io.Writer, command string, plan lifecycle.InstallPreview) error {
+// renderInstallPlanText states what the plan sets up — the same summary the
+// TUI review shows, as linear text — then any conflict needing a decision.
+func renderInstallPlanText(w io.Writer, command string, plan lifecycle.InstallPreview, summary runtime.InstallSummary) error {
 	managed := 0
 	for _, targetPlan := range plan.Plans {
 		managed += len(targetPlan.ManagedPaths)
 	}
-	if err := writef(w, "Plan for %s: %d target(s), %d managed file(s).\n", command, len(plan.Plans), managed); err != nil {
+	if err := writef(w, "Plan for %s (nothing changes without --yes)\n", command); err != nil {
 		return err
 	}
+	rows := [][2]string{{"Agents", fmt.Sprint(len(summary.Agents))}, {"Skills", fmt.Sprint(summary.Skills)},
+		{"MCP servers", strings.Join(summary.MCPServers, ", ")}, {"Integrations", strings.Join(summary.Integrations, ", ")},
+		{"Files", fmt.Sprintf("%d managed", managed)}}
+	for _, row := range rows {
+		if row[1] == "" || row[1] == "0" {
+			continue
+		}
+		if err := writef(w, "  %-13s %s\n", row[0], row[1]); err != nil {
+			return err
+		}
+	}
 	if len(plan.Conflicts) == 0 {
-		return writeln(w, "No conflicts: nothing blocks this plan.")
+		return nil
 	}
 	if err := writeln(w, "\nConflicts that require a decision (only available in the TUI):"); err != nil {
 		return err
@@ -198,10 +211,15 @@ func renderVerificationText(w io.Writer, report *verify.Report) error {
 		if err := writeln(w, "  Ready: yes"); err != nil {
 			return err
 		}
-	} else {
-		if err := writeln(w, "  Not ready: some capabilities are not verified."); err != nil {
+	} else if report.Failed() {
+		if err := writeln(w, "  Not ready: some capabilities failed their check."); err != nil {
 			return err
 		}
+	} else if err := writeln(w, "  Unconfirmed: some checks could not run; those capabilities are not known to be broken."); err != nil {
+		return err
+	}
+	if report.FinalNote == "" {
+		return nil
 	}
 	return writef(w, "  %s\n", report.FinalNote)
 }

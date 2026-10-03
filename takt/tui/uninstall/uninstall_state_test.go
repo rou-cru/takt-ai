@@ -11,6 +11,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
+	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
@@ -43,7 +44,7 @@ func TestEngramScreenRendersChoicesAndReportsPlanFailure(t *testing.T) {
 	}
 	v := view(screen)
 	for _, text := range append([]string{ui.TextEngramQuestion, ui.TextEngramNever}, engramChoices...) {
-		if !strings.Contains(v, text) {
+		if !testutil.Shows(v, text) {
 			t.Errorf("engram view missing %q:\n%s", text, v)
 		}
 	}
@@ -78,45 +79,43 @@ func TestModifiedFilesMustAllBeDecidedBeforeContinuing(t *testing.T) {
 		t.Errorf("Title() = %q, want %q", got, ui.TextUninstallModifiedTitle)
 	}
 	v := view(screen)
-	for _, text := range []string{"a.md", "b.md", ui.TextKeepMine, ui.TextUninstallRemoveOpt, ui.TextUninstallChooseEach} {
-		if !strings.Contains(v, text) {
+	for _, text := range []string{"a.md", "b.md", ui.TextKeepMine, ui.TextUninstallRemoveOpt} {
+		if !testutil.Shows(v, text) {
 			t.Errorf("modified view missing %q:\n%s", text, v)
 		}
 	}
 
-	// Decide only the first file (Keep), then try to continue.
+	// Enter keeps a.md and moves to the next undecided file; nothing advances
+	// while b.md is undecided.
 	screen = update(t, screen, enter)
-	screen = update(t, update(t, screen, tab), enter)
-	if screen.State() != StateModified {
-		t.Fatalf("state = %v, want Continue blocked while b.md is undecided", screen.State())
+	if screen.State() != StateModified || screen.cursor != len(modifiedChoices) {
+		t.Fatalf("state = %v cursor = %d, want b.md focused while it is undecided", screen.State(), screen.cursor)
+	}
+	if v := view(screen); !strings.Contains(v, theme.Icon.Chosen+ui.TextKeepMine) {
+		t.Errorf("a.md's chosen value is not visible once focus moved:\n%s", v)
 	}
 
-	// Back to the body, move to b.md's Remove row (rows: a keep, a remove, b keep, b remove), decide it.
-	screen = update(t, screen, tab)
-	for range 3 {
-		screen = update(t, screen, down)
-	}
-	screen = update(t, screen, enter)
+	// Removing b.md decides the last file and advances.
+	screen = update(t, update(t, screen, down), enter)
 	if !screen.allDecided() || screen.decisions["a.md"] != true || screen.decisions["b.md"] != false {
 		t.Fatalf("decisions = %v, want a.md kept and b.md removed", screen.decisions)
 	}
 	if !screen.Dirty() {
 		t.Error("Dirty() with decisions = false, want true")
 	}
-	screen = update(t, update(t, screen, tab), enter)
 	if screen.State() != StateEngram {
 		t.Fatalf("state = %v, want the engram question once every file is decided", screen.State())
 	}
 
-	// Review requests carry the split decisions.
-	screen = update(t, update(t, screen, tab), enter)
+	// Choosing an Engram answer advances to review, carrying the decisions.
+	screen = update(t, screen, enter)
 	if screen.State() != StateReview {
 		t.Fatalf("state = %v, want review", screen.State())
 	}
 	if v := view(screen); !strings.Contains(v, ui.TextUninstallKeepMine) || !strings.Contains(v, "b.md"+ui.TextModifiedSuffix) {
 		t.Errorf("review must list the kept and to-remove modified files:\n%s", v)
 	}
-	_, command := screen.Update(enter)
+	_, command := update(t, screen, left).Update(enter)
 	request := testutil.ActionRequest(t, command)
 	if len(request.RetainPaths) != 1 || request.RetainPaths[0] != "a.md" || len(request.RemovePaths) != 1 || request.RemovePaths[0] != "b.md" {
 		t.Errorf("request retain = %v remove = %v, want a.md kept and b.md removed", request.RetainPaths, request.RemovePaths)
@@ -137,7 +136,6 @@ func TestBackNavigationAcrossSteps(t *testing.T) {
 
 	// Review's Back action returns to the engram question.
 	screen = update(t, update(t, New(installedRoot(t)), tab), enter)
-	screen = update(t, screen, right)
 	if screen = update(t, screen, enter); screen.State() != StateEngram {
 		t.Errorf("state = %v, want the Back action to return to engram", screen.State())
 	}
@@ -218,7 +216,7 @@ func TestResultBodiesForCancelledAndFailedRuns(t *testing.T) {
 			}
 			v := view(screen)
 			for _, want := range tt.want {
-				if !strings.Contains(v, want) {
+				if !testutil.Shows(v, want) {
 					t.Errorf("result view missing %q:\n%s", want, v)
 				}
 			}

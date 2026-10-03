@@ -282,6 +282,9 @@ func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPla
 }
 
 func (runtime Runtime) finishInstall(ctx context.Context, rootDir string, request setup.PlanRequest, engramCommand, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+	if err := setup.ReleaseLegacyCLIConfig(rootDir); err != nil {
+		return deployed, fmt.Errorf("release cli.json: %w", err)
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing Engram integration"})
 	if err := InjectEngram(rootDir, engramCommand); err != nil {
 		return deployed, err

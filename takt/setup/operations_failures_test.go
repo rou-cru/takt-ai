@@ -207,7 +207,7 @@ func TestApplyModelOverrideChangeRejectsUnknownInstalledComponent(t *testing.T) 
 	if err := RecordInstallation(root, request); err != nil {
 		t.Fatal(err)
 	}
-	_, err := ApplyModelOverrideChange(context.Background(), root, "takt-dev", model.ModelAssignment{Model: "provider/model"}, ProviderRuntime{})
+	_, err := ApplyModelOverrideChanges(context.Background(), root, map[string]model.ModelAssignment{"takt-dev": {Model: "provider/model"}}, ProviderRuntime{})
 	if err == nil || !strings.Contains(err.Error(), "unknown component") {
 		t.Fatalf("error = %v", err)
 	}

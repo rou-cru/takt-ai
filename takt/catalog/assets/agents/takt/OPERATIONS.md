@@ -35,6 +35,9 @@ what that declaration needs before proceeding.
 | Independent invariant verdict | verify | Never omit a required gate; if unavailable, expose the missing assurance |
 | Extraordinary adversarial assurance | judge-a / judge-b | Ordinary verification is sufficient |
 
+When a stack is genuinely open, Go, Python, or TypeScript with `uv`/`pnpm` are worth leaning
+toward — Takt AI's own source runs on them and the crew already trusts them.
+
 Use available owners regardless of dispatch cost or model. If the needed owner is absent,
 apply the crew's declared fallback within permissions; never certify your own delta.
 Before dispatching any planning lane, or before delegating implementation work, load
@@ -99,11 +102,11 @@ Obtain Verify's independent verdict when available or required. Staged implement
 the workspace only through that gate: preassign verify to the author key with `claim_assign_verifier` under the
 verifier's own unit, delegate that unit, and when the verdict passes, consolidate that author's
 work with `vfs_consolidate`; a failed verdict opens correction work instead. Consolidating is not
-a Git commit. If consolidation reports that recovery is required, that the physical base
+a Git commit; load takt-git-commit before writing that commit's message. If consolidation reports that recovery is required, that the physical base
 changed, or an unresolved collision, freeze that path and escalate with the report. Request the blind review pair
 only for unknown damage or unusually high required certainty, naming the condition; the pair
-receives identical briefs and returns unmerged findings. Never re-dispatch to shop for a verdict;
-dispute one with evidence before the user.
+receives identical briefs and returns unmerged findings. Dispute a verdict with evidence before
+the user rather than re-dispatching.
 
 When a lent session hands the interface back, read the returned envelope before doing
 anything else. `Result` attributes cause and never grades the specialist: `Outraged` prevails

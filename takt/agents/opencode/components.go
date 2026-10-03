@@ -23,9 +23,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// TaktTheme is the OpenCode theme deployed by the theme component.
-const TaktTheme = "takt"
-
 // context7Config returns the mcp entry for the context7 component. V2 nests
 // every server under mcp.servers and spells the switch as "disabled". The map
 // shape matches a deep merge of the canonical context7 overlay into
@@ -298,35 +295,4 @@ var taktDagPluginSource string
 // file registers it; taktAIBinary is the takt-ai path it polls.
 func TaktDagPluginArtifact(taktAIBinary string) Artifact {
 	return taktPluginArtifact(taktDagPluginSource, "takt-dag/tui.tsx", taktAIBinary)
-}
-
-// cliConfig is the OpenCode terminal-client configuration projection. V2 owns
-// the terminal in cli.json: the theme lives here rather than in opencode.json.
-type cliConfig struct {
-	Schema string    `json:"$schema"`
-	Theme  *cliTheme `json:"theme,omitempty"`
-}
-
-// cliTheme is cli.json's theme selection; the name is a file in themes/.
-type cliTheme struct {
-	Name string `json:"name"`
-}
-
-// TaktCLIArtifact returns cli.json selecting the Takt theme when theme is
-// non-empty.
-func TaktCLIArtifact(theme string) Artifact {
-	config := cliConfig{Schema: "https://opencode.ai/v2/cli.json"}
-	if theme != "" {
-		config.Theme = &cliTheme{Name: theme}
-	}
-	content, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		// A fixed string slice cannot fail to marshal; guard so a future field
-		// type change cannot deploy a truncated registration file.
-		panic("marshal OpenCode cli.json: " + err.Error())
-	}
-	return Artifact{
-		Path:    ConfigDir() + "/cli.json",
-		Content: append(content, '\n'),
-	}
 }

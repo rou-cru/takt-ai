@@ -15,9 +15,9 @@ import (
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 )
 
-// AvailableModels returns the provider/model identifiers exposed by the
+// AvailableModels returns the models (reference and display name) exposed by the
 // local OpenCode V2 API, preserving the server's order.
-func AvailableModels(ctx context.Context) ([]string, error) {
+func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error) {
 	models, err := opencodeapi.New().Models(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("opencode models: %w", err)
@@ -25,11 +25,7 @@ func AvailableModels(ctx context.Context) ([]string, error) {
 	if len(models) == 0 {
 		return nil, errors.New("opencode reported no models")
 	}
-	identifiers := make([]string, 0, len(models))
-	for _, model := range models {
-		identifiers = append(identifiers, model.Ref.String())
-	}
-	return identifiers, nil
+	return models, nil
 }
 
 // Handshake proves that the local OpenCode installation is functional for

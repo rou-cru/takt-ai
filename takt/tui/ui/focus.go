@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/rou-cru/takt-ai/takt/tui/keys"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 )
@@ -46,29 +47,55 @@ func Actions(labels ...string) []FooterAction {
 	return actions
 }
 
-// FooterActions renders the row of filled action buttons. The focused button
-// is filled with focus.ring; unavailable and destructive choices keep their verb and reason.
+// Button geometry: label padding on each side and the gap between buttons.
+const (
+	buttonPadding = 2
+	buttonGap     = 2
+)
+
+// FooterActions renders the action row (VDS §3): only the focused button is
+// filled; the others are text.secondary without fill, destructive ones keep
+// danger.fg, and unavailable ones keep the disabled pair even when focused.
+// Unavailable reasons go on their own line under the row, never inside it.
 func FooterActions(actions []FooterAction, cursor int, focused bool) string {
 	if !focused {
 		cursor = -1
 	}
 	parts := make([]string, len(actions))
+	var reasons []string
 	for index, action := range actions {
-		label, style := action.Label, theme.Button
-		if index == cursor {
-			style = theme.ButtonFocus
-		} else {
-			switch {
-			case action.Unavailable != "":
-				style = theme.ButtonDisabled
-			case action.Danger:
-				style = theme.ButtonDanger
-			}
-		}
+		parts[index] = buttonStyle(action, index == cursor).Render(buttonLabel(action.Label, index == cursor))
 		if action.Unavailable != "" {
-			label += TextUnavailableIntro + action.Unavailable
+			reasons = append(reasons, TextUnavailableIntro+action.Unavailable)
 		}
-		parts[index] = style.Render("  " + label + "  ")
 	}
-	return strings.Join(parts, "  ")
+	row := strings.Join(parts, strings.Repeat(" ", buttonGap))
+	if len(reasons) == 0 {
+		return row
+	}
+	return row + "\n" + theme.Caption.Render(strings.Join(reasons, " · "))
+}
+
+func buttonStyle(action FooterAction, focused bool) lipgloss.Style {
+	switch {
+	case action.Unavailable != "":
+		return theme.ButtonDisabled
+	case action.Danger && focused:
+		return theme.ButtonDangerFocus
+	case action.Danger:
+		return theme.ButtonDanger
+	case focused:
+		return theme.ButtonFocus
+	}
+	return theme.Button
+}
+
+// buttonLabel pads the label so a button keeps its width whether or not it is
+// filled. Monochrome has no fill, so brackets mark the focused button.
+func buttonLabel(label string, focused bool) string {
+	pad := strings.Repeat(" ", buttonPadding)
+	if focused && theme.Mono() {
+		return "[" + pad[1:] + label + pad[1:] + "]"
+	}
+	return pad + label + pad
 }

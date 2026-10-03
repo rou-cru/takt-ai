@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
@@ -337,7 +338,7 @@ func (adapter Adapter) ScanDrift(rootDir string) ([]setup.ConflictEntry, error) 
 	return preview.Conflicts, err
 }
 
-// executeReassignModels redeploys only changed sub-agents so untouched ones keep running.
+// executeReassignModels applies every changed assignment in one redeploy so untouched agents keep running.
 func (adapter Adapter) executeReassignModels(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	installed, err := setup.LoadInstalledConfig(request.RootDir)
 	if err != nil {
@@ -352,24 +353,30 @@ func (adapter Adapter) executeReassignModels(ctx context.Context, request Action
 
 	out := ActionResult{Action: ActionReassignModels}
 	ids := changedOverrideIDs(before, request.ReassignOverrides)
-	for index, subAgentID := range ids {
-		if ctx.Err() != nil {
-			out.NotApplied = append(out.NotApplied, ids[index:]...)
-			break
-		}
-		result, err := setup.ApplyModelOverrideChange(ctx, request.RootDir, subAgentID, request.ReassignOverrides[subAgentID], adapter.lifecycle.ProviderActions)
-		out.Changed = append(out.Changed, result.Changed...)
-		out.Unchanged = append(out.Unchanged, result.Unchanged...)
-		if lifecycle.Cancelled(ctx, err) {
-			out.NotApplied = append(append(out.NotApplied, result.NotApplied...), ids[index+1:]...)
-			break
-		}
-		if err != nil {
-			return ActionResult{}, err
-		}
+	if len(ids) == 0 {
+		return out, nil
 	}
-	if len(out.NotApplied) > 0 {
+	changes := make(map[string]model.ModelAssignment, len(ids))
+	for _, id := range ids {
+		// A missing entry reads as the zero assignment, which clears the override.
+		changes[id] = request.ReassignOverrides[id]
+	}
+	cancelled := func() (ActionResult, error) {
+		// A cancelled batch never records the new assignments, so every one is pending.
+		out.NotApplied = ids
 		out.Outcome = lifecycle.CancelledOutcome(len(out.Changed))
+		return out, nil
+	}
+	if ctx.Err() != nil {
+		return cancelled()
+	}
+	result, err := setup.ApplyModelOverrideChanges(ctx, request.RootDir, changes, adapter.lifecycle.ProviderActions)
+	out.Changed, out.Unchanged = result.Changed, result.Unchanged
+	if lifecycle.Cancelled(ctx, err) {
+		return cancelled()
+	}
+	if err != nil {
+		return ActionResult{}, err
 	}
 	return out, nil
 }
@@ -387,6 +394,7 @@ func changedOverrideIDs(before, after map[string]model.ModelAssignment) []string
 			ids = append(ids, id)
 		}
 	}
+	slices.Sort(ids)
 	return ids
 }
 
@@ -417,6 +425,8 @@ type InstallPlan struct {
 	// Add lists planned paths absent on disk; Modify lists present paths whose
 	// bytes differ. Files already identical appear in neither.
 	Add, Modify []string
+	// Summary states what the plan sets up in the user's terms.
+	Summary InstallSummary
 }
 
 // PreviewPlan resolves request's plan and classifies every planned file
@@ -449,6 +459,10 @@ func (adapter Adapter) PreviewPlan(request PreviewRequest) (InstallPlan, error) 
 			}
 		}
 	}
+	plan.Summary, err = summarize(request.RootDir, planRequest, plan)
+	if err != nil {
+		return InstallPlan{}, err
+	}
 	return plan, nil
 }
 
@@ -465,7 +479,7 @@ func (adapter Adapter) PreviewUninstall(rootDir string) (setup.UninstallResult, 
 
 // OpenCodeModels reports the models the local OpenCode installation offers;
 // asking the binary is execution, so it stays at the runtime boundary.
-func (adapter Adapter) OpenCodeModels() ([]string, error) {
+func (adapter Adapter) OpenCodeModels() ([]opencodeapi.Model, error) {
 	return opencode.AvailableModels(context.Background())
 }
 

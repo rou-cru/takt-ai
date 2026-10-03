@@ -2,8 +2,11 @@
 package install
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"os/exec"
+	"path"
 	"slices"
 	"strings"
 
@@ -23,10 +26,9 @@ type Step int
 
 // Steps are the install flow's screens, in walk order.
 const (
-	// StepSetupChoice is the Default/Custom selection screen.
-	StepSetupChoice Step = iota
-	// StepComponents is the optional component checklist.
-	StepComponents
+	// StepComponents is the optional component checklist, opened from review
+	// through Personalize.
+	StepComponents Step = iota
 	// StepConflicts lets the user choose, per conflicting file, whether to
 	// keep their own version or restore Takt's; it is reached only when a
 	// conflict needs a decision.
@@ -41,8 +43,6 @@ const (
 const (
 	// conflictChoiceCount is the keep/restore choice pair for each conflict.
 	conflictChoiceCount = 2
-	// componentPurposeParts is the label and explanation in a component purpose.
-	componentPurposeParts = 2
 )
 
 // OpenModelsMsg signals the user chose "Assign models" from the post-install
@@ -59,9 +59,6 @@ func openCodeOnPath() bool {
 	_, err := lookPath("opencode")
 	return err == nil
 }
-
-// setupChoices lists the setup modes in index order: 0 Default, 1 Custom.
-var setupChoices = []string{ui.TextSetupDefault, ui.TextSetupCustom}
 
 // componentPurpose returns the user-facing purpose for a component.
 func componentPurpose(id model.ComponentID) string {
@@ -128,11 +125,14 @@ func New(rootDir string) Model {
 		m.configuring = true
 		m.components, _ = setup.ValidateComponents(installed.Components)
 		m.setupCustom = true
-		m.step = StepComponents
 	} else if !openCodeOnPath() {
 		m.notice = ui.TextOpenCodeNotFound
 	}
 	m.initial = initialSelection{components: append([]model.ComponentID(nil), m.components...)}
+	// The flow opens on the prepared plan: review (or the files needing a
+	// decision first) is the starting point, Personalize the way to change it.
+	m.step = m.preparePlan()
+	m.cursor = m.cursorFor(m.step)
 	return m
 }
 
@@ -201,9 +201,6 @@ func (m Model) key(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.scrollKey(message) {
 		return m, nil
 	}
-	if m.sectionKey(message) {
-		return m, nil
-	}
 	return m.actionKey(message)
 }
 
@@ -215,21 +212,20 @@ func (m *Model) scrollKey(message tea.KeyPressMsg) bool {
 	return ok
 }
 
-func (m *Model) sectionKey(message tea.KeyPressMsg) bool {
-	if !m.isChecklist() {
-		return false
-	}
-	section, switched := ui.SwitchSection(m.focus, m.keymap, message)
-	if switched {
-		m.focus = section
-	}
-	return switched
-}
-
 func (m Model) actionKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if m.step == StepConflicts && m.focus == ui.SectionBody && m.keymap.Confirm.Matches(message) {
+	if m.step == StepConflicts && m.keymap.Confirm.Matches(message) {
+		// PR-UX-15: Enter records the file's choice and moves to the next
+		// file; on the last one it advances, unless a kept file cannot work.
 		m.choose()
-		return m, nil
+		file := m.cursor / conflictChoiceCount
+		if file+1 < len(m.decisions()) {
+			m.cursor = (file + 1) * conflictChoiceCount
+			if slices.Contains(m.restorePaths, m.decisions()[file+1].Path) {
+				m.cursor++
+			}
+			return m, nil
+		}
+		return m.confirm()
 	}
 	if m.step == StepReview || m.step == StepResult {
 		if ui.NudgeHorizontal(&m.cursor, m.rows(), m.keymap, message) {
@@ -276,8 +272,6 @@ func (m Model) isChecklist() bool {
 // or the footer actions of review and result.
 func (m Model) rows() int {
 	switch m.step {
-	case StepSetupChoice:
-		return len(setupChoices)
 	case StepComponents:
 		return m.customChoiceRows()
 	case StepConflicts:
@@ -290,24 +284,9 @@ func (m Model) rows() int {
 	return 0
 }
 
-// moveCursor moves within the focused section. On a checklist, moving past
-// either end enters the single-action footer.
+// moveCursor moves the cursor within the step's rows.
 func (m *Model) moveCursor(delta int) {
 	rows := m.rows()
-	if m.isChecklist() {
-		if m.focus == ui.SectionFooter {
-			m.focus = ui.SectionBody
-			m.cursor = 0
-			if delta < 0 {
-				m.cursor = rows - 1
-			}
-			return
-		}
-		if m.cursor+delta < 0 || m.cursor+delta >= rows {
-			m.focus = ui.SectionFooter
-			return
-		}
-	}
 	if rows > 0 {
 		m.cursor = ui.MoveCursor(m.cursor, rows, delta)
 	}
@@ -385,7 +364,6 @@ const (
 // toggling and cursor movement stay outside it.
 func installTransitions() ui.Table[Step, Model] {
 	return ui.Table[Step, Model]{
-		{From: StepSetupChoice, Event: eventConfirm}: installSetupConfirm,
 		{From: StepComponents, Event: eventConfirm}: func(m *Model) (Step, tea.Cmd) {
 			return m.preparePlan(), nil
 		},
@@ -396,32 +374,18 @@ func installTransitions() ui.Table[Step, Model] {
 			return StepResult, nil
 		},
 		{From: StepResult, Event: eventConfirm}: installResultConfirm,
-		{From: StepSetupChoice, Event: eventBack}: func(m *Model) (Step, tea.Cmd) {
-			return StepSetupChoice, func() tea.Msg { return ui.BackMsg{} }
-		},
+		// Back from the checklist returns to review with the choices kept.
 		{From: StepComponents, Event: eventBack}: func(m *Model) (Step, tea.Cmd) {
-			if m.configuring {
-				return StepComponents, func() tea.Msg { return ui.BackMsg{} }
-			}
-			return StepSetupChoice, nil
+			return m.preparePlan(), nil
 		},
-		{From: StepConflicts, Event: eventBack}: func(m *Model) (Step, tea.Cmd) {
-			return m.beforeConflicts(), nil
-		},
-		{From: StepReview, Event: eventBack}: installReviewBack,
+		{From: StepConflicts, Event: eventBack}: installConflictsBack,
+		{From: StepReview, Event: eventBack}:    installReviewBack,
 		{From: StepResult, Event: eventBack}: func(m *Model) (Step, tea.Cmd) {
 			return StepResult, func() tea.Msg { return ui.BackMsg{} }
 		},
 	}
 }
 
-func installSetupConfirm(m *Model) (Step, tea.Cmd) {
-	m.setupCustom = m.cursor == 1
-	if m.setupCustom {
-		return StepComponents, nil
-	}
-	return m.preparePlan(), nil
-}
 func installConflictsConfirm(m *Model) (Step, tea.Cmd) {
 	if _, blocked := m.blocked(); blocked {
 		return StepConflicts, nil
@@ -452,15 +416,16 @@ func installReviewBack(m *Model) (Step, tea.Cmd) {
 	if len(m.decisions()) > 0 && m.previewErr == nil {
 		return StepConflicts, nil
 	}
-	return m.beforeConflicts(), nil
+	return StepReview, func() tea.Msg { return ui.BackMsg{} }
 }
 
-// beforeConflicts is the step that prepared the plan.
-func (m Model) beforeConflicts() Step {
-	if m.setupCustom {
-		return StepComponents
+// installConflictsBack returns to the checklist when Personalize led here,
+// otherwise leaves the flow: conflicts are then its first step.
+func installConflictsBack(m *Model) (Step, tea.Cmd) {
+	if m.setupCustom && !m.configuring {
+		return StepComponents, nil
 	}
-	return StepSetupChoice
+	return StepConflicts, func() tea.Msg { return ui.BackMsg{} }
 }
 
 // confirm advances the flow for the confirm action.
@@ -475,17 +440,19 @@ func (m Model) apply(event string) (tea.Model, tea.Cmd) {
 	previous := m.step
 	next, cmd, _ := installTransitions().Apply(&m, m.step, event)
 	if next != previous {
-		m.step, m.scroll, m.cursor, m.focus = next, 0, 0, ui.SectionBody
-		switch next {
-		case StepSetupChoice:
-			if m.setupCustom {
-				m.cursor = 1
-			}
-		case StepReview:
-			m.cursor = m.rows() - 1
-		}
+		m.step, m.scroll, m.focus = next, 0, ui.SectionBody
+		m.cursor = m.cursorFor(next)
 	}
 	return m, cmd
+}
+
+// cursorFor places the cursor on a step's current value when it is entered:
+// the review's commit action, or the first row elsewhere.
+func (m Model) cursorFor(step Step) int {
+	if step == StepReview {
+		return len(m.reviewActions()) - 1
+	}
+	return 0
 }
 
 // preparePlan resolves the plan without changing anything.
@@ -550,9 +517,9 @@ func (m Model) resultActions() []string {
 	return []string{actionAssign, actionMenu, actionQuit}
 }
 
-// applicableComponents folds theme activation and its artifact into one choice.
+// applicableComponents lists the optional components the user can choose.
 func (m Model) applicableComponents() []model.ComponentID {
-	return []model.ComponentID{model.ComponentContext7, model.ComponentTheme}
+	return []model.ComponentID{model.ComponentContext7}
 }
 
 // componentNames returns the selected component names.
@@ -568,7 +535,7 @@ func (m Model) componentNames() []string {
 
 // customChoiceRows counts the component checklist rows.
 func (m Model) customChoiceRows() int {
-	return len(m.applicableComponents()) + 1
+	return len(m.applicableComponents())
 }
 
 // Title identifies the task and current step for the stable header region.
@@ -577,7 +544,7 @@ func (m Model) Title() string {
 	if m.configuring {
 		task = ui.TextTitleConfigure
 	}
-	step := map[Step]string{StepSetupChoice: ui.TextStepSetup, StepComponents: ui.TextStepComponents, StepConflicts: ui.TextStepExisting, StepReview: ui.TextStepReview, StepResult: ui.TextStepResult}[m.step]
+	step := map[Step]string{StepComponents: ui.TextStepComponents, StepConflicts: ui.TextStepExisting, StepReview: ui.TextStepReview, StepResult: ui.TextStepResult}[m.step]
 	if m.run.Busy() {
 		step = map[bool]string{false: ui.TextStepInstalling, true: ui.TextStepApplying}[m.configuring]
 	}
@@ -590,14 +557,11 @@ func (m Model) View() tea.View {
 	switch {
 	case m.run.Busy():
 		operation := map[bool]string{false: ui.TextBusyInstallation, true: ui.TextBusyConfiguration}[m.configuring]
-		frame.Body = ui.Busy(operation, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView())
-		frame.CenterBody = true
+		frame.Body, frame.Footer = ui.Busy(operation, m.run.SpinView(), m.run.ProgressView()), ui.BusyFooter(m.run.CancelRequested)
 	case m.step == StepConflicts:
-		frame.Body, frame.Footer = m.conflictsBody(), m.conflictsFooter()
+		frame.Body = m.conflictsBody()
 	case m.step == StepComponents:
 		frame.Body = m.componentsBody()
-	case m.step == StepSetupChoice:
-		frame.Body = m.setupChoiceBody()
 	case m.step == StepReview:
 		actions := m.reviewActions()
 		frame.Body, frame.Footer = m.reviewBody(), ui.FooterActions(ui.Actions(actions...), m.cursor, true)
@@ -607,22 +571,13 @@ func (m Model) View() tea.View {
 	return tea.NewView(ui.Shell(frame))
 }
 
-// setupChoiceBody is a single selector: (x) marks the current mode, > the
-// cursor; a notice below it never blocks the choice.
-func (m Model) setupChoiceBody() string {
-	body := ui.Options(setupChoices, m.cursor, true)
-	if m.notice != "" {
-		body += "\n" + theme.Label.Foreground(theme.WarningFg).Render(m.notice)
-	}
-	return body
-}
-
 // componentsBody renders the optional component checklist.
 func (m Model) componentsBody() string {
 	choices := m.applicableComponents()
 	items := make([]ui.Item, 0, len(choices)+1)
 	for _, component := range choices {
-		items = append(items, ui.Item{Label: componentPurpose(component) + " (" + string(component) + ")", Checked: slices.Contains(m.components, component)})
+		name, description, _ := strings.Cut(componentPurpose(component), " — ")
+		items = append(items, ui.Item{Label: name, Description: description, Checked: slices.Contains(m.components, component)})
 	}
 	return theme.Label.Render(ui.TextComponentsIntro) + "\n\n" +
 		ui.CheckList(items, m.cursor, m.focus == ui.SectionBody)
@@ -660,96 +615,133 @@ func (m Model) conflictsBody() string {
 		b.WriteString("\n")
 		section(&b, ui.TextNotAffectedTitle, unrelated)
 	}
+	// A kept file that cannot work holds the flow here; say why.
+	if conflict, blocked := m.blocked(); blocked {
+		b.WriteString("\n" + theme.DangerText.Render(fmt.Sprintf(ui.TextKeepCannotWorkFmt, conflict.Path, conflict.Alternative)))
+	}
 	return b.String()
 }
 
 func (m Model) conflictLines(index int, conflict setup.ConflictEntry) string {
-	text := "\n" + theme.Label.Bold(true).Render(conflict.Path) + "\n" + theme.Label.Render(ui.TextConflictSource+conflictSources[conflict.Reason]) + "\n" + theme.Label.Render(ui.TextConflictAffects+conflict.Affects) + "\n"
+	text := "\n" + theme.Strong.Render(conflict.Path) + "\n" + theme.Label.Render(ui.TextConflictSource+conflictSources[conflict.Reason]) + "\n" + theme.Label.Render(ui.TextConflictAffects+conflict.Affects) + "\n"
 	if conflict.Impact == setup.ImpactIncompatible {
-		text += theme.Label.Foreground(theme.DangerFg).Render(ui.TextConflictKnown+conflict.Consequence) + "\n" + theme.Label.Render(ui.TextConflictAlternative+conflict.Alternative) + "\n"
+		text += theme.DangerText.Render(ui.TextConflictKnown+conflict.Consequence) + "\n" + theme.Label.Render(ui.TextConflictAlternative+conflict.Alternative) + "\n"
 	} else {
-		text += theme.Label.Foreground(theme.WarningFg).Render(ui.TextConflictUncertain+conflict.Consequence) + "\n" + theme.Label.Render(ui.TextConflictRecommend) + "\n"
+		text += theme.WarningText.Render(ui.TextConflictUncertain+conflict.Consequence) + "\n" + theme.Label.Render(ui.TextConflictRecommend) + "\n"
 	}
 	cursor := -1
 	if m.cursor/conflictChoiceCount == index {
 		cursor = m.cursor % conflictChoiceCount
 	}
-	return text + ui.Options([]string{ui.TextKeepMine, ui.TextRestoreTakt}, cursor, m.focus == ui.SectionBody && cursor >= 0)
-}
-
-// conflictsFooter offers Continue, unavailable while a kept file cannot work
-// with the operation; restoring it stays available.
-func (m Model) conflictsFooter() string {
-	action := ui.FooterAction{Label: ui.TextActionContinue}
-	if conflict, blocked := m.blocked(); blocked {
-		action.Unavailable = fmt.Sprintf(ui.TextKeepCannotWorkFmt, conflict.Path, conflict.Alternative)
+	chosen := 0
+	if slices.Contains(m.restorePaths, conflict.Path) {
+		chosen = 1
 	}
-	return ui.FooterActions([]ui.FooterAction{action}, 0, m.focus == ui.SectionFooter)
+	return text + ui.Selector([]string{ui.TextKeepMine, ui.TextRestoreTakt}, cursor, chosen, cursor >= 0)
 }
 
-// reviewBody shows scope and the non-empty change categories of the real
-// plan; an unresolvable plan offers no commit action.
+// reviewBody states what the install sets up in the user's terms (agents,
+// skills, MCP servers, integrations) and which of their files it touches; an
+// unresolvable plan offers no commit action.
 func (m Model) reviewBody() string {
 	if m.previewErr != nil {
 		return m.reviewError()
 	}
 	var b strings.Builder
-	b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextScopeFmt, m.scope())))
-	b.WriteString("\n" + theme.Label.Render(fmt.Sprintf(ui.TextComponentsLineFmt, m.componentSummary())) + "\n")
-	b.WriteString("\n")
-	add := slices.DeleteFunc(slices.Clone(m.plan.Add), m.kept)
-	modify := slices.DeleteFunc(slices.Clone(m.plan.Modify), m.kept)
-	plugins := m.pluginLines()
-	m.reviewSections(&b, add, modify, plugins)
-	if len(add) == 0 && len(modify) == 0 && len(plugins) == 0 {
-		b.WriteString(theme.Label.Render(ui.TextNothingToChange) + "\n")
+	if m.notice != "" {
+		b.WriteString(ui.Status(ui.StateWarning, m.notice) + "\n\n")
 	}
+	added := len(slices.DeleteFunc(slices.Clone(m.plan.Add), m.kept))
+	updated := len(slices.DeleteFunc(slices.Clone(m.plan.Modify), m.kept))
+	if added+updated == 0 {
+		b.WriteString(theme.Label.Render(ui.TextNothingToChange) + "\n\n")
+	}
+	b.WriteString(ui.Fields(m.reviewFields(added, updated)))
 	return b.String()
 }
 
-func (m Model) reviewSections(b *strings.Builder, add, modify, plugins []string) {
-	if len(add) > 0 || len(plugins) > 0 {
-		section(b, ui.TextSectionAdd, append([]string{fileSummary(add)}, plugins...))
+// reviewFields lists the summary rows, omitting empty groups.
+func (m Model) reviewFields(added, updated int) []ui.Field {
+	summary := m.plan.Summary
+	fields := []ui.Field{{Label: ui.TextFieldDestination, Value: ui.TextDestinationValue}}
+	fields = append(fields, agentFields(summary.Agents)...)
+	fields = append(fields,
+		ui.Field{Label: ui.TextFieldSkills, Value: fmt.Sprint(summary.Skills)},
+		ui.Field{Label: ui.TextFieldMCP, Value: strings.Join(summary.MCPServers, ui.TextListSeparator)},
+	)
+	if len(summary.Integrations) > 0 {
+		fields = append(fields, ui.Field{Label: ui.TextFieldIntegrations, Value: strings.Join(summary.Integrations, ui.TextListSeparator)})
 	}
-	if len(modify) > 0 {
-		section(b, fmt.Sprintf(ui.TextSectionModifyFmt, len(modify)), m.modifyLines(modify))
+	if added+updated > 0 {
+		fields = append(fields, ui.Field{Label: ui.TextFieldFiles, Value: fmt.Sprintf(ui.TextFilesCountFmt, added, updated)})
 	}
-	if lines := m.removalLines(); len(lines) > 0 {
-		section(b, ui.TextSectionNotInstalled, lines)
+	fields = append(fields, labeled(ui.TextFieldYourConfig, m.configLines())...)
+	fields = append(fields, labeled(ui.TextFieldKept, m.preserveLines())...)
+	fields = append(fields, labeled(ui.TextFieldNotInstalled, m.removalLines())...)
+	return append(fields, labeled(ui.TextFieldUncertain, m.uncertainLines())...)
+}
+
+// agentFields counts the agents and groups them by the model they run on.
+func agentFields(agents []runtime.AgentModel) []ui.Field {
+	orchestrators, byModel := 0, map[string]int{}
+	for _, agent := range agents {
+		if agent.Role == model.RoleOrchestrator {
+			orchestrators++
+		}
+		byModel[agent.Model]++
 	}
-	if lines := m.preserveLines(); len(lines) > 0 {
-		section(b, ui.TextSectionPreserve, lines)
+	fields := []ui.Field{{Label: ui.TextFieldAgents, Value: fmt.Sprintf(ui.TextAgentsFmt, len(agents), orchestrators, len(agents)-orchestrators)}}
+	models := slices.SortedFunc(maps.Keys(byModel), func(a, b string) int {
+		return cmp.Or(byModel[b]-byModel[a], strings.Compare(a, b))
+	})
+	for _, name := range models {
+		label := name
+		if label == "" {
+			label = ui.TextInheritedModel
+		}
+		value := fmt.Sprintf(ui.TextAgentModelsFmt, byModel[name], label)
+		if len(models) == 1 {
+			value = fmt.Sprintf(ui.TextAgentModelsAllFmt, label)
+		}
+		fields = append(fields, ui.Field{Value: value})
 	}
-	if lines := m.uncertainLines(); len(lines) > 0 {
-		section(b, ui.TextSectionUncertain, lines)
+	return fields
+}
+
+// labeled puts label on the first line and continues the rest under it.
+func labeled(label string, lines []string) []ui.Field {
+	fields := make([]ui.Field, len(lines))
+	for index, line := range lines {
+		fields[index] = ui.Field{Value: line}
 	}
+	if len(fields) > 0 {
+		fields[0].Label = label
+	}
+	return fields
+}
+
+// configLines names the user's configuration files the install changes and
+// whether their own settings survive.
+func (m Model) configLines() []string {
+	var lines []string
+	for _, config := range m.plan.Summary.Configs {
+		if m.kept(config.Path) {
+			continue
+		}
+		note := ui.TextConfigUpdated
+		switch {
+		case slices.Contains(m.restorePaths, config.Path):
+			note = strings.TrimSpace(strings.Trim(ui.TextReplacesYours, " ()"))
+		case config.Merged:
+			note = ui.TextConfigMerged
+		}
+		lines = append(lines, path.Base(config.Path)+" — "+note)
+	}
+	return lines
 }
 
 func (m Model) reviewError() string {
 	return ui.Status(ui.StateFailed, ui.TextCannotPrepareIntro+m.previewErr.Error()) + "\n\n" + theme.Label.Render(ui.TextNothingChangedRetry)
-}
-
-// pluginLines names each plugin the plan installs and the harness it goes to.
-func (m Model) pluginLines() []string {
-	var plugins []string
-	for _, target := range m.plan.Plans {
-		for _, action := range target.Actions {
-			plugins = append(plugins, fmt.Sprintf(ui.TextPluginFmt, action.ID, ui.TargetLabel(target.Target)))
-		}
-	}
-	return plugins
-}
-
-// modifyLines marks the modified paths whose local edits the plan replaces.
-func (m Model) modifyLines(modify []string) []string {
-	lines := make([]string, len(modify))
-	for index, path := range modify {
-		lines[index] = path
-		if slices.Contains(m.restorePaths, path) {
-			lines[index] += ui.TextReplacesYours
-		}
-	}
-	return lines
 }
 
 func (m Model) removalLines() []string {
@@ -773,7 +765,7 @@ func (m Model) preserveLines() []string {
 		}
 		preserve = append(preserve, conflict.Path+note)
 	}
-	return append(preserve, m.exclusions()...)
+	return preserve
 }
 
 func (m Model) uncertainLines() []string {
@@ -792,59 +784,6 @@ func section(b *strings.Builder, title string, lines []string) {
 		b.WriteString(theme.Label.Render("  "+line) + "\n")
 	}
 	b.WriteString("\n")
-}
-
-// fileSummary counts new files and names the key capabilities among them.
-func fileSummary(paths []string) string {
-	agents, skills := 0, 0
-	for _, path := range paths {
-		switch {
-		case strings.Contains(path, "/agents/"):
-			agents++
-		case strings.HasSuffix(path, "/SKILL.md"):
-			skills++
-		}
-	}
-	summary := fmt.Sprintf(ui.TextNewFilesFmt, len(paths))
-	if agents+skills > 0 {
-		summary += fmt.Sprintf(ui.TextAgentSkillsFmt, agents, skills)
-	}
-	return summary
-}
-
-// exclusions lists what the user's choices leave out: the deselected components.
-func (m Model) exclusions() []string {
-	var out []string
-	if m.setupCustom {
-		for _, component := range m.applicableComponents() {
-			if !slices.Contains(m.components, component) {
-				out = append(out, ui.TextNotIncludedIntro+componentPurpose(component))
-			}
-		}
-	}
-	return out
-}
-
-// scope names the install target with its support tier.
-func (m Model) scope() string {
-	return ui.OpenCodeLabel + " (GA)"
-}
-
-// componentSummary names the chosen components for the scope line.
-func (m Model) componentSummary() string {
-	if !m.setupCustom {
-		return ui.TextDefaultAll
-	}
-	names := []string{}
-	for _, component := range m.applicableComponents() {
-		if slices.Contains(m.components, component) {
-			names = append(names, strings.SplitN(componentPurpose(component), " — ", componentPurposeParts)[0])
-		}
-	}
-	if len(names) == 0 {
-		return ui.TextNone
-	}
-	return strings.Join(names, ", ")
 }
 
 // resultBody reports what happened, what changed, availability, and when
@@ -886,7 +825,7 @@ func (m Model) resultSuccess() string {
 	if result.Verify != nil {
 		b.WriteString(ui.Verification(*result.Verify) + "\n\n")
 	}
-	if result.Verify == nil || !result.Verify.Ready {
+	if result.Verify == nil {
 		b.WriteString(ui.Status(ui.StateWarning, ui.TextNotReady) + "\n\n")
 	}
 	if len(result.Incomplete) > 0 {
@@ -906,6 +845,10 @@ func (m Model) resultSuccess() string {
 		b.WriteString(ui.Status(ui.StateWarning, fmt.Sprintf(ui.TextCannotGuaranteeFmt, strings.Join(names, ", "))) + "\n")
 		b.WriteString(theme.Label.Render(ui.TextUseDrift) + "\n\n")
 	}
-	b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextTakeEffectFmt, harness)))
-	return b.String()
+	// A completed reload already applied the changes; only otherwise do they
+	// wait for OpenCode's next start (PR-UX-24).
+	if !result.ReloadAttempted || result.ReloadError != nil {
+		b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextTakeEffectFmt, harness)))
+	}
+	return strings.TrimRight(b.String(), "\n")
 }

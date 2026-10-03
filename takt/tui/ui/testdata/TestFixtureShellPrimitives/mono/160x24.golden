@@ -1,0 +1,24 @@
+   Takt AI                                                                                                                                             Review   
+                                                                                                                                                                
+                                ┌──────────────────────────────────────────────────────────────────────────────────────────────┐                                
+                                │ Success: Configuration applied.                                                              │                                
+                                │ Warning: This file has external changes.                                                     │                                
+                                │ Failed: The change could not be applied.                                                     │                                
+                                │                                                                                              │                                
+                                │   [x] Context7                                                                               │                                
+                                │       Up-to-date library docs for agents                                                     │                                
+                                │ > [ ] Optional tool                                                                          │                                
+                                │                                                                                              │                                
+                                │   Keep my version                                                                            │                                
+                                │   Restore Takt version                                                                       │                                
+                                │                                                                                              │                                
+                                │ ✓ Checking OpenCode connection                                                               │                                
+                                │ * Applying installation files                                                                │                                
+                                │   ███████████████████████░░░░░░░░░░░░  67%                                                   │                                
+                                │   .config/opencode/opencode.json                                                             │                                
+                                └──────────────────────────────────────────────────────────────────────────────────────────────┘                                
+                                                                                                                                                                
+                                                        Back    [ Install ]    Remove      Apply changes                                                        
+                                                                Unavailable: no changes to apply                                                                
+                                                                                                                                                                
+                                                                                                                                                                

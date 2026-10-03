@@ -17,6 +17,7 @@ import (
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/drift"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 var (
@@ -102,7 +103,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	root, edited := installedRootWithDrift(t)
 	model := scan(t, drift.New(root))
 
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Fatalf("report View() = %q, want it to list the edited path %q", got, edited)
 	}
 
@@ -113,7 +114,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.State() != drift.StateSelect {
 		t.Fatalf("State() after selecting = %v, want StateSelect", model.State())
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Fatalf("select View() = %q, want it to list the conflicting path %q", got, edited)
 	}
 
@@ -128,12 +129,14 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.State() != drift.StateReview {
 		t.Fatalf("State() after continuing = %v, want StateReview", model.State())
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Errorf("review View() = %q, want it to name %q", got, edited)
 	}
 
-	// StateReview -> restore: Enter on action index 0 (Restore) starts the
-	// runtime action and returns the ActionRequest as a command.
+	// StateReview -> restore: focus starts on the safe action, so Left
+	// reaches Restore; Enter starts the runtime action.
+	moved, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	model = moved.(drift.Model)
 	restoring, cmd := model.Update(enterKey)
 	model = restoring.(drift.Model)
 	if cmd == nil {
@@ -169,7 +172,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.Run().Busy() {
 		t.Error("model is still busy after the result was consumed")
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Errorf("result View() = %q, want it to name the restored path %q", got, edited)
 	}
 
@@ -195,6 +198,8 @@ func driveToRestoreRequest(t *testing.T, root string) (drift.Model, runtime.Acti
 	model = next.(drift.Model)
 	next, _ = model.Update(enterKey) // select -> review
 	model = next.(drift.Model)
+	moved, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyLeft}) // reach Restore
+	model = moved.(drift.Model)
 	restoring, cmd := model.Update(enterKey) // review -> restore
 	model = restoring.(drift.Model)
 	if cmd == nil {

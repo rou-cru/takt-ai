@@ -78,21 +78,12 @@ func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
 		t.Fatal("Dirty() after deciding a retention choice = false, want true")
 	}
 
-	// Move focus to the footer, then continue to the Engram question.
-	next, _ = m.Update(tabKey)
-	m = next.(uninstall.Model)
-	next, _ = m.Update(enterKey)
-	m = next.(uninstall.Model)
+	// The only file is decided, so the flow advances to the Engram question.
 	if m.State() != uninstall.StateEngram {
 		t.Fatalf("State() after deciding the modified file = %v, want StateEngram", m.State())
 	}
 
-	// Leave is preselected: confirm it directly (body focus, row 0), then
-	// move to the footer and continue to review.
-	next, _ = m.Update(enterKey)
-	m = next.(uninstall.Model)
-	next, _ = m.Update(tabKey)
-	m = next.(uninstall.Model)
+	// Leave is preselected: Enter chooses it and advances to review.
 	next, _ = m.Update(enterKey)
 	m = next.(uninstall.Model)
 	if m.State() != uninstall.StateReview {
@@ -102,7 +93,9 @@ func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
 		t.Errorf("review View() = %q, want it to mention the uninstall action", got)
 	}
 
-	// Confirm the uninstall (footer already focused on actionUninstall).
+	// Focus starts on Back; the destructive action needs a deliberate move.
+	moved, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	m = moved.(uninstall.Model)
 	restoring, cmd := m.Update(enterKey)
 	m = restoring.(uninstall.Model)
 	if cmd == nil {
@@ -166,9 +159,7 @@ func TestUninstallReviewBackReturnsToEngram(t *testing.T) {
 		t.Fatalf("State() = %v, want StateReview", m.State())
 	}
 
-	// Footer starts on actionUninstall (0); move to actionBack (1) and confirm.
-	next, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = next.(uninstall.Model)
+	// Footer starts on actionBack, never on the destructive action.
 	next, cmd := m.Update(enterKey)
 	m = next.(uninstall.Model)
 	if cmd != nil {

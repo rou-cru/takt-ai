@@ -79,32 +79,19 @@ func TestInstallConflictFlow(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
+	// The flow prepares the default plan on open and lands on the decision
+	// the pre-existing file needs.
 	m := install.New(root)
-	if m.Step() != install.StepSetupChoice {
-		t.Fatalf("Step() on a fresh root = %v, want StepSetupChoice", m.Step())
-	}
-
-	// Confirm the default (non-custom) setup, which prepares the plan and
-	// should land on StepConflicts because of the pre-existing file.
-	next, _ := m.Update(enterKey)
-	m = next.(install.Model)
 	if m.Step() != install.StepConflicts {
-		t.Fatalf("Step() after confirming default setup = %v, want StepConflicts (preview error: check that %q is really a conflict)", m.Step(), conflictPath)
+		t.Fatalf("Step() on open = %v, want StepConflicts (check that %q is really a conflict)", m.Step(), conflictPath)
 	}
 	if got := viewText(m); !strings.Contains(got, conflictPath) {
 		t.Fatalf("conflicts View() = %q, want it to name %q", got, conflictPath)
 	}
 
-	// Choose "restore Takt's version" for the one conflict (row index 1:
-	// row 0 is keep, row 1 is restore, per conflictChoiceCount=2). Down
-	// moves the cursor onto the restore row, Enter with body focus chooses
-	// it, a further Down pushes focus onto the footer's single action, and
-	// Enter there advances the step.
-	next, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = next.(install.Model)
-	next, _ = m.Update(enterKey)
-	m = next.(install.Model)
-	next, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	// Choose "restore Takt's version" for the one conflict (row 1): Down
+	// moves onto it and Enter records it; as the last file, it advances.
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = next.(install.Model)
 	next, _ = m.Update(enterKey)
 	m = next.(install.Model)

@@ -56,8 +56,8 @@ func TestValidateComponentsFollowsCanonicalOrder(t *testing.T) {
 
 func TestMergedOverridesSetsAndClearsWithoutMutatingInput(t *testing.T) {
 	existing := map[string]model.ModelAssignment{"a": {Model: "m1"}, "b": {Model: "m2"}}
-	set := mergedOverrides(existing, "c", model.ModelAssignment{Model: "m3"})
-	cleared := mergedOverrides(existing, "a", model.ModelAssignment{})
+	set := mergedOverrides(existing, map[string]model.ModelAssignment{"c": {Model: "m3"}})
+	cleared := mergedOverrides(existing, map[string]model.ModelAssignment{"a": {}})
 	if len(set) != 3 || set["c"].Model != "m3" {
 		t.Errorf("set = %v", set)
 	}
@@ -113,7 +113,7 @@ func TestApplyModelOverrideChangeSurfacesApplyFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(root, OwnershipManifestFilename), "{")
-	_, err := ApplyModelOverrideChange(context.Background(), root, "takt-dev", model.ModelAssignment{Model: "provider/model"}, ProviderRuntime{})
+	_, err := ApplyModelOverrideChanges(context.Background(), root, map[string]model.ModelAssignment{"takt-dev": {Model: "provider/model"}}, ProviderRuntime{})
 	if err == nil || !strings.Contains(err.Error(), "parse ownership manifest") {
 		t.Fatalf("error = %v", err)
 	}

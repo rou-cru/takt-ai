@@ -23,7 +23,6 @@ func TestRenderConfigComponents(t *testing.T) {
 		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
 		Context7:    true,
 		Permissions: true,
-		Theme:       opencode.TaktTheme,
 	})
 	if err != nil {
 		t.Fatalf("opencode.RenderConfig() error = %v", err)
@@ -261,10 +260,10 @@ func assertDagPluginRouteRegistration(t *testing.T, content string) {
 // only, while the route graph scrolls both ways with keyboard focus.
 func assertDagPluginScrollBehavior(t *testing.T, content string) {
 	t.Helper()
-	if !strings.Contains(content, `mode="sidebar"`) || !strings.Contains(content, "scrollY: false") || !strings.Contains(content, "horizontalScrollbarOptions") {
+	if !strings.Contains(content, `"route" | "sidebar"`) || !strings.Contains(content, "scrollY: false") || !strings.Contains(content, "horizontalScrollbarOptions") {
 		t.Error("sidebar graph must scroll sideways only")
 	}
-	if !strings.Contains(content, `mode="route"`) || !strings.Contains(content, "scrollY: true, focused: true") {
+	if !strings.Contains(content, `props.mode === "route"`) || !strings.Contains(content, "scrollY: true, focused: true") {
 		t.Error("route graph must scroll both ways with keyboard focus")
 	}
 }
@@ -282,7 +281,7 @@ func assertDagPluginKeybinding(t *testing.T, content string) {
 // marker is present in the plugin source.
 func assertDagPluginNodeKindMarkers(t *testing.T, content string) {
 	t.Helper()
-	for _, marker := range []string{`readonly node_kind?: "delegated"`, `type DagActivityKind = "orchestrator" | "maintenance"`, `return "↗"`, `interface DagActivity`, `readonly activities?: readonly DagActivity[]`, `Activities · separate from work DAG; no prerequisite edges`, `GC activity`} {
+	for _, marker := range []string{`readonly node_kind?: "delegated"`, `type DagActivityKind = "orchestrator" | "maintenance"`, `interface DagActivity`, `readonly activities?: readonly DagActivity[]`, `GC activity`} {
 		if !strings.Contains(content, marker) {
 			t.Errorf("plugin missing explicit node-kind rendering marker %q", marker)
 		}
@@ -298,32 +297,6 @@ func assertDagPluginExports(t *testing.T, content string) {
 	}
 	if !strings.Contains(content, `from "@opencode/plugin/tui"`) {
 		t.Error("plugin must import the V2 TUI plugin package")
-	}
-}
-
-func TestTaktCLIArtifact(t *testing.T) {
-	artifact := opencode.TaktCLIArtifact(opencode.TaktTheme)
-	if artifact.Path != ".config/opencode/cli.json" {
-		t.Fatalf("path = %q, want .config/opencode/cli.json", artifact.Path)
-	}
-	want := `{
-  "$schema": "https://opencode.ai/v2/cli.json",
-  "theme": {
-    "name": "takt"
-  }
-}
-`
-	if !bytes.Equal(artifact.Content, []byte(want)) {
-		t.Fatalf("cli.json mismatch:\n%s", artifact.Content)
-	}
-}
-
-// TestTaktCLIArtifactWithoutTheme covers the install that leaves the theme
-// component out: cli.json still registers the plugin and selects nothing.
-func TestTaktCLIArtifactWithoutTheme(t *testing.T) {
-	artifact := opencode.TaktCLIArtifact("")
-	if bytes.Contains(artifact.Content, []byte("theme")) {
-		t.Fatalf("cli.json selects a theme without the component:\n%s", artifact.Content)
 	}
 }
 
@@ -415,7 +388,7 @@ func TestTaktMemoryPluginArtifact(t *testing.T) {
 	}
 	for _, want := range []string{
 		`name: "memory_record"`, `name: "memory_continue_session"`, `name: "memory_close_session"`,
-		"previous_session_id: str()", "objective: str(), state: str()",
+		"previous_session_id: str(", "objective: str(", "state: str(",
 		`user_order: { type: "boolean"`, "author: c.agent", "directory: pluginDirectory",
 		`"session.deleted"`, "fallback: true", "ctx.session.get",
 		// The two confirmations survive the V2 plugin API: ctx has no

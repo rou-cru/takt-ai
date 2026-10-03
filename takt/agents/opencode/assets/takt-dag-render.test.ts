@@ -12,11 +12,10 @@ import {
   hasContent,
   headerLine,
   nodeKindFor,
-  nodeKindGlyph,
-  nodeKindLabel,
   nodeText,
   ordinal,
   sidebarHeader,
+  sidebarRows,
   SidebarGraph,
   topologyError,
   topologyKey,
@@ -125,11 +124,6 @@ describe("node presentation", () => {
     expect(nodeKindFor(node())).toBe("delegated")
     expect(nodeKindFor(node({ node_kind: "delegated" }))).toBe("delegated")
   })
-  test("nodeKindGlyph / nodeKindLabel are stable", () => {
-    expect(nodeKindGlyph("delegated")).toBe("↗")
-    expect(nodeKindLabel("delegated")).toBe("delegated")
-  })
-
   test("glyphFor covers every state/flight/outcome combination", () => {
     expect(glyphFor(node({ state: "planned" }))).toBe("◌")
     expect(glyphFor(node({ state: "withdrawn" }))).toBe("×")
@@ -145,7 +139,7 @@ describe("node presentation", () => {
   })
 
   test("nodeText composes the kind glyph, state glyph, kind label and id", () => {
-    expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("↗ ✓ delegated unit-7")
+    expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("✓ unit-7")
   })
 
   test("renders activity-only and layered graph views in both layouts", async () => {
@@ -183,6 +177,19 @@ describe("activity presentation", () => {
   })
 })
 
+describe("sidebar list", () => {
+  test("lays units out top-down, indented under prerequisites, then activities", () => {
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+    const snapshot = {
+      ...base,
+      nodes: [node({ id: "build", state: "in_flight" }), node({ id: "design", state: "settled" }), node({ id: "review" })],
+      edges: [{ from: "design", to: "build" }, { from: "build", to: "review" }],
+      activities: [{ activity_id: "plan", node_kind: "orchestrator", state: "in_flight" }],
+    } as never
+    expect(sidebarRows(snapshot)).toEqual(["✓ design", "└ ● build", "  └ ◌ review", "", "◆ direct activity plan · running"])
+  })
+})
+
 describe("hasContent / headerLine / sidebarHeader", () => {
   const base = { schema_version: 1, projection_revision: 3, history_position: 3, session_id: "s", capture: "current", edges: [] } as const
 
@@ -193,20 +200,21 @@ describe("hasContent / headerLine / sidebarHeader", () => {
   })
 
   test("headerLine reports the failure health without a snapshot", () => {
-    expect(headerLine(undefined, "unavailable")).toBe("Takt DAG · capture: unavailable")
+    expect(headerLine(undefined, "unavailable")).toBe("Takt DAG · unavailable")
   })
-  test("headerLine reports the snapshot's own capture when confirmed", () => {
-    const snapshot = { ...base, nodes: [], plan_version: "plan-9" } as never
-    expect(headerLine(snapshot, "confirmed")).toBe("Takt DAG · projection 3 · plan plan-9 · capture: current")
+  test("headerLine shows progress, not internal revisions, for a current capture", () => {
+    expect(headerLine({ ...base, nodes: [], plan_version: "plan-9" } as never, "confirmed")).toBe("Takt DAG")
+    const nodes = [node({ id: "a", state: "settled" }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "planned" })]
+    expect(headerLine({ ...base, nodes } as never, "confirmed")).toBe("Takt DAG · 1/3 done · 1 running")
   })
   test("headerLine reports the view's health over the snapshot's capture when stale", () => {
     const snapshot = { ...base, nodes: [] } as never
-    expect(headerLine(snapshot, "stale")).toBe("Takt DAG · projection 3 · plan — · capture: stale")
+    expect(headerLine(snapshot, "stale")).toBe("Takt DAG · stale")
   })
 
   test("sidebarHeader mirrors headerLine's health precedence in one short line", () => {
     expect(sidebarHeader(undefined, "waiting")).toBe("Takt DAG · waiting")
-    expect(sidebarHeader({ ...base, nodes: [] } as never, "confirmed")).toBe("Takt DAG · current")
+    expect(sidebarHeader({ ...base, nodes: [] } as never, "confirmed")).toBe("Takt DAG")
     expect(sidebarHeader({ ...base, nodes: [] } as never, "invalid")).toBe("Takt DAG · invalid")
   })
 })

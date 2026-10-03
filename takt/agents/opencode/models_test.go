@@ -11,8 +11,8 @@ import (
 )
 
 const modelResponse = `{"location":{},"data":[
-  {"providerID":"opencode-go","modelID":"glm-5.3","name":"GLM","enabled":true,"limit":{"context":1000,"output":100}},
-  {"providerID":"openai","modelID":"gpt-5.6-luna","name":"GPT","enabled":true,"limit":{"context":2000,"output":200}}
+  {"providerID":"opencode-go","id":"glm-5.3","modelID":"glm-5.3","name":"GLM","enabled":true,"limit":{"context":1000,"output":100}},
+  {"providerID":"openai","id":"gpt-5.6-luna","modelID":"gpt-5.6-luna","name":"GPT","enabled":true,"limit":{"context":2000,"output":200}}
 ]}`
 
 // fakeCommand installs a deterministic OpenCode V2 API process in an isolated PATH.
@@ -36,7 +36,11 @@ func TestAvailableModelsReportsWhatOpenCodeListsInOrder(t *testing.T) {
 		t.Fatalf("AvailableModels() error = %v", err)
 	}
 	want := []string{"opencode-go/glm-5.3", "openai/gpt-5.6-luna"}
-	if strings.Join(models, ",") != strings.Join(want, ",") {
+	got := make([]string, len(models))
+	for index, model := range models {
+		got[index] = model.Ref.String()
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") || models[0].Name != "GLM" {
 		t.Fatalf("models = %v, want %v", models, want)
 	}
 }

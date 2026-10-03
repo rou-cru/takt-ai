@@ -1,6 +1,6 @@
 ---
 name: takt-memory-contract
-description: "Trigger: before using memory. The single content guide for every Takt agent: what a memory is, what each nature, scope and relation means, when to record, what never to record, and how to read memory."
+description: "Before using memory. The single content guide for every Takt agent: what a memory is, what each nature, scope and relation means, when to record, what never to record, and how to read memory."
 license: AGPL-3.0
 metadata:
   author: takt

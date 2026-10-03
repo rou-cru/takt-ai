@@ -30,7 +30,7 @@ func TestLongErrorsStayReachable(t *testing.T) {
 func conflictModel(t *testing.T, conflicts ...setup.ConflictEntry) Model {
 	m := New(t.TempDir())
 	m.plan.Conflicts = conflicts
-	m.step = StepConflicts
+	m.step, m.cursor = StepConflicts, m.cursorFor(StepConflicts)
 	return m
 }
 

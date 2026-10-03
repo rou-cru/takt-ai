@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
+	"github.com/rou-cru/takt-ai/takt/tui/ui"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
@@ -29,7 +32,19 @@ func body(p Model) string { return ansi.Strip(p.Frame().Body) }
 func focusAgent(p *Model, name string) bool {
 	for index, agent := range p.agents {
 		if agent.Name == name {
-			p.cursor = index
+			p.cursor = index + 1 // row 0 is All agents
+			return true
+		}
+	}
+	return false
+}
+
+// rowShows reports whether a table row lists agent with value in its model
+// column, ignoring the alignment padding and the changed marker.
+func rowShows(body, agent, value string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		row := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), ">"))
+		if strings.HasPrefix(row, agent+" ") && strings.Contains(row, value) {
 			return true
 		}
 	}
@@ -48,7 +63,7 @@ func TestOpenCodeSearchAcceptsJKAndReturnsRealSelection(t *testing.T) {
 		t.Fatal(body)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if body := body(p); !strings.Contains(body, "> analyst — opencode/big-pickle") {
+	if body := body(p); !strings.Contains(body, "> analyst") || !rowShows(body, "analyst", "opencode/big-pickle") {
 		t.Fatalf("selection missing from the assignment list:\n%s", body)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -90,7 +105,7 @@ func TestOrchestratorCanBeAssignedAModel(t *testing.T) {
 	if got := p.SparseOverrides()[shared.OrchestratorID]; got.Model != "provider/orchestrator-model" {
 		t.Fatalf("orchestrator assignment = %#v, want provider/orchestrator-model", got)
 	}
-	if !strings.Contains(body(p), shared.OrchestratorID+" — provider/orchestrator-model") {
+	if !rowShows(body(p), shared.OrchestratorID, "provider/orchestrator-model") {
 		t.Fatalf("assignment list does not show orchestrator model:\n%s", body(p))
 	}
 }
@@ -100,8 +115,12 @@ func TestLoadFailureKeepsInheritChoice(t *testing.T) {
 	p.LoadErr = errors.New("opencode not found")
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	view := body(p)
-	if !strings.Contains(view, "> inherit from OpenCode") {
+	if !strings.Contains(view, "> inherits OpenCode default") {
 		t.Fatal(view)
+	}
+	p.LoadErr = fmt.Errorf("opencode models: %w: opencode GET /api/model: signal: killed", opencodeapi.ErrUnavailable)
+	if view := body(p); !strings.Contains(view, "OpenCode did not respond") || strings.Contains(view, "signal") {
+		t.Fatalf("load failure leaks the error chain:\n%s", view)
 	}
 }
 
@@ -185,7 +204,58 @@ func TestInheritRemovesInstalledModelAndVariant(t *testing.T) {
 	if p.Changes() != 1 || p.SparseOverrides() != nil {
 		t.Fatalf("inherit did not clear the override: %v", p.SparseOverrides())
 	}
-	if !strings.Contains(body(p), "analyst — inherit from OpenCode") {
+	if !rowShows(body(p), "analyst", "inherits OpenCode default") {
 		t.Fatal(body(p))
+	}
+}
+
+// The All agents row assigns one model to every agent as pending changes;
+// individual rows stay editable afterwards.
+func TestAllAgentsAssignsEveryAgentAtOnce(t *testing.T) {
+	p := New()
+	p.Available = []string{"provider/shared"}
+	p.cursor = 0
+	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	p.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // skip inherit
+	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if p.Changes() != len(p.agents) {
+		t.Fatalf("Changes() = %d, want every agent (%d)", p.Changes(), len(p.agents))
+	}
+	for _, agent := range p.agents {
+		if p.SparseOverrides()[agent.Name].Model != "provider/shared" {
+			t.Fatalf("%s not assigned the shared model: %v", agent.Name, p.SparseOverrides())
+		}
+	}
+	if !rowShows(body(p), ui.TextPickerAllAgents, "provider/shared") {
+		t.Fatalf("All agents row does not show the shared model:\n%s", body(p))
+	}
+	if len(p.Pending()) != len(p.agents) {
+		t.Fatalf("Pending() = %v, want every agent", p.Pending())
+	}
+}
+
+// Models read by their display name beside the reference, and search finds
+// them by either.
+func TestModelListShowsNamesAndSearchesThem(t *testing.T) {
+	p := New()
+	p.Available = []string{"openai/gpt-6-luna-fast", "opencode/fledge"}
+	p.Names = map[string]string{"openai/gpt-6-luna-fast": "GPT-6 Luna Fast", "opencode/fledge": "Fledge"}
+	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !rowShows(body(p), "GPT-6 Luna Fast", "openai/gpt-6-luna-fast") {
+		t.Fatalf("model row lacks its display name:\n%s", body(p))
+	}
+	typeText(&p, "luna fast")
+	if view := body(p); !strings.Contains(view, "openai/gpt-6-luna-fast") || strings.Contains(view, "opencode/fledge") {
+		t.Fatalf("search by display name failed:\n%s", view)
+	}
+}
+
+func TestInheritRowStartsInNameColumn(t *testing.T) {
+	p := New()
+	p.Available = []string{"provider/model-a"}
+	p.Names = map[string]string{"provider/model-a": "Model A"}
+	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if view := body(p); !strings.Contains(view, "> inherits OpenCode default") {
+		t.Fatalf("inherit row is not in the name column:\n%s", view)
 	}
 }
