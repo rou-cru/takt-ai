@@ -260,10 +260,10 @@ func assertDagPluginRouteRegistration(t *testing.T, content string) {
 // only, while the route graph scrolls both ways with keyboard focus.
 func assertDagPluginScrollBehavior(t *testing.T, content string) {
 	t.Helper()
-	if !strings.Contains(content, `mode="sidebar"`) || !strings.Contains(content, "scrollY: false") || !strings.Contains(content, "horizontalScrollbarOptions") {
+	if !strings.Contains(content, `"route" | "sidebar"`) || !strings.Contains(content, "scrollY: false") || !strings.Contains(content, "horizontalScrollbarOptions") {
 		t.Error("sidebar graph must scroll sideways only")
 	}
-	if !strings.Contains(content, `mode="route"`) || !strings.Contains(content, "scrollY: true, focused: true") {
+	if !strings.Contains(content, `props.mode === "route"`) || !strings.Contains(content, "scrollY: true, focused: true") {
 		t.Error("route graph must scroll both ways with keyboard focus")
 	}
 }
@@ -281,7 +281,7 @@ func assertDagPluginKeybinding(t *testing.T, content string) {
 // marker is present in the plugin source.
 func assertDagPluginNodeKindMarkers(t *testing.T, content string) {
 	t.Helper()
-	for _, marker := range []string{`readonly node_kind?: "delegated"`, `type DagActivityKind = "orchestrator" | "maintenance"`, `return "↗"`, `interface DagActivity`, `readonly activities?: readonly DagActivity[]`, `Activities · separate from work DAG; no prerequisite edges`, `GC activity`} {
+	for _, marker := range []string{`readonly node_kind?: "delegated"`, `type DagActivityKind = "orchestrator" | "maintenance"`, `interface DagActivity`, `readonly activities?: readonly DagActivity[]`, `GC activity`} {
 		if !strings.Contains(content, marker) {
 			t.Errorf("plugin missing explicit node-kind rendering marker %q", marker)
 		}

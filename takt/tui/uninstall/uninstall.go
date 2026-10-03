@@ -44,8 +44,9 @@ const incompleteLineParts = 2
 
 // Review footer actions, in order.
 const (
-	// actionUninstall commits the reviewed uninstall.
-	actionUninstall = iota
+	// Index 0 commits the reviewed uninstall: any cursor that is not
+	// actionBack selects it.
+	_ = iota
 	// actionBack returns to the Engram question without uninstalling.
 	actionBack
 )

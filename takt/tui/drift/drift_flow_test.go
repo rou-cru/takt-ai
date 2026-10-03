@@ -114,7 +114,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.State() != drift.StateSelect {
 		t.Fatalf("State() after selecting = %v, want StateSelect", model.State())
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Fatalf("select View() = %q, want it to list the conflicting path %q", got, edited)
 	}
 
@@ -129,7 +129,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.State() != drift.StateReview {
 		t.Fatalf("State() after continuing = %v, want StateReview", model.State())
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Errorf("review View() = %q, want it to name %q", got, edited)
 	}
 
@@ -172,7 +172,7 @@ func TestDriftFullSelectReviewRestoreFlow(t *testing.T) {
 	if model.Run().Busy() {
 		t.Error("model is still busy after the result was consumed")
 	}
-	if got := viewText(model); !strings.Contains(got, edited) {
+	if got := viewText(model); !testutil.Shows(got, edited) {
 		t.Errorf("result View() = %q, want it to name the restored path %q", got, edited)
 	}
 

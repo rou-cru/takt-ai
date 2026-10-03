@@ -62,6 +62,12 @@ Commands:
   version                        print the version
   help                           show this help`
 
+// usageError is the help text returned as an error. It is a type, not
+// errors.New, because the help starts with the product name, not a sentence.
+type usageError string
+
+func (e usageError) Error() string { return string(e) }
+
 // usageExitStatus is the exit status for a command line that names no command.
 const usageExitStatus = 2
 
@@ -161,7 +167,7 @@ func dispatch(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 func dispatchInteractive(stdin io.Reader, stdout io.Writer) error {
 	if !isInteractive(stdin, stdout) {
-		return errors.New(usage + "\ninteractive TUI requires a terminal; use `takt-ai setup ...` for non-interactive use")
+		return usageError(usage + "\ninteractive TUI requires a terminal; use `takt-ai setup ...` for non-interactive use")
 	}
 	return runTUI(stdin, stdout)
 }
@@ -375,7 +381,7 @@ func runRestore(args []string, stdout io.Writer) error {
 	root := flags.String("root", "", "")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return errors.New(usage)
+			return usageError(usage)
 		}
 		return fmt.Errorf("invalid usage: %w", err)
 	}
@@ -415,7 +421,7 @@ type setupInvocation struct {
 // parseSetupInvocation validates setup flags so bad input fails before touching files.
 func parseSetupInvocation(args []string) (setupInvocation, error) {
 	if len(args) < 2 || args[0] != "setup" || !setupCommands[args[1]] {
-		return setupInvocation{}, errors.New(usage)
+		return setupInvocation{}, usageError(usage)
 	}
 	flags := flag.NewFlagSet("setup "+args[1], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -426,7 +432,7 @@ func parseSetupInvocation(args []string) (setupInvocation, error) {
 	jsonOutput := flags.Bool("json", false, "")
 	if err := flags.Parse(args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return setupInvocation{}, errors.New(usage)
+			return setupInvocation{}, usageError(usage)
 		}
 		return setupInvocation{}, fmt.Errorf("invalid usage: %w", err)
 	}
