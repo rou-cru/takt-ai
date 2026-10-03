@@ -21,11 +21,9 @@ type Frame struct {
 	Width  int
 	Height int
 	Scroll int
-	// Home renders the entry screen: no panel and no step, since the logo in
-	// Body already identifies the product.
+	// Home renders the entry screen: no header, no panel and no wrapping; Body
+	// is the screen's own composition sized by HomeRows and InnerWidth.
 	Home bool
-	// CenterBody vertically centers short content in the available body area.
-	CenterBody bool
 }
 
 // MinWidth and MinHeight bound the smallest usable screen.
@@ -43,12 +41,23 @@ const (
 const (
 	// shellHeaderRows accounts for the header and its following blank row.
 	shellHeaderRows = 2
-	// shellFooterGap reserves the blank row before footer actions.
-	shellFooterGap = 1
-	// centerDivisor splits remaining width evenly around centered content.
+	// shellBottomMargin keeps one blank row under the last block.
+	shellBottomMargin = 1
+	// footerGap is the blank row between the panel and the action row; it also
+	// carries the scroll position when the panel overflows.
+	footerGap = 1
+	// centerDivisor splits remaining space evenly around centered content.
 	centerDivisor = 2
-	// wideMargin is the lateral margin on wide terminals.
-	wideMargin = 2
+	// wideMargin and narrowMargin are the lateral margins (PR-UX-8): three
+	// columns when they fit, two at reduced width.
+	wideMargin, narrowMargin = 3, 2
+	// panelBorder is the border cost of a panel on each axis (both sides).
+	panelBorder = 2
+	// panelPadding is the horizontal padding inside a panel (both sides).
+	panelPadding = 2
+	// panelMaxWidth bounds every panel so it never stretches text across a
+	// wide terminal (PR-UX-2) and never changes width with its content.
+	panelMaxWidth = 96
 )
 
 // Shell composes the signature header, the paneled body and the action row so
@@ -73,47 +82,86 @@ func smallShell(frame Frame, inner int) string {
 }
 
 func fullShell(frame Frame, inner int) string {
+	available := max(1, frame.Height-shellHeaderRows-shellBottomMargin)
+	footer := ""
+	if trimmed := strings.TrimRight(frame.Footer, "\n"); trimmed != "" {
+		footer = centerBlock(wrapBody(trimmed, inner), inner)
+	}
+	body := strings.TrimRight(frame.Body, "\n")
 
-	sections := []string{headerRow(stepLabel(frame.Header), inner), ""}
-
-	// The paneled body keeps its border intact: content wraps to the inner
-	// width minus border and padding, and the border is applied last.
-	footer := strings.TrimRight(frame.Footer, "\n")
-	reserved := shellHeaderRows + shellFooterGap
-	if footer != "" {
-		reserved += footerHeight(footer, inner)
+	if frame.Home {
+		// The home composes its own centered block (logo, signature, menu) for
+		// HomeRows; it carries the signature, so no header row repeats it.
+		return paint(indent(fitLines(body, HomeRows(frame.Height)), frame.Width), frame.Width, frame.Height)
 	}
-	bodyHeight := max(1, frame.Height-reserved)
-
-	panel := !frame.Home && strings.TrimRight(frame.Body, "\n") != ""
-	contentWidth := inner
-	if panel {
-		contentWidth = max(1, inner-panelPad)
+	var block string
+	if body != "" {
+		block = panelBlock(body, footer, frame.Width, frame.Scroll, available, inner)
+		// A short block sits in the middle of the body area instead of
+		// piling against the header.
+		if height := lipgloss.Height(block); height < available {
+			block = strings.Repeat("\n", (available-height)/centerDivisor) + block
+		}
+	} else {
+		block = fitLines(wrapBody(body, inner), max(1, available-footerRows(footer)))
+		if footer != "" {
+			block += "\n\n" + footer
+		}
 	}
-	body := wrapBody(strings.TrimRight(frame.Body, "\n"), contentWidth)
-	lines := strings.Split(body, "\n")
-	windowHeight := bodyHeight
-	if panel {
-		windowHeight = max(1, bodyHeight-panelVerticalPad)
-	}
-	start := visibleStart(lines, frame.Scroll, windowHeight)
-	visible := lines[start:]
-	if frame.CenterBody && len(visible) < windowHeight {
-		pad := (windowHeight - len(visible)) / 2
-		visible = append(make([]string, pad), visible...)
-	}
-	bodyOut := fitLines(strings.Join(visible, "\n"), windowHeight)
-	if panel {
-		bodyOut = lipgloss.PlaceHorizontal(inner, lipgloss.Center, theme.Panel.Render(bodyOut))
-	}
-	sections = append(sections, bodyOut)
-	if footer != "" {
-		sections = append(sections, "", centerBlock(wrapBody(footer, inner), inner))
-	}
-	return paint(indent(strings.Join(sections, "\n"), frame.Width), frame.Width, frame.Height)
+	sections := headerRow(stepLabel(frame.Header), inner) + "\n\n" + block
+	return paint(indent(sections, frame.Width), frame.Width, frame.Height)
 }
 
-func footerHeight(footer string, inner int) int { return lipgloss.Height(wrapBody(footer, inner)) + 1 }
+// panelBlock renders the bordered panel at its stable width, the gap row
+// (scroll position when the panel overflows) and the action row.
+func panelBlock(body, footer string, width, scroll, available, inner int) string {
+	panelWidth := PanelWidth(width)
+	lines := strings.Split(wrapBody(body, panelWidth-panelBorder-panelPadding), "\n")
+	window := max(1, available-panelBorder-footerRows(footer))
+	start := visibleStart(lines, scroll, window)
+	end := min(len(lines), start+window)
+	panel := theme.Panel.Width(panelWidth).Render(paintSurface(strings.Join(lines[start:end], "\n")))
+	rows := []string{lipgloss.PlaceHorizontal(inner, lipgloss.Center, panel)}
+	gap := ""
+	if len(lines) > window {
+		gap = positionRow(start, end, len(lines), inner, panelWidth)
+	}
+	if footer != "" {
+		rows = append(rows, gap, footer)
+	} else if gap != "" {
+		rows = append(rows, gap)
+	}
+	return strings.Join(rows, "\n")
+}
+
+// footerRows is the height the action row and its gap take.
+func footerRows(footer string) int {
+	if footer == "" {
+		return 0
+	}
+	return footerGap + lipgloss.Height(footer)
+}
+
+// positionRow shows which rows of an overflowing panel are visible,
+// right-aligned under the panel (PR-UX-29).
+func positionRow(start, end, total, inner, panelWidth int) string {
+	position := theme.Caption.Render(fmt.Sprintf(TextScrollPosFmt, start+1, end, total))
+	right := (inner-panelWidth)/centerDivisor + panelWidth
+	return strings.Repeat(" ", max(0, right-lipgloss.Width(position))) + position
+}
+
+// paintSurface keeps the panel background behind styled spans. Every span
+// ends in an SGR reset, which would otherwise expose the terminal background
+// until the end of the line; the surface colors are re-applied after each.
+func paintSurface(content string) string {
+	if theme.Mono() {
+		return content
+	}
+	surface := ansi.Style{}.BackgroundColor(theme.Surface).ForegroundColor(theme.TextPrimary).String()
+	content = strings.ReplaceAll(content, "\x1b[0m", ansi.ResetStyle)
+	return strings.ReplaceAll(content, ansi.ResetStyle, ansi.ResetStyle+surface)
+}
+
 func visibleStart(lines []string, scroll, height int) int {
 	start := min(max(0, scroll), max(0, len(lines)-height))
 	for i, line := range lines {
@@ -143,12 +191,6 @@ func centerBlock(block string, width int) string {
 	return strings.Join(out, "\n")
 }
 
-// panelPad is the horizontal cost of the panel border and padding.
-const panelPad = 4
-
-// panelVerticalPad is the vertical cost of the panel border (top and bottom).
-const panelVerticalPad = 2
-
 // stepLabel isolates the step from a "Task · Step" header.
 func stepLabel(header string) string {
 	_, step, found := strings.Cut(header, " · ")
@@ -160,7 +202,7 @@ func stepLabel(header string) string {
 
 // headerRow renders the signature on the left and the step on the right.
 func headerRow(step string, width int) string {
-	sig := theme.Signature.Render(TextBrand)
+	sig := theme.SignatureText.Render(TextBrand)
 	if step == "" {
 		return sig
 	}
@@ -205,7 +247,7 @@ func hangingIndent(line string) int {
 // margin sets the lateral margin so narrow screens keep more content width.
 func margin(width int) int {
 	if width < DefaultWidth {
-		return 1
+		return narrowMargin
 	}
 	return wideMargin
 }
@@ -232,18 +274,34 @@ func paint(block string, width, height int) string {
 	return strings.Join(lines[:height], "\n")
 }
 
-// chromeHeight reserves rows around the body so content never overlaps chrome.
-const chromeHeight = 6
-
-// BodyHeight returns usable content height.
+// BodyHeight returns the visible rows inside a panel above a one-line action
+// row: the window Shell scrolls for most screens.
 func BodyHeight(height int) int {
+	return ContentRows(height, 1)
+}
+
+// ContentRows returns the visible rows inside a panel above an action row of
+// footerLines lines (0 for none); Shell uses the same arithmetic.
+func ContentRows(height, footerLines int) int {
 	if height <= 0 {
 		return 0
 	}
-	if height -= chromeHeight; height > 1 {
-		return height
+	reserved := shellHeaderRows + shellBottomMargin + panelBorder
+	if footerLines > 0 {
+		reserved += footerGap + footerLines
 	}
-	return 1
+	return max(1, height-reserved)
+}
+
+// HomeRows returns the rows the home composition may fill: everything above
+// the bottom margin, since the home has no header.
+func HomeRows(height int) int {
+	return max(1, height-shellBottomMargin)
+}
+
+// PanelWidth returns the stable panel width for a terminal width.
+func PanelWidth(width int) int {
+	return min(max(1, InnerWidth(width)), panelMaxWidth)
 }
 
 // InnerWidth returns width inside margins.

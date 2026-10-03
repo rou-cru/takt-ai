@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"slices"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
@@ -63,24 +65,16 @@ func (r Run) AcceptProgress(msg ActionProgressMsg) (Run, bool) {
 		return r, false
 	}
 	event := msg.Progress
+	// A new message closes the current phase.
+	if event.Message != r.progress.Message && r.progress.Message != "" {
+		r.progress.Done = append(slices.Clone(r.progress.Done), r.progress.Message)
+	}
 	r.progress.Message = event.Message
-	if event.Stage == "applied" {
-		r.progress.Completed = event.Completed
-		r.progress.Total = event.Total
-	} else {
-		r.progress.Completed = 0
-		r.progress.Total = 0
+	r.progress.Completed, r.progress.Total = 0, 0
+	if event.Total > 0 {
+		r.progress.Completed, r.progress.Total = event.Completed, event.Total
 	}
-	if event.Stage == "applied" && event.Path != "" {
-		if len(r.progress.Applied) == 0 || r.progress.Applied[len(r.progress.Applied)-1] != event.Path {
-			r.progress.Applied = append(r.progress.Applied, event.Path)
-		}
-		r.progress.Current = ""
-	} else if event.Path != "" {
-		r.progress.Current = event.Path
-	} else {
-		r.progress.Current = ""
-	}
+	r.progress.Current = event.Path
 	return r, true
 }
 

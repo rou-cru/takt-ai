@@ -52,6 +52,8 @@ function startDag(respond: () => Reply) {
   const killed: number[] = []
   let route: { render: (input: Rendered) => unknown } | undefined
   let sidebar: Slot | undefined
+  const layers: Array<() => { commands?: Array<{ id?: string; bind?: string; run: () => void }> }> = []
+  const navigated: unknown[] = []
   runtime.Bun.spawn = ((argv: string[]) => {
     spawned.push(argv)
     const answer = respond()
@@ -62,13 +64,13 @@ function startDag(respond: () => Reply) {
     data: { location: { default: () => ({ directory: "/workspace" }) }, session: { root: (id: string) => id } },
     theme: { text: { base: "white" } },
     ui: {
-      router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate() {} },
+      router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate(destination: unknown) { navigated.push(destination) } },
       slot(value: Slot) { if (value.prepend === "sidebar.content") sidebar = value; return () => {} },
     },
-    keymap: { layer: () => () => {} },
+    keymap: { layer: (input: (typeof layers)[number]) => { layers.push(input) } },
   } as never)
   return {
-    spawned, killed,
+    spawned, killed, layers, navigated,
     route: (sessionID: string | undefined) => route!.render({ data: { sessionID } }),
     sidebar: (sessionID: string) => sidebar!.render({ sessionID }),
     stop() {
@@ -104,9 +106,9 @@ async function visit(respond: () => Reply, view: (dag: ReturnType<typeof startDa
 describe("DAG route view", () => {
   test("polls the session's snapshot and shows its header, graph and legend", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.route("root"))
-    expect(frame).toContain("Takt DAG · projection 4 · plan plan-7 · capture: current")
+    expect(frame).toContain("Takt DAG · 1/1 done")
     expect(frame).toContain("unit-a")
-    expect(frame).toContain("settled/completed")
+    expect(frame).not.toContain("projection")
     expect(spawned[0]).toEqual([
       "__TAKT_AI_BINARY__", "dag", "status", "--workspace", "/workspace",
       "--state", expect.stringMatching(/\/\.local\/share\/takt-ai\/vfs\/workspace-[0-9a-f]{8}$/), "--session", "root", "--format", "json",
@@ -115,7 +117,7 @@ describe("DAG route view", () => {
 
   test("a failing query with nothing to keep leaves the DAG unavailable and says why", async () => {
     const { frame } = await visit(() => ({ code: 2, err: " store locked\n" }), (d) => d.route("root"))
-    expect(frame).toContain("Takt DAG · capture: unavailable")
+    expect(frame).toContain("Takt DAG · unavailable")
     expect(frame).toContain("store locked")
     expect(frame).toContain("no confirmed projection")
   })
@@ -127,48 +129,65 @@ describe("DAG route view", () => {
 
   test("output that is not JSON is reported as a failed query", async () => {
     const { frame } = await visit(() => ({ out: "not json" }), (d) => d.route("root"))
-    expect(frame).toContain("capture: unavailable")
+    expect(frame).toContain("Takt DAG · unavailable")
     expect(frame).toContain("no confirmed projection")
   })
 
   test("a snapshot that does not match the wire contract is reported as a failed query", async () => {
     const { frame } = await visit(() => reply({ capture: "current", nodes: [], edges: [] }), (d) => d.route("root"))
     expect(frame).toContain("invalid DAG snapshot JSON")
-    expect(frame).toContain("capture: unavailable")
+    expect(frame).toContain("Takt DAG · unavailable")
   })
 
   test("takt answering that it cannot project is unavailable, not a failure", async () => {
     const { frame } = await visit(() => reply({ capture: "unavailable" }), (d) => d.route("root"))
     expect(frame).toContain("takt cannot provide a projection")
-    expect(frame).toContain("Takt DAG · capture: unavailable")
+    expect(frame).toContain("Takt DAG · unavailable")
   })
 
   test("a snapshot with a broken topology is rejected as invalid", async () => {
     const twins = snapshot({ nodes: [{ id: "a", state: "planned", launched: false }, { id: "a", state: "planned", launched: false }] })
     const { frame } = await visit(() => reply(twins), (d) => d.route("root"))
     expect(frame).toContain("projection rejected: duplicate node identity")
-    expect(frame).toContain("Takt DAG · capture: invalid")
+    expect(frame).toContain("Takt DAG · invalid")
     expect(frame).toContain("no confirmed projection")
   })
 
   test("a confirmed empty DAG says there is no planned work", async () => {
     const { frame } = await visit(() => reply(snapshot({ capture: "empty", nodes: [] })), (d) => d.route("root"))
-    expect(frame).toContain("capture: empty")
+    expect(frame).toContain("Takt DAG · empty")
     expect(frame).toContain("empty DAG · no planned work")
   })
 
   test("waits for a session before asking takt anything", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.route(undefined))
-    expect(frame).toContain("Takt DAG · capture: waiting")
+    expect(frame).toContain("Takt DAG · waiting")
     expect(frame).toContain("waiting for confirmed projection")
     expect(spawned).toEqual([])
+  })
+})
+
+describe("DAG route exit", () => {
+  test("Esc on the full-screen route returns to the session it was opened from", async () => {
+    const dag = startDag(() => ({ hang: true }))
+    try {
+      const view = await testRender(() => dag.route("root") as never, FRAME)
+      const close = dag.layers.flatMap((layer) => layer().commands ?? []).find((command) => command.id === "takt.dag.close")
+      expect(close?.bind).toBe("escape")
+      const legend = dag.layers.flatMap((layer) => layer().commands ?? []).find((command) => command.id === "takt.dag.legend")
+      expect(legend?.bind).toBe("?")
+      close!.run()
+      expect(dag.navigated).toEqual([{ type: "session", sessionID: "root" }])
+      view.renderer.destroy()
+      unmount()
+    } finally { dag.stop() }
   })
 })
 
 describe("DAG sidebar view", () => {
   test("shows the one-line header and the graph of the confirmed projection", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.sidebar("root"))
-    expect(frame).toContain("Takt DAG · current")
+    expect(frame).toContain("Takt DAG · 1/1 done")
     expect(frame).toContain("unit-a")
     expect(spawned[0]).toContain("root")
   })

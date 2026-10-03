@@ -68,7 +68,11 @@ func TestFooterActionsRenderUnavailableReasonAndDanger(t *testing.T) {
 		{Label: "Continue", Unavailable: "select at least one file"},
 		{Label: "Uninstall", Danger: true},
 	}, 1, true))
-	if !strings.Contains(out, "Continue  Unavailable: select at least one file") || !strings.Contains(out, "Uninstall") {
-		t.Fatalf("footer actions = %q", out)
+	row, reason, found := strings.Cut(out, "\n")
+	if !found || !strings.Contains(row, "Continue") || !strings.Contains(row, "Uninstall") || strings.Contains(row, "Unavailable") {
+		t.Fatalf("the reason must leave the button row: %q", out)
+	}
+	if reason != ui.TextUnavailableIntro+"select at least one file" {
+		t.Fatalf("reason line = %q", reason)
 	}
 }

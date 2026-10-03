@@ -1,10 +1,14 @@
 package tui
 
 import (
+	"image/color"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
@@ -236,6 +240,26 @@ func TestControllerDeclaresTerminalViewFields(t *testing.T) {
 		}
 		if v.BackgroundColor != theme.Canvas || v.ForegroundColor != theme.TextPrimary {
 			t.Fatalf("controller must paint the dark canvas: bg=%v fg=%v", v.BackgroundColor, v.ForegroundColor)
+		}
+	}
+}
+
+// The program's reported color profile selects the palette: hints only seed
+// the first frame.
+func TestColorProfileSelectsThePaletteMode(t *testing.T) {
+	t.Cleanup(func() { theme.SetMode(theme.ModeColor) })
+	m := New(t.TempDir())
+	for _, step := range []struct {
+		profile colorprofile.Profile
+		want    color.Color
+	}{
+		{colorprofile.ANSI256, theme.Dark256.TextPrimary},
+		{colorprofile.ANSI, lipgloss.NoColor{}},
+		{colorprofile.TrueColor, theme.Dark.TextPrimary},
+	} {
+		m.Update(tea.ColorProfileMsg{Profile: step.profile})
+		if theme.TextPrimary != step.want {
+			t.Errorf("after %v: text.primary = %v, want %v", step.profile, theme.TextPrimary, step.want)
 		}
 	}
 }

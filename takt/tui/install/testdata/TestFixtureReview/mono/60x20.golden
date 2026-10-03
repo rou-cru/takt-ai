@@ -1,0 +1,20 @@
+  Takt AI                                           Review  
+                                                            
+  ┌──────────────────────────────────────────────────────┐  
+  │ Warning: OpenCode was not found on PATH — Takt       │  
+  │ installs its configuration anyway.                   │  
+  │                                                      │  
+  │ Destination   ~/.config/opencode, for every project  │  
+  │ Agents        13: 1 orchestrator, 12 specialists     │  
+  │               11 on openai/gpt-6-luna                │  
+  │               2 on OpenCode's default                │  
+  │               model                                  │  
+  │ Skills        27                                     │  
+  │ MCP servers   codegraph · context7 · engram          │  
+  │ Integrations  DAG panel · memory · VFS · sandbox     │  
+  │ Files         137 new, 1 updated                     │  
+  │ Your config   opencode.json — merged; your settings  │  
+  └──────────────────────────────────────────────────────┘  
+                                                 1–13 / 14  
+                  Personalize    [ Install ]                
+                                                            

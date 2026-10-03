@@ -234,14 +234,14 @@ interface Layout {
   readonly topologyKey: string
 }
 
-// A node is a bordered box holding one line, `<kind glyph> <state glyph>
-// <kind label> <id>`. NODE_ROWS is that line plus the two border rows;
-// NODE_CHROME accounts for glyphs, spaces, label and border columns, while
+// A node is a bordered box holding one line, `<state glyph> <id>`. NODE_ROWS
+// is that line plus the two border rows; NODE_CHROME accounts for the glyph,
+// its space and the two border columns, while
 // geometry adds the longest label+identity in terminal cells. NODE_GAP is the empty rows between
 // stacked nodes of one layer; the lane of a layer-skipping edge runs in it.
 const NODE_ROWS = 3
 // Kind glyph, state glyph, kind label and the two border columns.
-const NODE_CHROME = 7
+const NODE_CHROME = 4
 const NODE_GAP = 2
 // Edges arrive on the interior row and depart on the bottom border row. The
 // ports must differ, or an unrelated departure and arrival on the same row of
@@ -251,7 +251,7 @@ const DEPART_ROW = 2
 
 /** Every box fits its longest kind label and identity: neither is truncated. */
 function geometryFor(snapshot: DagSnapshot): Geometry {
-  const longest = Math.max(0, ...snapshot.nodes.map((n) => Bun.stringWidth(n.id) + Bun.stringWidth(nodeKindLabel(nodeKindFor(n)))))
+  const longest = Math.max(0, ...snapshot.nodes.map((n) => Bun.stringWidth(n.id)))
   return { across: NODE_ROWS, along: longest + NODE_CHROME, pitch: NODE_ROWS + NODE_GAP, depart: DEPART_ROW, arrive: ARRIVE_ROW }
 }
 
@@ -501,21 +501,14 @@ export function glyphFor(node: DagNode): string {
   }
 }
 
-export function nodeKindGlyph(_kind: "delegated"): string {
-  return "↗"
-}
-
 export function nodeKindFor(node: DagNode): "delegated" {
   return node.node_kind ?? "delegated"
 }
 
-export function nodeKindLabel(_kind: "delegated"): string {
-  return "delegated"
-}
-
+// A node reads as its state and identity; the kind is omitted while
+// "delegated" is the only kind, since it would tell nothing apart.
 export function nodeText(node: DagNode): string {
-  const kind = nodeKindFor(node)
-  return `${nodeKindGlyph(kind)} ${glyphFor(node)} ${nodeKindLabel(kind)} ${node.id}`
+  return `${glyphFor(node)} ${node.id}`
 }
 
 export function activityText(activity: DagActivity): string {
@@ -529,15 +522,11 @@ export function activityBoxWidth(activity: DagActivity): number {
   return Bun.stringWidth(activityText(activity)) + 2
 }
 
-const ACTIVITY_HEADER = "Activities · separate from work DAG; no prerequisite edges"
-
+// The glyph legend, shown on demand in the route view (`?`).
 const LEGEND_LINES = [
-  "✓ settled/completed   ● observed running   ◌ planned",
-  "○ admitted/pending    ! uncertain          ✗ failed",
-  "↩ backtracked         × withdrawn          ⏸ suspended",
-  "↯ pending termination ⊘ interrupted",
-  "↗ delegated work",
-  "◆ direct activity     ◇ GC activity (separate lane; no edges)",
+  "✓ completed   ● running   ◌ planned   ○ admitted   ! uncertain",
+  "✗ failed   ↩ backtracked   × withdrawn   ⏸ suspended   ↯ stopping   ⊘ interrupted",
+  "◆ direct activity   ◇ GC activity",
 ]
 
 // ---------------------------------------------------------------------------
@@ -568,7 +557,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
   const activityHeight = createMemo(() => activities().length === 0 ? 0 : 4)
   const activityLeft = (index: number) => activities().slice(0, index).reduce((left, activity) => left + activityBoxWidth(activity) + 1, 0)
   const graphWidth = createMemo(() =>
-    Math.max(hasNodes() ? layout().width : 0, activityLaneWidth(), activities().length > 0 ? Bun.stringWidth(ACTIVITY_HEADER) : 0),
+    Math.max(hasNodes() ? layout().width : 0, activityLaneWidth()),
   )
   const graphHeight = createMemo(() => workHeight() + activityHeight())
   const viewport = () =>
@@ -613,7 +602,6 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
             </text>
           )}
         </For>
-        <text position="absolute" left={0} top={workHeight()}>{activities().length > 0 ? ACTIVITY_HEADER : ""}</text>
         <For each={activities()}>
           {(activity, index) => (
             <box
@@ -638,19 +626,46 @@ export function hasContent(snapshot: DagSnapshot): boolean {
   return snapshot.nodes.length > 0 || (snapshot.activities?.length ?? 0) > 0
 }
 
-export function headerLine(snapshot: DagSnapshot | undefined, health: Health): string {
-  if (!snapshot) return `Takt DAG · capture: ${health}`
-  const capture = health === "confirmed" ? snapshot.capture : health
-  return `Takt DAG · projection ${snapshot.projection_revision} · plan ${snapshot.plan_version ?? "—"} · capture: ${capture}`
+// progressLine counts what a person tracks: units done and running.
+export function progressLine(snapshot: DagSnapshot): string {
+  const done = snapshot.nodes.filter((n) => n.state === "settled" && (n.outcome ?? "completed") === "completed").length
+  const running = snapshot.nodes.filter((n) => n.state === "in_flight" && (n.flight ?? "observed_running") === "observed_running").length
+  const parts = [`${done}/${snapshot.nodes.length} done`]
+  if (running > 0) parts.push(`${running} running`)
+  return parts.join(" · ")
 }
 
-/** The sidebar header is one short line: the graph is the content. */
+// headerLine names the view, then whatever needs attention: a capture that is
+// not current, otherwise the progress counts. Projection and plan revisions
+// are internal and stay out.
+export function headerLine(snapshot: DagSnapshot | undefined, health: Health): string {
+  const capture = snapshot && health === "confirmed" ? snapshot.capture : health
+  if (capture !== "current") return `Takt DAG · ${capture}`
+  if (!snapshot || snapshot.nodes.length === 0) return "Takt DAG"
+  return `Takt DAG · ${progressLine(snapshot)}`
+}
+
+/** The sidebar header is the same short line: the list is the content. */
 export function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health): string {
-  return `Takt DAG · ${snapshot && health === "confirmed" ? snapshot.capture : health}`
+  return headerLine(snapshot, health)
+}
+
+// sidebarRows lays the DAG out top-down for a narrow column: one row per unit
+// in dependency order, indented under its prerequisites, then activities.
+export function sidebarRows(snapshot: DagSnapshot): string[] {
+  const depths = computeDepths(snapshot)
+  const ordered = [...snapshot.nodes].sort((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || ordinal(a.id, b.id))
+  const rows = ordered.map((node) => {
+    const depth = depths.get(node.id) ?? 0
+    return (depth > 0 ? "  ".repeat(depth - 1) + "└ " : "") + nodeText(node)
+  })
+  const activities = snapshot.activities ?? []
+  if (activities.length > 0 && rows.length > 0) rows.push("")
+  return rows.concat(activities.map(activityText))
 }
 
 /**
- * The sidebar's graph, or nothing: unlike the route view it never explains
+ * The sidebar's list, or nothing: unlike the route view it never explains
  * why (no confirmed projection, empty DAG), the header line already does.
  * Every branch below must resolve to a <text>, never to `false`/`undefined`
  * directly under <box> — Show's own off-state placeholder needs one too.
@@ -660,7 +675,9 @@ export function SidebarGraph(props: { readonly snapshot: DagSnapshot | undefined
     <Show when={props.snapshot} fallback={<text></text>}>
       {(shown: Accessor<DagSnapshot>) => (
         <Show when={hasContent(shown())} fallback={<text></text>}>
-          <GraphView snapshot={shown()} mode="sidebar" />
+          <box flexDirection="column">
+            <For each={sidebarRows(shown())}>{(row) => <text>{row}</text>}</For>
+          </box>
         </Show>
       )}
     </Show>
@@ -785,6 +802,28 @@ export default Plugin.define({
       createEffect(() => props.sessionID !== undefined && follow(props.sessionID))
       onMount(acquire)
       onCleanup(release)
+      const [legend, setLegend] = createSignal(false)
+      // The route replaces the session view, so Esc must lead back to it.
+      context.keymap.layer(() => ({
+        mode: "global",
+        commands: [
+          {
+            id: "takt.dag.legend",
+            title: "Show or hide the DAG legend",
+            bind: "?",
+            run: () => setLegend((shown) => !shown),
+          },
+          {
+            id: "takt.dag.close",
+            title: "Back to session",
+            bind: "escape",
+            run: () =>
+              context.ui.router.navigate(
+                props.sessionID !== undefined ? { type: "session", sessionID: props.sessionID } : { type: "home" },
+              ),
+          },
+        ],
+      }))
       return (
         // The route box fills the host's route area; only the graph shrinks,
         // so the header and legend always stay visible above the prompt.
@@ -802,8 +841,10 @@ export default Plugin.define({
               </Show>
             )}
           </Show>
-          <text flexShrink={0}> </text>
-          <For each={LEGEND_LINES}>{(line) => <text flexShrink={0}>{line}</text>}</For>
+          <Show when={legend()} fallback={<text flexShrink={0}></text>}>
+            <text flexShrink={0}> </text>
+            <For each={LEGEND_LINES}>{(line) => <text flexShrink={0}>{line}</text>}</For>
+          </Show>
         </box>
       )
     }

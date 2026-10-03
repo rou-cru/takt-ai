@@ -65,13 +65,12 @@ func TestDiagnosticsCollectingAndReportViews(t *testing.T) {
 	}
 
 	populated := verify.Report{
-		Checks:    []verify.CheckResult{{ID: "opencode", State: verify.Verified, Explanation: "responded"}},
-		FinalNote: "Availability checked.",
+		Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.NotVerified, Explanation: "absent from installed configuration"}},
 	}
 	updated, _ = model.Update(populated)
 	model = updated.(Model)
-	if got := renderDiagnostics(model); !strings.Contains(got, "opencode") || !strings.Contains(got, "responded") {
-		t.Fatalf("populated report View() = %q, want the check and explanation", got)
+	if got := renderDiagnostics(model); !strings.Contains(got, "Memory") || !strings.Contains(got, "absent from installed configuration") || strings.Contains(got, "mcp:opencode") {
+		t.Fatalf("populated report View() = %q, want the capability name and why it failed, never the check ID", got)
 	}
 
 	_, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -99,4 +98,27 @@ func TestDiagnosticsForwardsResizeAndIgnoresUnrelatedMessages(t *testing.T) {
 func renderDiagnostics(model Model) string {
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 400, Height: 60})
 	return ansi.Strip(updated.(Model).View().Content)
+}
+
+// A failed capability offers Repair first; it asks to open the configure flow.
+func TestFailedReportOffersRepair(t *testing.T) {
+	model := New(t.TempDir())
+	model.state = StateReport
+	failed := verify.Report{Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.NotVerified, Explanation: "absent"}}}
+	updated, _ := model.Update(failed)
+	model = updated.(Model)
+	if got := renderDiagnostics(model); !strings.Contains(got, ui.TextActionRepair) {
+		t.Fatalf("failed report must offer Repair:\n%s", got)
+	}
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("Repair returned no command")
+	}
+	if _, ok := command().(OpenRepairMsg); !ok {
+		t.Fatal("Repair must ask to open the configure flow")
+	}
+	passed, _ := New(t.TempDir()).Update(verify.Report{Ready: true, Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.Verified}}})
+	if got := renderDiagnostics(passed.(Model)); strings.Contains(got, ui.TextActionRepair) {
+		t.Fatalf("a passing report must not offer Repair:\n%s", got)
+	}
 }

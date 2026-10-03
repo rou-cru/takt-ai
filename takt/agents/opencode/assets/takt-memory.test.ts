@@ -40,7 +40,7 @@ describe("plugin setup", () => {
 
       const context = { sessionID: "root", agent: "takt", messageID: "message", id: "tool-call" } as never
       expect((await tools.get("memory_record")!.execute({ nature: "observation", scope: "project", title: "title", content: "content" }, context)).content).toBe("Recorded #42")
-      expect((await tools.get("memory_continue_session")!.execute({ previous_session_id: "prior" }, context)).content).toBe("Continues prior")
+      expect((await tools.get("memory_continue_session")!.execute({ previous_session_id: "prior" }, context)).content).toBe("Will continue prior from the first new entry")
       expect((await tools.get("memory_close_session")!.execute({ objective: "objective", state: "done" }, context)).content).toBe("Closed session as #43 with 1 entries")
       expect(requests.map(({ command }) => command)).toEqual(["record", "continue", "close"])
       expect(requests[0].request).toMatchObject({ author: "takt", session: "root", directory: "/workspace", title: "title" })

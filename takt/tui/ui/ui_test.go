@@ -1,6 +1,8 @@
 package ui_test
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,12 +24,16 @@ func TestListNavigationAndRendering(t *testing.T) {
 	}
 }
 
-func TestBusyProgressBarMovesWithoutKnownTotal(t *testing.T) {
-	t.Setenv("TAKT_NO_ANIMATION", "")
-	first := ui.Busy("Installation", false, "*", ui.Progress{Frame: 0})
-	second := ui.Busy("Installation", false, "*", ui.Progress{Frame: 1})
-	if first == second {
-		t.Fatal("indeterminate progress bar did not move between frames")
+// A bar only measures real progress: without a known total the spinner
+// marker carries activity and no bar pretends to measure anything.
+func TestBusyShowsABarOnlyForAKnownTotal(t *testing.T) {
+	unknown := ansi.Strip(ui.Busy("Installation", "*", ui.Progress{Frame: 1}))
+	if strings.ContainsAny(unknown, "█░%") {
+		t.Fatalf("a bar appeared without a known total:\n%s", unknown)
+	}
+	known := ansi.Strip(ui.Busy("Installation", "*", ui.Progress{Completed: 1, Total: 4}))
+	if !strings.Contains(known, "25%") || !strings.Contains(known, "█") {
+		t.Fatalf("a known total must show a bar and its percentage:\n%s", known)
 	}
 }
 
@@ -58,29 +64,74 @@ func TestShellRendersWithinWidth(t *testing.T) {
 	}
 }
 
-func TestShellCentersPanelWithoutExpandingItOrMovingHeader(t *testing.T) {
-	frame := ui.Frame{Header: "Configure", Body: "Short content", Width: 100, Height: 24}
-	lines := strings.Split(ansi.Strip(ui.Shell(frame)), "\n")
-	panelLine := -1
-	for i, line := range lines {
-		if strings.Contains(line, "┌") {
-			panelLine = i
-			break
+// A panel's width depends on the terminal only: content arriving or
+// scrolling never resizes it, and it stays centered under a fixed header.
+func TestShellPanelKeepsAStableCenteredWidth(t *testing.T) {
+	const width = 140
+	border := func(body string) (left, size int, header string) {
+		lines := strings.Split(ansi.Strip(ui.Shell(ui.Frame{Header: "Configure", Body: body, Width: width, Height: 24})), "\n")
+		for _, line := range lines {
+			if left := strings.Index(line, "┌"); left >= 0 {
+				return lipgloss.Width(line[:left]), lipgloss.Width(strings.TrimRight(line, " ")) - lipgloss.Width(line[:left]), lines[0]
+			}
 		}
-	}
-	if panelLine < 0 {
 		t.Fatalf("panel border not found:\n%s", strings.Join(lines, "\n"))
+		return 0, 0, ""
 	}
-	line := lines[panelLine]
-	left := strings.Index(line, "┌")
-	if left < 1 {
-		t.Fatalf("panel was not horizontally centered (left border at %d): %q", left, line)
+	shortLeft, shortSize, header := border("Short content")
+	longLeft, longSize, _ := border(strings.Repeat("a much longer line of content ", 3))
+	if shortSize != ui.PanelWidth(width) || longSize != shortSize || longLeft != shortLeft {
+		t.Fatalf("panel width %d/%d at %d/%d, want a stable %d", shortSize, longSize, shortLeft, longLeft, ui.PanelWidth(width))
 	}
-	if got := lipgloss.Width(strings.TrimRight(line, " ")); got >= frame.Width-4 {
-		t.Fatalf("panel expanded to available width: rendered border width %d", got)
+	if inner := ui.InnerWidth(width); shortLeft != (width-inner)/2+(inner-shortSize)/2 {
+		t.Fatalf("panel left edge %d, want it centered", shortLeft)
 	}
-	if !strings.HasPrefix(lines[0], "  Takt AI") {
-		t.Fatalf("header position changed: %q", lines[0])
+	if !strings.HasPrefix(header, "   Takt AI") {
+		t.Fatalf("header must sit at the three-column wide margin: %q", header)
+	}
+}
+
+// Styled spans end in an SGR reset; inside a panel the surface background
+// must come back right after it instead of exposing the terminal background.
+func TestPanelBackgroundSurvivesStyledSpans(t *testing.T) {
+	theme.SetMode(theme.ModeColor)
+	body := theme.StatusWarning.Render("Warning:") + " rest of the line"
+	out := ui.Shell(ui.Frame{Header: "Install", Body: body, Width: 80, Height: 24})
+	surface := ansi.Style{}.BackgroundColor(theme.Surface).ForegroundColor(theme.TextPrimary).String()
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "Warning:") {
+			continue
+		}
+		after := line[strings.Index(line, "Warning:"):]
+		if !strings.Contains(after, ansi.ResetStyle+surface) {
+			t.Fatalf("panel background not restored after the styled span: %q", after)
+		}
+		return
+	}
+	t.Fatal("styled span not rendered")
+}
+
+// An overflowing panel shows which rows are visible (PR-UX-29).
+func TestOverflowingPanelShowsItsPosition(t *testing.T) {
+	body := strings.Repeat("row\n", 80)
+	out := ansi.Strip(ui.Shell(ui.Frame{Header: "Install", Body: body, Footer: "Back", Width: 80, Height: 24}))
+	want := fmt.Sprintf(ui.TextScrollPosFmt, 1, ui.BodyHeight(24), 80)
+	if !strings.Contains(out, want) {
+		t.Fatalf("overflow position %q missing:\n%s", want, out)
+	}
+	if fits := ansi.Strip(ui.Shell(ui.Frame{Header: "Install", Body: "row", Footer: "Back", Width: 80, Height: 24})); strings.Contains(fits, "/ 1") {
+		t.Fatalf("a panel that fits must not show a position:\n%s", fits)
+	}
+}
+
+// A short panel sits in the middle of the body area, not against the header.
+func TestShortPanelIsVerticallyCentered(t *testing.T) {
+	lines := strings.Split(ansi.Strip(ui.Shell(ui.Frame{Header: "Install", Body: "row", Footer: "Back", Width: 80, Height: 24})), "\n")
+	top := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "┌") })
+	bottom := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "Back") })
+	above, below := top-2, len(lines)-1-bottom
+	if top < 0 || bottom < 0 || above-below > 1 || below-above > 1 {
+		t.Fatalf("block rows above %d / below %d, want it centered:\n%s", above, below, strings.Join(lines, "\n"))
 	}
 }
 
@@ -159,18 +210,16 @@ func ansiFree(s string) string { return ansi.Strip(s) }
 // the margin.
 func TestShellKeepsWrappedLinesIndentedUnderTheirItem(t *testing.T) {
 	body := "Remove:\n  " + strings.Repeat("path/segment/", 12) + "file.md"
-	out := ansiFree(ui.Shell(ui.Frame{Header: "Uninstall · Review", Body: body, Width: 60, Height: 20, Home: true}))
-	lines := strings.Split(out, "\n")
+	out := ansiFree(ui.Shell(ui.Frame{Header: "Uninstall · Review", Body: body, Width: 60, Height: 20}))
 	wrapped := 0
-	for index, line := range lines {
-		if index > 0 && strings.Contains(line, "path/segment/") && !strings.HasPrefix(lines[index-1], " ") {
-			t.Fatalf("continuation line lost its indentation:\n%s", out)
+	for index, line := range strings.Split(out, "\n") {
+		_, content, inPanel := strings.Cut(line, "│ ")
+		if !inPanel || !strings.Contains(content, "path/segment/") {
+			continue
 		}
-		if strings.Contains(line, "path/segment/") {
-			wrapped++
-			if !strings.HasPrefix(line, "   ") {
-				t.Fatalf("line %d is not indented under its item: %q", index+1, line)
-			}
+		wrapped++
+		if !strings.HasPrefix(content, "  ") {
+			t.Fatalf("line %d is not indented under its item: %q", index+1, line)
 		}
 	}
 	if wrapped < 2 {

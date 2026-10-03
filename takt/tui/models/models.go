@@ -4,10 +4,12 @@ package models
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/keys"
 	"github.com/rou-cru/takt-ai/takt/tui/modelpicker"
@@ -18,7 +20,7 @@ import (
 
 // modelsLoaded carries the discovered OpenCode models into Update.
 type modelsLoaded struct {
-	models []string
+	models []opencodeapi.Model
 	err    error
 }
 
@@ -62,8 +64,8 @@ type Model struct {
 	state  State
 	picker modelpicker.Model
 	run    runtime.Run
-	// assigned is the number of specialists the pending request changes.
-	assigned     int
+	// changes are the agents the pending request reassigns.
+	changes      []modelpicker.Change
 	result       runtime.ActionResult
 	err          error
 	resultCursor int
@@ -90,7 +92,7 @@ func (m *Model) loadPicker() {
 	}
 	m.picker = modelpicker.New()
 	m.picker.Preload(installed.OpenCodeModelOverrides)
-	m.picker.Height = ui.BodyHeight(m.height)
+	m.picker.Height = m.height
 	m.picker.Loading = true
 }
 
@@ -113,7 +115,7 @@ func (m Model) Run() runtime.Run { return m.run }
 func transitions() ui.Table[State, Model] {
 	return ui.Table[State, Model]{
 		{From: StatePicker, Event: eventConfirm}: func(m *Model) (State, tea.Cmd) {
-			m.assigned = m.picker.Changes()
+			m.changes = m.picker.Pending()
 			request := runtime.ActionRequest{
 				ID:                runtime.NextID(),
 				Action:            runtime.ActionReassignModels,
@@ -182,11 +184,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) resize(msg tea.WindowSizeMsg) Model {
 	m.width, m.height = msg.Width, msg.Height
-	m.picker.Height = ui.BodyHeight(m.height)
+	m.picker.Height = m.height
 	return m
 }
 func (m Model) modelsLoaded(msg modelsLoaded) Model {
-	m.picker.Available, m.picker.LoadErr, m.picker.Loading = msg.models, msg.err, false
+	// Sorted by provider/model so each provider's models read together.
+	refs, names := make([]string, 0, len(msg.models)), make(map[string]string, len(msg.models))
+	for _, model := range msg.models {
+		ref := model.Ref.String()
+		refs, names[ref] = append(refs, ref), model.Name
+	}
+	slices.Sort(refs)
+	m.picker.Available, m.picker.Names, m.picker.LoadErr, m.picker.Loading = refs, names, msg.err, false
 	return m
 }
 func (m Model) actionResult(msg runtime.ActionResultMsg) (tea.Model, tea.Cmd) {
@@ -250,7 +259,7 @@ func (m Model) Title() string {
 	case m.state == StatePicker && m.picker.Detail() != "" && !m.run.Busy():
 		return fmt.Sprintf(ui.TextModelsTitleFmt, m.picker.Detail())
 	}
-	return fmt.Sprintf(ui.TextModelsTitleFmt, ui.OpenCodeLabel)
+	return fmt.Sprintf(ui.TextModelsTitleFmt, ui.TextModelsAgentsStep)
 }
 
 // View renders the active reassignment step.
@@ -260,7 +269,7 @@ func (m Model) View() tea.View {
 	case m.unavailable():
 		frame = m.unavailableFrame()
 	case m.run.Busy():
-		frame = ui.Frame{Body: ui.Busy(ui.TextModelsBusy, m.run.CancelRequested, m.run.SpinView(), m.run.ProgressView())}
+		frame = ui.Frame{Body: ui.Busy(ui.TextModelsBusy, m.run.SpinView(), m.run.ProgressView()), Footer: ui.BusyFooter(m.run.CancelRequested)}
 	case m.state == StateResult:
 		frame = m.resultFrame()
 	default:
@@ -300,17 +309,16 @@ func (m Model) resultFrame() ui.Frame {
 	case len(m.result.Changed) == 0:
 		b.WriteString(ui.Status(ui.StateSuccess, ui.TextModelsNoChanges))
 	default:
-		b.WriteString(ui.Status(ui.StateSuccess, fmt.Sprintf(ui.TextModelsAssignedFmt, m.assigned, harness)))
+		b.WriteString(ui.Status(ui.StateSuccess, ui.AgentsAssigned(len(m.changes))))
 		if note := runtime.LateCancelNote(m.result); note != "" {
 			b.WriteString("\n" + note)
 		}
 		b.WriteString("\n\n")
-		b.WriteString(theme.Label.Render(ui.TextModelsChangedHead))
-		for _, path := range m.result.Changed {
-			b.WriteString("\n")
-			b.WriteString(theme.Label.Render("  " + path))
+		fields := make([]ui.Field, len(m.changes))
+		for index, change := range m.changes {
+			fields[index] = ui.Field{Label: change.Agent, Value: change.To}
 		}
-		b.WriteString("\n\n")
+		b.WriteString(ui.Fields(fields) + "\n")
 		b.WriteString(theme.Label.Render(ui.TextModelsTakeEffect + harness + "."))
 	}
 	return ui.Frame{Body: b.String(), Footer: ui.FooterActions(ui.Actions(actions...), m.resultCursor, true)}

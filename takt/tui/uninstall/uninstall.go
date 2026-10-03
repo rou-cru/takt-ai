@@ -265,7 +265,7 @@ func transitions() ui.Table[State, Model] {
 			if !model.allDecided() {
 				return StateModified, nil
 			}
-			model.cursor, model.focus = 0, ui.SectionBody
+			model.cursor, model.focus = model.engram, ui.SectionBody
 			return StateEngram, nil
 		},
 		{From: StateModified, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
@@ -275,7 +275,8 @@ func transitions() ui.Table[State, Model] {
 			if model.previewErr != nil {
 				return StateEngram, nil
 			}
-			model.cursor, model.focus = actionUninstall, ui.SectionFooter
+			// The destructive action is never the default: focus starts on Back.
+			model.cursor, model.focus = actionBack, ui.SectionFooter
 			return StateReview, nil
 		},
 		{From: StateEngram, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
@@ -334,22 +335,23 @@ func (model Model) applyTransition(event string) (tea.Model, tea.Cmd) {
 	return model, cmd
 }
 
-// updateModified: each file has two rows (Keep my version, Remove); Enter on a
-// row chooses it, Enter on the footer continues.
+// updateModified: each file has two rows (Keep my version, Remove). Enter
+// records the focused row's choice and moves to the next undecided file; once
+// every file is decided it advances (PR-UX-15: no Continue button).
 func (model Model) updateModified(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if section, switched := ui.SwitchSection(model.focus, model.keymap, key); switched {
-		model.focus = section
-		return model, nil
-	}
-	body := model.focus == ui.SectionBody
+	rows := len(modifiedChoices) * len(model.modified)
 	switch {
-	case body && model.keymap.Up.Matches(key):
-		model.cursor = ui.MoveCursor(model.cursor, len(modifiedChoices)*len(model.modified), -1)
-	case body && model.keymap.Down.Matches(key):
-		model.cursor = ui.MoveCursor(model.cursor, len(modifiedChoices)*len(model.modified), 1)
-	case body && model.keymap.Confirm.Matches(key):
-		model.decisions[model.modified[model.cursor/len(modifiedChoices)]] = model.cursor%len(modifiedChoices) == choiceKeep
+	case model.keymap.Up.Matches(key):
+		model.cursor = ui.MoveCursor(model.cursor, rows, -1)
+	case model.keymap.Down.Matches(key):
+		model.cursor = ui.MoveCursor(model.cursor, rows, 1)
 	case model.keymap.Confirm.Matches(key):
+		file := model.cursor / len(modifiedChoices)
+		model.decisions[model.modified[file]] = model.cursor%len(modifiedChoices) == choiceKeep
+		if next, ok := model.nextUndecided(file); ok {
+			model.cursor = next * len(modifiedChoices)
+			return model, nil
+		}
 		return model.applyTransition(eventConfirm)
 	case model.keymap.Back.Matches(key):
 		return model.applyTransition(eventBack)
@@ -357,22 +359,27 @@ func (model Model) updateModified(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-// updateEngram: Leave is preselected (safe default); Enter on a row chooses
-// it, Enter on the footer continues to review.
-func (model Model) updateEngram(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if section, switched := ui.SwitchSection(model.focus, model.keymap, key); switched {
-		model.focus = section
-		return model, nil
+// nextUndecided finds the first undecided file after from, wrapping around.
+func (model Model) nextUndecided(from int) (int, bool) {
+	for step := 1; step <= len(model.modified); step++ {
+		index := (from + step) % len(model.modified)
+		if _, decided := model.decisions[model.modified[index]]; !decided {
+			return index, true
+		}
 	}
-	body := model.focus == ui.SectionBody
+	return 0, false
+}
+
+// updateEngram: Leave is preselected (safe default); Enter chooses the
+// focused answer and advances to review.
+func (model Model) updateEngram(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case body && model.keymap.Up.Matches(key):
+	case model.keymap.Up.Matches(key):
 		model.cursor = ui.MoveCursor(model.cursor, len(engramChoices), -1)
-	case body && model.keymap.Down.Matches(key):
+	case model.keymap.Down.Matches(key):
 		model.cursor = ui.MoveCursor(model.cursor, len(engramChoices), 1)
-	case body && model.keymap.Confirm.Matches(key):
-		model.engram = model.cursor
 	case model.keymap.Confirm.Matches(key):
+		model.engram = model.cursor
 		return model.applyTransition(eventConfirm)
 	case model.keymap.Back.Matches(key):
 		return model.applyTransition(eventBack)
@@ -422,7 +429,7 @@ func (model Model) View() tea.View {
 func (model Model) fillFrame(frame *ui.Frame) {
 	switch {
 	case model.run.Busy():
-		frame.Body = ui.Busy(ui.TextUninstallBusy, model.run.CancelRequested, model.run.SpinView(), model.run.ProgressView())
+		frame.Body, frame.Footer = ui.Busy(ui.TextUninstallBusy, model.run.SpinView(), model.run.ProgressView()), ui.BusyFooter(model.run.CancelRequested)
 	case model.state == StateNotInstalled:
 		frame.Body = theme.Label.Render(setup.NotInstalledMessage)
 		frame.Footer = ui.FooterActions(ui.Actions(ui.TextActionBackToMenu), 0, true)
@@ -440,23 +447,15 @@ func (model Model) fillFrame(frame *ui.Frame) {
 
 func (model Model) modifiedFrame(frame *ui.Frame) {
 	frame.Body = model.modifiedBody()
-	unavailable := ""
-	if !model.allDecided() {
-		unavailable = ui.TextUninstallChooseEach
-	}
-	frame.Footer = continueFooter(model.focus == ui.SectionFooter, unavailable)
 }
 
 // engramFrame asks the Engram question; a plan that could not be prepared is
-// reported here and leaves Continue unavailable.
+// reported here, and choosing does not advance until it can.
 func (model Model) engramFrame(frame *ui.Frame) {
 	frame.Body = model.engramBody()
-	unavailable := ""
 	if model.previewErr != nil {
 		frame.Body += "\n\n" + ui.Status(ui.StateFailed, ui.TextUninstallCannotPlan+model.previewErr.Error())
-		unavailable = ui.TextUninstallCannotPlan + model.previewErr.Error()
 	}
-	frame.Footer = continueFooter(model.focus == ui.SectionFooter, unavailable)
 }
 
 func (model Model) resultFrame(frame *ui.Frame) {
@@ -466,11 +465,6 @@ func (model Model) resultFrame(frame *ui.Frame) {
 		actions = []string{ui.TextActionKeepCurrent, ui.TextActionQuit}
 	}
 	frame.Footer = ui.FooterActions(ui.Actions(actions...), model.cursor, true)
-}
-
-// continueFooter renders the single Continue action with its unavailable reason.
-func continueFooter(focused bool, unavailable string) string {
-	return ui.FooterActions([]ui.FooterAction{{Label: ui.TextActionContinue, Unavailable: unavailable}}, 0, focused)
 }
 
 // modifiedBody renders each modified file with its keep/remove choice.
@@ -483,8 +477,15 @@ func (model Model) modifiedBody() string {
 		if model.cursor/len(modifiedChoices) == index {
 			cursor = model.cursor % len(modifiedChoices)
 		}
-		view.WriteString("\n" + theme.Label.Render(path) + "\n")
-		view.WriteString(ui.Options(modifiedChoices, cursor, model.focus == ui.SectionBody && cursor >= 0))
+		chosen := -1
+		if keep, decided := model.decisions[path]; decided {
+			chosen = choiceRemove
+			if keep {
+				chosen = choiceKeep
+			}
+		}
+		view.WriteString("\n" + theme.Strong.Render(path) + "\n")
+		view.WriteString(ui.Selector(modifiedChoices, cursor, chosen, cursor >= 0))
 	}
 	view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallKeptMoveIntro+model.retainedHint()+ui.TextUninstallKeptMoveOutro))
 	return view.String()
@@ -498,13 +499,9 @@ func (model Model) retainedHint() string {
 // engramBody asks the neutral retention question: valuable data is asked
 // about, never inferred from the uninstall request itself.
 func (model Model) engramBody() string {
-	cursor := -1
-	if model.focus == ui.SectionBody {
-		cursor = model.cursor
-	}
 	var view strings.Builder
 	view.WriteString(theme.Caption.Render(ui.TextEngramQuestion))
-	view.WriteString("\n" + ui.Options(engramChoices, cursor, model.focus == ui.SectionBody))
+	view.WriteString("\n" + ui.Selector(engramChoices, model.cursor, model.engram, true))
 	view.WriteString("\n" + theme.Caption.Render(ui.TextEngramNever))
 	return view.String()
 }
@@ -529,7 +526,7 @@ func (model Model) reviewBody() string {
 	if len(choices.Keep) > 0 || model.engram == engramRetain {
 		view.WriteString("\n\n" + theme.Label.Render(ui.TextUninstallRetainedData+model.retainedHint()))
 	}
-	view.WriteString("\n\n" + theme.Label.Foreground(theme.WarningFg).Render(ui.TextUninstallNoBackup))
+	view.WriteString("\n\n" + theme.WarningText.Render(ui.TextUninstallNoBackup))
 	switch model.engram {
 	case engramRemove:
 		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallEngramChose))

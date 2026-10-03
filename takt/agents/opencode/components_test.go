@@ -23,7 +23,6 @@ func TestRenderConfigComponents(t *testing.T) {
 		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
 		Context7:    true,
 		Permissions: true,
-		Theme:       opencode.TaktTheme,
 	})
 	if err != nil {
 		t.Fatalf("opencode.RenderConfig() error = %v", err)
@@ -301,32 +300,6 @@ func assertDagPluginExports(t *testing.T, content string) {
 	}
 }
 
-func TestTaktCLIArtifact(t *testing.T) {
-	artifact := opencode.TaktCLIArtifact(opencode.TaktTheme)
-	if artifact.Path != ".config/opencode/cli.json" {
-		t.Fatalf("path = %q, want .config/opencode/cli.json", artifact.Path)
-	}
-	want := `{
-  "$schema": "https://opencode.ai/v2/cli.json",
-  "theme": {
-    "name": "takt"
-  }
-}
-`
-	if !bytes.Equal(artifact.Content, []byte(want)) {
-		t.Fatalf("cli.json mismatch:\n%s", artifact.Content)
-	}
-}
-
-// TestTaktCLIArtifactWithoutTheme covers the install that leaves the theme
-// component out: cli.json still registers the plugin and selects nothing.
-func TestTaktCLIArtifactWithoutTheme(t *testing.T) {
-	artifact := opencode.TaktCLIArtifact("")
-	if bytes.Contains(artifact.Content, []byte("theme")) {
-		t.Fatalf("cli.json selects a theme without the component:\n%s", artifact.Content)
-	}
-}
-
 func TestTaktVFSPluginArtifact(t *testing.T) {
 	artifact := opencode.TaktVFSPluginArtifact("/usr/local/bin/takt-ai", true)
 	if artifact.Path != ".config/opencode/plugins/takt-vfs.ts" {
@@ -415,7 +388,7 @@ func TestTaktMemoryPluginArtifact(t *testing.T) {
 	}
 	for _, want := range []string{
 		`name: "memory_record"`, `name: "memory_continue_session"`, `name: "memory_close_session"`,
-		"previous_session_id: str()", "objective: str(), state: str()",
+		"previous_session_id: str(", "objective: str(", "state: str(",
 		`user_order: { type: "boolean"`, "author: c.agent", "directory: pluginDirectory",
 		`"session.deleted"`, "fallback: true", "ctx.session.get",
 		// The two confirmations survive the V2 plugin API: ctx has no
