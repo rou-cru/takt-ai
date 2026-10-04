@@ -259,11 +259,66 @@ test_version() {
     pass 'next-version bumps, skips, and overrides per release rules'
 }
 
+test_create_tag() {
+    local script="$ROOT/development/release/create-tag.sh" state="$TMP/gh-state"
+    # Fake gh: tags listed in $state/existing as "tag sha" exist; tags in
+    # $state/reserved answer 422 on ref creation; $state/broken fails any ref.
+    cat > "$TMP/bin/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+state=$FAKE_GH_STATE
+path=$2
+case "$path" in
+    */git/ref/tags/*)
+        tag=${path##*/}
+        line=$(grep "^$tag " "$state/existing" 2>/dev/null) || { echo 'HTTP 404' >&2; exit 1; }
+        echo "tagobj-${line#* }" ;;
+    */git/tags/tagobj-*) echo "${path##*/tagobj-}" ;;
+    */git/tags)
+        for arg; do [[ "$arg" == tag=* ]] && tag=${arg#tag=}; [[ "$arg" == object=* ]] && sha=${arg#object=}; done
+        printf '%s %s\n' "$tag" "$sha" > "$state/pending"
+        echo "tagobj-$sha" ;;
+    */git/refs)
+        [[ ! -e "$state/broken" ]] || { echo 'HTTP 401: Bad credentials' >&2; exit 1; }
+        read -r tag sha < "$state/pending"
+        if grep -qx "$tag" "$state/reserved" 2>/dev/null; then echo 'HTTP 422: Reference update failed' >&2; exit 1; fi
+        echo "$tag $sha" >> "$state/existing" ;;
+    *) echo "unexpected gh api $path" >&2; exit 1 ;;
+esac
+SH
+    chmod +x "$TMP/bin/gh"
+    run_tag() { env FAKE_GH_STATE="$state" GITHUB_REPOSITORY=o/r bash "$script" "$@"; }
+    reset() { rm -rf "$state"; mkdir -p "$state"; }
+
+    reset
+    [[ "$(run_tag 0.1.0 aaa | sed -n 's/^tag=//p')" == v0.1.0 ]] || fail 'creates the computed tag'
+    grep -qx 'v0.1.0 aaa' "$state/existing" || fail 'tag not created on the commit'
+    [[ "$(run_tag 0.1.0 aaa | sed -n 's/^tag=//p')" == v0.1.0 ]] || fail 're-run must reuse a tag on the same commit'
+    expect_failure 'v0.1.0 exists on aaa, not bbb' run_tag 0.1.0 bbb
+
+    reset
+    printf 'v0.0.2\nv0.0.3\n' > "$state/reserved"
+    [[ "$(run_tag 0.0.2 ccc | sed -n 's/^version=//p')" == 0.0.4 ]] || fail 'reserved tags must bump the patch'
+
+    reset
+    touch "$state/broken"
+    expect_failure 'Bad credentials' run_tag 0.2.0 ddd
+    [[ ! -s "$state/existing" ]] || fail 'a non-422 error must not bump or create'
+
+    reset
+    printf 'v1.0.%s\n' 0 1 2 3 4 > "$state/reserved"
+    expect_failure 'no tag could be created after 5 attempts' run_tag 1.0.0 eee
+    expect_failure 'invalid version' run_tag 1.0 fff
+    rm "$TMP/bin/gh"
+    pass 'create-tag reuses, refuses, and skips reserved tags'
+}
+
 case "${1:-all}" in
     runner) test_runner ;;
     packages) test_packages ;;
     install) test_install ;;
     version) test_version ;;
-    all) test_runner; test_packages; test_install; test_version ;;
-    *) fail 'usage: test-shell.sh [runner|packages|install|version]' ;;
+    tag) test_create_tag ;;
+    all) test_runner; test_packages; test_install; test_version; test_create_tag ;;
+    *) fail 'usage: test-shell.sh [runner|packages|install|version|tag]' ;;
 esac

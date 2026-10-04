@@ -19,6 +19,9 @@
 #
 # RELEASE_AS (env) overrides everything; used by workflow_dispatch. Must be
 # strictly newer than the last release, same as the Release-As trailer.
+#
+# A version whose tag GitHub keeps reserved (its release was published and
+# then deleted) cannot be seen here; create-tag.sh bumps past it.
 set -euo pipefail
 
 ref=${1:-HEAD}
