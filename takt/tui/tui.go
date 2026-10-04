@@ -53,7 +53,7 @@ var menuItems = []menuItem{
 	{RouteInstall, ui.TextMenuInstall, ui.TextMenuInstallDesc},
 	{RouteModels, ui.TextMenuAssignModels, ui.TextMenuAssignModelsDesc},
 	{RouteDrift, ui.TextMenuCheckDrift, ui.TextMenuCheckDriftDesc},
-	{RouteUninstall, ui.TextMenuUninstall, ""},
+	{RouteUninstall, ui.TextMenuUninstall, ui.TextMenuUninstallDesc},
 	{RouteDiagnostics, ui.TextMenuDiagnostics, ui.TextMenuDiagnosticsDesc},
 }
 
@@ -517,49 +517,47 @@ func (Model) paintCanvas(v *tea.View) {
 	v.ForegroundColor = theme.TextPrimary
 }
 
-// homeGap separates the logo mark from the menu in the side-by-side home.
-const homeGap = 6
+// homeGapMin is the narrowest gap between the logo and the menu in the
+// side-by-side home; the gap grows with the logo (a quarter of its width) so
+// the composition stays balanced at every size.
+const homeGapMin = 4
 
-// menuBody composes the home (PR-UX-2A): the logo with the signature centered
-// under it, the menu beside it (stacked when narrow), the whole block centered
-// in the screen. A terminal too small for the logo keeps the signature.
+// menuBody composes the home (PR-UX-2A): the logo with the menu beside it,
+// vertically centered on the ring, or stacked under it when narrow; the whole
+// block centered in the screen. The logo takes the largest variant that
+// fits; a terminal too small for any variant shows the menu alone.
 func (m Model) menuBody() string {
-	described, plain := []ui.Item{}, []ui.Item{}
+	items := []ui.Item{}
 	for _, item := range m.visibleMenu() {
-		described = append(described, ui.Item{Label: item.label, Description: item.description})
-		plain = append(plain, ui.Item{Label: item.label})
+		items = append(items, ui.Item{Label: item.label, Description: item.description})
 	}
-	described = append(described, ui.Item{Label: ui.TextMenuQuit})
-	plain = append(plain, ui.Item{Label: ui.TextMenuQuit})
-	cursor := min(m.cursor, len(plain)-1)
-	menu := func(items []ui.Item) string {
-		return solid(strings.TrimRight(ui.Choices(items, cursor, true), "\n"))
-	}
+	items = append(items, ui.Item{Label: ui.TextMenuQuit, Description: ui.TextMenuQuitDesc})
+	menu := ui.Menu(items, min(m.cursor, len(items)-1))
+	menuWidth, menuHeight := lipgloss.Width(menu), lipgloss.Height(menu)
 
 	inner, rows := ui.InnerWidth(m.width), ui.HomeRows(m.height)
-	signature := theme.SignatureText.Render(ui.TextBrand)
-	// The logo is mandatory on the home; descriptions are not, so they go
-	// first when space runs out, then the full logo gives way to the compact
-	// one (PR-UX-2A).
-	block := lipgloss.JoinVertical(lipgloss.Center, signature, "", menu(plain))
-	var candidates []string
-	for _, logo := range []string{styles.RenderLogo(), styles.RenderCompactLogo()} {
-		mark := lipgloss.JoinVertical(lipgloss.Center, logo, signature)
-		candidates = append(candidates,
-			lipgloss.JoinHorizontal(lipgloss.Center, mark, strings.Repeat(" ", homeGap), menu(described)),
-			lipgloss.JoinVertical(lipgloss.Center, mark, "", menu(described)),
-			lipgloss.JoinHorizontal(lipgloss.Center, mark, strings.Repeat(" ", homeGap), menu(plain)),
-			lipgloss.JoinVertical(lipgloss.Center, mark, "", menu(plain)),
-		)
+	// The logo may use the rows the incomplete-operation notice leaves.
+	notice, logoRows := m.incompleteNotice(), rows
+	if notice != "" {
+		notice = solid(notice)
+		logoRows -= lipgloss.Height(notice) + 1
 	}
-	for _, candidate := range candidates {
-		if lipgloss.Width(candidate) <= inner && lipgloss.Height(candidate) <= rows {
-			block = candidate
-			break
-		}
+	// Side by side, the logo and its gap (a quarter of the logo's width)
+	// share whatever width the menu leaves: w + w/4 <= inner - menuWidth.
+	// Stacked, the logo takes the rows above the menu. The layout drawing
+	// the larger logo wins; side by side on a tie.
+	block := menu
+	side := styles.Logo(min((inner-menuWidth)*4/5, inner-menuWidth-homeGapMin), logoRows)
+	stacked := styles.Logo(inner, logoRows-menuHeight-1)
+	switch {
+	case side != "" && lipgloss.Height(side) >= lipgloss.Height(stacked):
+		gap := strings.Repeat(" ", max(homeGapMin, lipgloss.Width(side)/4))
+		block = lipgloss.JoinHorizontal(lipgloss.Center, side, gap, menu)
+	case stacked != "":
+		block = lipgloss.JoinVertical(lipgloss.Center, stacked, "", menu)
 	}
-	if notice := m.incompleteNotice(); notice != "" {
-		block = lipgloss.JoinVertical(lipgloss.Center, solid(notice), "", block)
+	if notice != "" {
+		block = lipgloss.JoinVertical(lipgloss.Center, notice, "", block)
 	}
 	return lipgloss.Place(inner, rows, lipgloss.Center, lipgloss.Center, block)
 }

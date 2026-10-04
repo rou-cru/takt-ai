@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/exp/golden"
 
+	"github.com/rou-cru/takt-ai/takt/tui/styles"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 )
 
@@ -29,7 +30,9 @@ var fixtureModes = []struct {
 // and review the files before committing them.
 func RequireFixtures(t *testing.T, render func(width, height int) string) {
 	t.Helper()
-	t.Cleanup(func() { theme.SetMode(theme.ModeColor) })
+	t.Cleanup(func() { theme.SetMode(theme.ModeColor); styles.SetGlyphs(styles.DetectGlyphs()) })
+	// Half-blocks: the logo every terminal draws, independent of the runner's TERM.
+	styles.SetGlyphs(styles.GlyphsHalfBlocks)
 	for _, mode := range fixtureModes {
 		for _, size := range fixtureSizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", mode.name, size[0], size[1]), func(t *testing.T) {

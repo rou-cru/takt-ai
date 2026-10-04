@@ -12,12 +12,14 @@ const (
 	TextMenuConfigure    = "Configure installation"
 	TextMenuQuit         = "Quit"
 
-	// Menu descriptions: present only where they tell options apart.
+	// Menu descriptions: one per option, shown only under the cursor.
 	TextMenuInstallDesc      = "Agents, skills and MCP servers on OpenCode v2"
 	TextMenuConfigureDesc    = "Change components or reapply Takt's files"
 	TextMenuAssignModelsDesc = "Choose the model each agent runs on"
 	TextMenuCheckDriftDesc   = "Find and restore files changed outside Takt"
+	TextMenuUninstallDesc    = "Remove Takt's files, keeping what you choose"
 	TextMenuDiagnosticsDesc  = "Check that each capability works"
+	TextMenuQuitDesc         = "Leave Takt"
 
 	// Guard overlay.
 	TextGuardKeepEditing   = "Keep editing"
