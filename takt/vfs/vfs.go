@@ -206,6 +206,8 @@ type OwnershipClaim struct {
 	AuthorKey AgentID `json:"author_key,omitempty"`
 	Active    bool    `json:"active"`
 	Pending   bool    `json:"pending"`
+	// Staged is true while the claim holds staged work, which a release refuses.
+	Staged bool `json:"staged,omitempty"`
 }
 
 // agentDelta tracks staged mutations and verification state for a single agent.
@@ -406,7 +408,7 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 		}
 	}
 
-	if d.verdict == nil && f.bindings[agent].CycleID != "" {
+	if d.verdict == nil && f.verdictRequiredLocked(agent) {
 		return ErrVerificationRequired
 	}
 	if d.verdict != nil && !d.verdict.Pass {
@@ -424,6 +426,13 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 	delete(f.staged, agent)
 	f.releaseOwnershipLocked(agent)
 	return nil
+}
+
+// verdictRequiredLocked reports whether agent's work must pass a verdict before
+// it consolidates: only a maintenance cycle's, which no orchestrator reviews.
+// Ordinary delegated work is gated by its delivery contract, not by VFS.
+func (f *FS) verdictRequiredLocked(agent AgentID) bool {
+	return f.bindings[agent].CycleID != ""
 }
 
 // ResolveCollision removes a matching collision from the unresolved list.

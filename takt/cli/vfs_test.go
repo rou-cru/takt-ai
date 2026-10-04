@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -122,6 +123,36 @@ func assertVFSCollisionRefusal(t *testing.T, refused response, err error, ownerA
 	if refused.Collision.RequestedPath != "owned.go" || refused.Collision.TargetAgent != "fix" ||
 		refused.Collision.OwnerAgent != ownerAgent || refused.Collision.OwnerSession != ownerSession || refused.Collision.OwnerUnit != ownerUnit {
 		t.Fatalf("collision evidence = %+v", refused.Collision)
+	}
+}
+
+func TestVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	mutate := newVFSMutator(t, root, state)
+
+	assigned, err := mutate("assign", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}}))
+	assertVFSAssigned(t, assigned, err)
+	if bound, err := mutate("bind", vfsReq("u1", "dev", nil)); err != nil || bound.Key != assigned.Key {
+		t.Fatalf("bind = %+v, %v", bound, err)
+	}
+	if _, err = mutate("op", vfsReq("u1", "dev", map[string]any{
+		"author_key": assigned.Key, "call_id": "c1", "expected_revision": 0, "action": "create", "path": "a.go", "content": "partial",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	released, err := mutate("release", map[string]any{"ipc_version": IPCVersion, "session_id": "s1", "key": assigned.Key})
+	if err == nil || !strings.Contains(err.Error(), vfs.ErrStagedWork.Error()) {
+		t.Fatalf("release of staged work = %+v, %v; want %v", released, err, vfs.ErrStagedWork)
+	}
+	retry, err := mutate("assign", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go", "b.go"}, "author_key": assigned.Key}))
+	if err != nil || !retry.OK || retry.Key != assigned.Key {
+		t.Fatalf("reassign = %+v, %v; want the same author key", retry, err)
+	}
+	claims, err := mutate("claims", map[string]any{"ipc_version": IPCVersion, "session_id": "s1"})
+	if err != nil || len(claims.Claims) != 1 || !claims.Claims[0].Staged || !claims.Claims[0].Pending ||
+		!slices.Equal(claims.Claims[0].Scope, []string{"a.go", "b.go"}) {
+		t.Fatalf("claims after reassign = %+v, %v", claims.Claims, err)
 	}
 }
 

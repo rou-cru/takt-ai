@@ -80,9 +80,10 @@ respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: t
 await tools.claim_assign.execute({ work_unit_id: "u1", agent: "dev", scope: ["a.txt"] }, root)
 assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", work_unit_id: "u1", agent_id: "dev", specialist: "dev", invariants: ["AGENTS.md"], scope: ["a.txt"] })
 
-// Release selects only an exact key listed by claim_list. Prior-root claims
-// need no confirmation; current-root claims are denied until confirmed by the
-// orchestrator after its native question mechanism obtains the user's yes.
+// Release selects only an exact key listed by claim_list. Claims nobody works
+// under (prior-root, or a current-root reservation not yet launched) need no
+// confirmation; a current-root claim an agent is active under is denied until
+// the orchestrator's native question mechanism obtains the user's yes.
 const priorClaim = { ...claim, key: "claim-prior", root_session_id: "prior-root", active: true }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, priorClaim] }), stderr: "", code: 0 } : undefined
 let releaseAt = calls.length
@@ -91,10 +92,13 @@ assert.deepEqual(calls.slice(releaseAt).map(c => [c.argv[2], c.stdin]), [
   ["claims", { ipc_version: 4, session_id: "root" }],
   ["release", { ipc_version: 4, session_id: "root", key: "claim-prior" }],
 ])
+releaseAt = calls.length
+await tools.claim_release.execute({ claim_key: "claim-current" }, root)
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", key: "claim-current" })
 const activeClaim = { ...claim, active: true }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [activeClaim, priorClaim] }), stderr: "", code: 0 } : undefined
 releaseAt = calls.length
-await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current", confirmed: false }, root), /WARNING: agent dev \(instance dev, pending\) owns \[a\.txt\]/)
+await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current", confirmed: false }, root), /WARNING: agent dev \(instance dev, active\) owns \[a\.txt\]/)
 assert.equal(calls.slice(releaseAt).filter(c => c.argv[2] === "release").length, 0, "denied active claim was released")
 await tools.claim_release.execute({ claim_key: "claim-current", confirmed: true }, root)
 assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", key: "claim-current" })

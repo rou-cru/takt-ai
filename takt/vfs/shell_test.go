@@ -18,7 +18,6 @@ package vfs
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,39 +86,6 @@ func TestShellMutationIsStagedAndDiskUntouched(t *testing.T) {
 	if entry.Operation != OpShell || entry.CallID != "shell-1" || entry.AfterHash != result.DeltaHash ||
 		entry.BeforeHash == entry.AfterHash || entry.Agent != "author" || !strings.Contains(entry.Outcome, "status 0 from revision 0") {
 		t.Fatalf("journal entry = %+v; want one shell transaction with its hashes and outcome", entry)
-	}
-}
-
-func TestShellTargetedTestReadsStagedFiles(t *testing.T) {
-	f, root, state := durable(t)
-	key := bind(t, f, "author", "unit", "dev", "src/app.js", "tests/app.test.js")
-	apply(t, f, applyCase{key, "source", 0, OpCreate, "src/app.js", "exports.answer = 42"})
-	apply(t, f, applyCase{key, "test", 1, OpCreate, "tests/app.test.js", "const { test } = require('node:test'); const { strictEqual } = require('node:assert'); test('staged source', () => strictEqual(require('../src/app.js').answer, 42));"})
-	plan, err := f.PrepareShell(key, "test-staged", "node --test tests/app.test.js", state, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cwd == root || !plan.Capture {
-		t.Fatalf("test must run in a captured staged projection: %+v", plan)
-	}
-	for _, rel := range []string{"src/app.js", "tests/app.test.js"} {
-		if _, err := os.Stat(filepath.Join(root, rel)); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("physical %s exists before consolidation: %v", rel, err)
-		}
-		if _, err := os.Stat(filepath.Join(plan.Cwd, rel)); err != nil {
-			t.Fatalf("staged test dependency %s missing: %v", rel, err)
-		}
-	}
-	if node, err := exec.LookPath("node"); err == nil {
-		cmd := exec.Command(node, "--test", "tests/app.test.js")
-		cmd.Dir = plan.Cwd
-		if output, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("staged node acceptance = %v: %s", err, output)
-		}
-	}
-	shellRun(t, plan, "0", nil)
-	if _, err := f.ImportShell(key, "test-staged", state, 2); err != nil {
-		t.Fatal(err)
 	}
 }
 

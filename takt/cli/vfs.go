@@ -330,7 +330,16 @@ func runVFSClaimControl(workspace, state, command string, req request, stdout io
 		if err != nil {
 			return err
 		}
-		key, assignErr := fs.AssignScope(identity, req.Scope)
+		// An author key names existing work: the unit's next attempt takes a new
+		// scope and keeps the staged delta instead of starting empty.
+		var key vfs.AgentID
+		var assignErr error
+		if req.AuthorKey != "" {
+			key = vfs.AgentID(req.AuthorKey)
+			assignErr = fs.ReassignScope(identity, key, req.Scope)
+		} else {
+			key, assignErr = fs.AssignScope(identity, req.Scope)
+		}
 		if assignErr != nil {
 			var collision *vfs.CollisionError
 			if errors.As(assignErr, &collision) {

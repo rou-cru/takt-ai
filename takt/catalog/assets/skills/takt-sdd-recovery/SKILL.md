@@ -4,7 +4,7 @@ description: "An SDD implementation task failed twice, or an applier flagged a c
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt SDD Recovery
@@ -29,7 +29,7 @@ which retries in place without this protocol.
 ```
 
 1. **Initial retry:** for a minor failure within authorized recovery bounds, retry once —
-   discard its staged work, reassign its scope, and delegate the same node name again — with
+   reassign its scope with its `author_key`, keeping its staged work, and delegate the same node name again — with
    the exact error output and stack trace. A contract defect goes directly to its owner.
    Predeclare the binary result, failure condition, scope, recoverable point, attempt
    budget. Do not retry an objective-blocking discovery without direction: trigger the

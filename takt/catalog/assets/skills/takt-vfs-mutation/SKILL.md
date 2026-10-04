@@ -16,8 +16,7 @@ action needing the same confirmation as one.
 assigned scope and return the author key in your handoff. Never use native edit or write tools.
 
 Bind with `vfs_bind` using the exact assigned file scope. Use `vfs_write`/`vfs_delete` to
-stage changes. Targeted test commands run against your staged projection when their test
-files and dependencies are in scope; report which checks ran and what remained unavailable.
+stage changes. Report which checks ran and what remained unavailable.
 
 **Stay inside your scope.** When the work needs a file outside it, return that path and why
 instead of reaching it. Read beyond your scope only what your brief allows.

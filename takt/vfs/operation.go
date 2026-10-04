@@ -111,6 +111,11 @@ var (
 	ErrIdentity = errors.New("vfs: invalid operation identity")
 	// ErrDuplicateCall is returned when a call ID is reused.
 	ErrDuplicateCall = errors.New("vfs: call already consumed")
+	// ErrNothingStaged is returned when consolidation names work that has no staged change.
+	ErrNothingStaged = errors.New("vfs: nothing is staged for that author key")
+	// ErrStagedWork is returned when a claim to release still holds staged work: a
+	// delta without an owner could never be consolidated.
+	ErrStagedWork = errors.New("vfs: the claim holds staged work; consolidate it, reassign it with its author key, or discard it")
 )
 
 // Bind registers a dispatch identity and acquires its explicit file scope.
@@ -314,13 +319,21 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim {
 			WorkUnitID: identity.WorkUnitID, Scope: scope, AuthorKey: identity.GateAuthorKey,
 			Active:  identity.SessionID == currentSessionID && !identity.Prelaunch,
 			Pending: identity.Prelaunch,
+			Staged:  f.stagedLocked(key),
 		})
 	}
 	return claims
 }
 
-// RevokeOwnership releases only the key's file ownership. Binding and staged
-// delta state are intentionally retained for inspection and recovery.
+// stagedLocked reports whether key holds at least one staged change.
+func (f *FS) stagedLocked(key AgentID) bool {
+	d := f.staged[key]
+	return d != nil && len(d.files) > 0
+}
+
+// RevokeOwnership frees the paths a claim holds. The binding is kept so the
+// unit's attempt count survives. A claim that holds staged work is refused
+// rather than left as a delta nobody owns, which could never be consolidated.
 func (f *FS) RevokeOwnership(key AgentID) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -332,9 +345,72 @@ func (f *FS) RevokeOwnership(key AgentID) (err error) {
 	if !ok {
 		return fmt.Errorf("%w: %q is not a known binding key", ErrIdentity, key)
 	}
+	if f.stagedLocked(key) {
+		return ErrStagedWork
+	}
 	identity.Prelaunch = false
 	f.bindings[key] = identity
 	f.releaseOwnershipLocked(key)
+	return nil
+}
+
+// ReassignScope gives the work of an existing author key a new exact scope for
+// its next attempt, keeping the staged delta. The delta's own paths must stay in
+// the scope; only the added paths are checked for collisions, and the paths that
+// leave it were never written. The verdict, bound to the old revision, is cleared.
+func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err = f.readyLocked(); err != nil {
+		return err
+	}
+	defer f.finishLocked(&err)
+	held, ok := f.bindings[key]
+	if !ok || held.GateAuthorKey != "" || held.SessionID != identity.SessionID ||
+		held.WorkUnitID != identity.WorkUnitID || held.AgentID != identity.AgentID || held.Specialist != identity.Specialist {
+		return fmt.Errorf("%w: %q is not this unit's author key", ErrIdentity, key)
+	}
+	if len(scope) == 0 {
+		return ErrIdentity
+	}
+	d := f.ensureDelta(key)
+	for _, path := range slices.Sorted(maps.Keys(d.files)) {
+		if !slices.Contains(scope, path) {
+			return fmt.Errorf("%w: the new scope must keep staged path %q", ErrScopeDenied, path)
+		}
+	}
+	owned := f.ownedScopeLocked(key)
+	added := slices.DeleteFunc(slices.Clone(scope), func(path string) bool { return slices.Contains(owned, path) })
+	bases := make(map[string]baseFile, len(added))
+	for _, path := range added {
+		if bases[path], err = f.physical(path); err != nil {
+			return err
+		}
+	}
+	if err = f.checkClaimScope(identity, added); err != nil {
+		return err
+	}
+	if identity.AttemptID == "" {
+		highest, _ := f.highestOpenAttempt(held)
+		identity.AttemptID = strconv.Itoa(highest + 1)
+	}
+	hash, err := f.invariantsVersionLocked(identity.Invariants)
+	if err != nil {
+		return err
+	}
+	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch = identity.AttemptID, identity.Invariants, hash, true
+	f.bindings[key] = held
+	f.releaseOwnershipLocked(key)
+	for _, path := range scope {
+		f.owners[path] = key
+	}
+	for _, path := range owned {
+		if !slices.Contains(scope, path) {
+			delete(d.bases, path)
+		}
+	}
+	maps.Copy(d.bases, bases)
+	d.verdict = nil
 	return nil
 }
 
@@ -816,7 +892,8 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 }
 
 // ConsolidateCheckpoint is a trusted coordinator operation that consolidates
-// authorized staged changes; a verdict, when present, remains bound to its evidence.
+// authorized staged changes; a verdict, when present, remains bound to its
+// evidence. An empty checkpoint label defaults to the author key and revision.
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -824,21 +901,17 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 		return err
 	}
 	if strings.TrimSpace(checkpoint) == "" {
-		return ErrVerificationRequired
+		checkpoint = fmt.Sprintf("%s@%d", key, expected)
 	}
-	identity, ok := f.bindings[key]
-	if !ok {
+	if _, ok := f.bindings[key]; !ok {
 		return ErrIdentity
 	}
 	d := f.staged[key]
 	if d == nil || len(d.files) == 0 {
-		return ErrInvalidVerdict
+		return ErrNothingStaged
 	}
 	if d.revision != expected {
 		return ErrStaleRevision
-	}
-	if identity.CycleID != "" && d.verdict == nil {
-		return ErrInvalidVerdict
 	}
 	if d.verdict != nil && d.verdict.DeltaHash != f.deltaHashLocked(key) {
 		return ErrInvalidVerdict

@@ -1,21 +1,34 @@
 ---
 name: takt-vfs-coordination
-description: "Use when reserving file scope, resolving an ownership collision, releasing a claim, or consolidating staged work."
+description: "Use when reserving file scope, resolving an ownership collision, reassigning or releasing a claim, or consolidating staged work."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt VFS Coordination
 
-Reserve exact implementation paths with `claim_assign`; use `claim_list` to inspect a
-collision. Release a prior-session claim by its listed key. For a current-session claim,
-ask for explicit confirmation and pass `confirmed: true` after the user agrees. Release
-preserves staged content; choose `vfs_discard` when it should be discarded.
+VFS is a seatbelt: it protects against ownership collisions and against an agent leaving its
+scope. It never decides whether work is good enough to deliver and never stands in the way of
+normal progress.
 
-Consolidate authorized staged work with `vfs_consolidate` after the applicable delivery
-checks. A staged gate uses `claim_assign_verifier` and a verifier's empty-scope binding.
-VFS ownership protects against collisions; the delivery contract determines when an
-independent verdict is needed. On a physical-base change or unresolved collision, keep
-the affected path frozen and report the competing state.
+Reserve exact implementation paths with `claim_assign`; use `claim_list` to inspect a
+collision. To retry or correct work that already has staged changes, or to give it more
+paths, call `claim_assign` again with that work's `author_key` and the new exact scope: the
+staged work stays, and the new scope must include it.
+
+Release a claim by its listed key. A claim with no staged work releases directly; one an
+agent is active under in the current session needs the user's explicit yes first, then
+`confirmed: true`. A claim holding staged work is not released: reassign it, consolidate it,
+or discard it.
+
+Discarding partial work with `vfs_discard` is your decision and never a default: not because
+the work is imperfect, and not because a verifier failed it. Discard only when repairing it is
+notoriously costlier than redoing it.
+
+Consolidate authorized staged work with `vfs_consolidate`; its label is optional. An
+independent verdict is needed only when the delivery contract asks for one, through
+`claim_assign_verifier` and a verifier's empty-scope binding, and a verdict that exists must
+pass. On a physical-base change or unresolved collision, keep the affected path frozen and
+report the competing state.

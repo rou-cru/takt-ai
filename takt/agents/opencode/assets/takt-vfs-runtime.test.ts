@@ -401,7 +401,7 @@ describe("delegation lifecycle", () => {
 })
 
 describe("maintenance cycle", () => {
-  test("a restart aborts a stale cycle and reconciles delegations that died with the process", async () => {
+  test("a restart aborts a stale cycle and leaves stored delegations to the delegation path", async () => {
     const vfs = await startVfs({
       storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "u-old", root: "root" } } },
       respond: (call) => call.kind === "gc" && call.command === "status" ? json(coordinator(gcCycle("verify", { verifier: "gcv" }))) : undefined,
@@ -409,9 +409,8 @@ describe("maintenance cycle", () => {
     try {
       await vfs.run("gc_request", {}, orchestrator)
       await until(() => vfs.log.prompts.length > 0)
-      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "u-old", session: "root" }])
-      expect(vfs.requests("dispatch", "reconcile")).toEqual([{ action: "reconcile", event: "u-old", session: "root", pass: false }])
-      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "old:1": { unit: "u-old", root: "root" } })
       expect(vfs.log.interrupts).toContain("gcv")
       expect(vfs.actions("gc")).toContain("recover")
       expect(vfs.log.prompts[0].sessionID).toBe("gcv")
@@ -429,7 +428,23 @@ describe("maintenance cycle", () => {
         vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-1", input: { description: "new-1", agent: RESULT_AGENT } }),
         vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-2", input: { description: "new-2", agent: RESULT_AGENT } }),
       ].map(async (hook) => { try { await hook } catch { /* the new units have no declared inputs */ } }))
-      expect(vfs.requests("dispatch", "uncertain")).toHaveLength(1)
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "u-old", session: "root" }])
+      expect(vfs.requests("dispatch", "reconcile")).toEqual([{ action: "reconcile", event: "u-old", session: "root", pass: false }])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  test("a stored delegation the history cannot reconcile is dropped and never blocks a delegation", async () => {
+    const vfs = await startVfs({
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "u-gone", root: "root" } } },
+      respond: (call) => call.kind === "dispatch" && call.command === "reconcile" ? { code: 1, err: "dispatch: nothing uncertain to reconcile" } : undefined,
+    })
+    try {
+      for (const id of ["call-1", "call-2"]) {
+        // The delegation gets past the cleanup and is refused only for its own missing inputs.
+        await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id, input: { description: `new-${id}`, agent: RESULT_AGENT } }))
+          .rejects.toThrow("dispatch_inputs")
+      }
       expect(vfs.requests("dispatch", "reconcile")).toHaveLength(1)
     } finally { await vfs.stop() }
   })
@@ -643,28 +658,38 @@ describe("path ownership", () => {
 })
 
 describe("claims and consolidation", () => {
-  test("releasing a claim of this session needs confirmation and says why", async () => {
+  test("releasing a claim asks only when an agent is working under it, and never drops staged work", async () => {
     const vfs = await startVfs({
       claims: [
         claim({ key: "k-pending", pending: true, scope: ["a.go"] }),
         claim({ key: "k-active", active: true, scope: ["b.go", "c.go"] }),
+        claim({ key: "k-staged", staged: true, scope: ["d.go"] }),
         claim({ key: "k-idle" }),
         claim({ key: "k-old", root_session_id: "old-root" }),
       ],
     })
     try {
       await Promise.all([
-        expect(vfs.run("claim_release", { claim_key: "k-pending" }, orchestrator)).rejects.toThrow("agent dev (instance dev, pending) owns [a.go]"),
         expect(vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)).rejects.toThrow("(instance dev, active) owns [b.go, c.go]"),
-        expect(vfs.run("claim_release", { claim_key: "k-idle" }, orchestrator)).rejects.toThrow("(instance dev, neither active nor pending) owns []"),
+        expect(vfs.run("claim_release", { claim_key: "k-staged" }, orchestrator)).rejects.toThrow("holds staged work for [d.go]"),
       ])
       expect(vfs.actions("vfs")).not.toContain("release")
-      await vfs.run("claim_release", { claim_key: "k-old" }, orchestrator)
-      await vfs.run("claim_release", { claim_key: "k-pending", confirmed: true }, orchestrator)
+      for (const key of ["k-pending", "k-idle", "k-old"]) await vfs.run("claim_release", { claim_key: key }, orchestrator)
+      await vfs.run("claim_release", { claim_key: "k-active", confirmed: true }, orchestrator)
       expect(vfs.requests("vfs", "release")).toEqual([
-        expect.objectContaining({ session_id: "root", key: "k-old" }),
         expect.objectContaining({ session_id: "root", key: "k-pending" }),
+        expect.objectContaining({ session_id: "root", key: "k-idle" }),
+        expect.objectContaining({ session_id: "root", key: "k-old" }),
+        expect.objectContaining({ session_id: "root", key: "k-active" }),
       ])
+    } finally { await vfs.stop() }
+  })
+
+  test("claim_assign with an author key asks to keep the staged work", async () => {
+    const vfs = await startVfs()
+    try {
+      await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go", "b.go"], author_key: "author-key" }, orchestrator)
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ author_key: "author-key", scope: ["a.go", "b.go"] })])
     } finally { await vfs.stop() }
   })
 

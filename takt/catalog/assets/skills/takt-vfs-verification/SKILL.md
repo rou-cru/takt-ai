@@ -4,7 +4,7 @@ description: "Use when reading a staged VFS delta and attaching an independent v
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt VFS Verification
@@ -15,3 +15,4 @@ Read the author's staged files with `vfs_read`, assess the applicable invariants
 attach the result with `vfs_verify`. Report what executable acceptance could be run
 separately from the staged verdict. If the assignment is unavailable, report the exact
 binding error and the checks that remain unverified.
+A failing verdict leaves the author's staged work untouched.

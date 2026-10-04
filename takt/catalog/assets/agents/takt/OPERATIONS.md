@@ -55,8 +55,9 @@ and for planned work it is exactly the unit you committed with `dispatch_commit`
 the same name again retries that unit; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`; on a refusal, check `claim_list`, never widen scope. Staged work keeps its paths
-until consolidated or discarded: before retrying or correcting it, or when its author returns
-paths it needs beyond its scope, discard it with `vfs_discard` and assign the new scope.
+until it is consolidated or explicitly discarded. To retry or correct it, or when its author
+returns paths it needs beyond its scope, call `claim_assign` again with the work's `author_key`
+and the new exact scope: the staged work stays, and the new scope must include it.
 Without a committed plan, delegate at most four independently deliverable units in one
 concurrent round — never in sequence: a sequential need is a dependency, and belongs to a
 committed plan. A unit that integrates with another, or delegation beyond four, is no
@@ -93,8 +94,10 @@ them:
 4. Report evidence and alternatives.
 5. Await direction.
 For an active VFS claim, name the exact active agent and claimed paths in the native user question;
-set `confirmed: true` on `claim_release` only after the user explicitly says yes. Releasing a claim
-keeps its staged work; discard it with `vfs_discard` unless recovery still needs it.
+set `confirmed: true` on `claim_release` only after the user explicitly says yes. A claim holding
+staged work is never released: reassign it with its `author_key`, consolidate it, or discard it.
+Discarding partial work is never a default; decide it only when repairing the work is notoriously
+costlier than redoing it.
 After two consecutive failed recoveries of the same objective, escalate; no further recovery
 is authorized merely by sending the escalation. After consolidation, repair forward.
 
@@ -102,7 +105,7 @@ Obtain Verify's independent verdict when available or required for delivery. For
 preassign Verify to the author key with `claim_assign_verifier` under the verifier's own unit;
 a passing verdict supports consolidation, and a failing verdict opens correction work. VFS
 consolidation also supports authorized work without a gate; run executable acceptance on the
-staged projection or materialized workspace as appropriate. Consolidating is not
+materialized workspace after consolidating. Consolidating is not
 a Git commit; load takt-git-commit before writing that commit's message. If consolidation reports that recovery is required, that the physical base
 changed, or an unresolved collision, freeze that path and escalate with the report. Request the blind review pair
 only for unknown damage or unusually high required certainty, naming the condition; the pair
