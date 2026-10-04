@@ -220,8 +220,13 @@ const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
 // rather than the V1 zod-shaped tool.schema helper.
 // withText appends one text block to a tool result's content, in either of its shapes.
-const withText = <C,>(content: string | ReadonlyArray<C> | undefined, text: string): string | ReadonlyArray<C | { readonly type: "text"; readonly text: string }> =>
-  content === undefined ? text : typeof content === "string" ? `${content}\n\n${text}` : [...content, { type: "text" as const, text }]
+function withText<C>(content: string | ReadonlyArray<C> | undefined, text: string): string | ReadonlyArray<C | { readonly type: "text"; readonly text: string }> {
+  if (content === undefined) return text
+  if (typeof content === "string") return `${content}\n\n${text}`
+  return [...content, { type: "text" as const, text }]
+}
+// engramRefs renders Engram entry IDs the way agents cite them.
+const engramRefs = (ids: number[]) => ids.map(id => `Engram #${id}`).join(", ")
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
@@ -862,6 +867,20 @@ export default Plugin.define({
       scheduleGC()
     })
 
+    // collectDelivery returns the Engram IDs a completed producer delivered for
+    // its unit. Bounded to one retry: a producer that forgot deliver_result gets
+    // a single nudge, never an unbounded prompt loop.
+    async function collectDelivery(key: string): Promise<number[]> {
+      const child = childOf.get(key)
+      if (!deliveries.has(key) && child) {
+        await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+        await ctx.session.wait({ sessionID: child })
+      }
+      const delivered = deliveries.get(key)
+      if (!delivered) throw new Error("the specialist ended without delivering its result; delegating the same unit again retries it")
+      return delivered
+    }
+
     /**
      * Settles tracked delegations and advances GC after ordinary VFS tool calls.
      * A completed result producer with no delivery gets one reminder if its child
@@ -881,19 +900,9 @@ export default Plugin.define({
         const key = unitKey(d.root, d.unit)
         try {
           if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "")) {
-            const child = childOf.get(key)
-            // Bounded to one retry: a producer that forgot deliver_result gets a
-            // single nudge, never an unbounded prompt loop.
-            if (!deliveries.has(key) && child) {
-              await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
-              await ctx.session.wait({ sessionID: child })
-            }
-            const delivered = deliveries.get(key)
-            if (!delivered) {
-              throw new Error("the specialist ended without delivering its result; delegating the same unit again retries it")
-            }
+            const delivered = await collectDelivery(key)
             // The orchestrator receives the delivered IDs with the result itself.
-            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${delivered.map(id => `Engram #${id}`).join(", ")}`) }
+            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${engramRefs(delivered)}`) }
           }
         } finally {
           deliveries.delete(key)
@@ -1505,7 +1514,7 @@ export default Plugin.define({
         if (RESULT_AGENTS.includes(event.agent)) childOf.set(unitKey(root, unit), event.sessionID)
         const consumed = inputs.get(unitKey(root, unit))
         if (consumed) event.system.push({ type: "text", text: consumed.length > 0
-          ? `Work unit ${unit} consumes these invariants: ${consumed.map(id => `Engram #${id}`).join(", ")}. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.`
+          ? `Work unit ${unit} consumes these invariants: ${engramRefs(consumed)}. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.`
           : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.` })
         const claim = await findClaim(root, unit, event.agent, ["pending", "active"])
         if (!claim || allowed.length === 0) { removeVFS(); return }
