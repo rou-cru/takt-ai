@@ -2,7 +2,6 @@
 package styles
 
 import (
-	"os"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -20,58 +19,18 @@ type logoSpan struct {
 	Bg    string
 }
 
-// Glyphs is the character set the color logo is drawn with.
-type Glyphs string
+// glyphs is the color logo's character set: half-blocks until Run measures
+// the terminal with ProbeGlyphs.
+var glyphs = GlyphsHalfBlocks
 
-const (
-	// GlyphsOctants draws 2×4 pixels per cell with the Unicode 16 block
-	// octants: the sharpest mark, for terminals known to draw them.
-	GlyphsOctants Glyphs = "octants"
-	// GlyphsHalfBlocks draws 1×2 pixels per cell with ▀ ▄ █, which every
-	// terminal font has: the mark any other terminal shows as intended.
-	GlyphsHalfBlocks Glyphs = "halfblocks"
-)
-
-// glyphsEnv overrides glyph detection: "octants" or "halfblocks".
-const glyphsEnv = "TAKT_LOGO_GLYPHS"
-
-// octantTerminals are the TERM_PROGRAM or TERM values of terminals that draw
-// the octants themselves instead of relying on the font. Anything else,
-// multiplexers included, gets half-blocks: an unknown terminal never gets a
-// glyph it may lack.
-var octantTerminals = []string{"kitty", "ghostty", "foot"}
-
-// DetectGlyphs picks the logo's character set from the environment: the
-// TAKT_LOGO_GLYPHS override first, then the known octant terminals.
-func DetectGlyphs() Glyphs {
-	switch Glyphs(os.Getenv(glyphsEnv)) {
-	case GlyphsOctants:
-		return GlyphsOctants
-	case GlyphsHalfBlocks:
-		return GlyphsHalfBlocks
-	}
-	for _, value := range []string{os.Getenv("TERM_PROGRAM"), os.Getenv("TERM")} {
-		value = strings.ToLower(value)
-		for _, terminal := range octantTerminals {
-			if strings.Contains(value, terminal) {
-				return GlyphsOctants
-			}
-		}
-	}
-	return GlyphsHalfBlocks
-}
-
-// glyphs is the character set detected once at start-up.
-var glyphs = DetectGlyphs()
-
-// SetGlyphs forces the color logo's character set; fixtures pin it so their
-// output never depends on the terminal running the tests.
+// SetGlyphs sets the color logo's character set: Run stores what
+// ProbeGlyphs measured, and fixtures pin half-blocks.
 func SetGlyphs(g Glyphs) { glyphs = g }
 
 // Logo draws the largest variant of the brand mark that fits in width×height
 // cells, or "" when none does. Mono terminals get the Braille mark, whose
 // shape survives the loss of color; color terminals get octants or
-// half-blocks, as DetectGlyphs decided.
+// half-blocks, as SetGlyphs last chose.
 func Logo(width, height int) string {
 	variants := generatedLogoHalfBlocks
 	switch {

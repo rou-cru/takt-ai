@@ -56,10 +56,11 @@ const (
 )
 
 // logoRows are the heights, in terminal rows, of the generated variants,
-// largest first: the home draws the largest one that fits the terminal. Every
-// variant is twice as wide as it is tall, so the ring stays round in cells
-// about twice as tall as they are wide.
-var logoRows = []int{32, 26, 20, 16, 12, 8}
+// largest first: the home draws the largest one that fits, up to its cap of
+// 16 rows (homeLogoMaxRows in takt/tui/tui.go). Every variant is twice as wide
+// as it is tall, so the ring stays round in cells about twice as tall as they
+// are wide.
+var logoRows = []int{16, 12, 8}
 
 // ink is one class of the flat brand palette every source pixel is reduced
 // to. The volume and gloss of the artwork are dropped on purpose: at terminal
