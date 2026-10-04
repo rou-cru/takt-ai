@@ -373,8 +373,11 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 	if len(scope) == 0 {
 		return ErrIdentity
 	}
-	d := f.ensureDelta(key)
-	for _, path := range slices.Sorted(maps.Keys(d.files)) {
+	var staged []string
+	if existing := f.staged[key]; existing != nil {
+		staged = slices.Sorted(maps.Keys(existing.files))
+	}
+	for _, path := range staged {
 		if !slices.Contains(scope, path) {
 			return fmt.Errorf("%w: the new scope must keep staged path %q", ErrScopeDenied, path)
 		}
@@ -398,6 +401,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 	if err != nil {
 		return err
 	}
+	d := f.ensureDelta(key)
 	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch = identity.AttemptID, identity.Invariants, hash, true
 	f.bindings[key] = held
 	f.releaseOwnershipLocked(key)

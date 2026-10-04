@@ -298,8 +298,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	placed := model.logoAt
 	model.logoAt = logoRect{}
-	if model.active() == nil && model.guard.state != guardOpen {
-		model.logoAt = findLogo(model.View().Content)
+	// A key press that leaves the home as it was only moves the cursor, which
+	// never moves the logo, so the screen is not rendered again to find it.
+	_, keyPress := message.(tea.KeyPressMsg)
+	if model.onHome() {
+		if keyPress && m.onHome() {
+			model.logoAt = placed
+		} else {
+			model.logoAt = findLogo(model.View().Content)
+		}
 	}
 	_, refresh := message.(logoRefreshMsg)
 	_, resized := message.(tea.WindowSizeMsg)
@@ -320,6 +327,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return model, tea.Batch(commands...)
 }
+
+// onHome reports whether the home screen, not a flow or the guard, is showing.
+func (m Model) onHome() bool { return m.active() == nil && m.guard.state != guardOpen }
 
 // findLogo locates the cells styles.Logo reserved in a rendered screen: from
 // the first LogoCell, as wide as its run and as tall as the lines holding

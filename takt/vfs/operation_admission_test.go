@@ -290,11 +290,11 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 		want     error
 	}{
 		"drops a staged path":    {retry, key, []string{"b.go"}, ErrScopeDenied},
-		"collides on added path": {retry, key, []string{"a.go", "p.go"}, ErrScopeDenied},
+		"collides on added path": {retry, key, []string{"a.go", "p.go"}, ErrCollision},
 		"another unit's key":     {Identity{SessionID: "s", WorkUnitID: "other", AgentID: "author", Specialist: "dev"}, key, []string{"a.go"}, ErrIdentity},
 		"unknown key":            {retry, "ghost", []string{"a.go"}, ErrIdentity},
 	} {
-		if err := f.ReassignScope(tc.identity, tc.key, tc.scope); err == nil || (tc.want != ErrScopeDenied && !errors.Is(err, tc.want)) {
+		if err := f.ReassignScope(tc.identity, tc.key, tc.scope); !errors.Is(err, tc.want) {
 			t.Errorf("%s: ReassignScope() = %v; want %v", name, err, tc.want)
 		}
 	}
@@ -316,6 +316,26 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 	}
 	if got := f.staged[key]; string(got.files["a.go"]) != "partial" || got.revision != staged.Revision || got.verdict != nil {
 		t.Fatalf("delta = %+v; want the staged content and revision kept, no verdict", got)
+	}
+}
+
+func TestRefusedReassignScopeLeavesNoDelta(t *testing.T) {
+	f, _, _ := durable(t)
+	key := bind(t, f, "author", "u", "dev", "a.go")
+	bind(t, f, "peer", "other", "dev", "p.go")
+	staged := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.go", "done"})
+	if err := f.ConsolidateCheckpoint(key, "cp", staged.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := f.staged[key]; kept {
+		t.Fatal("consolidation kept the delta")
+	}
+	retry := Identity{SessionID: "s", WorkUnitID: "u", AgentID: "author", Specialist: "dev"}
+	if err := f.ReassignScope(retry, key, []string{"a.go", "p.go"}); !errors.Is(err, ErrCollision) {
+		t.Fatalf("ReassignScope() = %v; want ErrCollision", err)
+	}
+	if _, kept := f.staged[key]; kept {
+		t.Fatal("a refused reassignment left an empty delta behind")
 	}
 }
 

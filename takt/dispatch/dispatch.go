@@ -314,9 +314,11 @@ func Launch(h *history.History, journalRef, event, session string) error {
 // releases the reservation. Uncertainty alone never releases it (PR-HAR-18).
 func Reconcile(h *history.History, journalRef, event, session string, running bool) error {
 	u := h.Project().Units[event]
-	// A restarted host can retain a delegation record after the unit was already
-	// settled. Reconciliation of that same session must not block new dispatches.
-	if !running && u.State == history.StateSettled && u.SessionID == session {
+	// A restarted host can retain a delegation record for a unit that is no longer
+	// in flight (settled, or never admitted): there is nothing left to reconcile,
+	// and it must not block new dispatches. Another session's unit is not ours to
+	// reconcile.
+	if !running && u.State != history.StateInFlight && (u.SessionID == "" || u.SessionID == session) {
 		return nil
 	}
 	if u.Flight != history.FlightUncertain {

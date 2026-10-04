@@ -99,6 +99,9 @@ func TestHomeKeepsTheImageOverItsReservedCells(t *testing.T) {
 	if raw, _ := rawOutput(cmd); raw != "" {
 		t.Errorf("moving the cursor re-placed the unmoved logo: %q", raw)
 	}
+	if app.logoAt != at || findLogo(app.View().Content) != at {
+		t.Errorf("moving the cursor moved the logo: kept %+v, rendered %+v, want %+v", app.logoAt, findLogo(app.View().Content), at)
+	}
 
 	next, cmd = app.Update(logoRefreshMsg{})
 	app = next.(Model)

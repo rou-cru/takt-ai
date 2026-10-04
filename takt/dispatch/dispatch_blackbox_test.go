@@ -121,6 +121,24 @@ func TestReconcileNotRunningFinishesAsInterrupted(t *testing.T) {
 	}
 }
 
+func TestReconcileNotRunningHasNothingToDoForUnitsNotInFlight(t *testing.T) {
+	h := newHistory(t)
+	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "planned", Contract: "c"}}); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	for name, event := range map[string]string{"unknown": "never-admitted", "planned": "planned"} {
+		if err := dispatch.Reconcile(h, "", event, "s1", false); err != nil {
+			t.Errorf("%s unit: Reconcile(running=false) = %v, want nothing to do", name, err)
+		}
+	}
+	if err := dispatch.Reconcile(h, "", "planned", "other", false); err == nil {
+		t.Error("another session reconciled a planned unit")
+	}
+	if err := dispatch.Reconcile(h, "", "never-admitted", "s1", true); err == nil {
+		t.Error("Reconcile(running=true) of a unit that was never admitted = nil, want an error")
+	}
+}
+
 func TestReconcileRequiresUncertainFlight(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)

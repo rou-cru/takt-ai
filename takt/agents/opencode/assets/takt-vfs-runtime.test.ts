@@ -434,18 +434,36 @@ describe("maintenance cycle", () => {
     } finally { await vfs.stop() }
   })
 
-  test("a stored delegation the history cannot reconcile is dropped and never blocks a delegation", async () => {
+  test("a stored delegation that fails to reconcile is kept, never blocks a delegation, and is retried", async () => {
+    let failing = true
     const vfs = await startVfs({
-      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "u-gone", root: "root" } } },
-      respond: (call) => call.kind === "dispatch" && call.command === "reconcile" ? { code: 1, err: "dispatch: nothing uncertain to reconcile" } : undefined,
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "u-old", root: "root" } } },
+      respond: (call) => failing && call.kind === "dispatch" && call.command === "reconcile" ? { code: 1, err: "history is locked" } : undefined,
     })
+    const launch = (id: string) => expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id, input: { description: `new-${id}`, agent: RESULT_AGENT } }))
+      // The delegation gets past the cleanup and is refused only for its own missing inputs.
+      .rejects.toThrow("dispatch_inputs")
     try {
-      for (const id of ["call-1", "call-2"]) {
-        // The delegation gets past the cleanup and is refused only for its own missing inputs.
-        await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id, input: { description: `new-${id}`, agent: RESULT_AGENT } }))
-          .rejects.toThrow("dispatch_inputs")
+      await launch("call-1")
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "old:1": { unit: "u-old", root: "root" } })
+      failing = false
+      await launch("call-2")
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+      expect(vfs.requests("dispatch", "reconcile")).toHaveLength(2)
+    } finally { await vfs.stop() }
+  })
+
+  test("a delegation this process admitted is never reconciled as dead by a later hook", async () => {
+    const vfs = await startVfs()
+    try {
+      for (const unit of ["unit-1", "unit-2"]) {
+        await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+        await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
       }
-      expect(vfs.requests("dispatch", "reconcile")).toHaveLength(1)
+      expect(vfs.requests("dispatch", "admit")).toHaveLength(2)
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
+      expect(vfs.requests("dispatch", "reconcile")).toEqual([])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object)).toHaveLength(2)
     } finally { await vfs.stop() }
   })
 

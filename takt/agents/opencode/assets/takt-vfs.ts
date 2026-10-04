@@ -317,23 +317,28 @@ export default Plugin.define({
       Object.entries(((await ctx.storage.get(DELEGATIONS_KEY)) as Record<string, Delegation> | undefined) ?? {}))
     const persistDelegations = () => ctx.storage.set(DELEGATIONS_KEY, Object.fromEntries(delegations))
     // A host subagent call lives inside the process that started it, so a call
-    // still recorded here died with that process: its liveness is uncertain, and
-    // it is reconciled as not running, which releases its slot (PR-HAR-18). This
-    // is bookkeeping about the past and never stands in the way of a new
-    // delegation: a record the history cannot reconcile is dropped, and the
-    // unit's staged work and claims stay as they are.
-    const reconcileStoredDelegations = once(async () => {
-      for (const [delegation, d] of delegations) {
+    // recorded by an earlier process died with it: its liveness is uncertain, and
+    // it is reconciled as not running, which releases its slot (PR-HAR-18). Only
+    // those inherited records are reconciled; a call this process admitted is
+    // alive. This is bookkeeping about the past and never stands in the way of a
+    // new delegation: a record that fails to reconcile is kept for the next
+    // attempt, and the unit's staged work and claims stay as they are. A unit
+    // that is no longer in flight has nothing to reconcile and succeeds at once.
+    const inherited = new Map(delegations)
+    let reconciling: Promise<void> | undefined
+    const reconcileStoredDelegations = () => reconciling ??= (async () => {
+      for (const [delegation, d] of inherited) {
         try {
           await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
           await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
+          inherited.delete(delegation)
+          delegations.delete(delegation)
+          await persistDelegations()
         } catch (error) {
-          console.error("Takt dropped a stored delegation it could not reconcile", delegation, error)
+          console.error("Takt could not reconcile a stored delegation yet", delegation, error)
         }
-        delegations.delete(delegation)
-        await persistDelegations()
       }
-    })
+    })().finally(() => { reconciling = undefined })
     // deliveries and childOf track a producer's result delivery for the life
     // of one delegation only; neither is durable, unlike bindings/delegations
     // above, because a producer whose process died must redeliver anyway.
