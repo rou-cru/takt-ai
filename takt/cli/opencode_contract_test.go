@@ -56,4 +56,5 @@ func TestOpenCodeContracts(t *testing.T) {
 	check("dispatch_request", coordinationRequest{Action: "handoff", Event: "unit-1", Session: "root-session", Agent: "builder", Role: "interlocutor", Child: "child-session", Outcome: "Standard", Scope: []string{"src/a.go"}})
 	check("dispatch_switch_request", coordinationRequest{Action: "switch", Session: "root-session", Agent: "builder", Child: "child-session", Artifact: "result.md"})
 	check("dispatch_validate_request", coordinationRequest{Action: "validate_results", Session: "root-session", Agent: "builder", ResultIDs: []int64{42}})
+	check("dispatch_inputs_request", coordinationRequest{Action: "validate_inputs", Session: "root-session", ResultIDs: []int64{42}})
 }

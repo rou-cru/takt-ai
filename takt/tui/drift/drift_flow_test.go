@@ -39,10 +39,13 @@ func installedRootWithDrift(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatalf("LoadOwnershipManifest() error = %v", err)
 	}
+	// The longest managed path, so the views must show it even when it wraps;
+	// ties break by name so every run edits the same file.
 	var edited string
 	for path := range manifest.Entries {
-		edited = path
-		break
+		if len(path) > len(edited) || (len(path) == len(edited) && path < edited) {
+			edited = path
+		}
 	}
 	if edited == "" {
 		t.Fatal("installed manifest has no managed entries to edit")
@@ -225,7 +228,7 @@ func TestDriftRestoreFailureShowsFailedBody(t *testing.T) {
 		t.Fatalf("State() after a failed result = %v, want StateResult", model.State())
 	}
 	got := viewText(model)
-	if !strings.Contains(got, edited) || !strings.Contains(got, "engram reinject failed") {
+	if !testutil.Shows(got, edited) || !strings.Contains(got, "engram reinject failed") {
 		t.Errorf("failed-partial View() = %q, want it to list %q and the error", got, edited)
 	}
 }

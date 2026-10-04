@@ -145,7 +145,7 @@ export function parseCoordinationResponse(value: unknown, verb: string[], action
   const coordinated = verb[0] === "gc" && verb[1] === "coordinate" ? gcCoordinateResponse(result, action) : undefined
   if (coordinated !== undefined) return coordinated
   if (verb[0] === "dispatch") {
-    const acknowledgement = action === "switch" || action === "validate_results"
+    const acknowledgement = action === "switch" || action === "validate_results" || action === "validate_inputs"
     if (acknowledgement && (Object.keys(result).length === 0 || result.ok === true)) return null
     if (!acknowledgement && isCoordinator(result)) return result
   }
@@ -213,10 +213,20 @@ const EXCEPTION_BOUNDS = [
 
 // DELEGATIONS_KEY holds which work unit each in-flight host delegation executes.
 const DELEGATIONS_KEY = "takt/vfs/delegations"
+// INPUTS_KEY holds the invariants each root/unit was declared to consume.
+const INPUTS_KEY = "takt/vfs/inputs"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
 // rather than the V1 zod-shaped tool.schema helper.
+// withText appends one text block to a tool result's content, in either of its shapes.
+function withText<C>(content: string | ReadonlyArray<C> | undefined, text: string): string | ReadonlyArray<C | { readonly type: "text"; readonly text: string }> {
+  if (content === undefined) return text
+  if (typeof content === "string") return `${content}\n\n${text}`
+  return [...content, { type: "text" as const, text }]
+}
+// engramRefs renders Engram entry IDs the way agents cite them.
+const engramRefs = (ids: number[]) => ids.map(id => `Engram #${id}`).join(", ")
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
@@ -297,7 +307,14 @@ export default Plugin.define({
     // deliveries and childOf track a producer's result delivery for the life
     // of one delegation only; neither is durable, unlike bindings/delegations
     // above, because a producer whose process died must redeliver anyway.
-    const deliveries = new Map<string, true>()
+    const deliveries = new Map<string, number[]>()
+    // inputs holds, per root/unit, the Engram IDs of the invariants the
+    // orchestrator declared that unit consumes; an empty list is the declared
+    // absence. It outlives retries of the unit, and a restart, and is replaced
+    // by a redeclaration.
+    const inputs = new Map<string, number[]>(
+      Object.entries(((await ctx.storage.get(INPUTS_KEY)) as Record<string, number[]> | undefined) ?? {}))
+    const persistInputs = () => ctx.storage.set(INPUTS_KEY, Object.fromEntries(inputs))
     const childOf = new Map<string, string>()
     const unitKey = (root: string, unit: string) => `${root}\0${unit}`
     // record keeps the binding, and its durable copy, in step with the harness's
@@ -831,6 +848,7 @@ export default Plugin.define({
       const specialist = asString(input.agent, "")
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
+      if (!inputs.has(unitKey(root, unit))) throw refused("missing_inputs", specialist, root, new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before delegating it, or declare that none exists yet`), unit)
       const delegation = `${event.sessionID}:${event.id}`
       if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
       try {
@@ -848,6 +866,20 @@ export default Plugin.define({
       await dispatchAction({ action: "launch", event: unit, session: root })
       scheduleGC()
     })
+
+    // collectDelivery returns the Engram IDs a completed producer delivered for
+    // its unit. Bounded to one retry: a producer that forgot deliver_result gets
+    // a single nudge, never an unbounded prompt loop.
+    async function collectDelivery(key: string): Promise<number[]> {
+      const child = childOf.get(key)
+      if (!deliveries.has(key) && child) {
+        await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+        await ctx.session.wait({ sessionID: child })
+      }
+      const delivered = deliveries.get(key)
+      if (!delivered) throw new Error("the specialist ended without delivering its result; delegating the same unit again retries it")
+      return delivered
+    }
 
     /**
      * Settles tracked delegations and advances GC after ordinary VFS tool calls.
@@ -867,17 +899,10 @@ export default Plugin.define({
         await persistDelegations()
         const key = unitKey(d.root, d.unit)
         try {
-          if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "") && !deliveries.has(key)) {
-            const child = childOf.get(key)
-            // Bounded to one retry: a producer that forgot deliver_result gets a
-            // single nudge, never an unbounded prompt loop.
-            if (child) {
-              await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
-              await ctx.session.wait({ sessionID: child })
-            }
-            if (!deliveries.has(key)) {
-              throw new Error("delegation ended without delivering a result via deliver_result")
-            }
+          if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "")) {
+            const delivered = await collectDelivery(key)
+            // The orchestrator receives the delivered IDs with the result itself.
+            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${engramRefs(delivered)}`) }
           }
         } finally {
           deliveries.delete(key)
@@ -1064,6 +1089,30 @@ export default Plugin.define({
             plan: args.plan.map(u => ({ unit: u.unit, contract: u.contract, prerequisites: u.prerequisites ?? [] })),
             ...(args.withdraw?.length ? { withdrawals: args.withdraw } : {}),
           }))
+
+      editor.add({
+        name: "dispatch_inputs",
+        description: "Before delegating a unit, declare the Engram IDs of the invariants it consumes, or declare that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
+        input: obj({
+          work_unit_id: str("The unit the delegation will be named after"),
+          result_ids: { type: "array", items: { type: "integer" }, description: "Existing Engram entry IDs of the invariants this unit consumes" },
+          none: { type: "boolean", description: "True only when no invariant this unit consumes has been recorded yet" },
+        }, ["work_unit_id"]),
+        async execute(value: unknown, c) {
+          const args = toolInput<{ work_unit_id: string; result_ids?: number[]; none?: boolean }>(value)
+          const session = await rootSession(c.sessionID)
+          orchestratorOnly(c, "dispatch_inputs")
+          if (c.sessionID !== session) throw new Error("dispatch_inputs belongs to the root orchestrator")
+          const unit = asString(args.work_unit_id, "").trim()
+          const ids = Array.isArray(args.result_ids) ? args.result_ids : []
+          if (!unit) throw new Error("Name the unit the delegation will be named after")
+          if ((ids.length > 0) === (args.none === true)) throw new Error("Declare either the consumed result_ids or none: true, exactly one of them")
+          if (ids.length > 0) await dispatchAction({ action: "validate_inputs", session, result_ids: ids })
+          inputs.set(unitKey(session, unit), ids)
+          await persistInputs()
+          return { content: ids.length > 0 ? `Declared ${ids.length} consumed invariant(s) for ${unit}` : `Declared that ${unit} consumes no recorded invariant yet` }
+        },
+      })
 
       editor.add({ name: "claim_list", description: "List ownership claims for the current root session.", input: obj({}, []), async execute(value: unknown, c) {
         toolInput(value)
@@ -1432,7 +1481,8 @@ export default Plugin.define({
           const root = await rootSession(c.sessionID)
           const unit = await delegatedUnit(c.sessionID)
           await dispatchAction({ action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
-          deliveries.set(unitKey(root, unit), true)
+          const key = unitKey(root, unit)
+          deliveries.set(key, [...(deliveries.get(key) ?? []), ...args.result_ids])
           const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
           return { content: `Delivered ${count} result id(s)` }
         },
@@ -1462,6 +1512,10 @@ export default Plugin.define({
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
         if (RESULT_AGENTS.includes(event.agent)) childOf.set(unitKey(root, unit), event.sessionID)
+        const consumed = inputs.get(unitKey(root, unit))
+        if (consumed) event.system.push({ type: "text", text: consumed.length > 0
+          ? `Work unit ${unit} consumes these invariants: ${engramRefs(consumed)}. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.`
+          : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.` })
         const claim = await findClaim(root, unit, event.agent, ["pending", "active"])
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools[name]

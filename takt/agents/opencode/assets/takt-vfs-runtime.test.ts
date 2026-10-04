@@ -11,6 +11,7 @@ const ORCHESTRATOR = "__TAKT_ORCHESTRATOR_ID__"
 const RESULT_AGENT = "__TAKT_RESULT_AGENTS__"
 const VFS_AGENT = "__TAKT_VFS_AGENTS__"
 const DELEGATIONS_KEY = "takt/vfs/delegations"
+const INPUTS_KEY = "takt/vfs/inputs"
 const BROKEN_AGENT = "broken-agent"
 const WORKSPACE = "/workspace"
 const SHELL_NOT_ADMITTED = 122
@@ -251,6 +252,35 @@ describe("takt-ai answers", () => {
 
 describe("delegation lifecycle", () => {
   const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-1", input })
+  const declareNone = (vfs: Awaited<ReturnType<typeof startVfs>>, unit: string) => vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+  const acceptInputs = (call: Call) => call.kind === "dispatch" && (call.command === "validate_inputs" || call.command === "validate_results") ? { out: "{}" } : undefined
+
+  test("a delegation is refused until its consumed invariants are declared", async () => {
+    const vfs = await startVfs()
+    try {
+      await expect(vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-a", agent: "dev" }))).rejects.toThrow("Declare the invariants work unit unit-a consumes")
+      expect(vfs.actions("dispatch")).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("a declaration names existing invariants or their absence, exactly one", async () => {
+    const vfs = await startVfs({ respond: acceptInputs })
+    try {
+      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a" }, orchestrator)).rejects.toThrow("exactly one of them")
+      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7], none: true }, orchestrator)).rejects.toThrow("exactly one of them")
+      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", none: true }, { sessionID: "child-r", agent: RESULT_AGENT })).rejects.toThrow("dispatch_inputs belongs to the orchestrator")
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7, 8] }, orchestrator)
+      expect(vfs.requests("dispatch", "validate_inputs")).toEqual([{ action: "validate_inputs", session: "root", result_ids: [7, 8] }])
+    } finally { await vfs.stop() }
+  })
+
+  test("a declaration naming a missing entry is refused", async () => {
+    const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "validate_inputs" ? { code: 1, err: "entry #9 not found" } : undefined })
+    try {
+      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [9] }, orchestrator)).rejects.toThrow("entry #9 not found")
+      await expect(vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-a", agent: "dev" }))).rejects.toThrow("Declare the invariants work unit unit-a consumes")
+    } finally { await vfs.stop() }
+  })
 
   test("a delegation must name its unit and its specialist", async () => {
     const vfs = await startVfs()
@@ -264,6 +294,7 @@ describe("delegation lifecycle", () => {
   test("a staging specialist is refused without its pending claim", async () => {
     const vfs = await startVfs()
     try {
+      await declareNone(vfs, "unit-v")
       await expect(vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-v", agent: VFS_AGENT }))).rejects.toThrow("no matching pending clean claim for session root, work unit unit-v")
       expect(vfs.actions("dispatch")).toEqual([])
     } finally { await vfs.stop() }
@@ -272,6 +303,7 @@ describe("delegation lifecycle", () => {
   test("an admitted delegation is remembered durably and launched", async () => {
     const vfs = await startVfs({ claims: [claim({ work_unit_id: "unit-v", agent_id: VFS_AGENT, target_instance: VFS_AGENT, pending: true })] })
     try {
+      await declareNone(vfs, "unit-v")
       await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-v", agent: VFS_AGENT }))
       expect(vfs.actions("dispatch")).toEqual(["admit", "launch"])
       expect(vfs.requests("dispatch", "admit")[0]).toMatchObject({ event: "unit-v", dispatch: "root:call-1", session: "root", agent: VFS_AGENT })
@@ -282,6 +314,7 @@ describe("delegation lifecycle", () => {
   test("a denied admission is thrown and nothing is remembered", async () => {
     const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "admit" ? { code: 1, err: "budget exceeded" } : undefined })
     try {
+      await declareNone(vfs, "unit-a")
       await expect(vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-a", agent: "dev" }))).rejects.toThrow("dispatch admit: budget exceeded")
       expect(vfs.actions("dispatch")).toEqual(["admit"])
       expect(vfs.storage.has(DELEGATIONS_KEY)).toBe(false)
@@ -289,19 +322,50 @@ describe("delegation lifecycle", () => {
   })
 
   const producerSessions = { "child-r": { parentID: "root", title: "unit-r" } }
-  const admitProducer = async (vfs: Awaited<ReturnType<typeof startVfs>>) => {
+  const admitProducer = async (vfs: Awaited<ReturnType<typeof startVfs>>, consumed?: number[]) => {
+    await vfs.run("dispatch_inputs", consumed ? { work_unit_id: "unit-r", result_ids: consumed } : { work_unit_id: "unit-r", none: true }, orchestrator)
     await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
     const context = { tools: Object.fromEntries(VFS_TOOL_NAMES.map((name) => [name, {}])), sessionID: "child-r", agent: RESULT_AGENT, system: [] }
     await vfs.fire(vfs.session, "context", context)
     expect(context.tools).toEqual({})
+    return context.system as Array<{ text: string }>
   }
-  const finished = { tool: "subagent", sessionID: "root", id: "call-r", status: "completed" }
+  const finished = () => ({ tool: "subagent", sessionID: "root", id: "call-r", status: "completed", result: { content: "Breakdown recorded." } })
+
+  test("the specialist receives the invariants declared for its unit, or their declared absence", async () => {
+    const declared = await startVfs({ sessions: producerSessions, respond: acceptInputs })
+    try {
+      const system = await admitProducer(declared, [7, 8])
+      expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: Engram #7, Engram #8. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.")
+    } finally { await declared.stop() }
+    const none = await startVfs({ sessions: producerSessions })
+    try {
+      const system = await admitProducer(none)
+      expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief.")
+    } finally { await none.stop() }
+  })
+
+  test("a declaration survives a plugin restart", async () => {
+    const first = await startVfs({ respond: acceptInputs })
+    try {
+      await first.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [7] }, orchestrator)
+    } finally { await first.stop() }
+    const stored = first.storage.get(INPUTS_KEY)
+    expect(stored).toEqual({ "root\0unit-r": [7] })
+    const restarted = await startVfs({ sessions: producerSessions, storage: { [INPUTS_KEY]: stored } })
+    try {
+      await restarted.fire(restarted.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      const context = { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
+      await restarted.fire(restarted.session, "context", context)
+      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: Engram #7. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.")
+    } finally { await restarted.stop() }
+  })
 
   test("a producer that never delivers is nudged once, then its delegation fails and settles", async () => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
       await admitProducer(vfs)
-      await expect(vfs.fire(vfs.tool, "execute.after", finished)).rejects.toThrow("delegation ended without delivering a result via deliver_result")
+      await expect(vfs.fire(vfs.tool, "execute.after", finished())).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
       expect(vfs.log.prompts).toHaveLength(1)
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child-r" })
       expect(vfs.log.prompts[0].text).toContain("Call deliver_result")
@@ -312,13 +376,16 @@ describe("delegation lifecycle", () => {
   })
 
   test("a producer that delivered ends cleanly without a nudge", async () => {
-    const vfs = await startVfs({ sessions: producerSessions, respond: (call) => call.kind === "dispatch" && call.command === "validate_results" ? { out: "{}" } : undefined })
+    const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
     try {
       await admitProducer(vfs)
       const delivered = await vfs.run("deliver_result", { result_ids: [4, 5] }, { sessionID: "child-r", agent: RESULT_AGENT })
       expect(delivered.content).toBe("Delivered 2 result id(s)")
       expect(vfs.requests("dispatch", "validate_results")[0]).toMatchObject({ session: "root", agent: RESULT_AGENT, result_ids: [4, 5] })
-      await vfs.fire(vfs.tool, "execute.after", finished)
+      await vfs.run("deliver_result", { result_ids: [6] }, { sessionID: "child-r", agent: RESULT_AGENT })
+      const event = finished()
+      await vfs.fire(vfs.tool, "execute.after", event)
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #4, Engram #5, Engram #6")
       expect(vfs.log.prompts).toEqual([])
       expect(vfs.actions("dispatch").at(-1)).toBe("finish")
     } finally { await vfs.stop() }

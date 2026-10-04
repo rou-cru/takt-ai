@@ -136,6 +136,7 @@ assert.equal(calls.length, before, "non-root caller sent IPC")
 // launch and the end of the call all speak for that unit, and the host call
 // identity travels as the dispatch so a retry is told from a repetition.
 const delegate = async (phase, description, id = "call-1", agent = "dev", result = {}) => {
+  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), none: true }, root)
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
       input: { agent, description, prompt: "p" }, status: "completed", result })
@@ -199,7 +200,7 @@ respond = () => undefined
 // retry is not blocked behind a stranded in-flight state.
 planningAt = dispatched().length
 await delegate("execute.before", "missing-result", "call-6", "pm")
-await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /delegation ended without delivering a result via deliver_result/)
+await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /the specialist ended without delivering its result/)
 assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "finish"])
 
 // The context hook records a producer's own session as its unit's child. A

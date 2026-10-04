@@ -165,9 +165,9 @@ var gcCycleToolNames = []string{"gc_baseline", "gc_findings", "gc_investigate", 
 const vfsConsolidateTool = "vfs_consolidate"
 
 // orchestratorToolNames are the orchestrator's own declarations to the
-// harness (plan, direct activity, recovery, exceptions, contests, GC
+// harness (plan, consumed inputs, direct activity, recovery, exceptions, contests, GC
 // preparation and requests); no other agent is offered them.
-var orchestratorToolNames = []string{"dispatch_commit", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_exception", "dispatch_contest", "gc_prepare", "gc_request"}
+var orchestratorToolNames = []string{"dispatch_commit", "dispatch_inputs", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_exception", "dispatch_contest", "gc_prepare", "gc_request"}
 
 // vfsMutationSkill carries the conduct of agents that stage their own work.
 const vfsMutationSkill = "takt-vfs-mutation"
