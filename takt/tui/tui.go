@@ -222,12 +222,7 @@ func Run(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
-	// Measure the logo's glyphs before the program owns the terminal.
-	if in, ok := input.(*os.File); ok && !theme.Mono() {
-		if out, ok := output.(*os.File); ok {
-			styles.SetGlyphs(styles.ProbeGlyphs(in, out))
-		}
-	}
+	measureLogoGlyphs(input, output)
 	// AltScreen is declared on the view, not the program; see Model.View.
 	model := New(root)
 	var program *tea.Program
@@ -239,6 +234,17 @@ func Run(input io.Reader, output io.Writer) error {
 	program = tea.NewProgram(model, tea.WithInput(input), tea.WithOutput(output))
 	_, err = program.Run()
 	return err
+}
+
+// measureLogoGlyphs measures the logo's character set on the real terminal
+// streams before the program owns them; mono and non-file streams keep the
+// default.
+func measureLogoGlyphs(input io.Reader, output io.Writer) {
+	in, inOK := input.(*os.File)
+	out, outOK := output.(*os.File)
+	if inOK && outOK && !theme.Mono() {
+		styles.SetGlyphs(styles.ProbeGlyphs(in, out))
+	}
 }
 
 // Init has no startup work.

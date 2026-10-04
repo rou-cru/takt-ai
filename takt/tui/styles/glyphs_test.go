@@ -25,6 +25,7 @@ func TestMeasureGlyphsReadsTheCursorReport(t *testing.T) {
 		{"wide advance", strings.NewReader("\x1b[12;3R"), GlyphsHalfBlocks},
 		{"no advance", strings.NewReader("\x1b[12;1R"), GlyphsHalfBlocks},
 		{"garbage", strings.NewReader("\x1b[12R"), GlyphsHalfBlocks},
+		{"non-numeric column", strings.NewReader("\x1b[12;xR"), GlyphsHalfBlocks},
 		{"closed input", strings.NewReader(""), GlyphsHalfBlocks},
 		{"no answer", blockingReader{}, GlyphsHalfBlocks},
 	} {
@@ -35,6 +36,17 @@ func TestMeasureGlyphsReadsTheCursorReport(t *testing.T) {
 		if written.String() != octantProbe {
 			t.Errorf("%s: wrote %q, want the probe %q", check.name, written.String(), octantProbe)
 		}
+	}
+}
+
+// failingWriter refuses the probe, like a closed terminal.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestMeasureGlyphsKeepsHalfBlocksWhenTheProbeCannotBeWritten(t *testing.T) {
+	if got := measureGlyphs(failingWriter{}, strings.NewReader("\x1b[1;2R"), 20*time.Millisecond); got != GlyphsHalfBlocks {
+		t.Errorf("measureGlyphs() with a failed write = %q, want half-blocks", got)
 	}
 }
 
