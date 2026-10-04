@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/codegraph"
@@ -53,6 +54,29 @@ func installedRoot(t *testing.T) (string, []string) {
 	return root, names
 }
 
+// nonJSONPlannedPath selects a non-mergeable artifact from the path-sorted
+// install plan of components. The ownership manifest also lists runtime
+// binaries, which drift and preview never compare, so picking from it by map
+// order made the edit-detection tests fail whenever a binary came first.
+func nonJSONPlannedPath(t *testing.T, components []string) string {
+	t.Helper()
+	request := setuputil.TestPlanRequest()
+	request.Components = components
+	plans, _, err := setup.BuildTargetPlans(request)
+	if err != nil {
+		t.Fatalf("BuildTargetPlans() error = %v", err)
+	}
+	for _, plan := range plans {
+		for _, artifact := range plan.Artifacts {
+			if !strings.HasSuffix(artifact.Path, ".json") {
+				return artifact.Path
+			}
+		}
+	}
+	t.Fatal("no non-JSON artifact found in the install plan")
+	return ""
+}
+
 func TestAdapterPreviewPlanOnFreshInstallHasNothingToChange(t *testing.T) {
 	root, components := installedRoot(t)
 	adapter := runtime.Adapter{}
@@ -71,18 +95,7 @@ func TestAdapterPreviewPlanOnFreshInstallHasNothingToChange(t *testing.T) {
 
 func TestAdapterPreviewPlanReportsModifiedFile(t *testing.T) {
 	root, components := installedRoot(t)
-	manifest, err := setup.LoadOwnershipManifest(root)
-	if err != nil {
-		t.Fatalf("LoadOwnershipManifest() error = %v", err)
-	}
-	var edited string
-	for path := range manifest.Entries {
-		edited = path
-		break
-	}
-	if edited == "" {
-		t.Fatal("installed manifest has no managed entries to edit")
-	}
+	edited := nonJSONPlannedPath(t, components)
 	full := filepath.Join(root, filepath.FromSlash(edited))
 	content, err := os.ReadFile(full)
 	if err != nil {
@@ -130,16 +143,8 @@ func TestAdapterScanDriftCleanInstall(t *testing.T) {
 }
 
 func TestAdapterScanDriftReportsEditedFile(t *testing.T) {
-	root, _ := installedRoot(t)
-	manifest, err := setup.LoadOwnershipManifest(root)
-	if err != nil {
-		t.Fatalf("LoadOwnershipManifest() error = %v", err)
-	}
-	var edited string
-	for path := range manifest.Entries {
-		edited = path
-		break
-	}
+	root, components := installedRoot(t)
+	edited := nonJSONPlannedPath(t, components)
 	full := filepath.Join(root, filepath.FromSlash(edited))
 	content, err := os.ReadFile(full)
 	if err != nil {
