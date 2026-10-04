@@ -81,7 +81,7 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 Abort ends the temporary holder's turn for childSession without negotiation. origin must be exactly "user" or "harness" \(IR\-24: never the convening agent nor the temporary holder itself\).
 
 <a name="Account"></a>
-## func [Account](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L740>)
+## func [Account](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L746>)
 
 ```go
 func Account(h *history.History, entries []vfs.JournalEntry) error
@@ -126,7 +126,7 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; filesystem copies are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
 
 <a name="CloseRecovery"></a>
-## func [CloseRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L718>)
+## func [CloseRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L724>)
 
 ```go
 func CloseRecovery(h *history.History, journalRef, event, session, objective, evidence string, demonstrated bool) error
@@ -135,7 +135,7 @@ func CloseRecovery(h *history.History, journalRef, event, session, objective, ev
 CloseRecovery closes a declared recovery, recording whether its result was demonstrated and linking the evidence. Only a demonstrated recovery breaks the objective's streak, and a claimed result without evidence is not one.
 
 <a name="Commit"></a>
-## func [Commit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L345>)
+## func [Commit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L351>)
 
 ```go
 func Commit(h *history.History, journalRef, session, version string, units []PlanUnit) error
@@ -144,7 +144,7 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\).
 
 <a name="Contest"></a>
-## func [Contest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L635>)
+## func [Contest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L641>)
 
 ```go
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error
@@ -162,7 +162,7 @@ func CurrentAttempt(p history.Projection, event string) string
 CurrentAttempt is the attempt a lifecycle fact belongs to: the one the unit's latest admission opened.
 
 <a name="Declare"></a>
-## func [Declare](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L369>)
+## func [Declare](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L375>)
 
 ```go
 func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string) error
@@ -171,7 +171,7 @@ func Declare(h *history.History, journalRef, session, version, baseVersion strin
 Declare is the orchestrator's one plan declaration: the first one commits the baseline; once a plan stands, a declaration revises it and must name the version it revises, so a stale or silent rewrite of the plan is refused instead of recorded as a fresh commitment \(PR\-DAG\-MUT\-6\).
 
 <a name="DeclareRecovery"></a>
-## func [DeclareRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L676>)
+## func [DeclareRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L682>)
 
 ```go
 func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration) error
@@ -189,7 +189,7 @@ func DenyArtifactMissing(h *history.History, journalRef, root, childSession, age
 DenyArtifactMissing records one miss of the standard artifact declared for root's active switch, for a caller that already confirmed via os.Stat \(or equivalent\) that the file is absent.
 
 <a name="Except"></a>
-## func [Except](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L892>)
+## func [Except](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L898>)
 
 ```go
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error
@@ -261,7 +261,7 @@ func Record(h *history.History, journalRef, event, session string, kind history.
 Record appends an observed lifecycle fact or an orchestrator declaration that consumes no budget and needs no disposition: launch, uncertainty, suspension, a cancellation request, a withdrawal, a stop declaration, an escalation.
 
 <a name="Restore"></a>
-## func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L856>)
+## func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L862>)
 
 ```go
 func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string, key vfs.AgentID) error
@@ -270,7 +270,7 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 Restore confirms restoration of an abandoned recovery scope's virtual state: the rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\).
 
 <a name="Revise"></a>
-## func [Revise](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L477>)
+## func [Revise](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L483>)
 
 ```go
 func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string) error
@@ -297,7 +297,7 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root that already has an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
 
 <a name="Withdraw"></a>
-## func [Withdraw](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L327>)
+## func [Withdraw](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L333>)
 
 ```go
 func Withdraw(h *history.History, journalRef, event, session string) error
@@ -368,7 +368,7 @@ type HandoffOutcome struct {
 ```
 
 <a name="PlanUnit"></a>
-## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L336-L340>)
+## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L342-L346>)
 
 PlanUnit is one unit of a plan commitment: its identity, its contract and its explicit prerequisite identities.
 
@@ -381,7 +381,7 @@ type PlanUnit struct {
 ```
 
 <a name="RecoveryDeclaration"></a>
-## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L659-L666>)
+## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L665-L672>)
 
 RecoveryDeclaration is what PR\-ORQ\-13 requires recorded before uncertain work begins: the binary expected result, both budgets, the objective identity, the prior recoverable point, and the explicit scope.
 
