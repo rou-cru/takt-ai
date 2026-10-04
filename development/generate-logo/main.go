@@ -383,9 +383,10 @@ func twoInks(cell [8]ink) (back, fore ink) {
 	for _, pixel := range cell {
 		counts[pixel]++
 	}
-	back, fore = cell[0], cell[0]
-	for candidate := inkClear; candidate < inkCount; candidate++ {
-		if counts[candidate] > counts[back] || (counts[candidate] == counts[back] && candidate < back) {
+	// Scanning upward with a strict comparison leaves ties to the lower ink.
+	back = inkClear
+	for candidate := inkClear + 1; candidate < inkCount; candidate++ {
+		if counts[candidate] > counts[back] {
 			back = candidate
 		}
 	}
