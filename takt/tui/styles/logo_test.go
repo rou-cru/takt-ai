@@ -66,29 +66,6 @@ func TestLogoKeepsBrailleMarkInMono(t *testing.T) {
 	}
 }
 
-func TestDetectGlyphs(t *testing.T) {
-	for _, check := range []struct {
-		override, program, term string
-		want                    Glyphs
-	}{
-		{"", "", "xterm-256color", GlyphsHalfBlocks},
-		{"", "tmux", "screen-256color", GlyphsHalfBlocks},
-		{"", "ghostty", "xterm-ghostty", GlyphsOctants},
-		{"", "", "xterm-kitty", GlyphsOctants},
-		{"", "", "foot", GlyphsOctants},
-		{"halfblocks", "ghostty", "xterm-ghostty", GlyphsHalfBlocks},
-		{"octants", "Apple_Terminal", "xterm-256color", GlyphsOctants},
-		{"bogus", "", "xterm-256color", GlyphsHalfBlocks},
-	} {
-		t.Setenv(glyphsEnv, check.override)
-		t.Setenv("TERM_PROGRAM", check.program)
-		t.Setenv("TERM", check.term)
-		if got := DetectGlyphs(); got != check.want {
-			t.Errorf("DetectGlyphs(%q, %q, %q) = %q, want %q", check.override, check.program, check.term, got, check.want)
-		}
-	}
-}
-
 // Every generated variant is rectangular and twice as wide as tall, so the
 // ring stays round and the home can center the mark.
 func TestGeneratedVariantsAreRoundAndRectangular(t *testing.T) {

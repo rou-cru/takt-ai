@@ -23,13 +23,17 @@ The generator is plain Go with no external tools. The canonical PNG never change
 
 Every variant comes in three character sets:
 
-- **Octants (Unicode 16, `U+1CD00` block plus the older block characters), 2×4 pixels per cell.** Each cell keeps its two most common inks as foreground and background. This is the sharpest mark, used on terminals known to draw octants themselves (kitty, Ghostty, foot).
-- **Half-blocks (`▀ ▄ █`), 1×2 pixels per cell.** Every terminal font has them, so any other terminal shows the mark as intended. Multiplexers and unknown terminals get this set.
+- **Octants (Unicode 16, `U+1CD00` block plus the older block characters), 2×4 pixels per cell.** Each cell keeps its two most common inks as foreground and background. This is the sharpest mark.
+- **Half-blocks (`▀ ▄ █`), 1×2 pixels per cell.** Every terminal font has them, so the mark shows as intended where octants cannot be confirmed.
 - **Braille, without color.** This is the mono-mode mark (`NO_COLOR`, dumb terminals); its shape survives the loss of color.
 
-`TAKT_LOGO_GLYPHS=octants` or `TAKT_LOGO_GLYPHS=halfblocks` overrides the detection (`styles.DetectGlyphs`).
+The set is measured, never chosen by terminal name. Before the TUI starts, `styles.ProbeGlyphs` prints one octant and asks the terminal where the cursor ended (`ESC[6n`):
+- one cell further means the terminal knows the character, so it gets octants;
+- any other answer, no answer within 150 ms, or a non-terminal gets half-blocks.
 
-Each set holds several sizes (`logoRows`: 32, 26, 20, 16, 12 and 8 rows; every variant is twice as wide as it is tall, so the ring stays round). The home draws the largest size that fits (`styles.Logo`); a terminal too small for every size shows the menu alone.
+No terminal query can tell whether the font draws the octant or a box of the same width. For that case, `TAKT_LOGO_GLYPHS=octants` or `TAKT_LOGO_GLYPHS=halfblocks` overrides the measurement.
+
+Each set holds three sizes (`logoRows`: 16, 12 and 8 rows; every variant is twice as wide as it is tall, so the ring stays round). The home caps the logo at 16 rows, about twice the menu's height, and draws the largest size that fits (`styles.Logo`); a terminal too small for every size shows the menu alone.
 
 The generator writes these checked-in artifacts:
 

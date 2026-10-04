@@ -222,6 +222,7 @@ func Run(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
+	measureLogoGlyphs(input, output)
 	// AltScreen is declared on the view, not the program; see Model.View.
 	model := New(root)
 	var program *tea.Program
@@ -233,6 +234,19 @@ func Run(input io.Reader, output io.Writer) error {
 	program = tea.NewProgram(model, tea.WithInput(input), tea.WithOutput(output))
 	_, err = program.Run()
 	return err
+}
+
+// measureLogoGlyphs measures the logo's character set on the real terminal
+// streams before the program owns them; mono and non-file streams get
+// half-blocks, whatever an earlier run chose.
+func measureLogoGlyphs(input io.Reader, output io.Writer) {
+	in, inOK := input.(*os.File)
+	out, outOK := output.(*os.File)
+	if !inOK || !outOK || theme.Mono() {
+		styles.SetGlyphs(styles.GlyphsHalfBlocks)
+		return
+	}
+	styles.SetGlyphs(styles.ProbeGlyphs(in, out))
 }
 
 // Init has no startup work.
@@ -517,6 +531,10 @@ func (Model) paintCanvas(v *tea.View) {
 	v.ForegroundColor = theme.TextPrimary
 }
 
+// homeLogoMaxRows caps the home logo at about twice the menu block's height,
+// so the mark accompanies the menu instead of dwarfing it.
+const homeLogoMaxRows = 16
+
 // homeGapMin is the narrowest gap between the logo and the menu in the
 // side-by-side home; the gap grows with the logo (a quarter of its width) so
 // the composition stays balanced at every size.
@@ -536,19 +554,20 @@ func (m Model) menuBody() string {
 	menuWidth, menuHeight := lipgloss.Width(menu), lipgloss.Height(menu)
 
 	inner, rows := ui.InnerWidth(m.width), ui.HomeRows(m.height)
-	// The logo may use the rows the incomplete-operation notice leaves.
-	notice, logoRows := m.incompleteNotice(), rows
+	// The logo may use the rows the incomplete-operation notice leaves, up
+	// to homeLogoMaxRows.
+	notice, available := m.incompleteNotice(), rows
 	if notice != "" {
 		notice = solid(notice)
-		logoRows -= lipgloss.Height(notice) + 1
+		available -= lipgloss.Height(notice) + 1
 	}
 	// Side by side, the logo and its gap (a quarter of the logo's width)
 	// share whatever width the menu leaves: w + w/4 <= inner - menuWidth.
 	// Stacked, the logo takes the rows above the menu. The layout drawing
 	// the larger logo wins; side by side on a tie.
 	block := menu
-	side := styles.Logo(min((inner-menuWidth)*4/5, inner-menuWidth-homeGapMin), logoRows)
-	stacked := styles.Logo(inner, logoRows-menuHeight-1)
+	side := styles.Logo(min((inner-menuWidth)*4/5, inner-menuWidth-homeGapMin), min(available, homeLogoMaxRows))
+	stacked := styles.Logo(inner, min(available-menuHeight-1, homeLogoMaxRows))
 	switch {
 	case side != "" && lipgloss.Height(side) >= lipgloss.Height(stacked):
 		gap := strings.Repeat(" ", max(homeGapMin, lipgloss.Width(side)/4))
