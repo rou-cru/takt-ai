@@ -30,9 +30,9 @@ var fixtureModes = []struct {
 // and review the files before committing them.
 func RequireFixtures(t *testing.T, render func(width, height int) string) {
 	t.Helper()
-	t.Cleanup(func() { theme.SetMode(theme.ModeColor); styles.SetGlyphs(styles.GlyphsHalfBlocks) })
-	// Half-blocks: the logo every terminal draws, independent of the runner's TERM.
-	styles.SetGlyphs(styles.GlyphsHalfBlocks)
+	t.Cleanup(func() { theme.SetMode(theme.ModeColor); styles.SetLogoMode(styles.ModeQuadrants) })
+	// Quadrants: the logo every terminal draws, independent of the runner's terminal.
+	styles.SetLogoMode(styles.ModeQuadrants)
 	for _, mode := range fixtureModes {
 		for _, size := range fixtureSizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", mode.name, size[0], size[1]), func(t *testing.T) {

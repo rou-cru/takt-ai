@@ -13,15 +13,15 @@ Package diagnostics presents functional checks without reinstalling.
 - [type Model](<#Model>)
   - [func New\(root string\) Model](<#New>)
   - [func \(m Model\) Init\(\) tea.Cmd](<#Model.Init>)
-  - [func \(m Model\) State\(\) State](<#Model.State>)
   - [func \(m Model\) Title\(\) string](<#Model.Title>)
   - [func \(m Model\) Update\(msg tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
   - [func \(m Model\) View\(\) tea.View](<#Model.View>)
+- [type OpenRepairMsg](<#OpenRepairMsg>)
 - [type State](<#State>)
 
 
 <a name="Model"></a>
-## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L40-L47>)
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L36-L44>)
 
 Model displays one asynchronous diagnostic collection.
 
@@ -32,7 +32,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L50>)
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L54>)
 
 ```go
 func New(root string) Model
@@ -41,7 +41,7 @@ func New(root string) Model
 New creates a diagnostic screen rooted at the installation directory.
 
 <a name="Model.Init"></a>
-### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L63>)
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L64>)
 
 ```go
 func (m Model) Init() tea.Cmd
@@ -49,17 +49,8 @@ func (m Model) Init() tea.Cmd
 
 Init collects diagnostics without modifying installation files; with nothing installed there is nothing to check, so collection is skipped.
 
-<a name="Model.State"></a>
-### func \(Model\) [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L59>)
-
-```go
-func (m Model) State() State
-```
-
-State reports the visible step.
-
 <a name="Model.Title"></a>
-### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L116>)
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L134>)
 
 ```go
 func (m Model) Title() string
@@ -68,7 +59,7 @@ func (m Model) Title() string
 Title identifies the task and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L94>)
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L98>)
 
 ```go
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
@@ -77,13 +68,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 Update receives checks or requests navigation back.
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L125>)
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L143>)
 
 ```go
 func (m Model) View() tea.View
 ```
 
 View renders the checking state, the empty report, or the collected report inside the shared screen shell.
+
+<a name="OpenRepairMsg"></a>
+## type [OpenRepairMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L48>)
+
+OpenRepairMsg asks the controller to open the configure flow, whose sync re\-applies Takt's configuration, after a capability failed its check.
+
+```go
+type OpenRepairMsg struct{}
+```
 
 <a name="State"></a>
 ## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/diagnostics/diagnostics.go#L17>)

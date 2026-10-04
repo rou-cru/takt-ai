@@ -8,9 +8,12 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/diagnostics"
 	"github.com/rou-cru/takt-ai/takt/tui/drift"
@@ -84,7 +87,21 @@ type Model struct {
 	height       int
 	guard        guard
 	sendProgress func(tea.Msg)
+	// logoAt is where the logo image was last placed; zero when it is not
+	// on screen.
+	logoAt logoRect
 }
+
+// logoRect is a block of screen cells, zero-based.
+type logoRect struct{ x, y, cols, rows int }
+
+// logoRefreshMsg asks to place the logo image again after a frame that may
+// have erased it.
+type logoRefreshMsg struct{}
+
+// logoFrameDelay outlasts a few frames, so a command scheduled with it runs
+// after the renderer has drawn what the current update produced.
+const logoFrameDelay = 50 * time.Millisecond
 
 // guard is the controller-owned pending-change overlay: open
 // while asking Keep editing / Discard changes; quit records whether Discard
@@ -222,7 +239,7 @@ func Run(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
-	measureLogoGlyphs(input, output)
+	measureLogoMode(input, output)
 	// AltScreen is declared on the view, not the program; see Model.View.
 	model := New(root)
 	var program *tea.Program
@@ -236,21 +253,26 @@ func Run(input io.Reader, output io.Writer) error {
 	return err
 }
 
-// measureLogoGlyphs measures the logo's character set on the real terminal
+// measureLogoMode measures how the logo is drawn on the real terminal
 // streams before the program owns them; mono and non-file streams get
-// half-blocks, whatever an earlier run chose.
-func measureLogoGlyphs(input io.Reader, output io.Writer) {
+// quadrants, whatever an earlier run chose.
+func measureLogoMode(input io.Reader, output io.Writer) {
 	in, inOK := input.(*os.File)
 	out, outOK := output.(*os.File)
 	if !inOK || !outOK || theme.Mono() {
-		styles.SetGlyphs(styles.GlyphsHalfBlocks)
+		styles.SetLogoMode(styles.ModeQuadrants)
 		return
 	}
-	styles.SetGlyphs(styles.ProbeGlyphs(in, out))
+	styles.SetLogoMode(styles.ProbeLogoMode(in, out))
 }
 
-// Init has no startup work.
-func (Model) Init() tea.Cmd { return nil }
+// Init stores the logo image in the terminal when the logo is drawn as one.
+func (Model) Init() tea.Cmd {
+	if styles.ImageLogo() {
+		return tea.Raw(styles.TransmitLogo())
+	}
+	return nil
+}
 
 // CurrentRoute returns the active route.
 func (m Model) CurrentRoute() Route { return m.route }
@@ -263,8 +285,76 @@ func (m Model) flowRun() runtime.Run {
 	return runtime.Run{}
 }
 
-// Update routes input to the visible screen and action messages through runtime.
+// Update routes input to the visible screen and action messages through
+// runtime, then keeps the logo image over the cells the home reserves.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(message)
+	if !styles.ImageLogo() {
+		return next, cmd
+	}
+	model, ok := next.(Model)
+	if !ok {
+		return next, cmd
+	}
+	placed := model.logoAt
+	model.logoAt = logoRect{}
+	if model.active() == nil && model.guard.state != guardOpen {
+		model.logoAt = findLogo(model.View().Content)
+	}
+	_, refresh := message.(logoRefreshMsg)
+	_, resized := message.(tea.WindowSizeMsg)
+	commands := []tea.Cmd{cmd}
+	switch at := model.logoAt; {
+	case at == logoRect{}:
+		if placed != (logoRect{}) {
+			commands = append(commands, tea.Raw(styles.HideLogo()))
+		}
+	case at != placed || refresh:
+		commands = append(commands, tea.Raw(styles.PlaceLogo(at.x, at.y, at.cols, at.rows)))
+	}
+	if resized {
+		// ponytail: the frame a resize triggers erases the screen after the
+		// raw output already queued, so the logo is placed again once that
+		// frame is drawn; a slower renderer than logoFrameDelay would lose it.
+		commands = append(commands, tea.Tick(logoFrameDelay, func(time.Time) tea.Msg { return logoRefreshMsg{} }))
+	}
+	return model, tea.Batch(commands...)
+}
+
+// findLogo locates the cells styles.Logo reserved in a rendered screen: from
+// the first LogoCell, as wide as its run and as tall as the lines holding
+// that run; zero when the screen reserves none.
+func findLogo(content string) logoRect {
+	lines := strings.Split(content, "\n")
+	cell := string(styles.LogoCell)
+	for y, line := range lines {
+		plain := ansi.Strip(line)
+		start := strings.Index(plain, cell)
+		if start < 0 {
+			continue
+		}
+		run := plain[start:]
+		cols := utf8.RuneCountInString(run) - utf8.RuneCountInString(strings.TrimLeft(run, cell))
+		rows := 1
+		for y+rows < len(lines) && strings.Contains(ansi.Strip(lines[y+rows]), strings.Repeat(cell, cols)) {
+			rows++
+		}
+		return logoRect{x: ansi.StringWidth(plain[:start]), y: y, cols: cols, rows: rows}
+	}
+	return logoRect{}
+}
+
+// exitProgram ends the program. A logo image is freed first and the program
+// ends a frame later, because raw output still queued when it stops is never
+// sent.
+func exitProgram() tea.Cmd {
+	if !styles.ImageLogo() {
+		return tea.Quit
+	}
+	return tea.Sequence(tea.Raw(styles.ForgetLogo()), tea.Tick(logoFrameDelay, func(time.Time) tea.Msg { return tea.Quit() }))
+}
+
+func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyPressMsg); ok && m.guard.state == guardOpen {
 		return m.updateGuard(key)
 	}
@@ -374,7 +464,7 @@ func (m Model) leave(quit bool) (tea.Model, tea.Cmd) {
 
 func (m *Model) discard(quit bool) tea.Cmd {
 	if quit {
-		return tea.Quit
+		return exitProgram()
 	}
 	return m.applyRoute(eventClose)
 }
@@ -487,10 +577,10 @@ func (m Model) updateMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		m.cursor = (m.cursor + 1) % count
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m, exitProgram()
 	case "enter":
 		if m.cursor == len(items) {
-			return m, tea.Quit
+			return m, exitProgram()
 		}
 		item := items[m.cursor]
 		return m, m.applyRoute(openEvent(item.route))

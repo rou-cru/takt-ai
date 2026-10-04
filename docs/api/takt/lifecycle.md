@@ -52,7 +52,7 @@ func Cancelled(ctx context.Context, err error) bool
 Cancelled reports whether err is ctx's own cancellation, i.e. the operation stopped cooperatively rather than failed.
 
 <a name="InjectCodegraph"></a>
-## func [InjectCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L543>)
+## func [InjectCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L546>)
 
 ```go
 func InjectCodegraph(rootDir, codegraphCommand string) error
@@ -61,7 +61,7 @@ func InjectCodegraph(rootDir, codegraphCommand string) error
 InjectCodegraph wires the codegraph MCP server into OpenCode, using codegraphCommand \(from codegraph.Acquire\) verbatim.
 
 <a name="InjectEngram"></a>
-## func [InjectEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L405>)
+## func [InjectEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L408>)
 
 ```go
 func InjectEngram(rootDir, engramCommand string) error
@@ -70,7 +70,7 @@ func InjectEngram(rootDir, engramCommand string) error
 InjectEngram wires the engram MCP server into OpenCode, using engramCommand verbatim. \`engram setup\` is never run: Takt's memory contract skill is the only source of memory rules.
 
 <a name="InstallCodegraph"></a>
-## func [InstallCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L383>)
+## func [InstallCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L386>)
 
 ```go
 func InstallCodegraph(ctx context.Context, rootDir string) error

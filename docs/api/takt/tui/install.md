@@ -24,7 +24,7 @@ Package install provides the focused install selection flow.
 
 
 <a name="Model"></a>
-## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L93-L111>)
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L90-L108>)
 
 Model is a standalone Bubble Tea install flow.
 
@@ -35,7 +35,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L119>)
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L116>)
 
 ```go
 func New(rootDir string) Model
@@ -80,7 +80,7 @@ func (m Model) Step() Step
 Step returns the visible screen.
 
 <a name="Model.Title"></a>
-### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L575>)
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L542>)
 
 ```go
 func (m Model) Title() string
@@ -98,7 +98,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update advances the flow or emits an install action from the review.
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L588>)
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L555>)
 
 ```go
 func (m Model) View() tea.View
@@ -116,7 +116,7 @@ type OpenModelsMsg struct{}
 ```
 
 <a name="Step"></a>
-## type [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L22>)
+## type [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L25>)
 
 Step identifies the currently visible install screen.
 
@@ -124,14 +124,13 @@ Step identifies the currently visible install screen.
 type Step int
 ```
 
-<a name="StepSetupChoice"></a>Steps are the install flow's screens, in walk order.
+<a name="StepComponents"></a>Steps are the install flow's screens, in walk order.
 
 ```go
 const (
-    // StepSetupChoice is the Default/Custom selection screen.
-    StepSetupChoice Step = iota
-    // StepComponents is the optional component checklist.
-    StepComponents
+    // StepComponents is the optional component checklist, opened from review
+    // through Personalize.
+    StepComponents Step = iota
     // StepConflicts lets the user choose, per conflicting file, whether to
     // keep their own version or restore Takt's; it is reached only when a
     // conflict needs a decision.

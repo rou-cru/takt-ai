@@ -6,13 +6,14 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 
 	"golang.org/x/sys/unix"
 )
 
-// openPTY opens a pseudo-terminal pair, so ProbeGlyphs runs against a real
+// openPTY opens a pseudo-terminal pair, so ProbeLogoMode runs against a real
 // terminal device whose other end the test drives.
 func openPTY(t *testing.T) (controller, terminal *os.File) {
 	t.Helper()
@@ -37,14 +38,14 @@ func openPTY(t *testing.T) (controller, terminal *os.File) {
 	return controller, terminal
 }
 
-// answerProbe plays the terminal: it waits for the cursor query and answers
-// with report, or never answers when report is empty.
-func answerProbe(controller *os.File, report string) <-chan string {
+// answerProbe plays the terminal: it waits for the device-attributes query
+// and answers with reply, or never answers when reply is empty.
+func answerProbe(controller *os.File, reply string) <-chan string {
 	written := make(chan string, 1)
 	go func() {
 		var seen bytes.Buffer
 		chunk := make([]byte, 64)
-		for !bytes.Contains(seen.Bytes(), []byte("\x1b[6n")) {
+		for !bytes.HasSuffix(seen.Bytes(), []byte("\x1b[c")) {
 			n, err := controller.Read(chunk)
 			if err != nil {
 				written <- seen.String()
@@ -52,32 +53,32 @@ func answerProbe(controller *os.File, report string) <-chan string {
 			}
 			seen.Write(chunk[:n])
 		}
-		if report != "" {
-			_, _ = controller.WriteString(report)
+		if reply != "" {
+			_, _ = controller.WriteString(reply)
 		}
 		written <- seen.String()
 	}()
 	return written
 }
 
-func TestProbeGlyphsMeasuresARealTerminal(t *testing.T) {
-	t.Setenv(glyphsEnv, "")
+func TestProbeLogoModeMeasuresARealTerminal(t *testing.T) {
+	t.Setenv(logoModeEnv, "")
 	for _, check := range []struct {
-		name, report string
-		want         Glyphs
+		name, reply string
+		want        LogoMode
 	}{
-		{"one cell advance", "\x1b[1;2R", GlyphsOctants},
-		{"wide advance", "\x1b[1;3R", GlyphsHalfBlocks},
-		{"no answer", "", GlyphsHalfBlocks},
+		{"graphics accepted", "\x1b_Gi=31;OK\x1b\\\x1b[?62c", ModeImage},
+		{"device attributes only", "\x1b[?62c", ModeQuadrants},
+		{"no answer", "", ModeQuadrants},
 	} {
 		controller, terminal := openPTY(t)
-		written := answerProbe(controller, check.report)
-		if got := ProbeGlyphs(terminal, terminal); got != check.want {
-			t.Errorf("%s: ProbeGlyphs() = %q, want %q", check.name, got, check.want)
+		written := answerProbe(controller, check.reply)
+		if got := ProbeLogoMode(terminal, terminal); got != check.want {
+			t.Errorf("%s: ProbeLogoMode() = %q, want %q", check.name, got, check.want)
 		}
-		if check.report != "" {
-			if probe := <-written; !bytes.Contains([]byte(probe), []byte("\U0001CD00")) {
-				t.Errorf("%s: terminal received %q, want the octant probe", check.name, probe)
+		if check.reply != "" {
+			if probe := <-written; !strings.Contains(probe, graphicsProbe) {
+				t.Errorf("%s: terminal received %q, want the graphics probe", check.name, probe)
 			}
 		}
 	}

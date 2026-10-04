@@ -704,7 +704,7 @@ func (r Recovery) Unresolved() bool
 Unresolved reports a recovery that still governs its declared scope: open, or abandoned by forced backtracking and not yet restored.
 
 <a name="Snapshot"></a>
-## type [Snapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L111-L125>)
+## type [Snapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L111-L129>)
 
 Snapshot is the read\-only, content\-free DAG projection PRD\_DAG\_TUI.md §8 contracts: identities, states and structural references only, never prompts, responses, or other free\-text content.
 
@@ -718,8 +718,12 @@ type Snapshot struct {
     // PlanVersion is the current committed plan's version identity, tracked
     // per session and carried through untouched by an invalid revision.
     PlanVersion string `json:"plan_version,omitempty"`
-    Nodes       []Node `json:"nodes"`
-    Edges       []Edge `json:"edges"`
+    // Stopped and Escalated mirror Budgets' own counters: distinguishable
+    // from an enabling decision, never inferred from Nodes/Edges.
+    Stopped   int    `json:"stopped,omitempty"`
+    Escalated int    `json:"escalated,omitempty"`
+    Nodes     []Node `json:"nodes"`
+    Edges     []Edge `json:"edges"`
     // Activities are direct orchestrator and maintenance records. They are
     // rendered in a separate lane and never participate in graph edges.
     Activities []ActivityNode `json:"activities"`
@@ -727,7 +731,7 @@ type Snapshot struct {
 ```
 
 <a name="BuildSnapshot"></a>
-### func [BuildSnapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L139>)
+### func [BuildSnapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L143>)
 
 ```go
 func BuildSnapshot(entries []Entry) Snapshot

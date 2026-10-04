@@ -108,7 +108,7 @@ func ArtifactMisses(h *history.History, root string) int
 ArtifactMisses returns how many times a handoff for root has already been denied for a missing standard artifact since the current holder took the interface \(PR\-HAR\-24: 0 means the next miss is the first\).
 
 <a name="BuildAbortEnvelope"></a>
-## func [BuildAbortEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L161>)
+## func [BuildAbortEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L170>)
 
 ```go
 func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error)

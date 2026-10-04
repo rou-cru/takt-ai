@@ -178,7 +178,7 @@ var (
 ```
 
 <a name="GuardGitMutation"></a>
-## func [GuardGitMutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L454>)
+## func [GuardGitMutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L450>)
 
 ```go
 func GuardGitMutation(role model.RoleClass) error
@@ -187,7 +187,7 @@ func GuardGitMutation(role model.RoleClass) error
 GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is.
 
 <a name="ReadOnlyGitSubcommands"></a>
-## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L464>)
+## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L460>)
 
 ```go
 func ReadOnlyGitSubcommands() []string
@@ -390,7 +390,7 @@ func (f *FS) DiscardCycle(cycleID string) (restored []string, err error)
 DiscardCycle restores the workspace to the state before cycleID's consolidation, refusing to overwrite a path that changed since then.
 
 <a name="FS.DropCycleStaging"></a>
-### func \(\*FS\) [DropCycleStaging](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L66>)
+### func \(\*FS\) [DropCycleStaging](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L58>)
 
 ```go
 func (f *FS) DropCycleStaging(cycle string) (err error)
@@ -408,7 +408,7 @@ func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) 
 ImportShell admits the command's result as one VFS transaction: the captured projection becomes staged content through the same path the file tools use. A failing command keeps its delta, retained and unverified \(PR\-VFS\-CSL\-5\).
 
 <a name="FS.InspectDelta"></a>
-### func \(\*FS\) [InspectDelta](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L47>)
+### func \(\*FS\) [InspectDelta](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L39>)
 
 ```go
 func (f *FS) InspectDelta(key AgentID) StagedView
@@ -453,7 +453,7 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
 OwnershipClaims lists current claims in deterministic path order. A claim is Active only when adopted in currentSessionID; pending and prior\-session ownership remain visible and are never expired automatically.
 
 <a name="FS.PendingOrdinaryDeltaIdentities"></a>
-### func \(\*FS\) [PendingOrdinaryDeltaIdentities](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L25>)
+### func \(\*FS\) [PendingOrdinaryDeltaIdentities](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L17>)
 
 ```go
 func (f *FS) PendingOrdinaryDeltaIdentities() []string
@@ -489,7 +489,7 @@ func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
 ReadAs reads through the staged view of the author a verifier judges, so the gate assesses exactly the delta its verdict will cover. op.ExpectedRevision is the author's revision; any other caller or action is refused.
 
 <a name="FS.Recover"></a>
-### func \(\*FS\) [Recover](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/recovery.go#L260>)
+### func \(\*FS\) [Recover](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/recovery.go#L289>)
 
 ```go
 func (f *FS) Recover() (err error)
@@ -498,7 +498,7 @@ func (f *FS) Recover() (err error)
 Recover restores the pre\-flush snapshot after checking for incompatible writes.
 
 <a name="FS.ResolveCollision"></a>
-### func \(\*FS\) [ResolveCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L435>)
+### func \(\*FS\) [ResolveCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L431>)
 
 ```go
 func (f *FS) ResolveCollision(event CollisionEvent) (err error)
@@ -738,7 +738,7 @@ type ShellPlan struct {
 ```
 
 <a name="StagedView"></a>
-## type [StagedView](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L40-L44>)
+## type [StagedView](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L32-L36>)
 
 StagedView is the exact candidate given to an independent verifier.
 

@@ -15,7 +15,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func AgentMode\(role model.RoleClass\) string](<#AgentMode>)
-- [func AvailableModels\(ctx context.Context\) \(\[\]string, error\)](<#AvailableModels>)
+- [func AvailableModels\(ctx context.Context\) \(\[\]opencodeapi.Model, error\)](<#AvailableModels>)
 - [func ComposePrompt\(def catalog.AgentDefinition, instanceID string\) string](<#ComposePrompt>)
 - [func ConfigDir\(\) string](<#ConfigDir>)
 - [func ConfigPath\(\) string](<#ConfigPath>)
@@ -29,7 +29,6 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [type Artifact](<#Artifact>)
   - [func OpenCodePluginPackageArtifact\(\) Artifact](<#OpenCodePluginPackageArtifact>)
   - [func RenderConfig\(request ConfigRequest\) \(Artifact, error\)](<#RenderConfig>)
-  - [func TaktCLIArtifact\(theme string\) Artifact](<#TaktCLIArtifact>)
   - [func TaktDagPluginArtifact\(taktAIBinary string\) Artifact](<#TaktDagPluginArtifact>)
   - [func TaktMemoryPluginArtifact\(taktAIBinary string\) Artifact](<#TaktMemoryPluginArtifact>)
   - [func TaktSandboxAdapterArtifact\(\) Artifact](<#TaktSandboxAdapterArtifact>)
@@ -39,28 +38,10 @@ Package opencode renders native OpenCode configuration from catalog references.
 
 ## Constants
 
-<a name="Context7RemoteURL"></a>Context7RemoteURL is the canonical context7 remote MCP endpoint deployed into opencode.json by the context7 component.
-
-```go
-const Context7RemoteURL = shared.Context7RemoteURL
-```
-
 <a name="SandboxRuntimeVersion"></a>SandboxRuntimeVersion is the @anthropic\-ai/sandbox\-runtime version pinned in takt/runtime/sandbox/package.json — the same dependency the adapter's probe test runs against.
 
 ```go
 const SandboxRuntimeVersion = "0.0.76"
-```
-
-<a name="TaktTheme"></a>TaktTheme is the OpenCode theme deployed by the theme component.
-
-```go
-const TaktTheme = "takt"
-```
-
-<a name="VFSShellEnforced"></a>VFSShellEnforced controls whether the VFS plugin intercepts specialist shell commands \(PR\-HAR\-15\). File edits stay VFS\-governed either way.
-
-```go
-const VFSShellEnforced = true
 ```
 
 ## Variables
@@ -84,10 +65,10 @@ AgentMode is primary for the orchestrator, all for interlocutors, subagent other
 ## func [AvailableModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L20>)
 
 ```go
-func AvailableModels(ctx context.Context) ([]string, error)
+func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error)
 ```
 
-AvailableModels returns the provider/model identifiers exposed by the local OpenCode V2 API, preserving the server's order.
+AvailableModels returns the models \(reference and display name\) exposed by the local OpenCode V2 API, preserving the server's order.
 
 <a name="ComposePrompt"></a>
 ## func [ComposePrompt](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L46>)
@@ -135,7 +116,7 @@ func FileRef(rel string) string
 FileRef returns the \{file:...\} reference OpenCode resolves relative to the config root.
 
 <a name="Handshake"></a>
-## func [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L37>)
+## func [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L33>)
 
 ```go
 func Handshake(ctx context.Context) (opencodeapi.Handshake, error)
@@ -144,7 +125,7 @@ func Handshake(ctx context.Context) (opencodeapi.Handshake, error)
 Handshake proves that the local OpenCode installation is functional for Takt before setup mutates anything \(PR\-ART\-2\).
 
 <a name="InstallSandboxDependency"></a>
-## func [InstallSandboxDependency](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L280>)
+## func [InstallSandboxDependency](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L269>)
 
 ```go
 func InstallSandboxDependency(ctx context.Context, rootDir string) error
@@ -205,7 +186,7 @@ type Artifact = shared.Artifact
 ```
 
 <a name="OpenCodePluginPackageArtifact"></a>
-### func [OpenCodePluginPackageArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L182>)
+### func [OpenCodePluginPackageArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L171>)
 
 ```go
 func OpenCodePluginPackageArtifact() Artifact
@@ -214,7 +195,7 @@ func OpenCodePluginPackageArtifact() Artifact
 OpenCodePluginPackageArtifact returns the package manifest for the shared OpenCode plugin directory. OpenCode resolves bare imports from this package root, so SDK dependencies must be declared here rather than left as transitive or manually\-installed node\_modules.
 
 <a name="RenderConfig"></a>
-### func [RenderConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L79>)
+### func [RenderConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L76>)
 
 ```go
 func RenderConfig(request ConfigRequest) (Artifact, error)
@@ -222,17 +203,8 @@ func RenderConfig(request ConfigRequest) (Artifact, error)
 
 RenderConfig returns the native OpenCode opencode.json artifact.
 
-<a name="TaktCLIArtifact"></a>
-### func [TaktCLIArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L325>)
-
-```go
-func TaktCLIArtifact(theme string) Artifact
-```
-
-TaktCLIArtifact returns cli.json selecting the Takt theme when theme is non\-empty.
-
 <a name="TaktDagPluginArtifact"></a>
-### func [TaktDagPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L307>)
+### func [TaktDagPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L296>)
 
 ```go
 func TaktDagPluginArtifact(taktAIBinary string) Artifact
@@ -241,7 +213,7 @@ func TaktDagPluginArtifact(taktAIBinary string) Artifact
 TaktDagPluginArtifact returns the OpenCode TUI plugin rendering Takt's read\-only execution DAG projection \(PRD\_DAG\_TUI.md\). It is deployed at the documented discovery path \<config\>/plugins/\<name\>/tui.tsx, so no config file registers it; taktAIBinary is the takt\-ai path it polls.
 
 <a name="TaktMemoryPluginArtifact"></a>
-### func [TaktMemoryPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L103>)
+### func [TaktMemoryPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L96>)
 
 ```go
 func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
@@ -250,7 +222,7 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
 TaktMemoryPluginArtifact returns the OpenCode plugin exposing the memory tools; taktAIBinary is the absolute takt\-ai path the plugin spawns.
 
 <a name="TaktSandboxAdapterArtifact"></a>
-### func [TaktSandboxAdapterArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L247>)
+### func [TaktSandboxAdapterArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L236>)
 
 ```go
 func TaktSandboxAdapterArtifact() Artifact
@@ -259,7 +231,7 @@ func TaktSandboxAdapterArtifact() Artifact
 TaktSandboxAdapterArtifact returns the sandbox adapter module the VFS plugin loads \(as "./takt\-sandbox.mjs", a sibling of the VFS plugin file\) to wrap shell commands with @anthropic\-ai/sandbox\-runtime before they run \(PR\-HAR\-15\). Without this deployed, every shell command is denied.
 
 <a name="TaktVFSPluginArtifact"></a>
-### func [TaktVFSPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L117>)
+### func [TaktVFSPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L106>)
 
 ```go
 func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact
@@ -268,7 +240,7 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact
 TaktVFSPluginArtifact returns the OpenCode plugin exposing the governed VFS tools; taktAIBinary is the absolute takt\-ai path the plugin spawns and shellEnforced decides whether it intercepts specialist shell commands.
 
 <a name="ConfigRequest"></a>
-## type [ConfigRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L65-L76>)
+## type [ConfigRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L65-L73>)
 
 ConfigRequest contains the native OpenCode global configuration projection.
 
@@ -279,9 +251,6 @@ type ConfigRequest struct {
     Context7 bool
     // Permissions adds the canonical bash/read permission rules.
     Permissions bool
-    // Theme names the OpenCode theme when non-empty. V2 keeps theme selection in
-    // cli.json, so this reaches TaktCLIArtifact rather than opencode.json.
-    Theme string
     // Agents are Takt instances registered natively in opencode.json.
     Agents []AgentSpec
 }

@@ -31,14 +31,15 @@ func TestGenerateWritesEveryLogoDataset(t *testing.T) {
 	writeSquarePNG(t, input, 200, color.NRGBA{R: 250, G: 250, B: 250, A: 255})
 	mono := filepath.Join(root, "mono", "logo.go")
 	blocks := filepath.Join(root, "blocks", "logo.go")
+	mark := filepath.Join(root, "image", "logo.png")
 	installer := filepath.Join(root, "install.sh")
 	if err := os.WriteFile(installer, []byte("before\n"+installerBegin+"\nold\n"+installerEnd+"\nafter\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := generate(input, mono, blocks, installer); err != nil {
+	if err := generate(input, mono, blocks, mark, installer); err != nil {
 		t.Fatalf("generate() error = %v", err)
 	}
-	for path, variables := range map[string][]string{mono: {"generatedLogoBraille"}, blocks: {"generatedLogoOctants", "generatedLogoHalfBlocks"}} {
+	for path, variables := range map[string][]string{mono: {"generatedLogoBraille"}, blocks: {"generatedLogoQuadrants"}} {
 		content, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read generated file %s: %v", path, err)
@@ -48,6 +49,9 @@ func TestGenerateWritesEveryLogoDataset(t *testing.T) {
 				t.Errorf("generated file %s does not declare %s", path, name)
 			}
 		}
+	}
+	if _, err := decodeInputImage(mark); err != nil {
+		t.Errorf("generated image: %v", err)
 	}
 	embedded, err := os.ReadFile(installer)
 	if err != nil {
@@ -138,11 +142,11 @@ func TestDownsampleFavorsDarkFeatures(t *testing.T) {
 		inkBlack, inkBody, inkBody,
 		inkBlack, inkBody, inkBody,
 	})
-	if got := downsample(art, 1).at(0, 0); got != inkBlack {
+	if got := downsample(art, 1, 1).at(0, 0); got != inkBlack {
 		t.Errorf("box with 4 dark of 9 = %d, want dark", got)
 	}
 	art.pixels[0] = inkBody
-	if got := downsample(art, 1).at(0, 0); got != inkBody {
+	if got := downsample(art, 1, 1).at(0, 0); got != inkBody {
 		t.Errorf("box with 3 dark of 9 = %d, want body", got)
 	}
 }
@@ -165,47 +169,71 @@ func TestRenderHalfBlocksDrawsTwoPixelsPerCell(t *testing.T) {
 
 // A cell keeps its two most common inks; a third folds into the closer one,
 // and a clear pixel always becomes the background.
-func TestRenderOctantsKeepsTwoInksPerCell(t *testing.T) {
-	art := gridOf(2, []ink{
-		inkBody, inkBody,
-		inkBody, inkChest,
-		inkBlack, inkBlack,
-		inkBlack, inkBlack,
+func TestRenderQuadrantsKeepsTwoInksPerCell(t *testing.T) {
+	art := gridOf(4, []ink{
+		inkBody, inkChest, inkBody, inkBody,
+		inkBlack, inkBlack, inkBody, inkBlack,
 	})
-	got := renderOctants(art)
-	// Body is the foreground (octants 1-4); the chest pixel folds into body.
-	want := []span{{Text: "▀", Color: inkBody.hex(), Bg: inkBlack.hex()}}
+	got := renderQuadrants(art)
+	// Left cell: body on top (the chest pixel folds into it). Right cell: three
+	// body pixels over one black, so body is the background and the lone
+	// black pixel the foreground.
+	want := []span{
+		{Text: "▀", Color: inkBody.hex(), Bg: inkBlack.hex()},
+		{Text: "▗", Color: inkBlack.hex(), Bg: inkBody.hex()},
+	}
 	if len(got) != 1 || !equalSpans(got[0], want) {
-		t.Fatalf("renderOctants() = %#v, want %#v", got, want)
+		t.Fatalf("renderQuadrants() = %#v, want %#v", got, want)
 	}
 
 	art = gridOf(2, []ink{
 		inkClear, inkBody,
 		inkClear, inkClear,
-		inkClear, inkClear,
-		inkClear, inkClear,
 	})
-	want = []span{{Text: string(octantRune(0x02)), Color: inkBody.hex()}}
-	if got := renderOctants(art); len(got) != 1 || !equalSpans(got[0], want) {
-		t.Fatalf("renderOctants(clear cell) = %#v, want %#v", got, want)
+	want = []span{{Text: "▝", Color: inkBody.hex()}}
+	if got := renderQuadrants(art); len(got) != 1 || !equalSpans(got[0], want) {
+		t.Fatalf("renderQuadrants(clear cell) = %#v, want %#v", got, want)
 	}
 }
 
-// Every pattern maps to its own character, matching Unicode 16: OCTANT-3 at
-// U+1CD00, OCTANT-23 at U+1CD01 and OCTANT-2345678 last at U+1CDE5.
-func TestOctantRuneMatchesUnicode16(t *testing.T) {
-	for pattern, want := range map[int]rune{0x04: 0x1CD00, 0x06: 0x1CD01, 0x08: 0x1CD03, 0xFE: 0x1CDE5, 0x0F: '▀', 0xFF: '█'} {
-		if got := octantRune(pattern); got != want {
-			t.Errorf("octantRune(%#x) = %U, want %U", pattern, got, want)
+// Each 2×2 pattern maps to its own character, the empty and full ones
+// included.
+func TestQuadrantRunesCoverEveryPattern(t *testing.T) {
+	if len(quadrantRunes) != 16 || quadrantRunes[0] != ' ' || quadrantRunes[15] != '█' {
+		t.Fatalf("quadrantRunes = %q", string(quadrantRunes))
+	}
+	seen := map[rune]bool{}
+	for _, r := range quadrantRunes {
+		if seen[r] {
+			t.Fatalf("quadrantRunes repeats %q", r)
+		}
+		seen[r] = true
+	}
+}
+
+// The mark keeps its colors inside the outer band and nothing outside it, so
+// a terminal drawing it shows a round logo instead of a square.
+func TestMaskedMarkClearsBeyondTheOuterBand(t *testing.T) {
+	const size = 1000
+	fill := color.NRGBA{R: 40, G: 45, B: 85, A: 255}
+	source := image.NewNRGBA(image.Rect(0, 0, size, size))
+	for y := range size {
+		for x := range size {
+			source.SetNRGBA(x, y, fill)
 		}
 	}
-	seen := map[rune]int{}
-	for pattern := range 256 {
-		r := octantRune(pattern)
-		if previous, duplicate := seen[r]; duplicate {
-			t.Fatalf("patterns %#x and %#x share %U", previous, pattern, r)
-		}
-		seen[r] = pattern
+	mark := maskedMark(source, 100)
+	if got := mark.Bounds().Size(); got != image.Pt(100, 100) {
+		t.Fatalf("maskedMark() size = %v, want 100x100", got)
+	}
+	if got := mark.NRGBAAt(0, 0); got.A != 0 {
+		t.Errorf("corner = %v, want transparent", got)
+	}
+	if got := mark.NRGBAAt(50, 50); got != fill {
+		t.Errorf("center = %v, want %v", got, fill)
+	}
+	if edge := mark.NRGBAAt(0, 50); edge.A == 0 || edge.A == 255 || edge.R != fill.R {
+		t.Errorf("edge = %v, want a partly covered pixel of the fill color", edge)
 	}
 }
 

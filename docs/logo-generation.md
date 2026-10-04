@@ -1,6 +1,6 @@
 # TUI Logo Generation
 
-The checked-in TUI logo and the installer's mark are generated data, not a runtime image conversion. Regenerate all artifacts with:
+The checked-in TUI logo, its image and the installer's mark are generated data, not a runtime image conversion. Regenerate all artifacts with:
 
 ```bash
 go generate ./takt/tui/styles
@@ -12,6 +12,7 @@ The canonical source is the versioned `docs/assets/brand/takt-ai.png`. To use an
 go run ./development/generate-logo -input /path/to/logo.png \
   -output takt/tui/styles/logo_generated.go \
   -blocks-output takt/tui/styles/logo_blocks_generated.go \
+  -image-output takt/tui/styles/logo.png \
   -installer install.sh
 ```
 
@@ -21,26 +22,30 @@ The generator is plain Go with no external tools. The canonical PNG never change
 - **Flat palette.** Inside the inner ring, each pixel takes the nearest of the interior inks: dark (also the eyes, nose and whiskers), the white body and the pale chest. The palette holds the artwork's own colors, the indigo rings included. Volume and gloss are dropped on purpose, because at terminal resolution only flat regions keep clean edges.
 - **Majority downsampling.** Each output pixel takes the ink with the most votes in its box, so no in-between shade appears. Dark votes weigh more, so the thin features (eyes, nose, whiskers, chest outline) survive the small variants.
 
-Every variant comes in three character sets:
+The home draws the logo one of three ways:
 
-- **Octants (Unicode 16, `U+1CD00` block plus the older block characters), 2×4 pixels per cell.** Each cell keeps its two most common inks as foreground and background. This is the sharpest mark.
-- **Half-blocks (`▀ ▄ █`), 1×2 pixels per cell.** Every terminal font has them, so the mark shows as intended where octants cannot be confirmed.
+- **Image (kitty graphics protocol).** The artwork itself, cropped to the outer band, with everything beyond it transparent so no square shows, at 512×512 pixels. The terminal scales it over the cells the home reserves for the logo. This is the sharpest mark.
+- **Quadrants (`▖ ▗ ▘ ▝ ▚ ▞ ▙ ▛ ▜ ▟` and the half and full blocks), 2×2 pixels per cell.** Each cell keeps its two most common inks as foreground and background. Every terminal font has these characters. A cell is about twice as tall as wide, so its pixels are too, and the flat art is downsampled to twice as wide as tall to keep the ring round.
 - **Braille, without color.** This is the mono-mode mark (`NO_COLOR`, dumb terminals); its shape survives the loss of color.
 
-The set is measured, never chosen by terminal name. Before the TUI starts, `styles.ProbeGlyphs` prints one octant and asks the terminal where the cursor ended (`ESC[6n`):
-- one cell further means the terminal knows the character, so it gets octants;
-- any other answer, no answer within 150 ms, or a non-terminal gets half-blocks.
+The mode is asked of the terminal, never chosen by its name. Before the TUI starts, `styles.ProbeLogoMode` sends a kitty graphics query that stores nothing, followed by a device-attributes request (DA1):
 
-No terminal query can tell whether the font draws the octant or a box of the same width. For that case, `TAKT_LOGO_GLYPHS=octants` or `TAKT_LOGO_GLYPHS=halfblocks` overrides the measurement.
+- an `OK` to the graphics query before the DA1 reply gets the image;
+- a DA1 reply alone, no reply within 150 ms, or a non-terminal gets quadrants.
 
-Each set holds three sizes (`logoRows`: 16, 12 and 8 rows; every variant is twice as wide as it is tall, so the ring stays round). The home caps the logo at 16 rows, about twice the menu's height, and draws the largest size that fits (`styles.Logo`); a terminal too small for every size shows the menu alone.
+Every terminal answers DA1, so the wait ends as soon as the terminal has answered. `TAKT_LOGO=image` or `TAKT_LOGO=quadrants` overrides the measurement.
+
+As an image, the logo occupies the cells of the quadrant variant that fits, filled with blank Braille cells. The home finds those cells on the rendered screen and places the stored image over them. It places the image again when the cells move and after a resize, hides it when a flow covers the home, and frees it from the terminal on exit.
+
+The text marks hold three sizes (`logoRows`: 16, 12 and 8 rows; every variant is twice as wide as it is tall, so the ring stays round). The home caps the logo at 16 rows, about twice the menu's height, and draws the largest size that fits (`styles.Logo`); a terminal too small for every size shows the menu alone.
 
 The generator writes these checked-in artifacts:
 
 - `takt/tui/styles/logo_generated.go`: `generatedLogoBraille`.
-- `takt/tui/styles/logo_blocks_generated.go`: `generatedLogoOctants` and `generatedLogoHalfBlocks`.
+- `takt/tui/styles/logo_blocks_generated.go`: `generatedLogoQuadrants`.
+- `takt/tui/styles/logo.png`: the image, embedded in the binary.
 - `install.sh`: a 14-row half-block `print_logo` function between the `BEGIN/END GENERATED LOGO` markers. The installer prints it only on an interactive true-color terminal; elsewhere the `Takt AI` signature stands alone.
 
-The shared `logoSpan` type lives in `takt/tui/styles/logo.go`; generated files carry only data. All carry a `development/generate-logo; DO NOT EDIT` marker and must only change through the generator.
+The shared `logoSpan` type lives in `takt/tui/styles/logo.go`; generated files carry only data. The Go files carry a `development/generate-logo; DO NOT EDIT` marker, and every artifact must only change through the generator.
 
 The OpenCode side carries no generated logo: the deployed `takt-dag` TUI plugin and the terminal client use no image mark.

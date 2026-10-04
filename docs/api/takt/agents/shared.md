@@ -13,7 +13,7 @@ Package shared holds helpers reused by the OpenCode target adapter.
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func NewManagedPaths\(generated \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
-- [func NormalizeManagedPaths\(target string, pathGroups ...\[\]string\) \(\[\]string, error\)](<#NormalizeManagedPaths>)
+- [func ResolveBinary\(candidates \[\]string, isCompatible func\(absolute string\) bool\) \(string, bool\)](<#ResolveBinary>)
 - [func VersionAtLeast\(have, want string\) bool](<#VersionAtLeast>)
 - [type Artifact](<#Artifact>)
 
@@ -28,26 +28,14 @@ const Context7RemoteURL = "https://mcp.context7.com/mcp"
 
 ## Variables
 
-<a name="OrchestratorDescription"></a>OrchestratorDescription explains the top\-level agent in every harness.
-
-```go
-var OrchestratorDescription = orchestratorDefinition.Description
-```
-
 <a name="OrchestratorID"></a>OrchestratorID names the selectable top\-level agent across harnesses.
 
 ```go
 var OrchestratorID = orchestratorDefinition.ID
 ```
 
-<a name="SensitivePathGlobs"></a>SensitivePathGlobs lists secret\-bearing paths every target must block from agent reads and writes; the list itself lives in model so the VFS shell sandbox and the native permission rules share one source.
-
-```go
-var SensitivePathGlobs = model.SensitivePathGlobs
-```
-
 <a name="NewManagedPaths"></a>
-## func [NewManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L34>)
+## func [NewManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L36>)
 
 ```go
 func NewManagedPaths(generated []string) ([]string, error)
@@ -55,17 +43,17 @@ func NewManagedPaths(generated []string) ([]string, error)
 
 NewManagedPaths returns OpenCode's owned paths, normalized and sorted for stable manifests, so uninstalls never touch user files.
 
-<a name="NormalizeManagedPaths"></a>
-## func [NormalizeManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L39>)
+<a name="ResolveBinary"></a>
+## func [ResolveBinary](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L58>)
 
 ```go
-func NormalizeManagedPaths(target string, pathGroups ...[]string) ([]string, error)
+func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool)
 ```
 
-NormalizeManagedPaths cleans, dedupes, and sorts managed paths so manifests stay deterministic.
+ResolveBinary scans candidates in order and returns the absolute path of the first that exists, is a regular file, and satisfies isCompatible — the scan loop shared by every managed\-binary resolver \(engram, codegraph\).
 
 <a name="VersionAtLeast"></a>
-## func [VersionAtLeast](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L65>)
+## func [VersionAtLeast](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L76>)
 
 ```go
 func VersionAtLeast(have, want string) bool

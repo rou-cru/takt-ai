@@ -13,9 +13,9 @@ import (
 // a 2×1 of each character set.
 func stubLogos(t *testing.T) {
 	t.Helper()
-	braille, octants, half, detected := generatedLogoBraille, generatedLogoOctants, generatedLogoHalfBlocks, glyphs
+	braille, quadrants, measured := generatedLogoBraille, generatedLogoQuadrants, mode
 	t.Cleanup(func() {
-		generatedLogoBraille, generatedLogoOctants, generatedLogoHalfBlocks, glyphs = braille, octants, half, detected
+		generatedLogoBraille, generatedLogoQuadrants, mode = braille, quadrants, measured
 		theme.SetMode(theme.DetectMode())
 	})
 	variants := func(text, color, bg string) [][][]logoSpan {
@@ -25,20 +25,19 @@ func stubLogos(t *testing.T) {
 		}
 	}
 	generatedLogoBraille = variants("⣿", "", "")
-	generatedLogoOctants = variants("\U0001CD00", "#010203", "#040506")
-	generatedLogoHalfBlocks = variants("▀", "#070809", "#0a0b0c")
+	generatedLogoQuadrants = variants("▚", "#070809", "#0a0b0c")
 }
 
 func TestLogoDrawsTheLargestVariantThatFits(t *testing.T) {
 	stubLogos(t)
 	theme.SetMode(theme.ModeColor)
-	glyphs = GlyphsHalfBlocks
+	mode = ModeQuadrants
 	cell := lipgloss.NewStyle().Foreground(lipgloss.Color("#070809")).Background(lipgloss.Color("#0a0b0c"))
 
-	if got, want := Logo(80, 24), cell.Render("▀▀▀▀")+"\n"+cell.Render("▀▀▀▀"); got != want {
+	if got, want := Logo(80, 24), cell.Render("▚▚▚▚")+"\n"+cell.Render("▚▚▚▚"); got != want {
 		t.Errorf("Logo(80, 24) = %q, want the full variant %q", got, want)
 	}
-	if got, want := Logo(3, 24), cell.Render("▀▀"); got != want {
+	if got, want := Logo(3, 24), cell.Render("▚▚"); got != want {
 		t.Errorf("Logo(3, 24) = %q, want the small variant %q", got, want)
 	}
 	if got := Logo(1, 1); got != "" {
@@ -46,20 +45,30 @@ func TestLogoDrawsTheLargestVariantThatFits(t *testing.T) {
 	}
 }
 
-func TestLogoUsesOctantsOnlyWhenDetected(t *testing.T) {
+// As an image, the logo reserves the cells of the variant that fits, for the
+// caller to place the image over.
+func TestLogoReservesCellsForTheImage(t *testing.T) {
 	stubLogos(t)
 	theme.SetMode(theme.ModeColor)
-	glyphs = GlyphsOctants
-	want := lipgloss.NewStyle().Foreground(lipgloss.Color("#010203")).Background(lipgloss.Color("#040506")).Render("\U0001CD00\U0001CD00")
-	if got := Logo(2, 1); got != want {
-		t.Errorf("Logo() with octants = %q, want %q", got, want)
+	mode = ModeImage
+	if !ImageLogo() {
+		t.Fatal("ImageLogo() = false in image mode")
+	}
+	if got, want := Logo(80, 24), "\u2800\u2800\u2800\u2800\n\u2800\u2800\u2800\u2800"; got != want {
+		t.Errorf("Logo(80, 24) = %q, want a 4×2 reserved block %q", got, want)
+	}
+	if got := Logo(3, 24); got != "\u2800\u2800" {
+		t.Errorf("Logo(3, 24) = %q, want a 2×1 reserved block", got)
 	}
 }
 
 func TestLogoKeepsBrailleMarkInMono(t *testing.T) {
 	stubLogos(t)
 	theme.SetMode(theme.ModeMono)
-	glyphs = GlyphsOctants
+	mode = ModeImage
+	if ImageLogo() {
+		t.Error("ImageLogo() = true in mono")
+	}
 	// Monochrome emits no ANSI: the Braille shape alone carries the mark.
 	if got := Logo(2, 1); got != "⣿⣿" {
 		t.Errorf("Logo() in mono = %q, want the plain Braille mark", got)
@@ -69,7 +78,7 @@ func TestLogoKeepsBrailleMarkInMono(t *testing.T) {
 // Every generated variant is rectangular and twice as wide as tall, so the
 // ring stays round and the home can center the mark.
 func TestGeneratedVariantsAreRoundAndRectangular(t *testing.T) {
-	for name, variants := range map[string][][][]logoSpan{"braille": generatedLogoBraille, "octants": generatedLogoOctants, "halfblocks": generatedLogoHalfBlocks} {
+	for name, variants := range map[string][][][]logoSpan{"braille": generatedLogoBraille, "quadrants": generatedLogoQuadrants} {
 		if len(variants) == 0 {
 			t.Fatalf("%s: no variants", name)
 		}
