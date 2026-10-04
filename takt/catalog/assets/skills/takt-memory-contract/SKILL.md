@@ -133,6 +133,9 @@ per domain — consulted only for that doubt, not on every entry.
 ## 7. Reading memory
 
 - Read with `mem_search`, `mem_get_observation`, and `mem_context`.
+- A delegation arrives with the invariants it consumes, or with the declaration that none
+  exists yet. Those entries bind as read-only and prevail over any restatement in the brief;
+  with none declared, author from the brief.
 - Verified repository state prevails over a contradicting memory. When they
   disagree, trust the repository and record an `observation` that `corrects` the entry.
 - Entries that were corrected or superseded are history, never directives.
