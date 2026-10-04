@@ -354,7 +354,7 @@ func TestGateRevisionIdentityAndReplay(t *testing.T) {
 	if hasVerdict(f, key) {
 		t.Fatal("edit retained gate")
 	}
-	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision); !errors.Is(e, ErrInvalidVerdict) {
+	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision); e != nil {
 		t.Fatal(e)
 	}
 }

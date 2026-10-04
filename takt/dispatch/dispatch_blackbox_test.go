@@ -110,6 +110,15 @@ func TestReconcileNotRunningFinishesAsInterrupted(t *testing.T) {
 	if unit.State != history.StateSettled || unit.Outcome != history.OutcomeInterrupted {
 		t.Errorf("Reconcile(running=false) left unit = %+v, want settled/interrupted", unit)
 	}
+	if err := dispatch.Record(h, "", "a", "s1", history.KindUncertain); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Reconcile(h, "", "a", "s1", false); err != nil {
+		t.Fatalf("repeated recovery of settled delegation = %v", err)
+	}
+	if err := dispatch.Reconcile(h, "", "a", "other", false); err == nil {
+		t.Fatal("unrelated session reconciled a settled delegation")
+	}
 }
 
 func TestReconcileRequiresUncertainFlight(t *testing.T) {

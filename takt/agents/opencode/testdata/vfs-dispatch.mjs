@@ -89,7 +89,7 @@ let releaseAt = calls.length
 await tools.claim_release.execute({ claim_key: "claim-prior" }, root)
 assert.deepEqual(calls.slice(releaseAt).map(c => [c.argv[2], c.stdin]), [
   ["claims", { ipc_version: 4, session_id: "root" }],
-  ["release", { ipc_version: 4, session_id: "root", claim_key: "claim-prior" }],
+  ["release", { ipc_version: 4, session_id: "root", key: "claim-prior" }],
 ])
 const activeClaim = { ...claim, active: true }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [activeClaim, priorClaim] }), stderr: "", code: 0 } : undefined
@@ -97,7 +97,7 @@ releaseAt = calls.length
 await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current", confirmed: false }, root), /WARNING: agent dev \(instance dev, pending\) owns \[a\.txt\]/)
 assert.equal(calls.slice(releaseAt).filter(c => c.argv[2] === "release").length, 0, "denied active claim was released")
 await tools.claim_release.execute({ claim_key: "claim-current", confirmed: true }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", claim_key: "claim-current" })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", key: "claim-current" })
 
 await tools.dispatch_commit.execute({ version: "v1", plan: [{ unit: "u1", contract: "c1" }] }, root)
 assert.equal(calls.at(-1).verb, "dispatch")

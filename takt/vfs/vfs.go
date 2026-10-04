@@ -406,10 +406,10 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 		}
 	}
 
-	if d.verdict == nil {
+	if d.verdict == nil && f.bindings[agent].CycleID != "" {
 		return ErrVerificationRequired
 	}
-	if !d.verdict.Pass {
+	if d.verdict != nil && !d.verdict.Pass {
 		return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, d.verdict.Finding)
 	}
 

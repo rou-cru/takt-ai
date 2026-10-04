@@ -637,6 +637,7 @@ export default Plugin.define({
     // GC policy and lifecycle live in Go. This queue only transports host events
     // and API-created child identities; no event handler waits for model work.
     let gcInitialized = false
+    let gcInitialization: Promise<void> | undefined
     let gcQueue: Promise<void> = Promise.resolve()
     const prompted = new Set<string>()
     const gcChildren = new Set<string>()
@@ -718,23 +719,27 @@ export default Plugin.define({
     }
     async function initializeGC() {
       if (gcInitialized) return
-      // A process restart cannot prove that an old model turn has stopped. Abort
-      // known children first, then ask the core to restore its own cycle only.
-      const state = await coordinate({ action: "status" })
-      if (isCoordinatorResponse(state) && state.cycle) {
-        for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
-        await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
-      }
-      // A host subagent call lives inside the process that started it, so one
-      // still recorded here died with that process: its liveness is uncertain,
-      // and it is reconciled as not running, which releases its slot (PR-HAR-18).
-      for (const [delegation, d] of delegations) {
-        await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
-        await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
-        delegations.delete(delegation)
-        await persistDelegations()
-      }
-      gcInitialized = true
+      if (gcInitialization) return gcInitialization
+      gcInitialization = (async () => {
+        // A process restart cannot prove that an old model turn has stopped. Abort
+        // known children first, then ask the core to restore its own cycle only.
+        const state = await coordinate({ action: "status" })
+        if (isCoordinatorResponse(state) && state.cycle) {
+          for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
+          await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
+        }
+        // A host subagent call lives inside the process that started it, so one
+        // still recorded here died with that process: its liveness is uncertain,
+        // and it is reconciled as not running, which releases its slot (PR-HAR-18).
+        for (const [delegation, d] of delegations) {
+          await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
+          await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
+          delegations.delete(delegation)
+          await persistDelegations()
+        }
+        gcInitialized = true
+      })()
+      try { await gcInitialization } finally { gcInitialization = undefined }
     }
     function scheduleGC() {
       // setTimeout releases tool/event hooks before the SDK is asked to prompt.
@@ -1152,7 +1157,7 @@ export default Plugin.define({
           else if (claim.active === true) status = "active"
           throw new Error(`WARNING: agent ${claim.agent_id} (instance ${claim.target_instance}, ${status}) owns [${(claim.scope ?? []).join(", ")}]. Ask the user via the orchestrator's native question mechanism whether to release this exact claim; retry with confirmed:true only after an explicit yes. This server plugin cannot present dialogs or verify confirmation. Ownership was not released; staged delta is preserved.`)
         }
-        return { content: JSON.stringify(await takt("release", { session_id: session, claim_key: claim.key })) }
+        return { content: JSON.stringify(await takt("release", { session_id: session, key: claim.key })) }
       } })
 
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
@@ -1318,11 +1323,17 @@ export default Plugin.define({
           const args = toolInput<{ scope: string[]; author_key?: string }>(input)
           const session = await rootSession(c.sessionID)
           const authorKey = typeof args.author_key === "string" ? args.author_key : undefined
+          const unit = await delegatedUnit(c.sessionID)
+          const claim = authorKey || c.agent === "verify"
+            ? await findClaim(session, unit, c.agent, ["pending", "active"])
+            : undefined
+          if (claim?.author_key && (authorKey !== claim.author_key || args.scope.length !== 0)) {
+            throw new Error(`Bind the verifier with scope: [] and author_key: ${claim.author_key}; the author owns the files being judged`)
+          }
           const author = authorKey ? bindings.get(authorKey) : undefined
           if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
           // A verifier runs as its own unit; the author key alone links it to
           // the staged work it judges.
-          const unit = await delegatedUnit(c.sessionID)
           const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
           const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope: args.scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
           b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
@@ -1444,7 +1455,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_consolidate",
-        description: "Move an author's verified staged work into the workspace once its verdict passed. Name the author by the author_key it reported; a missing or failed verdict leaves the work staged.",
+        description: "Move authorized staged work into the workspace by author_key. When a verdict applies, it must pass and match the staged revision; ownership and physical-base checks always apply.",
         input: obj({
           author_key: str("The author_key of the staged work to consolidate"),
           checkpoint: str("Short consolidation label hashed into the journal"),

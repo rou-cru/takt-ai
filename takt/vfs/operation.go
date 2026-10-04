@@ -815,7 +815,8 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 	return v, a, f.consumeCallLocked(v.SessionID, callID)
 }
 
-// ConsolidateCheckpoint is a trusted coordinator operation that consolidates staged changes.
+// ConsolidateCheckpoint is a trusted coordinator operation that consolidates
+// authorized staged changes; a verdict, when present, remains bound to its evidence.
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -825,25 +826,32 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 	if strings.TrimSpace(checkpoint) == "" {
 		return ErrVerificationRequired
 	}
-	if _, ok := f.bindings[key]; !ok {
+	identity, ok := f.bindings[key]
+	if !ok {
 		return ErrIdentity
 	}
 	d := f.staged[key]
-	if d == nil || d.revision != expected {
-		return ErrStaleRevision
-	}
-	if d.verdict == nil || d.verdict.DeltaHash != f.deltaHashLocked(key) {
+	if d == nil || len(d.files) == 0 {
 		return ErrInvalidVerdict
 	}
-	// A pass applies only to the scope it was given: re-pinning the verdict's own
-	// set catches a governing document edited since the verdict was issued, which
-	// requires new verification before the evidence governs (PR-VFS-CSL-7).
-	version, err := f.invariantsVersionLocked(d.verdict.Invariants)
-	if err != nil {
-		return err
+	if d.revision != expected {
+		return ErrStaleRevision
 	}
-	if version != d.verdict.InvariantsHash {
-		return fmt.Errorf("%w: the applicable invariant set changed since the verdict", ErrInvalidVerdict)
+	if identity.CycleID != "" && d.verdict == nil {
+		return ErrInvalidVerdict
+	}
+	if d.verdict != nil && d.verdict.DeltaHash != f.deltaHashLocked(key) {
+		return ErrInvalidVerdict
+	}
+	if d.verdict != nil {
+		// A supplied verdict only governs the invariant set it actually judged.
+		version, err := f.invariantsVersionLocked(d.verdict.Invariants)
+		if err != nil {
+			return err
+		}
+		if version != d.verdict.InvariantsHash {
+			return fmt.Errorf("%w: the applicable invariant set changed since the verdict", ErrInvalidVerdict)
+		}
 	}
 	start := len(f.journal)
 	defer func() {

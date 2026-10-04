@@ -147,6 +147,12 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 	if mutates && decision == ShellAllow {
 		return f.projectLocked(key, root, scope, plan)
 	}
+	// Test commands need the author's staged bytes before consolidation. Run them
+	// in the same confined projection as a captured command, leaving the physical
+	// workspace untouched and importing only writes to the declared scope.
+	if decision == ShellAllow && key != "" && len(scope) > 0 && testsStagedFiles(command) {
+		return f.projectLocked(key, root, scope, plan)
+	}
 	// Inspection reads the workspace in place and can write only to its scratch,
 	// so no projection is needed. An approved command adds everything outside
 	// the workspace, which is exactly what the user accepted: the workspace
@@ -317,6 +323,21 @@ func mutatesWorkspace(command string) bool {
 	words := shellWords(command)
 	return capturableRedirect(command) || containsAny(words, mutatingWords) ||
 		(containsAny(words, inPlaceWords) && containsAny(words, inPlaceFlags))
+}
+
+// testsStagedFiles selects targeted executable checks, not general inspection
+// such as git log, which still reads the physical workspace.
+func testsStagedFiles(command string) bool {
+	words := shellWords(command)
+	for i, word := range words {
+		if (word == "node" || word == "bun") && i+1 < len(words) && (words[i+1] == "--test" || words[i+1] == "test") {
+			return true
+		}
+		if word == "go" && i+1 < len(words) && words[i+1] == "test" {
+			return true
+		}
+	}
+	return false
 }
 
 // capturableRedirect reports a redirection whose target is a file, ignoring

@@ -98,10 +98,11 @@ keeps its staged work; discard it with `vfs_discard` unless recovery still needs
 After two consecutive failed recoveries of the same objective, escalate; no further recovery
 is authorized merely by sending the escalation. After consolidation, repair forward.
 
-Obtain Verify's independent verdict when available or required. Staged implementation reaches
-the workspace only through that gate: preassign verify to the author key with `claim_assign_verifier` under the
-verifier's own unit, delegate that unit, and when the verdict passes, consolidate that author's
-work with `vfs_consolidate`; a failed verdict opens correction work instead. Consolidating is not
+Obtain Verify's independent verdict when available or required for delivery. For a staged gate,
+preassign Verify to the author key with `claim_assign_verifier` under the verifier's own unit;
+a passing verdict supports consolidation, and a failing verdict opens correction work. VFS
+consolidation also supports authorized work without a gate; run executable acceptance on the
+staged projection or materialized workspace as appropriate. Consolidating is not
 a Git commit; load takt-git-commit before writing that commit's message. If consolidation reports that recovery is required, that the physical base
 changed, or an unresolved collision, freeze that path and escalate with the report. Request the blind review pair
 only for unknown damage or unusually high required certainty, naming the condition; the pair

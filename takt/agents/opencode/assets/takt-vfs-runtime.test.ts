@@ -420,6 +420,20 @@ describe("maintenance cycle", () => {
     } finally { await vfs.stop() }
   })
 
+  test("concurrent startup hooks reconcile a stored delegation once", async () => {
+    const vfs = await startVfs({
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "u-old", root: "root" } } },
+    })
+    try {
+      await Promise.all([
+        vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-1", input: { description: "new-1", agent: RESULT_AGENT } }),
+        vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-2", input: { description: "new-2", agent: RESULT_AGENT } }),
+      ].map(async (hook) => { try { await hook } catch { /* the new units have no declared inputs */ } }))
+      expect(vfs.requests("dispatch", "uncertain")).toHaveLength(1)
+      expect(vfs.requests("dispatch", "reconcile")).toHaveLength(1)
+    } finally { await vfs.stop() }
+  })
+
   test("the attached verifier session reaches only its own gc tools, once per phase", async () => {
     const verifier: Ctx = { sessionID: "gcv", agent: "verify" }
     const vfs = await startVfs({
@@ -646,7 +660,31 @@ describe("claims and consolidation", () => {
       ])
       expect(vfs.actions("vfs")).not.toContain("release")
       await vfs.run("claim_release", { claim_key: "k-old" }, orchestrator)
-      expect(vfs.requests("vfs", "release")).toEqual([expect.objectContaining({ session_id: "root", claim_key: "k-old" })])
+      await vfs.run("claim_release", { claim_key: "k-pending", confirmed: true }, orchestrator)
+      expect(vfs.requests("vfs", "release")).toEqual([
+        expect.objectContaining({ session_id: "root", key: "k-old" }),
+        expect.objectContaining({ session_id: "root", key: "k-pending" }),
+      ])
+    } finally { await vfs.stop() }
+  })
+
+  test("verifier binds to its empty-scope assignment and author key", async () => {
+    const author = { key: "author-key", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "hash" }
+    const reviewer: Ctx = { sessionID: "verify-child", agent: "verify" }
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      storage: { "takt/vfs/bindings": [author] },
+      claims: [{ key: "gate-key", root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: "author-key" }],
+      respond: (call) => call.command === "bind" ? json({ ok: true, key: "gate-key", attempt_id: "a1", invariants_version: "v1" }) : undefined,
+    })
+    try {
+      await expect(vfs.run("vfs_bind", { scope: ["src/a.go"], author_key: "author-key" }, reviewer))
+        .rejects.toThrow("scope: [] and author_key: author-key")
+      expect(vfs.requests("vfs", "bind")).toEqual([])
+      await vfs.run("vfs_bind", { scope: [], author_key: "author-key" }, reviewer)
+      expect(vfs.requests("vfs", "bind")).toEqual([expect.objectContaining({ scope: [], author_key: "author-key", specialist: "verify" })])
+      await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-gate" }, reviewer)
+      expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-key" })])
     } finally { await vfs.stop() }
   })
 

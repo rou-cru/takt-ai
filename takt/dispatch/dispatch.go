@@ -313,7 +313,13 @@ func Launch(h *history.History, journalRef, event, session string) error {
 // running, or non-start, which is the effective termination that finally
 // releases the reservation. Uncertainty alone never releases it (PR-HAR-18).
 func Reconcile(h *history.History, journalRef, event, session string, running bool) error {
-	if h.Project().Units[event].Flight != history.FlightUncertain {
+	u := h.Project().Units[event]
+	// A restarted host can retain a delegation record after the unit was already
+	// settled. Reconciliation of that same session must not block new dispatches.
+	if !running && u.State == history.StateSettled && u.SessionID == session {
+		return nil
+	}
+	if u.Flight != history.FlightUncertain {
 		return errors.New("dispatch: nothing uncertain to reconcile")
 	}
 	if running {

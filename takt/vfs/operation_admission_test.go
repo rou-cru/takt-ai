@@ -568,7 +568,6 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 		"blank checkpoint":      {r.author, "  ", rev, ErrVerificationRequired},
 		"unknown key":           {"ghost", "cp", rev, ErrIdentity},
 		"stale revision":        {r.author, "cp", rev + 1, ErrStaleRevision},
-		"no verdict yet":        {r.author, "cp", rev, ErrInvalidVerdict},
 		"binding without delta": {r.verifier, "cp", 0, ErrInvalidVerdict},
 	} {
 		if err := r.f.ConsolidateCheckpoint(tc.key, tc.checkpoint, tc.revision); !errors.Is(err, tc.want) {
@@ -581,5 +580,21 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 	r.f.staged[r.author].verdict.Invariants = InvariantSet{escapingPath}
 	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev); !errors.Is(err, ErrIdentity) {
 		t.Errorf("unreadable verdict invariants: ConsolidateCheckpoint() = %v; want ErrIdentity", err)
+	}
+}
+
+func TestConsolidateWithoutVerifierPreservesOwnershipAndBaseChecks(t *testing.T) {
+	r := newVerdictRig(t)
+	if err := r.f.ConsolidateCheckpoint(r.author, "approved", r.staged.Revision+1); !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("stale revision = %v", err)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "approved", r.staged.Revision); err != nil {
+		t.Fatalf("authorized consolidation without gate = %v", err)
+	}
+	claims := r.f.OwnershipClaims("s")
+	for _, claim := range claims {
+		if claim.Key == r.author && len(claim.Scope) != 0 {
+			t.Fatal("consolidation retained the author's ownership")
+		}
 	}
 }
