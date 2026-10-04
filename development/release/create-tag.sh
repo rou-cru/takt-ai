@@ -21,6 +21,7 @@ readonly MAX_ATTEMPTS=5
 readonly TAGGER_NAME='github-actions[bot]'
 readonly TAGGER_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
 
+# die writes its arguments as an error message to stderr and exits with status 1.
 die() { printf 'create-tag: %s\n' "$*" >&2; exit 1; }
 
 [[ $# -eq 2 ]] || die 'usage: create-tag.sh VERSION SHA'
@@ -28,15 +29,19 @@ version=$1 sha=$2
 [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "invalid version '$version'"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
-# existing_target prints the commit an existing tag points at, or nothing.
+# existing_target prints the target SHA of the annotated tag named by $1 in
+# GITHUB_REPOSITORY. Any ref lookup failure returns 0 without output; failures
+# fetching the tag object propagate the gh exit status and stderr.
 existing_target() {
 	local ref_sha
 	ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$1" --jq .object.sha 2>/dev/null) || return 0
 	gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq .object.sha
 }
 
-# create_tag creates the annotated tag. It returns 2 when GitHub refuses the
-# ref with 422, the answer for a reserved tag; any other error is fatal.
+# create_tag creates an annotated tag named by $1 at the global sha in
+# GITHUB_REPOSITORY. Returns 0 on success or 2 if ref creation fails with
+# HTTP 422 (including reserved tags); other API failures exit with status 1.
+# A failed ref creation leaves the newly created tag object in the repository.
 create_tag() {
 	local tag_sha err
 	tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
