@@ -641,8 +641,8 @@ func (m Model) conflictLines(index int, conflict setup.ConflictEntry) string {
 }
 
 // reviewBody states what the install sets up in the user's terms (agents,
-// skills, MCP servers, integrations) and which of their files it touches; an
-// unresolvable plan offers no commit action.
+// skills, MCP servers, integrations) and which of their files it touches, as
+// a title and two groups; an unresolvable plan offers no commit action.
 func (m Model) reviewBody() string {
 	if m.previewErr != nil {
 		return m.reviewError()
@@ -656,33 +656,45 @@ func (m Model) reviewBody() string {
 	if added+updated == 0 {
 		b.WriteString(theme.Label.Render(ui.TextNothingToChange) + "\n\n")
 	}
-	b.WriteString(ui.Fields(m.reviewFields(added, updated)))
+	title := ui.TextReviewInstallTitle
+	if m.configuring {
+		title = ui.TextReviewApplyTitle
+	}
+	b.WriteString(theme.Title.Render(title) + "\n" + theme.Caption.Render(ui.TextReviewScope) + "\n\n")
+	b.WriteString(ui.Group(ui.TextGroupInstalls, m.installRows()))
+	if disk := m.diskRows(added, updated); len(disk) > 0 {
+		b.WriteString("\n" + ui.Group(ui.TextGroupDisk, disk))
+	}
 	return b.String()
 }
 
-// reviewFields lists the summary rows, omitting empty groups.
-func (m Model) reviewFields(added, updated int) []ui.Field {
+// installRows counts what the install sets up, numbers aligned on their last
+// digit, with names and model groups as muted details; empty groups are
+// omitted.
+func (m Model) installRows() []ui.Row {
 	summary := m.plan.Summary
-	fields := []ui.Field{{Label: ui.TextFieldDestination, Value: ui.TextDestinationValue}}
-	fields = append(fields, agentFields(summary.Agents)...)
-	fields = append(fields,
-		ui.Field{Label: ui.TextFieldSkills, Value: fmt.Sprint(summary.Skills)},
-		ui.Field{Label: ui.TextFieldMCP, Value: strings.Join(summary.MCPServers, ui.TextListSeparator)},
-	)
+	agents := len(summary.Agents)
+	width := len(fmt.Sprint(max(agents, summary.Skills, len(summary.MCPServers), len(summary.Integrations))))
+	rows := agentRows(summary.Agents, width)
+	rows = append(rows, ui.Row{Lead: counted(summary.Skills, width, ui.TextSkillOne, ui.TextSkillMany)})
+	if len(summary.MCPServers) > 0 {
+		rows = append(rows, ui.Row{
+			Lead:   counted(len(summary.MCPServers), width, ui.TextMCPServerOne, ui.TextMCPServerMany),
+			Detail: strings.Join(summary.MCPServers, ui.TextListSeparator),
+		})
+	}
 	if len(summary.Integrations) > 0 {
-		fields = append(fields, ui.Field{Label: ui.TextFieldIntegrations, Value: strings.Join(summary.Integrations, ui.TextListSeparator)})
+		rows = append(rows, ui.Row{
+			Lead:   counted(len(summary.Integrations), width, ui.TextIntegrationOne, ui.TextIntegrationMany),
+			Detail: strings.Join(summary.Integrations, ui.TextListSeparator),
+		})
 	}
-	if added+updated > 0 {
-		fields = append(fields, ui.Field{Label: ui.TextFieldFiles, Value: fmt.Sprintf(ui.TextFilesCountFmt, added, updated)})
-	}
-	fields = append(fields, labeled(ui.TextFieldYourConfig, m.configLines())...)
-	fields = append(fields, labeled(ui.TextFieldKept, m.preserveLines())...)
-	fields = append(fields, labeled(ui.TextFieldNotInstalled, m.removalLines())...)
-	return append(fields, labeled(ui.TextFieldUncertain, m.uncertainLines())...)
+	return rows
 }
 
-// agentFields counts the agents and groups them by the model they run on.
-func agentFields(agents []runtime.AgentModel) []ui.Field {
+// agentRows counts the agents by role and groups them by the model they run
+// on, one continuation row per model.
+func agentRows(agents []runtime.AgentModel, width int) []ui.Row {
 	orchestrators, byModel := 0, map[string]int{}
 	for _, agent := range agents {
 		if agent.Role == model.RoleOrchestrator {
@@ -690,7 +702,10 @@ func agentFields(agents []runtime.AgentModel) []ui.Field {
 		}
 		byModel[agent.Model]++
 	}
-	fields := []ui.Field{{Label: ui.TextFieldAgents, Value: fmt.Sprintf(ui.TextAgentsFmt, len(agents), orchestrators, len(agents)-orchestrators)}}
+	rows := []ui.Row{{
+		Lead:   counted(len(agents), width, ui.TextAgentOne, ui.TextAgentMany),
+		Detail: fmt.Sprintf(ui.TextAgentRolesFmt, orchestrators, len(agents)-orchestrators),
+	}}
 	models := slices.SortedFunc(maps.Keys(byModel), func(a, b string) int {
 		return cmp.Or(byModel[b]-byModel[a], strings.Compare(a, b))
 	})
@@ -699,31 +714,71 @@ func agentFields(agents []runtime.AgentModel) []ui.Field {
 		if label == "" {
 			label = ui.TextInheritedModel
 		}
-		value := fmt.Sprintf(ui.TextAgentModelsFmt, byModel[name], label)
+		detail := fmt.Sprintf(ui.TextAgentModelsFmt, byModel[name], label)
 		if len(models) == 1 {
-			value = fmt.Sprintf(ui.TextAgentModelsAllFmt, label)
+			detail = fmt.Sprintf(ui.TextAgentModelsAllFmt, label)
 		}
-		fields = append(fields, ui.Field{Value: value})
+		rows = append(rows, ui.Row{Detail: detail})
 	}
-	return fields
+	return rows
 }
 
-// labeled puts label on the first line and continues the rest under it.
-func labeled(label string, lines []string) []ui.Field {
-	fields := make([]ui.Field, len(lines))
+// diskRows states the file counts, then each of the user's configuration
+// files the install touches, then what stays as it is, is left out, or is
+// uncertain; each optional part appears only with content.
+func (m Model) diskRows(added, updated int) []ui.Row {
+	var rows []ui.Row
+	var counts []string
+	if added > 0 {
+		counts = append(counts, counted(added, 0, ui.TextNewFileOne, ui.TextNewFileMany))
+	}
+	if updated > 0 {
+		counts = append(counts, fmt.Sprintf(ui.TextUpdatedCountFmt, updated))
+	}
+	if len(counts) > 0 {
+		rows = append(rows, ui.Row{Lead: strings.Join(counts, ui.TextListSeparator)})
+	}
+	for _, config := range m.configChanges() {
+		rows = append(rows, ui.Row{Lead: path.Base(config.path), Detail: config.note})
+	}
+	rows = append(rows, labeledRows(ui.TextFieldKept, m.preserveLines())...)
+	rows = append(rows, labeledRows(ui.TextFieldNotInstalled, m.removalLines())...)
+	return append(rows, labeledRows(ui.TextFieldUncertain, m.uncertainLines())...)
+}
+
+// counted writes n and its noun in proper number, the number padded to width
+// so a column of counts aligns on its last digit.
+func counted(n, width int, one, many string) string {
+	noun := many
+	if n == 1 {
+		noun = one
+	}
+	return fmt.Sprintf("%*d %s", width, n, noun)
+}
+
+// labeledRows puts label as the lead of the first line and continues the
+// rest under it.
+func labeledRows(label string, lines []string) []ui.Row {
+	rows := make([]ui.Row, len(lines))
 	for index, line := range lines {
-		fields[index] = ui.Field{Value: line}
+		rows[index] = ui.Row{Detail: line}
 	}
-	if len(fields) > 0 {
-		fields[0].Label = label
+	if len(rows) > 0 {
+		rows[0].Lead = label
 	}
-	return fields
+	return rows
 }
 
-// configLines names the user's configuration files the install changes and
-// whether their own settings survive.
-func (m Model) configLines() []string {
-	var lines []string
+// configChange is one of the user's configuration files the install
+// changes, and whether their own settings survive.
+type configChange struct {
+	path, note string
+}
+
+// configChanges lists the user's configuration files the install changes,
+// skipping the ones kept as they are.
+func (m Model) configChanges() []configChange {
+	var changes []configChange
 	for _, config := range m.plan.Summary.Configs {
 		if m.kept(config.Path) {
 			continue
@@ -735,9 +790,9 @@ func (m Model) configLines() []string {
 		case config.Merged:
 			note = ui.TextConfigMerged
 		}
-		lines = append(lines, path.Base(config.Path)+" — "+note)
+		changes = append(changes, configChange{path: config.Path, note: note})
 	}
-	return lines
+	return changes
 }
 
 func (m Model) reviewError() string {

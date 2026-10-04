@@ -32,3 +32,35 @@ func Fields(fields []Field) string {
 	}
 	return out.String()
 }
+
+// Row is one line of a Group: Lead carries the fact (a count and its noun,
+// a file name), Detail the muted qualifier after it. An empty Lead continues
+// the row above.
+type Row struct {
+	Lead   string
+	Detail string
+}
+
+// Group renders a titled group: the heading in the secondary role, then
+// each row with its Lead in one aligned column and its Detail muted after
+// it, so the facts read first and the qualifiers stay out of their way.
+func Group(title string, rows []Row) string {
+	// Only rows with a detail align; a lone lead (a total) stays out of the
+	// column so it cannot push every detail to the right.
+	width := 0
+	for _, row := range rows {
+		if row.Detail != "" {
+			width = max(width, lipgloss.Width(row.Lead))
+		}
+	}
+	var out strings.Builder
+	out.WriteString(theme.Secondary.Render(title) + "\n")
+	for _, row := range rows {
+		line := theme.Label.Render(row.Lead)
+		if row.Detail != "" {
+			line += strings.Repeat(" ", width-lipgloss.Width(row.Lead)+fieldGap) + theme.Caption.Render(row.Detail)
+		}
+		out.WriteString(line + "\n")
+	}
+	return out.String()
+}

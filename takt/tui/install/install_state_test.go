@@ -231,13 +231,14 @@ func TestReviewListsEveryChangeCategory(t *testing.T) {
 	m := planModel(t, StepReview, plan)
 	got := plain(m)
 	mustContain(t, got,
-		ui.TextDestinationValue,
-		fmt.Sprintf(ui.TextAgentsFmt, 3, 1, 2),
+		ui.TextReviewInstallTitle, ui.TextReviewScope, ui.TextGroupInstalls, ui.TextGroupDisk,
+		" 3 agents", fmt.Sprintf(ui.TextAgentRolesFmt, 1, 2),
 		fmt.Sprintf(ui.TextAgentModelsFmt, 2, "openai/gpt-6-luna"),
 		fmt.Sprintf(ui.TextAgentModelsFmt, 1, ui.TextInheritedModel),
-		"27", "codegraph · context7 · engram", "DAG panel · memory",
-		fmt.Sprintf(ui.TextFilesCountFmt, 3, 2),
-		"opencode.json — "+ui.TextConfigMerged, "cli.json — "+ui.TextConfigUpdated,
+		"27 skills", " 3 MCP servers", "codegraph · context7 · engram",
+		" 2 integrations", "DAG panel · memory",
+		"3 new files · 2 updated",
+		"opencode.json", ui.TextConfigMerged, "cli.json", ui.TextConfigUpdated,
 		fmt.Sprintf(ui.TextRemovalFmt, model.ComponentContext7, "needs network"),
 		"agents/bad.md"+ui.TextYourVersionKept,
 		"agents/far.md"+ui.TextNotAffectedNote, "agents/old.md"+ui.TextPreviouslyKeptNote,
@@ -246,11 +247,21 @@ func TestReviewListsEveryChangeCategory(t *testing.T) {
 
 	// Restoring Takt's version of a config says it replaces the user's.
 	m.restorePaths = []string{"cfg/cli.json"}
-	mustContain(t, plain(m), "cli.json — replaces your version")
+	mustContain(t, plain(m), "replaces your version")
 
 	// One shared model reads as "all on".
 	m.plan.Summary.Agents = m.plan.Summary.Agents[:2]
 	mustContain(t, plain(m), fmt.Sprintf(ui.TextAgentModelsAllFmt, "openai/gpt-6-luna"))
+}
+
+// File counts name only the parts that happen, in proper number.
+func TestReviewFileCountsOmitZeroParts(t *testing.T) {
+	m := planModel(t, StepReview, runtime.InstallPlan{Add: []string{"opencode/agents/one.md"}})
+	got := plain(m)
+	mustContain(t, got, "1 new file")
+	if strings.Contains(got, "updated") || strings.Contains(got, "1 new files") {
+		t.Errorf("review = %q, want only %q", got, "1 new file")
+	}
 }
 
 func TestReviewWithNothingToChangeAndWithPlanError(t *testing.T) {

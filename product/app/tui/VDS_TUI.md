@@ -161,23 +161,27 @@ The home has no header row and no signature line: the logo (its terminal represe
   Takt AI                                           Review
 
   ┌──────────────────────────────────────────────────────┐
-  │ Destination   ~/.config/opencode, for every project  │
-  │ Agents        13: 1 orchestrator, 12 specialists     │
-  │               [n] on [provider/model]                │
-  │               [n] on OpenCode's default model        │
-  │ Skills        [count]                                │
-  │ MCP servers   codegraph · context7 · engram          │
-  │ Integrations  DAG panel · memory · VFS · sandbox     │
-  │ Files         [n] new, [n] updated                   │
-  │ Your config   opencode.json — merged; your settings  │
-  │               are kept                               │
-  │ Kept          [path (your version is kept)]          │
+  │ Install into ~/.config/opencode                      │
+  │ for every project                                    │
+  │                                                      │
+  │ WHAT YOU GET                                         │
+  │ 13 agents        1 orchestrator · 12 specialists     │
+  │                  [n] on [provider/model]             │
+  │                  [n] on OpenCode's default model     │
+  │ 27 skills                                            │
+  │  3 MCP servers   codegraph · context7 · engram       │
+  │  4 integrations  DAG panel · memory · sandbox · VFS  │
+  │                                                      │
+  │ WHAT CHANGES ON DISK                                 │
+  │ [n] new files · [n] updated                          │
+  │ opencode.json    merged — your settings are kept     │
+  │ Kept             [path (your version is kept)]       │
   └──────────────────────────────────────────────────────┘
 
                ░ Personalize ░  █ Install █
 ```
 
-Review states what the install sets up in the user's terms, never as file categories or internal tier labels. Labels form one secondary column and values align after it; empty groups are omitted. Agents are counted and grouped by the model they run on. A configuration file the user owned before Takt is merged and says so; one Takt owns is updated.
+Review states what the install sets up in the user's terms, never as file categories or internal tier labels. A title names the destination, then two groups follow: what the install sets up and what it changes on disk. In each group the fact leads (a count aligned on its last digit, or a file name) and its qualifier follows muted in one aligned column; empty groups, rows and zero counts are omitted. Agents are counted by role and grouped by the model they run on. A configuration file the user owned before Takt is merged and says so; one Takt owns is updated.
 
 ```text
   Takt AI                                           Agents

@@ -215,11 +215,19 @@ func headerRow(step string, width int) string {
 func wrapBody(body string, width int) string {
 	var out []string
 	for line := range strings.SplitSeq(body, "\n") {
+		if ansi.StringWidth(line) <= width {
+			out = append(out, line)
+			continue
+		}
 		hang := hangingIndent(ansi.Strip(line))
 		if 2*hang >= width {
 			hang = 0
 		}
-		segments := strings.Split(ansi.Wrap(line, width-hang, ""), "\n")
+		// Wrap only the text after the indent, at the width it really has, so
+		// the first segment is not cut hang columns short.
+		head, text := ansi.Truncate(line, hang, ""), ansi.TruncateLeft(line, hang, "")
+		segments := strings.Split(ansi.Wrap(text, width-hang, ""), "\n")
+		segments[0] = head + segments[0]
 		for index := 1; index < len(segments); index++ {
 			segments[index] = strings.Repeat(" ", hang) + segments[index]
 		}
