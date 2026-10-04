@@ -259,6 +259,8 @@ test_version() {
     pass 'next-version bumps, skips, and overrides per release rules'
 }
 
+# test_create_tag verifies tag creation, reuse, conflicts, reserved-tag retries,
+# API failures, retry exhaustion, and version validation with an offline gh fake.
 test_create_tag() {
     local script="$ROOT/development/release/create-tag.sh" state="$TMP/gh-state"
     # Fake gh: tags listed in $state/existing as "tag sha" exist; tags in
@@ -287,7 +289,10 @@ case "$path" in
 esac
 SH
     chmod +x "$TMP/bin/gh"
+    # run_tag forwards VERSION and SHA to create-tag.sh using the fake GitHub
+    # repository and current fixture state, preserving its output and exit status.
     run_tag() { env FAKE_GH_STATE="$state" GITHUB_REPOSITORY=o/r bash "$script" "$@"; }
+    # reset recreates the empty fake GitHub state directory for the next scenario.
     reset() { rm -rf "$state"; mkdir -p "$state"; }
 
     reset
