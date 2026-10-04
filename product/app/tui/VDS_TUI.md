@@ -39,7 +39,7 @@ Apply the owning setup/installation requirement, then this profile, for any new 
 | --- | --- |
 | PR-UX-1 | Each screen MUST read as a brief header, a dominant task body grouped in panels, and an optional row of action buttons below the panel. No key bar is rendered. Scrolling MUST preserve that reading order and keep focused controls reachable. No full-screen double frame or empty branding band is required. |
 | PR-UX-2 | Operational screens MUST group their body in bordered panels without titles, centered with bounded width. Text inside a panel is left-aligned; the action button row is centered below it. List–detail is permitted only at 100 or more columns with at least 32 columns for list, 48 for detail, and room for margins/separation. Otherwise open detail as a nested view and preserve return context. |
-| PR-UX-2A | The entry (home) screen MUST render the canonical logo (`docs/assets/brand/takt-ai.png`, or an approved terminal representation of it, including ASCII art) beside the task list when width allows, stacked above it otherwise. The home composition keeps the one-line `Takt AI` signature directly below the logo, centered on it, as part of the entry layout, not as a logo fallback. Operational screens (selection, edit, review, execution, result, conflict) MUST NOT reserve a mandatory logo band; the shell, panel composition, and accent carry continuity instead. |
+| PR-UX-2A | The entry (home) screen MUST render the canonical logo (`docs/assets/brand/takt-ai.png`, or an approved terminal representation of it, including ASCII art) beside the task list when width allows, stacked above it otherwise. The home shows no `Takt AI` signature line: the logo alone identifies the product. Its terminal representation keeps the artwork's own colors and both rings, drawn with Unicode 16 octants on terminals known to support them and half-blocks everywhere else, never left to font fallback. Operational screens (selection, edit, review, execution, result, conflict) MUST NOT reserve a mandatory logo band; the shell, panel composition, and accent carry continuity instead. |
 | PR-UX-3 | The TUI has a single dark theme. It MUST consume the complete dark semantic token set, including painted canvas and panel backgrounds. There is no light or inherited-color theme. The token mapping in §3 is the only local adaptation; no separate palette or per-screen hex values are permitted. |
 | PR-UX-4 | Color MUST express semantic roles, never decoration alone. Focus, persistent selection, information, success, warning, and failure MUST remain distinct through markers and labels without color. Petroleum identifies brand/orientation and focus, green verified success and checked options, amber uncertainty/warning, and red failure or destructive consequence. |
 | PR-UX-5 | The host controls the monospace font. Use heading (`text.primary`, bold), content (`text.primary`), secondary (`text.secondary`), and supporting text (`text.muted`) roles with spacing and labels. Signature MAY use `brand.ink`; focus is an independent marker, not a heading role. No faint/opacity styling on functional text, imposed font, or simulated font sizes. |
@@ -104,7 +104,7 @@ This table maps terminal roles to the shared semantic token names; it does not d
 | --- | --- | --- |
 | Painted canvas and panels | `#0d0d0d` for the terminal canvas (neutral black, the TUI's native canvas — darker than `bg.canvas`); `bg.surface` (`N900`) inside panels; `border.control` for the panel border | Untitled panels; no shadows |
 | Heading/content/help | `text.primary`, `text.secondary`, `text.muted` | Order, bold when supported, explicit labels |
-| Home logo and signature | `P400` on the canvas in the dark TUI (brand.md §5.3 signature rule); logo beside the task list and one-line `Takt AI` signature directly below it, centered, per PR-UX-2A | Canonical logo per PR-UX-2A; signature always sits below the logo, not as a logo fallback |
+| Home logo | The canonical artwork's own flat colors on the canvas; logo beside the task list, per PR-UX-2A | Canonical logo per PR-UX-2A; no signature line on the home |
 | Focus | `focus.ring` for `>` and the focused field bar | `>` beside the focused option; bar beside the focused field |
 | Checked option | `success.fg` label; `text.muted` marker | `[x]`, independent of focus; single selection is the option under `>` |
 | Focused action button | `bg.canvas` text on `focus.ring` fill | Concrete verb/object label; fill marks focus |
@@ -144,16 +144,16 @@ These examples illustrate the required design. Brackets denote illustrative cont
 
 ```text
                                      > Configure installation
-                                       Change components or reapply Takt's files
-            [Canonical logo]           Assign models
-                                       Choose the model each agent runs on
-                                       Check for drift
+                                       Assign models
+            [Canonical logo]           Check for drift
                                        Uninstall
-                Takt AI                Diagnostics
+                                       Diagnostics
                                        Quit
+
+                                       Change components or reapply Takt's files
 ```
 
-The home has no header row: the bracketed logo (or its terminal representation) carries the identity, with the one-line `Takt AI` signature directly below it, centered on it. Logo and menu form one block centered in the screen; the menu is centered vertically against the logo and stacks below it when narrow. A muted description follows an option only where it tells options apart. When space runs out, descriptions are dropped before the logo; below the logo's size the signature alone remains (PR-UX-2A).
+The home has no header row and no signature line: the logo (its terminal representation) alone carries the identity. Logo and menu form one block centered in the screen; the menu block is centered vertically against the logo's ring and stacks below it when that draws a larger logo. Every option has a muted description, but only the one under the cursor is shown, in a single slot below the list whose line and width stay reserved, so moving the cursor never shifts the menu. The logo takes the largest generated variant that fits; below the smallest one the menu stands alone (PR-UX-2A).
 
 ### Review and nested edit
 

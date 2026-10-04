@@ -2,8 +2,10 @@ package uninstall_test
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,14 +44,12 @@ func installedRootWithModifiedFile(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatalf("LoadOwnershipManifest() error = %v", err)
 	}
-	var edited string
-	for path := range manifest.Entries {
-		edited = path
-		break
-	}
-	if edited == "" {
+	// The first managed path in sorted order, so every run edits the same file.
+	paths := slices.Sorted(maps.Keys(manifest.Entries))
+	if len(paths) == 0 {
 		t.Fatal("installed manifest has no managed entries to edit")
 	}
+	edited := paths[0]
 	full := filepath.Join(root, filepath.FromSlash(edited))
 	content, err := os.ReadFile(full)
 	if err != nil {

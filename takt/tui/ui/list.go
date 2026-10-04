@@ -32,21 +32,24 @@ func optionList(options []string, cursor int, base lipgloss.Style) string {
 	return out.String()
 }
 
-// Choices renders a single selection whose options may carry a muted
-// description on the line below (PR-UX-16); the value is the option under >.
-func Choices(items []Item, cursor int, focused bool) string {
-	if !focused {
-		cursor = -1
-	}
+// Menu renders a single selection whose only visible description is the one
+// under the cursor, in one slot below the list. The slot always takes its
+// line and the block is as wide as its widest label or description, so moving
+// the cursor never shifts the menu.
+func Menu(items []Item, cursor int) string {
 	indent := strings.Repeat(" ", lipgloss.Width(theme.Icon.Cursor))
+	width := 0
 	var out strings.Builder
 	for index, item := range items {
 		out.WriteString(markedRow("", item.Label, index == cursor, theme.Label))
-		if item.Description != "" {
-			out.WriteString(indent + theme.Caption.Render(item.Description) + "\n")
-		}
+		width = max(width, len(indent)+lipgloss.Width(item.Label), len(indent)+lipgloss.Width(item.Description))
 	}
-	return out.String()
+	description := ""
+	if cursor >= 0 && cursor < len(items) {
+		description = items[cursor].Description
+	}
+	out.WriteString("\n" + indent + theme.Caption.Render(description))
+	return lipgloss.NewStyle().Width(width).Render(out.String())
 }
 
 // Selector renders one single-choice field on a screen that holds several:
