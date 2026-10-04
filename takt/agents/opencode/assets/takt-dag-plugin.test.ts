@@ -52,7 +52,8 @@ function startDag(respond: () => Reply) {
   const killed: number[] = []
   let route: { render: (input: Rendered) => unknown } | undefined
   let sidebar: Slot | undefined
-  const layers: Array<() => { commands?: Array<{ id?: string; bind?: string; run: () => void }> }> = []
+  let app: Slot | undefined
+  const layers: Array<() => { commands?: Array<{ id?: string; bind?: string; slash?: { name: string }; run: () => void }> }> = []
   const navigated: unknown[] = []
   runtime.Bun.spawn = ((argv: string[]) => {
     spawned.push(argv)
@@ -65,7 +66,11 @@ function startDag(respond: () => Reply) {
     theme: { text: { base: "white" } },
     ui: {
       router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate(destination: unknown) { navigated.push(destination) } },
-      slot(value: Slot) { if (value.prepend === "sidebar.content") sidebar = value; return () => {} },
+      slot(value: Slot) {
+        if (value.prepend === "sidebar.content") sidebar = value
+        if (value.append === "app") app = value
+        return () => {}
+      },
     },
     keymap: { layer: (input: (typeof layers)[number]) => { layers.push(input) } },
   } as never)
@@ -73,6 +78,7 @@ function startDag(respond: () => Reply) {
     spawned, killed, layers, navigated,
     route: (sessionID: string | undefined) => route!.render({ data: { sessionID } }),
     sidebar: (sessionID: string) => sidebar!.render({ sessionID }),
+    app: () => app!.render({ sessionID: "root" }),
     stop() {
       if (typeof cleanup === "function") cleanup()
       runtime.Bun.spawn = originalSpawn
@@ -164,6 +170,20 @@ describe("DAG route view", () => {
     expect(frame).toContain("Takt DAG · waiting")
     expect(frame).toContain("waiting for confirmed projection")
     expect(spawned).toEqual([])
+  })
+})
+
+describe("DAG route entry", () => {
+  test("<leader>d and /takt-dag open the route for the current session", () => {
+    const dag = startDag(() => ({ hang: true }))
+    try {
+      dag.app()
+      const open = dag.layers.flatMap((layer) => layer().commands ?? []).find((command) => command.id === "takt.dag.open")
+      expect(open?.bind).toBe("<leader>d")
+      expect(open?.slash?.name).toBe("takt-dag")
+      open!.run()
+      expect(dag.navigated).toEqual([{ type: "plugin", name: "takt.dag", data: { sessionID: "root" } }])
+    } finally { dag.stop() }
   })
 })
 
