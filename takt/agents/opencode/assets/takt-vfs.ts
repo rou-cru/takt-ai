@@ -55,7 +55,7 @@ export function isHandoffEnvelope(value: Record<string, unknown>): value is Hand
     Array.isArray(value.extra_artifacts) && value.extra_artifacts.every(item => typeof item === "string") &&
     Array.isArray(value.memory) && value.memory.every(item => typeof item === "number")
 }
-type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; scope?: string[] }
+type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[] }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -89,7 +89,7 @@ export function parseClaim(item: unknown): OwnershipClaim[] {
   if (!isResponseObject(item)) return []
   const claim = item
   if (typeof claim.key !== "string" || typeof claim.root_session_id !== "string" || typeof claim.work_unit_id !== "string" || typeof claim.agent_id !== "string" || typeof claim.target_instance !== "string") return []
-  return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
+  return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(claim.staged === true ? { staged: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
 }
 // vfsResponse keeps the fields of a `takt-ai vfs` answer the plugin knows, each only when well typed.
 export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
@@ -237,6 +237,18 @@ const obj = (properties: Record<string, unknown>, required: string[]) =>
 // typed unknown because they pass through a Record<string, unknown>).
 export const asString = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback)
 
+// once runs work until it succeeds a single time. Concurrent callers share the
+// run in flight, and a failed run is attempted again by the next caller.
+function once(work: () => Promise<void>): () => Promise<void> {
+  let done = false
+  let running: Promise<void> | undefined
+  return async () => {
+    if (done) return
+    running ??= work().then(() => { done = true }).finally(() => { running = undefined })
+    return running
+  }
+}
+
 // SENSITIVE_READ_GLOBS are the secret-bearing paths no agent reads, injected
 // from the same list the global read rules deny.
 const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknown as string[]
@@ -304,6 +316,29 @@ export default Plugin.define({
     const delegations = new Map<string, Delegation>(
       Object.entries(((await ctx.storage.get(DELEGATIONS_KEY)) as Record<string, Delegation> | undefined) ?? {}))
     const persistDelegations = () => ctx.storage.set(DELEGATIONS_KEY, Object.fromEntries(delegations))
+    // A host subagent call lives inside the process that started it, so a call
+    // recorded by an earlier process died with it: its liveness is uncertain, and
+    // it is reconciled as not running, which releases its slot (PR-HAR-18). Only
+    // those inherited records are reconciled; a call this process admitted is
+    // alive. This is bookkeeping about the past and never stands in the way of a
+    // new delegation: a record that fails to reconcile is kept for the next
+    // attempt, and the unit's staged work and claims stay as they are. A unit
+    // that is no longer in flight has nothing to reconcile and succeeds at once.
+    const inherited = new Map(delegations)
+    let reconciling: Promise<void> | undefined
+    const reconcileStoredDelegations = () => reconciling ??= (async () => {
+      for (const [delegation, d] of inherited) {
+        try {
+          await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
+          await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
+          inherited.delete(delegation)
+          delegations.delete(delegation)
+          await persistDelegations()
+        } catch (error) {
+          console.error("Takt could not reconcile a stored delegation yet", delegation, error)
+        }
+      }
+    })().finally(() => { reconciling = undefined })
     // deliveries and childOf track a producer's result delivery for the life
     // of one delegation only; neither is durable, unlike bindings/delegations
     // above, because a producer whose process died must redeliver anyway.
@@ -636,7 +671,6 @@ export default Plugin.define({
 
     // GC policy and lifecycle live in Go. This queue only transports host events
     // and API-created child identities; no event handler waits for model work.
-    let gcInitialized = false
     let gcQueue: Promise<void> = Promise.resolve()
     const prompted = new Set<string>()
     const gcChildren = new Set<string>()
@@ -716,26 +750,15 @@ export default Plugin.define({
     async function returnInterface(root: string, from: string, envelope: unknown): Promise<void> {
       await ctx.session.synthetic({ sessionID: root, text: `The interface is back from ${from}. Envelope:\n${JSON.stringify(envelope, null, 2)}` })
     }
-    async function initializeGC() {
-      if (gcInitialized) return
-      // A process restart cannot prove that an old model turn has stopped. Abort
-      // known children first, then ask the core to restore its own cycle only.
+    // A process restart cannot prove that an old model turn has stopped. Abort
+    // known children first, then ask the core to restore its own cycle only.
+    const restoreGCCycle = once(async () => {
       const state = await coordinate({ action: "status" })
       if (isCoordinatorResponse(state) && state.cycle) {
         for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
         await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
       }
-      // A host subagent call lives inside the process that started it, so one
-      // still recorded here died with that process: its liveness is uncertain,
-      // and it is reconciled as not running, which releases its slot (PR-HAR-18).
-      for (const [delegation, d] of delegations) {
-        await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
-        await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
-        delegations.delete(delegation)
-        await persistDelegations()
-      }
-      gcInitialized = true
-    }
+    })
     function scheduleGC() {
       // setTimeout releases tool/event hooks before the SDK is asked to prompt.
       setTimeout(() => {
@@ -755,7 +778,7 @@ export default Plugin.define({
       }, 0)
     }
     async function pumpGC() {
-      await initializeGC()
+      await restoreGCCycle()
       const state = await coordinate({ action: "status" })
       const cycle = isCoordinatorResponse(state) ? state.cycle : undefined
       if (!cycle?.plan) return
@@ -838,7 +861,7 @@ export default Plugin.define({
         return
       }
       if (event.tool !== "subagent") return
-      await initializeGC()
+      await reconcileStoredDelegations()
       const root = await rootSession(event.sessionID)
       const input = isResponseObject(event.input) ? event.input : {}
       // The delegation's description names the work unit it executes: a planned
@@ -911,7 +934,7 @@ export default Plugin.define({
           scheduleGC()
         }
       } else if (event.tool.startsWith("vfs_") && !gcChildren.has(event.sessionID)) {
-        await initializeGC()
+        await restoreGCCycle()
         await coordinate({ action: "tick", session: await rootSession(event.sessionID) })
         scheduleGC()
       }
@@ -1048,7 +1071,7 @@ export default Plugin.define({
         input: obj({}, []),
         async execute(_args, c) {
           if (c.sessionID !== await rootSession(c.sessionID)) throw new Error("GC requests belong to the root interlocutor")
-          await initializeGC()
+          await restoreGCCycle()
           const result = await coordinate({ action: "request", session: c.sessionID })
           scheduleGC()
           return { content: JSON.stringify(result) }
@@ -1121,14 +1144,15 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept, only added paths are checked for collisions, and the set must include every path already staged.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Instance id of the specialist you will launch"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
+        author_key: str("The author_key of this unit's existing staged work to keep; omit for new work"),
       }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
-        return { content: JSON.stringify(await takt("assign", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, scope: args.scope })) }
+        return { content: JSON.stringify(await takt("assign", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, scope: args.scope, author_key: args.author_key })) }
       } })
       editor.add({ name: "claim_assign_verifier", description: "Before delegating a gate, preassign the verifier to the staged work it judges.", input: obj({
         work_unit_id: str("The verifier's own unit, the one its delegation will be named after"),
@@ -1139,20 +1163,18 @@ export default Plugin.define({
         orchestratorOnly(c, "VFS verifier assignment")
         return { content: JSON.stringify(await takt("assign-verifier", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. Release a prior-session claim directly. For a claim in the current root session, first ask the user through the orchestrator's native question mechanism and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
+      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
         orchestratorOnly(c, "VFS claim release")
         const session = await rootSession(c.sessionID)
         const claims = await takt("claims", { session_id: session })
         const claim = (claims.claims ?? []).find((x: OwnershipClaim) => x.key === args.claim_key)
         if (!claim) throw new Error(`unknown claim_key ${args.claim_key}; call claim_list and use an exact listed key`)
-        if (claim.root_session_id === session && args.confirmed !== true) {
-          let status = "neither active nor pending"
-          if (claim.pending === true) status = "pending"
-          else if (claim.active === true) status = "active"
-          throw new Error(`WARNING: agent ${claim.agent_id} (instance ${claim.target_instance}, ${status}) owns [${(claim.scope ?? []).join(", ")}]. Ask the user via the orchestrator's native question mechanism whether to release this exact claim; retry with confirmed:true only after an explicit yes. This server plugin cannot present dialogs or verify confirmation. Ownership was not released; staged delta is preserved.`)
+        if (claim.staged === true) throw new Error(`Claim ${claim.key} holds staged work for [${(claim.scope ?? []).join(", ")}]. Consolidate it with vfs_consolidate, reassign it with claim_assign and author_key ${claim.key}, or discard it with vfs_discard. Discard only when repairing it costs notoriously more than redoing it. Nothing was released.`)
+        if (claim.root_session_id === session && claim.active === true && args.confirmed !== true) {
+          throw new Error(`WARNING: agent ${claim.agent_id} (instance ${claim.target_instance}, active) owns [${(claim.scope ?? []).join(", ")}]. Ask the user via the orchestrator's native question mechanism whether to release this exact claim; retry with confirmed:true only after an explicit yes. This server plugin cannot present dialogs or verify confirmation. Ownership was not released.`)
         }
-        return { content: JSON.stringify(await takt("release", { session_id: session, claim_key: claim.key })) }
+        return { content: JSON.stringify(await takt("release", { session_id: session, key: claim.key })) }
       } })
 
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
@@ -1318,11 +1340,17 @@ export default Plugin.define({
           const args = toolInput<{ scope: string[]; author_key?: string }>(input)
           const session = await rootSession(c.sessionID)
           const authorKey = typeof args.author_key === "string" ? args.author_key : undefined
+          const unit = await delegatedUnit(c.sessionID)
+          const claim = authorKey || c.agent === "verify"
+            ? await findClaim(session, unit, c.agent, ["pending", "active"])
+            : undefined
+          if (claim?.author_key && (authorKey !== claim.author_key || args.scope.length !== 0)) {
+            throw new Error(`Bind the verifier with scope: [] and author_key: ${claim.author_key}; the author owns the files being judged`)
+          }
           const author = authorKey ? bindings.get(authorKey) : undefined
           if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
           // A verifier runs as its own unit; the author key alone links it to
           // the staged work it judges.
-          const unit = await delegatedUnit(c.sessionID)
           const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
           const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope: args.scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
           b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
@@ -1444,13 +1472,13 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_consolidate",
-        description: "Move an author's verified staged work into the workspace once its verdict passed. Name the author by the author_key it reported; a missing or failed verdict leaves the work staged.",
+        description: "Move authorized staged work into the workspace by author_key. When a verdict applies, it must pass and match the staged revision; ownership and physical-base checks always apply.",
         input: obj({
           author_key: str("The author_key of the staged work to consolidate"),
-          checkpoint: str("Short consolidation label hashed into the journal"),
-        }, ["author_key", "checkpoint"]),
+          checkpoint: str("Optional short label hashed into the journal; defaults to the author key and revision"),
+        }, ["author_key"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ author_key: string; checkpoint: string }>(input)
+          const args = toolInput<{ author_key: string; checkpoint?: string }>(input)
           if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           // Consolidation is the orchestrator's act over work its own delegations
           // staged (PR-DAG-REP-5); the author's binding speaks for the delta.

@@ -41,7 +41,6 @@ Errors are typed because consumers must fail visibly and differently depending o
 - [type MCPServer](<#MCPServer>)
 - [type MCPState](<#MCPState>)
 - [type Model](<#Model>)
-- [type ModelCost](<#ModelCost>)
 - [type ModelRef](<#ModelRef>)
   - [func \(r ModelRef\) String\(\) string](<#ModelRef.String>)
 - [type Option](<#Option>)
@@ -100,18 +99,15 @@ func RedactError(err error) error
 RedactError removes credentials and prompt contents before an API error is included in user\-facing diagnostics. It preserves the original error chain.
 
 <a name="Agent"></a>
-## type [Agent](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L83-L90>)
+## type [Agent](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L62-L66>)
 
-Agent is one agent OpenCode has registered, including the model reference it is pinned to \(nil when it inherits the session or default model\).
+Agent is one agent OpenCode has registered.
 
 ```go
 type Agent struct {
-    ID          string
-    Name        string
-    Description string
-    Mode        string // "subagent", "primary" or "all"
-    Hidden      bool
-    Model       *ModelRef
+    ID     string
+    Mode   string // "subagent", "primary" or "all"
+    Hidden bool
 }
 ```
 
@@ -227,7 +223,7 @@ Skills returns the skills the server discovered and can load on demand.
 Route: GET /api/skill \(skill.list\).
 
 <a name="Handshake"></a>
-## type [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L112-L120>)
+## type [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L85-L88>)
 
 Handshake is the outcome of checking that the local OpenCode is functional for Takt before anything is installed or mutated.
 
@@ -235,11 +231,6 @@ Handshake is the outcome of checking that the local OpenCode is functional for T
 type Handshake struct {
     Version string
     Major   int
-    // ModelRoutes reports that the experimental model routes answered — the
-    // V2 mechanism Takt relies on. A v2 binary whose model routes fail is
-    // installed but not functional for Takt, and that distinction is exactly
-    // what the handshake exists to make.
-    ModelRoutes bool
 }
 ```
 
@@ -255,21 +246,20 @@ type Info struct {
 ```
 
 <a name="MCPServer"></a>
-## type [MCPServer](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L74-L79>)
+## type [MCPServer](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L55-L59>)
 
 MCPServer is one configured MCP server with the connection state OpenCode actually observes — not what configuration files claim.
 
 ```go
 type MCPServer struct {
-    Name          string
-    State         MCPState
-    Error         string // why the server failed or needs auth; empty when healthy
-    IntegrationID string // set for remote servers registered as OAuth integrations
+    Name  string
+    State MCPState
+    Error string // why the server failed or needs auth; empty when healthy
 }
 ```
 
 <a name="MCPState"></a>
-## type [MCPState](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L61>)
+## type [MCPState](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L42>)
 
 MCPState is the connection state OpenCode reports for an MCP server. An unknown state fails parsing so verification never mistakes a half\-connected server for a working one.
 
@@ -290,39 +280,15 @@ const (
 ```
 
 <a name="Model"></a>
-## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L44-L56>)
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L33-L37>)
 
-Model is the structured replacement for parsing "opencode models" text: identity, lifecycle status, tool support, limits and cost. Unknown API fields are ignored by design.
+Model is the structured replacement for parsing "opencode models" text. Only Ref is read anywhere; the rest of the wire payload \(name, status, capabilities, limits, cost\) is validated on decode but not carried.
 
 ```go
 type Model struct {
-    Ref          ModelRef
-    Name         string
-    Status       string // "alpha", "beta", "deprecated" or "active"
-    Enabled      bool
-    Tools        bool
-    InputTypes   []string // e.g. ["text", "image"]
-    OutputTypes  []string // e.g. ["text"]
-    ContextLimit int
-    OutputLimit  int
-    ReleasedAt   int64 // milliseconds since the Unix epoch, as reported by the API
-    Cost         []ModelCost
-}
-```
-
-<a name="ModelCost"></a>
-## type [ModelCost](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L32-L39>)
-
-ModelCost is one price tier of a model, in USD per million tokens. A model can report several tiers; TierType is empty when the entry is untiered.
-
-```go
-type ModelCost struct {
-    TierType   string
-    TierSize   int
-    Input      float64
-    Output     float64
-    CacheRead  float64
-    CacheWrite float64
+    Ref ModelRef
+    // Name is the human label OpenCode shows ("GPT-6 Luna Fast").
+    Name string
 }
 ```
 
@@ -385,7 +351,7 @@ func WithRunner(r runner) Option
 WithRunner replaces the process execution layer. It is a test\-support seam for callers that need to stub the CLI without shipping a fake binary.
 
 <a name="Plugin"></a>
-## type [Plugin](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L103-L108>)
+## type [Plugin](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L76-L81>)
 
 Plugin is one server plugin with its loading result. Status is a decision input for verification, so an unknown status fails parsing instead of being mapped to something optimistic.
 
@@ -399,16 +365,13 @@ type Plugin struct {
 ```
 
 <a name="Skill"></a>
-## type [Skill](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L93-L98>)
+## type [Skill](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L69-L71>)
 
 Skill is one skill OpenCode has discovered and made loadable.
 
 ```go
 type Skill struct {
-    ID          string
-    Name        string
-    Description string
-    Path        string
+    ID string
 }
 ```
 

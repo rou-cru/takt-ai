@@ -1,6 +1,6 @@
 ---
 name: takt-vfs-mutation
-description: "For execution specialists staging workspace changes during implementation, defect repair, or structural cleanup."
+description: "Use when staging workspace changes during implementation, defect repair, or structural cleanup."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -14,6 +14,9 @@ action needing the same confirmation as one.
 
 **Change the workspace only through your VFS assignment.** Stage every change within the
 assigned scope and return the author key in your handoff. Never use native edit or write tools.
+
+Bind with `vfs_bind` using the exact assigned file scope. Use `vfs_write`/`vfs_delete` to
+stage changes. Report which checks ran and what remained unavailable.
 
 **Stay inside your scope.** When the work needs a file outside it, return that path and why
 instead of reaching it. Read beyond your scope only what your brief allows.

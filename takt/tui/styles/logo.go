@@ -9,7 +9,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 )
 
-//go:generate go run ../../../development/generate-logo -input ../../../docs/assets/brand/takt-ai.png -output logo_generated.go -blocks-output logo_blocks_generated.go -installer ../../../install.sh
+//go:generate go run ../../../development/generate-logo -input ../../../docs/assets/brand/takt-ai.png -output logo_generated.go -blocks-output logo_blocks_generated.go -image-output logo.png -installer ../../../install.sh
 
 // logoSpan holds one colored text run so logo rows stay compact. The type
 // lives here, hand-written, because both generated datasets share it.
@@ -19,32 +19,46 @@ type logoSpan struct {
 	Bg    string
 }
 
-// glyphs is the color logo's character set: half-blocks until Run measures
-// the terminal with ProbeGlyphs.
-var glyphs = GlyphsHalfBlocks
+// mode is how the color logo is drawn: quadrants until Run measures the
+// terminal with ProbeLogoMode.
+var mode = ModeQuadrants
 
-// SetGlyphs sets the color logo's character set: Run stores what
-// ProbeGlyphs measured, and fixtures pin half-blocks.
-func SetGlyphs(g Glyphs) { glyphs = g }
+// SetLogoMode sets how the color logo is drawn: Run stores what
+// ProbeLogoMode measured, and fixtures pin quadrants.
+func SetLogoMode(m LogoMode) { mode = m }
+
+// ImageLogo reports whether the logo is drawn as an image, which its caller
+// then places over the cells Logo reserves.
+func ImageLogo() bool { return mode == ModeImage && !theme.Mono() }
+
+// LogoCell fills the cells Logo reserves for the image: a blank Braille
+// pattern, blank in every font, that nothing else on the home draws.
+const LogoCell = '\u2800'
 
 // Logo draws the largest variant of the brand mark that fits in width×height
 // cells, or "" when none does. Mono terminals get the Braille mark, whose
-// shape survives the loss of color; color terminals get octants or
-// half-blocks, as SetGlyphs last chose.
+// shape survives the loss of color; color terminals get quadrants, or, when
+// the logo is an image, a block of LogoCell the size of the variant.
 func Logo(width, height int) string {
-	variants := generatedLogoHalfBlocks
-	switch {
-	case theme.Mono():
+	variants := generatedLogoQuadrants
+	if theme.Mono() {
 		variants = generatedLogoBraille
-	case glyphs == GlyphsOctants:
-		variants = generatedLogoOctants
 	}
 	for _, variant := range variants {
 		if len(variant) <= height && variantWidth(variant) <= width {
+			if ImageLogo() {
+				return reserve(variantWidth(variant), len(variant))
+			}
 			return render(variant)
 		}
 	}
 	return ""
+}
+
+// reserve is a cols×rows block of LogoCell.
+func reserve(cols, rows int) string {
+	row := strings.Repeat(string(LogoCell), cols)
+	return strings.TrimSuffix(strings.Repeat(row+"\n", rows), "\n")
 }
 
 // variantWidth is the cell width of a variant's first row; every row of a

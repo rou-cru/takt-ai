@@ -255,6 +255,100 @@ func TestAssignVerifierRefusals(t *testing.T) {
 	})
 }
 
+func TestRevokeOwnershipNeverLeavesAnOwnerlessDelta(t *testing.T) {
+	f, _, _ := durable(t)
+	key := bind(t, f, "author", "u", "dev", "a.go", "b.go")
+	if err := f.RevokeOwnership(key); err != nil {
+		t.Fatalf("release without staged work = %v", err)
+	}
+	if _, owned := f.owners["a.go"]; owned {
+		t.Fatal("release kept the paths")
+	}
+	key = bind(t, f, "retry", "u2", "dev", "c.go")
+	apply(t, f, applyCase{key, "create", 0, OpCreate, "c.go", "work in progress"})
+	if claims := f.OwnershipClaims("s"); len(claims) != 1 || !claims[0].Staged {
+		t.Fatalf("claims = %+v; want one marked staged", claims)
+	}
+	if err := f.RevokeOwnership(key); !errors.Is(err, ErrStagedWork) {
+		t.Fatalf("release with staged work = %v; want ErrStagedWork", err)
+	}
+	if f.owners["c.go"] != key || string(f.staged[key].files["c.go"]) != "work in progress" {
+		t.Fatal("a refused release changed the claim or its delta")
+	}
+}
+
+func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
+	f, _, _ := durable(t)
+	key := bind(t, f, "author", "u", "dev", "a.go", "spare.go")
+	staged := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.go", "partial"})
+	peer := bind(t, f, "peer", "other", "dev", "p.go")
+	retry := Identity{SessionID: "s", WorkUnitID: "u", AgentID: "author", Specialist: "dev"}
+	for name, tc := range map[string]struct {
+		identity Identity
+		key      AgentID
+		scope    []string
+		want     error
+	}{
+		"drops a staged path":    {retry, key, []string{"b.go"}, ErrScopeDenied},
+		"collides on added path": {retry, key, []string{"a.go", "p.go"}, ErrCollision},
+		"another unit's key":     {Identity{SessionID: "s", WorkUnitID: "other", AgentID: "author", Specialist: "dev"}, key, []string{"a.go"}, ErrIdentity},
+		"unknown key":            {retry, "ghost", []string{"a.go"}, ErrIdentity},
+	} {
+		if err := f.ReassignScope(tc.identity, tc.key, tc.scope); !errors.Is(err, tc.want) {
+			t.Errorf("%s: ReassignScope() = %v; want %v", name, err, tc.want)
+		}
+	}
+	if f.owners["spare.go"] != key || f.owners["p.go"] != peer {
+		t.Fatal("a refused reassignment changed ownership")
+	}
+	if err := f.ReassignScope(retry, key, []string{"a.go", "b.go"}); err != nil {
+		t.Fatalf("ReassignScope() = %v", err)
+	}
+	held := f.bindings[key]
+	if !held.Prelaunch || held.AttemptID != "2" {
+		t.Fatalf("binding = %+v; want a prelaunch claim on attempt 2", held)
+	}
+	if f.owners["a.go"] != key || f.owners["b.go"] != key {
+		t.Fatal("the new scope is not owned")
+	}
+	if _, owned := f.owners["spare.go"]; owned {
+		t.Fatal("an unused path stayed owned after leaving the scope")
+	}
+	if got := f.staged[key]; string(got.files["a.go"]) != "partial" || got.revision != staged.Revision || got.verdict != nil {
+		t.Fatalf("delta = %+v; want the staged content and revision kept, no verdict", got)
+	}
+}
+
+func TestRefusedReassignScopeLeavesNoDelta(t *testing.T) {
+	f, _, _ := durable(t)
+	key := bind(t, f, "author", "u", "dev", "a.go")
+	bind(t, f, "peer", "other", "dev", "p.go")
+	staged := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.go", "done"})
+	if err := f.ConsolidateCheckpoint(key, "cp", staged.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := f.staged[key]; kept {
+		t.Fatal("consolidation kept the delta")
+	}
+	retry := Identity{SessionID: "s", WorkUnitID: "u", AgentID: "author", Specialist: "dev"}
+	if err := f.ReassignScope(retry, key, []string{"a.go", "p.go"}); !errors.Is(err, ErrCollision) {
+		t.Fatalf("ReassignScope() = %v; want ErrCollision", err)
+	}
+	if _, kept := f.staged[key]; kept {
+		t.Fatal("a refused reassignment left an empty delta behind")
+	}
+}
+
+func TestConsolidateCheckpointDefaultsItsLabelAndRefusesNothing(t *testing.T) {
+	r := newVerdictRig(t)
+	if err := r.f.ConsolidateCheckpoint(r.author, "  ", r.staged.Revision); err != nil {
+		t.Fatalf("blank checkpoint label = %v; want the default label to be used", err)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "again", r.staged.Revision); !errors.Is(err, ErrNothingStaged) {
+		t.Fatalf("consolidating again = %v; want ErrNothingStaged", err)
+	}
+}
+
 func TestRevokeOwnershipRefusesUnknownKey(t *testing.T) {
 	f, _, _ := durable(t)
 	if err := f.RevokeOwnership("ghost"); !errors.Is(err, ErrIdentity) {
@@ -565,11 +659,9 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 		revision   uint64
 		want       error
 	}{
-		"blank checkpoint":      {r.author, "  ", rev, ErrVerificationRequired},
 		"unknown key":           {"ghost", "cp", rev, ErrIdentity},
 		"stale revision":        {r.author, "cp", rev + 1, ErrStaleRevision},
-		"no verdict yet":        {r.author, "cp", rev, ErrInvalidVerdict},
-		"binding without delta": {r.verifier, "cp", 0, ErrInvalidVerdict},
+		"binding without delta": {r.verifier, "cp", 0, ErrNothingStaged},
 	} {
 		if err := r.f.ConsolidateCheckpoint(tc.key, tc.checkpoint, tc.revision); !errors.Is(err, tc.want) {
 			t.Errorf("%s: ConsolidateCheckpoint() = %v; want %v", name, err, tc.want)
@@ -581,5 +673,21 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 	r.f.staged[r.author].verdict.Invariants = InvariantSet{escapingPath}
 	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev); !errors.Is(err, ErrIdentity) {
 		t.Errorf("unreadable verdict invariants: ConsolidateCheckpoint() = %v; want ErrIdentity", err)
+	}
+}
+
+func TestConsolidateWithoutVerifierPreservesOwnershipAndBaseChecks(t *testing.T) {
+	r := newVerdictRig(t)
+	if err := r.f.ConsolidateCheckpoint(r.author, "approved", r.staged.Revision+1); !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("stale revision = %v", err)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "approved", r.staged.Revision); err != nil {
+		t.Fatalf("authorized consolidation without gate = %v", err)
+	}
+	claims := r.f.OwnershipClaims("s")
+	for _, claim := range claims {
+		if claim.Key == r.author && len(claim.Scope) != 0 {
+			t.Fatal("consolidation retained the author's ownership")
+		}
 	}
 }

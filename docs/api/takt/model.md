@@ -137,7 +137,7 @@ func ValidateRoleClass(subject string, r RoleClass) error
 ValidateRoleClass fails fast on missing or unknown classes so bad configs surface before dispatch.
 
 <a name="CanonicalSubAgent"></a>
-## type [CanonicalSubAgent](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L43-L46>)
+## type [CanonicalSubAgent](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L39-L42>)
 
 CanonicalSubAgent names one specialist of the crew every adapter configures.
 
@@ -167,17 +167,13 @@ const (
     ComponentSkills ComponentID = "skills"
     // ComponentContext7 names the docs-lookup integration so installs can toggle it independently.
     ComponentContext7 ComponentID = "context7"
-    // ComponentTheme names the shared theme piece so branding stays optional.
-    ComponentTheme ComponentID = "theme"
-    // ComponentOpenCodeTaktLogo names the OpenCode logo piece so branding stays optional per target.
-    ComponentOpenCodeTaktLogo ComponentID = "opencode-takt-logo"
     // ComponentCodegraph names the codebase-exploration MCP integration, mandatory core like Engram.
     ComponentCodegraph ComponentID = "codegraph"
 )
 ```
 
 <a name="InjectionResult"></a>
-## type [InjectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L49-L56>)
+## type [InjectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L45-L52>)
 
 InjectionResult reports what an inject or remove changed so callers can record ownership and show honest summaries.
 

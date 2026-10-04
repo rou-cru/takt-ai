@@ -89,9 +89,6 @@ func TestConsolidateLockedRefusals(t *testing.T) {
 		t.Errorf("consolidateLocked(path owned elsewhere) = %v; want ErrScopeDenied", err)
 	}
 	f.owners["a.go"] = agent
-	if err := f.consolidateLocked(agent); !errors.Is(err, ErrVerificationRequired) {
-		t.Errorf("consolidateLocked(no verdict) = %v; want ErrVerificationRequired", err)
-	}
 }
 
 func TestReadMergedRefusesUnsafePhysicalPath(t *testing.T) {

@@ -61,7 +61,7 @@ Each cell resolves to allowed, denied, or approval-gated per `PR-HAR-8`.
 | --- | --- |
 | A specialty declares no admitted roles, or an instance has no single admitted role | Visible failure before dispatch; the specialist is not dispatched and the condition is reported. |
 | A specialist attempts an action outside its class profile | Denied or approval-gated by the harness per `PR-HAR-8`, with a visible deterministic result. |
-| The authoring agent is the only candidate to verify its own delta | Consolidation does not proceed; the orchestrator escalates rather than accepting a self-issued verdict. |
+| The delivery contract requires an independent verdict and the authoring agent is the only candidate to give it | The gated consolidation does not proceed; the orchestrator escalates rather than accepting a self-issued verdict. Work the contract does not gate is unaffected. |
 | The orchestrator requests the pair without naming an admissible condition of `PR-CRW-15` | The request is refused deterministically and visibly; the single verdict path remains available. |
 | A role class the work needs is unavailable in the session | The present agent delivers under `PR-CRW-13` and declares the absorbed lane; an unavailable specialist is never reported as a reason not to deliver. |
 

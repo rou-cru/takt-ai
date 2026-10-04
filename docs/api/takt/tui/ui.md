@@ -11,17 +11,26 @@ Package ui contains reusable terminal UI primitives.
 ## Index
 
 - [Constants](<#constants>)
+- [func AgentsAssigned\(count int\) string](<#AgentsAssigned>)
 - [func Back\(\) tea.Msg](<#Back>)
 - [func BodyHeight\(height int\) int](<#BodyHeight>)
-- [func Busy\(operation string, cancelRequested bool, marker string, updates ...Progress\) string](<#Busy>)
+- [func Busy\(operation string, marker string, progress Progress\) string](<#Busy>)
+- [func BusyFooter\(cancelRequested bool\) string](<#BusyFooter>)
 - [func CheckList\(items \[\]Item, cursor int, focused bool\) string](<#CheckList>)
+- [func ContentRows\(height, footerLines int\) int](<#ContentRows>)
+- [func Fields\(fields \[\]Field\) string](<#Fields>)
 - [func FooterActions\(actions \[\]FooterAction, cursor int, focused bool\) string](<#FooterActions>)
+- [func Group\(title string, rows \[\]Row\) string](<#Group>)
+- [func HomeRows\(height int\) int](<#HomeRows>)
 - [func InnerWidth\(width int\) int](<#InnerWidth>)
+- [func Menu\(items \[\]Item, cursor int\) string](<#Menu>)
 - [func MoveCursor\(cursor, count, delta int\) int](<#MoveCursor>)
 - [func Nudge\(cursor \*int, n int, km keys.KeyMap, msg tea.Msg\) bool](<#Nudge>)
 - [func NudgeHorizontal\(cursor \*int, n int, km keys.KeyMap, msg tea.Msg\) bool](<#NudgeHorizontal>)
 - [func Options\(options \[\]string, cursor int, focused bool\) string](<#Options>)
+- [func PanelWidth\(width int\) int](<#PanelWidth>)
 - [func Scroll\(scroll, height int, key string\) \(int, bool\)](<#Scroll>)
+- [func Selector\(options \[\]string, cursor, chosen int, focused bool\) string](<#Selector>)
 - [func Shell\(frame Frame\) string](<#Shell>)
 - [func Status\(state State, message string\) string](<#Status>)
 - [func TargetLabel\(id string\) string](<#TargetLabel>)
@@ -29,11 +38,13 @@ Package ui contains reusable terminal UI primitives.
 - [func Verification\(report verify.Report\) string](<#Verification>)
 - [type BackMsg](<#BackMsg>)
 - [type Dirtier](<#Dirtier>)
+- [type Field](<#Field>)
 - [type FooterAction](<#FooterAction>)
   - [func Actions\(labels ...string\) \[\]FooterAction](<#Actions>)
 - [type Frame](<#Frame>)
 - [type Item](<#Item>)
 - [type Progress](<#Progress>)
+- [type Row](<#Row>)
 - [type Section](<#Section>)
   - [func SwitchSection\(current Section, keymap keys.KeyMap, message tea.Msg\) \(Section, bool\)](<#SwitchSection>)
 - [type Spinner](<#Spinner>)
@@ -77,6 +88,15 @@ const (
     TextMenuConfigure    = "Configure installation"
     TextMenuQuit         = "Quit"
 
+    // Menu descriptions: one per option, shown only under the cursor.
+    TextMenuInstallDesc      = "Agents, skills and MCP servers on OpenCode v2"
+    TextMenuConfigureDesc    = "Change components or reapply Takt's files"
+    TextMenuAssignModelsDesc = "Choose the model each agent runs on"
+    TextMenuCheckDriftDesc   = "Find and restore files changed outside Takt"
+    TextMenuUninstallDesc    = "Remove Takt's files, keeping what you choose"
+    TextMenuDiagnosticsDesc  = "Check that each capability works"
+    TextMenuQuitDesc         = "Leave Takt"
+
     // Guard overlay.
     TextGuardKeepEditing   = "Keep editing"
     TextGuardDiscard       = "Discard changes"
@@ -88,15 +108,15 @@ const (
     TextShellTooSmallFmt = "Terminal too small: need at least %dx%d (current %dx%d). Resize to continue."
 
     // Busy / footer primitives.
-    TextInProgressSuffix = " in progress."
-    TextCancelRequested  = "Cancellation requested. The current phase must finish before Takt can report what was applied."
-    TextCancelHint       = "Ctrl+C requests cancellation."
-    TextUnavailableIntro = "  Unavailable: "
+    TextCancelRequested  = "stopping after the current phase"
+    TextActionCancel     = "Cancel"
+    TextEarlierPhasesFmt = "%d earlier phases done"
+    TextUnavailableIntro = "Unavailable: "
 
     // Shared actions.
     TextActionBackToMenu      = "Back to menu"
+    TextActionRepair          = "Repair"
     TextActionQuit            = "Quit"
-    TextActionContinue        = "Continue"
     TextActionPersonalize     = "Personalize"
     TextActionInstall         = "Install"
     TextActionApplyChanges    = "Apply changes"
@@ -113,12 +133,9 @@ const (
     TextActionAssignAnother   = "Assign another"
 
     // Install flow.
-    TextSetupDefault        = "Default — install the recommended stack"
-    TextSetupCustom         = "Custom — choose what to include"
     TextOpenCodeNotFound    = "OpenCode was not found on PATH — Takt installs its configuration anyway."
     TextTitleInstall        = "Install"
     TextTitleConfigure      = "Configure installation"
-    TextStepSetup           = "Setup"
     TextStepComponents      = "Components"
     TextStepExisting        = "Existing files"
     TextStepReview          = "Review"
@@ -144,36 +161,53 @@ const (
     TextNotAffectedTitle    = "Not affected by this operation"
     TextKeepCannotWorkFmt   = "Keeping %s cannot work. %s"
     TextScopeFmt            = "Scope: %s · user-global installation"
-    TextComponentsLineFmt   = "Components: %s"
     TextCannotPrepareIntro  = "Cannot prepare the review: "
     TextNothingChangedRetry = "Nothing was changed. Personalize your choices, or go back and try again."
-    TextSectionAdd          = "Add"
-    TextSectionModifyFmt    = "Modify: %d files"
-    TextSectionNotInstalled = "Not installed (dependency unmet)"
-    TextSectionPreserve     = "Preserve"
-    TextSectionUncertain    = "Uncertain:"
     TextReplacesYours       = " (replaces your version)"
     TextYourVersionKept     = " (your version is kept)"
     TextNotAffectedNote     = " (not affected by this operation)"
     TextPreviouslyKeptNote  = " (previously kept)"
     TextNothingToChange     = "Nothing to change: installed files already match these choices."
-    TextNewFilesFmt         = "%d new files"
-    TextAgentSkillsFmt      = " (agent definitions: %d, skills: %d)"
-    TextPluginFmt           = "Plugin: %s (%s)"
     TextRemovalFmt          = "%s — %s"
-    TextNotIncludedIntro    = "Not included: "
-    TextDefaultAll          = "Default (all recommended)"
-    TextNone                = "none"
+
+    // Review: a title, then what the install sets up and what it changes on disk.
+    TextReviewInstallTitle  = "Install into ~/.config/opencode"
+    TextReviewApplyTitle    = "Apply to ~/.config/opencode"
+    TextReviewScope         = "for every project"
+    TextGroupInstalls       = "WHAT YOU GET"
+    TextGroupDisk           = "WHAT CHANGES ON DISK"
+    TextAgentOne            = "agent"
+    TextAgentMany           = "agents"
+    TextSkillOne            = "skill"
+    TextSkillMany           = "skills"
+    TextMCPServerOne        = "MCP server"
+    TextMCPServerMany       = "MCP servers"
+    TextIntegrationOne      = "integration"
+    TextIntegrationMany     = "integrations"
+    TextNewFileOne          = "new file"
+    TextNewFileMany         = "new files"
+    TextUpdatedCountFmt     = "%d updated"
+    TextAgentRolesFmt       = "%d orchestrator · %d specialists"
+    TextAgentModelsAllFmt   = "on %s"
+    TextAgentModelsFmt      = "%d on %s"
+    TextInheritedModel      = "OpenCode's default model"
+    TextConfigMerged        = "merged — your settings are kept"
+    TextConfigUpdated       = "updated"
+    TextFieldKept           = "Kept"
+    TextFieldNotInstalled   = "Not installed"
+    TextFieldUncertain      = "Uncertain"
+    TextListSeparator       = " · "
     TextRetryInstall        = "Review the error, then retry the installation."
     TextRetryApply          = "Review the error, then retry applying the changes."
     TextReviewAgainNote     = "Review again checks the actual files first, then applies what is still missing."
-    TextInstalledForFmt     = "Takt was installed for %s."
-    TextUpdatedForFmt       = "The installation was updated for %s."
+    TextInstalledForFmt     = "Takt AI is installed in %s."
+    TextUpdatedForFmt       = "Takt AI is updated in %s."
     TextFilesChangedFmt     = "Files: %d changed, %d unchanged"
     TextPreservedFmt        = ", %d preserved"
     TextIncompleteWorkTitle = "Incomplete work"
     TextIncompleteWorkIntro = "The installation completed with optional work still pending."
-    TextNotReady            = "Not ready to work: some capabilities are not verified."
+    TextNotReady            = "Not ready to work: some capabilities failed their check."
+    TextUnconfirmed         = "Some checks could not run, so those capabilities are unconfirmed, not failed."
     TextCannotGuaranteeFmt  = "Takt cannot guarantee %s while your versions are kept."
     TextUseDrift            = "Use Check for drift from the menu to restore these files later."
     TextTakeEffectFmt       = "Changes take effect the next time you start %s."
@@ -185,7 +219,6 @@ const (
     TextUninstallResultTitle   = "Uninstall · Result"
     TextUninstallTitle         = "Uninstall"
     TextUninstallBusy          = "Uninstall"
-    TextUninstallChooseEach    = "Choose what to do with each modified file"
     TextUninstallCannotPlan    = "Could not prepare the uninstall plan: "
     TextUninstallModifiedIntro = "These files were installed by Takt and changed since. Choose what to do with each one."
     TextUninstallRemoveOpt     = "Remove"
@@ -277,27 +310,32 @@ const (
     TextModelsAssignFail  = "Could not assign models on "
     TextModelsFailNote    = "Specialists applied before the failure keep their new model. Assign another shows the current assignments."
     TextModelsNoChanges   = "No changes were needed."
-    TextModelsAssignedFmt = "Assigned models for %d specialist(s) on %s."
-    TextModelsChangedHead = "Changed files:"
     TextModelsTakeEffect  = "Changes take effect the next time you start "
     TextModelsTitleFmt    = "Assign models · %s"
 
     // Model picker.
-    TextPickerChoose      = "Choose a specialist to change its model."
-    TextPickerInheritFmt  = "inherit from %s"
-    TextPickerNoChanges   = "No changes to apply"
-    TextPickerCurrent     = "Current: "
-    TextPickerLoadingFmt  = "Loading %s models."
-    TextPickerLoadFailFmt = "Could not list %s models: %s. You can keep inheriting the harness default."
-    TextPickerSearchIntro = "Search: "
-    TextPickerNoMatchFmt  = "No models match %q. Ctrl+U clears the search."
-    TextPickerPosFmt      = "%d / %d"
-    TextPickerSep         = " — "
+    TextPickerInheritFmt   = "inherits %s default"
+    TextPickerAllAgents    = "All agents"
+    TextPickerMixed        = "different models"
+    TextPickerChangedMark  = "• "
+    TextModelsAgentsStep   = "Agents"
+    TextModelsAssignedOne  = "Model assigned to 1 agent."
+    TextModelsAssignedFmt  = "Models assigned to %d agents."
+    TextPickerNoChanges    = "No changes to apply"
+    TextPickerCurrent      = "Current: "
+    TextPickerLoadingFmt   = "Loading %s models."
+    TextPickerLoadFailFmt  = "%s models are unavailable: %s. Agents can keep inheriting its default."
+    TextPickerNotInstalled = "OpenCode is not installed"
+    TextPickerNoAnswer     = "OpenCode did not respond"
+    TextPickerSearchIntro  = "Search: "
+    TextPickerNoMatchFmt   = "No models match %q. Ctrl+U clears the search."
+    TextPickerPosFmt       = "%d / %d"
+    TextScrollPosFmt       = "%d–%d / %d"
 
     // Diagnostics.
     TextDiagCheckingTitle = "Diagnostics · Checking"
-    TextDiagReportTitle   = "Diagnostics · Report"
-    TextDiagBusy          = "Checking functional availability."
+    TextDiagReportTitle   = "Diagnostics · Capabilities"
+    TextDiagBusy          = "Checking each capability…"
     TextDiagNone          = "No capability could be checked."
 
     // Shared outcome.
@@ -311,7 +349,9 @@ const (
     TextNoRollback         = "Automatic rollback is not available."
     TextBackupKeptIntro    = " Backup copies of replaced files are in "
     TextLateCancel         = "Completed before the cancellation could take effect."
-    TextFunctionalTitle    = "Functional availability"
+    TextFunctionalTitle    = "Capabilities"
+    TextStateNotWorking    = " — not working"
+    TextStateNotChecked    = " — not checked"
 )
 ```
 
@@ -320,6 +360,15 @@ const (
 ```go
 const OpenCodeLabel = "OpenCode"
 ```
+
+<a name="AgentsAssigned"></a>
+## func [AgentsAssigned](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/plural.go#L6>)
+
+```go
+func AgentsAssigned(count int) string
+```
+
+AgentsAssigned states how many agents got a new model, in proper number.
 
 <a name="Back"></a>
 ## func [Back](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L69>)
@@ -331,25 +380,34 @@ func Back() tea.Msg
 Back requests navigation to the previous screen.
 
 <a name="BodyHeight"></a>
-## func [BodyHeight](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L239>)
+## func [BodyHeight](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L287>)
 
 ```go
 func BodyHeight(height int) int
 ```
 
-BodyHeight returns usable content height.
+BodyHeight returns the visible rows inside a panel above a one\-line action row: the window Shell scrolls for most screens.
 
 <a name="Busy"></a>
-## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L53>)
+## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L64>)
 
 ```go
-func Busy(operation string, cancelRequested bool, marker string, updates ...Progress) string
+func Busy(operation string, marker string, progress Progress) string
 ```
 
-Busy shows a running operation with a step marker and cancellation path.
+Busy shows the finished phases, the current one with its marker and, when its total is known, a real progress bar and the file it is on. operation names the work until the first phase is reported.
+
+<a name="BusyFooter"></a>
+## func [BusyFooter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L88>)
+
+```go
+func BusyFooter(cancelRequested bool) string
+```
+
+BusyFooter offers cancellation while an operation runs; once requested it stays visible but unavailable, saying the current phase must finish.
 
 <a name="CheckList"></a>
-## func [CheckList](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L34>)
+## func [CheckList](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L74>)
 
 ```go
 func CheckList(items []Item, cursor int, focused bool) string
@@ -357,23 +415,68 @@ func CheckList(items []Item, cursor int, focused bool) string
 
 CheckList renders independently checked rows so multi\-select stays visible.
 
+<a name="ContentRows"></a>
+## func [ContentRows](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L293>)
+
+```go
+func ContentRows(height, footerLines int) int
+```
+
+ContentRows returns the visible rows inside a panel above an action row of footerLines lines \(0 for none\); Shell uses the same arithmetic.
+
+<a name="Fields"></a>
+## func [Fields](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L23>)
+
+```go
+func Fields(fields []Field) string
+```
+
+Fields renders a summary with labels in one secondary column and values aligned after it, the label/value grammar of the review wireframe.
+
 <a name="FooterActions"></a>
-## func [FooterActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L51>)
+## func [FooterActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L60>)
 
 ```go
 func FooterActions(actions []FooterAction, cursor int, focused bool) string
 ```
 
-FooterActions renders the row of filled action buttons. The focused button is filled with focus.ring; unavailable and destructive choices keep their verb and reason.
+FooterActions renders the action row \(VDS §3\): only the focused button is filled; the others are text.secondary without fill, destructive ones keep danger.fg, and unavailable ones keep the disabled pair even when focused. Unavailable reasons go on their own line under the row, never inside it.
+
+<a name="Group"></a>
+## func [Group](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L47>)
+
+```go
+func Group(title string, rows []Row) string
+```
+
+Group renders a titled group: the heading in the secondary role, then each row with its Lead in one aligned column and its Detail muted after it, so the facts read first and the qualifiers stay out of their way.
+
+<a name="HomeRows"></a>
+## func [HomeRows](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L306>)
+
+```go
+func HomeRows(height int) int
+```
+
+HomeRows returns the rows the home composition may fill: everything above the bottom margin, since the home has no header.
 
 <a name="InnerWidth"></a>
-## func [InnerWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L250>)
+## func [InnerWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L316>)
 
 ```go
 func InnerWidth(width int) int
 ```
 
 InnerWidth returns width inside margins.
+
+<a name="Menu"></a>
+## func [Menu](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L39>)
+
+```go
+func Menu(items []Item, cursor int) string
+```
+
+Menu renders a single selection whose only visible description is the one under the cursor, in one slot below the list. The slot always takes its line and the block is as wide as its widest label or description, so moving the cursor never shifts the menu.
 
 <a name="MoveCursor"></a>
 ## func [MoveCursor](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L13>)
@@ -403,13 +506,22 @@ func NudgeHorizontal(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
 NudgeHorizontal moves a cursor across options rendered in one row.
 
 <a name="Options"></a>
-## func [Options](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L17>)
+## func [Options](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L19>)
 
 ```go
 func Options(options []string, cursor int, focused bool) string
 ```
 
 Options renders labels with a focus marker so the cursor survives focus changes.
+
+<a name="PanelWidth"></a>
+## func [PanelWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L311>)
+
+```go
+func PanelWidth(width int) int
+```
+
+PanelWidth returns the stable panel width for a terminal width.
 
 <a name="Scroll"></a>
 ## func [Scroll](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L54>)
@@ -420,8 +532,17 @@ func Scroll(scroll, height int, key string) (int, bool)
 
 Scroll applies pgup and pgdown for a screen of the given height.
 
+<a name="Selector"></a>
+## func [Selector](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L58>)
+
+```go
+func Selector(options []string, cursor, chosen int, focused bool) string
+```
+
+Selector renders one single\-choice field on a screen that holds several: each field's chosen value stays visible \(selection pair and • marker\) while the cursor \> moves elsewhere, so no decision is hidden by focus.
+
 <a name="Shell"></a>
-## func [Shell](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L56>)
+## func [Shell](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L65>)
 
 ```go
 func Shell(frame Frame) string
@@ -430,7 +551,7 @@ func Shell(frame Frame) string
 Shell composes the signature header, the paneled body and the action row so every screen shares one layout. No key bar is rendered.
 
 <a name="Status"></a>
-## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L28>)
+## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L33>)
 
 ```go
 func Status(state State, message string) string
@@ -457,13 +578,13 @@ func Toggle[T comparable](items []T, item T) []T
 Toggle flips one selection so checklist flows share a single rule.
 
 <a name="Verification"></a>
-## func [Verification](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/verification.go#L12>)
+## func [Verification](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/verification.go#L38>)
 
 ```go
 func Verification(report verify.Report) string
 ```
 
-Verification shows availability checks from a verify report.
+Verification shows the verdict once, then one row per capability \(PR\-UX\-27\): verified rows are just their name; the others add state and explanation.
 
 <a name="BackMsg"></a>
 ## type [BackMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L66>)
@@ -483,8 +604,20 @@ Dirtier marks flows with unapplied drafts.
 type Dirtier interface{ Dirty() bool }
 ```
 
+<a name="Field"></a>
+## type [Field](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L13-L16>)
+
+Field is one label/value row of an aligned summary; an empty Label continues the value of the row above.
+
+```go
+type Field struct {
+    Label string
+    Value string
+}
+```
+
 <a name="FooterAction"></a>
-## type [FooterAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L34-L38>)
+## type [FooterAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L35-L39>)
 
 FooterAction is one labeled completion control.
 
@@ -497,7 +630,7 @@ type FooterAction struct {
 ```
 
 <a name="Actions"></a>
-### func [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L41>)
+### func [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L42>)
 
 ```go
 func Actions(labels ...string) []FooterAction
@@ -506,7 +639,7 @@ func Actions(labels ...string) []FooterAction
 Actions builds available actions from labels so callers skip the struct boilerplate.
 
 <a name="Frame"></a>
-## type [Frame](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L14-L29>)
+## type [Frame](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L14-L27>)
 
 Frame holds everything needed to draw one screen.
 
@@ -521,16 +654,14 @@ type Frame struct {
     Width  int
     Height int
     Scroll int
-    // Home renders the entry screen: no panel and no step, since the logo in
-    // Body already identifies the product.
+    // Home renders the entry screen: no header, no panel and no wrapping; Body
+    // is the screen's own composition sized by HomeRows and InnerWidth.
     Home bool
-    // CenterBody vertically centers short content in the available body area.
-    CenterBody bool
 }
 ```
 
 <a name="Item"></a>
-## type [Item](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L11-L14>)
+## type [Item](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L11-L16>)
 
 Item is one selectable row so checked state travels with its label.
 
@@ -538,27 +669,41 @@ Item is one selectable row so checked state travels with its label.
 type Item struct {
     Label   string
     Checked bool
+    // Description is an optional muted line under the label (PR-UX-16).
+    Description string
 }
 ```
 
 <a name="Progress"></a>
-## type [Progress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L43-L50>)
+## type [Progress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L48-L55>)
 
-Progress describes the latest operation phase and its committed artifact list.
+Progress is a running operation's phases: the ones already finished, the current one with its real counts, and the file it is on.
 
 ```go
 type Progress struct {
+    Done      []string
     Message   string
     Current   string
     Completed int
     Total     int
-    Applied   []string
     Frame     int
 }
 ```
 
+<a name="Row"></a>
+## type [Row](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L39-L42>)
+
+Row is one line of a Group: Lead carries the fact \(a count and its noun, a file name\), Detail the muted qualifier after it. An empty Lead continues the row above.
+
+```go
+type Row struct {
+    Lead   string
+    Detail string
+}
+```
+
 <a name="Section"></a>
-## type [Section](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L12>)
+## type [Section](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L13>)
 
 Section marks which screen region holds keyboard focus so lists and footers stay independent.
 
@@ -578,7 +723,7 @@ const (
 ```
 
 <a name="SwitchSection"></a>
-### func [SwitchSection](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L23>)
+### func [SwitchSection](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L24>)
 
 ```go
 func SwitchSection(current Section, keymap keys.KeyMap, message tea.Msg) (Section, bool)
@@ -634,7 +779,7 @@ func (s Spinner) View() string
 View renders the current frame, or the ASCII baseline when disabled.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L11>)
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L16>)
 
 State names a result in words.
 

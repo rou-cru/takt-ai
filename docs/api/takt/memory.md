@@ -14,6 +14,7 @@ Package memory writes agent memories into Engram with harness\-owned metadata, l
 - [func Continue\(ctx context.Context, cfg Config, req ContinueRequest\) \(err error\)](<#Continue>)
 - [func EntryIDsByAuthor\(root, session, author string\) \(\[\]int64, error\)](<#EntryIDsByAuthor>)
 - [func EntryIDsForSession\(root, session string\) \(\[\]int64, error\)](<#EntryIDsForSession>)
+- [func ResolveProject\(ctx context.Context, cfg Config, dir string\) string](<#ResolveProject>)
 - [func ValidateResultIDs\(ctx context.Context, cfg Config, ids \[\]int64\) error](<#ValidateResultIDs>)
 - [func ValidateSessionResultIDs\(ctx context.Context, cfg Config, session, author string, ids \[\]int64\) error](<#ValidateSessionResultIDs>)
 - [type CloseRequest](<#CloseRequest>)
@@ -43,16 +44,16 @@ const (
 ```
 
 <a name="Continue"></a>
-## func [Continue](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L528>)
+## func [Continue](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L575>)
 
 ```go
 func Continue(ctx context.Context, cfg Config, req ContinueRequest) (err error)
 ```
 
-Continue links the orchestrator's current session to a previous one so later memories stay anchored to that lineage.
+Continue declares the previous session the current one continues; an empty PreviousSession withdraws the declaration. The link is fixed by start on the session's first entry, so a wrong declaration never becomes permanent. The previous session may belong to any project: one objective can span several.
 
 <a name="EntryIDsByAuthor"></a>
-## func [EntryIDsByAuthor](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/session_index.go#L131>)
+## func [EntryIDsByAuthor](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/session_index.go#L133>)
 
 ```go
 func EntryIDsByAuthor(root, session, author string) ([]int64, error)
@@ -61,7 +62,7 @@ func EntryIDsByAuthor(root, session, author string) ([]int64, error)
 EntryIDsByAuthor returns the ids of the entries author recorded within session: what that author may present as its own delivered results.
 
 <a name="EntryIDsForSession"></a>
-## func [EntryIDsForSession](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/session_index.go#L114>)
+## func [EntryIDsForSession](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/session_index.go#L116>)
 
 ```go
 func EntryIDsForSession(root, session string) ([]int64, error)
@@ -69,8 +70,17 @@ func EntryIDsForSession(root, session string) ([]int64, error)
 
 EntryIDsForSession returns the ids of every memory entry created within session, so a caller can report them without the specialist declaring them itself \(MEM\-AUT\-6\). Returns an empty slice, not an error, when the session has no index yet.
 
+<a name="ResolveProject"></a>
+## func [ResolveProject](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/client.go#L199>)
+
+```go
+func ResolveProject(ctx context.Context, cfg Config, dir string) string
+```
+
+ResolveProject reports the Engram project name for dir, the same resolution Record/Continue/Close use — exported for read\-only callers \(e.g. doctor\) that need it without writing anything.
+
 <a name="ValidateResultIDs"></a>
-## func [ValidateResultIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L296>)
+## func [ValidateResultIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L330>)
 
 ```go
 func ValidateResultIDs(ctx context.Context, cfg Config, ids []int64) error
@@ -79,7 +89,7 @@ func ValidateResultIDs(ctx context.Context, cfg Config, ids []int64) error
 ValidateResultIDs checks that a handoff names distinct, existing Engram entries. Content and suitability remain the orchestrator's judgment.
 
 <a name="ValidateSessionResultIDs"></a>
-## func [ValidateSessionResultIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L321>)
+## func [ValidateSessionResultIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L355>)
 
 ```go
 func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author string, ids []int64) error
@@ -88,7 +98,7 @@ func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author s
 ValidateSessionResultIDs accepts only results author itself recorded in session: an existing entry from another author, session or project is not this delivery's result.
 
 <a name="CloseRequest"></a>
-## type [CloseRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L84-L91>)
+## type [CloseRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L85-L92>)
 
 CloseRequest ends a session and optionally records its outcome.
 
@@ -104,7 +114,7 @@ type CloseRequest struct {
 ```
 
 <a name="CloseResult"></a>
-## type [CloseResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L94-L97>)
+## type [CloseResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L95-L98>)
 
 CloseResult reports the end anchor and how many entries the session recorded.
 
@@ -116,7 +126,7 @@ type CloseResult struct {
 ```
 
 <a name="Close"></a>
-### func [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L616>)
+### func [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L664>)
 
 ```go
 func Close(ctx context.Context, cfg Config, req CloseRequest) (result CloseResult, err error)
@@ -140,9 +150,9 @@ type Config struct {
 ```
 
 <a name="ContinueRequest"></a>
-## type [ContinueRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L76-L81>)
+## type [ContinueRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L77-L82>)
 
-ContinueRequest resumes an earlier session so later memories stay anchored to it.
+ContinueRequest declares the earlier session this one continues; an empty PreviousSession withdraws the declaration.
 
 ```go
 type ContinueRequest struct {
@@ -187,7 +197,7 @@ type RecordResult struct {
 ```
 
 <a name="Record"></a>
-### func [Record](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L279>)
+### func [Record](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L313>)
 
 ```go
 func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordResult, err error)
@@ -208,7 +218,7 @@ type RelatesTo struct {
 ```
 
 <a name="ValidationError"></a>
-## type [ValidationError](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L100>)
+## type [ValidationError](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L101>)
 
 ValidationError is a contract rejection whose Reason is shown verbatim to the agent.
 
@@ -217,7 +227,7 @@ type ValidationError struct{ Reason string }
 ```
 
 <a name="ValidationError.Error"></a>
-### func \(\*ValidationError\) [Error](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L103>)
+### func \(\*ValidationError\) [Error](<https://github.com/rou-cru/takt-ai/blob/main/takt/memory/memory.go#L104>)
 
 ```go
 func (e *ValidationError) Error() string

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"go/format"
 	"image"
+	"image/color"
 	"image/png"
 	"math"
 	"os"
@@ -53,6 +54,9 @@ const (
 	// installerBegin and installerEnd delimit the generated mark in install.sh.
 	installerBegin = "# BEGIN GENERATED LOGO (development/generate-logo; DO NOT EDIT)"
 	installerEnd   = "# END GENERATED LOGO"
+	// logoImageSide is the pixel side of the image the TUI hands to terminals
+	// that draw graphics: sharp at the home's largest logo, small to transmit.
+	logoImageSide = 512
 )
 
 // logoRows are the heights, in terminal rows, of the generated variants,
@@ -125,13 +129,14 @@ func (g *grid) set(x, y int, i ink) { g.pixels[y*g.width+x] = i }
 func main() {
 	input := flag.String("input", "", "input PNG path")
 	output := flag.String("output", "takt/tui/styles/logo_generated.go", "generated Go file path (Braille mono datasets)")
-	blocksOutput := flag.String("blocks-output", "takt/tui/styles/logo_blocks_generated.go", "generated Go file path (octant and half-block color datasets)")
+	blocksOutput := flag.String("blocks-output", "takt/tui/styles/logo_blocks_generated.go", "generated Go file path (quadrant color datasets)")
+	imageOutput := flag.String("image-output", "takt/tui/styles/logo.png", "generated PNG path (the mark on a transparent background)")
 	installer := flag.String("installer", "", "install.sh to embed the installer mark into (optional)")
 	flag.Parse()
 	if *input == "" {
 		fatal(errors.New("-input is required"))
 	}
-	if err := generate(*input, *output, *blocksOutput, *installer); err != nil {
+	if err := generate(*input, *output, *blocksOutput, *imageOutput, *installer); err != nil {
 		fatal(err)
 	}
 }
@@ -144,10 +149,11 @@ func fatal(err error) {
 
 // generate rebuilds logo data so checked-in branding matches the source image.
 // The mono file holds Braille variants whose shape survives the loss of
-// color; the color file holds octant variants for terminals known to draw
-// Unicode 16 octants and half-block variants for every other terminal.
-// installer, when set, receives a half-block mark between its markers.
-func generate(input, output, blocksOutput, installer string) error {
+// color; the color file holds quadrant variants, drawn with characters every
+// terminal font has; the image is the mark itself for terminals that draw
+// graphics. installer, when set, receives a half-block mark between its
+// markers.
+func generate(input, output, blocksOutput, imageOutput, installer string) error {
 	source, err := decodeInputImage(input)
 	if err != nil {
 		return err
@@ -156,23 +162,24 @@ func generate(input, output, blocksOutput, installer string) error {
 	if err != nil {
 		return err
 	}
-	var braille, octant, half [][][]span
+	var braille, quadrant [][][]span
 	for _, rows := range logoRows {
-		fine := downsample(art, 4*rows)
-		braille = append(braille, renderBraille(fine))
-		octant = append(octant, renderOctants(fine))
-		half = append(half, renderHalfBlocks(downsample(art, 2*rows)))
+		braille = append(braille, renderBraille(downsample(art, 4*rows, 4*rows)))
+		quadrant = append(quadrant, renderQuadrants(downsample(art, 4*rows, 2*rows)))
 	}
 	if err := writeGenerated(output, dataset{"generatedLogoBraille", braille}); err != nil {
 		return err
 	}
-	if err := writeGenerated(blocksOutput, dataset{"generatedLogoOctants", octant}, dataset{"generatedLogoHalfBlocks", half}); err != nil {
+	if err := writeGenerated(blocksOutput, dataset{"generatedLogoQuadrants", quadrant}); err != nil {
+		return err
+	}
+	if err := writeLogoImage(imageOutput, maskedMark(source, logoImageSide)); err != nil {
 		return err
 	}
 	if installer == "" {
 		return nil
 	}
-	return embedInstallerMark(installer, renderHalfBlocks(downsample(art, 2*installerRows)))
+	return embedInstallerMark(installer, renderHalfBlocks(downsample(art, 2*installerRows, 2*installerRows)))
 }
 
 func decodeInputImage(input string) (image.Image, error) {
@@ -192,6 +199,14 @@ func decodeInputImage(input string) (image.Image, error) {
 	return decoded, nil
 }
 
+// markCrop is the square of a source of the given side that holds the outer
+// band: its side and the offset of its top-left corner from the source's.
+func markCrop(sourceSide int) (side int, origin float64) {
+	half := float64(sourceSide) / 2
+	side = int(math.Ceil(2 * outerBandEdge * half))
+	return side, half - float64(side)/2
+}
+
 // classify reduces the square source to palette inks. The rings are drawn
 // geometrically from the radii measured on the canonical PNG, so their
 // shading never mottles them; inside the inner ring each pixel takes the
@@ -203,8 +218,7 @@ func classify(source image.Image) (*grid, error) {
 		return nil, fmt.Errorf("input image must be square, got %dx%d", bounds.Dx(), bounds.Dy())
 	}
 	half := float64(bounds.Dx()) / 2
-	side := int(math.Ceil(2 * outerBandEdge * half))
-	origin := half - float64(side)/2
+	side, origin := markCrop(bounds.Dx())
 	result := newGrid(side, side)
 	for y := range side {
 		for x := range side {
@@ -248,16 +262,17 @@ func colorDistance(a, b rgb) int {
 	return ((512+meanRed)*dr*dr)>>8 + 4*dg*dg + ((767-meanRed)*db*db)>>8
 }
 
-// downsample shrinks a square grid to size×size by majority vote, so edges
-// stay crisp and no in-between shade appears that the palette lacks. Dark
-// votes weigh more: the eyes, nose, whiskers and chest outline are thin and
-// would otherwise vanish from the smaller variants.
-func downsample(art *grid, size int) *grid {
-	result := newGrid(size, size)
-	for y := range size {
-		y0, y1 := y*art.height/size, max((y+1)*art.height/size, y*art.height/size+1)
-		for x := range size {
-			x0, x1 := x*art.width/size, max((x+1)*art.width/size, x*art.width/size+1)
+// downsample shrinks a grid to width×height by majority vote, so edges stay
+// crisp and no in-between shade appears that the palette lacks. Dark votes
+// weigh more: the eyes, nose, whiskers and chest outline are thin and would
+// otherwise vanish from the smaller variants. A width other than the height
+// gives non-square pixels, for cells whose pixels are taller than wide.
+func downsample(art *grid, width, height int) *grid {
+	result := newGrid(width, height)
+	for y := range height {
+		y0, y1 := y*art.height/height, max((y+1)*art.height/height, y*art.height/height+1)
+		for x := range width {
+			x0, x1 := x*art.width/width, max((x+1)*art.width/width, x*art.width/width+1)
 			var votes [inkCount]int
 			for sy := y0; sy < y1; sy++ {
 				for sx := x0; sx < x1; sx++ {
@@ -317,15 +332,17 @@ func solidCell(i ink) string {
 	return "█"
 }
 
-// renderOctants draws one cell per 2×4 pixels with the Unicode 16 block
-// octants: each cell keeps its two most common inks, as foreground and
-// background, and folds any other pixel into the closer of the two.
-func renderOctants(art *grid) [][]span {
-	lines := make([][]span, 0, art.height/4)
-	for y := 0; y+3 < art.height; y += 4 {
+// renderQuadrants draws one cell per 2×2 pixels with the quadrant block
+// characters, which every terminal font has: each cell keeps its two most
+// common inks, as foreground and background, and folds any other pixel into
+// the closer of the two. A cell is about twice as tall as wide, so its
+// pixels are too: art must be twice as wide as it is tall to stay round.
+func renderQuadrants(art *grid) [][]span {
+	lines := make([][]span, 0, art.height/2)
+	for y := 0; y+1 < art.height; y += 2 {
 		var line []span
 		for x := 0; x+1 < art.width; x += 2 {
-			cell := cellPixels(art, x, y)
+			cell := cellPixels(art, x, y, 2)
 			back, fore := twoInks(cell)
 			if back == fore {
 				line = appendSpan(line, solidCell(back), back.hex(), "")
@@ -337,7 +354,7 @@ func renderOctants(art *grid) [][]span {
 					pattern |= 1 << index
 				}
 			}
-			line = appendSpan(line, string(octantRune(pattern)), fore.hex(), back.hex())
+			line = appendSpan(line, string(quadrantRunes[pattern]), fore.hex(), back.hex())
 		}
 		lines = append(lines, line)
 	}
@@ -352,7 +369,7 @@ func renderBraille(art *grid) [][]span {
 		var text strings.Builder
 		for x := 0; x+1 < art.width; x += 2 {
 			dots := 0
-			for index, pixel := range cellPixels(art, x, y) {
+			for index, pixel := range cellPixels(art, x, y, 4) {
 				if pixel != inkClear && pixel != inkBlack {
 					dots |= brailleDots[index]
 				}
@@ -364,13 +381,12 @@ func renderBraille(art *grid) [][]span {
 	return lines
 }
 
-// cellPixels lists the 2×4 pixels of the cell at (x, y) in octant order:
-// left to right, top to bottom, so index i is octant i+1.
-func cellPixels(art *grid, x, y int) [8]ink {
-	var cell [8]ink
-	for row := range 4 {
-		cell[2*row] = art.at(x, y+row)
-		cell[2*row+1] = art.at(x+1, y+row)
+// cellPixels lists the 2×rows pixels of the cell at (x, y), left to right,
+// top to bottom.
+func cellPixels(art *grid, x, y, rows int) []ink {
+	cell := make([]ink, 0, 2*rows)
+	for row := range rows {
+		cell = append(cell, art.at(x, y+row), art.at(x+1, y+row))
 	}
 	return cell
 }
@@ -379,7 +395,7 @@ func cellPixels(art *grid, x, y int) [8]ink {
 // foreground; ties go to the lower ink. A clear pixel is always the
 // background when present, since a terminal cannot draw a clear foreground.
 // A single-ink cell returns that ink twice.
-func twoInks(cell [8]ink) (back, fore ink) {
+func twoInks(cell []ink) (back, fore ink) {
 	var counts [inkCount]int
 	for _, pixel := range cell {
 		counts[pixel]++
@@ -420,40 +436,56 @@ func closerInk(pixel, back, fore ink) ink {
 	}
 }
 
-// brailleBase is U+2800, the empty Braille pattern; brailleDots maps octant
+// brailleBase is U+2800, the empty Braille pattern; brailleDots maps cell
 // order (left to right, top to bottom) onto Braille's dot bits.
 const brailleBase = 0x2800
 
 var brailleDots = [8]int{0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80}
 
-// octantBase is U+1CD00, BLOCK OCTANT-3: Unicode 16 encodes, in increasing
-// pattern order, every octant pattern not already drawn by an older block
-// character. octantLegacy holds those 26 older characters by pattern (bit i
-// set means octant i+1 is filled).
-const octantBase = 0x1CD00
+// quadrantRunes draws each 2×2 pattern: bit i set means pixel i, in cell
+// order (top-left, top-right, bottom-left, bottom-right), is foreground.
+var quadrantRunes = []rune(" ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█")
 
-var octantLegacy = map[int]rune{
-	0x00: ' ', 0xFF: '█',
-	0x0F: '▀', 0xF0: '▄', 0x55: '▌', 0xAA: '▐',
-	0x05: '▘', 0x0A: '▝', 0x50: '▖', 0xA0: '▗',
-	0xA5: '▚', 0x5A: '▞', 0x5F: '▛', 0xAF: '▜', 0xF5: '▙', 0xFA: '▟',
-	0x03: '\U0001FB82', 0xC0: '▂', 0x3F: '\U0001FB85', 0xFC: '▆',
-	0x14: '\U0001FBE6', 0x28: '\U0001FBE7',
-	0x01: '\U0001CEA8', 0x02: '\U0001CEAB', 0x40: '\U0001CEA3', 0x80: '\U0001CEA0',
-}
-
-// octantRune returns the character drawing an octant pattern.
-func octantRune(pattern int) rune {
-	if legacy, ok := octantLegacy[pattern]; ok {
-		return legacy
-	}
-	skipped := 0
-	for older := range octantLegacy {
-		if older < pattern {
-			skipped++
+// maskedMark crops the source to the outer band, clears everything beyond
+// it with a one-pixel anti-aliased edge, and shrinks it to side×side by area
+// averaging over premultiplied colors, so the edge stays smooth.
+func maskedMark(source image.Image, side int) *image.NRGBA {
+	bounds := source.Bounds()
+	cropSide, origin := markCrop(bounds.Dx())
+	center, edge := float64(cropSide)/2, outerBandEdge*float64(bounds.Dx())/2
+	result := image.NewNRGBA(image.Rect(0, 0, side, side))
+	for y := range side {
+		y0, y1 := y*cropSide/side, max((y+1)*cropSide/side, y*cropSide/side+1)
+		for x := range side {
+			x0, x1 := x*cropSide/side, max((x+1)*cropSide/side, x*cropSide/side+1)
+			var r, g, b, a float64
+			for sy := y0; sy < y1; sy++ {
+				for sx := x0; sx < x1; sx++ {
+					cr, cg, cb, _ := source.At(bounds.Min.X+int(origin)+sx, bounds.Min.Y+int(origin)+sy).RGBA()
+					coverage := min(1, max(0, edge-math.Hypot(float64(sx)+0.5-center, float64(sy)+0.5-center)+0.5))
+					r, g, b, a = r+float64(cr>>rgbaShift)*coverage, g+float64(cg>>rgbaShift)*coverage, b+float64(cb>>rgbaShift)*coverage, a+coverage
+				}
+			}
+			if a == 0 {
+				continue
+			}
+			area := float64((y1 - y0) * (x1 - x0))
+			result.SetNRGBA(x, y, color.NRGBA{R: uint8(math.Round(r / a)), G: uint8(math.Round(g / a)), B: uint8(math.Round(b / a)), A: uint8(math.Round(255 * a / area))})
 		}
 	}
-	return rune(octantBase + pattern - skipped)
+	return result
+}
+
+// writeLogoImage saves the mark as PNG.
+func writeLogoImage(output string, mark image.Image) error {
+	if err := os.MkdirAll(filepath.Dir(output), generatedDirectoryMode); err != nil {
+		return err
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, mark); err != nil {
+		return fmt.Errorf("encode PNG: %w", err)
+	}
+	return os.WriteFile(output, b.Bytes(), generatedFileMode)
 }
 
 // appendSpan adds one cell, merging it into the previous run when both share

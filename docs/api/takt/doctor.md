@@ -10,14 +10,23 @@ Package doctor implements the \`takt\-ai doctor\` system health check: tool avai
 
 ## Index
 
+- [Variables](<#variables>)
 - [func Run\(stdout io.Writer\) error](<#Run>)
 - [type CheckResult](<#CheckResult>)
 - [type CheckStatus](<#CheckStatus>)
 - [type DoctorReport](<#DoctorReport>)
 
 
+## Variables
+
+<a name="ErrUnhealthy"></a>ErrUnhealthy reports that at least one check failed, so scripts can act on the exit status; the report itself was already written.
+
+```go
+var ErrUnhealthy = errors.New("doctor: unhealthy")
+```
+
 <a name="Run"></a>
-## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L105>)
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L113>)
 
 ```go
 func Run(stdout io.Writer) error
@@ -26,7 +35,7 @@ func Run(stdout io.Writer) error
 Run executes every doctor check and renders the report to stdout. Failed checks do not affect the returned error: only internal failures \(home resolution, write errors\) are returned as errors.
 
 <a name="CheckResult"></a>
-## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L63-L68>)
+## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L64-L69>)
 
 CheckResult is one health check outcome with an optional remediation hint.
 
@@ -40,7 +49,7 @@ type CheckResult struct {
 ```
 
 <a name="CheckStatus"></a>
-## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L53>)
+## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L54>)
 
 CheckStatus is the outcome of a single doctor check.
 
@@ -59,7 +68,7 @@ const (
 ```
 
 <a name="DoctorReport"></a>
-## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L71-L73>)
+## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L72-L74>)
 
 DoctorReport aggregates every check executed in one doctor run.
 

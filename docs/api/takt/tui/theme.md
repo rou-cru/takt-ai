@@ -16,63 +16,92 @@ Package theme is the single source of visual truth for the TUI: renderers ask fo
 - [func SetMode\(m Mode\)](<#SetMode>)
 - [type Mode](<#Mode>)
   - [func DetectMode\(\) Mode](<#DetectMode>)
+  - [func ModeFor\(profile colorprofile.Profile\) Mode](<#ModeFor>)
 - [type Palette](<#Palette>)
 
 
 ## Variables
 
-<a name="Canvas"></a>Role colors resolve once from Dark so screens never repeat hex values.
+<a name="Canvas"></a>Role colors resolve from the active palette so screens never repeat tokens.
 
 ```go
 var (
-    Canvas, Surface, Raised, TextPrimary, TextSecondary, TextMuted, BrandInk, FocusRing,
-    BorderControl, BorderSubtle, SelectionFg, SelectionBg, SuccessBg, SuccessFg,
-    WarningBg, WarningFg, DangerBg, DangerFg, InfoBg, InfoFg, DisabledBg, DisabledFg,
-    ActionPrimaryBg, ActionPrimaryFg, ActionDangerBg, ActionDangerFg color.Color
+    Canvas, Surface, TextPrimary, TextSecondary, TextMuted, Signature,
+    FocusRing, InfoFg, BorderControl, BorderSubtle, SelectionFg, SelectionBg,
+    SuccessFg, WarningFg, DangerFg, DisabledBg, DisabledFg,
+    ActionDangerBg, ActionDangerFg color.Color
 
-    // Signature marks the "Takt AI" wordmark in the header.
-    Signature lipgloss.Style
-    // Display marks the signature line with brand weight.
-    Display lipgloss.Style
+    // SignatureText marks the "Takt AI" wordmark.
+    SignatureText lipgloss.Style
     // Title marks headings with primary weight.
     Title lipgloss.Style
     // Label marks content text.
     Label lipgloss.Style
+    // Secondary marks supporting content one step below Label.
+    Secondary lipgloss.Style
     // Caption marks supporting text so it stays readable without faint styling.
     Caption lipgloss.Style
     // Focus marks the focus gutter so the cursor has one color.
     Focus lipgloss.Style
     // Selected marks persistent selection so choice survives focus moves.
     Selected lipgloss.Style
+    // Checked marks a checked checklist label; CheckMarker its [x]/[ ] marker.
+    Checked, CheckMarker lipgloss.Style
+    // StatusSuccess, StatusWarning, StatusDanger and StatusInfo color a state
+    // label with weight; SuccessText, WarningText and DangerText color running
+    // text (a consequence, a notice) without it.
+    StatusSuccess, StatusWarning, StatusDanger, StatusInfo lipgloss.Style
+    SuccessText, WarningText, DangerText                   lipgloss.Style
+    // Strong marks an inline identifier that leads its block (a file path).
+    Strong lipgloss.Style
     // Panel wraps a body in an untitled bordered panel (bg.surface, border.control).
     Panel lipgloss.Style
-    // Button marks a secondary action (text.primary on border.subtle fill).
+    // Button marks a secondary action: text.secondary, no fill.
     Button lipgloss.Style
     // ButtonFocus marks the focused action (canvas text on focus.ring fill).
     ButtonFocus lipgloss.Style
-    // ButtonDanger marks a destructive action (action.danger pair).
+    // ButtonDanger marks an unfocused destructive action: danger.fg, no fill.
     ButtonDanger lipgloss.Style
-    // ButtonDisabled marks an unavailable action (disabled pair).
+    // ButtonDangerFocus marks a focused destructive action (action.danger pair).
+    ButtonDangerFocus lipgloss.Style
+    // ButtonDisabled marks an unavailable action (disabled pair), focused or not.
     ButtonDisabled lipgloss.Style
 )
 ```
 
-<a name="Dark"></a>Dark maps the brand's dark semantic token set onto the terminal. Hex values come from brand.md section 5.3 \(dark column\).
+<a name="Dark"></a>Dark maps the brand's dark semantic tokens onto the terminal \(brand.md §5.2–5.3 dark column; canvas and signature per VDS\_TUI.md §3\).
 
 ```go
 var Dark = Palette{
-    Canvas: lipgloss.Color("#101B20"), Surface: lipgloss.Color("#18262C"), Raised: lipgloss.Color("#25343A"),
+
+    Canvas:  lipgloss.Color("#0D0D0D"),
+    Surface: lipgloss.Color("#18262C"),
+
     TextPrimary: lipgloss.Color("#F5F7F7"), TextSecondary: lipgloss.Color("#D2DCDD"), TextMuted: lipgloss.Color("#ADBDC0"),
-    BrandInk: lipgloss.Color(hexBrandTeal), FocusRing: lipgloss.Color(hexBrandTeal),
+
+    Signature: lipgloss.Color("#4BA3B0"),
+    FocusRing: lipgloss.Color("#80C3CB"), InfoFg: lipgloss.Color("#80C3CB"),
     BorderControl: lipgloss.Color("#82979C"), BorderSubtle: lipgloss.Color("#35464D"),
     SelectionFg: lipgloss.Color("#D9EEF0"), SelectionBg: lipgloss.Color("#1E3B46"),
-    SuccessBg: lipgloss.Color("#022C22"), SuccessFg: lipgloss.Color("#6EE7B7"),
-    WarningBg: lipgloss.Color("#451A03"), WarningFg: lipgloss.Color("#FCD34D"),
-    DangerBg: lipgloss.Color("#450A0A"), DangerFg: lipgloss.Color("#FCA5A5"),
-    InfoBg: lipgloss.Color("#102630"), InfoFg: lipgloss.Color(hexBrandTeal),
+    SuccessFg: lipgloss.Color("#6EE7B7"), WarningFg: lipgloss.Color("#FCD34D"), DangerFg: lipgloss.Color("#FCA5A5"),
     DisabledBg: lipgloss.Color("#25343A"), DisabledFg: lipgloss.Color("#ADBDC0"),
-    ActionPrimaryBg: lipgloss.Color(hexBrandTeal), ActionPrimaryFg: lipgloss.Color("#102630"),
     ActionDangerBg: lipgloss.Color("#FCA5A5"), ActionDangerFg: lipgloss.Color("#450A0A"),
+}
+```
+
+<a name="Dark256"></a>Dark256 is the declared xterm\-256 mapping of Dark: each token's nearest palette index, kept only because every contrast pair still holds on the mapped values \(theme\_test.go recomputes them\).
+
+```go
+var Dark256 = Palette{
+    Canvas: lipgloss.ANSIColor(232), Surface: lipgloss.ANSIColor(235),
+    TextPrimary: lipgloss.ANSIColor(255), TextSecondary: lipgloss.ANSIColor(253), TextMuted: lipgloss.ANSIColor(250),
+    Signature: lipgloss.ANSIColor(73),
+    FocusRing: lipgloss.ANSIColor(110), InfoFg: lipgloss.ANSIColor(110),
+    BorderControl: lipgloss.ANSIColor(246), BorderSubtle: lipgloss.ANSIColor(238),
+    SelectionFg: lipgloss.ANSIColor(254), SelectionBg: lipgloss.ANSIColor(236),
+    SuccessFg: lipgloss.ANSIColor(79), WarningFg: lipgloss.ANSIColor(221), DangerFg: lipgloss.ANSIColor(217),
+    DisabledBg: lipgloss.ANSIColor(236), DisabledFg: lipgloss.ANSIColor(250),
+    ActionDangerBg: lipgloss.ANSIColor(217), ActionDangerFg: lipgloss.ANSIColor(52),
 }
 ```
 
@@ -81,11 +110,21 @@ var Dark = Palette{
 ```go
 var Icon = struct {
     Cursor      string
+    Done        string
+    Failed      string
+    Unchecked   string
+    Chosen      string
+    Unchosen    string
     CheckboxOn  string
     CheckboxOff string
     FieldBar    string
 }{
     Cursor:      "> ",
+    Done:        "✓",
+    Failed:      "✗",
+    Unchecked:   "?",
+    Chosen:      "• ",
+    Unchosen:    "  ",
     CheckboxOn:  "[x]",
     CheckboxOff: "[ ]",
     FieldBar:    "┃ ",
@@ -93,7 +132,7 @@ var Icon = struct {
 ```
 
 <a name="Animation"></a>
-## func [Animation](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L47>)
+## func [Animation](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L67>)
 
 ```go
 func Animation() bool
@@ -102,7 +141,7 @@ func Animation() bool
 Animation reports whether animated indicators may run. Set TAKT\_NO\_ANIMATION to any non\-empty value for the documented animation\-free mode; the ASCII baseline renders either way.
 
 <a name="Mono"></a>
-## func [Mono](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L42>)
+## func [Mono](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L62>)
 
 ```go
 func Mono() bool
@@ -111,16 +150,16 @@ func Mono() bool
 Mono reports whether the surface renders without color.
 
 <a name="SetMode"></a>
-## func [SetMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L31>)
+## func [SetMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L34>)
 
 ```go
 func SetMode(m Mode)
 ```
 
-SetMode switches the capability and rebuilds every style. Call once at startup before any rendering; the environment default is DetectMode.
+SetMode switches the capability and rebuilds every style.
 
 <a name="Mode"></a>
-## type [Mode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L15>)
+## type [Mode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L16>)
 
 Mode names the rendering capability the surface targets.
 
@@ -134,6 +173,9 @@ type Mode int
 const (
     // ModeColor paints the single dark theme with true-color SGR sequences.
     ModeColor Mode = iota
+    // ModeColor256 paints the dark theme through the declared xterm-256
+    // mapping (Dark256), whose contrast pairs are verified on the mapped values.
+    ModeColor256
     // ModeMono renders plain text with no ANSI styling; markers and labels
     // carry every semantic role so focus, selection and state stay readable.
     ModeMono
@@ -141,25 +183,34 @@ const (
 ```
 
 <a name="DetectMode"></a>
-### func [DetectMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L34>)
+### func [DetectMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L39>)
 
 ```go
 func DetectMode() Mode
 ```
 
-DetectMode reads the environment for the documented no\-color fallback.
+DetectMode reads the environment for the documented no\-color fallback. It only seeds the first frame: the program's reported color profile \(ModeFor\) is the authority once the event loop delivers it.
+
+<a name="ModeFor"></a>
+### func [ModeFor](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L50>)
+
+```go
+func ModeFor(profile colorprofile.Profile) Mode
+```
+
+ModeFor maps the terminal's color profile onto a declared mode. Only true color and the verified 256\-color table are colored: an unverified nearest\-color downsample is not contrast evidence, so anything below 256 colors renders monochrome.
 
 <a name="Palette"></a>
-## type [Palette](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L50-L55>)
+## type [Palette](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L70-L75>)
 
 Palette holds one theme's tokens so renderers ask for roles, never hex values.
 
 ```go
 type Palette struct {
-    Canvas, Surface, Raised, TextPrimary, TextSecondary, TextMuted, BrandInk, FocusRing,
-    BorderControl, BorderSubtle, SelectionFg, SelectionBg, SuccessBg, SuccessFg,
-    WarningBg, WarningFg, DangerBg, DangerFg, InfoBg, InfoFg, DisabledBg, DisabledFg,
-    ActionPrimaryBg, ActionPrimaryFg, ActionDangerBg, ActionDangerFg color.Color
+    Canvas, Surface, TextPrimary, TextSecondary, TextMuted, Signature,
+    FocusRing, InfoFg, BorderControl, BorderSubtle, SelectionFg, SelectionBg,
+    SuccessFg, WarningFg, DangerFg, DisabledBg, DisabledFg,
+    ActionDangerBg, ActionDangerFg color.Color
 }
 ```
 

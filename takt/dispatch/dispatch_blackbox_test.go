@@ -110,6 +110,33 @@ func TestReconcileNotRunningFinishesAsInterrupted(t *testing.T) {
 	if unit.State != history.StateSettled || unit.Outcome != history.OutcomeInterrupted {
 		t.Errorf("Reconcile(running=false) left unit = %+v, want settled/interrupted", unit)
 	}
+	if err := dispatch.Record(h, "", "a", "s1", history.KindUncertain); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Reconcile(h, "", "a", "s1", false); err != nil {
+		t.Fatalf("repeated recovery of settled delegation = %v", err)
+	}
+	if err := dispatch.Reconcile(h, "", "a", "other", false); err == nil {
+		t.Fatal("unrelated session reconciled a settled delegation")
+	}
+}
+
+func TestReconcileNotRunningHasNothingToDoForUnitsNotInFlight(t *testing.T) {
+	h := newHistory(t)
+	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "planned", Contract: "c"}}); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	for name, event := range map[string]string{"unknown": "never-admitted", "planned": "planned"} {
+		if err := dispatch.Reconcile(h, "", event, "s1", false); err != nil {
+			t.Errorf("%s unit: Reconcile(running=false) = %v, want nothing to do", name, err)
+		}
+	}
+	if err := dispatch.Reconcile(h, "", "planned", "other", false); err == nil {
+		t.Error("another session reconciled a planned unit")
+	}
+	if err := dispatch.Reconcile(h, "", "never-admitted", "s1", true); err == nil {
+		t.Error("Reconcile(running=true) of a unit that was never admitted = nil, want an error")
+	}
 }
 
 func TestReconcileRequiresUncertainFlight(t *testing.T) {

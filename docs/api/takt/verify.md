@@ -15,6 +15,7 @@ Package verify collects functional evidence without invoking agent tools or auth
 - [type Report](<#Report>)
   - [func Collect\(ctx context.Context, rootDir string\) Report](<#Collect>)
   - [func CollectWithReload\(ctx context.Context, rootDir string, reload ReloadStatus\) Report](<#CollectWithReload>)
+  - [func \(r Report\) Failed\(\) bool](<#Report.Failed>)
 - [type State](<#State>)
 
 
@@ -73,6 +74,15 @@ func CollectWithReload(ctx context.Context, rootDir string, reload ReloadStatus)
 ```
 
 CollectWithReload extends Collect with the result of the post\-deployment OpenCode reload. It keeps the existing no\-reload API for diagnostics.
+
+<a name="Report.Failed"></a>
+### func \(Report\) [Failed](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L185>)
+
+```go
+func (r Report) Failed() bool
+```
+
+Failed reports whether any capability failed its check. A check that could not run \(NotVerifiable\) leaves its capability unconfirmed, not failed.
 
 <a name="State"></a>
 ## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L18>)

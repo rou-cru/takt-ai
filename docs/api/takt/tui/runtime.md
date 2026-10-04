@@ -28,12 +28,16 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
   - [func \(adapter Adapter\) Execute\(request ActionRequest\) \(ActionResult, error\)](<#Adapter.Execute>)
   - [func \(adapter Adapter\) ExecuteContext\(ctx context.Context, request ActionRequest\) \(ActionResult, error\)](<#Adapter.ExecuteContext>)
   - [func \(adapter Adapter\) ExecuteContextProgress\(ctx context.Context, request ActionRequest, progress func\(setup.DeploymentProgress\)\) \(ActionResult, error\)](<#Adapter.ExecuteContextProgress>)
-  - [func \(adapter Adapter\) OpenCodeModels\(\) \(\[\]string, error\)](<#Adapter.OpenCodeModels>)
+  - [func \(adapter Adapter\) OpenCodeModels\(\) \(\[\]opencodeapi.Model, error\)](<#Adapter.OpenCodeModels>)
   - [func \(adapter Adapter\) PreviewPlan\(request PreviewRequest\) \(InstallPlan, error\)](<#Adapter.PreviewPlan>)
   - [func \(adapter Adapter\) PreviewUninstall\(rootDir string\) \(setup.UninstallResult, error\)](<#Adapter.PreviewUninstall>)
   - [func \(adapter Adapter\) ScanDrift\(rootDir string\) \(\[\]setup.ConflictEntry, error\)](<#Adapter.ScanDrift>)
+- [type AgentModel](<#AgentModel>)
 - [type CancelRequest](<#CancelRequest>)
+- [type ConfigChange](<#ConfigChange>)
 - [type InstallPlan](<#InstallPlan>)
+- [type InstallSummary](<#InstallSummary>)
+  - [func Summarize\(rootDir string, request setup.PlanRequest, preview lifecycle.InstallPreview\) \(InstallSummary, error\)](<#Summarize>)
 - [type PreviewRequest](<#PreviewRequest>)
 - [type Run](<#Run>)
   - [func NewRun\(\) Run](<#NewRun>)
@@ -76,7 +80,7 @@ func LateCancelNote(result ActionResult) string
 LateCancelNote explains a result that finished before cancellation took effect.
 
 <a name="NextID"></a>
-## func [NextID](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L99>)
+## func [NextID](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L100>)
 
 ```go
 func NextID() uint64
@@ -85,7 +89,7 @@ func NextID() uint64
 NextID allocates a process\-unique request ID.
 
 <a name="SameInstalledVersion"></a>
-## func [SameInstalledVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L308>)
+## func [SameInstalledVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L309>)
 
 ```go
 func SameInstalledVersion(rootDir string) bool
@@ -94,7 +98,7 @@ func SameInstalledVersion(rootDir string) bool
 SameInstalledVersion checks whether the installed version matches this build.
 
 <a name="Action"></a>
-## type [Action](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L25>)
+## type [Action](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L26>)
 
 Action names a lifecycle operation.
 
@@ -120,7 +124,7 @@ const (
 ```
 
 <a name="ActionProgressMsg"></a>
-## type [ActionProgressMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L112-L115>)
+## type [ActionProgressMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L113-L116>)
 
 ActionProgressMsg carries one matching action's progress to its screen.
 
@@ -132,7 +136,7 @@ type ActionProgressMsg struct {
 ```
 
 <a name="ActionRequest"></a>
-## type [ActionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L42-L62>)
+## type [ActionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L43-L63>)
 
 ActionRequest carries a screen's operation to the runtime.
 
@@ -161,7 +165,7 @@ type ActionRequest struct {
 ```
 
 <a name="ActionResult"></a>
-## type [ActionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L65-L90>)
+## type [ActionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L66-L91>)
 
 ActionResult reports affected paths from a lifecycle operation.
 
@@ -213,7 +217,7 @@ func (result ActionResult) Partial() bool
 Partial reports a cancellation that left changes applied so callers warn honestly.
 
 <a name="ActionResultMsg"></a>
-## type [ActionResultMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L105-L109>)
+## type [ActionResultMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L106-L110>)
 
 ActionResultMsg delivers an action result to the event loop.
 
@@ -226,7 +230,7 @@ type ActionResultMsg struct {
 ```
 
 <a name="Adapter"></a>
-## type [Adapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L118-L120>)
+## type [Adapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L119-L121>)
 
 Adapter invokes setup's lifecycle APIs.
 
@@ -237,7 +241,7 @@ type Adapter struct {
 ```
 
 <a name="NewAdapter"></a>
-### func [NewAdapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L125>)
+### func [NewAdapter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L126>)
 
 ```go
 func NewAdapter() Adapter
@@ -246,7 +250,7 @@ func NewAdapter() Adapter
 NewAdapter wires the production lifecycle, including OpenCode V2 preflight and reload. Tests may continue using Adapter\{\} or NewTestAdapter with a zero lifecycle to avoid external processes.
 
 <a name="Adapter.Command"></a>
-### func \(Adapter\) [Command](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L130>)
+### func \(Adapter\) [Command](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L131>)
 
 ```go
 func (adapter Adapter) Command(ctx context.Context, request ActionRequest, observers ...func(setup.DeploymentProgress)) tea.Cmd
@@ -255,7 +259,7 @@ func (adapter Adapter) Command(ctx context.Context, request ActionRequest, obser
 Command defers a request to a Bubble Tea command.
 
 <a name="Adapter.Execute"></a>
-### func \(Adapter\) [Execute](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L143>)
+### func \(Adapter\) [Execute](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L144>)
 
 ```go
 func (adapter Adapter) Execute(request ActionRequest) (ActionResult, error)
@@ -264,7 +268,7 @@ func (adapter Adapter) Execute(request ActionRequest) (ActionResult, error)
 Execute runs a lifecycle operation to completion.
 
 <a name="Adapter.ExecuteContext"></a>
-### func \(Adapter\) [ExecuteContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L148>)
+### func \(Adapter\) [ExecuteContext](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L149>)
 
 ```go
 func (adapter Adapter) ExecuteContext(ctx context.Context, request ActionRequest) (ActionResult, error)
@@ -273,7 +277,7 @@ func (adapter Adapter) ExecuteContext(ctx context.Context, request ActionRequest
 ExecuteContext runs a request with cancellation.
 
 <a name="Adapter.ExecuteContextProgress"></a>
-### func \(Adapter\) [ExecuteContextProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L153>)
+### func \(Adapter\) [ExecuteContextProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L154>)
 
 ```go
 func (adapter Adapter) ExecuteContextProgress(ctx context.Context, request ActionRequest, progress func(setup.DeploymentProgress)) (ActionResult, error)
@@ -282,16 +286,16 @@ func (adapter Adapter) ExecuteContextProgress(ctx context.Context, request Actio
 ExecuteContextProgress executes a request while reporting lifecycle progress.
 
 <a name="Adapter.OpenCodeModels"></a>
-### func \(Adapter\) [OpenCodeModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L468>)
+### func \(Adapter\) [OpenCodeModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L482>)
 
 ```go
-func (adapter Adapter) OpenCodeModels() ([]string, error)
+func (adapter Adapter) OpenCodeModels() ([]opencodeapi.Model, error)
 ```
 
 OpenCodeModels reports the models the local OpenCode installation offers; asking the binary is execution, so it stays at the runtime boundary.
 
 <a name="Adapter.PreviewPlan"></a>
-### func \(Adapter\) [PreviewPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L424>)
+### func \(Adapter\) [PreviewPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L434>)
 
 ```go
 func (adapter Adapter) PreviewPlan(request PreviewRequest) (InstallPlan, error)
@@ -300,7 +304,7 @@ func (adapter Adapter) PreviewPlan(request PreviewRequest) (InstallPlan, error)
 PreviewPlan resolves request's plan and classifies every planned file against disk, without writing anything: previewing stays read\-only.
 
 <a name="Adapter.PreviewUninstall"></a>
-### func \(Adapter\) [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L457>)
+### func \(Adapter\) [PreviewUninstall](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L471>)
 
 ```go
 func (adapter Adapter) PreviewUninstall(rootDir string) (setup.UninstallResult, error)
@@ -309,7 +313,7 @@ func (adapter Adapter) PreviewUninstall(rootDir string) (setup.UninstallResult, 
 PreviewUninstall computes what uninstalling would remove or preserve without touching disk.
 
 <a name="Adapter.ScanDrift"></a>
-### func \(Adapter\) [ScanDrift](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L335>)
+### func \(Adapter\) [ScanDrift](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L336>)
 
 ```go
 func (adapter Adapter) ScanDrift(rootDir string) ([]setup.ConflictEntry, error)
@@ -317,8 +321,21 @@ func (adapter Adapter) ScanDrift(rootDir string) ([]setup.ConflictEntry, error)
 
 ScanDrift reports drift without writing.
 
+<a name="AgentModel"></a>
+## type [AgentModel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/summary.go#L31-L35>)
+
+AgentModel is one agent instance and the model it runs on; an empty Model means it inherits OpenCode's default.
+
+```go
+type AgentModel struct {
+    Name  string
+    Role  model.RoleClass
+    Model string
+}
+```
+
 <a name="CancelRequest"></a>
-## type [CancelRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L102>)
+## type [CancelRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L103>)
 
 CancelRequest asks a running action to stop.
 
@@ -326,8 +343,20 @@ CancelRequest asks a running action to stop.
 type CancelRequest struct{ ID uint64 }
 ```
 
+<a name="ConfigChange"></a>
+## type [ConfigChange](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/summary.go#L39-L42>)
+
+ConfigChange is a configuration file the install changes. Merged means the file is the user's own and Takt merges into it, keeping their keys.
+
+```go
+type ConfigChange struct {
+    Path   string
+    Merged bool
+}
+```
+
 <a name="InstallPlan"></a>
-## type [InstallPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L415-L420>)
+## type [InstallPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L423-L430>)
 
 InstallPlan is the resolved install/sync plan a review screen shows before commitment: the lifecycle preview plus how each planned file relates to what is on disk now.
 
@@ -337,11 +366,42 @@ type InstallPlan struct {
     // Add lists planned paths absent on disk; Modify lists present paths whose
     // bytes differ. Files already identical appear in neither.
     Add, Modify []string
+    // Summary states what the plan sets up in the user's terms.
+    Summary InstallSummary
 }
 ```
 
+<a name="InstallSummary"></a>
+## type [InstallSummary](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/summary.go#L16-L27>)
+
+InstallSummary is what an install sets up, in the user's terms rather than file paths, so review can state agents, skills and integrations directly.
+
+```go
+type InstallSummary struct {
+    // Agents is every deployed agent instance with its effective model.
+    Agents []AgentModel
+    // Skills counts the distinct Takt skills, not their files.
+    Skills int
+    // MCPServers names the MCP servers the install configures.
+    MCPServers []string
+    // Integrations names the OpenCode plugins the install deploys.
+    Integrations []string
+    // Configs lists the user's configuration files the install changes.
+    Configs []ConfigChange
+}
+```
+
+<a name="Summarize"></a>
+### func [Summarize](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/summary.go#L58>)
+
+```go
+func Summarize(rootDir string, request setup.PlanRequest, preview lifecycle.InstallPreview) (InstallSummary, error)
+```
+
+Summarize states what an install plan sets up in the user's terms, for any surface that reviews a plan \(the TUI review, the CLI's \-\-plan\-only\).
+
 <a name="PreviewRequest"></a>
-## type [PreviewRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L405-L410>)
+## type [PreviewRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/runtime.go#L413-L418>)
 
 PreviewRequest asks what install/sync would face so review shows real conflicts.
 
@@ -355,7 +415,7 @@ type PreviewRequest struct {
 ```
 
 <a name="Run"></a>
-## type [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L9-L19>)
+## type [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L11-L21>)
 
 Run is one screen's action state: the pending request, its spinner, and the cancel flag.
 
@@ -371,7 +431,7 @@ type Run struct {
 ```
 
 <a name="NewRun"></a>
-### func [NewRun](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L22>)
+### func [NewRun](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L24>)
 
 ```go
 func NewRun() Run
@@ -380,7 +440,7 @@ func NewRun() Run
 NewRun returns a Run ready to start an action.
 
 <a name="Run.AcceptProgress"></a>
-### func \(Run\) [AcceptProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L61>)
+### func \(Run\) [AcceptProgress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L63>)
 
 ```go
 func (r Run) AcceptProgress(msg ActionProgressMsg) (Run, bool)
@@ -389,7 +449,7 @@ func (r Run) AcceptProgress(msg ActionProgressMsg) (Run, bool)
 AcceptProgress applies one progress event only when it belongs to this run.
 
 <a name="Run.Busy"></a>
-### func \(Run\) [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L103>)
+### func \(Run\) [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L97>)
 
 ```go
 func (r Run) Busy() bool
@@ -398,7 +458,7 @@ func (r Run) Busy() bool
 Busy reports that an action is running.
 
 <a name="Run.Cancel"></a>
-### func \(Run\) [Cancel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L41>)
+### func \(Run\) [Cancel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L43>)
 
 ```go
 func (r Run) Cancel(msg CancelRequest) Run
@@ -407,7 +467,7 @@ func (r Run) Cancel(msg CancelRequest) Run
 Cancel records a cancellation for the running request; repeated presses add nothing.
 
 <a name="Run.End"></a>
-### func \(Run\) [End](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L96>)
+### func \(Run\) [End](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L90>)
 
 ```go
 func (r Run) End() Run
@@ -416,7 +476,7 @@ func (r Run) End() Run
 End clears the running flags once the result was consumed.
 
 <a name="Run.ProgressView"></a>
-### func \(Run\) [ProgressView](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L109>)
+### func \(Run\) [ProgressView](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L103>)
 
 ```go
 func (r Run) ProgressView() ui.Progress
@@ -425,7 +485,7 @@ func (r Run) ProgressView() ui.Progress
 ProgressView returns the current progress snapshot for a busy screen.
 
 <a name="Run.Result"></a>
-### func \(Run\) [Result](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L88>)
+### func \(Run\) [Result](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L82>)
 
 ```go
 func (r Run) Result(msg ActionResultMsg) (ActionResultMsg, bool)
@@ -434,7 +494,7 @@ func (r Run) Result(msg ActionResultMsg) (ActionResultMsg, bool)
 Result reports msg when it answers the running request.
 
 <a name="Run.SpinView"></a>
-### func \(Run\) [SpinView](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L106>)
+### func \(Run\) [SpinView](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L100>)
 
 ```go
 func (r Run) SpinView() string
@@ -443,7 +503,7 @@ func (r Run) SpinView() string
 SpinView renders the current spinner frame.
 
 <a name="Run.Start"></a>
-### func \(Run\) [Start](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L31>)
+### func \(Run\) [Start](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L33>)
 
 ```go
 func (r Run) Start(request ActionRequest) Run
@@ -452,7 +512,7 @@ func (r Run) Start(request ActionRequest) Run
 Start marks request as running until its result arrives.
 
 <a name="Run.Tick"></a>
-### func \(Run\) [Tick](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L49>)
+### func \(Run\) [Tick](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L51>)
 
 ```go
 func (r Run) Tick(msg tea.Msg) (Run, tea.Cmd)
@@ -461,7 +521,7 @@ func (r Run) Tick(msg tea.Msg) (Run, tea.Cmd)
 Tick advances the spinner while an action runs; otherwise it is a no\-op.
 
 <a name="Runner"></a>
-## type [Runner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L25-L28>)
+## type [Runner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/runtime/run.go#L27-L30>)
 
 Runner is a flow with an in\-flight action.
 

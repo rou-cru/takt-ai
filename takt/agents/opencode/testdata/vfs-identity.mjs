@@ -22,7 +22,7 @@ async function bind(tools, messages, ctx, unit, authorKey) {
     // Model-supplied identity must not override the harness context.
     agent_id: "impostor", specialist: "impostor",
   }, ctx)
-  assert.equal(messages.length, before + 1)
+  assert.equal(messages.length, before + (authorKey ? 2 : 1))
   const message = messages.at(-1)
   assert.equal(message.command, "bind")
   checkIdentity(message.request, ctx, unit)

@@ -52,7 +52,7 @@ var ContractSkillPath = path.Join(MemorySkillsDir, ContractSkillID, catalog.Skil
 ```
 
 <a name="Acquire"></a>
-## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/acquire.go#L97>)
+## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/acquire.go#L88>)
 
 ```go
 func Acquire(ctx context.Context, root string) (string, error)

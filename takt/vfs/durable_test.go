@@ -188,7 +188,7 @@ func TestDurableReopenAndContentFreeJournal(t *testing.T) {
 	}
 }
 
-func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseKeepsDelta(t *testing.T) {
+func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseNeverStrandsStagedWork(t *testing.T) {
 	f, root, state := durable(t)
 	identity := Identity{SessionID: "root-session", WorkUnitID: "unit-a", AgentID: "dev-a", Specialist: "dev"}
 	key, err := f.AssignScope(identity, []string{"a.go"})
@@ -243,27 +243,24 @@ func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseKeepsDelta(t *testing.T)
 	if err = f.Verify(verifier, key, "accept", created.Revision, created.DeltaHash, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.RevokeOwnership(key); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := f.BindingIdentity(key); !ok {
-		t.Fatal("release removed the binding")
+	if err = f.RevokeOwnership(key); !errors.Is(err, ErrStagedWork) {
+		t.Fatalf("release of staged work = %v, want ErrStagedWork", err)
 	}
 	if delta := f.InspectDelta(key); delta.Revision != created.Revision || delta.Hash != created.DeltaHash {
-		t.Fatalf("release discarded staged delta: %+v", delta)
+		t.Fatalf("refused release changed the staged delta: %+v", delta)
 	}
-	if err = f.ConsolidateCheckpoint(key, "must-not-flush", created.Revision); !errors.Is(err, ErrScopeDenied) {
-		t.Fatalf("released staged delta consolidation = %v, want scope denial", err)
-	}
-	if claims = f.OwnershipClaims("root-session"); len(claims) != 1 || claims[0].AgentID != "verify" {
-		t.Fatalf("released claim still listed: %+v", claims)
-	}
-	if _, err = f.Apply(Operation{Key: key, CallID: "unowned-read", ExpectedRevision: created.Revision, Action: OpRead, Path: "a.go"}); !errors.Is(err, ErrScopeDenied) {
-		t.Fatalf("former owner read after release = %v, want scope denial", err)
+	if f.owners["a.go"] != key {
+		t.Fatal("refused release dropped ownership of the staged path")
 	}
 	read, err := f.ReadAs(Operation{Key: verifier, CallID: "recovery-read", ExpectedRevision: created.Revision, Action: OpRead, Path: "a.go"}, key)
 	if err != nil || string(read.Content) != "staged" {
-		t.Fatalf("authorized staged-view read after release = %q, %v", read.Content, err)
+		t.Fatalf("authorized staged-view read after refused release = %q, %v", read.Content, err)
+	}
+	if err = f.ConsolidateCheckpoint(key, "deliver", created.Revision); err != nil {
+		t.Fatalf("consolidation after refused release = %v", err)
+	}
+	if claims = f.OwnershipClaims("root-session"); len(claims) != 1 || claims[0].AgentID != "verify" {
+		t.Fatalf("consolidated claim still listed: %+v", claims)
 	}
 }
 
@@ -354,7 +351,7 @@ func TestGateRevisionIdentityAndReplay(t *testing.T) {
 	if hasVerdict(f, key) {
 		t.Fatal("edit retained gate")
 	}
-	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision); !errors.Is(e, ErrInvalidVerdict) {
+	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision); e != nil {
 		t.Fatal(e)
 	}
 }

@@ -4,4 +4,4 @@ Implement only the assigned scope, follow repository conventions; when none appl
 
 During concurrent implementation, or when an active workflow reserves global verification, run only targeted isolated checks tied to your work, never global suites or whole-workspace builds. When working alone with no concurrent writers and no such reservation, run the complete pertinent checks. Self-checking demonstrates implementation; it does not provide an independent gate or acceptance verdict.
 
-Persist merged progress and mark authored tasks complete only with evidence. Return changed files, behavior delivered, check commands and results, contract deviations, and remaining limits for Verify or the next owner. Do not delegate.
+Persist merged progress and mark authored tasks complete only with evidence. Return changed files, behavior delivered, check commands and results, contract deviations, and remaining limits of the delivered work. Do not delegate.

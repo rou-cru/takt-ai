@@ -27,11 +27,11 @@ Package codegraph keeps the codebase\-exploration MCP wiring in one place so eve
 <a name="CodegraphVersion"></a>CodegraphVersion is the minimum codegraph release Takt configures and the one it installs.
 
 ```go
-const CodegraphVersion = "1.6.0"
+const CodegraphVersion = "1.6.1"
 ```
 
 <a name="Acquire"></a>
-## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L100>)
+## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L91>)
 
 ```go
 func Acquire(ctx context.Context, root string) (string, error)
@@ -40,7 +40,7 @@ func Acquire(ctx context.Context, root string) (string, error)
 Acquire returns Resolve's path when found; otherwise installs the pinned npm package into ManagedPrefix\(root\) so the MCP entry can point at an absolute path instead of relying on PATH.
 
 <a name="EnsureIndexed"></a>
-## func [EnsureIndexed](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L122>)
+## func [EnsureIndexed](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L113>)
 
 ```go
 func EnsureIndexed(ctx context.Context, binary, workspace string) error
@@ -49,13 +49,13 @@ func EnsureIndexed(ctx context.Context, binary, workspace string) error
 EnsureIndexed initializes CodeGraph once for a workspace before its MCP server is started. Existing indexes are validated and left to CodeGraph's serve\-time reconciliation; a broken existing index is reported, not reset.
 
 <a name="Inject"></a>
-## func [Inject](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/inject.go#L30>)
+## func [Inject](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/inject.go#L28>)
 
 ```go
 func Inject(homeDir, command string) (model.InjectionResult, error)
 ```
 
-Inject wires the codegraph MCP server in; command is the resolved absolute binary, written verbatim.
+Inject wires the codegraph MCP server in; command is the resolved absolute binary, written verbatim. Args start codegraph as a stdio MCP server \("serve \-\-mcp"\).
 
 <a name="ManagedBinaryPath"></a>
 ## func [ManagedBinaryPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L71>)
@@ -103,7 +103,7 @@ func Resolve(root string) (string, bool)
 Resolve is read\-only. Order: \(1\) \`codegraph\` on PATH whose \`\-\-version\` \>= CodegraphVersion, \(2\) ManagedBinaryPath\(root\) if it exists and reports \>= CodegraphVersion. Returns absolute path.
 
 <a name="VerifyVersion"></a>
-## func [VerifyVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L179>)
+## func [VerifyVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/codegraph/acquire.go#L164>)
 
 ```go
 func VerifyVersion(binary string) (string, error)
