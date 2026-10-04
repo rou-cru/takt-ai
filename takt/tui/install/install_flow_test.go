@@ -1,7 +1,6 @@
 package install_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rou-cru/takt-ai/takt/codegraph"
-	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/install"
@@ -29,25 +27,23 @@ func viewText(m install.Model) string {
 	return ansi.Strip(view.View().Content)
 }
 
-// nonJSONManagedPath installs a real root once, purely to learn a managed
-// relative path that isn't a mergeable .json config, then discards the root.
+// nonJSONManagedPath selects a non-mergeable artifact from the path-sorted
+// install plan. The ownership manifest also contains runtime binaries, which
+// are not part of the plan checked for installation conflicts.
 func nonJSONManagedPath(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
-	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
-		t.Fatalf("Run(install) error = %v", err)
-	}
-	manifest, err := setup.LoadOwnershipManifest(root)
+	plans, _, err := setup.BuildTargetPlans(setuputil.TestPlanRequest())
 	if err != nil {
-		t.Fatalf("LoadOwnershipManifest() error = %v", err)
+		t.Fatalf("BuildTargetPlans() error = %v", err)
 	}
-	for path := range manifest.Entries {
-		if !strings.HasSuffix(path, ".json") {
-			return path
+	for _, plan := range plans {
+		for _, artifact := range plan.Artifacts {
+			if !strings.HasSuffix(artifact.Path, ".json") {
+				return artifact.Path
+			}
 		}
 	}
-	t.Fatal("no non-JSON managed path found in the installed manifest")
+	t.Fatal("no non-JSON artifact found in the install plan")
 	return ""
 }
 
