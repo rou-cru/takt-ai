@@ -11,6 +11,7 @@ const ORCHESTRATOR = "__TAKT_ORCHESTRATOR_ID__"
 const RESULT_AGENT = "__TAKT_RESULT_AGENTS__"
 const VFS_AGENT = "__TAKT_VFS_AGENTS__"
 const DELEGATIONS_KEY = "takt/vfs/delegations"
+const INPUTS_KEY = "takt/vfs/inputs"
 const BROKEN_AGENT = "broken-agent"
 const WORKSPACE = "/workspace"
 const SHELL_NOT_ADMITTED = 122
@@ -342,6 +343,22 @@ describe("delegation lifecycle", () => {
       const system = await admitProducer(none)
       expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief.")
     } finally { await none.stop() }
+  })
+
+  test("a declaration survives a plugin restart", async () => {
+    const first = await startVfs({ respond: acceptInputs })
+    try {
+      await first.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [7] }, orchestrator)
+    } finally { await first.stop() }
+    const stored = first.storage.get(INPUTS_KEY)
+    expect(stored).toEqual({ "root\0unit-r": [7] })
+    const restarted = await startVfs({ sessions: producerSessions, storage: { [INPUTS_KEY]: stored } })
+    try {
+      await restarted.fire(restarted.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      const context = { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
+      await restarted.fire(restarted.session, "context", context)
+      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: Engram #7. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.")
+    } finally { await restarted.stop() }
   })
 
   test("a producer that never delivers is nudged once, then its delegation fails and settles", async () => {

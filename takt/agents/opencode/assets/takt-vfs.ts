@@ -213,6 +213,8 @@ const EXCEPTION_BOUNDS = [
 
 // DELEGATIONS_KEY holds which work unit each in-flight host delegation executes.
 const DELEGATIONS_KEY = "takt/vfs/delegations"
+// INPUTS_KEY holds the invariants each root/unit was declared to consume.
+const INPUTS_KEY = "takt/vfs/inputs"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
@@ -303,8 +305,11 @@ export default Plugin.define({
     const deliveries = new Map<string, number[]>()
     // inputs holds, per root/unit, the Engram IDs of the invariants the
     // orchestrator declared that unit consumes; an empty list is the declared
-    // absence. It outlives retries of the unit and is replaced by a redeclaration.
-    const inputs = new Map<string, number[]>()
+    // absence. It outlives retries of the unit, and a restart, and is replaced
+    // by a redeclaration.
+    const inputs = new Map<string, number[]>(
+      Object.entries(((await ctx.storage.get(INPUTS_KEY)) as Record<string, number[]> | undefined) ?? {}))
+    const persistInputs = () => ctx.storage.set(INPUTS_KEY, Object.fromEntries(inputs))
     const childOf = new Map<string, string>()
     const unitKey = (root: string, unit: string) => `${root}\0${unit}`
     // record keeps the binding, and its durable copy, in step with the harness's
@@ -1095,6 +1100,7 @@ export default Plugin.define({
           if ((ids.length > 0) === (args.none === true)) throw new Error("Declare either the consumed result_ids or none: true, exactly one of them")
           if (ids.length > 0) await dispatchAction({ action: "validate_inputs", session, result_ids: ids })
           inputs.set(unitKey(session, unit), ids)
+          await persistInputs()
           return { content: ids.length > 0 ? `Declared ${ids.length} consumed invariant(s) for ${unit}` : `Declared that ${unit} consumes no recorded invariant yet` }
         },
       })

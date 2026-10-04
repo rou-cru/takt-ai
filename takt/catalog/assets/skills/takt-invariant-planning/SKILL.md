@@ -57,9 +57,10 @@ every lane of a round in the same response. Ends when every lane has delivered.
 ## 5. Coherence
 
 When a round returns, compare its documents with each other. On a contradiction, decide which
-stands (the one backed by the user's directive or verified facts; on a tie, the one more lanes
-consume) and re-dispatch only the other lane with its original document, its first result, the
-standing document and the contradiction. You decide; the lane rewrites. Two failed alignments
+stands (the one backed by the user's directive or verified facts) and re-dispatch only the other
+lane with its original document, its first result, the standing document and the contradiction.
+When neither is backed, the conflict stays disputed: how many lanes consume a document is not
+evidence, so ask the user or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
 of one conflict: escalate. Ends when no contradiction remains open; planning is then complete.
 
 ## Specialist unavailable
