@@ -661,22 +661,31 @@ func (m Model) reviewBody() string {
 		title = ui.TextReviewApplyTitle
 	}
 	b.WriteString(theme.Title.Render(title) + "\n" + theme.Caption.Render(ui.TextReviewScope) + "\n\n")
-	b.WriteString(ui.Group(ui.TextGroupInstalls, m.installRows()))
-	if disk := m.diskRows(added, updated); len(disk) > 0 {
-		b.WriteString("\n" + ui.Group(ui.TextGroupDisk, disk))
+	var groups []string
+	if installs := m.installRows(); len(installs) > 0 {
+		groups = append(groups, ui.Group(ui.TextGroupInstalls, installs))
 	}
+	if disk := m.diskRows(added, updated); len(disk) > 0 {
+		groups = append(groups, ui.Group(ui.TextGroupDisk, disk))
+	}
+	b.WriteString(strings.Join(groups, "\n"))
 	return b.String()
 }
 
 // installRows counts what the install sets up, numbers aligned on their last
-// digit, with names and model groups as muted details; empty groups are
+// digit, with names and model groups as muted details; zero counts are
 // omitted.
 func (m Model) installRows() []ui.Row {
 	summary := m.plan.Summary
 	agents := len(summary.Agents)
 	width := len(fmt.Sprint(max(agents, summary.Skills, len(summary.MCPServers), len(summary.Integrations))))
-	rows := agentRows(summary.Agents, width)
-	rows = append(rows, ui.Row{Lead: counted(summary.Skills, width, ui.TextSkillOne, ui.TextSkillMany)})
+	var rows []ui.Row
+	if agents > 0 {
+		rows = agentRows(summary.Agents, width)
+	}
+	if summary.Skills > 0 {
+		rows = append(rows, ui.Row{Lead: counted(summary.Skills, width, ui.TextSkillOne, ui.TextSkillMany)})
+	}
 	if len(summary.MCPServers) > 0 {
 		rows = append(rows, ui.Row{
 			Lead:   counted(len(summary.MCPServers), width, ui.TextMCPServerOne, ui.TextMCPServerMany),

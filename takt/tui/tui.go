@@ -237,14 +237,16 @@ func Run(input io.Reader, output io.Writer) error {
 }
 
 // measureLogoGlyphs measures the logo's character set on the real terminal
-// streams before the program owns them; mono and non-file streams keep the
-// default.
+// streams before the program owns them; mono and non-file streams get
+// half-blocks, whatever an earlier run chose.
 func measureLogoGlyphs(input io.Reader, output io.Writer) {
 	in, inOK := input.(*os.File)
 	out, outOK := output.(*os.File)
-	if inOK && outOK && !theme.Mono() {
-		styles.SetGlyphs(styles.ProbeGlyphs(in, out))
+	if !inOK || !outOK || theme.Mono() {
+		styles.SetGlyphs(styles.GlyphsHalfBlocks)
+		return
 	}
+	styles.SetGlyphs(styles.ProbeGlyphs(in, out))
 }
 
 // Init has no startup work.

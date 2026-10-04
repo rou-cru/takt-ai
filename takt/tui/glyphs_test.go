@@ -16,7 +16,8 @@ func TestMeasureLogoGlyphsUsesFileStreamsOnly(t *testing.T) {
 	theme.SetMode(theme.ModeColor)
 	t.Setenv("TAKT_LOGO_GLYPHS", "octants")
 
-	styles.SetGlyphs(styles.GlyphsHalfBlocks)
+	// A run that cannot probe drops what an earlier run measured.
+	styles.SetGlyphs(styles.GlyphsOctants)
 	measureLogoGlyphs(&bytes.Buffer{}, &bytes.Buffer{})
 	if got := styles.Logo(16, 8); got == "" || !bytes.ContainsRune([]byte(got), '▀') {
 		t.Fatalf("non-file streams changed the glyphs: %q", got)

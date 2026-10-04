@@ -254,13 +254,16 @@ func TestReviewListsEveryChangeCategory(t *testing.T) {
 	mustContain(t, plain(m), fmt.Sprintf(ui.TextAgentModelsAllFmt, "openai/gpt-6-luna"))
 }
 
-// File counts name only the parts that happen, in proper number.
-func TestReviewFileCountsOmitZeroParts(t *testing.T) {
+// Counts name only what happens, in proper number: no zero rows, no zero
+// parts, and no group without rows.
+func TestReviewOmitsZeroCounts(t *testing.T) {
 	m := planModel(t, StepReview, runtime.InstallPlan{Add: []string{"opencode/agents/one.md"}})
 	got := plain(m)
 	mustContain(t, got, "1 new file")
-	if strings.Contains(got, "updated") || strings.Contains(got, "1 new files") {
-		t.Errorf("review = %q, want only %q", got, "1 new file")
+	for _, unwanted := range []string{"updated", "1 new files", "0 agents", "0 skills", "orchestrator", ui.TextGroupInstalls} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("review = %q, want no %q", got, unwanted)
+		}
 	}
 }
 
