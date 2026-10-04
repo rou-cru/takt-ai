@@ -69,6 +69,7 @@ await plugin.setup({
 })
 
 const delegate = async (phase, description, id, agent, status = "completed") => {
+  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), none: true }, { sessionID: "root", agent: "takt" })
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
       input: { agent, description, prompt: "p" }, status, result: {} })
@@ -109,7 +110,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   onWait = async () => { assert.fail("retry waited on the previous child") }
   await delegate("execute.before", unit, "call-retry", "pm")
   await assert.rejects(delegate("execute.after", unit, "call-retry", "pm"),
-    /delegation ended without delivering a result via deliver_result/)
+    /the specialist ended without delivering its result/)
   assert.equal(dispatched().filter(r => r.action === "finish").length, 2,
     "failed retry must also settle; a stale delivery must not satisfy it")
 } else if (scenario === "no_unnecessary_wait") {
@@ -236,7 +237,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   const error = await completion
   assert.deepEqual(waitedSessions, ["async-missing"])
   assert.deepEqual(promptedSessions, ["async-missing"])
-  assert.match(error.message, /delegation ended without delivering a result via deliver_result/)
+  assert.match(error.message, /the specialist ended without delivering its result/)
   assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "finish"])
 } else if (scenario === "fallback") {
   // A validate_results transport/network failure must read nothing like a
@@ -262,7 +263,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
     await delegate("execute.after", "never-delivers", "call-nudge", "pm")
   } catch (error) { fallbackError = error }
   assert.ok(fallbackError, "a never-delivered producer finished silently")
-  assert.match(fallbackError.message, /delegation ended without delivering a result via deliver_result/)
+  assert.match(fallbackError.message, /the specialist ended without delivering its result/)
   const nudges = promptedSessions.slice(promptedBefore)
   assert.deepEqual(nudges, ["never-delivers"], "expected exactly one bounded nudge")
 
@@ -289,7 +290,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   mark = dispatched().length
   await delegate("execute.before", "tpm-missing", "call-tpm-missing", "tpm")
   await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
-    /delegation ended without delivering a result via deliver_result/)
+    /the specialist ended without delivering its result/)
   assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch", "finish"])
 } else {
   throw new Error(`unknown scenario ${JSON.stringify(scenario)}`)

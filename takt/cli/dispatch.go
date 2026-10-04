@@ -174,7 +174,7 @@ var ordinaryDispatchActions = map[string]bool{
 	"cancel": true, "stop": true, "escalate": true, "withdraw": true,
 	"commit": true, "contest": true, "recovery": true, "recovered": true,
 	"restore": true, "exception": true,
-	"switch": true, "handoff": true, "abort_switch": true, "validate_results": true,
+	"switch": true, "handoff": true, "abort_switch": true, "validate_results": true, "validate_inputs": true,
 }
 
 // runDispatch admits and drives ordinary crew work through the execution
@@ -257,6 +257,11 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"switch": func() (any, error) { return nil, protocol.Switch(h, ref, r.Session, r.Child, r.Agent, r.Artifact) },
 		"validate_results": func() (any, error) {
 			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
+		},
+		// A delegation's consumed invariants must name existing entries; who
+		// recorded them is irrelevant to the consumer.
+		"validate_inputs": func() (any, error) {
+			return nil, memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs)
 		},
 		"handoff":      func() (any, error) { return handoffWithArtifactGate(h, ref, workspace, r) },
 		"abort_switch": func() (any, error) { return abortWithArtifactReport(h, ref, workspace, r) },

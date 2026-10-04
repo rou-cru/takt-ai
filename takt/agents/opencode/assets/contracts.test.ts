@@ -22,5 +22,6 @@ describe("shared Go/TypeScript wire contracts", () => {
     expect(contracts.dispatch_request).toHaveProperty("action", "handoff")
     expect(contracts.dispatch_switch_request).toHaveProperty("action", "switch")
     expect(contracts.dispatch_validate_request).toHaveProperty("action", "validate_results")
+    expect(contracts.dispatch_inputs_request).toMatchObject({ action: "validate_inputs", result_ids: expect.any(Array) })
   })
 })
