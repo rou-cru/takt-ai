@@ -46,7 +46,7 @@ jobs:
           npm run --prefix takt/agents/opencode/assets lint
       - name: Validate shell and workflows
         run: |
-          shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh development/release/next-version.sh deploy/workspace/helm.sh
+          shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh development/release/*.sh deploy/workspace/helm.sh
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
   test-go-host:
@@ -149,13 +149,70 @@ jobs:
           cache-to: type=gha,mode=max,scope=e2e-runtime
       - name: Run mandatory setup CLI E2E contract
         run: docker run --rm takt-e2e:${{ github.sha }}
+      # Report-only: the gate for shipped dependencies is the sca job; the
+      # released image is scanned again in release.yml.
+      - name: Grype e2e image report
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: takt-e2e:${{ github.sha }}
+          fail-build: false
+          only-fixed: true
+          output-format: table
 
   sast:
     uses: ./.github/workflows/sast.yml
     permissions:
       contents: read
       security-events: write
-      actions: read
+
+  # Verified credentials only, over the commits this run adds: the PR range,
+  # or the pushed range (whole history on a new branch).
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
+        with:
+          version: 3.97.9
+          extra_args: --only-verified
+
+  # SBOM of the source tree (every Go module and npm lockfile), then a gate on
+  # high or critical vulnerabilities that already have a fix.
+  sca:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Syft source SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom-source.spdx.json
+          dependency-snapshot: false
+      - id: grype
+        name: Grype vulnerability gate
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          sbom: sbom.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: sarif
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        if: ${{ !cancelled() && steps.grype.outputs.sarif != '' }}
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-source
 
   iac:
     runs-on: ubuntu-latest
@@ -264,7 +321,7 @@ jobs:
 
   ci-required:
     if: ${{ always() }}
-    needs: [quality, test-go-host, test-go-container, test-js, e2e-container, sast, iac, release-check, coverage, sonarqube]
+    needs: [quality, test-go-host, test-go-container, test-js, e2e-container, sast, secrets, sca, iac, release-check, coverage, sonarqube]
     runs-on: ubuntu-latest
     steps:
       - name: Check all mandatory jobs

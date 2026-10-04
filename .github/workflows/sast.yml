@@ -1,8 +1,8 @@
 name: SAST
 
-# Single CodeQL source for the repo: gated by ci-required through workflow_call,
-# plus a weekly run so new queries reach unchanged code. Requires CodeQL
-# "default setup" to be disabled, or SARIF uploads from here are rejected.
+# Semgrep is the repo's static analysis: gated by ci-required through
+# workflow_call, plus a weekly run so updated rules reach unchanged code.
+# Findings fail the job and land in code scanning (category "semgrep").
 on:
   workflow_call:
   workflow_dispatch:
@@ -12,36 +12,35 @@ on:
 permissions:
   contents: read
   security-events: write
-  actions: read
+
+env:
+  SEMGREP_IMAGE: semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b
 
 jobs:
-  codeql:
-    name: CodeQL (${{ matrix.language }})
+  semgrep:
+    name: Semgrep
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: go
-            build-mode: autobuild
-          - language: javascript-typescript
-            build-mode: none
-          - language: actions
-            build-mode: none
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: matrix.language == 'go'
+      # Rulesets per language and surface in this repo; paths are filtered
+      # by .semgrepignore.
+      - name: Semgrep scan
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src" \
+            --workdir /src \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --metrics=off --error \
+              --config p/golang \
+              --config p/typescript \
+              --config p/javascript \
+              --config p/github-actions \
+              --config p/dockerfile \
+              --sarif-output=semgrep.sarif
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        if: ${{ !cancelled() && hashFiles('semgrep.sarif') != '' }}
         with:
-          go-version-file: go.mod
-          cache: true
-      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          queries: security-extended
-      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
-        with:
-          category: /language:${{ matrix.language }}
+          sarif_file: semgrep.sarif
+          category: semgrep
