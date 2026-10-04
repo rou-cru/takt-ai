@@ -1,0 +1,21 @@
+# Paths Semgrep (.github/workflows/sast.yml) skips. This file replaces
+# Semgrep's built-in defaults, so the ones that apply here are restated.
+
+# Dependencies and build output.
+node_modules/
+dist/
+vendor/
+
+# Tests and their fixtures, as in Semgrep's defaults.
+testdata/
+*_test.go
+*.test.ts
+*.test.tsx
+*.test.mjs
+
+# Generated data (development/generate-logo): raw color tables, no logic.
+*_generated.go
+
+# Helm templates are not YAML until rendered; the iac job renders the chart
+# and Checkov scans the resulting manifests.
+charts/*/templates/
