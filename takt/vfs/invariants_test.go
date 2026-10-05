@@ -156,3 +156,38 @@ func TestVerifierReadsAuthorsStagedView(t *testing.T) {
 		t.Fatal("a verifier must not write through the author's view")
 	}
 }
+
+// TestVerifierUnitJudgesSeveralAuthors: one verifier unit holds a gate per
+// author of the round it judges and adopts each by its own author key.
+func TestVerifierUnitJudgesSeveralAuthors(t *testing.T) {
+	f, root, _ := durable(t)
+	set := InvariantSet{directives(t, root, "judge the round together")}
+	var authors [2]AgentID
+	for i, unit := range []string{"a", "b"} {
+		key, err := f.Bind(Identity{SessionID: "s", WorkUnitID: unit, AttemptID: "1", AgentID: AgentID("dev-" + unit), Specialist: "dev", Invariants: set}, []string{unit + ".go"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		authors[i] = key
+	}
+	gate := Identity{SessionID: "s", WorkUnitID: "round-verify", AttemptID: "1", AgentID: "verify", Specialist: "verify", Invariants: set}
+	for _, author := range authors {
+		if _, err := f.AssignVerifier(gate, author); err != nil {
+			t.Fatalf("assign gate for %s: %v", author, err)
+		}
+	}
+	if _, err := f.AssignVerifier(gate, authors[0]); !errors.Is(err, ErrIdentity) {
+		t.Fatalf("second gate for the same author = %v; want ErrIdentity", err)
+	}
+	for _, author := range authors {
+		bound := gate
+		bound.GateAuthorKey = author
+		verifier, err := f.Bind(bound, nil)
+		if err != nil {
+			t.Fatalf("adopt gate for %s: %v", author, err)
+		}
+		if id, _ := f.BindingIdentity(verifier); id.GateAuthorKey != author {
+			t.Fatalf("adopted gate judges %q; want %q", id.GateAuthorKey, author)
+		}
+	}
+}

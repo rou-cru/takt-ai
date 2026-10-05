@@ -187,6 +187,11 @@ func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, b
 		if !assigned.Prelaunch || assigned.SessionID != identity.SessionID || assigned.WorkUnitID != identity.WorkUnitID || assigned.AgentID != identity.AgentID {
 			continue
 		}
+		// A verifier unit holds one gate per author it judges; a gate preassigned
+		// to another author is not this bind's assignment.
+		if assigned.GateAuthorKey != "" && identity.GateAuthorKey != "" && assigned.GateAuthorKey != identity.GateAuthorKey {
+			continue
+		}
 		if assigned.Specialist != identity.Specialist || assigned.GateAuthorKey != identity.GateAuthorKey ||
 			(identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID) ||
 			(len(identity.Invariants) > 0 && !slices.Equal(assigned.Invariants, identity.Invariants)) ||
@@ -588,7 +593,7 @@ func completeIdentity(identity Identity) bool {
 }
 func (f *FS) duplicateIdentity(identity Identity) bool {
 	for _, existing := range f.bindings {
-		if existing.sameAttempt(identity) && existing.AgentID == identity.AgentID {
+		if existing.sameAttempt(identity) && existing.AgentID == identity.AgentID && existing.GateAuthorKey == identity.GateAuthorKey {
 			return true
 		}
 	}
