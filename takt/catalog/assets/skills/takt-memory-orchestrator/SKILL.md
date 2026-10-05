@@ -28,7 +28,7 @@ Do not write a session history.
   - `objective`: what the user asked for in this session, in one or two sentences.
   - `state`: what is true now, in present tense — which decisions govern, which disputes
     remain open as facts ("X and Y disagree on Z"), what was delivered.
-- Whoever holds the conversation with the user may also close the session.
+- A specialist holding the lent interface hands it back and never closes the session; closing is yours.
 - A context compaction is not a session close: do not close the session for it.
 
 ## Never records

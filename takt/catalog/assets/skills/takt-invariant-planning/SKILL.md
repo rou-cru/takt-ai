@@ -43,7 +43,7 @@ another's result. A lane started before its input exists guesses it.
 - designer and architect are independent unless one's decisions constrain the other; both
   feed spec as strict invariants.
 - Lanes whose inputs are all available form one concurrent round within the
-  four-specialist ceiling.
+  {{policy.concurrent_specialists}}-specialist ceiling.
 
 The order, concurrency, and edges derive from what is settled and what must be generated or
 refined, never from a fixed sequence. With more than one lane known in advance, commit this
@@ -70,7 +70,7 @@ against the updated evidence, not to regenerate them.
 ## Specialist unavailable
 
 If a lane's specialist cannot be dispatched, or its dispatch fails past the recovery bounds in
-OPERATIONS, name that lane blocked per the crew's declared fallback and proceed: lanes that do
+OPERATIONS, name that lane blocked, apply BASELINE's fallback and proceed: lanes that do
 not consume its result keep running per the plan, and lanes that do wait on the named gap
 rather than guessing. Escalate per OPERATIONS if the objective cannot be judged without it.
 

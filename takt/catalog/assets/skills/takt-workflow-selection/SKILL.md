@@ -25,9 +25,13 @@ reason and evidence, in view.
    - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
      updated evidence: invariant planning and SDD are complementary stages.
-   - No; existing invariants are sufficient → go to 3.
+   - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
+     Engram entry holds it and agrees with the repository; it is missing when no such entry
+     exists, and to refine when the objective changes what the entry holds.
 3. **Is development still needed?**
-   - Yes → adopt `takt-sdd-workflow`.
+   - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
+     to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.
+   - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow`.
    - No → deliver the settled result; no implementation route is needed.
 
 Bounded is never chosen by elimination, convenience, dispatch cost, or absence of
@@ -43,11 +47,11 @@ that evidence. Never re-adopt the same route under identical evidence, including
 explicitly requested bounded route.
 
 When the tree leads back to routes that already reported a misfit under the same evidence:
-- If triviality is demonstrated within OPERATIONS' direct-work bounds, adopt the phase's
-  bounded route (`takt-bounded-planning` or `takt-bounded-workflow`) by decision, limited to
-  that justified small action and respecting ownership.
-- Otherwise, if OPERATIONS' lightweight delegation conditions are satisfied, delegate to the
-  needed specialists within its round limit; never replace them with Takt. A single planning
+- If OPERATIONS' three direct-work tests hold, adopt the phase's bounded route
+  (`takt-bounded-planning` or `takt-bounded-workflow`) by decision, limited to that small action
+  and respecting ownership.
+- Otherwise, if the work is bounded units within OPERATIONS' unplanned-delegation limit,
+  delegate to the needed specialists; never replace them with Takt. A single planning
   specialty is delegated to its specialist, not executed directly by default.
 - Otherwise, load `takt-workflow-selection-exceptions`.
 

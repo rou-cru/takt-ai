@@ -31,8 +31,7 @@ which retries in place without this protocol.
 1. **Initial retry:** for a minor failure within authorized recovery bounds, retry once —
    reassign its scope with its `author_key`, keeping its staged work, and delegate the same node name again — with
    the exact error output and stack trace. A contract defect goes directly to its owner.
-   Predeclare the binary result, failure condition, scope, recoverable point, attempt
-   budget. Do not retry an objective-blocking discovery without direction: trigger the
+   Do not retry an objective-blocking discovery without direction: trigger the
    Replanning Circuit instead.
 2. **Freeze subtree** (the DAG's backtracking step): on a second failure, or when an
    applier flags a contract defect, mark the task `BLOCKED` and freeze its downstream

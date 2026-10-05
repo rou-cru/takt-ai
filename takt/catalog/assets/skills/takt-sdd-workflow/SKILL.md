@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Plans development work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max 4 concurrent specialists, no worktrees. Orchestrator-only guide."
+description: "Plans development work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max {{policy.concurrent_specialists}} concurrent specialists, no worktrees. Orchestrator-only guide."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -76,12 +76,8 @@ included.
 
 **Generating nothing does not make it a dispatcher.** A dispatcher wastes the agent: it
 introduces leveraged errors, adds process friction, and guarantees no real progress. The
-orchestrator is not a scheduler, but it must **think like one** most of the time. It does
-so algorithmically — and the algorithm is not rigid, because it resolves against the
-context and semantics of the moment. Understand the logic in this skill and apply it to
-the session at hand. Do not follow fixed steps, and do not improvise from open-ended
-judgment: that would make the outcome depend on which model happens to be reasoning and on
-nothing going badly wrong along the way.
+orchestrator is not a scheduler, but it must **think like one** most of the time: apply the
+rules in this skill to the session at hand.
 
 **No worktrees is a planning rule, not an isolation rule.** Governed staging does not replace correct planning. The orchestrator must face the concurrency risk directly, estimate
 it, and plan with design guarantees — not with trial and error backed by reverts. Leaning
@@ -98,9 +94,9 @@ path, and keep moving.
 1. **Shared Workspace (No Worktrees):** All tasks execute in the root workspace. Isolation
    comes from disjoint file ownership and frozen interface contracts, never from Git
    branches.
-2. **Concurrency Ceiling (Max 4):** At most 4 specialists run at once, whatever their lane:
+2. **Concurrency Ceiling (Max {{policy.concurrent_specialists}}):** At most {{policy.concurrent_specialists}} specialists run at once, whatever their lane:
    appliers, verifiers and planning lanes share the same slots. Excess READY tasks queue.
-   **4 is an empirical maximum**, derived from running this
+   **{{policy.concurrent_specialists}} is an empirical maximum**, derived from running this
    method across distinct complex projects with distinct models: fewer forces the very
    linearity this skill exists to prevent, and more multiplies the cost of a single
    orchestration error into a random large token burn. Do not negotiate it downward for
@@ -109,15 +105,15 @@ path, and keep moving.
    in-flight tasks must NEVER have overlapping writable paths.
 4. **Frozen Contracts Before Dispatch:** A task may run in parallel ONLY IF every type,
    signature, schema, and public interface it consumes is frozen in its contract.
-5. **Single Integration Gate (Targeted Applier Scope):** Appliers execute ONLY
-   targeted, isolated tests associated directly with their `writable_set`. They must
-   NEVER invoke global test runners, full workspace builds, or whole-repo linters during
-   task implementation, as this causes tool, cache, and artifact collisions in a shared
-   workspace. Full build, lint, and end-to-end tests run exclusively in the single
-   downstream verification applier after all implementation tasks finish. Never parallelize
-   global verification, and never insert an intermediate one.
-6. **Zero Silent Drops:** Every task failure triggers explicit retry; a second failure or a flagged contract
-   defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
+5. **Single Integration Gate:** Appliers run no checks against staged work and never
+   invoke global test runners, full workspace builds, or whole-repo linters, as this causes
+   tool, cache, and artifact collisions in a shared workspace. Full build, lint, and
+   end-to-end tests run exclusively in a single Verify unit on the materialized workspace
+   after the implementation phases it validates finish. Never parallelize global verification or
+   run it unplanned: it is a planned single-node phase, and a milestone commit follows only after
+   it passes.
+6. **Zero Silent Drops:** A minor first failure retries once in place (see OPERATIONS); a second
+   failure, a non-minor failure or a flagged contract defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
 
 ---
 
@@ -125,7 +121,7 @@ path, and keep moving.
 
 **This is the mechanism that makes everything else possible.** A worktree isolates *after*
 the conflict exists. A contract makes the conflict *nonexistent beforehand*. Rule 4 is not
-one rule beside "no worktrees" — it is its counterpart. Four agents can write into one
+one rule beside "no worktrees" — it is its counterpart. {{policy.concurrent_specialists}} agents can write into one
 workspace without colliding for exactly one reason: none of them needs to read what another
 is currently writing. That property is bought by freezing interfaces up front.
 
@@ -147,7 +143,7 @@ A frozen signature goes to the agent that **implements** it *and* to every agent
 **consumes** it for unrelated work. Both sides receive the identical declaration.
 
 Sending an agent off to "figure out how to do its part" is not delegation. It exports the
-interface decision to four agents that cannot talk to each other, and it is precisely the
+interface decision to {{policy.concurrent_specialists}} agents that cannot talk to each other, and it is precisely the
 negligence that later requires a worktree to contain.
 
 ### 3.3 What Gets Frozen
@@ -161,14 +157,15 @@ declared and its failure behavior stated — not "a function that computes the o
 Behavior and interface contracts come from the relevant owners (`spec`,
 `architect`, and `product-designer` for experience rules). TPM assembles traceable
 task scopes from them; Takt validates and places them into its execution DAG. Every task
-contract must declare:
+contract must declare (TPM's WBS names them Writable files, Consumed contracts, Allowed reads and Acceptance):
 
 - **`writable_set`**: Exact files the task may modify, existing or to be created.
 - **`consumed_interfaces`**: Fully declared types, signatures, and schemas the task needs.
 - **`allowed_reads`**: Files the task may read. Must exclude every path written by a
   concurrently in-flight task.
-- **`acceptance_check`**: A deterministic, bounded command proving task completion
-  (e.g., targeting a specific unit test file/function). Must NEVER run global suites,
+- **`acceptance_check`**: A deterministic, bounded command that the Verify unit runs on the
+  materialized workspace to prove task completion (e.g., targeting a specific unit test
+  file/function). Must NEVER run global suites,
   whole-workspace test commands, or full builds.
 
 Extending an owner's `writable_set` after dispatch follows the same validation as the original
@@ -211,8 +208,8 @@ the cut itself makes parallelism impossible.
 Five properties. Each is checkable by looking at the graph.
 
 1. **Single planning root, and width is its consequence.** Everything descends from one
-   contract node. The first wave does not measure 4 because four independent tasks were
-   *found*; it measures 4 because the root froze the interfaces those four lanes consume. Concurrency is not discovered by
+   contract node. The first wave does not measure {{policy.concurrent_specialists}} because that many independent tasks were
+   *found*; it measures {{policy.concurrent_specialists}} because the root froze the interfaces those lanes consume. Concurrency is not discovered by
    inspecting tasks — it is **manufactured** by demanding more freezing at the root.
 2. **Zero edges inside a wave.** Siblings never depend on each other. Any horizontal edge
    between siblings means the cut was by layer; return to Decomposition and re-cut it.
@@ -221,20 +218,21 @@ Five properties. Each is checkable by looking at the graph.
    nothing. A test task depends on the one node whose files it reads, not on the wave. The
    tail fan-in is the sole exception: by Rule 5 it depends on all implementation nodes by
    definition. No other node may.
-4. **Exactly one fan-in, at the tail.** Global serialization is paid once, at the end. A
-   per-wave integration checkpoint is forbidden by Rule 5.
+4. **Exactly one fan-in per validated milestone, at its tail.** Global serialization is paid once
+   per milestone, in its own phase after the phases it validates. A per-wave integration
+   checkpoint is forbidden by Rule 5; a planned phase verification of staged deltas is not one.
 5. **The only admissible linear chain is the tail** (integration → verification), where it
    costs no concurrency.
 
 **General shape: a diamond.** One neck at the top, maximum widening immediately, one neck
-at the bottom. Reference proportions: depth 4–5 at width 4.
+at the bottom. Reference proportions: depth 4–5 at width {{policy.concurrent_specialists}}.
 
 ### 5.1 Self-Check Before Dispatch
 
 Run both. They are arithmetic, not judgment.
 
-- **First implementation wave must reach 4**, unless total implementation nodes are fewer
-  than 4. If it does not, demand more freezing at the contract root. If it still does not after
+- **First implementation wave must reach {{policy.concurrent_specialists}}**, unless total implementation nodes are fewer
+  than that. If it does not, demand more freezing at the contract root. If it still does not after
   freezing, every missing lane must be accounted for by a genuine serialization reason named in writing.
 - **Mean width must be ≥ 2.0.** Below that the plan is a chain: rebuild it. A DAG at depth
   8 and width 2 is wrong even when every single edge is individually defensible — that is
@@ -275,11 +273,12 @@ No reason outside this list justifies an edge.
 | A and B write the same file | Chain A → B | Prevents overwrites. |
 | Shared package/lock manifest (`package.json`, `go.mod`, `Cargo.toml`) | Serialize behind the writer | Prevents manifest corruption. |
 | Shared mutable state (database, ports, global singletons) | Serialize | Avoids runtime collisions. |
+| A verification node judges the staged deltas of its authors | Serialize the verification after those authors, and an author's consolidation after its verdict | A verdict covers exactly the revision it judged. |
 
 ### Dispatch Logic
 
 1. Collect all READY tasks.
-2. If fewer than 4 specialists are in flight (any lane), dispatch up to the available slots.
+2. If fewer than {{policy.concurrent_specialists}} specialists are in flight (any lane), dispatch up to the available slots.
 3. When `ready_count > available_slots`, prioritize by **critical path** — longest
    remaining downstream chain first.
 
@@ -326,8 +325,10 @@ The following is an available route, not a procession required of every change:
    or straight to disk). Work left staged has not been delivered. Ordinary handoffs reuse approvals; new final designs or scope
    decisions obtain the required user approval.
 5. **Integration and acceptance:** preserve the single tail fan-in. The independent gate
-   assesses staged deltas before consolidation: each verifier runs as its own node, preassigned
-   to one author key, and Takt consolidates a passing author's work with `vfs_consolidate`. Executable acceptance runs on the
+   assesses a phase's staged deltas together before consolidation: one verifier node, preassigned
+   to each author key of the phase, and Takt consolidates a passing author's work with
+   `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
+   left dead; it runs no checks. Executable acceptance runs in a Verify unit on the
    materialized workspace after writers finish. Check the integrated outcome, not merely
    completed nodes.
 

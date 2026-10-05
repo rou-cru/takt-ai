@@ -19,7 +19,7 @@ only narrows what your role records.
 
 ## When
 
-- When your assigned task is implemented and its tests ran, before you return your result.
+- When your assigned task is implemented and its tests were written, before you return your result.
 
 ## Never records
 

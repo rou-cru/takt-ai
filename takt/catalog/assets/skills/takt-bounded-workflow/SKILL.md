@@ -22,10 +22,9 @@ must land first, and closing it needs no integration step beyond its own boundar
 moment it does, it has already stopped being bounded.
 
 **Recognize when it no longer fits.** The signals are the unit turning out to need
-integration with other work, its scope growing past what one pass can close, or
-delegation under it approaching the concurrent-unit ceiling. Any one of these means the
-route no longer matches the work, not that the work needs to be forced smaller to keep
-fitting it.
+integration with other work, or its scope growing past what one pass can close. Either one
+means the route no longer matches the work, not that the work needs to be forced smaller to
+keep fitting it.
 
 **Return control rather than switch automatically.** When any of these signals shows this
 route does not fit, return control to Takt with the reason, evidence, and user constraints

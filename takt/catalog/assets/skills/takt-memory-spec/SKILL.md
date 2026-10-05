@@ -15,7 +15,7 @@ only narrows what your role records.
 ## Records
 
 - Standard results: behavioral requirements, scenarios and acceptance criteria.
-- `observation` (`project`): requirements the user confirmed or discarded, with the approving entry `#id` or the specification file as evidence.
+- `decision` (`project`): requirements the user confirmed or discarded, with the approving entry `#id` or the specification file as evidence.
 - An `observation` that `corrects` an earlier recorded assumption a clarification proved wrong.
 - `proposal` (`project`): requirement options raised and not adopted.
 

@@ -34,12 +34,11 @@ A good entry has a short, searchable `title` that names what happened, and a `co
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
 Engram stores every final planning or research result and every formal invariant. Record
 each complete artifact in one dedicated `project` entry, with no other result, process, or
-commentary mixed in. Keep it under roughly 400 lines, with 600 as the ceiling, and wrap
-`content` as real prose lines of no more than 500 words. Independently, keep the whole entry
-under roughly **45,000 bytes**; `memory_record` rejects past that, and Engram truncates
-silently beyond 50,000 bytes. Genuinely distinct artifacts each get their own self-contained
-entry; never split an artifact merely to satisfy the line ceiling. If an artifact exceeds the
-byte limit, split it into ordered parts, each `supplements` the previous one.
+commentary mixed in. Aim for under roughly 400 lines and wrap
+`content` as prose paragraphs of no more than 500 words. Keep the whole entry under
+**45,000 bytes**; that limit alone decides a split. Genuinely distinct artifacts each get
+their own self-contained entry; never split an artifact for line count. If an artifact
+exceeds the byte limit, split it into ordered parts, each `supplements` the previous one.
 
 Consumers retrieve each entry directly by its ID; they do not search for it or reconstruct
 it. The Engram write must succeed before the result is delivered. A requested filesystem
@@ -110,8 +109,12 @@ per domain — consulted only for that doubt, not on every entry.
 
 ## 5. When to record
 
-- Call `memory_record` once per entry **when the assigned work finishes**, before you
-  return your result, not after every step. Keep entries concise.
+- In an autonomous delegation, call `memory_record` once per entry **when the assigned work
+  finishes**, before you return your result, not after every step. Keep entries concise.
+- A specialist holding the chat with the user records its artifact progressively: each draft
+  is a `hypothesis` entry that `supplements` the previous draft, and the version the user
+  accepts is a new entry that `supersedes` the last draft with that accept as `evidence`.
+  Only the accepted entry reaches other agents; drafts stay in memory.
 - For invariant results, the complete-result rule in §1 takes precedence over concision:
   autonomous delegates record before returning each result; specialists working directly
   with the user or through a switch obtain any required approval before declaring a final
@@ -135,7 +138,7 @@ per domain — consulted only for that doubt, not on every entry.
 - Read with `mem_search`, `mem_get_observation`, and `mem_context`.
 - A delegation arrives with the invariants it consumes, or with the declaration that none
   exists yet. Those entries bind as read-only and prevail over any restatement in the brief;
-  with none declared, author from the brief.
+  with none declared, author from the brief. A session lent to you names them in `requirements`.
 - Verified repository state prevails over a contradicting memory. When they
   disagree, trust the repository and record an `observation` that `corrects` the entry.
 - Entries that were corrected or superseded are history, never directives.

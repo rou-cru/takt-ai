@@ -91,18 +91,23 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 			if got := effectOf(rules, "dispatch_handoff", "*"); got != want {
 				t.Errorf("handoff = %q, want %q", got, want)
 			}
-			for _, skill := range []string{"takt-handoff", "takt-memory-contract"} {
-				if !slices.Contains(spec.Skills, skill) || effectOf(rules, "skill", skill) == "deny" {
-					t.Errorf("missing accessible %s", skill)
-				}
+			if !slices.Contains(spec.Skills, "takt-memory-contract") || effectOf(rules, "skill", "takt-memory-contract") == "deny" {
+				t.Error("missing accessible takt-memory-contract")
 			}
 			producer := slices.Contains([]string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"}, spec.ID)
-			if slices.Contains(spec.Skills, "takt-result-handoff") != producer {
-				t.Error("incorrect result handoff assignment")
+			for _, skill := range []string{"takt-handoff", "takt-result-handoff"} {
+				if slices.Contains(spec.Skills, skill) != producer {
+					t.Errorf("incorrect %s assignment", skill)
+				}
 			}
-			interlocutor := spec.Role == model.RoleOrchestrator || spec.Role == model.RoleDirectInterlocutor
-			if slices.Contains(spec.Skills, "takt-interlocutor-handoff") != interlocutor {
-				t.Error("incorrect interlocutor handoff assignment")
+			for skill, owner := range map[string]bool{
+				"takt-interlocutor-handoff":    spec.Role == model.RoleDirectInterlocutor,
+				"takt-interlocutor-exceptions": spec.Role == model.RoleDirectInterlocutor,
+				"takt-interlocutor-lending":    spec.Role == model.RoleOrchestrator,
+			} {
+				if slices.Contains(spec.Skills, skill) != owner {
+					t.Errorf("incorrect %s assignment", skill)
+				}
 			}
 		})
 	}
