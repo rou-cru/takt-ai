@@ -245,7 +245,7 @@ type FS struct {
 	// owners maps slash-path → owning agent (exclusive write ownership).
 	owners map[string]AgentID
 
-	// collisions records collision events for observation; they block nothing.
+	// collisions holds events until synchronous notification; they block nothing.
 	collisions []CollisionEvent
 
 	// journal is the append-only action journal.

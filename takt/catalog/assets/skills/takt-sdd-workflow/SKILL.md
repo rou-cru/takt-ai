@@ -53,7 +53,7 @@ These terms appear inside rules. They carry exactly these meanings and no others
 | **Mean width** | Implementation nodes ÷ number of waves containing implementation nodes. Excludes the contract root and the integration/verification tail. |
 | **Depth** | Number of waves from root to terminal node, inclusive. |
 | **In-flight** | A dispatched task whose result has not yet been received. |
-| **READY** | Dependencies consolidated to disk + contract valid + `writable_set` disjoint from every in-flight task. |
+| **READY** | Dependencies delivered (consolidated to disk for nodes that read workspace files; author's delivery complete in VFS for verifier nodes) + contract valid + `writable_set` disjoint from every in-flight task. |
 | **Information edge** | The consumer needs to *know* a signature, type, schema, or error shape that the other node produces. |
 | **Implementation edge** | The consumer needs the other node's file content written to disk, or shares mutable state with it. |
 | **Critical path** | The longest remaining downstream chain from a node to the terminal node, measured in nodes. |

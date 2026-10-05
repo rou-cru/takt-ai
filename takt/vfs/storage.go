@@ -221,7 +221,8 @@ func (f *FS) loadState() error {
 		f.staged[key] = &agentDelta{files: d.Files, bases: d.Bases, verdict: d.Verdict, revision: d.Revision}
 	}
 	f.owners = s.Owners
-	f.collisions = s.Collisions
+	// Saved collisions are observations, not pending work or notifications.
+	f.collisions = nil
 	f.bindings = s.Bindings
 	f.calls = s.Calls
 	f.recovery = s.Recovery
@@ -233,7 +234,7 @@ func (f *FS) loadState() error {
 		return err
 	}
 	f.persisted = len(f.journal)
-	f.notifiedCollisions = len(f.collisions)
+	f.notifiedCollisions = 0
 	return nil
 }
 
@@ -331,7 +332,8 @@ func (f *FS) finishLocked(result *error) {
 		}
 	}
 	f.persisted = len(f.journal)
-	f.notifiedCollisions = len(f.collisions)
+	f.collisions = nil
+	f.notifiedCollisions = 0
 }
 
 // Close releases all handles. It never discards staged state or recovery data.

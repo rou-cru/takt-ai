@@ -526,6 +526,9 @@ func TestForeignPathRefusesOnlyThatOperation(t *testing.T) {
 	if len(seen) != 2 || seen[0].Path != "a.go" || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" {
 		t.Fatalf("collision handler saw %+v", seen)
 	}
+	if len(f.collisions) != 0 || f.notifiedCollisions != 0 {
+		t.Fatalf("refused operations retained collision notifications: %+v, %d", f.collisions, f.notifiedCollisions)
+	}
 	// A refused operation leaves nothing behind: the agent's own work proceeds.
 	staged := apply(t, f, applyCase{intruder, "own", 0, OpCreate, "b.go", "ok"})
 	gate(t, f, intruder, staged)
@@ -544,8 +547,8 @@ func TestRejectedBindNeverBlocksConsolidation(t *testing.T) {
 	if _, err := f.Bind(id("loser", "u2", "dev"), []string{"a.go"}); !errors.Is(err, ErrCollision) {
 		t.Fatalf("Bind() = %v; want ErrCollision", err)
 	}
-	if len(f.collisions) != 1 {
-		t.Fatalf("collisions = %+v; want the rejected bind recorded", f.collisions)
+	if len(f.collisions) != 0 || f.notifiedCollisions != 0 {
+		t.Fatalf("rejected bind retained collision notifications: %+v, %d", f.collisions, f.notifiedCollisions)
 	}
 	if err := f.ConsolidateCheckpoint(peer, "released", staged.Revision); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() after a rejected bind = %v", err)
