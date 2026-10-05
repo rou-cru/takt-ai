@@ -509,63 +509,46 @@ func TestDeletionIsStagedAndReadsAsAbsent(t *testing.T) {
 	}
 }
 
-func TestForeignPathIsACollisionUntilResolved(t *testing.T) {
+func TestForeignPathRefusesOnlyThatOperation(t *testing.T) {
 	f, _, _ := durable(t)
 	var seen []CollisionEvent
 	f.OnCollision(func(e CollisionEvent) { seen = append(seen, e) })
 	bind(t, f, "owner", "u1", "dev", "a.go")
 	intruder := bind(t, f, "intruder", "u2", "dev", "b.go")
 
-	_, err := f.Apply(Operation{Key: intruder, CallID: "grab", Action: OpCreate, Path: "a.go", Content: []byte("x")})
-	var collision *CollisionError
-	if !errors.Is(err, ErrCollision) || !errors.As(err, &collision) || collision.OwnerAgent != "owner" || collision.TargetAgent != "intruder" {
-		t.Fatalf("Apply() = %v; want a typed collision between intruder and owner", err)
+	_, err := f.Apply(Operation{Key: intruder, CallID: "peek", Action: OpRead, Path: "a.go"})
+	if !errors.Is(err, ErrCollision) || !strings.Contains(err.Error(), `"a.go"`) {
+		t.Fatalf("foreign read = %v; want ErrCollision naming a.go", err)
 	}
-	if len(seen) != 1 || seen[0].Path != "a.go" || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" {
+	if _, err := f.Apply(Operation{Key: intruder, CallID: "grab", Action: OpCreate, Path: "a.go", Content: []byte("x")}); !errors.Is(err, ErrCollision) {
+		t.Fatalf("foreign write = %v; want ErrCollision", err)
+	}
+	if len(seen) != 2 || seen[0].Path != "a.go" || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" {
 		t.Fatalf("collision handler saw %+v", seen)
 	}
-	// While the collision is unresolved, the whole attempt is blocked.
-	if _, err := f.Apply(Operation{Key: intruder, CallID: "next", Action: OpCreate, Path: "b.go"}); !errors.Is(err, ErrCollision) {
-		t.Fatalf("Apply during an unresolved collision = %v; want ErrCollision", err)
+	// A refused operation leaves nothing behind: the agent's own work proceeds.
+	staged := apply(t, f, applyCase{intruder, "own", 0, OpCreate, "b.go", "ok"})
+	gate(t, f, intruder, staged)
+	if err := f.ConsolidateCheckpoint(intruder, "own", staged.Revision); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() after a refused foreign access = %v", err)
 	}
-	// Resolution must match agent, owner and path.
-	if err := f.ResolveCollision(CollisionEvent{AttemptingAgent: "intruder", OwningAgent: "owner", Path: "other.go"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.collisions) != 1 {
-		t.Fatal("a non-matching resolution removed the collision")
-	}
-	if err := f.ResolveCollision(seen[0]); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.collisions) != 0 {
-		t.Fatal("the matching resolution left the collision unresolved")
-	}
-	apply(t, f, applyCase{intruder, "resume", 0, OpCreate, "b.go", "ok"})
 }
 
-func TestRejectedBindBlocksItsUnitAndConsolidation(t *testing.T) {
+func TestRejectedBindNeverBlocksConsolidation(t *testing.T) {
 	f, _, _ := durable(t)
 	bind(t, f, "owner", "u1", "dev", "a.go")
 	peer := bind(t, f, "peer", "u2", "dev", "c.go")
 	staged := apply(t, f, applyCase{peer, "stage", 0, OpCreate, "c.go", "peer work"})
 	gate(t, f, peer, staged)
 
-	// The same unit's other agent loses a claim: its unit now has an unresolved collision.
 	if _, err := f.Bind(id("loser", "u2", "dev"), []string{"a.go"}); !errors.Is(err, ErrCollision) {
 		t.Fatalf("Bind() = %v; want ErrCollision", err)
 	}
 	if len(f.collisions) != 1 {
 		t.Fatalf("collisions = %+v; want the rejected bind recorded", f.collisions)
 	}
-	if err := f.ConsolidateCheckpoint(peer, "blocked", staged.Revision); !errors.Is(err, ErrConsolidationConflict) {
-		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrConsolidationConflict", err)
-	}
-	if err := f.ResolveCollision(f.collisions[0]); err != nil {
-		t.Fatal(err)
-	}
 	if err := f.ConsolidateCheckpoint(peer, "released", staged.Revision); err != nil {
-		t.Fatalf("ConsolidateCheckpoint() after resolution = %v", err)
+		t.Fatalf("ConsolidateCheckpoint() after a rejected bind = %v", err)
 	}
 }
 

@@ -275,7 +275,6 @@ func TestMutatorsRefuseOnceClosed(t *testing.T) {
 		"ReadAs":       func() error { _, err := f.ReadAs(read, key); return err },
 		"Verify":       func() error { return f.Verify(key, key, "late", 0, "", true, "") },
 		"Consolidate":  func() error { return f.ConsolidateCheckpoint(key, "late", 0) },
-		"Resolve":      func() error { return f.ResolveCollision(CollisionEvent{}) },
 		"Recover":      func() error { return f.Recover() },
 	} {
 		if err := call(); !errors.Is(err, ErrStoreFailed) {

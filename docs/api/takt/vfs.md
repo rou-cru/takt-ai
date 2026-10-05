@@ -46,7 +46,6 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) ReadAs\(op Operation, author AgentID\) \(OperationResult, error\)](<#FS.ReadAs>)
   - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
-  - [func \(f \*FS\) ResolveCollision\(event CollisionEvent\) \(err error\)](<#FS.ResolveCollision>)
   - [func \(f \*FS\) RevokeOwnership\(key AgentID\) \(err error\)](<#FS.RevokeOwnership>)
   - [func \(f \*FS\) Verify\(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string\) \(err error\)](<#FS.Verify>)
 - [type Identity](<#Identity>)
@@ -152,13 +151,9 @@ var (
     // mutating Git command.
     ErrGitMutationDenied = errors.New("vfs: mutating git command denied for this role class")
 
-    // ErrCollision is returned when an agent attempts to mutate a file owned by
-    // another concurrently active agent.
-    ErrCollision = errors.New("vfs: write collision — file is owned by another agent")
-
-    // ErrConsolidationConflict is returned when consolidation is attempted while
-    // unresolved collisions exist in the same session, unit and attempt.
-    ErrConsolidationConflict = errors.New("vfs: consolidation blocked by unresolved collision")
+    // ErrCollision is returned when an agent touches a file owned by another
+    // concurrently active agent. It refuses only that operation.
+    ErrCollision = errors.New("vfs: another agent is working on this file")
 
     // ErrVerificationRequired is returned when consolidation is attempted without
     // a passing verification verdict.
@@ -184,7 +179,7 @@ var (
 ```
 
 <a name="GuardGitMutation"></a>
-## func [GuardGitMutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L459>)
+## func [GuardGitMutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L434>)
 
 ```go
 func GuardGitMutation(role model.RoleClass) error
@@ -193,7 +188,7 @@ func GuardGitMutation(role model.RoleClass) error
 GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is.
 
 <a name="ReadOnlyGitSubcommands"></a>
-## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L469>)
+## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L444>)
 
 ```go
 func ReadOnlyGitSubcommands() []string
@@ -229,7 +224,7 @@ type AgentID string
 ```
 
 <a name="CollisionError"></a>
-## type [CollisionError](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L174-L183>)
+## type [CollisionError](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L170-L179>)
 
 CollisionError is a refused ownership request with the exact requested path and both dispatch identities. It is a denial observation, not unresolved in\-flight work; callers can still use errors.Is\(err, ErrCollision\).
 
@@ -247,7 +242,7 @@ type CollisionError struct {
 ```
 
 <a name="CollisionError.Error"></a>
-### func \(\*CollisionError\) [Error](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L186>)
+### func \(\*CollisionError\) [Error](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L182>)
 
 ```go
 func (e *CollisionError) Error() string
@@ -256,7 +251,7 @@ func (e *CollisionError) Error() string
 Error renders the refused path and both dispatch identities behind it.
 
 <a name="CollisionError.Unwrap"></a>
-### func \(\*CollisionError\) [Unwrap](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L193>)
+### func \(\*CollisionError\) [Unwrap](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L189>)
 
 ```go
 func (e *CollisionError) Unwrap() error
@@ -265,7 +260,7 @@ func (e *CollisionError) Unwrap() error
 Unwrap preserves errors.Is\(err, ErrCollision\) for typed refusals.
 
 <a name="CollisionEvent"></a>
-## type [CollisionEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L157-L169>)
+## type [CollisionEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L153-L165>)
 
 CollisionEvent is emitted when the VFS intercepts a cross\-agent write collision.
 
@@ -286,7 +281,7 @@ type CollisionEvent struct {
 ```
 
 <a name="FS"></a>
-## type [FS](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L226-L265>)
+## type [FS](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L222-L261>)
 
 FS governs all in\-flight agent work for one session.
 
@@ -369,7 +364,7 @@ func (f *FS) CompleteCycle(cycleID string) (err error)
 CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
 
 <a name="FS.ConsolidateCheckpoint"></a>
-### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L901>)
+### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L889>)
 
 ```go
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
@@ -432,7 +427,7 @@ func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEn
 JournalPage returns bounded, content\-free journal entries.
 
 <a name="FS.OnCollision"></a>
-### func \(\*FS\) [OnCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L293>)
+### func \(\*FS\) [OnCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L289>)
 
 ```go
 func (f *FS) OnCollision(fn func(CollisionEvent))
@@ -441,7 +436,7 @@ func (f *FS) OnCollision(fn func(CollisionEvent))
 OnCollision registers a handler called for every emitted collision event; the handler runs synchronously under the FS lock and must not call back into the FS.
 
 <a name="FS.OnJournal"></a>
-### func \(\*FS\) [OnJournal](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L301>)
+### func \(\*FS\) [OnJournal](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L297>)
 
 ```go
 func (f *FS) OnJournal(fn func(JournalEntry))
@@ -512,15 +507,6 @@ func (f *FS) Recover() (err error)
 
 Recover restores the pre\-flush snapshot after checking for incompatible writes.
 
-<a name="FS.ResolveCollision"></a>
-### func \(\*FS\) [ResolveCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L440>)
-
-```go
-func (f *FS) ResolveCollision(event CollisionEvent) (err error)
-```
-
-ResolveCollision removes a matching collision from the unresolved list. Attempting agent, owning agent and path must all match.
-
 <a name="FS.RevokeOwnership"></a>
 ### func \(\*FS\) [RevokeOwnership](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L337>)
 
@@ -531,7 +517,7 @@ func (f *FS) RevokeOwnership(key AgentID) (err error)
 RevokeOwnership frees the paths a claim holds. The binding is kept so the unit's attempt count survives. A claim that holds staged work is refused rather than left as a delta nobody owns, which could never be consolidated.
 
 <a name="FS.Verify"></a>
-### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L830>)
+### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L818>)
 
 ```go
 func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string) (err error)
@@ -585,7 +571,7 @@ type InvariantSet []string
 ```
 
 <a name="JournalEntry"></a>
-## type [JournalEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L95-L133>)
+## type [JournalEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L91-L129>)
 
 JournalEntry records a single VFS operation.
 
@@ -632,7 +618,7 @@ type JournalEntry struct {
 ```
 
 <a name="JournalEntry.Ref"></a>
-### func \(JournalEntry\) [Ref](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L136>)
+### func \(JournalEntry\) [Ref](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L132>)
 
 ```go
 func (e JournalEntry) Ref() string
@@ -704,7 +690,7 @@ const OpShell OperationType = "shell"
 ```
 
 <a name="OwnershipClaim"></a>
-## type [OwnershipClaim](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L198-L211>)
+## type [OwnershipClaim](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L194-L207>)
 
 OwnershipClaim is one binding's currently held scope. Pending means the orchestrator assigned it before the target bound; Active means it belongs to the requested current session and has been adopted by the target.
 
@@ -768,7 +754,7 @@ type StagedView struct {
 ```
 
 <a name="VerificationVerdict"></a>
-## type [VerificationVerdict](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L139-L154>)
+## type [VerificationVerdict](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L135-L150>)
 
 VerificationVerdict carries the gate verifier's result.
 

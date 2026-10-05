@@ -192,8 +192,8 @@ The harness has the recovery boundary before the risk is taken. Both bounds are 
 ┌────────────────────┐       ┌────────────────────────┐       ┌──────────────────────────┐
 │ terminal entry:    │       │ admitted; pending or   │       │ declared in plan;        │
 │ completed, failed, │◀──────│ executing; reserves    │◀──────│ revisable or withdrawable│
-│ backtracked,       │       │ file ownership; may be │       │ until admission          │
-│ interrupted        │       │ suspended on collision │       │                          │
+│ backtracked,       │       │ file ownership         │       │ until admission          │
+│ interrupted        │       │                        │       │                          │
 └────────────────────┘       └────────────────────────┘       └──────────────────────────┘
    history retained              active execution set              not yet admitted
 
@@ -242,7 +242,7 @@ The harness has the recovery boundary before the risk is taken. Both bounds are 
 | Confirmed closure with unfinished work | Recorded effective termination yields interrupted outcomes unless a supported different outcome applies; no in-flight work remains in the closed session (`PR-DAG-TMP-4`). |
 | Two simultaneous admissions or duplicate requests | Show the single reservation per accepted request and visible denial where full; duplicates create neither execution nor additional consumption (`PR-HAR-16`..`17`). |
 | Launch uncertain after communication failure | Show pending/uncertain execution and retain capacity until reconciliation, never infer that a retry is safe (`PR-HAR-17`). |
-| VFS collision, cancellation, or backtracking while execution can still act | Record suspension or termination pending; ownership and capacity remain. Controls to resolve it require no additional execution slot (`PR-HAR-18`). |
+| Cancellation or backtracking while execution can still act | Record termination pending; ownership and capacity remain. Controls to resolve it require no additional execution slot (`PR-HAR-18`). |
 | Cyclic, stale, or identity-invalid plan revision | Record the invalid declaration and reason, keep the complete last valid plan, and preserve any observed execution even if inconsistent (`PR-DAG-MUT-6`). |
 | Revision attempts to change already-admitted work | Reject the declaration, not the observed facts; executed history and admitted contract/prerequisites remain intact (`PR-DAG-MUT-6`). |
 | Planned A withdrawn while B references A | Preserve A and B's reference; no automatic reconnection or satisfaction. Explicitly changing retained B's prerequisites is strategic (`PR-DAG-MUT-4`, `PR-DAG-MUT-6`). |

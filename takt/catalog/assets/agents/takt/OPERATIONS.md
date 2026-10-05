@@ -54,8 +54,10 @@ Name every delegation after the work unit it executes: its description is the un
 and for planned work it is exactly the unit you committed with `dispatch_commit`. Delegating
 the same name again retries that unit; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
-`claim_assign`; on a refusal, check `claim_list`, never widen scope. Staged work keeps its paths
-until it is consolidated or explicitly discarded. To retry or correct it, or when its author
+`claim_assign`; on a refusal, check `claim_list`, never widen scope. A specialist's delivery
+ends in VFS; releasing it to the workspace is yours. Before delegating further, take every
+returned delivery where its contract sends it: a verifier, consolidation, or straight to disk.
+Staged work keeps its paths until it is consolidated or explicitly discarded. To retry or correct it, or when its author
 returns paths it needs beyond its scope, call `claim_assign` again with the work's `author_key`
 and the new exact scope: the staged work stays, and the new scope must include it.
 Without a committed plan, delegate at most four independently deliverable units in one
@@ -106,8 +108,8 @@ preassign Verify to the author key with `claim_assign_verifier` under the verifi
 a passing verdict supports consolidation, and a failing verdict opens correction work. VFS
 consolidation also supports authorized work without a gate; run executable acceptance on the
 materialized workspace after consolidating. Consolidating is not
-a Git commit; load takt-git-commit before writing that commit's message. If consolidation reports that recovery is required, that the physical base
-changed, or an unresolved collision, freeze that path and escalate with the report. Request the blind review pair
+a Git commit; load takt-git-commit before writing that commit's message. If consolidation reports that recovery is required, or that the physical base
+changed, freeze that path and escalate with the report. Request the blind review pair
 only for unknown damage or unusually high required certainty, naming the condition; the pair
 receives identical briefs and returns unmerged findings. Dispute a verdict with evidence before
 the user rather than re-dispatching.

@@ -231,6 +231,7 @@ describe("takt-ai answers", () => {
       await expect(write()).rejects.toThrow("takt-ai vfs op exited 0: garbage")
       reply = { out: "", err: "stderr text", code: 4 }
       await expect(write()).rejects.toThrow("takt-ai vfs op exited 4: stderr text")
+      expect((await write().catch((e: Error) => e) as Error).cause).toBeUndefined()
       reply = json({ ok: false, error: "scope violation" })
       await expect(write()).rejects.toThrow("scope violation")
       reply = { out: JSON.stringify({ ok: false }), err: "denied upstream", code: 1 }

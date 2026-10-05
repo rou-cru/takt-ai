@@ -468,7 +468,9 @@ export default Plugin.define({
         if (typeof parsed.ok !== "boolean") throw new Error(`takt-ai vfs ${command} returned a response without ok`)
         return vfsResponse(parsed, parsed.ok)
       } catch (e) {
-        if (e instanceof SyntaxError) throw new Error(`takt-ai vfs ${command} exited ${code}: ${err || out}`, { cause: e })
+        // A failed command reports on stderr and leaves stdout empty; only
+        // unparseable output from a successful exit is a parse failure.
+        if (e instanceof SyntaxError) throw new Error(`takt-ai vfs ${command} exited ${code}: ${err || out}`, code === 0 ? { cause: e } : undefined)
         throw e
       }
     }
@@ -1490,7 +1492,7 @@ export default Plugin.define({
               ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
             })
           } catch (error) {
-            if (error instanceof Error && /physical base changed|recovery required|unresolved collision/.test(error.message))
+            if (error instanceof Error && /physical base changed|recovery required/.test(error.message))
               error.message += "; freeze this path and escalate with the report"
             throw error
           }

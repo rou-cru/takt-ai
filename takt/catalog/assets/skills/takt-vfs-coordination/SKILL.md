@@ -1,6 +1,6 @@
 ---
 name: takt-vfs-coordination
-description: "Use when reserving file scope, resolving an ownership collision, reassigning or releasing a claim, or consolidating staged work."
+description: "Use when reserving file scope, inspecting an ownership refusal, reassigning or releasing a claim, or consolidating staged work."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,7 +11,9 @@ metadata:
 
 VFS is a seatbelt: it protects against ownership collisions and against an agent leaving its
 scope. It never decides whether work is good enough to deliver and never stands in the way of
-normal progress.
+normal progress. Handing out access and releasing staged work to the workspace are yours: a
+specialist's delivery ends in VFS, and before delegating further you take each returned
+delivery where its contract sends it — a verifier, consolidation, or straight to disk.
 
 Reserve exact implementation paths with `claim_assign`; use `claim_list` to inspect a
 collision. To retry or correct work that already has staged changes, or to give it more
@@ -30,5 +32,5 @@ notoriously costlier than redoing it.
 Consolidate authorized staged work with `vfs_consolidate`; its label is optional. An
 independent verdict is needed only when the delivery contract asks for one, through
 `claim_assign_verifier` and a verifier's empty-scope binding, and a verdict that exists must
-pass. On a physical-base change or unresolved collision, keep the affected path frozen and
-report the competing state.
+pass. On a physical-base change, keep the affected path frozen and report the competing
+state.
