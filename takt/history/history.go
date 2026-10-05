@@ -215,9 +215,6 @@ const (
 	// CauseInterlocutorOrigin records a switch denied because the root session
 	// named is not a valid origin for a switch.
 	CauseInterlocutorOrigin = "interlocutor/origin-invalid"
-	// CauseInterlocutorArtifact records a handoff denied because the declared
-	// standard artifact is missing (PR-HAR-24).
-	CauseInterlocutorArtifact = "interlocutor/artifact-missing"
 	// CauseInterlocutorHolder records a handoff denied because the caller is
 	// not the current holder of the interface.
 	CauseInterlocutorHolder = "interlocutor/not-current-holder"

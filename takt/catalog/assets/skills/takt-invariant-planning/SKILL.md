@@ -26,7 +26,10 @@ authors it). Ends when every needed invariant is classified; "probably settled" 
 One lane per invariant to generate or refine: pm for intent, analyst for objective facts that
 are unknown and recoverable, product-designer for experience rules, architect for structure
 and technology, spec for observable behavior. Ends when the lane set is fixed. A single lane
-is bounded work and leaves this skill.
+is bounded specialist work and leaves this skill: return control to Takt with that reason
+for reevaluation. This does not authorize direct execution or replacing the specialist's
+judgment with Takt's. Whenever the evidence shows this route does not fit, likewise return
+control with the reason, evidence, and constraints preserved.
 
 ## 3. Plan
 
@@ -61,7 +64,8 @@ stands (the one backed by the user's directive or verified facts) and re-dispatc
 lane with its original document, its first result, the standing document and the contradiction.
 When neither is backed, the conflict stays disputed: how many lanes consume a document is not
 evidence, so ask the user or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
-of one conflict: escalate. Ends when no contradiction remains open; planning is then complete.
+of one conflict: escalate. Ends when no contradiction remains open; planning is then complete. Return the delivered invariants to Takt to evaluate development
+against the updated evidence, not to regenerate them.
 
 ## Specialist unavailable
 

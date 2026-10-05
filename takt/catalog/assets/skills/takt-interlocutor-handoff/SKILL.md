@@ -40,11 +40,12 @@ abrupt or early close still leaves the real state on record, rather than nothing
 user decision that falls outside the specialty is neither resolved nor discarded: it is kept
 as a note or a provisional artifact, and its existence and location are reported on return.
 
-**The standard artifact gates the handoff.** The standard artifact is the document the
-specialty produces on its own official template, for the reason the specialist was
-convened. `dispatch_handoff` is never proposed before that artifact exists in some form.
-When the user pushes for an early close, the template is filled with the actual state — thin
-or incomplete is acceptable — but that state is never presented as finished work.
+**Completed work requires a standard Engram result.** Record the specialty's document on
+its official template and return its IDs through `dispatch_handoff`; chat or a filesystem
+copy alone is not a completed delivery. A filesystem copy is optional and never gates the
+handoff. For an early close or failure, return the actual outcome and any results produced;
+do not manufacture an artifact when no output coherently exists, or present partial work
+as finished.
 
 **A new final deliverable needs the user's own approval.** Presenting it as settled requires
 an explicit accept from the user. Only reusing an already-approved deliverable without

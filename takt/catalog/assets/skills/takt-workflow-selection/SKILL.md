@@ -1,6 +1,6 @@
 ---
 name: takt-workflow-selection
-description: "Before any planning lane is dispatched, or before implementation work is delegated, decide which route governs that phase of work: an orchestrated framework or the bounded route the orchestrator runs itself. Evaluated once per phase, independently of the other phase's choice."
+description: "Before a planning or implementation phase starts, choose the route that governs it from a decision tree; return here with new evidence when the adopted route shows it does not fit."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,34 +9,49 @@ metadata:
 
 # Takt Workflow Selection
 
-Chooses which route governs a phase of work, before that phase starts. It only chooses;
-how the chosen route runs belongs entirely to that route's own skill, and this skill says
-nothing about it.
+The tree below selects the route for a phase; adopt the route it reaches and load only that
+route's skill. Never load another workflow's skill to help decide. How the adopted route runs,
+and whether it keeps fitting, belongs to its own skill. Keep the objective, phase, user
+constraints, available invariants, and any route that already reported a misfit, with its
+reason and evidence, in view.
 
-If the scenario satisfies more than one row below, none of them, or the user's explicit
-instruction conflicts with what the scenario needs, this table does not resolve it — load
-`takt-workflow-selection-exceptions`.
+## Decision tree
 
-| Phase | Route | Choose it when |
-| --- | --- | --- |
-| Planning | `takt-bounded-planning` | The invariants still needed are few and low-risk enough for the orchestrator to settle directly, or the user directly and explicitly asked for no specialist involvement in planning. |
-| Planning | `takt-invariant-planning` | Two or more planning lanes are genuinely needed, or what's missing needs a specialist's judgment rather than a fact the orchestrator can establish itself. |
-| Implementation | `takt-bounded-workflow` | The user directly and explicitly asked for no delegation. |
-| Implementation | `takt-sdd-workflow` | Implementation units must integrate into one delivered result, or delegation would exceed four independently deliverable units in one concurrent round. |
+1. **Did the user directly and explicitly request direct work for this phase?**
+   - Yes, planning without specialists → adopt `takt-bounded-planning`.
+   - Yes, implementation without delegation → adopt `takt-bounded-workflow`.
+   - No → go to 2. An instruction for one phase does not constrain the other.
+2. **Are required invariants missing or in need of refinement?**
+   - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
+     Do not regenerate settled invariants. Once they are delivered, return to 1 with the
+     updated evidence: invariant planning and SDD are complementary stages.
+   - No; existing invariants are sufficient → go to 3.
+3. **Is development still needed?**
+   - Yes → adopt `takt-sdd-workflow`.
+   - No → deliver the settled result; no implementation route is needed.
 
-**A new route extends this table, never its logic.** A future workflow framework, for
-either phase, adds one row here with its own criteria; it never requires rewriting the
-criteria already governing the routes above it.
+Bounded is never chosen by elimination, convenience, dispatch cost, or absence of
+specialists. SDD and bounded never govern the same implementation simultaneously: end the
+affected route's governance before adopting another, preserving unrelated progress and
+ownership.
 
-**Evaluate each phase on its own evidence.** The route chosen for planning does not decide
-the route for implementation, or the reverse. Re-evaluate at the start of each phase against
-what is actually known then, not against the other phase's choice.
+## Return from an adopted route
 
-**A user's direct, explicit request is not the orchestrator's to override.** When the user
-asked for this route directly, recognizing it no longer fits does not license switching
-away from it alone. State plainly why it no longer fits and the resulting risk, and
-continue only on the user's answer.
+When the adopted route shows, with evidence gathered while running it, that it does not fit
+this work, it returns control with the reason, evidence, and constraints. Restart at 1 with
+that evidence. Never re-adopt the same route under identical evidence, including an
+explicitly requested bounded route.
 
-**A route recognizing it no longer fits does not return here.** Once a bounded route is
-running, it names its own orchestrated counterpart directly if it outgrows itself — that
-belongs to its own skill, not to a fresh pass through this table.
+When the tree leads back to routes that already reported a misfit under the same evidence:
+- If triviality is demonstrated within OPERATIONS' direct-work bounds, adopt the phase's
+  bounded route (`takt-bounded-planning` or `takt-bounded-workflow`) by decision, limited to
+  that justified small action and respecting ownership.
+- Otherwise, if OPERATIONS' lightweight delegation conditions are satisfied, delegate to the
+  needed specialists within its round limit; never replace them with Takt. A single planning
+  specialty is delegated to its specialist, not executed directly by default.
+- Otherwise, load `takt-workflow-selection-exceptions`.
+
+If uncertainty persists or proceeding requires changing the user's explicit instruction,
+load `takt-workflow-selection-exceptions` and consult the user; never override that
+instruction. Evaluate every new phase on its own current evidence, not on the previous
+phase's choice.

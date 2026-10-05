@@ -115,44 +115,6 @@ func TestAbortSucceedsFromHarnessOrigin(t *testing.T) {
 	}
 }
 
-func TestArtifactMissesCyclesAcrossHandoffAndAbort(t *testing.T) {
-	h := openHistory(t)
-	if e := Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
-		t.Fatalf("expected switch to succeed, got %v", e)
-	}
-	if got := ArtifactMisses(h, "root-1"); got != 0 {
-		t.Fatalf("expected 0 misses before any denial, got %d", got)
-	}
-	if e := DenyArtifactMissing(h, "", "root-1", "child-1", interlocutorAgent); e != nil {
-		t.Fatalf("expected recording a miss to succeed, got %v", e)
-	}
-	if got := ArtifactMisses(h, "root-1"); got != 1 {
-		t.Fatalf("expected 1 miss after one denial, got %d", got)
-	}
-	if e := Handoff(h, "", "root-1", "child-1", "Standard"); e != nil {
-		t.Fatalf("expected handoff to succeed, got %v", e)
-	}
-	if got := ArtifactMisses(h, "root-1"); got != 0 {
-		t.Fatalf("expected misses reset to 0 after a successful handoff, got %d", got)
-	}
-	// The same cycle holds for an abort, not just a handoff.
-	if e := Switch(h, "", "root-1", "child-2", interlocutorAgent, "artifact.md"); e != nil {
-		t.Fatalf("expected second switch to succeed, got %v", e)
-	}
-	if e := DenyArtifactMissing(h, "", "root-1", "child-2", interlocutorAgent); e != nil {
-		t.Fatalf("expected recording a miss to succeed, got %v", e)
-	}
-	if got := ArtifactMisses(h, "root-1"); got != 1 {
-		t.Fatalf("expected 1 miss after one denial, got %d", got)
-	}
-	if e := Abort(h, "", "root-1", "child-2", "drift", "harness"); e != nil {
-		t.Fatalf("expected abort to succeed, got %v", e)
-	}
-	if got := ArtifactMisses(h, "root-1"); got != 0 {
-		t.Fatalf("expected misses reset to 0 after a successful abort, got %d", got)
-	}
-}
-
 func TestExpectedArtifactReflectsActiveSwitch(t *testing.T) {
 	h := openHistory(t)
 	if got := ExpectedArtifact(h, "root-1"); got != "" {

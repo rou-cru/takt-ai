@@ -1113,10 +1113,6 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-1", Agent: "pm", Artifact: artifact}); e != nil {
 		t.Fatalf("switch: %v", e)
 	}
-	// The standard artifact exists throughout this test on purpose: it
-	// isolates the Engram result-ID gate under test here from PR-HAR-24's
-	// artifact-existence gate, covered separately by
-	// TestDispatchInterlocutorHandoffArtifactExistenceGate.
 	if err := os.WriteFile(filepath.Join(root, artifact), []byte("# PRD\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1128,10 +1124,20 @@ func TestDispatchInterlocutorHandoffArtifactGate(t *testing.T) {
 	if _, e := call(handoff); e == nil || !strings.Contains(e.Error(), "#999") {
 		t.Fatalf("handoff with nonexistent ID was not denied: %v", e)
 	}
+	handoff.ResultIDs = []int64{124}
+	if _, e := call(handoff); e == nil || !strings.Contains(e.Error(), "not recorded by pm") {
+		t.Fatalf("handoff accepted another author's result: %v", e)
+	}
+	if err := os.Remove(filepath.Join(root, artifact)); err != nil {
+		t.Fatal(err)
+	}
 	handoff.ResultIDs = []int64{123}
 	resp, e := call(handoff)
 	if e != nil {
-		t.Fatalf("handoff denied with a valid ID and the artifact present: %v", e)
+		t.Fatalf("first handoff denied with a valid ID and no filesystem copy: %v", e)
+	}
+	if resp["artifact_verified"] != false {
+		t.Fatalf("missing optional copy was not reported: %+v", resp)
 	}
 	if resp["result"] != "Standard" {
 		t.Fatalf("handoff result missing: %+v", resp)
@@ -1167,40 +1173,34 @@ func TestDispatchInterlocutorAbortSwitchByUser(t *testing.T) {
 	}
 }
 
-// TestDispatchInterlocutorHandoffArtifactExistenceGate wires PR-HAR-24: a
-// missing standard artifact denies the first handoff attempt and keeps the
-// session active, a second consecutive miss stops denying and reports the
-// harness's own verification inside the envelope instead, and a present
-// artifact reports verified without ever denying.
-func TestDispatchInterlocutorHandoffArtifactExistenceGate(t *testing.T) {
-	root, _, call := dispatchHarnessRaw(t)
-	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-1", Agent: "pm", Artifact: "missing.md"}); e != nil {
-		t.Fatalf("switch: %v", e)
-	}
-	handoff := coordinationRequest{Action: "handoff", Session: "root", Child: "child-1", Agent: "pm", Result: "TechFault"}
-	if _, e := call(handoff); e == nil || !strings.Contains(e.Error(), "missing.md") {
-		t.Fatalf("first missing-artifact handoff was not denied: %v", e)
-	}
-	resp, e := call(handoff)
-	if e != nil {
-		t.Fatalf("second missing-artifact handoff must escalate, not deny again: %v", e)
-	}
-	if resp["artifact_verified"] != false {
-		t.Fatalf("escalated handoff must report artifact_verified = false: %+v", resp)
-	}
-
-	if _, e := call(coordinationRequest{Action: "switch", Session: "root", Child: "child-2", Agent: "pm", Artifact: "present.md"}); e != nil {
-		t.Fatalf("second switch: %v", e)
-	}
-	if err := os.WriteFile(filepath.Join(root, "present.md"), []byte("draft"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	resp, e = call(coordinationRequest{Action: "handoff", Session: "root", Child: "child-2", Agent: "pm", Result: "TechFault"})
-	if e != nil {
-		t.Fatalf("handoff with the artifact present must succeed: %v", e)
-	}
-	if resp["artifact_verified"] != true {
-		t.Fatalf("present artifact must report artifact_verified = true: %+v", resp)
+// Optional filesystem copies never gate a nonstandard handoff.
+func TestDispatchInterlocutorHandoffOptionalCopy(t *testing.T) {
+	for _, result := range []string{"EarlyHandoff", "TechFault", "Outraged"} {
+		for _, present := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/present=%t", result, present), func(t *testing.T) {
+				root, _, call := dispatchHarnessRaw(t)
+				if present {
+					if err := os.WriteFile(filepath.Join(root, "copy.md"), []byte("draft"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := call(coordinationRequest{Action: "switch", Session: "root", Child: "child", Agent: "pm", Artifact: "copy.md"}); err != nil {
+					t.Fatal(err)
+				}
+				handoff := coordinationRequest{Action: "handoff", Session: "root", Child: "child", Agent: "pm", Result: result, ResultIDs: []int64{123}}
+				if _, err := call(handoff); err == nil {
+					t.Fatal("nonstandard handoff accepted an unrecorded result ID")
+				}
+				handoff.ResultIDs = nil
+				resp, err := call(handoff)
+				if err != nil {
+					t.Fatalf("handoff without a result must succeed without a filesystem retry: %v", err)
+				}
+				if resp["artifact_verified"] != present || resp["result"] != result {
+					t.Fatalf("unexpected handoff metadata: %+v", resp)
+				}
+			})
+		}
 	}
 }
 

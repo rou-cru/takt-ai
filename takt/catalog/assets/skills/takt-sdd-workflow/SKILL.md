@@ -19,8 +19,10 @@ sustain execution with bounded concurrent specialists in a single shared workspa
 **When this skill applies.** It governs a delivery cycle spanning several lanes or
 concurrent implementation. A simple change, a short investigation, or one obvious action
 does not need it, and manufacturing a DAG for them is cost with no return. If it was loaded
-and the work turns out not to need it, drop it: never build the graph to justify having
-opened it.
+and the work turns out not to need it, return control to Takt with the reason and evidence
+for reevaluation: never build the graph to justify having opened it. Likewise return control,
+preserving user constraints, whenever the evidence shows this route does not fit. This exit
+does not select a replacement or authorize direct execution.
 
 **The objective outranks the graph.** The DAG is the orchestrator's map — it exists to keep
 the work oriented, to surface concurrency the domain actually allows, and to stop a plan

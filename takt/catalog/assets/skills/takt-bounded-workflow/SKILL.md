@@ -1,6 +1,6 @@
 ---
 name: takt-bounded-workflow
-description: "Selected under takt-workflow-selection for implementation: the work is one bounded, independently deliverable unit, or the user directly and explicitly asked for no delegation. Governs carrying that unit directly and recognizing when it has outgrown this route."
+description: "Selected for implementation when the user directly and explicitly asked for no delegation, or when Takt decides it because the remaining implementation is demonstrably trivial. Governs carrying that unit directly and recognizing when it has outgrown this route."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,7 +12,7 @@ metadata:
 > **Target Audience:** Orchestrator agent only.
 
 Governs how the orchestrator carries an implementation unit itself, with native tools,
-once `takt-workflow-selection` has picked this route for the implementation phase; it
+after the workflow-selection tree has selected this route for the implementation phase; it
 never decides that choice itself. Direct execution does not relax file discipline: a
 directly executed change still respects exclusive ownership over the files it touches, the
 same as a delegated one would.
@@ -27,11 +27,11 @@ delegation under it approaching the concurrent-unit ceiling. Any one of these me
 route no longer matches the work, not that the work needs to be forced smaller to keep
 fitting it.
 
-**Switching away is a normal step, not a failure.** When the orchestrator itself chose this
-route and then finds it no longer fits, it loads `takt-sdd-workflow` and continues there —
-this is the next correct step, not a retry, an apology, or grounds to collapse the
-remaining work into one delegation.
+**Return control rather than switch automatically.** When any of these signals shows this
+route does not fit, return control to Takt with the reason, evidence, and user constraints
+preserved. Takt returns to the selection tree; this skill does not select its replacement. An explicit direct-work instruction is not permission to ignore these conditions
+or to change the instruction without the user's answer.
 
 **Stay inside implementation.** This skill carries implementation only. Gathering
-invariants belongs to whichever route `takt-workflow-selection` picked for the planning
+invariants belongs to whichever route the selection tree picks for the planning
 phase — never this skill's concern.

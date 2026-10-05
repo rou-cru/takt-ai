@@ -230,12 +230,8 @@ type Budgets struct {
 	// InterlocutorAgent is the specialist agent id of the current holder, so a
 	// caller's own agent identity can be checked against it directly.
 	InterlocutorAgent string `json:"interlocutor_agent,omitempty"`
-	// InterlocutorArtifact is the standard artifact path declared at switch time.
+	// InterlocutorArtifact is the optional filesystem copy path declared at switch time.
 	InterlocutorArtifact string `json:"interlocutor_artifact,omitempty"`
-	// InterlocutorArtifactMisses counts denied handoffs for a missing artifact
-	// since the current holder took the interface (PR-HAR-24: first miss is a
-	// deterministic error back to the specialist, the second escalates).
-	InterlocutorArtifactMisses int `json:"interlocutor_artifact_misses,omitempty"`
 }
 
 // Projection is the derived execution DAG state. It is never edited in place:
@@ -381,9 +377,6 @@ func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 func budgeted(b *Budgets, e Entry) bool {
 	switch e.Kind {
 	case KindDenied:
-		if e.Cause == CauseInterlocutorArtifact {
-			b.InterlocutorArtifactMisses++
-		}
 	case KindContested:
 		b.Contests[e.WorkUnitID+"/"+e.AttemptID] = true
 	case KindException:
@@ -436,7 +429,7 @@ func budgeted(b *Budgets, e Entry) bool {
 	case KindInterlocutorSwitched:
 		b.InterlocutorHolder, b.InterlocutorAgent, b.InterlocutorArtifact = e.WorkUnitID, e.Agent, e.Artifact
 	case KindInterlocutorHandoff, KindInterlocutorAborted:
-		b.InterlocutorHolder, b.InterlocutorAgent, b.InterlocutorArtifact, b.InterlocutorArtifactMisses = "", "", "", 0
+		b.InterlocutorHolder, b.InterlocutorAgent, b.InterlocutorArtifact = "", "", ""
 	case KindRevised:
 		// A valid revision advances the tracked plan version; the per-unit
 		// changes it produced are recorded as ordinary KindPlanned/KindWithdrawn

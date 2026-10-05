@@ -362,11 +362,13 @@ describe("delegation lifecycle", () => {
     } finally { await restarted.stop() }
   })
 
-  test("a producer that never delivers is nudged once, then its delegation fails and settles", async () => {
+  test.each(["Breakdown recorded.", "Completed report: all findings are listed in this chat.", "Created report.md; the result is in that file."])("a producer with only unstructured output (%s) is nudged once, then fails and settles", async (content) => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
       await admitProducer(vfs)
-      await expect(vfs.fire(vfs.tool, "execute.after", finished())).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
+      const event = finished()
+      event.result.content = content
+      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
       expect(vfs.log.prompts).toHaveLength(1)
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child-r" })
       expect(vfs.log.prompts[0].text).toContain("Call deliver_result")
