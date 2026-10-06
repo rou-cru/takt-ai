@@ -33,8 +33,8 @@ func TestMeasureLogoModeReadsTheGraphicsReply(t *testing.T) {
 		{"no answer", blockingReader{}, ModeQuadrants},
 	} {
 		var written bytes.Buffer
-		if got := measureLogoMode(&written, check.answer, 20*time.Millisecond); got != check.want {
-			t.Errorf("%s: measureLogoMode() = %q, want %q", check.name, got, check.want)
+		if got, _ := probeGraphics(&written, check.answer, 20*time.Millisecond); got != check.want {
+			t.Errorf("%s: probeGraphics() = %q, want %q", check.name, got, check.want)
 		}
 		if written.String() != graphicsProbe {
 			t.Errorf("%s: wrote %q, want the probe %q", check.name, written.String(), graphicsProbe)
@@ -47,9 +47,9 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
-func TestMeasureLogoModeKeepsQuadrantsWhenTheProbeCannotBeWritten(t *testing.T) {
-	if got := measureLogoMode(failingWriter{}, strings.NewReader("\x1b_Gi=31;OK\x1b\\"+da1), 20*time.Millisecond); got != ModeQuadrants {
-		t.Errorf("measureLogoMode() with a failed write = %q, want quadrants", got)
+func TestProbeGraphicsKeepsQuadrantsWhenTheProbeCannotBeWritten(t *testing.T) {
+	if got, _ := probeGraphics(failingWriter{}, strings.NewReader("\x1b_Gi=31;OK\x1b\\"+da1), 20*time.Millisecond); got != ModeQuadrants {
+		t.Errorf("probeGraphics() with a failed write = %q, want quadrants", got)
 	}
 }
 

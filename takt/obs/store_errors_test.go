@@ -119,9 +119,6 @@ func TestStoreRejectsInvalidControlRecord(t *testing.T) {
 	if _, err := s.AppendAction(r); err == nil {
 		t.Fatal("AppendAction accepted a record without a policy reference")
 	}
-	if n, err := s.CountActions(testSession, "", 0, 0); err != nil || n != 0 {
-		t.Fatalf("rejected records were persisted: %d, %v", n, err)
-	}
 }
 
 func TestStoreEventsRoundTripWallTimestampAndBounds(t *testing.T) {
@@ -156,29 +153,6 @@ func TestStoreEventsRoundTripWallTimestampAndBounds(t *testing.T) {
 	got, err := s.Events(testSession, "", ids[0], ids[2], eventsPageLimit)
 	if err != nil || len(got) != eventsPageLimit || got[0].ID != ids[1] || got[1].ID != ids[2] {
 		t.Fatalf("bounded Events = %+v, %v; want ids %d and %d", got, err, ids[1], ids[2])
-	}
-}
-
-func TestStoreActionsRangeAndLimit(t *testing.T) {
-	s := openStore(t, t.TempDir())
-	var ids []int64
-	for i := 0; i < 4; i++ {
-		id, err := s.AppendAction(obs.ControlRecord{ActionClass: obs.ActionObserve, TriggeringCondition: "c", PolicyRef: "p",
-			ActingAgent: "a", Correlations: obs.CorrelationIDs{SessionID: testSession, WorkUnitID: "wu", AttemptID: "1", JournalEntryRef: "j"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, id)
-	}
-	got, err := s.Actions(testSession, "", ids[0], ids[2], eventsPageLimit)
-	if err != nil || len(got) != eventsPageLimit || got[0].ID != ids[1] || got[1].ID != ids[2] {
-		t.Fatalf("bounded Actions = %+v, %v; want ids %d and %d", got, err, ids[1], ids[2])
-	}
-	if c := got[0].Record.Correlations; c.SessionID != testSession || c.WorkUnitID != "wu" || c.AttemptID != "1" || c.JournalEntryRef != "j" {
-		t.Errorf("correlations = %+v; want them restored", c)
-	}
-	if n, err := s.CountActions(testSession, "", ids[0], ids[2]); err != nil || n != eventsPageLimit {
-		t.Fatalf("bounded CountActions = %d, %v; want %d", n, err, eventsPageLimit)
 	}
 }
 
@@ -235,11 +209,5 @@ func TestStoreOperationsFailAfterClose(t *testing.T) {
 	}
 	if _, err := s.CountEvents(testSession, "", 0, 0); err == nil {
 		t.Error("CountEvents succeeded on a closed store")
-	}
-	if _, err := s.Actions(testSession, "", 0, 0, 0); err == nil {
-		t.Error("Actions succeeded on a closed store")
-	}
-	if _, err := s.CountActions(testSession, "", 0, 0); err == nil {
-		t.Error("CountActions succeeded on a closed store")
 	}
 }

@@ -92,15 +92,9 @@ func logoModeOverride() (LogoMode, bool) {
 	return "", false
 }
 
-// measureLogoMode writes the probe to w and waits up to timeout for the
-// replies on r.
-func measureLogoMode(w io.Writer, r io.Reader, timeout time.Duration) LogoMode {
-	mode, _ := probeGraphics(w, r, timeout)
-	return mode
-}
-
-// probeGraphics is measureLogoMode that also reports when its read goroutine
-// has returned, so a caller can cancel the reader and wait before closing it.
+// probeGraphics writes the probe to w and waits up to timeout for the replies
+// on r. It also reports when its read goroutine has returned, so a caller can
+// cancel the reader and wait before closing it.
 func probeGraphics(w io.Writer, r io.Reader, timeout time.Duration) (LogoMode, <-chan struct{}) {
 	finished := make(chan struct{})
 	if _, err := io.WriteString(w, graphicsProbe); err != nil {
