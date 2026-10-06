@@ -1,6 +1,6 @@
 version: 1
 # F1-4 versioned capability manifest (PR-SET-31): user-facing purpose,
-# core/optional partition, dependencies, and presets.
+# core/optional partition, and dependencies.
 # Selection and dependency reconciliation (PR-SET-17) both resolve against
 # this manifest.
 components:
