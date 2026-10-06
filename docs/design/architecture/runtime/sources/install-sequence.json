@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Install flow sequence",
+    "output": "docs/design/architecture/runtime/diagrams/install-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      684
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Developer",
+      "sublabel": "terminal"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "cli",
+      "sublabel": "runSetup",
+      "sources": [
+        {
+          "path": "takt/cli/main.go",
+          "line": 218
+        }
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "type": "backend",
+      "label": "lifecycle",
+      "sublabel": "install",
+      "sources": [
+        {
+          "path": "takt/lifecycle/lifecycle.go",
+          "line": 218
+        }
+      ]
+    },
+    {
+      "id": "setup",
+      "type": "backend",
+      "label": "setup",
+      "sublabel": "plan and apply",
+      "sources": [
+        {
+          "path": "takt/setup/operations.go",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "tool installers",
+      "sublabel": "engram, codegraph, npm",
+      "sources": [
+        {
+          "path": "takt/lifecycle/lifecycle.go",
+          "line": 233,
+          "end_line": 241
+        },
+        {
+          "path": "takt/lifecycle/lifecycle.go",
+          "line": 296,
+          "end_line": 302
+        },
+        {
+          "path": "takt/agents/opencode/components.go",
+          "line": 274,
+          "end_line": 286
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "type": "external",
+      "label": "OpenCode",
+      "sublabel": "handshake, reload",
+      "sources": [
+        {
+          "path": "takt/agents/opencode/reload.go",
+          "line": 15
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "user",
+      "to": "cli",
+      "y": 160,
+      "label": "setup install",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "cli",
+      "to": "setup",
+      "y": 188,
+      "label": "read leftover operation notice",
+      "variant": "default"
+    },
+    {
+      "id": "m03",
+      "from": "cli",
+      "to": "lifecycle",
+      "y": 216,
+      "label": "preview plan",
+      "variant": "default"
+    },
+    {
+      "id": "m04",
+      "from": "lifecycle",
+      "to": "setup",
+      "y": 244,
+      "label": "build plans, detect conflicts",
+      "variant": "default"
+    },
+    {
+      "id": "m05",
+      "from": "setup",
+      "to": "lifecycle",
+      "y": 272,
+      "label": "plans + conflicts",
+      "variant": "return"
+    },
+    {
+      "id": "m06",
+      "from": "cli",
+      "to": "user",
+      "y": 300,
+      "label": "refuse without --yes or open conflicts",
+      "variant": "security"
+    },
+    {
+      "id": "m07",
+      "from": "cli",
+      "to": "lifecycle",
+      "y": 328,
+      "label": "install",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m08",
+      "from": "lifecycle",
+      "to": "opencode",
+      "y": 356,
+      "label": "handshake preflight",
+      "variant": "default"
+    },
+    {
+      "id": "m09",
+      "from": "lifecycle",
+      "to": "tools",
+      "y": 384,
+      "label": "acquire binaries",
+      "variant": "default"
+    },
+    {
+      "id": "m10",
+      "from": "lifecycle",
+      "to": "setup",
+      "y": 412,
+      "label": "begin operation, apply plans",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m11",
+      "from": "setup",
+      "to": "lifecycle",
+      "y": 440,
+      "label": "applied, or rolled back",
+      "variant": "return"
+    },
+    {
+      "id": "m12",
+      "from": "lifecycle",
+      "to": "tools",
+      "y": 468,
+      "label": "inject MCP; npm sandbox runtime",
+      "variant": "default"
+    },
+    {
+      "id": "m13",
+      "from": "lifecycle",
+      "to": "setup",
+      "y": 496,
+      "label": "record installation",
+      "variant": "default"
+    },
+    {
+      "id": "m14",
+      "from": "lifecycle",
+      "to": "opencode",
+      "y": 524,
+      "label": "reload",
+      "variant": "dashed"
+    },
+    {
+      "id": "m15",
+      "from": "lifecycle",
+      "to": "cli",
+      "y": 552,
+      "label": "result",
+      "variant": "return"
+    },
+    {
+      "id": "m16",
+      "from": "cli",
+      "to": "user",
+      "y": 580,
+      "label": "result + verification",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Authorization",
+      "items": [
+        "No change is applied without --yes",
+        "A conflict passes only if unrelated, or accepted with matching path, hash and impact"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failure",
+      "items": [
+        "Files are staged and renamed; a commit error restores backups and removes new files",
+        "Cancellation keeps applied files and lists the rest; a reload failure is reported, not rolled back",
+        "A failed sandbox runtime install is non-fatal: the result lists it as Incomplete"
+      ]
+    }
+  ]
+}

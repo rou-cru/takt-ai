@@ -1,0 +1,246 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Workflow selection by Takt",
+    "output": "docs/design/architecture/agents/diagrams/crew/workflow-selection.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "decision",
+      "label": "Decision tree"
+    },
+    {
+      "id": "direct",
+      "label": "Direct routes"
+    },
+    {
+      "id": "routes",
+      "label": "Routes"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "q1",
+      "lane": "decision",
+      "col": 0,
+      "type": "security",
+      "label": "Direct work asked?",
+      "sublabel": "user explicitly requested",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "lane": "decision",
+      "col": 2,
+      "type": "security",
+      "label": "Invariants missing?",
+      "sublabel": "none settled or to refine",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "q3",
+      "lane": "decision",
+      "col": 4,
+      "type": "security",
+      "label": "Development needed?",
+      "sublabel": "after invariants settle",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "bplan",
+      "lane": "direct",
+      "col": 0,
+      "type": "backend",
+      "label": "bounded-planning",
+      "sublabel": "planning without specialists",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "bwork",
+      "lane": "direct",
+      "col": 1,
+      "type": "backend",
+      "label": "bounded-workflow",
+      "sublabel": "implementation without delegation",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "invplan",
+      "lane": "routes",
+      "col": 2,
+      "type": "backend",
+      "label": "invariant-planning",
+      "sublabel": "one lane per invariant",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "single",
+      "lane": "routes",
+      "col": 3,
+      "type": "backend",
+      "label": "One bounded unit",
+      "sublabel": "delegated, no route adopted",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "sdd",
+      "lane": "routes",
+      "col": 4,
+      "type": "backend",
+      "label": "sdd-workflow",
+      "sublabel": "several lanes, concurrent",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "lane": "routes",
+      "col": 5,
+      "type": "backend",
+      "label": "Deliver settled result",
+      "sublabel": "no development",
+      "width": 150,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "q1-bplan",
+      "from": "q1",
+      "to": "bplan",
+      "label": "planning"
+    },
+    {
+      "id": "q1-bwork",
+      "from": "q1",
+      "to": "bwork",
+      "label": "implementation"
+    },
+    {
+      "id": "q1-q2",
+      "from": "q1",
+      "to": "q2",
+      "label": "otherwise",
+      "variant": "emphasis"
+    },
+    {
+      "id": "q2-inv",
+      "from": "q2",
+      "to": "invplan",
+      "label": "yes"
+    },
+    {
+      "id": "q2-q3",
+      "from": "q2",
+      "to": "q3",
+      "label": "no",
+      "variant": "emphasis"
+    },
+    {
+      "id": "q3-single",
+      "from": "q3",
+      "to": "single",
+      "label": "one unit"
+    },
+    {
+      "id": "q3-sdd",
+      "from": "q3",
+      "to": "sdd",
+      "label": "several lanes"
+    },
+    {
+      "id": "q3-deliver",
+      "from": "q3",
+      "to": "deliver",
+      "label": "no",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Rules",
+      "items": [
+        "Selection runs before each planning or implementation phase",
+        "Only the chosen route's skill is loaded",
+        "A route is never re-adopted under identical evidence"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Not drawn",
+      "items": [
+        "After invariant-planning, selection returns to the first question",
+        "On uncertainty or an instruction conflict Takt consults the user and does not override"
+      ]
+    }
+  ]
+}

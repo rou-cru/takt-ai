@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Takt AI: Containers (C4 L2)",
+    "output": "docs/design/architecture/c4/diagrams/containers.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "dev",
+      "type": "external",
+      "label": "Developer",
+      "sublabel": "terminal user",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "config",
+      "type": "database",
+      "label": "OpenCode configuration",
+      "sublabel": "opencode.json, AGENTS.md, plugins/, takt/, skills",
+      "pos": [
+        290,
+        30
+      ],
+      "size": [
+        280,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/model/paths.go",
+          "line": 26,
+          "end_line": 32
+        },
+        {
+          "path": "takt/agents/opencode/layout.go",
+          "line": 27
+        },
+        {
+          "path": "takt/skills/skills.go",
+          "line": 73
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "takt-ai binary",
+      "sublabel": "Go CLI + TUI, embedded catalog",
+      "pos": [
+        300,
+        190
+      ],
+      "size": [
+        180,
+        80
+      ],
+      "sources": [
+        {
+          "path": "takt/cli/main.go",
+          "line": 1
+        },
+        {
+          "path": "takt/catalog/packages.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "deploy",
+      "type": "cloud",
+      "label": "Workspace image + Helm chart",
+      "sublabel": "opencode + takt-ai",
+      "pos": [
+        900,
+        340
+      ],
+      "size": [
+        200,
+        60
+      ],
+      "sources": [
+        {
+          "path": "deploy/images/Dockerfile",
+          "line": 162
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "type": "backend",
+      "label": "OpenCode v2",
+      "sublabel": "host runtime",
+      "pos": [
+        620,
+        190
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/opencodeapi/client.go",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "backend",
+      "label": "OpenCode plugins",
+      "sublabel": "vfs, dag, memory (TS)",
+      "pos": [
+        590,
+        340
+      ],
+      "size": [
+        210,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/assets/takt-memory.ts",
+          "line": 36
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-dag.tsx",
+          "line": 949
+        }
+      ]
+    },
+    {
+      "id": "stores",
+      "type": "database",
+      "label": "Local state",
+      "sublabel": "history.sqlite, events.db, vfs",
+      "pos": [
+        280,
+        340
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/history/history.go",
+          "line": 31
+        },
+        {
+          "path": "takt/obs/store.go",
+          "line": 39,
+          "end_line": 42
+        }
+      ]
+    },
+    {
+      "id": "bins",
+      "type": "backend",
+      "label": "Managed MCP servers",
+      "sublabel": "Engram, CodeGraph",
+      "pos": [
+        640,
+        30
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/engram/acquire.go",
+          "line": 56
+        },
+        {
+          "path": "takt/codegraph/acquire.go",
+          "line": 67
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Takt AI",
+      "wraps": [
+        "cli",
+        "stores",
+        "plugins"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "dev-uses-cli",
+      "from": "dev",
+      "to": "cli",
+      "label": "setup, doctor",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-writes-config",
+      "from": "cli",
+      "to": "config",
+      "label": "writes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-to-opencode",
+      "from": "cli",
+      "to": "opencode",
+      "label": "HTTP API"
+    },
+    {
+      "id": "opencode-loads-config",
+      "from": "opencode",
+      "to": "config",
+      "label": "loads"
+    },
+    {
+      "id": "deploy-bundles",
+      "from": "deploy",
+      "to": "opencode",
+      "label": "bundles",
+      "variant": "dashed"
+    },
+    {
+      "id": "opencode-loads-plugins",
+      "from": "opencode",
+      "to": "plugins",
+      "label": "runs"
+    },
+    {
+      "id": "plugins-spawn-cli",
+      "from": "plugins",
+      "to": "cli",
+      "label": "spawn subcommands",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "id": "cli-to-stores",
+      "from": "cli",
+      "to": "stores",
+      "label": "reads, writes",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "opencode-runs-mcp",
+      "from": "opencode",
+      "to": "bins",
+      "label": "MCP"
+    },
+    {
+      "id": "cli-engram-http",
+      "from": "cli",
+      "to": "bins",
+      "label": "Engram HTTP"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Runtime split",
+      "items": [
+        "The installer runs as the CLI; the harness runs inside OpenCode through plugins",
+        "Plugins call back into takt-ai subcommands; the VFS plugin also holds permission hooks, lane tool sets and orchestrator-only guards",
+        "The catalog is embedded in the binary; the sandbox adapter is loaded by the VFS plugin"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Deployment",
+      "items": [
+        "Local: install.sh, Homebrew cask or go install",
+        "Container: workspace image (setup image at build) exposes OpenCode on 4096; dev target via compose",
+        "Cluster: Helm chart from GHCR, or deploy/workspace/helm.sh",
+        "Release: GoReleaser, cosign-signed checksums, image and chart"
+      ]
+    }
+  ]
+}

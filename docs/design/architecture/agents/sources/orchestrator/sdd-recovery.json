@@ -1,0 +1,263 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Orchestrator: failure and recovery",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/sdd-recovery.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Unit failure"
+    },
+    {
+      "id": "bounded",
+      "label": "Bounded recovery"
+    },
+    {
+      "id": "replan",
+      "label": "Replanning circuit"
+    },
+    {
+      "id": "exits",
+      "label": "Exits"
+    }
+  ],
+  "states": [
+    {
+      "id": "failed",
+      "type": "start",
+      "label": "Unit fails",
+      "sublabel": "first failure",
+      "lane": "main",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 100,
+          "end_line": 106
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "type": "active",
+      "label": "Retry once",
+      "sublabel": "error output, same scope",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 31,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "resumed",
+      "type": "success",
+      "label": "Resumed",
+      "sublabel": "plan continues",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 52,
+          "end_line": 54
+        }
+      ]
+    },
+    {
+      "id": "declared",
+      "type": "active",
+      "label": "Declared recovery",
+      "sublabel": "budgets declared",
+      "lane": "bounded",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 100,
+          "end_line": 106
+        }
+      ]
+    },
+    {
+      "id": "frozen",
+      "type": "waiting",
+      "label": "Subtree frozen",
+      "sublabel": "task BLOCKED, lanes run on",
+      "lane": "replan",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 36,
+          "end_line": 42
+        }
+      ]
+    },
+    {
+      "id": "owner",
+      "type": "waiting",
+      "label": "Owner escalation",
+      "sublabel": "structure, behavior, experience",
+      "lane": "replan",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 43,
+          "end_line": 45
+        }
+      ]
+    },
+    {
+      "id": "delta",
+      "type": "active",
+      "label": "Delta re-indexed",
+      "sublabel": "dispatch_commit with base",
+      "lane": "replan",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 46,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "reassess",
+      "type": "neutral",
+      "label": "Cut reassessed",
+      "sublabel": "no third delta",
+      "lane": "exits",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 55,
+          "end_line": 57
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "waiting",
+      "label": "Awaiting direction",
+      "sublabel": "limit reached",
+      "lane": "exits",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 107,
+          "end_line": 119
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "failed",
+      "to": "retry",
+      "label": "minor, in bounds",
+      "labelDy": -31
+    },
+    {
+      "from": "failed",
+      "to": "declared",
+      "label": "other failure",
+      "variant": "dashed"
+    },
+    {
+      "from": "failed",
+      "to": "frozen",
+      "label": "contract defect or conflicting deltas",
+      "variant": "security"
+    },
+    {
+      "from": "retry",
+      "to": "resumed",
+      "label": "succeeds",
+      "variant": "emphasis",
+      "labelDy": -31
+    },
+    {
+      "from": "retry",
+      "to": "frozen",
+      "label": "second failure",
+      "variant": "security"
+    },
+    {
+      "from": "declared",
+      "to": "resumed",
+      "label": "closed",
+      "variant": "emphasis"
+    },
+    {
+      "from": "frozen",
+      "to": "owner",
+      "label": "task, evidence, segment",
+      "labelDy": -31
+    },
+    {
+      "from": "owner",
+      "to": "delta",
+      "label": "owner delta; TPM revises tasks",
+      "labelDy": -31
+    },
+    {
+      "from": "delta",
+      "to": "resumed",
+      "label": "width re-validated, redispatch",
+      "variant": "emphasis"
+    },
+    {
+      "from": "delta",
+      "to": "reassess",
+      "label": "no convergence",
+      "variant": "dashed"
+    },
+    {
+      "from": "frozen",
+      "to": "user",
+      "label": "limit reached",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Owners",
+      "items": [
+        "Structural or interface: architect. Behavior or acceptance: spec. Experience or identity: product-designer. Scope tradeoff: pm and the user",
+        "Conflicting deltas from two in-flight tasks: freeze both, keep both staged, and escalate to the owner of the contract they share"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Declared recovery",
+      "items": [
+        "A binary result, scope, recoverable point, action budget and attempt budget; budget expiry escalates (see the escalation view)",
+        "After consolidation, repair forward"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Limits",
+      "items": [
+        "A second failing verdict for the same author key counts as one failed recovery; consecutive failed recoveries of one objective reach the limit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,298 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Orchestrator: resuming earlier work",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/session-resume.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "decide",
+      "label": "Locate"
+    },
+    {
+      "id": "cand",
+      "label": "Candidates"
+    },
+    {
+      "id": "branch",
+      "label": "Branch"
+    },
+    {
+      "id": "finish",
+      "label": "Resume"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "s1",
+      "lane": "decide",
+      "col": 0,
+      "type": "security",
+      "label": "Id given and found?",
+      "sublabel": "anchors read",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 23,
+          "end_line": 38
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "lane": "cand",
+      "col": 1,
+      "type": "security",
+      "label": "Candidate confirmed?",
+      "sublabel": "strongest, 1-2 lines",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 23,
+          "end_line": 38
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "lane": "decide",
+      "col": 3,
+      "type": "security",
+      "label": "Closed or not?",
+      "sublabel": "closed anchor?",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 39,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "lane": "cand",
+      "col": 0,
+      "type": "backend",
+      "label": "Search anchors",
+      "sublabel": "match, recency, workspace",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 25,
+          "end_line": 37
+        }
+      ]
+    },
+    {
+      "id": "offer",
+      "lane": "cand",
+      "col": 2,
+      "type": "backend",
+      "label": "Next candidates",
+      "sublabel": "or follow the hint",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 48,
+          "end_line": 50
+        }
+      ]
+    },
+    {
+      "id": "declare",
+      "lane": "branch",
+      "col": 3,
+      "type": "backend",
+      "label": "Declare continuity",
+      "sublabel": "memory_continue_session",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 43,
+          "end_line": 46
+        }
+      ]
+    },
+    {
+      "id": "intr",
+      "lane": "branch",
+      "col": 4,
+      "type": "backend",
+      "label": "Resume interrupted",
+      "sublabel": "read entries",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 44,
+          "end_line": 47
+        }
+      ]
+    },
+    {
+      "id": "confirm",
+      "lane": "finish",
+      "col": 3,
+      "type": "security",
+      "label": "Confirm with user",
+      "sublabel": "objective, disputes",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 54,
+          "end_line": 63
+        }
+      ]
+    },
+    {
+      "id": "go",
+      "lane": "finish",
+      "col": 4,
+      "type": "backend",
+      "label": "Continue the work",
+      "sublabel": "repo state prevails",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 54,
+          "end_line": 63
+        }
+      ]
+    },
+    {
+      "id": "fresh",
+      "lane": "finish",
+      "col": 2,
+      "type": "backend",
+      "label": "Start fresh",
+      "sublabel": "any declaration withdrawn",
+      "width": 140,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 49,
+          "end_line": 50
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "r1",
+      "from": "s1",
+      "to": "s3",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r2",
+      "from": "s1",
+      "to": "search",
+      "label": "no"
+    },
+    {
+      "id": "r3",
+      "from": "search",
+      "to": "s4",
+      "label": "strongest candidate"
+    },
+    {
+      "id": "r4",
+      "from": "s4",
+      "to": "s3",
+      "label": "confirmed",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r5",
+      "from": "s4",
+      "to": "offer",
+      "label": "rejected",
+      "variant": "dashed"
+    },
+    {
+      "id": "r6",
+      "from": "s3",
+      "to": "declare",
+      "label": "closed"
+    },
+    {
+      "id": "r7",
+      "from": "s3",
+      "to": "intr",
+      "label": "interrupted"
+    },
+    {
+      "id": "r8",
+      "from": "declare",
+      "to": "confirm",
+      "label": "declared or rejected"
+    },
+    {
+      "id": "r9",
+      "from": "intr",
+      "to": "confirm"
+    },
+    {
+      "id": "r10",
+      "from": "confirm",
+      "to": "go",
+      "label": "confirmed",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r11",
+      "from": "offer",
+      "to": "s4",
+      "label": "next candidate",
+      "variant": "dashed"
+    },
+    {
+      "id": "r12",
+      "from": "offer",
+      "to": "search",
+      "label": "new hint",
+      "variant": "dashed"
+    },
+    {
+      "id": "r13",
+      "from": "offer",
+      "to": "fresh",
+      "label": "none recognized"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two decisions",
+      "items": [
+        "Resuming never waits on the declaration, and failing to declare never stops the resume",
+        "The declaration becomes a permanent link with the first new memory entry"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Care",
+      "items": [
+        "Declare nothing doubtful; show what was found and resume once the user confirms which work it is",
+        "Another workspace is searched when nothing in this one matches or the user points there",
+        "A rejected declaration is not retried; before the first new entry a different continuity replaces or withdraws it"
+      ]
+    }
+  ]
+}

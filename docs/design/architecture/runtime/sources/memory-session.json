@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Memory session sequence",
+    "output": "docs/design/architecture/runtime/diagrams/memory-session.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      690
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "plugin",
+      "type": "backend",
+      "label": "memory plugin",
+      "sublabel": "takt-memory.ts",
+      "sources": [
+        {
+          "path": "takt/agents/opencode/assets/takt-memory.ts",
+          "line": 35,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "cli",
+      "sublabel": "memory subcommand",
+      "sources": [
+        {
+          "path": "takt/cli/memory.go",
+          "line": 54,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "memory",
+      "sublabel": "Record, Close",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 313
+        }
+      ]
+    },
+    {
+      "id": "index",
+      "type": "database",
+      "label": "session index",
+      "sublabel": "JSON file",
+      "sources": [
+        {
+          "path": "takt/memory/session_index.go",
+          "line": 39,
+          "end_line": 60
+        }
+      ]
+    },
+    {
+      "id": "engram",
+      "type": "external",
+      "label": "Engram",
+      "sublabel": "HTTP service",
+      "sources": [
+        {
+          "path": "takt/memory/client.go",
+          "line": 282
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "plugin",
+      "to": "cli",
+      "y": 160,
+      "label": "memory record (JSON stdin)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "cli",
+      "to": "memory",
+      "y": 190,
+      "label": "Record",
+      "variant": "default"
+    },
+    {
+      "id": "m03",
+      "from": "memory",
+      "to": "engram",
+      "y": 220,
+      "label": "start service if needed",
+      "variant": "default"
+    },
+    {
+      "id": "m04",
+      "from": "memory",
+      "to": "engram",
+      "y": 250,
+      "label": "start anchor (first entry)",
+      "variant": "default"
+    },
+    {
+      "id": "m05",
+      "from": "memory",
+      "to": "index",
+      "y": 280,
+      "label": "check id, save entry",
+      "variant": "default"
+    },
+    {
+      "id": "m06",
+      "from": "memory",
+      "to": "engram",
+      "y": 310,
+      "label": "write observation",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m07",
+      "from": "memory",
+      "to": "engram",
+      "y": 340,
+      "label": "link to anchor and target",
+      "variant": "dashed"
+    },
+    {
+      "id": "m08",
+      "from": "memory",
+      "to": "cli",
+      "y": 370,
+      "label": "stored or deduplicated",
+      "variant": "return"
+    },
+    {
+      "id": "m09",
+      "from": "cli",
+      "to": "plugin",
+      "y": 400,
+      "label": "result",
+      "variant": "return"
+    },
+    {
+      "id": "m10",
+      "from": "plugin",
+      "to": "cli",
+      "y": 430,
+      "label": "memory close, or session.deleted",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m11",
+      "from": "cli",
+      "to": "memory",
+      "y": 460,
+      "label": "Close",
+      "variant": "default"
+    },
+    {
+      "id": "m12",
+      "from": "memory",
+      "to": "engram",
+      "y": 490,
+      "label": "end anchor + closing links",
+      "variant": "default"
+    },
+    {
+      "id": "m13",
+      "from": "memory",
+      "to": "index",
+      "y": 520,
+      "label": "set end anchor",
+      "variant": "default"
+    },
+    {
+      "id": "m14",
+      "from": "memory",
+      "to": "cli",
+      "y": 550,
+      "label": "closed",
+      "variant": "return"
+    },
+    {
+      "id": "m15",
+      "from": "cli",
+      "to": "plugin",
+      "y": 580,
+      "label": "result",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Anchors",
+      "items": [
+        "Each session gets a start anchor on its first entry and an end anchor on close",
+        "A continued session links its start to the previous end"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Guards",
+      "items": [
+        "Personal scope or user orders ask for confirmation first",
+        "A closed session rejects writes and a second close"
+      ]
+    }
+  ]
+}

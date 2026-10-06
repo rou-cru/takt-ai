@@ -63,6 +63,7 @@ helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspac
 
 ## Documentation
 
+- [Architecture](docs/design/architecture/README.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## License

@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "takt-ai binary: catalog and OpenCode adapter (C4 L3)",
+    "output": "docs/design/architecture/c4/diagrams/components-catalog-adapter.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "assets",
+      "type": "frontend",
+      "label": "catalog assets",
+      "sublabel": "agents, skills, shared",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/packages.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "catalog",
+      "sublabel": "declarative content source",
+      "pos": [
+        330,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/capabilities.go",
+          "line": 8,
+          "end_line": 11
+        }
+      ]
+    },
+    {
+      "id": "engram",
+      "type": "backend",
+      "label": "engram",
+      "sublabel": "acquire + inject",
+      "pos": [
+        620,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/engram/acquire.go",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "id": "shared",
+      "type": "backend",
+      "label": "agents/shared",
+      "sublabel": "harness-neutral helpers",
+      "pos": [
+        330,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/shared/shared.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "renderer",
+      "type": "backend",
+      "label": "agents/opencode",
+      "sublabel": "renders OpenCode config",
+      "pos": [
+        620,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/renderer.go",
+          "line": 77
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "backend",
+      "label": "plugin assets",
+      "sublabel": "vfs, dag, memory + sandbox adapter",
+      "pos": [
+        900,
+        190
+      ],
+      "size": [
+        190,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/components.go",
+          "line": 96
+        },
+        {
+          "path": "takt/agents/opencode/components.go",
+          "line": 232,
+          "end_line": 236
+        },
+        {
+          "path": "takt/agents/opencode/components.go",
+          "line": 294
+        }
+      ]
+    },
+    {
+      "id": "artifacts",
+      "type": "backend",
+      "label": "internal/artifacts",
+      "sublabel": "artifact helpers",
+      "pos": [
+        330,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/artifacts/artifacts.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "opencodeapi",
+      "type": "backend",
+      "label": "opencodeapi",
+      "sublabel": "HTTP adapter",
+      "pos": [
+        620,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/opencodeapi/client.go",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "type": "external",
+      "label": "OpenCode v2",
+      "sublabel": "reload + model handshake",
+      "pos": [
+        900,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/reload.go",
+          "line": 12
+        },
+        {
+          "path": "takt/agents/opencode/models.go",
+          "line": 31
+        }
+      ]
+    },
+    {
+      "id": "sandboxsrc",
+      "type": "frontend",
+      "label": "runtime/sandbox",
+      "sublabel": "canonical sandbox adapter",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        190,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/runtime/sandbox/adapter.mjs",
+          "line": 1
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-sandbox.mjs",
+          "line": 2,
+          "end_line": 6
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "assets-catalog",
+      "from": "assets",
+      "to": "catalog",
+      "label": "embedded"
+    },
+    {
+      "id": "shared-catalog",
+      "from": "shared",
+      "to": "catalog",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "renderer-catalog",
+      "from": "renderer",
+      "to": "catalog",
+      "label": "references"
+    },
+    {
+      "id": "renderer-shared",
+      "from": "renderer",
+      "to": "shared",
+      "label": "helpers"
+    },
+    {
+      "id": "renderer-engram",
+      "from": "renderer",
+      "to": "engram",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "renderer-plugins",
+      "from": "renderer",
+      "to": "plugins",
+      "label": "embeds"
+    },
+    {
+      "id": "shared-artifacts",
+      "from": "shared",
+      "to": "artifacts",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "renderer-api",
+      "from": "renderer",
+      "to": "opencodeapi",
+      "label": "reload, models",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "api-opencode",
+      "from": "opencodeapi",
+      "to": "opencode",
+      "label": "HTTP"
+    },
+    {
+      "id": "sandbox-mirror",
+      "from": "sandboxsrc",
+      "to": "plugins",
+      "label": "mirrored",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading guide",
+      "items": [
+        "Everything also depends on model; not drawn",
+        "agents/opencode also imports obs and vfs to build permission rules",
+        "Three plugins and the sandbox adapter, loaded by the VFS plugin, are embedded in the binary and written into OpenCode on install"
+      ]
+    }
+  ]
+}

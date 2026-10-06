@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: specification and task breakdown",
+    "output": "docs/design/architecture/agents/diagrams/flows/planning-decompose.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      560
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch",
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "spec",
+      "type": "backend",
+      "label": "takt-spec",
+      "sublabel": "planning_author",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "tpm",
+      "type": "backend",
+      "label": "takt-tpm",
+      "sublabel": "planning_author",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "takt",
+      "to": "spec",
+      "y": 160,
+      "label": "delegate: intent, design, experience IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "harness",
+      "to": "spec",
+      "y": 188,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m03",
+      "from": "spec",
+      "to": "memory",
+      "y": 216,
+      "label": "memory_record: BDD spec",
+      "variant": "dashed"
+    },
+    {
+      "id": "m04",
+      "from": "spec",
+      "to": "takt",
+      "y": 244,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m05",
+      "from": "takt",
+      "to": "tpm",
+      "y": 272,
+      "label": "delegate: spec and design IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m06",
+      "from": "harness",
+      "to": "tpm",
+      "y": 300,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m07",
+      "from": "tpm",
+      "to": "memory",
+      "y": 328,
+      "label": "memory_record: WBS",
+      "variant": "dashed"
+    },
+    {
+      "id": "m08",
+      "from": "tpm",
+      "to": "takt",
+      "y": 356,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m09",
+      "from": "takt",
+      "to": "harness",
+      "y": 384,
+      "label": "dispatch_commit: DAG from the WBS",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ownership",
+      "items": [
+        "takt-spec does not prescribe architecture or tasks",
+        "takt-tpm supplies tasks; takt compiles and owns the DAG"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Harness",
+      "items": [
+        "Each unit is admitted before it launches",
+        "The committed DAG records each node with its contract and prerequisites"
+      ]
+    }
+  ]
+}

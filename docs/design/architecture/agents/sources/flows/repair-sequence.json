@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: repair after a failing verdict",
+    "output": "docs/design/architecture/agents/diagrams/flows/repair-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      684
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch + VFS",
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "backend",
+      "label": "takt-verify",
+      "sublabel": "verification",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "type": "backend",
+      "label": "takt-fix",
+      "sublabel": "execution",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "verify",
+      "to": "harness",
+      "y": 160,
+      "label": "vfs_verify: pass false per key",
+      "variant": "security"
+    },
+    {
+      "id": "m02",
+      "from": "verify",
+      "to": "memory",
+      "y": 188,
+      "label": "memory_record: failed findings",
+      "variant": "dashed"
+    },
+    {
+      "id": "m03",
+      "from": "verify",
+      "to": "takt",
+      "y": 216,
+      "label": "deliver_result: report ID",
+      "variant": "return"
+    },
+    {
+      "id": "m04",
+      "from": "takt",
+      "to": "harness",
+      "y": 244,
+      "label": "dispatch_inputs, claim_assign: author_key",
+      "variant": "security"
+    },
+    {
+      "id": "m05",
+      "from": "takt",
+      "to": "fix",
+      "y": 272,
+      "label": "delegate: findings verbatim",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m06",
+      "from": "harness",
+      "to": "fix",
+      "y": 300,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m07",
+      "from": "fix",
+      "to": "harness",
+      "y": 328,
+      "label": "vfs_bind, vfs_write: repair + regression test",
+      "variant": "security"
+    },
+    {
+      "id": "m08",
+      "from": "fix",
+      "to": "memory",
+      "y": 356,
+      "label": "memory_record: root cause",
+      "variant": "dashed"
+    },
+    {
+      "id": "m09",
+      "from": "fix",
+      "to": "takt",
+      "y": 384,
+      "label": "author key, cause, evidence",
+      "variant": "return"
+    },
+    {
+      "id": "m10",
+      "from": "takt",
+      "to": "harness",
+      "y": 412,
+      "label": "dispatch_inputs: re-verify unit",
+      "variant": "security"
+    },
+    {
+      "id": "m11",
+      "from": "takt",
+      "to": "verify",
+      "y": 440,
+      "label": "delegate: re-verify author_keys",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m12",
+      "from": "harness",
+      "to": "verify",
+      "y": 468,
+      "label": "admit; gate bound per author_key",
+      "variant": "security"
+    },
+    {
+      "id": "m13",
+      "from": "verify",
+      "to": "harness",
+      "y": 496,
+      "label": "vfs_read, vfs_verify: pass true",
+      "variant": "default"
+    },
+    {
+      "id": "m14",
+      "from": "verify",
+      "to": "memory",
+      "y": 524,
+      "label": "memory_record: report",
+      "variant": "dashed"
+    },
+    {
+      "id": "m15",
+      "from": "verify",
+      "to": "takt",
+      "y": 552,
+      "label": "deliver_result: report ID",
+      "variant": "return"
+    },
+    {
+      "id": "m16",
+      "from": "takt",
+      "to": "harness",
+      "y": 580,
+      "label": "vfs_consolidate",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Loop",
+      "items": [
+        "A failing verdict leaves the staged work untouched",
+        "takt-fix starts from the verdict and runs nothing on staged work",
+        "takt takes each returned delivery where the plan sends it before delegating more"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Harness",
+      "items": [
+        "A claim with the author key continues the staged delta instead of discarding it",
+        "The old verdict is cleared by the new write, so Verify runs again"
+      ]
+    }
+  ]
+}

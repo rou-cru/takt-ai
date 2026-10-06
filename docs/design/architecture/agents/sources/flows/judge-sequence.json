@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: blind review by a judge pair",
+    "output": "docs/design/architecture/agents/diagrams/flows/judge-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      620
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch + VFS",
+      "sources": [
+        {
+          "path": "takt/vfs/vfs.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "judgea",
+      "type": "backend",
+      "label": "judge-a",
+      "sublabel": "takt-judge",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "judgeb",
+      "type": "backend",
+      "label": "judge-b",
+      "sublabel": "takt-judge",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "takt",
+      "to": "judgea",
+      "y": 160,
+      "label": "delegate: blind-review brief",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "takt",
+      "to": "judgeb",
+      "y": 188,
+      "label": "delegate: same brief, same response",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m03",
+      "from": "harness",
+      "to": "judgea",
+      "y": 216,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m04",
+      "from": "harness",
+      "to": "judgeb",
+      "y": 244,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m05",
+      "from": "judgea",
+      "to": "harness",
+      "y": 272,
+      "label": "vfs_read: staged files",
+      "variant": "default"
+    },
+    {
+      "id": "m06",
+      "from": "judgeb",
+      "to": "harness",
+      "y": 300,
+      "label": "vfs_read: staged files",
+      "variant": "default"
+    },
+    {
+      "id": "m07",
+      "from": "judgea",
+      "to": "harness",
+      "y": 328,
+      "label": "vfs_verify, if a gate applies",
+      "variant": "security"
+    },
+    {
+      "id": "m08",
+      "from": "judgeb",
+      "to": "harness",
+      "y": 356,
+      "label": "vfs_verify, if a gate applies",
+      "variant": "security"
+    },
+    {
+      "id": "m09",
+      "from": "judgea",
+      "to": "memory",
+      "y": 384,
+      "label": "memory_record: findings",
+      "variant": "dashed"
+    },
+    {
+      "id": "m10",
+      "from": "judgeb",
+      "to": "memory",
+      "y": 412,
+      "label": "memory_record: findings",
+      "variant": "dashed"
+    },
+    {
+      "id": "m11",
+      "from": "judgea",
+      "to": "takt",
+      "y": 440,
+      "label": "deliver_result: report ID",
+      "variant": "return"
+    },
+    {
+      "id": "m12",
+      "from": "judgeb",
+      "to": "takt",
+      "y": 468,
+      "label": "deliver_result: report ID",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Independence",
+      "items": [
+        "The reviewers neither see nor infer each other's findings",
+        "takt receives both unmerged and never merges them"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "When",
+      "items": [
+        "Only when the user asks, or when assurance beyond ordinary verification is warranted",
+        "Judges review and report; they do not repair"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "takt-ai binary: CLI and setup components (C4 L3)",
+    "output": "docs/design/architecture/c4/diagrams/components-cli-setup.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "cli",
+      "sublabel": "command dispatch",
+      "pos": [
+        40,
+        265
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/cli/main.go",
+          "line": 170,
+          "end_line": 214
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "type": "backend",
+      "label": "skills",
+      "sublabel": "skill deployment",
+      "pos": [
+        330,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/skills/skills.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "codegraph",
+      "type": "backend",
+      "label": "codegraph",
+      "sublabel": "npm acquire + MCP wiring",
+      "pos": [
+        620,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/codegraph/acquire.go",
+          "line": 38,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "type": "backend",
+      "label": "lifecycle",
+      "sublabel": "install, sync, uninstall",
+      "pos": [
+        330,
+        180
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/lifecycle/lifecycle.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "engram",
+      "type": "backend",
+      "label": "engram",
+      "sublabel": "binary acquire + inject",
+      "pos": [
+        620,
+        180
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/engram/acquire.go",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "id": "setup",
+      "type": "backend",
+      "label": "setup",
+      "sublabel": "plan, ownership, drift, restore",
+      "pos": [
+        330,
+        350
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/setup/deploy.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "renderer",
+      "type": "backend",
+      "label": "agents/opencode",
+      "sublabel": "OpenCode projection",
+      "pos": [
+        620,
+        350
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/renderer.go",
+          "line": 76,
+          "end_line": 77
+        }
+      ]
+    },
+    {
+      "id": "filemerge",
+      "type": "backend",
+      "label": "filemerge",
+      "sublabel": "merge into user files",
+      "pos": [
+        330,
+        520
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/filemerge/read.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "doctor",
+      "type": "backend",
+      "label": "doctor",
+      "sublabel": "health check",
+      "pos": [
+        620,
+        520
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/doctor/doctor.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "opencodeapi",
+      "type": "backend",
+      "label": "opencodeapi",
+      "sublabel": "OpenCode HTTP adapter",
+      "pos": [
+        900,
+        520
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/opencodeapi/client.go",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "backend",
+      "label": "verify",
+      "sublabel": "functional evidence",
+      "pos": [
+        900,
+        350
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/verify/verify.go",
+          "line": 4
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cli-lifecycle",
+      "from": "cli",
+      "to": "lifecycle",
+      "label": "install, sync"
+    },
+    {
+      "id": "cli-setup",
+      "from": "cli",
+      "to": "setup",
+      "label": "plan, restore"
+    },
+    {
+      "id": "lifecycle-setup",
+      "from": "lifecycle",
+      "to": "setup",
+      "label": "plan",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "lifecycle-engram",
+      "from": "lifecycle",
+      "to": "engram",
+      "label": "acquire"
+    },
+    {
+      "id": "lifecycle-codegraph",
+      "from": "lifecycle",
+      "to": "codegraph",
+      "label": "acquire"
+    },
+    {
+      "id": "lifecycle-skills",
+      "from": "lifecycle",
+      "to": "skills",
+      "label": "deploy",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "setup-renderer",
+      "from": "setup",
+      "to": "renderer",
+      "label": "render"
+    },
+    {
+      "id": "setup-filemerge",
+      "from": "setup",
+      "to": "filemerge",
+      "label": "merge",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "doctor-setup",
+      "from": "doctor",
+      "to": "setup",
+      "label": "read state"
+    },
+    {
+      "id": "doctor-api",
+      "from": "doctor",
+      "to": "opencodeapi",
+      "label": "query"
+    },
+    {
+      "id": "verify-api",
+      "from": "verify",
+      "to": "opencodeapi",
+      "label": "query",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading guide",
+      "items": [
+        "Edges show principal dependencies; the note lists the full import table",
+        "cli also reaches tui, vfs, gc, dispatch, obs, memory, history and session (see other views)"
+      ]
+    }
+  ]
+}

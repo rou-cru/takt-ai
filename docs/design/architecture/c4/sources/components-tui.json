@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "takt-ai binary: TUI components (C4 L3)",
+    "output": "docs/design/architecture/c4/diagrams/components-tui.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "tui",
+      "type": "frontend",
+      "label": "tui",
+      "sublabel": "composes lifecycle flows",
+      "pos": [
+        500,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/tui.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "install",
+      "type": "frontend",
+      "label": "install",
+      "sublabel": "selection flow",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/install/install.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "uninstall",
+      "type": "frontend",
+      "label": "uninstall",
+      "sublabel": "target-scoped removal",
+      "pos": [
+        270,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/uninstall/uninstall.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "drift",
+      "type": "frontend",
+      "label": "drift",
+      "sublabel": "managed files that differ",
+      "pos": [
+        500,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/drift/drift.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "models",
+      "type": "frontend",
+      "label": "models",
+      "sublabel": "reassign specialist models",
+      "pos": [
+        730,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/models/models.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "type": "frontend",
+      "label": "diagnostics",
+      "sublabel": "functional checks",
+      "pos": [
+        960,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/diagnostics/diagnostics.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "runtime",
+      "sublabel": "lifecycle action boundaries",
+      "pos": [
+        385,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/runtime/runtime.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "modelpicker",
+      "type": "frontend",
+      "label": "modelpicker",
+      "sublabel": "edits model drafts",
+      "pos": [
+        730,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/modelpicker/model_picker.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "ui",
+      "sublabel": "reusable primitives",
+      "pos": [
+        385,
+        490
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/ui/shell.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "type": "frontend",
+      "label": "keys",
+      "sublabel": "keyboard grammar",
+      "pos": [
+        640,
+        490
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/keys/keys.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "frontend",
+      "label": "theme",
+      "sublabel": "visual tokens",
+      "pos": [
+        385,
+        640
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/theme/theme.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "styles",
+      "type": "frontend",
+      "label": "styles",
+      "sublabel": "brand logo rendering",
+      "pos": [
+        130,
+        640
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/tui/styles/logo.go",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "tui-install",
+      "from": "tui",
+      "to": "install"
+    },
+    {
+      "id": "tui-uninstall",
+      "from": "tui",
+      "to": "uninstall"
+    },
+    {
+      "id": "tui-drift",
+      "from": "tui",
+      "to": "drift"
+    },
+    {
+      "id": "tui-models",
+      "from": "tui",
+      "to": "models"
+    },
+    {
+      "id": "tui-diagnostics",
+      "from": "tui",
+      "to": "diagnostics"
+    },
+    {
+      "id": "install-runtime",
+      "from": "install",
+      "to": "runtime"
+    },
+    {
+      "id": "uninstall-runtime",
+      "from": "uninstall",
+      "to": "runtime"
+    },
+    {
+      "id": "drift-runtime",
+      "from": "drift",
+      "to": "runtime"
+    },
+    {
+      "id": "models-runtime",
+      "from": "models",
+      "to": "runtime"
+    },
+    {
+      "id": "models-picker",
+      "from": "models",
+      "to": "modelpicker",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "runtime-ui",
+      "from": "runtime",
+      "to": "ui",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ui-keys",
+      "from": "ui",
+      "to": "keys"
+    },
+    {
+      "id": "ui-theme",
+      "from": "ui",
+      "to": "theme",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "styles-theme",
+      "from": "styles",
+      "to": "theme"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading guide",
+      "items": [
+        "Edges mean imports; runtime is the action boundary the four lifecycle flows share",
+        "Not drawn: direct imports of setup, catalog and opencodeapi by the flows, tui to styles, and the flows' use of keys, theme and ui"
+      ]
+    }
+  ]
+}

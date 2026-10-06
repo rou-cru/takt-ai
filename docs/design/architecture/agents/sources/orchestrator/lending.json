@@ -1,0 +1,297 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Orchestrator: lending an interlocutor and reading the return",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/lending.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "decide",
+      "label": "Decision"
+    },
+    {
+      "id": "actions",
+      "label": "Actions"
+    },
+    {
+      "id": "ret",
+      "label": "Return"
+    },
+    {
+      "id": "conduct",
+      "label": "Conduct"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "l1",
+      "lane": "decide",
+      "col": 0,
+      "type": "security",
+      "label": "User decisions pending?",
+      "sublabel": "or the user ordered it",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 17,
+          "end_line": 24
+        }
+      ]
+    },
+    {
+      "id": "lq",
+      "lane": "decide",
+      "col": 1,
+      "type": "security",
+      "label": "Ask: lend?",
+      "sublabel": "native question tool",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 25,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "la",
+      "lane": "decide",
+      "col": 2,
+      "type": "security",
+      "label": "Explicit accept?",
+      "sublabel": "reject or freeform: no lend",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 25,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "delegate",
+      "lane": "actions",
+      "col": 0,
+      "type": "backend",
+      "label": "Delegate autonomously",
+      "sublabel": "intent already approved",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 17,
+          "end_line": 24
+        }
+      ]
+    },
+    {
+      "id": "reeval",
+      "lane": "actions",
+      "col": 2,
+      "type": "backend",
+      "label": "Reevaluate",
+      "sublabel": "no lending",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 25,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "switch",
+      "lane": "actions",
+      "col": 3,
+      "type": "backend",
+      "label": "dispatch_switch",
+      "sublabel": "requirements, client, objective",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 30,
+          "end_line": 34
+        }
+      ]
+    },
+    {
+      "id": "env",
+      "lane": "ret",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Read the envelope",
+      "sublabel": "before anything else",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 35,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "std",
+      "lane": "conduct",
+      "col": 0,
+      "type": "backend",
+      "label": "Standard",
+      "sublabel": "consume the Engram IDs",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 40,
+          "end_line": 43
+        }
+      ]
+    },
+    {
+      "id": "early",
+      "lane": "conduct",
+      "col": 1,
+      "type": "backend",
+      "label": "EarlyHandoff",
+      "sublabel": "take it as returned",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 40,
+          "end_line": 44
+        }
+      ]
+    },
+    {
+      "id": "abort",
+      "lane": "conduct",
+      "col": 2,
+      "type": "backend",
+      "label": "Aborted",
+      "sublabel": "consult the user",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 40,
+          "end_line": 45
+        }
+      ]
+    },
+    {
+      "id": "tech",
+      "lane": "conduct",
+      "col": 3,
+      "type": "backend",
+      "label": "TechFault",
+      "sublabel": "the user decides",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 40,
+          "end_line": 46
+        }
+      ]
+    },
+    {
+      "id": "outr",
+      "lane": "conduct",
+      "col": 4,
+      "type": "backend",
+      "label": "Outraged",
+      "sublabel": "correct brief or inputs",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 40,
+          "end_line": 47
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "l1",
+      "to": "delegate",
+      "label": "no"
+    },
+    {
+      "from": "l1",
+      "to": "lq",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "from": "lq",
+      "to": "la"
+    },
+    {
+      "from": "la",
+      "to": "switch",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "from": "la",
+      "to": "reeval",
+      "label": "no"
+    },
+    {
+      "from": "switch",
+      "to": "env",
+      "label": "specialist hands back"
+    },
+    {
+      "from": "env",
+      "to": "std"
+    },
+    {
+      "from": "env",
+      "to": "early"
+    },
+    {
+      "from": "env",
+      "to": "abort"
+    },
+    {
+      "from": "env",
+      "to": "tech"
+    },
+    {
+      "from": "env",
+      "to": "outr"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Lending",
+      "items": [
+        "requirements carry Engram IDs only, never their content, and name what is genuinely unknown",
+        "The user can cut a lent session short with dispatch_abort_switch"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Anomalous returns",
+      "items": [
+        "Assess scale and impact, propose handling and confirm with the user before advancing",
+        "A malformed envelope leaves the session unsettled"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,365 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "VFS staged revision lifecycle",
+    "output": "docs/design/architecture/runtime/diagrams/vfs-revision.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "claims",
+      "label": "Claims"
+    },
+    {
+      "id": "main",
+      "label": "Staging"
+    },
+    {
+      "id": "gate",
+      "label": "Gate and recovery"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcome"
+    }
+  ],
+  "states": [
+    {
+      "id": "unbound",
+      "type": "start",
+      "label": "Unbound",
+      "sublabel": "no claim",
+      "lane": "claims",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 124,
+          "end_line": 275
+        }
+      ]
+    },
+    {
+      "id": "prelaunch",
+      "type": "waiting",
+      "label": "Bound prelaunch",
+      "sublabel": "scope assigned",
+      "lane": "claims",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 151,
+          "end_line": 211
+        },
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 376,
+          "end_line": 466
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "type": "active",
+      "label": "Bound",
+      "sublabel": "base captured",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 124,
+          "end_line": 275
+        }
+      ]
+    },
+    {
+      "id": "staged",
+      "type": "active",
+      "label": "Staged",
+      "sublabel": "revision++, verdict cleared",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/vfs/vfs.go",
+          "line": 304,
+          "end_line": 354
+        },
+        {
+          "path": "takt/vfs/shell.go",
+          "line": 212,
+          "end_line": 215
+        }
+      ]
+    },
+    {
+      "id": "passed",
+      "type": "decision",
+      "label": "Verdict passed",
+      "sublabel": "bound to revision + hash",
+      "lane": "main",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 875
+        }
+      ]
+    },
+    {
+      "id": "consolidating",
+      "type": "active",
+      "label": "Consolidating",
+      "sublabel": "flush in progress",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/vfs/vfs.go",
+          "line": 396,
+          "end_line": 426
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "waiting",
+      "label": "Verifier gate bound",
+      "sublabel": "prepared from author_keys",
+      "lane": "gate",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 277,
+          "end_line": 316
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 924,
+          "end_line": 960
+        }
+      ]
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "Verdict rejected",
+      "sublabel": "author re-stages",
+      "lane": "gate",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 875
+        }
+      ]
+    },
+    {
+      "id": "recovery",
+      "type": "waiting",
+      "label": "Recovery required",
+      "sublabel": "partial flush",
+      "lane": "gate",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/vfs/storage.go",
+          "line": 310
+        },
+        {
+          "path": "takt/vfs/recovery.go",
+          "line": 289
+        }
+      ]
+    },
+    {
+      "id": "rolledback",
+      "type": "neutral",
+      "label": "Rolled back",
+      "sublabel": "staged delta discarded",
+      "lane": "terminal",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 861,
+          "end_line": 873
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 1531,
+          "end_line": 1540
+        }
+      ]
+    },
+    {
+      "id": "cyclediscarded",
+      "type": "neutral",
+      "label": "Cycle discarded",
+      "sublabel": "pre-cycle state restored",
+      "lane": "terminal",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/vfs/cycle.go",
+          "line": 117,
+          "end_line": 139
+        }
+      ]
+    },
+    {
+      "id": "consolidated",
+      "type": "success",
+      "label": "Consolidated",
+      "sublabel": "delta and ownership released",
+      "lane": "terminal",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/vfs/recovery.go",
+          "line": 64,
+          "end_line": 136
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "unbound",
+      "to": "prelaunch",
+      "label": "claim_assign"
+    },
+    {
+      "from": "prelaunch",
+      "to": "bound",
+      "label": "bind adopts"
+    },
+    {
+      "from": "unbound",
+      "to": "bound",
+      "label": "bind",
+      "variant": "dashed"
+    },
+    {
+      "from": "bound",
+      "to": "staged",
+      "label": "write, delete, shell",
+      "variant": "emphasis"
+    },
+    {
+      "from": "staged",
+      "to": "gate",
+      "label": "delegate with author_keys"
+    },
+    {
+      "from": "gate",
+      "to": "passed",
+      "label": "verify pass"
+    },
+    {
+      "from": "gate",
+      "to": "rejected",
+      "label": "verify reject",
+      "variant": "security"
+    },
+    {
+      "from": "passed",
+      "to": "consolidating",
+      "label": "consolidate"
+    },
+    {
+      "from": "staged",
+      "to": "consolidating",
+      "label": "ordinary delta",
+      "variant": "dashed",
+      "route": "top-channel"
+    },
+    {
+      "from": "consolidating",
+      "to": "consolidated",
+      "label": "flush verified",
+      "variant": "emphasis"
+    },
+    {
+      "from": "consolidating",
+      "to": "recovery",
+      "label": "partial flush",
+      "variant": "security"
+    },
+    {
+      "from": "recovery",
+      "to": "bound",
+      "label": "recover --restore"
+    },
+    {
+      "from": "staged",
+      "to": "rolledback",
+      "label": "vfs_discard (orchestrator)",
+      "variant": "dashed"
+    },
+    {
+      "from": "staged",
+      "to": "prelaunch",
+      "label": "reassign, delta kept",
+      "variant": "dashed"
+    },
+    {
+      "from": "prelaunch",
+      "to": "unbound",
+      "label": "revoke",
+      "variant": "dashed"
+    },
+    {
+      "from": "consolidated",
+      "to": "cyclediscarded",
+      "label": "cycle discard",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Gates",
+      "items": [
+        "Verifier gates are prepared bound at delegation from author_keys; the verifier needs the verify grant and cannot verify its own work",
+        "A verdict binds to one revision and delta hash; any new write clears it",
+        "Shell staging: shell-prepare projects the scope, shell-import stages the captured result"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Consolidation",
+      "items": [
+        "Orchestrator-only; a verdict is required only for maintenance cycles",
+        "Flush writes a manifest, replaces files one by one, then verifies bases",
+        "A maintenance cycle's flush is retained until the cycle completes; until then the cycle can be discarded"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Recovery",
+      "items": [
+        "While recovery is pending every call is refused",
+        "Restore refuses when a base changed"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Claims",
+      "items": [
+        "A fresh claim_assign discards overlapping claims of other roots; a same-root overlap is a collision",
+        "Reassign keeps the staged delta and clears the verdict; revoke frees paths and is refused while work is staged",
+        "vfs_discard is orchestrator-only"
+      ]
+    }
+  ]
+}

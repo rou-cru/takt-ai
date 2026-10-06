@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: intent through a lent takt-pm",
+    "output": "docs/design/architecture/agents/diagrams/flows/planning-intent.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      684
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "objective, approvals",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch",
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "pm",
+      "type": "backend",
+      "label": "takt-pm",
+      "sublabel": "direct_interlocutor",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "user",
+      "to": "takt",
+      "y": 160,
+      "label": "objective, constraints",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "takt",
+      "to": "user",
+      "y": 188,
+      "label": "ask: lend takt-pm?",
+      "variant": "default"
+    },
+    {
+      "id": "m03",
+      "from": "user",
+      "to": "takt",
+      "y": 216,
+      "label": "consent",
+      "variant": "return"
+    },
+    {
+      "id": "m04",
+      "from": "takt",
+      "to": "harness",
+      "y": 244,
+      "label": "dispatch_switch: requirements, client",
+      "variant": "security"
+    },
+    {
+      "id": "m05",
+      "from": "harness",
+      "to": "pm",
+      "y": 272,
+      "label": "interface lent",
+      "variant": "security"
+    },
+    {
+      "id": "m06",
+      "from": "user",
+      "to": "pm",
+      "y": 300,
+      "label": "dialogue on scope",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m07",
+      "from": "pm",
+      "to": "memory",
+      "y": 328,
+      "label": "memory_record: draft (hypothesis)",
+      "variant": "dashed"
+    },
+    {
+      "id": "m08",
+      "from": "user",
+      "to": "pm",
+      "y": 356,
+      "label": "approves",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m09",
+      "from": "pm",
+      "to": "memory",
+      "y": 384,
+      "label": "memory_record: decision, supersedes draft",
+      "variant": "dashed"
+    },
+    {
+      "id": "m10",
+      "from": "pm",
+      "to": "user",
+      "y": 412,
+      "label": "question: hand back?",
+      "variant": "default"
+    },
+    {
+      "id": "m11",
+      "from": "user",
+      "to": "pm",
+      "y": 440,
+      "label": "accept",
+      "variant": "return"
+    },
+    {
+      "id": "m12",
+      "from": "pm",
+      "to": "harness",
+      "y": 468,
+      "label": "dispatch_handoff: Standard + IDs",
+      "variant": "security"
+    },
+    {
+      "id": "m13",
+      "from": "harness",
+      "to": "takt",
+      "y": 496,
+      "label": "returned envelope",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Lend",
+      "items": [
+        "The user consents before the interface is lent",
+        "Drafts are hypotheses; the accepted version supersedes them with the approval as evidence"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Harness",
+      "items": [
+        "The switch is recorded; one holder at a time, and no chaining",
+        "takt-pm hands the interface back; only takt closes the memory session"
+      ]
+    }
+  ]
+}

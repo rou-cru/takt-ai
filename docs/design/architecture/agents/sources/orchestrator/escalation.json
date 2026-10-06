@@ -1,0 +1,178 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Orchestrator: escalation conduct",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/escalation.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Containment"
+    },
+    {
+      "id": "closing",
+      "label": "Reporting"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcome"
+    }
+  ],
+  "states": [
+    {
+      "id": "trigger",
+      "type": "start",
+      "label": "Trigger",
+      "sublabel": "scope, budget, discovery",
+      "lane": "main",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 107,
+          "end_line": 109
+        }
+      ]
+    },
+    {
+      "id": "freeze",
+      "type": "active",
+      "label": "Path frozen",
+      "sublabel": "affected path only",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 110
+        }
+      ]
+    },
+    {
+      "id": "terminate",
+      "type": "active",
+      "label": "Termination confirmed",
+      "sublabel": "active work stopped",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 111
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "type": "active",
+      "label": "Scope restored",
+      "sublabel": "abandoned scope only",
+      "lane": "main",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 111
+        }
+      ]
+    },
+    {
+      "id": "preserve",
+      "type": "active",
+      "label": "Progress preserved",
+      "sublabel": "unrelated work kept",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 112
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "active",
+      "label": "Report",
+      "sublabel": "evidence and alternatives",
+      "lane": "closing",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 113
+        }
+      ]
+    },
+    {
+      "id": "await",
+      "type": "waiting",
+      "label": "Awaiting direction",
+      "sublabel": "no further recovery",
+      "lane": "terminal",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 114,
+          "end_line": 121
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "trigger",
+      "to": "freeze",
+      "variant": "emphasis"
+    },
+    {
+      "from": "freeze",
+      "to": "terminate"
+    },
+    {
+      "from": "terminate",
+      "to": "restore"
+    },
+    {
+      "from": "restore",
+      "to": "preserve"
+    },
+    {
+      "from": "preserve",
+      "to": "report"
+    },
+    {
+      "from": "report",
+      "to": "await",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Triggers",
+      "items": [
+        "A delivery outside its scope or an unexplained workspace change",
+        "Budget expiry, or an objective-blocking discovery",
+        "A contract that contradicts the code with no reachable owner, or two deltas that did not converge",
+        "Consolidation reporting recovery required or a changed physical base"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Claims",
+      "items": [
+        "An active claim needs the exact agent and paths named to the user; confirmed only after an explicit yes",
+        "A claim holding staged work is never released"
+      ]
+    }
+  ]
+}
