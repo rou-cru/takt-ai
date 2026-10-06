@@ -451,6 +451,11 @@ func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) 
 }
 
 // importShell admits the command's captured result as one VFS transaction.
+// AuthorKey must match identity, and ExpectedRevision must match the binding's
+// revision. Success returns the resulting revision, including zero, and delta
+// hash, even if the shell command exited unsuccessfully. Identity and import
+// errors propagate, including missing descendant confirmation, stale revisions,
+// persistence failures, and sandbox cleanup failures.
 func importShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
@@ -474,6 +479,12 @@ func mutateBind(fs *vfs.FS, req request, identity vfs.Identity) (response, error
 	return response{OK: true, Key: string(key), AttemptID: bound.AttemptID, InvariantsVersion: bound.InvariantsHash}, nil
 }
 
+// mutateOperation reads or changes staged work after verifying the caller's
+// identity; an empty AuthorKey defaults to identity.AgentID. ViewKey selects
+// the author's staged view for a verifier read, and ExpectedRevision refers to
+// the selected view. Success returns any read content, the resulting revision
+// (including zero), and delta hash. Identity, action, and VFS errors propagate,
+// including access refusals, stale revisions, duplicate calls, and storage errors.
 func mutateOperation(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if key == "" {

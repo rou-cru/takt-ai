@@ -1226,6 +1226,7 @@ export default Plugin.define({
           actions: { type: "number", description: "Action budget this recovery may consume" },
           attempts: { type: "number", description: "Attempt budget: how many times this recovery may be retried" },
         }, ["objective", "result", "point", "scope", "actions", "attempts"]),
+        /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
       dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence.",
@@ -1235,6 +1236,7 @@ export default Plugin.define({
           evidence: str("Evidence supporting the claimed result"),
           demonstrated: { type: "boolean", description: "Whether the declared result was actually demonstrated" },
         }, ["objective", "evidence", "demonstrated"]),
+        /** Maps the recovery result to history fields, using the objective as the work unit and demonstrated as pass. */
         (args: { objective: string; evidence: string; demonstrated: boolean }) => ({ event: args.objective, objective: args.objective, evidence: args.evidence, pass: args.demonstrated }))
 
       dispatch("dispatch_restore", "Confirm restoration of an abandoned recovery scope's virtual state after forced backtracking, by discarding the staged work of that scope.",
