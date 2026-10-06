@@ -360,7 +360,8 @@ func (f *FS) RevokeOwnership(key AgentID) (err error) {
 }
 
 // ReassignScope gives the work of an existing author key a new exact scope for
-// its next attempt, keeping the staged delta. The delta's own paths must stay in
+// its next attempt, keeping the staged delta, and hands it to the unit, agent and
+// specialist the request names. The delta's own paths must stay in
 // the scope; only the added paths are checked for collisions, and the paths that
 // leave it were never written. The verdict, bound to the old revision, is cleared.
 func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error) {
@@ -370,10 +371,14 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		return err
 	}
 	defer f.finishLocked(&err)
+	// The key locates the staged work; whoever the request names takes it over.
 	held, ok := f.bindings[key]
-	if !ok || held.GateAuthorKey != "" || held.SessionID != identity.SessionID ||
-		held.WorkUnitID != identity.WorkUnitID || held.AgentID != identity.AgentID || held.Specialist != identity.Specialist {
-		return fmt.Errorf("%w: %q is not this unit's author key", ErrIdentity, key)
+	if !ok || held.GateAuthorKey != "" {
+		return fmt.Errorf("%w: %q is not an author key", ErrIdentity, key)
+	}
+	role, err := SpecialistRole(identity.Specialist)
+	if err != nil {
+		return err
 	}
 	if len(scope) == 0 {
 		return ErrIdentity
@@ -399,7 +404,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		return err
 	}
 	if identity.AttemptID == "" {
-		highest, _ := f.highestOpenAttempt(held)
+		highest, _ := f.highestOpenAttempt(identity)
 		identity.AttemptID = strconv.Itoa(highest + 1)
 	}
 	hash, err := f.invariantsVersionLocked(identity.Invariants)
@@ -407,6 +412,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		return err
 	}
 	d := f.ensureDelta(key)
+	held.SessionID, held.WorkUnitID, held.AgentID, held.Specialist, held.Role = identity.SessionID, identity.WorkUnitID, identity.AgentID, identity.Specialist, role
 	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch = identity.AttemptID, identity.Invariants, hash, true
 	f.bindings[key] = held
 	f.releaseOwnershipLocked(key)
@@ -674,6 +680,14 @@ func (f *FS) deltaHashLocked(key AgentID) string {
 }
 
 // revisionOf is the staged revision of key, zero when it has no delta.
+// StagedState reports the revision and delta hash of the work staged under key,
+// and whether any exists, so a binding that adopts existing work starts from it.
+func (f *FS) StagedState(key AgentID) (revision uint64, deltaHash string, staged bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.revisionOf(key), f.deltaHashLocked(key), f.stagedLocked(key)
+}
+
 func (f *FS) revisionOf(key AgentID) uint64 {
 	if d := f.staged[key]; d != nil {
 		return d.revision

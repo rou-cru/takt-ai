@@ -310,7 +310,7 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 	}{
 		"drops a staged path":    {retry, key, []string{"b.go"}, ErrScopeDenied},
 		"collides on added path": {retry, key, []string{"a.go", "p.go"}, ErrCollision},
-		"another unit's key":     {Identity{SessionID: "s", WorkUnitID: "other", AgentID: "author", Specialist: "dev"}, key, []string{"a.go"}, ErrIdentity},
+		"unknown specialist":     {Identity{SessionID: "s", WorkUnitID: "u", AgentID: "author", Specialist: "ghost"}, key, []string{"a.go"}, ErrIdentity},
 		"unknown key":            {retry, "ghost", []string{"a.go"}, ErrIdentity},
 	} {
 		if err := f.ReassignScope(tc.identity, tc.key, tc.scope); !errors.Is(err, tc.want) {
@@ -335,6 +335,35 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 	}
 	if got := f.staged[key]; string(got.files["a.go"]) != "partial" || got.revision != staged.Revision || got.verdict != nil {
 		t.Fatalf("delta = %+v; want the staged content and revision kept, no verdict", got)
+	}
+}
+
+func TestReassignScopeHandsTheWorkToAnotherSpecialist(t *testing.T) {
+	f, _, _ := durable(t)
+	key := bind(t, f, "author", "u", "dev", "a.go")
+	staged := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.go", "partial"})
+	fix := Identity{SessionID: "later", WorkUnitID: "fix-u", AgentID: "fixer", Specialist: "fix"}
+	if err := f.ReassignScope(fix, key, []string{"a.go", "b.go"}); err != nil {
+		t.Fatalf("ReassignScope() = %v", err)
+	}
+	held := f.bindings[key]
+	if held.SessionID != "later" || held.WorkUnitID != "fix-u" || held.AgentID != "fixer" || held.Specialist != "fix" || !held.Prelaunch {
+		t.Fatalf("binding = %+v; want the work handed to fix as a prelaunch claim", held)
+	}
+	if got := f.staged[key]; string(got.files["a.go"]) != "partial" || got.revision != staged.Revision {
+		t.Fatalf("delta = %+v; want the staged content and revision kept", got)
+	}
+	adopted, err := f.Bind(fix, []string{"a.go", "b.go"})
+	if err != nil || adopted != key {
+		t.Fatalf("Bind() = %v, %v; want the handed-over key %v", adopted, err, key)
+	}
+	if revision, _, ok := f.StagedState(key); !ok || revision != staged.Revision {
+		t.Fatalf("StagedState() = %d, %v; want the kept revision %d", revision, ok, staged.Revision)
+	}
+	// A verifier assigned after the handover judges the new owner's work in its session.
+	gate := Identity{SessionID: "later", WorkUnitID: "verify-u", AttemptID: "1", AgentID: "verify", Specialist: "verify", InvariantsHash: held.InvariantsHash}
+	if _, err := f.AssignVerifier(gate, key); err != nil {
+		t.Fatalf("AssignVerifier() after the handover = %v", err)
 	}
 }
 
