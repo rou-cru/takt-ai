@@ -517,9 +517,13 @@ func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
 	invariants := []string{"AGENTS.md"}
+	dispatches := map[string]int{}
 	delegate := func(action, unit, agent string) {
 		t.Helper()
-		b, err := json.Marshal(coordinationRequest{Action: action, Event: unit, Session: "s1", Agent: agent, Dispatch: "call-" + unit})
+		if action == "admit" {
+			dispatches[unit]++
+		}
+		b, err := json.Marshal(coordinationRequest{Action: action, Event: unit, Session: "s1", Agent: agent, Dispatch: fmt.Sprintf("call-%s-%d", unit, dispatches[unit])})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -547,11 +551,11 @@ func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
 	}
 	delegate("finish", "impl", "dev")
 
+	delegate("admit", "gate", "verify")
 	gate, err := mutate("assign-verifier", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	delegate("admit", "gate", "verify")
 	verifier, err := mutate("bind", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
 	if err != nil || verifier.Key != gate.Key {
 		t.Fatalf("verifier adopted its gate = %+v, %v", verifier, err)
@@ -566,6 +570,22 @@ func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
 	if _, err = mutate("verify", vfsReq("gate", "verify", map[string]any{
 		"verifier_key": verifier.Key, "author_key": author.Key, "call_id": "v1",
 		"expected_revision": *staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	delegate("finish", "gate", "verify")
+	delegate("admit", "gate", "verify")
+	retryGate, err := mutate("assign-verifier", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := mutate("bind", vfsReq("gate", "verify", map[string]any{"author_key": author.Key, "invariants": invariants}))
+	if err != nil || retry.Key != retryGate.Key || retry.Key == verifier.Key {
+		t.Fatalf("retry gate = %+v, %v", retry, err)
+	}
+	if _, err = mutate("verify", vfsReq("gate", "verify", map[string]any{
+		"verifier_key": retry.Key, "author_key": author.Key, "call_id": "v2",
+		"expected_revision": *staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "retry checked",
 	})); err != nil {
 		t.Fatal(err)
 	}

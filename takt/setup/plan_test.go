@@ -93,7 +93,7 @@ func TestBuildOpenCodePlanProjectsVFSGrantsPerInstance(t *testing.T) {
 	}
 	agents := openCodeAgents(t, plans[0])
 	for id, want := range map[string]string{
-		"pm": "deny", "analyst": "deny", "dev": "allow", "verify": "allow",
+		"pm": "deny", "analyst": "deny", "dev": "allow", "verify": "deny",
 		"simplify": "allow", "takt": "allow",
 	} {
 		permissions, ok := agents[id]["permissions"].([]any)

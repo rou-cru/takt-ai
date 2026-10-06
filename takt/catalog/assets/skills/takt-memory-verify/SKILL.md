@@ -7,14 +7,15 @@ metadata:
   version: "1.0"
 ---
 
-# Memory role: verify — Verified results
+# Memory role: verify — Verification reports
 
 Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
 only narrows what your role records.
 
 ## Records
 
-- `observation` (`project`): acceptance results that were actually executed — which requirement held or failed — with the command or test output as evidence.
+- `observation` (`project`): the verification report — which requirements held, failed, or stayed unverified — each with the command, test output, or reading that shows it, and for staged work the author_key, file and line it concerns.
+- A later report on the same code is a new entry that `supplements` the earlier one.
 - An `observation` that `corrects` or `disputes` a recorded fact or decision verification contradicted.
 
 ## When
@@ -23,6 +24,5 @@ only narrows what your role records.
 
 ## Never records
 
-- The verification report: it belongs to your final answer, not to memory.
 - Passing checks that confirm what memory already holds.
-- Warnings or suggestions about what to do next.
+- What to do next about the findings.

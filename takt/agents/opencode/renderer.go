@@ -154,7 +154,7 @@ var vfsToolNames = []string{"vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "
 // claimToolNames are the orchestration-only operations in the VFS capability
 // contract; their native permission rules are projected even when a plugin
 // lane registers the tools separately.
-var claimToolNames = []string{"claim_list", "claim_assign", "claim_assign_verifier", "claim_release"}
+var claimToolNames = []string{"claim_list", "claim_assign", "claim_release"}
 
 // gcCycleToolNames are the maintenance-cycle tools. Ordinary agent entries
 // never expose them; harness-created GC child sessions override these denies
@@ -208,6 +208,9 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 			rules = append(rules, permissionRule{name, allResources, "allow"})
 		}
 	} else {
+		if spec.Role == model.RoleVerification {
+			rules = append(rules, permissionRule{"edit", allResources, "deny"})
+		}
 		rules = append(rules, shellRules(spec.Role)...)
 		// The workspace event store records every session's activity; only the
 		// orchestrator reads it. The inspection sandbox keeps it private too; a
@@ -354,9 +357,9 @@ func vfsPermissionRules(capabilities []model.VFSCapability) []permissionRule {
 			allowed[action] = true
 		}
 	}
-	// Assigning a verifier is part of the claim-assign grant.
-	if slices.Contains(capabilities, model.VFSCapabilityClaimAssign) {
-		allowed["claim_assign_verifier"] = true
+	// Verifier adoption belongs to the harness, not to a model-facing tool.
+	if allowed["vfs_verify"] {
+		delete(allowed, "vfs_bind")
 	}
 	rules := make([]permissionRule, 0, len(vfsToolNames)+len(claimToolNames)+1)
 	for _, name := range slices.Concat(vfsToolNames, claimToolNames) {

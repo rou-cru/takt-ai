@@ -647,11 +647,13 @@ func FuzzCanonicalPaths(f *testing.F) {
 
 func TestBindOnlyForImplementationAndGateRoles(t *testing.T) {
 	f, _, _ := durable(t)
-	for _, specialist := range []string{"pm", "architect", "product-designer", "analyst", "spec", "tpm", "judge-a", "judge-b"} {
+	for _, specialist := range []string{"pm", "architect", "product-designer", "analyst", "spec", "tpm"} {
 		_, err := f.Bind(Identity{SessionID: "s", WorkUnitID: "u-" + specialist, AttemptID: "1", AgentID: AgentID(specialist), Specialist: specialist, InvariantsHash: "h"}, nil)
 		if !errors.Is(err, ErrScopeDenied) {
 			t.Errorf("Bind(%s, empty scope) = %v, want ErrScopeDenied", specialist, err)
 		}
 	}
-	bind(t, f, "verifier", "unit", "verify")
+	for _, specialist := range []string{"verify", "judge-a", "judge-b"} {
+		bind(t, f, specialist, "unit-"+specialist, specialist)
+	}
 }

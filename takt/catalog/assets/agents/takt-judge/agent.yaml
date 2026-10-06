@@ -8,9 +8,12 @@ instances:
 - judge-a
 - judge-b
 vfs_capabilities:
-  judge-a: []
-  judge-b: []
+  judge-a: [bind, read, verify]
+  judge-b: [bind, read, verify]
 role: verification
 skills:
 - takt-memory-contract
 - takt-memory-judge
+- takt-result-handoff
+- takt-verification-conduct
+- takt-vfs-verification

@@ -167,6 +167,9 @@ func TestShellDecisions(t *testing.T) {
 		{"read-only inspection needs no approval", scoped, "grep -rn todo . 2>/dev/null", ShellAllow},
 		{"inspection without a binding", "", "ls -la", ShellAllow},
 		{"captured workspace mutation", scoped, "printf x > data.txt", ShellAllow},
+		{"verifier reads project context", verifier, "cat AGENTS.md && grep -rn invariants src", ShellAllow},
+		{"verifier runs validation", verifier, "go test ./...", ShellAllow},
+		{"verifier uses network for validation", verifier, "curl -I https://example.com", ShellAllow},
 		{"mutation without a declared scope", verifier, "printf x > data.txt", ShellDeny},
 		{"mutation with no binding at all", "", "printf x > data.txt", ShellDeny},
 		{"quoted arrow is not a redirect", verifier, `node -e "const f = x => x"`, ShellAllow},
@@ -193,6 +196,12 @@ func TestShellDecisions(t *testing.T) {
 					t.Fatalf("denied plan carries a sandbox layout: %+v", plan)
 				}
 				return
+			}
+			if c.key == verifier && plan.Decision == ShellAllow {
+				if plan.Cwd != f.rootDir || len(plan.Writable) != 1 || plan.Writable[0] != plan.Scratch ||
+					len(plan.Protected) == 0 || plan.Protected[0] != f.rootDir {
+					t.Fatalf("verifier validation must read project context and write only scratch: %+v", plan)
+				}
 			}
 			if !strings.Contains(plan.Reason, c.command) {
 				t.Fatalf("reason %q does not identify the exact command", plan.Reason)

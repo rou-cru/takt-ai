@@ -115,6 +115,9 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	wantVFS := map[string][]model.VFSCapability{
 		"simplify": {model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete},
 		"verify":   {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
+		// Judges are verification instances: only their objective differs.
+		"judge-a": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
+		"judge-b": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
 	}
 	packages, err := LoadPackages()
 	if err != nil {

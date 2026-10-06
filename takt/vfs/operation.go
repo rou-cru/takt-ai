@@ -275,8 +275,8 @@ func (f *FS) claimLocked(identity Identity, scope []string) (AgentID, error) {
 }
 
 // AssignVerifier reserves an empty-scope verifier binding linked to one
-// already-issued author key. The orchestrator must do this before launching
-// the verifier; identity and author key are harness-owned inputs.
+// already-issued author key. The harness prepares it for the admitted attempt
+// before launching the verifier; identity and author key are harness-owned inputs.
 func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -299,6 +299,15 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	}
 	if err = f.validateVerifierAuthorLocked(identity, authorKey); err != nil {
 		return "", err
+	}
+	// A retry supersedes any unadopted gate from an earlier attempt. Leaving
+	// it pending would make adoption depend on map iteration order.
+	for previousKey, previous := range f.bindings {
+		if previous.sameUnit(identity) && previous.AgentID == identity.AgentID &&
+			previous.GateAuthorKey == authorKey && previous.AttemptID != identity.AttemptID && previous.Prelaunch {
+			previous.Prelaunch = false
+			f.bindings[previousKey] = previous
+		}
 	}
 	key = AgentID(fmt.Sprintf("%x", randomID()))
 	f.bindings[key] = identity
