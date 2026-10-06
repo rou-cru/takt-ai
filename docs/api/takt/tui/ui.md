@@ -33,7 +33,6 @@ Package ui contains reusable terminal UI primitives.
 - [func Selector\(options \[\]string, cursor, chosen int, focused bool\) string](<#Selector>)
 - [func Shell\(frame Frame\) string](<#Shell>)
 - [func Status\(state State, message string\) string](<#Status>)
-- [func TargetLabel\(id string\) string](<#TargetLabel>)
 - [func Toggle\[T comparable\]\(items \[\]T, item T\) \[\]T](<#Toggle>)
 - [func Verification\(report verify.Report\) string](<#Verification>)
 - [type BackMsg](<#BackMsg>)
@@ -558,15 +557,6 @@ func Status(state State, message string) string
 ```
 
 Status prefixes a message with its state.
-
-<a name="TargetLabel"></a>
-## func [TargetLabel](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/labels.go#L12>)
-
-```go
-func TargetLabel(id string) string
-```
-
-TargetLabel returns the display name for a plan target, which is the harness for its own plan and a bare identifier such as "skills" for the others.
 
 <a name="Toggle"></a>
 ## func [Toggle](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/toggle.go#L6>)

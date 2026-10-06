@@ -78,9 +78,6 @@ const (
     // CauseInterlocutorOrigin records a switch denied because the root session
     // named is not a valid origin for a switch.
     CauseInterlocutorOrigin = "interlocutor/origin-invalid"
-    // CauseInterlocutorArtifact records a handoff denied because the declared
-    // standard artifact is missing (PR-HAR-24).
-    CauseInterlocutorArtifact = "interlocutor/artifact-missing"
     // CauseInterlocutorHolder records a handoff denied because the caller is
     // not the current holder of the interface.
     CauseInterlocutorHolder = "interlocutor/not-current-holder"
@@ -213,7 +210,7 @@ func AuthorOf(k Kind) Author
 AuthorOf returns the semantic author a kind must carry.
 
 <a name="Budgets"></a>
-## type [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L209-L239>)
+## type [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L209-L235>)
 
 Budgets is a session's derived consumption of the bounds of PR\-HAR\-19..21. Consumption only grows: a recorded exception adds allowance beside it rather than erasing it \(PR\-HAR\-22\).
 
@@ -242,12 +239,8 @@ type Budgets struct {
     // InterlocutorAgent is the specialist agent id of the current holder, so a
     // caller's own agent identity can be checked against it directly.
     InterlocutorAgent string `json:"interlocutor_agent,omitempty"`
-    // InterlocutorArtifact is the standard artifact path declared at switch time.
+    // InterlocutorArtifact is the optional filesystem copy path declared at switch time.
     InterlocutorArtifact string `json:"interlocutor_artifact,omitempty"`
-    // InterlocutorArtifactMisses counts denied handoffs for a missing artifact
-    // since the current holder took the interface (PR-HAR-24: first miss is a
-    // deterministic error back to the specialist, the second escalates).
-    InterlocutorArtifactMisses int `json:"interlocutor_artifact_misses,omitempty"`
 }
 ```
 
@@ -273,7 +266,7 @@ type Edge struct {
 ```
 
 <a name="Entry"></a>
-## type [Entry](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L228-L307>)
+## type [Entry](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L225-L304>)
 
 Entry is one recorded act. Its Seq is assigned by Append: the harness is the sole sequencer. Entries carry references, never copies of referenced content.
 
@@ -396,7 +389,7 @@ func (f Flight) MarshalJSON() ([]byte, error)
 MarshalJSON emits the flight's wire name.
 
 <a name="History"></a>
-## type [History](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L311-L314>)
+## type [History](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L308-L311>)
 
 History is the append\-only store. All access is serialized by the workspace lock the caller already holds through vfs.Open.
 
@@ -407,7 +400,7 @@ type History struct {
 ```
 
 <a name="Open"></a>
-### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L318>)
+### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L315>)
 
 ```go
 func Open(stateDir string) (*History, error)
@@ -416,7 +409,7 @@ func Open(stateDir string) (*History, error)
 Open opens the execution history under the private state directory, creating it if absent. A corrupt or incomplete record is an error, never a reset.
 
 <a name="History.Append"></a>
-### func \(\*History\) [Append](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L382>)
+### func \(\*History\) [Append](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L379>)
 
 ```go
 func (h *History) Append(e Entry) error
@@ -425,7 +418,7 @@ func (h *History) Append(e Entry) error
 Append assigns the next position and durably records the entry. A rejected entry is not recorded: an invalid state never becomes representable here.
 
 <a name="History.Close"></a>
-### func \(\*History\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L348>)
+### func \(\*History\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L345>)
 
 ```go
 func (h *History) Close() error
@@ -434,7 +427,7 @@ func (h *History) Close() error
 Close releases the store handle.
 
 <a name="History.Entries"></a>
-### func \(\*History\) [Entries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L375>)
+### func \(\*History\) [Entries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L372>)
 
 ```go
 func (h *History) Entries() []Entry
@@ -443,7 +436,7 @@ func (h *History) Entries() []Entry
 Entries returns the recorded prefix in its total order.
 
 <a name="History.Project"></a>
-### func \(\*History\) [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L378>)
+### func \(\*History\) [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L375>)
 
 ```go
 func (h *History) Project() Projection
@@ -610,7 +603,7 @@ const (
 ```
 
 <a name="Projection"></a>
-## type [Projection](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L243-L251>)
+## type [Projection](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L239-L247>)
 
 Projection is the derived execution DAG state. It is never edited in place: it is recomputed from the record.
 
@@ -627,7 +620,7 @@ type Projection struct {
 ```
 
 <a name="Project"></a>
-### func [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L287>)
+### func [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L283>)
 
 ```go
 func Project(entries []Entry) Projection
@@ -636,7 +629,7 @@ func Project(entries []Entry) Projection
 Project derives the projection from a recorded prefix. It reads no external state and no clock, so the same prefix always yields the same projection.
 
 <a name="Projection.Budgets"></a>
-### func \(Projection\) [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L255>)
+### func \(Projection\) [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L251>)
 
 ```go
 func (p Projection) Budgets(session string) Budgets
@@ -645,7 +638,7 @@ func (p Projection) Budgets(session string) Budgets
 Budgets returns a session's consumption; a session with nothing recorded has consumed nothing.
 
 <a name="Projection.InFlight"></a>
-### func \(Projection\) [InFlight](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L275>)
+### func \(Projection\) [InFlight](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L271>)
 
 ```go
 func (p Projection) InFlight() int

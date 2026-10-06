@@ -38,11 +38,9 @@ Package obs keeps one local event stream and control record so sessions stay obs
 - [type SourcePlane](<#SourcePlane>)
 - [type Store](<#Store>)
   - [func OpenStore\(workspace string\) \(\*Store, error\)](<#OpenStore>)
-  - [func \(s \*Store\) Actions\(sessionID string, action ActionClass, afterID, beforeID int64, limit int\) \(out \[\]StoredAction, err error\)](<#Store.Actions>)
   - [func \(s \*Store\) AppendAction\(r ControlRecord\) \(int64, error\)](<#Store.AppendAction>)
   - [func \(s \*Store\) AppendEvent\(e Envelope\) \(int64, error\)](<#Store.AppendEvent>)
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
-  - [func \(s \*Store\) CountActions\(sessionID string, action ActionClass, afterID, beforeID int64\) \(int64, error\)](<#Store.CountActions>)
   - [func \(s \*Store\) CountEvents\(sessionID string, class EventClass, afterID, beforeID int64\) \(int64, error\)](<#Store.CountEvents>)
   - [func \(s \*Store\) Events\(sessionID string, class EventClass, afterID, beforeID int64, limit int\) \(out \[\]StoredEvent, err error\)](<#Store.Events>)
 - [type StoredAction](<#StoredAction>)
@@ -74,7 +72,7 @@ const PolicyObserve = "bus.observe"
 const SchemaVersion = "2.0.0"
 ```
 
-<a name="StateDirName"></a>StateDirName is the workspace\-local state directory, shared with the project ledger so all Takt state lives in one place.
+<a name="StateDirName"></a>StateDirName is the workspace\-local state directory, shared with the execution history so all Takt state lives in one place.
 
 ```go
 const StateDirName = ".takt-ai"
@@ -440,17 +438,8 @@ func OpenStore(workspace string) (*Store, error)
 
 OpenStore opens \(creating if absent\) the workspace event database in WAL mode with a busy timeout, so concurrent invocations wait for each other instead of failing.
 
-<a name="Store.Actions"></a>
-### func \(\*Store\) [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L265>)
-
-```go
-func (s *Store) Actions(sessionID string, action ActionClass, afterID, beforeID int64, limit int) (out []StoredAction, err error)
-```
-
-Actions returns up to limit persisted control actions for sessionID with id in \(afterID, beforeID\], in id order. action filters to one ActionClass; the zero value matches every action. beforeID of 0 means no upper bound; limit of 0 means no limit.
-
 <a name="Store.AppendAction"></a>
-### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L323>)
+### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L258>)
 
 ```go
 func (s *Store) AppendAction(r ControlRecord) (int64, error)
@@ -475,15 +464,6 @@ func (s *Store) Close() error
 ```
 
 Close releases the database handle.
-
-<a name="Store.CountActions"></a>
-### func \(\*Store\) [CountActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L306>)
-
-```go
-func (s *Store) CountActions(sessionID string, action ActionClass, afterID, beforeID int64) (int64, error)
-```
-
-CountActions reports how many actions Actions would return for the same filters, without loading them.
 
 <a name="Store.CountEvents"></a>
 ### func \(\*Store\) [CountEvents](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L241>)
