@@ -449,6 +449,45 @@ export default Plugin.define({
       return error
     }
 
+    // verifierGrant reports whether the specialist's last matching rule for
+    // vfs_verify (or the wildcard) allows it: a later rule overrides an earlier one.
+    function verifierGrant(rules: unknown): boolean {
+      if (!Array.isArray(rules)) return false
+      const matches = (value: unknown) => value === "*" || value === "vfs_verify"
+      return rules.reduce((allowed: boolean, rule) => rule && matches(rule.action) && matches(rule.resource) ? rule.effect === "allow" : allowed, false)
+    }
+
+    // validatedAuthorKeys checks the author_keys a delegation declares: unique,
+    // nonempty staged author keys, handed to a specialist holding a verification
+    // grant. Undefined means the delegation is not a gate.
+    async function validatedAuthorKeys(value: unknown, specialist: string, root: string, unit: string): Promise<string[] | undefined> {
+      if (value === undefined) return undefined
+      if (!isStringArray(value) || value.length === 0 || value.some(key => !key.trim()) || new Set(value).size !== value.length) {
+        throw refused("invalid_authors", specialist, root, new Error("author_keys must list unique, nonempty staged author keys"), unit)
+      }
+      const target = await ctx.agent.get({ agentID: specialist })
+      if (!verifierGrant(target.data.permissions)) throw refused("invalid_verifier", specialist, root, new Error("The delegated specialist has no verification grant"), unit)
+      return value
+    }
+
+    // prepareVerifierGates assigns one gate per author key, recording each key in
+    // prepared as it is issued so a failure can release exactly those, then drops
+    // the verifier's earlier judging bindings: the new gates replace them.
+    async function prepareVerifierGates(authorKeys: string[] | undefined, root: string, unit: string, specialist: string, prepared: string[]): Promise<void> {
+      if (authorKeys === undefined) return
+      for (const authorKey of authorKeys) {
+        // Sequential on purpose: each assignment supersedes the previous
+        // attempt's gate for its author and prepared must keep issue order.
+        const gate = await takt("assign-verifier", { session_id: root, work_unit_id: unit, agent_id: specialist, // NOSONAR
+          specialist, invariants: INVARIANT_DOCUMENTS, author_key: authorKey })
+        if (gate.key) prepared.push(gate.key)
+      }
+      for (const [key, binding] of bindings) {
+        if (binding.session === root && binding.unit === unit && binding.agent === specialist && binding.judges) bindings.delete(key)
+      }
+      await persist()
+    }
+
     async function taktUnlocked(command: string, request: Record<string, unknown>): Promise<VFSResponse> {
       const proc = Bun.spawn([TAKT_AI, "vfs", command, "--workspace", workspace, "--state", stateDir()], {
         stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd: workspace,
@@ -921,17 +960,7 @@ export default Plugin.define({
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       if (!inputs.has(unitKey(root, unit))) throw refused("missing_inputs", specialist, root, new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before delegating it, or declare that none exists yet`), unit)
-      const authorKeys = input.author_keys
-      if (authorKeys !== undefined && (!isStringArray(authorKeys) || authorKeys.length === 0 || authorKeys.some(key => !key.trim()) || new Set(authorKeys).size !== authorKeys.length)) {
-        throw refused("invalid_authors", specialist, root, new Error("author_keys must list unique, nonempty staged author keys"), unit)
-      }
-      if (authorKeys !== undefined) {
-        const target = await ctx.agent.get({ agentID: specialist })
-        const rules = target.data.permissions
-        const verifies = Array.isArray(rules) && rules.reduce((allowed, rule) =>
-          rule && ["*", "vfs_verify"].includes(rule.action) && ["*", "vfs_verify"].includes(rule.resource) ? rule.effect === "allow" : allowed, false)
-        if (!verifies) throw refused("invalid_verifier", specialist, root, new Error("The delegated specialist has no verification grant"), unit)
-      }
+      const authorKeys = await validatedAuthorKeys(input.author_keys, specialist, root, unit)
       const delegation = `${event.sessionID}:${event.id}`
       if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
       // A cleanup cycle never holds a delegation: an admitted one ends the
@@ -948,20 +977,17 @@ export default Plugin.define({
       // receives fresh gates for that admitted attempt rather than a stale preassignment.
       const preparedGates: string[] = []
       try {
-        for (const authorKey of authorKeys as string[] | undefined ?? []) {
-          const gate = await takt("assign-verifier", { session_id: root, work_unit_id: unit, agent_id: specialist,
-            specialist, invariants: INVARIANT_DOCUMENTS, author_key: authorKey })
-          if (gate.key) preparedGates.push(gate.key)
-        }
-        if (authorKeys !== undefined) {
-          for (const [key, binding] of bindings) {
-            if (binding.session === root && binding.unit === unit && binding.agent === specialist && binding.judges) bindings.delete(key)
-          }
-          await persist()
-        }
+        await prepareVerifierGates(authorKeys, root, unit, specialist, preparedGates)
       } catch (error) {
-        for (const key of preparedGates) await takt("release", { session_id: root, key })
-        await dispatchAction({ action: "finish", event: unit, dispatch: delegation, session: root })
+        // Cleanup is best effort: a failure here must never replace the
+        // assignment error, and one gate that cannot be released must not
+        // keep the others or the admitted dispatch from being closed.
+        await Promise.all([
+          ...preparedGates.map(key => takt("release", { session_id: root, key })
+            .catch(e => console.error("Takt gate release", key, e))),
+          dispatchAction({ action: "finish", event: unit, dispatch: delegation, session: root })
+            .catch(e => console.error("Takt dispatch finish", e)),
+        ])
         throw refused("verifier_assignment", specialist, root, error instanceof Error ? error : new Error(String(error)), unit)
       }
       // The cycle is already closed: a lane that keeps running only meets

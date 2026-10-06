@@ -970,6 +970,57 @@ describe("claims and consolidation", () => {
     } finally { await vfs.stop() }
   })
 
+  test.each([[[]], [["a", "a"]], [["a", " "]], ["a"]])("author_keys %j is refused before anything is admitted", async (authorKeys) => {
+    const vfs = await startVfs({ permissions: { verify: verifierGrants } })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "bad",
+        input: { agent: "verify", description: "gate", author_keys: authorKeys } })).rejects.toThrow("unique, nonempty staged author keys")
+      expect(vfs.actions("dispatch")).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  describe("a failed verifier assignment", () => {
+    const assignment = async (failing: { release?: boolean, finish?: boolean }) => {
+      const vfs = await startVfs({
+        permissions: { verify: verifierGrants },
+        respond: call => {
+          if (call.kind === "vfs" && call.command === "assign-verifier") {
+            return call.request.author_key === "b" ? { code: 1, err: "author b is gone" } : json({ ok: true, key: `gate-${call.request.author_key}` })
+          }
+          if (call.kind === "vfs" && call.command === "release" && failing.release) return { code: 1, err: "release failed" }
+          if (call.kind === "dispatch" && call.command === "finish" && failing.finish) return { code: 1, err: "finish failed" }
+          return undefined
+        },
+      })
+      return vfs
+    }
+    const delegate = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      .then(() => vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call",
+        input: { agent: "verify", description: "gate", author_keys: ["a", "b", "c"] } }))
+
+    test("releases the gates already prepared and finishes the dispatch", async () => {
+      const vfs = await assignment({})
+      try {
+        await expect(delegate(vfs)).rejects.toThrow("author b is gone")
+        expect(vfs.requests("vfs", "release")).toEqual([expect.objectContaining({ session_id: "root", key: "gate-a" })])
+        expect(vfs.actions("dispatch")).toEqual(["admit", "finish"])
+        expect(vfs.storage.has(DELEGATIONS_KEY)).toBe(false)
+        expect(vfs.errors).toEqual([])
+      } finally { await vfs.stop() }
+    })
+
+    test("keeps its own error when the cleanup fails too, and still attempts every step", async () => {
+      const vfs = await assignment({ release: true, finish: true })
+      try {
+        await expect(delegate(vfs)).rejects.toThrow("author b is gone")
+        expect(vfs.requests("vfs", "release")).toHaveLength(1)
+        expect(vfs.actions("dispatch")).toEqual(["admit", "finish"])
+        expect(vfs.errors.map(([label]) => label)).toEqual(["Takt gate release", "Takt dispatch finish"])
+      } finally { await vfs.stop() }
+    })
+  })
+
   test("a specialist taking over staged work replaces the old binding and continues from its revision", async () => {
     const old = { key: "author-1", agent: "dev", session: "root", dispatch: "dev-child", unit: "unit-dev", revision: 3, deltaHash: "old" }
     const fixer: Ctx = { sessionID: "fix-child", agent: "fix" }
