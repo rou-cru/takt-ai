@@ -3,6 +3,7 @@ context:
 description: Independently assess reference invariants, staged gates, and executable
   acceptance.
 id: takt-verify
+label: verify
 instances:
 - verify
 vfs_capabilities:

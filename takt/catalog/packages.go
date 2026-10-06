@@ -33,6 +33,9 @@ type AgentDefinition struct {
 	ID string `yaml:"id"`
 	// Instances lists the deployable instances sharing this definition.
 	Instances []string `yaml:"instances"`
+	// Label is the short name every instance shows where space is scarce,
+	// such as the DAG sidebar's completed row.
+	Label string `yaml:"label"`
 	// VFSGrants declares an explicit VFS capability list for every instance ID.
 	// Grants never inherit from the definition or role.
 	VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
@@ -312,8 +315,13 @@ func loadAgent(files pkgFiles, id string, skills, instances map[string]bool) (Ag
 	return a, nil
 }
 
+// maxAgentLabelWidth bounds an agent label so several still share one row of
+// the OpenCode sidebar, whose usable width is 37 columns.
+const maxAgentLabelWidth = 8
+
 func validAgentDefinition(a AgentDefinition, id string) bool {
-	return a.ID == id && packageID.MatchString(a.ID) && strings.TrimSpace(a.Description) != "" && len(a.Instances) > 0
+	return a.ID == id && packageID.MatchString(a.ID) && strings.TrimSpace(a.Description) != "" && len(a.Instances) > 0 &&
+		packageID.MatchString(a.Label) && len(a.Label) <= maxAgentLabelWidth
 }
 
 func claimInstances(a AgentDefinition, instances map[string]bool) error {

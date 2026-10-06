@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/history"
 )
 
@@ -97,5 +98,17 @@ func readSnapshot(workspace, state, session string) (snap history.Snapshot, err 
 	if session != "" {
 		entries = slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != session })
 	}
-	return history.BuildSnapshot(entries), nil
+	snap = history.BuildSnapshot(entries)
+	// The wire names each admitted agent by its catalog label, the form the
+	// sidebar shows; an instance the catalog does not know keeps its own name.
+	crew, err := catalog.LoadNativeContent()
+	if err != nil {
+		return history.Snapshot{}, err
+	}
+	for i, n := range snap.Nodes {
+		if member, ok := crew[n.Agent]; ok {
+			snap.Nodes[i].Agent = member.Label
+		}
+	}
+	return snap, nil
 }

@@ -3,8 +3,9 @@
 // renders what `takt-ai dag status` reports and never selects, admits or
 // mutates work.
 /** @jsxImportSource @opentui/solid */
-import { createHash } from "node:crypto"
+import { resolve } from "node:path"
 import { Plugin } from "@opencode/plugin/tui"
+import type { RGBA } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
 const TAKT_AI = "__TAKT_AI_BINARY__"
@@ -42,6 +43,8 @@ interface DagNode {
   readonly launched: boolean
   readonly contract?: string
   readonly prerequisites?: readonly string[]
+  /** Short label of the specialist admitted for the current attempt; absent until admitted. */
+  readonly agent?: string
 }
 
 interface DagActivity {
@@ -99,6 +102,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
         typeof raw.launched !== "boolean" ||
         !isOptional(raw.contract, isString) ||
         !isOptional(raw.prerequisites, isStringArray) ||
+        !isOptional(raw.agent, isString) ||
         (raw.state !== "in_flight" && raw.flight !== undefined) ||
         (raw.state !== "settled" && raw.outcome !== undefined)) return invalid()
     return { id: raw.id, ...(raw.node_kind === undefined ? {} : { node_kind: raw.node_kind }),
@@ -107,7 +111,8 @@ export function decodeSnapshot(value: unknown): DagResponse {
       ...(raw.flight === undefined ? {} : { flight: raw.flight }),
       ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }), launched: raw.launched,
       ...(raw.contract === undefined ? {} : { contract: raw.contract }),
-      ...(raw.prerequisites === undefined ? {} : { prerequisites: raw.prerequisites }) }
+      ...(raw.prerequisites === undefined ? {} : { prerequisites: raw.prerequisites }),
+      ...(raw.agent === undefined ? {} : { agent: raw.agent }) }
   })
   const edges: DagEdge[] = value.edges.map((raw): DagEdge => {
     if (!isRecord(raw) || !isString(raw.from) || !isString(raw.to)) return invalid()
@@ -546,9 +551,11 @@ export function nodeText(node: DagNode): string {
   return `${glyphFor(node)} ${node.id}`
 }
 
+const activityLabel = (activity: DagActivity) => (activity.node_kind === "orchestrator" ? "direct activity" : "GC activity")
+
 export function activityText(activity: DagActivity): string {
   const glyph = activity.state === "in_flight" ? "◆" : "◇"
-  const label = activity.node_kind === "orchestrator" ? "direct activity" : "GC activity"
+  const label = activityLabel(activity)
   const status = activity.state === "in_flight" ? "running" : activity.outcome ?? "settled"
   return `${glyph} ${label} ${activity.activity_id} · ${status}`
 }
@@ -680,47 +687,206 @@ export function headerLine(snapshot: DagSnapshot | undefined, health: Health): s
   return `Takt DAG · ${progressLine(snapshot)}`
 }
 
-/** The sidebar header is the same short line: the list is the content. */
-export function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health): string {
-  return headerLine(snapshot, health)
+// The OpenCode v2 sidebar is 42 columns wide (SESSION_SIDEBAR_WIDTH) less its
+// padding, leaving 37 usable columns; the host fixes it and never passes it
+// to the slot. Every sidebar row fits it, so nothing ever wraps.
+const SIDEBAR_COLUMNS = 37
+// Graph lanes the sidebar gutter may use, two columns each. A layer with more
+// units than this is drawn as one grouped row instead.
+const MAX_SIDEBAR_LANES = 3
+// Gutter cell of a grouped layer row; its members' own glyphs follow it.
+const GROUP_GLYPH = "≡"
+
+export type SidebarTone = "muted" | "error"
+export interface SidebarRow {
+  readonly text: string
+  readonly tone?: SidebarTone
 }
 
-// sidebarRows lists the DAG for a narrow column without implying structure it
-// lacks: one block per disconnected graph (blank row between), units in
-// dependency order (same-layer units are adjacent: parallel), each followed by
-// its real prerequisites; then activities.
-export function sidebarRows(snapshot: DagSnapshot): string[] {
-  const depths = computeDepths(snapshot)
-  const byId = new Map(snapshot.nodes.map((n) => [n.id, n]))
-  const prerequisites = new Map<string, string[]>()
-  for (const e of snapshot.edges) prerequisites.set(e.to, [...(prerequisites.get(e.to) ?? []), e.from])
-  const blocks = connectedComponents(snapshot).map((members) =>
-    members
-      .toSorted((a, b) => (depths.get(a) ?? 0) - (depths.get(b) ?? 0) || ordinal(a, b))
-      .map((id) => {
-        const from = (prerequisites.get(id) ?? []).sort(ordinal)
-        return nodeText(byId.get(id) as DagNode) + (from.length > 0 ? ` ← ${from.join(", ")}` : "")
-      }),
-  )
-  const rows = blocks.flatMap((block, i) => (i > 0 ? ["", ...block] : block))
-  const activities = snapshot.activities ?? []
-  if (activities.length > 0 && rows.length > 0) rows.push("")
-  return rows.concat(activities.map(activityText))
+const isCompleted = (n: DagNode) => n.state === "settled" && (n.outcome ?? "completed") === "completed"
+
+/** Cuts text to width terminal cells, marking the cut with an ellipsis. */
+export function fit(text: string, width: number): string {
+  if (Bun.stringWidth(text) <= width) return text
+  let kept = ""
+  for (const char of text) {
+    if (Bun.stringWidth(kept + char) > width - 1) break
+    kept += char
+  }
+  return `${kept}…`
 }
 
 /**
- * The sidebar's list, or nothing: unlike the route view it never explains
- * why (no confirmed projection, empty DAG), the header line already does.
+ * What follows the sidebar's bold title: a capture that is not current,
+ * otherwise completed over planned units (withdrawn ones are no longer work).
+ */
+export function sidebarDetail(snapshot: DagSnapshot | undefined, health: Health): string {
+  const capture = snapshot && health === "confirmed" ? snapshot.capture : health
+  if (capture !== "current") return capture
+  const units = snapshot?.nodes.filter((n) => n.state !== "withdrawn") ?? []
+  return units.length === 0 ? "" : `${units.filter(isCompleted).length}/${units.length}`
+}
+
+// completedRow folds every completed unit into one row naming who did the
+// work, in dependency order: the graph keeps its meaning as it shrinks.
+function completedRow(snapshot: DagSnapshot): SidebarRow[] {
+  const depths = computeDepths(snapshot)
+  const done = snapshot.nodes
+    .filter(isCompleted)
+    .toSorted((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || ordinal(a.id, b.id))
+  if (done.length === 0) return []
+  const counts = new Map<string, number>()
+  for (const n of done) counts.set(n.agent ?? n.id, (counts.get(n.agent ?? n.id) ?? 0) + 1)
+  const labels = [...counts].map(([label, count]) => (count > 1 ? `${label}×${count}` : label))
+  return [{ text: fit(`✓ ${labels.join(" ")}`, SIDEBAR_COLUMNS), tone: "muted" }]
+}
+
+/** One row of the frontier graph: a unit, or a layer too wide for its lanes. */
+interface FrontierItem {
+  readonly id: string
+  readonly glyph: string
+  readonly label: string
+  readonly tone?: SidebarTone
+}
+
+// frontierGraph is the work still ahead: every unit neither completed nor
+// withdrawn, with the edges between them. Edges from completed units are
+// satisfied and dropped. Within each connected component a layer wider than
+// the lane budget becomes one item; its units share a depth, so no edge joins
+// them and the contracted graph stays acyclic.
+function frontierGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children: Map<string, string[]> } {
+  const nodes = snapshot.nodes.filter((n) => !isCompleted(n) && n.state !== "withdrawn")
+  const ids = new Set(nodes.map((n) => n.id))
+  const frontier: DagSnapshot = { ...snapshot, nodes, edges: snapshot.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) }
+  const depths = computeDepths(frontier)
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const itemOf = new Map<string, string>()
+  const order: FrontierItem[] = []
+  connectedComponents(frontier).forEach((members, component) => {
+    const layers = new Map<number, string[]>()
+    for (const id of members) layers.set(depths.get(id) ?? 0, [...(layers.get(depths.get(id) ?? 0) ?? []), id])
+    for (const depth of [...layers.keys()].sort((a, b) => a - b)) {
+      const layer = (layers.get(depth) ?? []).toSorted(ordinal)
+      if (layer.length <= MAX_SIDEBAR_LANES) {
+        for (const id of layer) {
+          const node = byId.get(id) as DagNode
+          const glyph = glyphFor(node)
+          itemOf.set(id, id)
+          order.push({ id, glyph, label: id, ...(glyph === "✗" ? { tone: "error" as const } : {}) })
+        }
+        continue
+      }
+      const group = `${component}:${depth}`
+      for (const id of layer) itemOf.set(id, group)
+      const glyphs = layer.map((id) => glyphFor(byId.get(id) as DagNode)).join("")
+      order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel` })
+    }
+  })
+  const position = new Map(order.map((item, index) => [item.id, index]))
+  const children = new Map<string, string[]>()
+  for (const e of frontier.edges) {
+    const from = itemOf.get(e.from) as string
+    const to = itemOf.get(e.to) as string
+    const known = children.get(from) ?? []
+    if (!known.includes(to)) children.set(from, [...known, to])
+  }
+  for (const list of children.values()) list.sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0))
+  return { order, children }
+}
+
+// connectorRow draws, between two unit rows, lanes joining the unit's lane
+// `at`: merging into it from above, or forking from it below. Lanes passing
+// by stay vertical; a joining line crossing one draws ┼.
+function connectorRow(lanes: readonly (string | undefined)[], at: number, others: readonly number[], kind: "merge" | "fork"): SidebarRow {
+  const count = Math.max(lanes.length, at + 1, ...others.map((o) => o + 1))
+  const mask = new Array<number>(count * 2 - 1).fill(0)
+  lanes.forEach((target, lane) => {
+    if (target !== undefined && lane !== at && !others.includes(lane)) mask[lane * 2] |= UP | DOWN
+  })
+  mask[at * 2] |= UP | DOWN
+  for (const other of others) {
+    mask[other * 2] |= kind === "merge" ? UP : DOWN
+    const [low, high] = [Math.min(at, other) * 2, Math.max(at, other) * 2]
+    for (let cell = low; cell <= high; cell++) {
+      if (cell > low) mask[cell] |= LEFT
+      if (cell < high) mask[cell] |= RIGHT
+    }
+  }
+  return { text: mask.map((m) => LINE_GLYPHS[m] ?? " ").join("").trimEnd() }
+}
+
+// laneRows lays the frontier out like `git log --graph`, top-down: the state
+// glyph is the node, sitting in its lane, and every edge is a lane carried
+// down to the unit it leads to. Undefined when the walk needs more lanes than
+// the budget.
+function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, readonly string[]>): SidebarRow[] | undefined {
+  const lanes: (string | undefined)[] = []
+  const rows: SidebarRow[] = []
+  const free = () => (lanes.includes(undefined) ? lanes.indexOf(undefined) : lanes.length)
+  for (const item of order) {
+    const incoming = lanes.flatMap((target, lane) => (target === item.id ? [lane] : []))
+    const at = incoming[0] ?? free()
+    if (incoming.length > 1) {
+      rows.push(connectorRow(lanes, at, incoming.slice(1), "merge"))
+      for (const lane of incoming.slice(1)) lanes[lane] = undefined
+    }
+    lanes[at] = item.id
+    const cells = lanes.map((target, lane) => (lane === at ? item.glyph : target === undefined ? " " : "│"))
+    const gutter = cells.join(" ").trimEnd()
+    rows.push({ text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) })
+    const [first, ...rest] = children.get(item.id) ?? []
+    lanes[at] = first
+    const forks = rest.map((child) => {
+      const lane = free()
+      lanes[lane] = child
+      return lane
+    })
+    if (forks.length > 0) rows.push(connectorRow(lanes, at, forks, "fork"))
+    while (lanes.length > 0 && lanes.at(-1) === undefined) lanes.pop()
+    if (lanes.length > MAX_SIDEBAR_LANES) return undefined
+  }
+  return rows
+}
+
+/**
+ * The DAG for the sidebar's narrow column: one muted row naming the agents
+ * of completed work, then the frontier as a lane graph (a flat list in
+ * dependency order when it needs more lanes than the budget), then running
+ * activities. Every row fits SIDEBAR_COLUMNS.
+ */
+export function sidebarRows(snapshot: DagSnapshot): SidebarRow[] {
+  const { order, children } = frontierGraph(snapshot)
+  const graph =
+    laneRows(order, children) ??
+    order.map((item) => ({ text: fit(`${item.glyph} ${item.label}`, SIDEBAR_COLUMNS), ...(item.tone ? { tone: item.tone } : {}) }))
+  const activities = (snapshot.activities ?? [])
+    .filter((a) => a.state === "in_flight")
+    .map((a) => ({ text: fit(`◆ ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
+  return [...completedRow(snapshot), ...graph, ...activities]
+}
+
+/**
+ * The sidebar's rows, or nothing: unlike the route view it never explains
+ * why (no confirmed projection, empty DAG), the title line already does.
  * Every branch below must resolve to a <text>, never to `false`/`undefined`
  * directly under <box> — Show's own off-state placeholder needs one too.
  */
-export function SidebarGraph(props: { readonly snapshot: DagSnapshot | undefined }) {
+export function SidebarGraph(props: {
+  readonly snapshot: DagSnapshot | undefined
+  readonly tones?: Partial<Record<SidebarTone, RGBA>>
+}) {
   return (
     <Show when={props.snapshot} fallback={<text></text>}>
       {(shown: Accessor<DagSnapshot>) => (
         <Show when={hasContent(shown())} fallback={<text></text>}>
           <box flexDirection="column">
-            <For each={sidebarRows(shown())}>{(row) => <text>{row}</text>}</For>
+            <For each={sidebarRows(shown())}>
+              {(row) => (
+                <text wrapMode="none" fg={row.tone ? props.tones?.[row.tone] : undefined}>
+                  {row.text}
+                </text>
+              )}
+            </For>
           </box>
         </Show>
       )}
@@ -732,13 +898,8 @@ export function SidebarGraph(props: { readonly snapshot: DagSnapshot | undefined
 // Snapshot query
 // ---------------------------------------------------------------------------
 
-// stateDir is the private store takt-vfs.ts binds to this workspace: slug +
-// 8 hex chars of the absolute path's SHA-256, outside the workspace itself.
 function stateDir(workspace: string): string {
-  const abs = workspace.startsWith("/") ? workspace : `${process.env.HOME}/${workspace}`
-  const slug = abs.split("/").findLast(Boolean) ?? "workspace"
-  const hash = createHash("sha256").update(abs).digest("hex").slice(0, 8)
-  return `${process.env.HOME}/.local/share/takt-ai/vfs/${slug}-${hash}`
+  return resolve(workspace, ".takt-ai", "vfs")
 }
 
 export default Plugin.define({
@@ -899,9 +1060,14 @@ export default Plugin.define({
       onCleanup(release)
       return (
         <box flexDirection="column">
-          <text fg={context.theme.text.base}>{sidebarHeader(snapshot(), health())}</text>
+          <text wrapMode="none" fg={context.theme.text.base}>
+            <b>DAG</b> <span style={{ fg: context.theme.text.muted }}>{sidebarDetail(snapshot(), health())}</span>
+          </text>
           <text>{problem() ?? ""}</text>
-          <SidebarGraph snapshot={snapshot()} />
+          <SidebarGraph
+            snapshot={snapshot()}
+            tones={{ muted: context.theme.text.muted, error: context.theme.text.feedback.error.base }}
+          />
         </box>
       )
     }

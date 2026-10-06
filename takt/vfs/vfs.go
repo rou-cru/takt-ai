@@ -180,7 +180,7 @@ type CollisionError struct {
 
 // Error renders the refused path and both dispatch identities behind it.
 func (e *CollisionError) Error() string {
-	return fmt.Sprintf("%v: requested path %q for target %q (instance %q, session %q, unit %q) is owned by agent %q (session %q, unit %q); ask the orchestrator to release it",
+	return fmt.Sprintf("%v: requested path %q for target %q (instance %q, session %q, unit %q) is owned by agent %q (session %q, unit %q); consult claim_list; continue the existing work with claim_assign and its author_key, wait for delivery, or narrow the scope",
 		ErrCollision, e.RequestedPath, e.TargetAgent, e.TargetInstance, e.TargetSession, e.TargetUnit,
 		e.OwnerAgent, e.OwnerSession, e.OwnerUnit)
 }

@@ -123,8 +123,10 @@ func resolveStateDir(stateDir, workspace string) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(resolved, suffix)
-	if err := ensureOutsideWorkspace(workspace, dir); err != nil {
-		return "", err
+	if dir != filepath.Join(workspace, ".takt-ai", "vfs") {
+		if err := ensureOutsideWorkspace(workspace, dir); err != nil {
+			return "", err
+		}
 	}
 	if err = os.MkdirAll(dir, stateDirectoryMode); err != nil {
 		return "", err

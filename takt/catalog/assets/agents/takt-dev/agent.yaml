@@ -2,6 +2,7 @@ context:
   operations: OPERATIONS.md
 description: Implement requested changes and demonstrate them against available contracts.
 id: takt-dev
+label: dev
 instances:
 - dev
 vfs_capabilities:

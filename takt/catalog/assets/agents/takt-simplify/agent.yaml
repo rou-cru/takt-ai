@@ -3,6 +3,7 @@ context:
 description: Implement cleanup that removes duplication, dead code, and structural
   complexity without changing behavior.
 id: takt-simplify
+label: simplify
 instances:
 - simplify
 vfs_capabilities:

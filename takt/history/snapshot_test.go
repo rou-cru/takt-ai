@@ -445,3 +445,43 @@ func TestBuildSnapshotReportsStoppedAndEscalated(t *testing.T) {
 		t.Fatalf("Stopped = %d, Escalated = %d; want 1, 1", got.Stopped, got.Escalated)
 	}
 }
+
+// TestBuildSnapshotCarriesTheAdmittedAgent proves a node names no agent while
+// only planned, then the specialist of its current attempt: a retry admitted
+// to another specialist replaces the first.
+func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
+	h := open(t, filepath.Join(t.TempDir(), "state"))
+	agentOf := func() string {
+		t.Helper()
+		nodes := BuildSnapshot(h.Entries()).Nodes
+		if len(nodes) != 1 {
+			t.Fatalf("nodes = %+v, want one", nodes)
+		}
+		return nodes[0].Agent
+	}
+	admitted := func(agent, attempt string) Entry {
+		e := observed(t, "a", KindAdmitted, "")
+		e.Agent, e.AttemptID = agent, attempt
+		return e
+	}
+	if err := h.Append(planned("root", "a", "v1", "a contract", nil)); err != nil {
+		t.Fatal(err)
+	}
+	if got := agentOf(); got != "" {
+		t.Fatalf("planned agent = %q, want none", got)
+	}
+	for _, e := range []Entry{admitted("pm", FirstAttempt), observed(t, "a", KindTerminated, OutcomeFailed)} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := agentOf(); got != "pm" {
+		t.Fatalf("settled agent = %q, want pm", got)
+	}
+	if err := h.Append(admitted("dev", "2")); err != nil {
+		t.Fatal(err)
+	}
+	if got := agentOf(); got != "dev" {
+		t.Fatalf("retried agent = %q, want dev", got)
+	}
+}

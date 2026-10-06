@@ -2,6 +2,7 @@ context:
   operations: OPERATIONS.md
 description: Translate intent into observable behavior and acceptance scenarios.
 id: takt-spec
+label: spec
 instances:
 - spec
 vfs_capabilities:

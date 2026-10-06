@@ -2,6 +2,7 @@ context:
   operations: OPERATIONS.md
 description: Confirm defect causality and repair only the authorized defect scope.
 id: takt-fix
+label: fix
 instances:
 - fix
 vfs_capabilities:

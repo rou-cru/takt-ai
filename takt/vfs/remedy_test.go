@@ -52,7 +52,7 @@ func assertDenialExplainsNextAction(t *testing.T, f *FS, op Operation, want erro
 
 // assertBindCollisionExplainsCoordination proves a colliding Bind against an
 // already-owned path preserves the collision identity and tells the caller
-// to coordinate release with the orchestrator.
+// to continue existing work or choose a non-colliding scope.
 func assertBindCollisionExplainsCoordination(t *testing.T, f *FS) {
 	t.Helper()
 	_, err := f.Bind(Identity{SessionID: "s", WorkUnitID: "other", AgentID: "other", Specialist: "dev"}, []string{"owned.go"})
@@ -60,7 +60,7 @@ func assertBindCollisionExplainsCoordination(t *testing.T, f *FS) {
 	if !errors.Is(err, ErrCollision) || !errors.As(err, &collision) {
 		t.Fatalf("lost collision identity: %v", err)
 	}
-	if collision.RequestedPath != "owned.go" || !strings.Contains(err.Error(), "orchestrator") || !strings.Contains(err.Error(), "release") {
+	if collision.RequestedPath != "owned.go" || !strings.Contains(err.Error(), "claim_list") || !strings.Contains(err.Error(), "author_key") {
 		t.Fatalf("collision lacks coordination: %v", err)
 	}
 }

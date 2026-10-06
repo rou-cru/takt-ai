@@ -2,6 +2,7 @@ context:
   operations: OPERATIONS.md
 description: Decompose requirements into scoped, traceable tasks with justified dependencies.
 id: takt-tpm
+label: tpm
 instances:
 - tpm
 vfs_capabilities:

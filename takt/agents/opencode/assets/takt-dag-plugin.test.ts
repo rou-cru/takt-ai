@@ -63,7 +63,7 @@ function startDag(respond: () => Reply) {
   const cleanup = dagPlugin.setup({
     location: { directory: "/workspace" },
     data: { location: { default: () => ({ directory: "/workspace" }) }, session: { root: (id: string) => id } },
-    theme: { text: { base: "white" } },
+    theme: { text: { base: "white", muted: "gray", feedback: { error: { base: "red" } } } },
     ui: {
       router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate(destination: unknown) { navigated.push(destination) } },
       slot(value: Slot) {
@@ -117,7 +117,7 @@ describe("DAG route view", () => {
     expect(frame).not.toContain("projection")
     expect(spawned[0]).toEqual([
       "__TAKT_AI_BINARY__", "dag", "status", "--workspace", "/workspace",
-      "--state", expect.stringMatching(/\/\.local\/share\/takt-ai\/vfs\/workspace-[0-9a-f]{8}$/), "--session", "root", "--format", "json",
+      "--state", "/workspace/.takt-ai/vfs", "--session", "root", "--format", "json",
     ] as never)
   })
 
@@ -207,14 +207,14 @@ describe("DAG route exit", () => {
 describe("DAG sidebar view", () => {
   test("shows the one-line header and the graph of the confirmed projection", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.sidebar("root"))
-    expect(frame).toContain("Takt DAG · 1/1 done")
-    expect(frame).toContain("unit-a")
+    expect(frame).toContain("DAG 1/1")
+    expect(frame).toContain("✓ unit-a")
     expect(spawned[0]).toContain("root")
   })
 
   test("shows only the health and the problem while nothing is confirmed", async () => {
     const { frame } = await visit(() => ({ code: 1, err: "no store" }), (d) => d.sidebar("root"))
-    expect(frame).toContain("Takt DAG · unavailable")
+    expect(frame).toContain("DAG unavailable")
     expect(frame).toContain("no store")
     expect(frame).not.toContain("unit-a")
   })

@@ -4,6 +4,7 @@ context:
   soul: SOUL.md
 description: Define coherent, accessible, feasible UI/UX and developer experiences.
 id: takt-product-designer
+label: design
 instances:
 - product-designer
 vfs_capabilities:
