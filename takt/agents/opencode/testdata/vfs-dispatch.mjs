@@ -44,6 +44,7 @@ const permissionHooks = {}
 const sessionHooks = {}
 const synthetic = []
 const interrupted = []
+const unreachable = new Set()
 const promptedSessions = []
 let onPrompt = async (_sessionID, _text) => {}
 await plugin.setup({
@@ -56,7 +57,10 @@ await plugin.setup({
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
     wait: async () => {},
     synthetic: async (message) => { synthetic.push(message) },
-    interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
+    interrupt: async ({ sessionID }) => {
+      if (unreachable.has(sessionID)) throw new Error(`session ${sessionID} unreachable`)
+      interrupted.push(sessionID)
+    },
   },
   permission: { hook: async (name, callback) => { permissionHooks[name] ??= []; permissionHooks[name].push(callback); return { dispose() {} } } },
   agent: { get: async () => ({ data: { permissions: [] } }) },
@@ -180,6 +184,33 @@ respond = (call) => {
 await assert.rejects(() => delegate("execute.before", "u2", "call-3"), /ceiling/)
 respond = () => undefined
 assert.deepEqual(store.get("takt/vfs/delegations"), {})
+
+// A delegation ends a running cleanup cycle only once it is admitted: a denied
+// one leaves the cycle's lanes running, an admitted one stops them, and a lane
+// that cannot be interrupted never refuses the admitted delegation.
+const runningCycle = { ...coordinator(), cycle: { plan: { session_id: "root", cycle_id: "yield-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" },
+  phase: "collect", scope: [], sessions: { collector: "lane-c", verifier: "lane-v" }, report: {}, started: "2026-01-01T00:00:00Z" } }
+let admission
+respond = (call) => {
+  if (call.argv[2] === "claims") return { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 }
+  if (!call.argv.includes("--request")) return undefined
+  const action = requestOf(call).action
+  if (action === "status") return { stdout: JSON.stringify(runningCycle), stderr: "", code: 0 }
+  return action === "admit" ? admission : undefined
+}
+admission = { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 }
+await assert.rejects(() => delegate("execute.before", "yield-denied", "call-y1", "pm"), /ceiling/)
+assert.deepEqual(interrupted, [], "a denied delegation stopped the cycle's lanes")
+admission = undefined
+unreachable.add("lane-c")
+await delegate("execute.before", "yield-admitted", "call-y2", "pm")
+assert.deepEqual(interrupted, ["lane-v"], "an admitted delegation left the cycle's lanes running")
+assert.ok(store.get("takt/vfs/delegations")["root:call-y2"], "a failed lane interruption refused the admitted delegation")
+unreachable.clear()
+interrupted.length = 0
+respond = () => undefined
+await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "yield-admitted", agent: "pm" })
+await delegate("execute.after", "yield-admitted", "call-y2", "pm")
 
 // Only an agent designed to work through the VFS needs its scope reserved
 // before launch: a planning lane is admitted without any claim, a VFS lane

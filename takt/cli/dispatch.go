@@ -127,10 +127,8 @@ func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.C
 		if repeated {
 			return c, nil
 		}
-		if c.Cycle != nil {
-			// A cycle that cannot be unwound records why on itself (blocked,
-			// with its reason); that never refuses the orchestrator's dispatch.
-			_ = abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed")
+		if e := yieldGCCycle(h, fs, workspace, c, r); e != nil {
+			return c, e
 		}
 		return c, c.Admit(h, journalRef(entries), r.Event, r.Session, r.Agent, r.Dispatch)
 	case "finish":
@@ -140,6 +138,32 @@ func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.C
 		return c, protocol.Finish(h, journalRef(entries), r.Event, r.Session)
 	}
 	return c, nil
+}
+
+// yieldGCCycle ends a maintenance cycle in flight for a delegation that will be
+// admitted, discarding the cycle's delta in full (PR-MNT-3, PR-MNT-16). A
+// delegation the budgets deny leaves the cycle running: Admit records that
+// denial on its own. A cycle whose delta cannot be discarded refuses the
+// admission instead, so new work never runs over live maintenance changes; the
+// cycle stays recorded as blocked with its reason, and the next admission
+// retries the unwinding.
+func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordinator, r coordinationRequest) error {
+	if c.Cycle == nil {
+		return nil
+	}
+	p, e := protocol.LoadAdmissionPolicy()
+	if e != nil {
+		return e
+	}
+	req := protocol.AdmissionRequest{Event: r.Event, Session: r.Session, Agent: r.Agent, Dispatch: r.Dispatch}
+	if protocol.Admissible(h, p, req) != nil {
+		return nil
+	}
+	cycle := c.Cycle.Plan.CycleID
+	if e := abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed"); e != nil {
+		return fmt.Errorf("dispatch: maintenance cycle %s could not be unwound, so its changes may still be live; admission waits until it is: %w", cycle, e)
+	}
+	return nil
 }
 
 // ordinaryDispatchActions are the crew dispatch actions any orchestrator may

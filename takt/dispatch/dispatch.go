@@ -138,12 +138,30 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 	if req.Event == "" || req.Session == "" {
 		return errors.New("dispatch: identity required")
 	}
-	projection := h.Project()
+	entry, e := decide(h.Project(), p, req)
+	entry.JournalRef = journalRef
+	return errors.Join(h.Append(entry), e)
+}
+
+// Admissible reports the refusal Admit would record for req, without recording
+// anything: a caller that must undo other work before admitting (a maintenance
+// cycle in flight) does so only for an admission that will go through.
+func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) error {
+	if req.Event == "" || req.Session == "" {
+		return errors.New("dispatch: identity required")
+	}
+	_, e := decide(h.Project(), p, req)
+	return e
+}
+
+// decide is the admission decision over one projection: the entry to record
+// and, for a denial, why.
+func decide(projection history.Projection, p AdmissionPolicy, req AdmissionRequest) (history.Entry, error) {
 	unit, known := projection.Units[req.Event]
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
 		WorkUnitID: req.Event, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
-		Cause: history.CauseUncaptured, JournalRef: journalRef, PolicyRef: AdmissionPolicyRef,
+		Cause: history.CauseUncaptured, PolicyRef: AdmissionPolicyRef,
 	}
 	budgets := projection.Budgets(req.Session)
 	// Only a unit never seen before is new work: a planned unit is covered by
@@ -183,7 +201,7 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryActions
 		e = fmt.Errorf("harness: action budget of %d consumed for this recovery", actions)
 	}
-	return errors.Join(h.Append(entry), e)
+	return entry, e
 }
 
 // Finish records the observed effective termination of a dispatched unit,

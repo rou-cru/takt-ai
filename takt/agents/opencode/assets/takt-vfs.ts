@@ -740,6 +740,18 @@ export default Plugin.define({
       await ctx.session.interrupt({ sessionID: id })
       return true
     }
+    // stopLanes interrupts a cycle's lane sessions together; one that fails
+    // does not keep the others running.
+    async function stopLanes(ids: readonly string[]): Promise<void> {
+      const results = await Promise.allSettled(ids.map(stopChild))
+      const failed = results.flatMap(r => r.status === "rejected" ? [r.reason] : [])
+      if (failed.length > 0) throw new AggregateError(failed, "GC lane interruption failed")
+    }
+    // cycleLanes lists the lane sessions of the cycle in flight, if any.
+    async function cycleLanes(session: string): Promise<string[]> {
+      const state = await coordinate({ action: "status", session })
+      return isCoordinatorResponse(state) && state.cycle ? Object.values(state.cycle.sessions ?? {}) : []
+    }
     // createChildSession and promptChild are the generic child-session trio:
     // GC's own pump and the interlocutor switch (below) both spin up a lane
     // session and seed it the same way, so neither owns this pair.
@@ -760,7 +772,7 @@ export default Plugin.define({
     const restoreGCCycle = once(async () => {
       const state = await coordinate({ action: "status" })
       if (isCoordinatorResponse(state) && state.cycle) {
-        for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
+        await stopLanes(Object.values(state.cycle.sessions ?? {}))
         await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
       }
     })
@@ -771,7 +783,7 @@ export default Plugin.define({
           try {
             const state = await coordinate({ action: "status" })
             if (isCoordinatorResponse(state) && state.cycle) {
-              for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
+              await stopLanes(Object.values(state.cycle.sessions ?? {}))
               await coordinate({ action: "abort", evidence: error instanceof Error ? error.message : "unknown error" })
             }
           } catch (recoveryError) {
@@ -891,16 +903,19 @@ export default Plugin.define({
       if (!inputs.has(unitKey(root, unit))) throw refused("missing_inputs", specialist, root, new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before delegating it, or declare that none exists yet`), unit)
       const delegation = `${event.sessionID}:${event.id}`
       if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
-      // A cleanup cycle never holds a delegation: its lanes stop here and the
-      // admission ends the cycle itself.
-      const running = await coordinate({ action: "status", session: root })
-      if (isCoordinatorResponse(running) && running.cycle) for (const id of Object.values(running.cycle.sessions ?? {})) await stopChild(id)
+      // A cleanup cycle never holds a delegation: an admitted one ends the
+      // cycle and discards its delta, then its lanes stop. A denied one leaves
+      // the cycle and its lanes running.
+      const lanes = await cycleLanes(root)
       try {
         await dispatchAction({ action: "admit", event: unit, dispatch: delegation, session: root, agent: specialist })
       } catch (error) {
         const cause = error instanceof Error ? error : new Error("dispatch admission failed")
         throw refused("admission_denied", specialist, root, cause, unit)
       }
+      // The cycle is already closed: a lane that keeps running only meets
+      // refusals, so a failed interruption never refuses the delegation.
+      await stopLanes(lanes).catch(error => console.error("Takt GC lane interruption", error))
       // Only an admitted delegation is remembered: a denied one never ran.
       delegations.set(delegation, { unit, root, agent: specialist })
       await persistDelegations()

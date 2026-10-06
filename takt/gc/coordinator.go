@@ -145,12 +145,12 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry) {
 }
 
 // Held reports whether a maintenance cycle is in flight. It never gates
-// ordinary dispatch: a delegation ends the cycle instead (see Yield).
+// ordinary dispatch: an admitted delegation ends the cycle instead.
 func (c *Coordinator) Held() bool { return c.Cycle != nil }
 
 // Admit composes ordinary dispatch admission with the session pace counters.
 // Maintenance never holds an admission: the caller ends a cycle in flight
-// (Yield) before admitting. Concurrency, plan coverage and recovery budgets are
+// before admitting. Concurrency, plan coverage and recovery budgets are
 // package dispatch's concern, not GC's.
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error {
 	p, e := dispatch.LoadAdmissionPolicy()
