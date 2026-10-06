@@ -248,6 +248,8 @@ func TestControllerDeclaresTerminalViewFields(t *testing.T) {
 // the first frame.
 func TestColorProfileSelectsThePaletteMode(t *testing.T) {
 	t.Cleanup(func() { theme.SetMode(theme.ModeColor) })
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
 	m := New(t.TempDir())
 	for _, step := range []struct {
 		profile colorprofile.Profile
@@ -261,5 +263,17 @@ func TestColorProfileSelectsThePaletteMode(t *testing.T) {
 		if theme.TextPrimary != step.want {
 			t.Errorf("after %v: text.primary = %v, want %v", step.profile, theme.TextPrimary, step.want)
 		}
+	}
+}
+
+// NO_COLOR forces monochrome whatever its value: the reported profile never
+// colors the surface back.
+func TestColorProfileKeepsNoColorMonochrome(t *testing.T) {
+	t.Cleanup(func() { theme.SetMode(theme.ModeColor) })
+	t.Setenv("NO_COLOR", "0")
+	m := New(t.TempDir())
+	m.Update(tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
+	if !theme.Mono() {
+		t.Fatalf("NO_COLOR=0 with a true-color profile rendered color: text.primary = %v", theme.TextPrimary)
 	}
 }

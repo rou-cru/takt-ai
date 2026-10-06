@@ -76,7 +76,7 @@ Bubble Tea message
         ├── ActionRequest / ActionResult ──▶ Runtime boundary ──▶ foreground model
         ├── WindowSize ──────────────────▶ every stacked model
         ├── Paste ───────────────────────▶ foreground model (text entry)
-        ├── environment / capability report ──▶ controller (surface capability)
+        ├── color-profile report ────────▶ controller (surface capability)
         └── any other message ───────────▶ foreground model (or main menu)
 ```
 
