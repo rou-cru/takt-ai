@@ -110,7 +110,13 @@ const gcCoordinateCalls = () => calls.filter(c => c.verb === "gc" && c.sub === "
 const ticks = () => gcCoordinateCalls().filter(c => requestOf(c).action === "tick")
 sessionIdle("switch-root-child")
 sessionIdle("root")
-for (let i = 0; i < 100 && ticks().length === 0; i++) await new Promise(resolve => setTimeout(resolve, 10))
+// until polls cond every 10ms, at most tries times, without a loop of awaits.
+const until = async (cond, tries) => {
+  if (cond() || tries === 0) return
+  await new Promise(resolve => setTimeout(resolve, 10))
+  return until(cond, tries - 1)
+}
+await until(() => ticks().length > 0, 100)
 assert.equal(ticks().length, 1, "exactly the root session's idle must reach gc coordinate")
 assert.equal(requestOf(ticks()[0]).session, "root", "rootSession() did not resolve the switch-created session's root")
 

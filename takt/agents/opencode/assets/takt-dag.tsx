@@ -305,7 +305,7 @@ function connectedComponents(snapshot: DagSnapshot): string[][] {
       members.push(next)
       for (const n of neighbours.get(next) ?? []) if (!seen.has(n)) { seen.add(n); pending.push(n) }
     }
-    components.push(members.sort(ordinal))
+    components.push(members.toSorted(ordinal))
   }
   return components.sort((a, b) => ordinal(a[0], b[0]))
 }
@@ -344,16 +344,10 @@ function layerOffsets(turns: ReadonlyMap<number, readonly Turn[]>, maxDepth: num
   return layerY
 }
 
-export function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
-  const key = topologyKey(snapshot)
-  if (previous?.topologyKey === key) return previous
-  const g = geometryFor(snapshot)
-
-  const depths = computeDepths(snapshot)
-  const depthOf = (id: string) => depths.get(id) ?? 0
-  // Each component is a band of its own, stacked across the flow, so
-  // disconnected graphs never share a column. Within a layer nodes are ordered
-  // by id: identity only, so stable.
+// componentColumns gives each connected component a band of its own, stacked
+// across the flow, so disconnected graphs never share a column. Within a layer
+// nodes are ordered by id: identity only, so stable.
+function componentColumns(snapshot: DagSnapshot, depthOf: (id: string) => number): Map<string, number> {
   const column = new Map<string, number>()
   let bandStart = 0
   for (const members of connectedComponents(snapshot)) {
@@ -362,6 +356,17 @@ export function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout 
     for (const ids of layers.values()) ids.forEach((id, index) => column.set(id, bandStart + index))
     bandStart += Math.max(...[...layers.values()].map((ids) => ids.length))
   }
+  return column
+}
+
+export function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout {
+  const key = topologyKey(snapshot)
+  if (previous?.topologyKey === key) return previous
+  const g = geometryFor(snapshot)
+
+  const depths = computeDepths(snapshot)
+  const depthOf = (id: string) => depths.get(id) ?? 0
+  const column = componentColumns(snapshot, depthOf)
   // Perpendicular position of a node: its row on screen.
   const xOf = (id: string) => (column.get(id) ?? 0) * g.pitch
 
@@ -691,7 +696,7 @@ export function sidebarRows(snapshot: DagSnapshot): string[] {
   for (const e of snapshot.edges) prerequisites.set(e.to, [...(prerequisites.get(e.to) ?? []), e.from])
   const blocks = connectedComponents(snapshot).map((members) =>
     members
-      .sort((a, b) => (depths.get(a) ?? 0) - (depths.get(b) ?? 0) || ordinal(a, b))
+      .toSorted((a, b) => (depths.get(a) ?? 0) - (depths.get(b) ?? 0) || ordinal(a, b))
       .map((id) => {
         const from = (prerequisites.get(id) ?? []).sort(ordinal)
         return nodeText(byId.get(id) as DagNode) + (from.length > 0 ? ` ← ${from.join(", ")}` : "")
