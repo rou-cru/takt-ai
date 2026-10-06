@@ -99,8 +99,8 @@ describe("plugin setup", () => {
         shell: { async hook(name: string, callback: unknown) { shellHooks.set(name, [...(shellHooks.get(name) ?? []), callback]); return { dispose() {} } } },
         tool: {
           async hook(name: string, callback: unknown) { toolHooks.set(name, [...(toolHooks.get(name) ?? []), callback]); return { dispose() {} } },
-          async transform(callback: (editor: { add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
-            callback({ add(definition) { tools.set(definition.name, definition) } })
+          async transform(callback: (editor: { get(): undefined; update(): void; add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
+            await callback({ get() { return undefined }, update() {}, add(definition) { tools.set(definition.name, definition) } })
             return { dispose() {} }
           },
         },
@@ -133,7 +133,7 @@ describe("plugin setup", () => {
       await expect(execute("gc_baseline", {})).rejects.toThrow("GC baseline requires the attached verifier session")
       await expect(execute("gc_prepare", {})).rejects.toThrow("GC preparation belongs to the root ordinary workflow")
       await expect(execute("dispatch_commit", { version: "v1", plan: [] })).rejects.toThrow("dispatch_commit belongs to the root orchestrator")
-      await expect(execute("vfs_discard", { author_key: "claim-1", call_id: "discard-1" })).rejects.toThrow("vfs_discard belongs to the orchestrator")
+      await expect(execute("vfs_discard", { author_key: "claim-1" })).rejects.toThrow("vfs_discard belongs to the orchestrator")
       await expect(execute("vfs_verify", { author_key: "missing", pass: false, finding: "not staged" })).rejects.toThrow("author_key does not name an active binding")
       await expect(execute("vfs_consolidate", { author_key: "claim-1", checkpoint: "checkpoint" })).rejects.toThrow("vfs_consolidate belongs to the orchestrator")
       const orchestrator = { sessionID: "root", agent: "__TAKT_ORCHESTRATOR_ID__" }
@@ -141,7 +141,6 @@ describe("plugin setup", () => {
       await expect(execute("claim_release", { claim_key: "missing" }, orchestrator)).rejects.toThrow("unknown claim_key missing")
       await execute("claim_release", { claim_key: "claim-1", confirmed: true }, orchestrator)
       await execute("claim_assign", { work_unit_id: "unit-b", agent: "test", scope: ["src/new.ts"] }, orchestrator)
-      await execute("claim_assign_verifier", { work_unit_id: "unit-b-verify", agent: "verify", author_key: "claim-1" }, orchestrator)
       await execute("dispatch_commit", { version: "plan-1", plan: [{ unit: "unit-b", contract: "unit tests" }] }, orchestrator)
       await execute("dispatch_activity_start", { activity_id: "activity-1", node_kind: "orchestrator" }, orchestrator)
       await execute("dispatch_close_recovery", { objective: "restore", evidence: "tests pass", demonstrated: true }, orchestrator)
@@ -157,9 +156,9 @@ describe("plugin setup", () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
       expect(requests.some(({ command }) => command === "coordinate")).toBe(true)
       await execute("vfs_bind", { scope: ["src/a.go"] })
-      await execute("vfs_write", { path: "src/a.go", content: "hello", call_id: "write-1" })
-      expect((await execute("vfs_read", { path: "src/a.go", call_id: "read-1" })).content).toBe("staged content")
-      await execute("vfs_delete", { path: "src/a.go", call_id: "delete-1" })
+      await execute("vfs_write", { path: "src/a.go", content: "hello" })
+      expect((await execute("vfs_read", { path: "src/a.go" })).content).toBe("staged content")
+      await execute("vfs_delete", { path: "src/a.go" })
       expect(requests.map(({ command }) => command)).toContain("op")
       expect(requests.some(({ request }) => request.action === "create")).toBe(true)
       expect(requests.some(({ request }) => request.action === "read")).toBe(true)
@@ -247,11 +246,8 @@ describe("plugin setup", () => {
       })
       expect(usageRequests[0].request).not.toHaveProperty("attributes.message_id")
 
-      await execute("vfs_discard", { author_key: "author-1", call_id: "discard-1" }, orchestrator)
+      await execute("vfs_discard", { author_key: "author-1" }, orchestrator)
       await execute("vfs_bind", { scope: ["src/a.go"] })
-      await execute("vfs_bind", { author_key: "author-1", scope: ["src/a.go"] }, { sessionID: "verifier", agent: "verify" })
-      expect((await execute("vfs_read", { path: "src/a.go", call_id: "verify-read-1" }, { sessionID: "verifier", agent: "verify" })).content).toBe("staged content")
-      expect((await execute("vfs_verify", { author_key: "author-1", pass: false, finding: "missing assertion" }, { sessionID: "verifier", agent: "verify" })).content).toContain("Verdict: rejected")
       await execute("vfs_consolidate", { author_key: "author-1", checkpoint: "unit-a-verified" }, orchestrator)
     } finally {
       disposePlugin?.()

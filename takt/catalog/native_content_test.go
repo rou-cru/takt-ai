@@ -100,6 +100,8 @@ func TestLoadNativeContentDeclaresRoleClass(t *testing.T) {
 	}
 }
 
+// TestSimplifyInstancesHoldOneAdmittedRoleEach checks that the simplify specialty is
+// one execution instance and that verification instances hold only verifier grants.
 func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	// The simplify specialty is a single execution instance, shared by
 	// ordinary cleanup and harness-attached GC collection. GC authority comes
@@ -115,6 +117,9 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	wantVFS := map[string][]model.VFSCapability{
 		"simplify": {model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete},
 		"verify":   {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
+		// Judges are verification instances: only their objective differs.
+		"judge-a": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
+		"judge-b": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
 	}
 	packages, err := LoadPackages()
 	if err != nil {

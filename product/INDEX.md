@@ -18,6 +18,8 @@ This corpus defines approved product requirements, technical invariants, shared 
 
 Read the owning product requirements, then [the TUI surface profile](app/tui/VDS_TUI.md), which defines its own tokens, patterns, and acceptance criteria.
 
+A derived C4 view of the implemented structure is in [docs/design/architecture](../docs/design/architecture/README.md); it is not normative.
+
 ## 1. Two Systems, One Product
 
 Takt comprises two distinct systems governed by the same Constitution and built to the same engineering doctrine:

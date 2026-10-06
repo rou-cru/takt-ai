@@ -31,7 +31,7 @@ const (
 	// unknownInstance is a specialist name the catalog does not declare.
 	unknownInstance = "no-such-specialist"
 	// noGrantInstance is a catalog instance that declares an explicit empty grant list.
-	noGrantInstance = "judge-a"
+	noGrantInstance = "pm"
 	// unsupportedAction is an operation type the dispatcher does not implement.
 	unsupportedAction OperationType = "bogus"
 	// outsideAttempt is an attempt identity no assignment was issued for.
@@ -792,6 +792,9 @@ func TestAssignScopeAcrossRoots(t *testing.T) {
 	}
 }
 
+// TestWorkspaceLocalStoreIsPrivate checks that the workspace-local store is created
+// private (0700), cannot be claimed as workspace content, and imports no claims from
+// a store kept elsewhere.
 func TestWorkspaceLocalStoreIsPrivate(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -824,5 +827,30 @@ func TestWorkspaceLocalStoreIsPrivate(t *testing.T) {
 	}
 	if len(f.OwnershipClaims("s")) != 0 {
 		t.Fatal("new local store imported claims")
+	}
+}
+
+// An admitted retry must adopt its own gate, even when the previous launch
+// ended before adopting its assignment.
+func TestVerifierRetryReplacesUnadoptedGate(t *testing.T) {
+	f, _, _ := durable(t)
+	author := bind(t, f, "dev", "writer", "dev", "a.go")
+	identity := Identity{SessionID: "s", WorkUnitID: "review", AttemptID: "1", AgentID: "verify", Specialist: "verify"}
+	old, err := f.AssignVerifier(identity, author)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.AttemptID = "2"
+	fresh, err := f.AssignVerifier(identity, author)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.bindings[old].Prelaunch {
+		t.Fatal("previous gate remained pending")
+	}
+	identity.GateAuthorKey = author
+	adopted, err := f.Bind(identity, nil)
+	if err != nil || adopted != fresh {
+		t.Fatalf("retry adopted %q, %v; want %q", adopted, err, fresh)
 	}
 }

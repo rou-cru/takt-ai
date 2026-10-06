@@ -15,6 +15,8 @@ function checkIdentity(request, ctx, unit) {
     assert.equal(request[field], undefined, `${field}: ${JSON.stringify(request)}`)
   }
 }
+// bind registers ctx as the specialist of unit through the plugin and returns the
+// binding key the harness answered with.
 async function bind(tools, messages, ctx, unit, authorKey) {
   const before = messages.length
   const result = await tools.vfs_bind.execute({
@@ -22,7 +24,7 @@ async function bind(tools, messages, ctx, unit, authorKey) {
     // Model-supplied identity must not override the harness context.
     agent_id: "impostor", specialist: "impostor",
   }, ctx)
-  assert.equal(messages.length, before + (authorKey ? 2 : 1))
+  assert.equal(messages.length, before + 1)
   const message = messages.at(-1)
   assert.equal(message.command, "bind")
   checkIdentity(message.request, ctx, unit)
@@ -38,6 +40,8 @@ async function bind(tools, messages, ctx, unit, authorKey) {
 // Keys are opaque transport responses, not a second implementation of bindings.
 for (const reverse of [false, true]) {
   const messages = []
+  let claims = []
+  const contextHooks = []
   let sequence = 0
   let attempt = 0
   let omitMutationResult = false
@@ -68,7 +72,7 @@ for (const reverse of [false, true]) {
         },
         // The attempt and the invariant set's version are issued by the harness,
         // so the plugin can only learn them from this answer.
-        stdout: JSON.stringify({ ok: true, key, attempt_id: String(command === "bind" ? ++attempt : 0), invariants_version: "inv1:test", ...mutationResult(command) }),
+        get stdout() { return JSON.stringify({ ok: true, ...(command === "claims" ? { claims } : {}), key, attempt_id: String(command === "bind" ? ++attempt : 0), invariants_version: "inv1:test", ...mutationResult(command) }) },
         exited: Promise.resolve(0),
       }
     },
@@ -89,7 +93,10 @@ for (const reverse of [false, true]) {
     location: { directory: "/workspace" },
     storage,
     session: {
-      hook: async () => ({ dispose() {} }),
+      hook: async (name, callback) => {
+        if (name === "context") contextHooks.push(callback)
+        return { dispose() {} }
+      },
       async get({ sessionID }) {
         assert.ok(sessionID === "root" || Object.hasOwn(parents, sessionID), sessionID)
         // The host titles a delegated session with its delegation's description,
@@ -97,6 +104,7 @@ for (const reverse of [false, true]) {
         return parents[sessionID] ? { parentID: parents[sessionID], title: sessionID } : { parentID: parents[sessionID] }
       },
     },
+    agent: { get: async () => ({ data: { permissions: [{ action: "vfs_read", resource: "*", effect: "allow" }, { action: "vfs_verify", resource: "*", effect: "allow" }] } }) },
     permission: { hook: async () => () => {} },
     shell: { hook: async () => () => {} },
     tool: {
@@ -131,7 +139,15 @@ for (const reverse of [false, true]) {
   // the author key alone links it to the staged work it judges.
   const expectations = []
   for (const [ctx, unit] of reverse ? registrations.toReversed() : registrations) {
-    expectations.push({ ctx, unit, key: await bind(tools, messages, ctx, ctx.sessionID, keys[unit]) })
+    claims = [{ key: "pending", root_session_id: "root", work_unit_id: ctx.sessionID,
+      agent_id: ctx.agent, target_instance: ctx.agent, pending: true, scope: [], author_key: keys[unit] }]
+    // CodeMode supplies system context but no event.tools map.
+    const event = { ...ctx, system: [] }
+    for (const hook of contextHooks) await hook(event) // NOSONAR: hooks run in registration order over shared claims
+    const bound = messages.findLast(message => message.command === "bind")
+    checkIdentity(bound.request, ctx, ctx.sessionID)
+    assert.equal(bound.request.author_key, keys[unit])
+    expectations.push({ ctx, unit, key: bound.key })
   }
   // The verifier names only the author and its verdict; the judged revision
   // and hash are the author's staged state, filled in by the plugin.
@@ -160,7 +176,7 @@ for (const reverse of [false, true]) {
     [reviewerB, "author-b"],
   ]) {
     const before = messages.length
-    await assert.rejects(tools.vfs_verify.execute(args(keys[unit]), ctx), /bind to this author_key/)
+    await assert.rejects(tools.vfs_verify.execute(args(keys[unit]), ctx), /not assigned to this verifier delegation/) // NOSONAR: each rejection is checked against the message count before the next
     assert.equal(messages.length, before, "unbound verifier sent IPC")
   }
   // A new attempt and a refreshed verifier binding must replace the old
@@ -172,7 +188,10 @@ for (const reverse of [false, true]) {
   assert.equal(messages.at(-1).request.action, "rollback")
   assert.equal(messages.at(-1).request.author_key, keys["author-a"])
   const nextAuthor = await bind(tools, messages, authorA, "author-a")
-  const nextVerifier = await bind(tools, messages, reviewerA, "review-a", nextAuthor)
+  claims = [{ key: "retry-pending", root_session_id: "root", work_unit_id: "review-a",
+    agent_id: reviewerA.agent, target_instance: reviewerA.agent, pending: true, scope: [], author_key: nextAuthor }]
+  for (const hook of contextHooks) await hook({ ...reviewerA, system: [] }) // NOSONAR: hooks run in registration order over shared claims
+  const nextVerifier = messages.findLast(message => message.command === "bind").key
   await tools.vfs_verify.execute(args(nextAuthor), reviewerA)
   const next = messages.at(-1)
   assert.equal(next.command, "verify")

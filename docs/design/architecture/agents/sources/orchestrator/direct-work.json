@@ -1,0 +1,210 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Orchestrator: when to act directly",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/direct-work.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests"
+    },
+    {
+      "id": "outcome",
+      "label": "Outcome"
+    },
+    {
+      "id": "growth",
+      "label": "Growth"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "a1",
+      "lane": "tests",
+      "col": 0,
+      "type": "security",
+      "label": "Claimed path?",
+      "sublabel": "held by an active claim",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 14,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "a2",
+      "lane": "tests",
+      "col": 2,
+      "type": "security",
+      "label": "Ordered or urgent?",
+      "sublabel": "user ordered, urgency declared",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 14,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "a3",
+      "lane": "tests",
+      "col": 1,
+      "type": "security",
+      "label": "Trivial?",
+      "sublabel": "one file, one concern",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 14,
+          "end_line": 22
+        }
+      ]
+    },
+    {
+      "id": "d1",
+      "lane": "outcome",
+      "col": 0,
+      "type": "backend",
+      "label": "Not directly",
+      "sublabel": "the claim keeps the path",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 16,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "direct",
+      "lane": "outcome",
+      "col": 1,
+      "type": "backend",
+      "label": "Work directly",
+      "sublabel": "activity start and finish recorded",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 22,
+          "end_line": 26
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "lane": "growth",
+      "col": 1,
+      "type": "backend",
+      "label": "Route as a phase",
+      "sublabel": "through workflow-selection",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 26,
+          "end_line": 28
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "lane": "outcome",
+      "col": 2,
+      "type": "backend",
+      "label": "Delegate",
+      "sublabel": "specialist owns the judgment",
+      "width": 180,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 14,
+          "end_line": 28
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 33,
+          "end_line": 47
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "a1",
+      "to": "d1",
+      "label": "yes"
+    },
+    {
+      "id": "e2",
+      "from": "a1",
+      "to": "a3",
+      "label": "no",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "a3",
+      "to": "direct",
+      "label": "yes"
+    },
+    {
+      "id": "e4",
+      "from": "a3",
+      "to": "a2",
+      "label": "no"
+    },
+    {
+      "id": "e5",
+      "from": "a2",
+      "to": "direct",
+      "label": "yes"
+    },
+    {
+      "id": "e6",
+      "from": "a2",
+      "to": "d2",
+      "label": "no"
+    },
+    {
+      "id": "e7",
+      "from": "direct",
+      "to": "route",
+      "label": "grows into a unit",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "While working directly",
+      "items": [
+        "Record each concern with dispatch_activity_start and close it with dispatch_activity_finish before delegating or answering",
+        "Never run build, lint or full suites, and never certify own work unless the user asks"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Never",
+      "items": [
+        "A technology choice, new implementation of a component, or absorbing an available specialist's judgment"
+      ]
+    }
+  ]
+}

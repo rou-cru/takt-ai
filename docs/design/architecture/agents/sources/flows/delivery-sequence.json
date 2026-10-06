@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: implementation and verification",
+    "output": "docs/design/architecture/agents/diagrams/flows/delivery-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      684
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch + VFS",
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "dev",
+      "type": "backend",
+      "label": "takt-dev",
+      "sublabel": "execution",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "backend",
+      "label": "takt-verify",
+      "sublabel": "verification",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "type": "external",
+      "label": "Git",
+      "sublabel": "takt only",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "takt",
+      "to": "harness",
+      "y": 160,
+      "label": "dispatch_commit: DAG from the WBS",
+      "variant": "security"
+    },
+    {
+      "id": "m02",
+      "from": "takt",
+      "to": "harness",
+      "y": 188,
+      "label": "dispatch_inputs, claim_assign: writable set",
+      "variant": "security"
+    },
+    {
+      "id": "m03",
+      "from": "takt",
+      "to": "dev",
+      "y": 216,
+      "label": "delegate: brief, acceptance",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m04",
+      "from": "harness",
+      "to": "dev",
+      "y": 244,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m05",
+      "from": "dev",
+      "to": "harness",
+      "y": 272,
+      "label": "vfs_bind, then vfs_write, vfs_delete: stage",
+      "variant": "security"
+    },
+    {
+      "id": "m06",
+      "from": "dev",
+      "to": "memory",
+      "y": 300,
+      "label": "memory_record: observations",
+      "variant": "dashed"
+    },
+    {
+      "id": "m07",
+      "from": "dev",
+      "to": "takt",
+      "y": 328,
+      "label": "author key, staged files",
+      "variant": "return"
+    },
+    {
+      "id": "m08",
+      "from": "takt",
+      "to": "harness",
+      "y": 356,
+      "label": "dispatch_inputs: verify unit",
+      "variant": "security"
+    },
+    {
+      "id": "m09",
+      "from": "takt",
+      "to": "verify",
+      "y": 384,
+      "label": "delegate: author_keys",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m10",
+      "from": "harness",
+      "to": "verify",
+      "y": 412,
+      "label": "admit; gate bound per author_key",
+      "variant": "security"
+    },
+    {
+      "id": "m11",
+      "from": "verify",
+      "to": "harness",
+      "y": 440,
+      "label": "vfs_read by path, vfs_verify per key",
+      "variant": "default"
+    },
+    {
+      "id": "m12",
+      "from": "verify",
+      "to": "memory",
+      "y": 468,
+      "label": "memory_record: report",
+      "variant": "dashed"
+    },
+    {
+      "id": "m13",
+      "from": "verify",
+      "to": "takt",
+      "y": 496,
+      "label": "deliver_result: report ID",
+      "variant": "return"
+    },
+    {
+      "id": "m14",
+      "from": "takt",
+      "to": "harness",
+      "y": 524,
+      "label": "vfs_consolidate: staged to workspace",
+      "variant": "security"
+    },
+    {
+      "id": "m15",
+      "from": "takt",
+      "to": "verify",
+      "y": 552,
+      "label": "global Verify on materialized workspace",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m16",
+      "from": "takt",
+      "to": "git",
+      "y": 580,
+      "label": "commit after it passes",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Delivery",
+      "items": [
+        "Execution ends in staged VFS work; releasing to the workspace is takt's",
+        "Consolidation needs a verdict covering the staged revision",
+        "Every delegation follows its dispatch_inputs; takt takes each returned delivery where the plan sends it before delegating more"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Not drawn",
+      "items": [
+        "A failing verdict leads to the repair loop (see the next view)",
+        "Build, lint and full suites run only in the global Verify, never on staged work"
+      ]
+    }
+  ]
+}

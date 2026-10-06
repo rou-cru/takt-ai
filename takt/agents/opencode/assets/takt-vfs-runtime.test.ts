@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
+import { Schema } from "effect"
 import vfsPlugin from "./takt-vfs"
 
 // The placeholders the harness templates at deploy time stay literal here, so
@@ -27,6 +28,7 @@ type Hooks = Map<string, Array<(event: HookEvent) => Promise<void>>>
 type Ctx = { sessionID: string; agent: string }
 type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown> }
 type Options = {
+  nativeInput?: unknown
   respond?: (call: Call) => Reply | undefined
   claims?: unknown[]
   sessions?: Record<string, SessionInfo>
@@ -85,6 +87,7 @@ async function startVfs(options: Options = {}) {
     created: [] as unknown[], interrupts: [] as string[], waits: [] as string[],
     prompts: [] as Array<{ sessionID: string; text: string }>, synthetics: [] as Array<{ sessionID: string; text: string }>,
   }
+  const nativeSubagent = { input: options.nativeInput ?? { type: "object", properties: { description: { type: "string" }, agent: { type: "string" } } } as unknown }
   const tools = new Map<string, { execute?: (...args: never[]) => unknown }>()
   const toolHooks: Hooks = new Map()
   const permissionHooks: Hooks = new Map()
@@ -157,8 +160,8 @@ async function startVfs(options: Options = {}) {
       shell: { hook: register(shellHooks) },
       tool: {
         hook: register(toolHooks),
-        async transform(callback: (editor: { add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
-          callback({ add(definition) { tools.set(definition.name, definition) } })
+        async transform(callback: (editor: { get(name: string): typeof nativeSubagent | undefined; update(name: string, change: (tool: typeof nativeSubagent) => void): void; add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
+          await callback({ get(name) { return name === "subagent" ? nativeSubagent : undefined }, update(name, change) { if (name === "subagent") change(nativeSubagent) }, add(definition) { tools.set(definition.name, definition) } })
           return { dispose() {} }
         },
       },
@@ -172,7 +175,7 @@ async function startVfs(options: Options = {}) {
     throw error
   }
   return {
-    calls, log, warnings, errors, storage,
+    calls, log, warnings, errors, storage, nativeSubagent,
     actions: (kind: string) => calls.filter((call) => call.kind === kind).map((call) => call.command),
     requests: (kind: string, command: string) => calls.filter((call) => call.kind === kind && call.command === command).map((call) => call.request),
     run(name: string, input: unknown, ctx: Ctx = dev) {
@@ -195,6 +198,21 @@ async function startVfs(options: Options = {}) {
 }
 
 describe("setup guards", () => {
+  test("extends the actual native Effect schema used by delegation tools", async () => {
+    const input = Schema.Struct({
+      description: Schema.String, agent: Schema.String, prompt: Schema.String,
+      sessionID: Schema.optional(Schema.String),
+    })
+    const vfs = await startVfs({ nativeInput: input })
+    try {
+      expect(vfs.nativeSubagent.input).toMatchObject({
+        type: "object", required: ["description", "agent", "prompt"],
+        properties: { description: { type: "string" }, agent: { type: "string" },
+          author_keys: { type: "array", minItems: 1, uniqueItems: true } },
+      })
+    } finally { await vfs.stop() }
+  })
+
   test("opened in the home directory, CodeGraph stays off and its tools refuse", async () => {
     const vfs = await startVfs({ home: true })
     try {
@@ -226,7 +244,7 @@ describe("takt-ai answers", () => {
     const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "op" ? reply : undefined })
     try {
       await vfs.run("vfs_bind", { scope: ["src/a.go"] })
-      const write = () => vfs.run("vfs_write", { path: "src/a.go", content: "x", call_id: "w" })
+      const write = () => vfs.run("vfs_write", { path: "src/a.go", content: "x" })
       reply = { out: "garbage", code: 0 }
       await expect(write()).rejects.toThrow("takt-ai vfs op exited 0: garbage")
       reply = { out: "", err: "stderr text", code: 4 }
@@ -494,6 +512,8 @@ describe("maintenance cycle", () => {
       await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This maintenance cycle does not use that tool")
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
+      // The verifier keeps what an ordinary verification uses: web and Engram reads.
+      for (const tool of ["webfetch", "websearch", "engram_mem_search", "engram_mem_get_observation"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
 
       vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "gcv" } } as OpenCodeEvent)
       await sleep(QUIET_MS)
@@ -525,7 +545,7 @@ describe("maintenance cycle", () => {
       await vfs.run("gc_authorize", {}, collector)
       expect(vfs.storage.get("takt/vfs/bindings")).toMatchObject([{ key: "author-gc", agent: "simplify", session: "root", dispatch: "gcc", unit: "cycle-1" }])
 
-      await vfs.run("vfs_write", { path: "a.go", content: "package a", call_id: "gc-w" }, collector)
+      await vfs.run("vfs_write", { path: "a.go", content: "package a" }, collector)
       expect(vfs.requests("vfs", "op")[0]).toMatchObject({ session_id: "root", work_unit_id: "cycle-1", cycle_id: "cycle-1", author_key: "author-gc", action: "create" })
     } finally { await vfs.stop() }
   })
@@ -742,7 +762,7 @@ describe("claims and consolidation", () => {
       expect(vfs.requests("vfs", "bind")).toEqual([expect.objectContaining({ scope: [], author_key: "author-key", specialist: "verify" })])
       expect(Object.keys(event.tools)).toEqual(["vfs_read", "vfs_verify"])
       expect(event.system[0].text).toContain("author_key author-key: src/a.go, src/b.go")
-      await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-gate" }, reviewer)
+      await vfs.run("vfs_read", { path: "src/a.go" }, reviewer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-key" })])
     } finally { await vfs.stop() }
   })
@@ -761,16 +781,244 @@ describe("claims and consolidation", () => {
     try {
       await vfs.fire(vfs.session, "context", gateContext())
       expect(vfs.requests("vfs", "bind")).toEqual(authors.map(({ key }) => expect.objectContaining({ scope: [], author_key: key })))
-      await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-a", author_key: "author-a" }, reviewer)
-      await vfs.run("vfs_read", { path: "src/b.go", call_id: "read-b", author_key: "author-b" }, reviewer)
+      await vfs.run("vfs_read", { path: "src/a.go", author_key: "author-a" }, reviewer)
+      await vfs.run("vfs_read", { path: "src/b.go", author_key: "author-b" }, reviewer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-a" }), expect.objectContaining({ view_key: "author-b" })])
-      await expect(vfs.run("vfs_read", { path: "src/c.go", call_id: "read-c", author_key: "author-z" }, reviewer)).rejects.toThrow("is not one of your gates")
+      await expect(vfs.run("vfs_read", { path: "src/c.go", author_key: "author-z" }, reviewer)).rejects.toThrow("is not one of your gates")
       for (const { key } of authors) await vfs.run("vfs_verify", { author_key: key, pass: true, finding: "holds" }, reviewer)
       expect(vfs.requests("vfs", "verify")).toEqual(authors.map(({ key }) => expect.objectContaining({ author_key: key, verifier_key: `gate-${key}`, pass: true })))
       const again = gateContext()
       await vfs.fire(vfs.session, "context", again)
       expect(vfs.requests("vfs", "bind")).toHaveLength(2)
     } finally { await vfs.stop() }
+  })
+
+  test("a gate reads by path without naming its author: the path's owner decides", async () => {
+    const authors = ["author-a", "author-b"].map((key) => ({ key, agent: "dev", session: "root", dispatch: `${key}-child`, unit: key, revision: 1, deltaHash: `hash-${key}` }))
+    const reviewer: Ctx = { sessionID: "verify-child", agent: "verify" }
+    const gate = (author: string) => ({ key: `gate-${author}`, root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: author })
+    const owned = (author: string, path: string) => ({ key: author, root_session_id: "root", work_unit_id: author, agent_id: "dev", target_instance: "dev", active: true, scope: [path] })
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      permissions: { verify: verifierGrants },
+      storage: { "takt/vfs/bindings": authors },
+      claims: [owned("author-a", "src/a.go"), owned("author-b", "src/b.go"), gate("author-a"), gate("author-b")],
+      respond: (call) => call.command === "bind" ? json({ ok: true, key: `gate-${call.request.author_key}`, attempt_id: "a1", invariants_version: "v1" }) : undefined,
+    })
+    try {
+      await vfs.fire(vfs.session, "context", gateContext())
+      await vfs.run("vfs_read", { path: "src/b.go" }, reviewer)
+      await vfs.run("vfs_read", { path: "src/a.go" }, reviewer)
+      // A path no author owns is workspace content, readable through any gate.
+      await vfs.run("vfs_read", { path: "README.md" }, reviewer)
+      expect(vfs.requests("vfs", "op")).toEqual([
+        expect.objectContaining({ view_key: "author-b" }), expect.objectContaining({ view_key: "author-a" }), expect.objectContaining({ view_key: "author-a" }),
+      ])
+    } finally { await vfs.stop() }
+  })
+
+  test("a verdict cannot silently move to a version changed after the verifier read it", async () => {
+    const reviewer = { sessionID: "verify-child", agent: "verify" }
+    const author = { key: "author-key", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "hash-1" }
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      permissions: { verify: verifierGrants },
+      storage: { "takt/vfs/bindings": [author] },
+      claims: [{ key: "gate-key", root_session_id: "root", work_unit_id: "gate", agent_id: "verify",
+        target_instance: "verify", pending: true, scope: [], author_key: author.key }],
+      respond: call => {
+        if (call.command === "bind") return json({ ok: true, key: "gate-key" })
+        if (call.command === "op" && call.request.action === "create") return json({ ok: true, revision: 2, delta_hash: "hash-2" })
+        if (call.command === "verify") return json({ ok: false, error: "invalid verdict: staged version changed" })
+        return undefined
+      },
+    })
+    try {
+      await vfs.fire(vfs.session, "context", { ...reviewer, system: [] })
+      await vfs.run("vfs_read", { path: "a.go", author_key: author.key }, reviewer)
+      await vfs.run("vfs_write", { path: "a.go", content: "changed" }, { sessionID: "dev-child", agent: "dev" })
+      await expect(vfs.run("vfs_verify", { author_key: author.key, pass: true, finding: "holds" }, reviewer)).rejects.toThrow(/staged version changed.*read it again with vfs_read/)
+      expect(vfs.requests("vfs", "verify")[0]).toMatchObject({ expected_revision: 1, delta_hash: "hash-1" })
+    } finally { await vfs.stop() }
+  })
+
+  describe("a verdict covers one consistent state of the author's work", () => {
+    const reviewer = { sessionID: "verify-child", agent: "verify" }
+    const author = { key: "author-key", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "hash-1" }
+    const startGate = () => {
+      let revision = 1
+      return startVfs({
+        sessions: { "verify-child": { parentID: "root", title: "gate" } },
+        permissions: { verify: verifierGrants },
+        storage: { "takt/vfs/bindings": [{ ...author }] },
+        claims: [{ key: "gate-key", root_session_id: "root", work_unit_id: "gate", agent_id: "verify",
+          target_instance: "verify", pending: true, scope: [], author_key: author.key }],
+        respond: call => {
+          if (call.command === "bind") return json({ ok: true, key: "gate-key" })
+          if (call.command === "op" && call.request.action === "create") { revision += 1; return json({ ok: true, revision, delta_hash: `hash-${revision}` }) }
+          if (call.command === "op" && call.request.action === "read") return json({ ok: true, content: `content of ${call.request.path}` })
+          return undefined
+        },
+      })
+    }
+    const authorWrites = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.run("vfs_write", { path: "a.go", content: "changed" }, { sessionID: "dev-child", agent: "dev" })
+
+    test("reads under an unchanged state carry no note and the verdict covers that state", async () => {
+      const vfs = await startGate()
+      try {
+        await vfs.fire(vfs.session, "context", { ...reviewer, system: [] })
+        const first = await vfs.run("vfs_read", { path: "a.go" }, reviewer)
+        const second = await vfs.run("vfs_read", { path: "b.go" }, reviewer)
+        expect(first.content).toBe("content of a.go")
+        expect(second.content).toBe("content of b.go")
+        await vfs.run("vfs_verify", { author_key: author.key, pass: true, finding: "holds" }, reviewer)
+        expect(vfs.requests("vfs", "verify")[0]).toMatchObject({ expected_revision: 1, delta_hash: "hash-1" })
+      } finally { await vfs.stop() }
+    })
+
+    test("a read after the author changed names the files read before it, and the verdict covers the new state", async () => {
+      const vfs = await startGate()
+      try {
+        await vfs.fire(vfs.session, "context", { ...reviewer, system: [] })
+        await vfs.run("vfs_read", { path: "a.go" }, reviewer)
+        await authorWrites(vfs)
+        const moved = await vfs.run("vfs_read", { path: "b.go" }, reviewer)
+        expect(moved.content).toContain("a.go")
+        expect(moved.content).toContain("content of b.go")
+        await vfs.run("vfs_verify", { author_key: author.key, pass: true, finding: "holds" }, reviewer)
+        expect(vfs.requests("vfs", "verify")[0]).toMatchObject({ expected_revision: 2, delta_hash: "hash-2" })
+      } finally { await vfs.stop() }
+    })
+
+    test("each change restarts the list, so the note names only files read since the last one", async () => {
+      const vfs = await startGate()
+      try {
+        await vfs.fire(vfs.session, "context", { ...reviewer, system: [] })
+        await vfs.run("vfs_read", { path: "a.go" }, reviewer)
+        await authorWrites(vfs)
+        await vfs.run("vfs_read", { path: "b.go" }, reviewer)
+        await vfs.run("vfs_read", { path: "c.go" }, reviewer)
+        await authorWrites(vfs)
+        const note = (await vfs.run("vfs_read", { path: "d.go" }, reviewer)).content
+        expect(note).toContain("b.go, c.go")
+        expect(note).not.toContain("a.go")
+      } finally { await vfs.stop() }
+    })
+  })
+
+  for (const count of [1, 2]) test(`one delegation prepares ${count} authors and its retry in CodeMode`, async () => {
+    const authors = Array.from({ length: count }, (_, index) => ({
+      key: `author-${index}`, agent: "dev", session: "root", dispatch: `dev-${index}`,
+      unit: `writer-${index}`, revision: 1, deltaHash: `hash-${index}`,
+    }))
+    const claims: Record<string, unknown>[] = authors.map(author => ({
+      key: author.key, root_session_id: "root", work_unit_id: author.unit,
+      agent_id: "dev", target_instance: "dev", active: true, scope: [`${author.key}.go`],
+    }))
+    let generation = 0
+    const reviewer = { sessionID: "verify-child", agent: "verify" }
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      permissions: { verify: verifierGrants }, claims,
+      storage: { "takt/vfs/bindings": authors },
+      respond: call => {
+        if (call.kind !== "vfs") return undefined
+        if (call.command === "assign-verifier") {
+          const key = `gate-${generation}-${call.request.author_key}`
+          claims.push({ key, root_session_id: "root", work_unit_id: "gate", agent_id: "verify",
+            target_instance: "verify", pending: true, scope: [], author_key: call.request.author_key })
+          return json({ ok: true, key })
+        }
+        if (call.command === "bind") {
+          const gate = claims.find(gate => gate.pending && gate.author_key === call.request.author_key)
+          if (!gate) throw new Error("no pending gate")
+          gate.pending = false
+          gate.active = true
+          return json({ ok: true, key: gate.key, attempt_id: String(generation), invariants_version: "inv" })
+        }
+        return undefined
+      },
+    })
+    try {
+      expect(() => vfs.run("claim_assign_verifier", {}, orchestrator)).toThrow("missing tool")
+      expect(vfs.nativeSubagent.input).toHaveProperty("properties.author_keys")
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      for (generation = 1; generation <= 2; generation++) {
+        const id = `review-${generation}`
+        await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id,
+          input: { agent: "verify", description: "gate", author_keys: authors.map(author => author.key) } })
+        const event = { ...reviewer, system: [] as Array<{ text: string }> } // real CodeMode shape
+        await vfs.fire(vfs.session, "context", event)
+        expect(event.system.map(part => part.text).join("\n")).toContain("every gate is already bound")
+        for (const author of authors) {
+          await vfs.run("vfs_read", { path: `${author.key}.go`, author_key: author.key }, reviewer)
+          await vfs.run("vfs_verify", { author_key: author.key, pass: true, finding: "reviewed" }, reviewer)
+          expect(vfs.requests("vfs", "verify").at(-1)).toMatchObject({
+            author_key: author.key, verifier_key: `gate-${generation}-${author.key}`,
+            expected_revision: 1, delta_hash: author.deltaHash,
+          })
+        }
+        await vfs.fire(vfs.tool, "execute.after", { tool: "subagent", sessionID: "root", id, status: "completed", result: {} })
+      }
+      expect(vfs.requests("vfs", "assign-verifier")).toHaveLength(count * 2)
+      expect(vfs.requests("vfs", "bind")).toHaveLength(count * 2)
+      const ids = vfs.requests("vfs", "op").map(request => request.call_id)
+      expect(ids.every(id => typeof id === "string" && id.length > 0)).toBe(true)
+      expect(new Set(ids).size).toBe(ids.length)
+      const governed = vfs.calls.filter(call => (call.kind === "dispatch" && call.command === "admit") || call.command === "assign-verifier")
+      expect(governed[0].command).toBe("admit")
+    } finally { await vfs.stop() }
+  })
+
+  test.each([[[]], [["a", "a"]], [["a", " "]], ["a"]])("author_keys %j is refused before anything is admitted", async (authorKeys) => {
+    const vfs = await startVfs({ permissions: { verify: verifierGrants } })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "bad",
+        input: { agent: "verify", description: "gate", author_keys: authorKeys } })).rejects.toThrow("unique, nonempty staged author keys")
+      expect(vfs.actions("dispatch")).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  describe("a failed verifier assignment", () => {
+    const assignment = async (failing: { release?: boolean, finish?: boolean }) => {
+      const vfs = await startVfs({
+        permissions: { verify: verifierGrants },
+        respond: call => {
+          if (call.kind === "vfs" && call.command === "assign-verifier") {
+            return call.request.author_key === "b" ? { code: 1, err: "author b is gone" } : json({ ok: true, key: `gate-${call.request.author_key}` })
+          }
+          if (call.kind === "vfs" && call.command === "release" && failing.release) return { code: 1, err: "release failed" }
+          if (call.kind === "dispatch" && call.command === "finish" && failing.finish) return { code: 1, err: "finish failed" }
+          return undefined
+        },
+      })
+      return vfs
+    }
+    const delegate = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      .then(() => vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call",
+        input: { agent: "verify", description: "gate", author_keys: ["a", "b", "c"] } }))
+
+    test("releases the gates already prepared and finishes the dispatch", async () => {
+      const vfs = await assignment({})
+      try {
+        await expect(delegate(vfs)).rejects.toThrow("author b is gone")
+        expect(vfs.requests("vfs", "release")).toEqual([expect.objectContaining({ session_id: "root", key: "gate-a" })])
+        expect(vfs.actions("dispatch")).toEqual(["admit", "finish"])
+        expect(vfs.storage.has(DELEGATIONS_KEY)).toBe(false)
+        expect(vfs.errors).toEqual([])
+      } finally { await vfs.stop() }
+    })
+
+    test("keeps its own error when the cleanup fails too, and still attempts every step", async () => {
+      const vfs = await assignment({ release: true, finish: true })
+      try {
+        await expect(delegate(vfs)).rejects.toThrow("author b is gone")
+        expect(vfs.requests("vfs", "release")).toHaveLength(1)
+        expect(vfs.actions("dispatch")).toEqual(["admit", "finish"])
+        expect(vfs.errors.map(([label]) => label)).toEqual(["Takt gate release", "Takt dispatch finish"])
+      } finally { await vfs.stop() }
+    })
   })
 
   test("a specialist taking over staged work replaces the old binding and continues from its revision", async () => {
@@ -783,7 +1031,7 @@ describe("claims and consolidation", () => {
     })
     try {
       await vfs.run("vfs_bind", { scope: ["src/a.go"] }, fixer)
-      await vfs.run("vfs_write", { path: "src/a.go", content: "x", call_id: "w1" }, fixer)
+      await vfs.run("vfs_write", { path: "src/a.go", content: "x" }, fixer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ agent_id: "fix", work_unit_id: "unit-fix", author_key: "author-1", expected_revision: 3 })])
     } finally { await vfs.stop() }
   })
@@ -864,7 +1112,7 @@ describe("shell admission", () => {
       expect(readFileSync(String(created.shell), "utf8")).not.toContain("export HOME")
       await vfs.fire(vfs.tool, "execute.after", { tool: "shell", sessionID: "dispatch", id: "s1" })
       expect(vfs.requests("vfs", "shell-import")[0]).toMatchObject({ author_key: "author-1", expected_revision: 0, work_unit_id: "unit-a" })
-      await vfs.run("vfs_write", { path: "src/a.go", content: "x", call_id: "after-import" })
+      await vfs.run("vfs_write", { path: "src/a.go", content: "x" })
       expect(vfs.requests("vfs", "op")[0]).toMatchObject({ expected_revision: 5 })
     } finally { await vfs.stop() }
   })
@@ -955,14 +1203,14 @@ describe("delegated VFS context", () => {
     expect(await remainingTools({ claims: [brokenClaim] }, { agent: BROKEN_AGENT })).toEqual(["read"])
   })
 
-  test("root sessions and requests without tools are left alone", async () => {
+  test("root sessions remain untouched and CodeMode contexts still resolve claims", async () => {
     const vfs = await startVfs({ sessions: unitSessions, permissions: { dev: grants } })
     try {
       const root = contextFor({ sessionID: "root" })
       await vfs.fire(vfs.session, "context", root)
       expect(toolNames(root)).toHaveLength(VFS_TOOL_NAMES.length + 1)
       await vfs.fire(vfs.session, "context", { sessionID: "dispatch", agent: "dev", system: [] })
-      expect(vfs.actions("vfs")).toEqual([])
+      expect(vfs.actions("vfs")).toEqual(["claims"])
     } finally { await vfs.stop() }
   })
 })

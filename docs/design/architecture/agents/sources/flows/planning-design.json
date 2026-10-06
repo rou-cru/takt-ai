@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Happy path: analysis, architecture and experience in one round",
+    "output": "docs/design/architecture/agents/diagrams/flows/planning-design.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      684
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "security",
+      "label": "Harness",
+      "sublabel": "dispatch",
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "analyst",
+      "type": "backend",
+      "label": "takt-analyst",
+      "sublabel": "planning_author",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "architect",
+      "type": "backend",
+      "label": "takt-architect",
+      "sublabel": "direct_interlocutor",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "designer",
+      "type": "backend",
+      "label": "product-designer",
+      "sublabel": "direct_interlocutor",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "Engram",
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "takt",
+      "to": "harness",
+      "y": 160,
+      "label": "dispatch_commit: planning DAG",
+      "variant": "security"
+    },
+    {
+      "id": "m02",
+      "from": "takt",
+      "to": "harness",
+      "y": 188,
+      "label": "dispatch_inputs: intent IDs, per unit",
+      "variant": "security"
+    },
+    {
+      "id": "m03",
+      "from": "takt",
+      "to": "analyst",
+      "y": 216,
+      "label": "delegate: concrete question",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m04",
+      "from": "takt",
+      "to": "architect",
+      "y": 244,
+      "label": "delegate: brief, intent IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m05",
+      "from": "takt",
+      "to": "designer",
+      "y": 272,
+      "label": "delegate: brief, intent IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m06",
+      "from": "harness",
+      "to": "analyst",
+      "y": 300,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m07",
+      "from": "harness",
+      "to": "architect",
+      "y": 328,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m08",
+      "from": "harness",
+      "to": "designer",
+      "y": 356,
+      "label": "admit, launch",
+      "variant": "security"
+    },
+    {
+      "id": "m09",
+      "from": "analyst",
+      "to": "memory",
+      "y": 384,
+      "label": "memory_record: findings",
+      "variant": "dashed"
+    },
+    {
+      "id": "m10",
+      "from": "analyst",
+      "to": "takt",
+      "y": 412,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m11",
+      "from": "architect",
+      "to": "memory",
+      "y": 440,
+      "label": "memory_record: design",
+      "variant": "dashed"
+    },
+    {
+      "id": "m12",
+      "from": "architect",
+      "to": "takt",
+      "y": 468,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m13",
+      "from": "designer",
+      "to": "memory",
+      "y": 496,
+      "label": "memory_record: experience rules",
+      "variant": "dashed"
+    },
+    {
+      "id": "m14",
+      "from": "designer",
+      "to": "takt",
+      "y": 524,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Concurrency",
+      "items": [
+        "The three delegations are issued in the same response, so they form one real round",
+        "Architect and designer are independent unless one constrains the other"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Conditions",
+      "items": [
+        "The analyst runs only when there is a concrete question",
+        "A lane with user-owned decisions waits for approval before its consumers start"
+      ]
+    }
+  ]
+}

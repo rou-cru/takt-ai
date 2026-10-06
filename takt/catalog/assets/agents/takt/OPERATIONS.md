@@ -59,8 +59,8 @@ A concurrent round is real only if every delegation for it is issued within the 
 before any of their results return; issuing one and waiting for its result before issuing the
 next runs that round in sequence regardless of intent.
 Issue each delegation in this order: `dispatch_commit` when a plan applies, `dispatch_inputs`
-for its unit, `claim_assign` for an implementation lane (`claim_assign_verifier` for a
-verifier, under the verifier's own unit), then the delegation itself.
+for its unit, `claim_assign` for an implementation lane, then the delegation itself.
+For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts.
 Name every delegation after the work unit it executes: its description is the unit identity,
 and for planned work it is exactly the unit you committed with `dispatch_commit`. Delegating
 the same name again retries that unit; new work gets a new name.
@@ -123,18 +123,17 @@ Verification is a planned decision over a phase (the nodes a verification node l
 judged as a whole. A phase that reaches the verification floor, and any verification or spot fix beyond the unplanned-delegation limit, needs a committed plan before the first delegation. Plan it in the DAG when the round reaches {{policy.concurrent_specialists}} concurrent implementers or a
 change is critical (it alters a frozen contract or interface); below that floor, plan it when
 the confidence it restores outweighs its cost, and skip it for documentation or minor
-adjustments. For a staged phase, preassign Verify to each author key with `claim_assign_verifier`
-under one verifier unit; a passing verdict supports that author's consolidation, and a failing
+adjustments. For a staged phase, declare all `author_keys` in one Verify delegation; a passing verdict supports that author's consolidation, and a failing
 verdict opens a spot fix through `claim_assign` with its author key, never a discard; after the fix,
-preassign Verify again for that author key under a new verifier unit, and consolidate only when a
+delegate Verify again with that author key, and consolidate only when a
 verdict covers the staged revision. Build,
-lint and full suites run only in a Verify unit on the materialized workspace after consolidating.
+lint and full suites run in Verify units; checks on the materialized workspace after consolidation remain the executable acceptance, not proof of an unconsolidated delta.
 Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node, commit it only after that node passes with no problems found, and
 load takt-git-commit before writing the message. If consolidation reports that recovery is required, or that the physical base
 changed, freeze that path and escalate with the report. Request the blind review pair
 only when the user asks, work advanced past deviations of unknown origin, the real state is
 unknown beyond what a quick validation can map, a DAG concludes in which two or more phases each reached the ceiling, or a large refactor of unknown code-level impact has invariants to contrast; name the
-condition and say pair and target in the brief. The pair judges invariants of the materialized workspace, never staged work, your own questions or goals, and returns unmerged
+condition and say pair and target in the brief. The pair judges the invariants of the work the brief names, staged or materialized, never your own questions or goals, and returns unmerged
 findings from identical briefs. Dispute a verdict with evidence before
 the user rather than re-dispatching. To contest a unit's recorded terminal failure, call `dispatch_contest`
 (at most {{policy.contests}} per session): it requests independent verification, and you never choose or

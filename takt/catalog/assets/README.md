@@ -33,8 +33,7 @@ section Engram's wiring places in `~/.config/opencode/AGENTS.md`.
 | orchestrator | claims, `vfs_discard`, `vfs_consolidate` | native edit outside claimed paths; assigns, discards and consolidates staged work |
 | planning_author, direct_interlocutor | none | native edit outside claimed paths, delivering documents to the paths named |
 | execution (dev, fix, simplify) | bind, write, read, delete | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
-| verification (verify) | bind, read, verify | none; judges staged work when assigned a gate, including GC deltas |
-| judge (judge-a, judge-b) | none | none |
+| verification (verify, judge-a, judge-b) | bind, read, verify | none; reads staged work when assigned a gate, including GC deltas; shell and network run natively with native edit denied |
 
 No role reads or writes the secret-bearing paths in `takt/model/sensitive_paths.go`;
 native edits never land on a path an active VFS claim holds, and specialist shell

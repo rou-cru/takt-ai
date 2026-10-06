@@ -1,0 +1,514 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Crew topology: agents and harness",
+    "output": "docs/design/architecture/agents/diagrams/crew/crew-topology.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "dispatch",
+      "type": "security",
+      "label": "Dispatch",
+      "sublabel": "admission, ceilings, history",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "icon": "person",
+      "label": "User",
+      "sublabel": "objective, approvals",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 21
+        }
+      ]
+    },
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "orchestrator",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        170,
+        280
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "analyst",
+      "type": "backend",
+      "label": "takt-analyst",
+      "sublabel": "planning_author",
+      "pos": [
+        330,
+        60
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "spec",
+      "type": "backend",
+      "label": "takt-spec",
+      "sublabel": "planning_author",
+      "pos": [
+        330,
+        114
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "tpm",
+      "type": "backend",
+      "label": "takt-tpm",
+      "sublabel": "planning_author",
+      "pos": [
+        330,
+        168
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "pm",
+      "type": "backend",
+      "label": "takt-pm",
+      "sublabel": "direct_interlocutor",
+      "pos": [
+        330,
+        262
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "architect",
+      "type": "backend",
+      "label": "takt-architect",
+      "sublabel": "direct_interlocutor",
+      "pos": [
+        330,
+        316
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "designer",
+      "type": "backend",
+      "label": "takt-product-designer",
+      "sublabel": "direct_interlocutor",
+      "pos": [
+        330,
+        370
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "dev",
+      "type": "backend",
+      "label": "takt-dev",
+      "sublabel": "execution",
+      "pos": [
+        330,
+        464
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "type": "backend",
+      "label": "takt-fix",
+      "sublabel": "execution",
+      "pos": [
+        330,
+        518
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "simplify",
+      "type": "backend",
+      "label": "takt-simplify",
+      "sublabel": "execution",
+      "pos": [
+        330,
+        572
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-simplify/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "backend",
+      "label": "takt-verify",
+      "sublabel": "verification",
+      "pos": [
+        330,
+        666
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "judge",
+      "type": "backend",
+      "label": "takt-judge",
+      "sublabel": "verification; judge-a, judge-b",
+      "pos": [
+        330,
+        720
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "vfs",
+      "type": "security",
+      "label": "VFS",
+      "sublabel": "claims, staging, gates",
+      "pos": [
+        840,
+        464
+      ],
+      "size": [
+        170,
+        302
+      ],
+      "sources": [
+        {
+          "path": "takt/vfs/vfs.go",
+          "line": 16
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "planning_author",
+      "wraps": [
+        "analyst",
+        "spec",
+        "tpm"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "direct_interlocutor",
+      "wraps": [
+        "pm",
+        "architect",
+        "designer"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "execution",
+      "wraps": [
+        "dev",
+        "fix",
+        "simplify"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "verification",
+      "wraps": [
+        "verify",
+        "judge"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-takt",
+      "from": "user",
+      "to": "takt",
+      "label": "objective",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "takt-dispatch",
+      "from": "takt",
+      "to": "dispatch",
+      "label": "commit, inputs, switch",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "takt-analyst",
+      "from": "takt",
+      "to": "analyst",
+      "variant": "default"
+    },
+    {
+      "id": "takt-spec",
+      "from": "takt",
+      "to": "spec",
+      "variant": "default"
+    },
+    {
+      "id": "takt-tpm",
+      "from": "takt",
+      "to": "tpm",
+      "variant": "default"
+    },
+    {
+      "id": "takt-pm",
+      "from": "takt",
+      "to": "pm",
+      "variant": "dashed"
+    },
+    {
+      "id": "takt-architect",
+      "from": "takt",
+      "to": "architect",
+      "variant": "dashed"
+    },
+    {
+      "id": "takt-designer",
+      "from": "takt",
+      "to": "designer",
+      "variant": "dashed"
+    },
+    {
+      "id": "takt-dev",
+      "from": "takt",
+      "to": "dev",
+      "variant": "emphasis"
+    },
+    {
+      "id": "takt-fix",
+      "from": "takt",
+      "to": "fix",
+      "variant": "default"
+    },
+    {
+      "id": "takt-simplify",
+      "from": "takt",
+      "to": "simplify",
+      "variant": "default"
+    },
+    {
+      "id": "takt-verify",
+      "from": "takt",
+      "to": "verify",
+      "variant": "default"
+    },
+    {
+      "id": "takt-judge",
+      "from": "takt",
+      "to": "judge",
+      "variant": "default"
+    },
+    {
+      "id": "dev-vfs",
+      "from": "dev",
+      "to": "vfs",
+      "label": "bind, write",
+      "variant": "security"
+    },
+    {
+      "id": "fix-vfs",
+      "from": "fix",
+      "to": "vfs",
+      "variant": "security"
+    },
+    {
+      "id": "simplify-vfs",
+      "from": "simplify",
+      "to": "vfs",
+      "variant": "security"
+    },
+    {
+      "id": "verify-vfs",
+      "from": "verify",
+      "to": "vfs",
+      "label": "read, verify",
+      "variant": "security"
+    },
+    {
+      "id": "judge-vfs",
+      "from": "judge",
+      "to": "vfs",
+      "variant": "security"
+    },
+    {
+      "id": "takt-vfs",
+      "from": "takt",
+      "to": "vfs",
+      "label": "claim, consolidate, discard",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          125,
+          830
+        ],
+        [
+          925,
+          830
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading guide",
+      "items": [
+        "Each arrow from takt is a delegation; dashed arrows to pm, architect and product-designer also cover a lend, where a dispatch switch hands them the user's session; the judge node runs as two blind instances, judge-a and judge-b",
+        "VFS capabilities per agent come from agent.yaml; planning and interlocutor agents have none, but keep the native edit allow to deliver documents the user asks for"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Harness",
+      "items": [
+        "Dispatch admits every delegation and lend switch and keeps the execution history",
+        "VFS holds claims, staged work, verdict gates and consolidation; only takt claims and consolidates",
+        "Every agent records to Memory with memory_record (not drawn)"
+      ]
+    }
+  ]
+}

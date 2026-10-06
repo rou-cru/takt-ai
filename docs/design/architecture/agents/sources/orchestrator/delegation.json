@@ -1,0 +1,280 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Orchestrator: preparing a delegation",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/delegation.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "checks",
+      "label": "Checks"
+    },
+    {
+      "id": "actions",
+      "label": "Actions"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "p1",
+      "lane": "checks",
+      "col": 0,
+      "type": "security",
+      "label": "Plan applies?",
+      "sublabel": "several rounds, floor, critical",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 86,
+          "end_line": 90
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 121,
+          "end_line": 128
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "lane": "checks",
+      "col": 1,
+      "type": "security",
+      "label": "Within limit?",
+      "sublabel": "unplanned-unit limit",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 74,
+          "end_line": 80
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "lane": "checks",
+      "col": 3,
+      "type": "security",
+      "label": "Implementation lane?",
+      "sublabel": "needs a file set",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 68,
+          "end_line": 73
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "lane": "checks",
+      "col": 4,
+      "type": "security",
+      "label": "Scope collides?",
+      "sublabel": "same root; claim_list inspects",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 68,
+          "end_line": 73
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "lane": "actions",
+      "col": 0,
+      "type": "backend",
+      "label": "dispatch_commit",
+      "sublabel": "revision names its base",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 86,
+          "end_line": 90
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "lane": "actions",
+      "col": 1,
+      "type": "backend",
+      "label": "Route via selection",
+      "sublabel": "not bounded work any more",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 74,
+          "end_line": 80
+        }
+      ]
+    },
+    {
+      "id": "inputs",
+      "lane": "actions",
+      "col": 2,
+      "type": "backend",
+      "label": "dispatch_inputs",
+      "sublabel": "consumed Engram IDs",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 8,
+          "end_line": 11
+        }
+      ]
+    },
+    {
+      "id": "claim",
+      "lane": "actions",
+      "col": 3,
+      "type": "backend",
+      "label": "claim_assign",
+      "sublabel": "exact file set",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 68,
+          "end_line": 73
+        },
+        {
+          "path": "takt/vfs/operation.go",
+          "line": 154,
+          "end_line": 158
+        }
+      ]
+    },
+    {
+      "id": "resolve",
+      "lane": "actions",
+      "col": 4,
+      "type": "backend",
+      "label": "Resolve collision",
+      "sublabel": "queue, continue, re-cut",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 68,
+          "end_line": 73
+        }
+      ]
+    },
+    {
+      "id": "delegate",
+      "lane": "actions",
+      "col": 5,
+      "type": "backend",
+      "label": "Delegate",
+      "sublabel": "named by its unit",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 56,
+          "end_line": 67
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "p1",
+      "to": "commit",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "from": "p1",
+      "to": "p2",
+      "label": "no"
+    },
+    {
+      "from": "commit",
+      "to": "inputs"
+    },
+    {
+      "from": "p2",
+      "to": "inputs",
+      "label": "yes"
+    },
+    {
+      "from": "p2",
+      "to": "route",
+      "label": "no",
+      "variant": "dashed"
+    },
+    {
+      "from": "inputs",
+      "to": "p3"
+    },
+    {
+      "from": "p3",
+      "to": "claim",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "from": "p3",
+      "to": "delegate",
+      "label": "no",
+      "variant": "dashed"
+    },
+    {
+      "from": "claim",
+      "to": "p4"
+    },
+    {
+      "from": "p4",
+      "to": "resolve",
+      "label": "yes",
+      "variant": "security"
+    },
+    {
+      "from": "p4",
+      "to": "delegate",
+      "label": "no",
+      "variant": "emphasis"
+    },
+    {
+      "from": "resolve",
+      "to": "claim",
+      "label": "retry",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Order",
+      "items": [
+        "dispatch_commit when a plan applies, then dispatch_inputs, then claim_assign for an implementation lane, then the delegation",
+        "A round is concurrent only if all its delegations are issued in the same response"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Identity",
+      "items": [
+        "The delegation name is the unit identity; the same name again retries it, new work gets a new name",
+        "Without an author_key, claim_assign replaces overlapping claims from other root sessions, discarding their staged work; only same-root collisions are refused; with the author_key it continues the existing work"
+      ]
+    }
+  ]
+}

@@ -28,8 +28,8 @@ the work is imperfect, and not because a verifier failed it. A failing verdict i
 a spot fix; discard only when a spot fix cannot reach the work.
 
 Consolidate authorized staged work with `vfs_consolidate`; its label is optional. Whether a
-phase is verified is a planned DAG decision. Assign the verifier with `claim_assign_verifier`
-once per author_key of the phase, all under one verifier unit; a verdict that exists must pass
+phase is verified is a planned DAG decision. Declare the phase's `author_keys` in one verifier
+delegation; every gate is ready when the verifier starts, retries included; a verdict that exists must pass
 before its author consolidates, and an author whose verdict fails goes to a spot fix through
 `claim_assign` with its author_key. On a physical-base change, keep the affected path frozen and
 report the competing state.

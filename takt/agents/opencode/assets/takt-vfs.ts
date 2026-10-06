@@ -254,11 +254,12 @@ function once(work: () => Promise<void>): () => Promise<void> {
 const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknown as string[]
 
 // GC_LANE_TOOLS are the tools each GC lane keeps besides its gc_* tools: both
-// read the workspace natively to investigate or judge; only the collector
-// stages its authorized change.
+// read the workspace natively to investigate or judge, and the verifier keeps
+// everything an ordinary verification uses (shell, web, Engram reads); only the
+// collector stages its authorized change.
 const GC_LANE_TOOLS: Record<string, string[]> = {
   collector: ["read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record", "memory_continue_session", "memory_close_session"],
-  verifier: ["read", "glob", "grep", "memory_record", "memory_continue_session", "memory_close_session"],
+  verifier: ["read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_search", "engram_mem_get_observation", "engram_mem_context", "memory_record", "memory_continue_session", "memory_close_session"],
 }
 
 // gcSessionPermissions is the ruleset a GC child session is created with: only
@@ -301,7 +302,7 @@ export default Plugin.define({
     // author's key. Keyed by core key.
     // `judges` is the author key a verifier's binding judges; it reads that
     // author's staged view.
-    type Binding = { key: string; agent: string; session: string; dispatch: string; unit: string; revision: number; deltaHash: string; judges?: string }
+    type Binding = { key: string; agent: string; session: string; dispatch: string; unit: string; revision: number; deltaHash: string; judges?: string; judgedRevision?: number; judgedHash?: string; judgedPaths?: string[] }
     const bindings = new Map<string, Binding>()
     // OpenCode restarts the plugin's process freely, and a binding outlives that:
     // the map is reloaded here and written back on every change, so a rehydrated
@@ -448,6 +449,45 @@ export default Plugin.define({
       return error
     }
 
+    // verifierGrant reports whether the specialist's last matching rule for
+    // vfs_verify (or the wildcard) allows it: a later rule overrides an earlier one.
+    function verifierGrant(rules: unknown): boolean {
+      if (!Array.isArray(rules)) return false
+      const matches = (value: unknown) => value === "*" || value === "vfs_verify"
+      return rules.reduce((allowed: boolean, rule) => rule && matches(rule.action) && matches(rule.resource) ? rule.effect === "allow" : allowed, false)
+    }
+
+    // validatedAuthorKeys checks the author_keys a delegation declares: unique,
+    // nonempty staged author keys, handed to a specialist holding a verification
+    // grant. Undefined means the delegation is not a gate.
+    async function validatedAuthorKeys(value: unknown, specialist: string, root: string, unit: string): Promise<string[] | undefined> {
+      if (value === undefined) return undefined
+      if (!isStringArray(value) || value.length === 0 || value.some(key => !key.trim()) || new Set(value).size !== value.length) {
+        throw refused("invalid_authors", specialist, root, new Error("author_keys must list unique, nonempty staged author keys"), unit)
+      }
+      const target = await ctx.agent.get({ agentID: specialist })
+      if (!verifierGrant(target.data.permissions)) throw refused("invalid_verifier", specialist, root, new Error("The delegated specialist has no verification grant"), unit)
+      return value
+    }
+
+    // prepareVerifierGates assigns one gate per author key, recording each key in
+    // prepared as it is issued so a failure can release exactly those, then drops
+    // the verifier's earlier judging bindings: the new gates replace them.
+    async function prepareVerifierGates(authorKeys: string[] | undefined, root: string, unit: string, specialist: string, prepared: string[]): Promise<void> {
+      if (authorKeys === undefined) return
+      for (const authorKey of authorKeys) {
+        // Sequential on purpose: each assignment supersedes the previous
+        // attempt's gate for its author and prepared must keep issue order.
+        const gate = await takt("assign-verifier", { session_id: root, work_unit_id: unit, agent_id: specialist, // NOSONAR
+          specialist, invariants: INVARIANT_DOCUMENTS, author_key: authorKey })
+        if (gate.key) prepared.push(gate.key)
+      }
+      for (const [key, binding] of bindings) {
+        if (binding.session === root && binding.unit === unit && binding.agent === specialist && binding.judges) bindings.delete(key)
+      }
+      await persist()
+    }
+
     async function taktUnlocked(command: string, request: Record<string, unknown>): Promise<VFSResponse> {
       const proc = Bun.spawn([TAKT_AI, "vfs", command, "--workspace", workspace, "--state", stateDir()], {
         stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd: workspace,
@@ -479,7 +519,7 @@ export default Plugin.define({
       if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
       // A verifier runs as its own unit; the author key alone links it to
       // the staged work it judges.
-      const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
+      const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey, judgedRevision: author.revision, judgedHash: author.deltaHash, judgedPaths: [] } : {}) }
       const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
       b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
       // Adopting work already staged under the key continues from its revision.
@@ -503,6 +543,14 @@ export default Plugin.define({
         specialist: b.agent,
         ...(gcChildren.has(b.dispatch) ? { cycle_id: b.unit } : {}),
       }
+    }
+
+    // gateOwning picks, among a verifier's gates, the one judging the author whose
+    // scope holds path; a path no author owns is plain workspace content, which any gate reads.
+    async function gateOwning(gates: Binding[], path: string, root: string): Promise<Binding | undefined> {
+      if (gates.length < 2) return gates[0]
+      const owned = ((await takt("claims", { session_id: root })).claims ?? []) as OwnershipClaim[]
+      return gates.find(g => owned.find(x => x.key === g.judges)?.scope?.includes(path)) ?? gates[0]
     }
 
     // own is the caller's latest binding: this dispatch session under this agent.
@@ -912,6 +960,7 @@ export default Plugin.define({
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       if (!inputs.has(unitKey(root, unit))) throw refused("missing_inputs", specialist, root, new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before delegating it, or declare that none exists yet`), unit)
+      const authorKeys = await validatedAuthorKeys(input.author_keys, specialist, root, unit)
       const delegation = `${event.sessionID}:${event.id}`
       if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
       // A cleanup cycle never holds a delegation: an admitted one ends the
@@ -923,6 +972,23 @@ export default Plugin.define({
       } catch (error) {
         const cause = error instanceof Error ? error : new Error("dispatch admission failed")
         throw refused("admission_denied", specialist, root, cause, unit)
+      }
+      // Admission issues the attempt before its gates are prepared, so a retry
+      // receives fresh gates for that admitted attempt rather than a stale preassignment.
+      const preparedGates: string[] = []
+      try {
+        await prepareVerifierGates(authorKeys, root, unit, specialist, preparedGates)
+      } catch (error) {
+        // Cleanup is best effort: a failure here must never replace the
+        // assignment error, and one gate that cannot be released must not
+        // keep the others or the admitted dispatch from being closed.
+        await Promise.all([
+          ...preparedGates.map(key => takt("release", { session_id: root, key })
+            .catch(e => console.error("Takt gate release", key, e))),
+          dispatchAction({ action: "finish", event: unit, dispatch: delegation, session: root })
+            .catch(e => console.error("Takt dispatch finish", e)),
+        ])
+        throw refused("verifier_assignment", specialist, root, error instanceof Error ? error : new Error(String(error)), unit)
       }
       // The cycle is already closed: a lane that keeps running only meets
       // refusals, so a failed interruption never refuses the delegation.
@@ -1089,7 +1155,28 @@ export default Plugin.define({
       }
     })().catch(() => undefined) // an aborted subscription is an ordinary shutdown
 
-    await ctx.tool.transform((editor) => {
+    await ctx.tool.transform(async (editor) => {
+      const subagent = editor.get("subagent")
+      if (subagent) {
+        // Native tools use Effect schemas; plugin tools may use plain JSON Schema.
+        // Extend the native declaration without replacing its execution.
+        let schema: ToolInput
+        if (typeof subagent.input === "function") {
+          const { Schema } = await import("effect")
+          if (!Schema.isSchema(subagent.input)) throw new Error("subagent input is not a schema")
+          const document = Schema.toJsonSchemaDocument(subagent.input)
+          schema = { ...document.schema, $defs: document.definitions }
+        } else {
+          schema = toolInput(subagent.input)
+        }
+        editor.update("subagent", (tool) => {
+          tool.input = { ...schema, properties: {
+            ...toolInput(schema.properties),
+            author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
+              description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
+          } }
+        })
+      }
       const gc = (name: string, description: string, action: string, input = obj({}, [])) =>
         editor.add({ name, description, input, execute: (value: unknown, c) => {
           if (!codegraphReady) throw new Error(`CodeGraph is unavailable because ${workspace} is the home directory; open a specific project directory first.`)
@@ -1205,15 +1292,6 @@ export default Plugin.define({
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
         return { content: JSON.stringify(await takt("assign", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, scope: args.scope, author_key: args.author_key })) }
-      } })
-      editor.add({ name: "claim_assign_verifier", description: "Before delegating a gate, preassign the verifier to the staged work it judges; call once per author_key under the same unit to have one verifier judge several.", input: obj({
-        work_unit_id: str("The verifier's own unit, the one its delegation will be named after"),
-        agent: str("Catalog instance id of the verifier you will launch (for example `verify`); never a per-lane name"),
-        author_key: str("The author_key of the staged work to judge"),
-      }, ["work_unit_id", "agent", "author_key"]), async execute(input: unknown, c) {
-        const args = toolInput(input)
-        orchestratorOnly(c, "VFS verifier assignment")
-        return { content: JSON.stringify(await takt("assign-verifier", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, author_key: args.author_key })) }
       } })
       editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
@@ -1388,20 +1466,13 @@ export default Plugin.define({
         description: "Bind to the assignment named in your context, before any other VFS tool.",
         input: obj({
           scope: { type: "array", items: { type: "string" }, description: "The exact paths your assignment names" },
-          author_key: str("The author_key your assignment names, when it names one"),
         }, ["scope"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ scope: string[]; author_key?: string }>(input)
+          const args = toolInput<{ scope: string[] }>(input)
           const session = await rootSession(c.sessionID)
-          const authorKey = typeof args.author_key === "string" ? args.author_key : undefined
           const unit = await delegatedUnit(c.sessionID)
-          const claim = authorKey || c.agent === "verify"
-            ? await findClaim(session, unit, c.agent, ["pending", "active"], authorKey)
-            : undefined
-          if (claim?.author_key && (authorKey !== claim.author_key || args.scope.length !== 0)) {
-            throw new Error(`Bind the verifier with scope: [] and author_key: ${claim.author_key}; the author owns the files being judged`)
-          }
-          const { b, res } = await bindAs(c, session, unit, args.scope, authorKey)
+          if (isResponseObject(input) && input.author_key !== undefined) throw new Error("vfs_bind only binds implementation scope; verifier access is automatic")
+          const { b, res } = await bindAs(c, session, unit, args.scope)
           return { content: `Bound as ${b.agent} to scope ${JSON.stringify(args.scope)}; unit ${unit}, attempt ${res.attempt_id}; invariants ${INVARIANT_DOCUMENTS.join(", ")} at version ${res.invariants_version}; author_key ${b.key}` }
         },
       })
@@ -1411,14 +1482,13 @@ export default Plugin.define({
         input: obj({
           path: str(),
           content: str(),
-          call_id: str("Unique id for this operation"),
           author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
-        }, ["path", "content", "call_id"]),
+        }, ["path", "content"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ path: string; content: string; call_id: string; author_key?: string }>(input)
+          const args = toolInput<{ path: string; content: string; author_key?: string }>(input)
           const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
           const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: args.call_id,
+            ...identity(b), author_key: b.key, call_id: randomUUID(),
             expected_revision: b.revision, action: "create", path: args.path, content: args.content,
           })
           await record(b, res)
@@ -1428,25 +1498,38 @@ export default Plugin.define({
       editor.add({
         name: "vfs_read",
         description: "Read a file of your assignment as staged: your own staged view, or the staged work you judge.",
-        input: obj({ path: str("Workspace-relative path within your assignment"), call_id: str("Unique id for this operation"), author_key: str("Verifier only: the author_key of the staged work whose files you read") }, ["path", "call_id"]),
+        input: obj({ path: str("Workspace-relative path within your assignment"), author_key: str("Verifier only, optional: the author_key of the staged work whose files you read; omitted, the path's owner is used") }, ["path"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ path: string; call_id: string; author_key?: string }>(input)
+          const args = toolInput<{ path: string; author_key?: string }>(input)
           const gates = [...bindings.values()].filter(x => x.dispatch === c.sessionID && x.agent === c.agent && x.judges !== undefined)
-          const gate = gates.find(x => x.judges === args.author_key)
+          // A path has one owner, so a gate that names no author_key reads the author whose scope holds it.
+          const gate = args.author_key ? gates.find(x => x.judges === args.author_key) : await gateOwning(gates, args.path, await rootSession(c.sessionID))
           // A gate reads only the authors it judges: an unknown key never falls back to another gate.
           if (args.author_key && gates.length > 0 && !gate) throw new Error(`author_key ${args.author_key} is not one of your gates: ${gates.map(x => x.judges).join(", ")}`)
           const b = gate ?? own(c)
           const judged = b.judges ? bindings.get(b.judges) : undefined
           if (judged) {
+            const { revision, deltaHash } = judged
             // A gate reads exactly the author's staged state it will judge.
             const res = await takt("op", {
-              ...identity(b), author_key: b.key, view_key: judged.key, call_id: args.call_id,
-              expected_revision: judged.revision, action: "read", path: args.path,
+              ...identity(b), author_key: b.key, view_key: judged.key, call_id: randomUUID(),
+              expected_revision: revision, action: "read", path: args.path,
             })
-            return { content: res.content ?? "" }
+            // The verdict covers the state of the last read. Files read under an
+            // earlier state may be outdated, so the read that moved it names them.
+            const moved = b.judgedHash !== deltaHash || b.judgedRevision !== revision
+            const outdated = moved ? (b.judgedPaths ?? []).filter(path => path !== args.path) : []
+            b.judgedRevision = revision
+            b.judgedHash = deltaHash
+            b.judgedPaths = moved ? [args.path] : [...new Set([...(b.judgedPaths ?? []), args.path])]
+            await persist()
+            const note = outdated.length > 0
+              ? `The author's staged work changed after you read: ${outdated.join(", ")}. What you read there may be outdated; read those files again before attaching the verdict.\n\n`
+              : ""
+            return { content: `${note}${res.content ?? ""}` }
           }
           const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: args.call_id,
+            ...identity(b), author_key: b.key, call_id: randomUUID(),
             expected_revision: b.revision, action: "read", path: args.path,
           })
           await record(b, res)
@@ -1458,14 +1541,13 @@ export default Plugin.define({
         description: "Stage the deletion of a file inside your declared scope. Staged virtually; the workspace copy is untouched until verified and consolidated.",
         input: obj({
           path: str(),
-          call_id: str("Unique id for this operation"),
           author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
-        }, ["path", "call_id"]),
+        }, ["path"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ path: string; call_id: string; author_key?: string }>(input)
+          const args = toolInput<{ path: string; author_key?: string }>(input)
           const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
           const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: args.call_id,
+            ...identity(b), author_key: b.key, call_id: randomUUID(),
             expected_revision: b.revision, action: "delete", path: args.path,
           })
           await record(b, res)
@@ -1477,17 +1559,16 @@ export default Plugin.define({
         description: "Discard an author's entire staged work without touching the workspace, releasing the paths it owns. Name the author by its author_key.",
         input: obj({
           author_key: str("The author_key of the staged work to discard"),
-          call_id: str("Unique id for this operation"),
-        }, ["author_key", "call_id"]),
+        }, ["author_key"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ author_key: string; call_id: string }>(input)
+          const args = toolInput<{ author_key: string }>(input)
           // Discarding is the orchestrator's backtracking decision (PR-VFS-CSL-5).
           orchestratorOnly(c, "vfs_discard")
           if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
           await takt("op", {
-            ...identity(b), author_key: b.key, call_id: args.call_id,
+            ...identity(b), author_key: b.key, call_id: randomUUID(),
             expected_revision: b.revision, action: "rollback",
           })
           await release(b)
@@ -1496,7 +1577,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_verify",
-        description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, bound first with that author_key. The verdict covers exactly the revision staged when you judged it.",
+        description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, assigned by your delegation to that author_key. The verdict covers exactly the revision staged when you judged it.",
         input: obj({
           author_key: str("The author_key the author reported"),
           pass: { type: "boolean" },
@@ -1509,13 +1590,16 @@ export default Plugin.define({
           if (!author) throw new Error("author_key does not name an active binding")
           // The verifier is the caller's own gate over exactly this author.
           const verifier = [...bindings.values()].find(b => b.dispatch === c.sessionID && b.agent === c.agent && b.judges === args.author_key)
-          if (!verifier) throw new Error("bind to this author_key before attaching a verdict")
-          // The judged revision and its hash are the author's current staged
-          // state; the store rejects the verdict if that state moved.
+          if (!verifier) throw new Error("author_key is not assigned to this verifier delegation")
+          // The verdict covers the last staged state delivered/read by this gate;
+          // the store rejects it if the author has since changed that state.
           await takt("verify", {
             ...identity(verifier), verifier_key: verifier.key, author_key: args.author_key, call_id: randomUUID(),
-            expected_revision: author.revision, delta_hash: author.deltaHash,
+            expected_revision: verifier.judgedRevision, delta_hash: verifier.judgedHash,
             pass: args.pass, finding: args.finding,
+          }).catch(error => {
+            const reason = error instanceof Error ? error.message : String(error)
+            throw new Error(`${reason}; if the author's staged work changed since you read it, read it again with vfs_read and attach the verdict again`)
           })
           return { content: args.pass ? "Verdict: passed" : `Verdict: rejected — ${args.finding}` }
         },
@@ -1571,8 +1655,8 @@ export default Plugin.define({
     // its exact root/unit/identity claim remains pending or active. Permission
     // rules are read from that instance; no role defaults are inferred here.
     await ctx.session.hook("context", async (event) => {
-      if (!event.tools || !event.sessionID || !event.agent) return
-      const removeVFS = () => { for (const name of VFS_TOOL_NAMES) delete event.tools[name] }
+      if (!event.sessionID || !event.agent) return
+      const removeVFS = () => { for (const name of VFS_TOOL_NAMES) delete event.tools?.[name] }
       try {
         const info = await ctx.session.get({ sessionID: event.sessionID })
         if (!info.parentID) return
@@ -1586,7 +1670,7 @@ export default Plugin.define({
           }
           return decision === "allow"
         }
-        const allowed = VFS_TOOL_NAMES.filter(name => explicitlyAllows(name) && event.tools[name])
+        const allowed = VFS_TOOL_NAMES.filter(name => explicitlyAllows(name))
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
         if (RESULT_AGENTS.includes(event.agent)) childOf.set(unitKey(root, unit), event.sessionID)
@@ -1597,24 +1681,26 @@ export default Plugin.define({
         const claims = await findClaims(root, unit, event.agent, ["pending", "active"])
         const claim = claims[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
-        for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools[name]
+        for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]
         if (claim.author_key) {
           // A gate arrives bound: adopting each preassigned gate and naming the
           // author's files is the delivery of the assignment, never the verifier's task.
-          delete event.tools.vfs_bind
+          delete event.tools?.vfs_bind
           const owned = ((await takt("claims", { session_id: root })).claims ?? []) as OwnershipClaim[]
           const lines: string[] = []
-          for (const gate of claims) {
+          const currentGates = claims.filter(gate => gate.pending === true ||
+            [...bindings.values()].some(b => b.key === gate.key && b.dispatch === event.sessionID && b.agent === event.agent))
+          for (const gate of currentGates) {
             const key = gate.author_key ?? ""
             let note = ""
-            const adopted = [...bindings.values()].some(x => x.dispatch === event.sessionID && x.agent === event.agent && x.judges === key)
-            if (gate.pending === true && !adopted) {
+            const adopted = [...bindings.values()].some(x => x.dispatch === event.sessionID && x.agent === event.agent && x.key === gate.key)
+            if (!adopted) {
               try { await bindAs({ sessionID: event.sessionID, agent: event.agent }, root, unit, [], key) }
               catch (error) { note = ` (gate not adopted: ${error instanceof Error ? error.message : String(error)}; report it as unverified)` }
             }
             lines.push(`author_key ${key}: ${(owned.find(x => x.key === key)?.scope ?? []).join(", ")}${note}`)
           }
-          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. Read each author's files only with vfs_read naming its author_key, and attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on.\n${lines.join("\n")}` })
+          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. Read staged files with vfs_read naming their author_key; read project context with native read tools and run validation checks without editing the project, and attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on.\n${lines.join("\n")}` })
           return
         }
         event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. Bind with vfs_bind using exactly this scope, stage changes with vfs_write and vfs_delete, read your staged view with vfs_read, and return the author_key in your handoff.` })

@@ -1,0 +1,263 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Orchestrator: invariant-planning states",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/invariant-planning.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Planning states"
+    },
+    {
+      "id": "exits",
+      "label": "Exits"
+    },
+    {
+      "id": "waiting",
+      "label": "User"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcome"
+    }
+  ],
+  "states": [
+    {
+      "id": "assess",
+      "type": "active",
+      "label": "Assess",
+      "sublabel": "classify each invariant",
+      "lane": "main",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 17,
+          "end_line": 23
+        }
+      ]
+    },
+    {
+      "id": "select",
+      "type": "active",
+      "label": "Select",
+      "sublabel": "one lane per invariant",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 24,
+          "end_line": 33
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "type": "active",
+      "label": "Plan",
+      "sublabel": "edges by consumption",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 34,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "dispatch",
+      "type": "active",
+      "label": "Dispatch",
+      "sublabel": "lane starts when inputs exist",
+      "lane": "main",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 54,
+          "end_line": 59
+        }
+      ]
+    },
+    {
+      "id": "coherence",
+      "type": "decision",
+      "label": "Coherence",
+      "sublabel": "compare delivered documents",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 60,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "returned",
+      "type": "neutral",
+      "label": "Control returned",
+      "sublabel": "single lane, or misfit",
+      "lane": "exits",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 24,
+          "end_line": 33
+        }
+      ]
+    },
+    {
+      "id": "blocked",
+      "type": "waiting",
+      "label": "Lane blocked",
+      "sublabel": "specialist unavailable",
+      "lane": "exits",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 70,
+          "end_line": 76
+        }
+      ]
+    },
+    {
+      "id": "ask",
+      "type": "waiting",
+      "label": "Ask the user",
+      "sublabel": "disputed or not converging",
+      "lane": "waiting",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 60,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "type": "success",
+      "label": "Planning complete",
+      "sublabel": "invariants delivered",
+      "lane": "terminal",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 60,
+          "end_line": 69
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "assess",
+      "to": "select",
+      "label": "all classified",
+      "labelDy": -31
+    },
+    {
+      "from": "select",
+      "to": "plan",
+      "label": "lane set fixed",
+      "labelDy": -31
+    },
+    {
+      "from": "select",
+      "to": "returned",
+      "label": "one lane, or misfit",
+      "variant": "dashed"
+    },
+    {
+      "from": "plan",
+      "to": "dispatch",
+      "label": "plan committed",
+      "variant": "emphasis",
+      "labelDy": -31
+    },
+    {
+      "from": "dispatch",
+      "to": "coherence",
+      "label": "every lane delivered",
+      "labelDy": -31
+    },
+    {
+      "from": "dispatch",
+      "to": "blocked",
+      "label": "specialist unavailable",
+      "variant": "security"
+    },
+    {
+      "from": "blocked",
+      "to": "dispatch",
+      "label": "other lanes keep running",
+      "variant": "dashed"
+    },
+    {
+      "from": "coherence",
+      "to": "dispatch",
+      "label": "contradiction",
+      "variant": "security",
+      "labelDy": 57
+    },
+    {
+      "from": "coherence",
+      "to": "ask",
+      "label": "disputed or stuck",
+      "variant": "security"
+    },
+    {
+      "from": "ask",
+      "to": "coherence",
+      "label": "direction",
+      "variant": "dashed"
+    },
+    {
+      "from": "coherence",
+      "to": "complete",
+      "label": "no contradiction open",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Classes",
+      "items": [
+        "Each invariant is settled, to refine, or to generate; probably settled is not a class"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Plan",
+      "items": [
+        "pm roots the plan while intent is unsettled; analyst runs on a concrete question; designer and architect are independent unless one constrains the other",
+        "More than one lane known: dispatch_commit before the first dispatch"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Coherence",
+      "items": [
+        "takt decides which document stands and re-dispatches only the other lane"
+      ]
+    }
+  ]
+}

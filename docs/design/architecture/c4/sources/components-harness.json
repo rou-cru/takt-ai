@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "takt-ai binary: harness components (C4 L3)",
+    "output": "docs/design/architecture/c4/diagrams/components-harness.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "memory",
+      "sublabel": "Engram writes + anchors",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/memory.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "dispatch",
+      "type": "backend",
+      "label": "dispatch",
+      "sublabel": "admission + lifecycle",
+      "pos": [
+        330,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/dispatch/dispatch.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "vfs",
+      "type": "backend",
+      "label": "vfs",
+      "sublabel": "transactional file staging",
+      "pos": [
+        620,
+        190
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/vfs/vfs.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "type": "backend",
+      "label": "session",
+      "sublabel": "crew session root",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/session/session.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "history",
+      "type": "database",
+      "label": "history",
+      "sublabel": "append-only execution history",
+      "pos": [
+        330,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/history/history.go",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "id": "gc",
+      "type": "backend",
+      "label": "gc",
+      "sublabel": "cycle trigger + coordinator",
+      "pos": [
+        620,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/gc/trigger.go",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "database",
+      "label": "obs",
+      "sublabel": "event stream + control",
+      "pos": [
+        900,
+        340
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/obs/obs.go",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "plugin",
+      "type": "frontend",
+      "label": "VFS plugin",
+      "sublabel": "vfs_*, gc_* tools, permission hooks",
+      "pos": [
+        560,
+        40
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 218
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 1173,
+          "end_line": 1182
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 657
+        }
+      ]
+    },
+    {
+      "id": "analysis",
+      "type": "backend",
+      "label": "gc analysis",
+      "sublabel": "preparation, analyzers, closure",
+      "pos": [
+        620,
+        490
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/gc/preparation.go",
+          "line": 174
+        },
+        {
+          "path": "takt/gc/analyzers.go",
+          "line": 20
+        },
+        {
+          "path": "takt/cli/gc.go",
+          "line": 37
+        }
+      ]
+    },
+    {
+      "id": "codegraph",
+      "type": "external",
+      "label": "CodeGraph",
+      "sublabel": "code index",
+      "pos": [
+        1180,
+        490
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/gc/codegraph.go",
+          "line": 36,
+          "end_line": 45
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-vfs.ts",
+          "line": 287
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "dispatch-memory",
+      "from": "dispatch",
+      "to": "memory",
+      "label": "memory"
+    },
+    {
+      "id": "dispatch-vfs",
+      "from": "dispatch",
+      "to": "vfs",
+      "label": "staging"
+    },
+    {
+      "id": "dispatch-history",
+      "from": "dispatch",
+      "to": "history",
+      "label": "records",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "memory-history",
+      "from": "memory",
+      "to": "history",
+      "label": "links"
+    },
+    {
+      "id": "gc-dispatch",
+      "from": "gc",
+      "to": "dispatch",
+      "label": "coordinates"
+    },
+    {
+      "id": "gc-history",
+      "from": "gc",
+      "to": "history",
+      "label": "reads"
+    },
+    {
+      "id": "gc-obs",
+      "from": "gc",
+      "to": "obs",
+      "label": "events"
+    },
+    {
+      "id": "vfs-obs",
+      "from": "vfs",
+      "to": "obs",
+      "label": "events"
+    },
+    {
+      "id": "session-vfs",
+      "from": "session",
+      "to": "vfs",
+      "label": "binds"
+    },
+    {
+      "id": "session-obs",
+      "from": "session",
+      "to": "obs",
+      "label": "binds",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "plugin-vfs",
+      "from": "plugin",
+      "to": "vfs",
+      "label": "vfs subcommands"
+    },
+    {
+      "id": "plugin-gc",
+      "from": "plugin",
+      "to": "gc",
+      "label": "gc coordinate"
+    },
+    {
+      "id": "plugin-codegraph",
+      "from": "plugin",
+      "to": "codegraph",
+      "label": "ensure-index",
+      "variant": "dashed"
+    },
+    {
+      "id": "gc-analysis",
+      "from": "gc",
+      "to": "analysis",
+      "label": "prepare, analyze"
+    },
+    {
+      "id": "analysis-codegraph",
+      "from": "analysis",
+      "to": "codegraph",
+      "label": "dependents closure"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading guide",
+      "items": [
+        "The cli is the other caller; it is not drawn",
+        "Edges show principal dependencies; the note has the full import table"
+      ]
+    }
+  ]
+}

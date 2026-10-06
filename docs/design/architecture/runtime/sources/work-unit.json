@@ -1,0 +1,252 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Dispatched work unit lifecycle",
+    "output": "docs/design/architecture/runtime/diagrams/work-unit.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Unit progress"
+    },
+    {
+      "id": "side",
+      "label": "In flight: held or unknown"
+    },
+    {
+      "id": "terminal",
+      "label": "Never admitted"
+    }
+  ],
+  "states": [
+    {
+      "id": "planned",
+      "type": "start",
+      "label": "Planned",
+      "sublabel": "declared, not admitted",
+      "lane": "main",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 20,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "pending",
+      "type": "active",
+      "label": "Pending launch",
+      "sublabel": "in flight, slot reserved",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 34,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "Running",
+      "sublabel": "in flight, observed",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 34,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "settled",
+      "type": "success",
+      "label": "Settled",
+      "sublabel": "outcome recorded",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 58,
+          "end_line": 71
+        }
+      ]
+    },
+    {
+      "id": "uncertain",
+      "type": "waiting",
+      "label": "Launch uncertain",
+      "sublabel": "in flight, unestablished",
+      "lane": "side",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 34,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "suspended",
+      "type": "waiting",
+      "label": "Suspended",
+      "sublabel": "in flight, held",
+      "lane": "side",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 34,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "cancelling",
+      "type": "waiting",
+      "label": "Cancellation pending",
+      "sublabel": "in flight, not yet effective",
+      "lane": "side",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 34,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "withdrawn",
+      "type": "neutral",
+      "label": "Withdrawn",
+      "sublabel": "revoked while planned",
+      "lane": "terminal",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/history/projection.go",
+          "line": 452,
+          "end_line": 469
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "planned",
+      "to": "pending",
+      "label": "admitted",
+      "variant": "emphasis"
+    },
+    {
+      "from": "pending",
+      "to": "running",
+      "label": "launched"
+    },
+    {
+      "from": "running",
+      "to": "settled",
+      "label": "terminated",
+      "variant": "emphasis"
+    },
+    {
+      "from": "running",
+      "to": "suspended",
+      "label": "suspended",
+      "variant": "dashed"
+    },
+    {
+      "from": "suspended",
+      "to": "running",
+      "label": "launched",
+      "variant": "dashed"
+    },
+    {
+      "from": "pending",
+      "to": "uncertain",
+      "label": "launch_uncertain",
+      "variant": "security"
+    },
+    {
+      "from": "uncertain",
+      "to": "running",
+      "label": "launched"
+    },
+    {
+      "from": "running",
+      "to": "cancelling",
+      "label": "cancellation_requested",
+      "variant": "security"
+    },
+    {
+      "from": "cancelling",
+      "to": "settled",
+      "label": "terminated"
+    },
+    {
+      "from": "settled",
+      "to": "pending",
+      "label": "admitted: next attempt",
+      "variant": "dashed",
+      "route": "top-channel"
+    },
+    {
+      "from": "planned",
+      "to": "withdrawn",
+      "label": "withdrawn",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "History",
+      "items": [
+        "Unit state is a pure fold over the append-only execution history; nothing is stored",
+        "Any in-flight condition accepts launch_uncertain, suspended, cancellation_requested and terminated; only the common paths are drawn",
+        "Outcomes: completed, failed, backtracked, interrupted"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Session events, no unit state",
+      "items": [
+        "denied, contest_requested, recovery_declared, recovery_closed, actions_observed, actions_uncertain, restoration_confirmed, stop_declared, escalation_requested, user_exception",
+        "They change budgets or recovery accounting only; a denial consumes nothing"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Budgets",
+      "items": [
+        "Specialists 4, unplanned units 4, contests 3, consecutive recovery failures 2",
+        "Each declared recovery: at most 200 actions and 3 attempts",
+        "A user exception adds allowance beside consumption"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Interlocutor",
+      "items": [
+        "A lent interface is switched, handed off or aborted; one holder at a time",
+        "Resume is conduct in the prompt; the code has no resume verb"
+      ]
+    }
+  ]
+}

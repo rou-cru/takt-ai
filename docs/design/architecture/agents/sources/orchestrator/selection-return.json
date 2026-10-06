@@ -1,0 +1,233 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Orchestrator: when a route reports a misfit",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/selection-return.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "tree",
+      "label": "Decision"
+    },
+    {
+      "id": "outcome",
+      "label": "Outcome"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "m0",
+      "lane": "tree",
+      "col": 0,
+      "type": "security",
+      "label": "Route reports misfit",
+      "sublabel": "reason, evidence kept",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 42,
+          "end_line": 47
+        }
+      ]
+    },
+    {
+      "id": "m1",
+      "lane": "tree",
+      "col": 1,
+      "type": "security",
+      "label": "Restart at question 1",
+      "sublabel": "with the new evidence",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 42,
+          "end_line": 47
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "lane": "tree",
+      "col": 2,
+      "type": "security",
+      "label": "Same failed route?",
+      "sublabel": "same evidence",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 48,
+          "end_line": 61
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "lane": "tree",
+      "col": 3,
+      "type": "security",
+      "label": "Direct-work tests hold?",
+      "sublabel": "file, concern, no contract",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 48,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "m4",
+      "lane": "tree",
+      "col": 4,
+      "type": "security",
+      "label": "Bounded units fit?",
+      "sublabel": "unplanned-unit limit",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 54,
+          "end_line": 57
+        }
+      ]
+    },
+    {
+      "id": "o0",
+      "lane": "outcome",
+      "col": 1,
+      "type": "backend",
+      "label": "Adopt the route",
+      "sublabel": "tree reaches a new route",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 42,
+          "end_line": 47
+        }
+      ]
+    },
+    {
+      "id": "o1",
+      "lane": "outcome",
+      "col": 3,
+      "type": "backend",
+      "label": "Bounded by decision",
+      "sublabel": "small action, ownership kept",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 48,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "o2",
+      "lane": "outcome",
+      "col": 4,
+      "type": "backend",
+      "label": "Delegate specialists",
+      "sublabel": "never replaced by takt",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 54,
+          "end_line": 57
+        }
+      ]
+    },
+    {
+      "id": "o3",
+      "lane": "outcome",
+      "col": 5,
+      "type": "backend",
+      "label": "Consult the user",
+      "sublabel": "workflow-selection-exceptions",
+      "width": 170,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 58,
+          "end_line": 61
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection-exceptions/SKILL.md",
+          "line": 12,
+          "end_line": 23
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "m0",
+      "to": "m1",
+      "variant": "emphasis"
+    },
+    {
+      "from": "m1",
+      "to": "m2"
+    },
+    {
+      "from": "m1",
+      "to": "o0",
+      "label": "different evidence"
+    },
+    {
+      "from": "m2",
+      "to": "m3",
+      "label": "yes"
+    },
+    {
+      "from": "m3",
+      "to": "o1",
+      "label": "yes"
+    },
+    {
+      "from": "m3",
+      "to": "m4",
+      "label": "no"
+    },
+    {
+      "from": "m4",
+      "to": "o2",
+      "label": "yes"
+    },
+    {
+      "from": "m4",
+      "to": "o3",
+      "label": "no"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Rules",
+      "items": [
+        "A route is never re-adopted under identical evidence",
+        "Each new phase is judged on its own current evidence"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Instruction conflict",
+      "items": [
+        "A bounded route the user requested that misfits is explained to the user; takt does not relax the constraint on its own"
+      ]
+    }
+  ]
+}

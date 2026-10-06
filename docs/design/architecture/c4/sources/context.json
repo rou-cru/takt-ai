@@ -1,0 +1,335 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Takt AI: System Context (C4 L1)",
+    "output": "docs/design/architecture/c4/diagrams/context.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "dev",
+      "type": "external",
+      "label": "Developer",
+      "sublabel": "terminal user",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "Takt AI",
+      "sublabel": "installer CLI/TUI + harness",
+      "pos": [
+        300,
+        200
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/cli/main.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "type": "backend",
+      "label": "OpenCode v2",
+      "sublabel": "host agent runtime",
+      "pos": [
+        620,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/opencodeapi/client.go",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM providers",
+      "sublabel": "via OpenCode",
+      "pos": [
+        900,
+        200
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/internal/opencodeapi/wire.go",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "id": "brew",
+      "type": "cloud",
+      "label": "Homebrew tap",
+      "sublabel": "takt-ai cask",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": ".goreleaser.yaml",
+          "line": 86,
+          "end_line": 91
+        }
+      ]
+    },
+    {
+      "id": "github",
+      "type": "cloud",
+      "label": "GitHub Releases",
+      "sublabel": "takt-ai + Engram binaries",
+      "pos": [
+        230,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "install.sh",
+          "line": 370
+        },
+        {
+          "path": "takt/engram/acquire.go",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "cloud",
+      "label": "GHCR / Docker Hub",
+      "sublabel": "workspace image, Helm chart",
+      "pos": [
+        440,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": ".github/workflows/release.yml",
+          "line": 24,
+          "end_line": 26
+        }
+      ]
+    },
+    {
+      "id": "npm",
+      "type": "cloud",
+      "label": "npm registry",
+      "sublabel": "CodeGraph, sandbox runtime",
+      "pos": [
+        130,
+        360
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/codegraph/acquire.go",
+          "line": 38,
+          "end_line": 39
+        },
+        {
+          "path": "takt/agents/opencode/components.go",
+          "line": 282,
+          "end_line": 284
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP servers",
+      "sublabel": "Engram, CodeGraph",
+      "pos": [
+        480,
+        360
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/verify/config.go",
+          "line": 38,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "context7",
+      "type": "external",
+      "label": "Context7",
+      "sublabel": "remote MCP (optional)",
+      "pos": [
+        900,
+        360
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/agents/shared/types.go",
+          "line": 24,
+          "end_line": 25
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "dev-uses-takt",
+      "from": "dev",
+      "to": "takt",
+      "label": "setup, doctor",
+      "variant": "emphasis"
+    },
+    {
+      "id": "takt-installs",
+      "from": "takt",
+      "to": "opencode",
+      "label": "installs, calls API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dev-works-in-opencode",
+      "from": "dev",
+      "to": "opencode",
+      "label": "crew dialogue",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          105,
+          480
+        ],
+        [
+          695,
+          480
+        ]
+      ]
+    },
+    {
+      "id": "opencode-llm",
+      "from": "opencode",
+      "to": "llm",
+      "label": "model calls"
+    },
+    {
+      "id": "brew-ships",
+      "from": "brew",
+      "to": "takt",
+      "label": "cask",
+      "variant": "dashed"
+    },
+    {
+      "id": "github-ships",
+      "from": "github",
+      "to": "takt",
+      "label": "releases",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "registry-ships",
+      "from": "registry",
+      "to": "takt",
+      "label": "image, chart",
+      "variant": "dashed"
+    },
+    {
+      "id": "takt-npm",
+      "from": "takt",
+      "to": "npm",
+      "label": "npm install",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "takt-engram",
+      "from": "takt",
+      "to": "mcp",
+      "label": "Engram HTTP"
+    },
+    {
+      "id": "opencode-mcp",
+      "from": "opencode",
+      "to": "mcp",
+      "label": "MCP",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "opencode-context7",
+      "from": "opencode",
+      "to": "context7",
+      "label": "remote MCP",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Scope",
+      "items": [
+        "Takt is two systems: the installer application and the meta-harness it installs into OpenCode v2",
+        "Takt never calls LLM providers itself"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Distribution",
+      "items": [
+        "takt-ai ships through GitHub Releases (install.sh), the Homebrew tap, and the GHCR / Docker Hub image and Helm chart",
+        "Deployment detail is in the container view"
+      ]
+    }
+  ]
+}

@@ -96,8 +96,12 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 				t.Error("missing accessible takt-memory-contract")
 			}
 			producer := slices.Contains([]string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"}, spec.ID)
-			for _, skill := range []string{"takt-handoff", "takt-result-handoff"} {
-				if slices.Contains(spec.Skills, skill) != producer {
+			// Verification instances deliver their report through the same handoff.
+			for skill, owner := range map[string]bool{
+				"takt-handoff":        producer,
+				"takt-result-handoff": producer || spec.Role == model.RoleVerification,
+			} {
+				if slices.Contains(spec.Skills, skill) != owner {
 					t.Errorf("incorrect %s assignment", skill)
 				}
 			}
@@ -275,6 +279,9 @@ func TestRenderConfigRejectsDuplicateAgentID(t *testing.T) {
 	}
 }
 
+// TestRenderConfigProjectsExplicitVFSGrants checks that each role receives exactly the
+// VFS tool permissions its explicit capability grant names, and no specialist drives
+// the VFS CLI through the shell.
 func TestRenderConfigProjectsExplicitVFSGrants(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -319,7 +326,7 @@ func TestRenderConfigProjectsExplicitVFSGrants(t *testing.T) {
 		for _, tool := range vfsTools {
 			want := "allow"
 			if tool == "vfs_consolidate" || tool == "vfs_discard" ||
-				(id == "verify" && (tool == "vfs_write" || tool == "vfs_delete")) ||
+				(id == "verify" && (tool == "vfs_bind" || tool == "vfs_write" || tool == "vfs_delete")) ||
 				(id != "verify" && tool == "vfs_verify") {
 				want = "deny"
 			}
@@ -337,7 +344,7 @@ func TestRenderConfigProjectsExplicitVFSGrants(t *testing.T) {
 			t.Errorf("takt %s = %q, want %q", tool, got, want)
 		}
 	}
-	for _, action := range []string{"claim_list", "claim_assign", "claim_assign_verifier", "claim_release"} {
+	for _, action := range []string{"claim_list", "claim_assign", "claim_release"} {
 		if got := effectOf(config.Agents["takt"].Permissions, action, "*"); got != "allow" {
 			t.Errorf("takt %s permission = %q, want allow", action, got)
 		}
@@ -438,7 +445,7 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 					"vfs_delete": model.VFSCapabilityDelete, "vfs_discard": model.VFSCapabilityDiscard,
 					"vfs_verify": model.VFSCapabilityVerify, "vfs_consolidate": model.VFSCapabilityConsolidate,
 				}
-				if slices.Contains(agent.VFSCapabilities, capabilityByTool[tool]) {
+				if slices.Contains(agent.VFSCapabilities, capabilityByTool[tool]) && (tool != "vfs_bind" || !slices.Contains(agent.VFSCapabilities, model.VFSCapabilityVerify)) {
 					toolWant = "allow"
 				}
 				if got := effectOf(rules, tool, "*"); got != toolWant {
@@ -493,6 +500,8 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *tes
 	}
 }
 
+// TestRenderConfigLetPlanningLanesWriteFiles checks that planning lanes keep native
+// edit and shell, while execution and verification roles follow their VFS grants.
 func TestRenderConfigLetPlanningLanesWriteFiles(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -517,8 +526,12 @@ func TestRenderConfigLetPlanningLanesWriteFiles(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"dev", "verify"} {
-		if effectOf(config.Agents[id].Permissions, "edit", "*") != "" {
-			t.Errorf("%s must keep no native edit override", id)
+		want := ""
+		if id == "verify" {
+			want = "deny"
+		}
+		if got := effectOf(config.Agents[id].Permissions, "edit", "*"); got != want {
+			t.Errorf("%s edit = %q, want %q", id, got, want)
 		}
 	}
 }

@@ -1,0 +1,266 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Orchestrator: session lifecycle",
+    "output": "docs/design/architecture/agents/diagrams/orchestrator/session.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Session"
+    },
+    {
+      "id": "phases",
+      "label": "Phases"
+    },
+    {
+      "id": "waiting",
+      "label": "User"
+    },
+    {
+      "id": "terminal",
+      "label": "Closing"
+    }
+  ],
+  "states": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Session start",
+      "sublabel": "new or continued work",
+      "lane": "main",
+      "col": 0,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 1,
+          "end_line": 5
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 10,
+          "end_line": 22
+        }
+      ]
+    },
+    {
+      "id": "framed",
+      "type": "active",
+      "label": "Objective framed",
+      "sublabel": "constraints, acceptance",
+      "lane": "main",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 1,
+          "end_line": 5
+        }
+      ]
+    },
+    {
+      "id": "selecting",
+      "type": "decision",
+      "label": "Selecting a route",
+      "sublabel": "workflow-selection tree",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "planning",
+      "type": "active",
+      "label": "Planning",
+      "sublabel": "invariant or bounded route",
+      "lane": "phases",
+      "col": 1,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "implementing",
+      "type": "active",
+      "label": "Implementing",
+      "sublabel": "SDD, bounded or one unit",
+      "lane": "phases",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 18,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "awaiting",
+      "type": "waiting",
+      "label": "Awaiting the user",
+      "sublabel": "consult, approve, lend",
+      "lane": "waiting",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 107,
+          "end_line": 119
+        }
+      ]
+    },
+    {
+      "id": "milestone",
+      "type": "active",
+      "label": "Milestone",
+      "sublabel": "global Verify, then commit",
+      "lane": "terminal",
+      "col": 3,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 121,
+          "end_line": 132
+        }
+      ]
+    },
+    {
+      "id": "reporting",
+      "type": "success",
+      "label": "Reported and closed",
+      "sublabel": "memory_close_session",
+      "lane": "terminal",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 144,
+          "end_line": 147
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-memory-orchestrator/SKILL.md",
+          "line": 24,
+          "end_line": 31
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "start",
+      "to": "framed",
+      "label": "brief and approvals"
+    },
+    {
+      "from": "framed",
+      "to": "selecting",
+      "label": "each phase",
+      "variant": "emphasis"
+    },
+    {
+      "from": "selecting",
+      "to": "planning",
+      "label": "invariants missing"
+    },
+    {
+      "from": "planning",
+      "to": "selecting",
+      "label": "delivered",
+      "variant": "dashed"
+    },
+    {
+      "from": "selecting",
+      "to": "implementing",
+      "label": "development"
+    },
+    {
+      "from": "implementing",
+      "to": "selecting",
+      "label": "misfit",
+      "variant": "dashed"
+    },
+    {
+      "from": "selecting",
+      "to": "awaiting",
+      "label": "uncertain",
+      "variant": "security"
+    },
+    {
+      "from": "planning",
+      "to": "awaiting",
+      "label": "user decision",
+      "variant": "security"
+    },
+    {
+      "from": "implementing",
+      "to": "awaiting",
+      "label": "escalation",
+      "variant": "security"
+    },
+    {
+      "from": "awaiting",
+      "to": "selecting",
+      "label": "answer",
+      "variant": "dashed"
+    },
+    {
+      "from": "implementing",
+      "to": "milestone",
+      "label": "phases verified",
+      "variant": "emphasis"
+    },
+    {
+      "from": "milestone",
+      "to": "reporting",
+      "label": "Verify passes, commit",
+      "variant": "emphasis"
+    },
+    {
+      "from": "selecting",
+      "to": "reporting",
+      "label": "nothing to develop",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Loop",
+      "items": [
+        "The selection tree runs before every planning or implementation phase",
+        "Invariant planning returns to the tree once its invariants are delivered"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Waiting",
+      "items": [
+        "The user is consulted for lending, approvals, uncertainty and escalation",
+        "Resuming earlier work and compaction are covered in their own views"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Not drawn",
+      "items": [
+        "Direct work, recovery and delivery handling are separate views"
+      ]
+    }
+  ]
+}

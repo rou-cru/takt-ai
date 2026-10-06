@@ -12,4 +12,6 @@ role: verification
 skills:
 - takt-memory-contract
 - takt-memory-verify
+- takt-result-handoff
+- takt-verification-conduct
 - takt-vfs-verification

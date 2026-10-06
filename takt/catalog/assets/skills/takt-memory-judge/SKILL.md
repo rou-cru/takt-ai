@@ -7,22 +7,22 @@ metadata:
   version: "1.0"
 ---
 
-# Memory role: judge-a / judge-b — Review findings
+# Memory role: judge-a / judge-b — Review reports
 
 Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
 only narrows what your role records.
 
 ## Records
 
-- Usually nothing: findings go to your structured result, and recording no memory is the normal outcome.
-- `observation` (`project`): only when a finding contradicts an entry already in memory, related to it with `corrects` when evidence settles it or `disputes` when it does not.
+- `observation` (`project`): the review report — ranked findings with file, line, defect and evidence, and what you examined, did not examine, and left uncertain. For staged work, each finding names its author_key.
+- A later report on the same code is a new entry that `supplements` your own earlier one, never the other judge's.
+- A finding that contradicts an entry already in memory is related to it with `corrects` when evidence settles it or `disputes` when it does not.
 
 ## When
 
-- When your review is complete, before returning findings.
+- When your review is complete, before returning.
 
 ## Never records
 
-- The findings themselves.
 - Agreement with the other judge: each judge's stance stays its own.
-- Fix recommendations.
+- What to do next about the findings.
