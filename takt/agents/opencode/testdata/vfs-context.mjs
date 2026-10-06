@@ -78,7 +78,7 @@ assert.doesNotMatch(exact.system[0].text, /verdict/)
 const gate = await context("dev", [{ ...matching, scope: [], author_key: "author-1" }])
 assert.equal(gate.system.length, 1)
 assert.match(gate.system[0].text, /author_key author-1/)
-assert.match(gate.system[0].text, /empty scope/)
+assert.match(gate.system[0].text, /already bound/)
 
 const noClaim = await context("dev", [])
 assert.deepEqual(Object.keys(noClaim.tools), [])

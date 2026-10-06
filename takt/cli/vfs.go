@@ -476,7 +476,13 @@ func mutateBind(fs *vfs.FS, req request, identity vfs.Identity) (response, error
 	// The caller learns its attempt and the pinned invariant set from the result,
 	// which is the only place either is issued.
 	bound, _ := fs.BindingIdentity(key)
-	return response{OK: true, Key: string(key), AttemptID: bound.AttemptID, InvariantsVersion: bound.InvariantsHash}, nil
+	out := response{OK: true, Key: string(key), AttemptID: bound.AttemptID, InvariantsVersion: bound.InvariantsHash}
+	// A bind that adopts work already staged under the key continues from its
+	// revision; a fresh bind keeps the fixed contract without one.
+	if revision, hash, staged := fs.StagedState(key); staged {
+		out.Revision, out.DeltaHash = &revision, hash
+	}
+	return out, nil
 }
 
 // mutateOperation reads or changes staged work after verifying the caller's

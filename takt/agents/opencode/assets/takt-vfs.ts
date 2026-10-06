@@ -478,6 +478,23 @@ export default Plugin.define({
       }
     }
 
+    // bindAs binds the caller to its assignment: an author to its scope, a
+    // verifier gate to an empty scope linked to the one author it judges.
+    async function bindAs(c: { sessionID: string; agent: string }, session: string, unit: string, scope: string[], authorKey?: string) {
+      const author = authorKey ? bindings.get(authorKey) : undefined
+      if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
+      // A verifier runs as its own unit; the author key alone links it to
+      // the staged work it judges.
+      const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
+      const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
+      b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
+      // Adopting work already staged under the key continues from its revision.
+      if (typeof res.revision === "number" && typeof res.delta_hash === "string") { b.revision = res.revision; b.deltaHash = res.delta_hash }
+      bindings.set(b.key, b)
+      await persist()
+      return { b, res }
+    }
+
     // The binding identity is the harness-delivered agent name: opencode.json
     // keys every Takt agent by its catalog instance id, which is what the core
     // resolves role from. The model never supplies it.
@@ -1182,7 +1199,7 @@ export default Plugin.define({
       // and the catalog specialist, exactly as the launched subagent binds.
       editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept, only added paths are checked for collisions, and the set must include every path already staged.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
-        agent: str("Instance id of the specialist you will launch"),
+        agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
         author_key: str("The author_key of this unit's existing staged work to keep; omit for new work"),
       }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
@@ -1192,7 +1209,7 @@ export default Plugin.define({
       } })
       editor.add({ name: "claim_assign_verifier", description: "Before delegating a gate, preassign the verifier to the staged work it judges; call once per author_key under the same unit to have one verifier judge several.", input: obj({
         work_unit_id: str("The verifier's own unit, the one its delegation will be named after"),
-        agent: str("Instance id of the verifier you will launch"),
+        agent: str("Catalog instance id of the verifier you will launch (for example `verify`); never a per-lane name"),
         author_key: str("The author_key of the staged work to judge"),
       }, ["work_unit_id", "agent", "author_key"]), async execute(input: unknown, c) {
         const args = toolInput(input)
@@ -1385,15 +1402,7 @@ export default Plugin.define({
           if (claim?.author_key && (authorKey !== claim.author_key || args.scope.length !== 0)) {
             throw new Error(`Bind the verifier with scope: [] and author_key: ${claim.author_key}; the author owns the files being judged`)
           }
-          const author = authorKey ? bindings.get(authorKey) : undefined
-          if (authorKey && author?.session !== session) throw new Error("author_key does not name an active binding of this session")
-          // A verifier runs as its own unit; the author key alone links it to
-          // the staged work it judges.
-          const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey } : {}) }
-          const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope: args.scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
-          b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
-          bindings.set(b.key, b)
-          await persist()
+          const { b, res } = await bindAs(c, session, unit, args.scope, authorKey)
           return { content: `Bound as ${b.agent} to scope ${JSON.stringify(args.scope)}; unit ${unit}, attempt ${res.attempt_id}; invariants ${INVARIANT_DOCUMENTS.join(", ")} at version ${res.invariants_version}; author_key ${b.key}` }
         },
       })
@@ -1423,7 +1432,11 @@ export default Plugin.define({
         input: obj({ path: str("Workspace-relative path within your assignment"), call_id: str("Unique id for this operation"), author_key: str("Verifier only: the author_key of the staged work whose files you read") }, ["path", "call_id"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; call_id: string; author_key?: string }>(input)
-          const b = [...bindings.values()].find(x => x.dispatch === c.sessionID && x.agent === c.agent && x.judges !== undefined && x.judges === args.author_key) ?? own(c)
+          const gates = [...bindings.values()].filter(x => x.dispatch === c.sessionID && x.agent === c.agent && x.judges !== undefined)
+          const gate = gates.find(x => x.judges === args.author_key)
+          // A gate reads only the authors it judges: an unknown key never falls back to another gate.
+          if (args.author_key && gates.length > 0 && !gate) throw new Error(`author_key ${args.author_key} is not one of your gates: ${gates.map(x => x.judges).join(", ")}`)
+          const b = gate ?? own(c)
           const judged = b.judges ? bindings.get(b.judges) : undefined
           if (judged) {
             // A gate reads exactly the author's staged state it will judge.
@@ -1586,9 +1599,26 @@ export default Plugin.define({
         const claim = claims[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools[name]
-        event.system.push({ type: "text", text: claim.author_key
-          ? `You judge the staged work of author_key ${claims.map(x => x.author_key).join(", ")} for work unit ${unit}. Bind once per author_key with vfs_bind using an empty scope and that author_key, read each one's staged files with vfs_read naming that author_key, and attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on.`
-          : `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. Bind with vfs_bind using exactly this scope, stage changes with vfs_write and vfs_delete, read your staged view with vfs_read, and return the author_key in your handoff.` })
+        if (claim.author_key) {
+          // A gate arrives bound: adopting each preassigned gate and naming the
+          // author's files is the delivery of the assignment, never the verifier's task.
+          delete event.tools.vfs_bind
+          const owned = ((await takt("claims", { session_id: root })).claims ?? []) as OwnershipClaim[]
+          const lines: string[] = []
+          for (const gate of claims) {
+            const key = gate.author_key ?? ""
+            let note = ""
+            const adopted = [...bindings.values()].some(x => x.dispatch === event.sessionID && x.agent === event.agent && x.judges === key)
+            if (gate.pending === true && !adopted) {
+              try { await bindAs({ sessionID: event.sessionID, agent: event.agent }, root, unit, [], key) }
+              catch (error) { note = ` (gate not adopted: ${error instanceof Error ? error.message : String(error)}; report it as unverified)` }
+            }
+            lines.push(`author_key ${key}: ${(owned.find(x => x.key === key)?.scope ?? []).join(", ")}${note}`)
+          }
+          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. Read each author's files only with vfs_read naming its author_key, and attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on.\n${lines.join("\n")}` })
+          return
+        }
+        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. Bind with vfs_bind using exactly this scope, stage changes with vfs_write and vfs_delete, read your staged view with vfs_read, and return the author_key in your handoff.` })
       } catch { removeVFS() }
     })
 

@@ -139,7 +139,10 @@ export default Plugin.define({
     await ctx.tool.transform((editor) => {
       editor.add({
         name: "memory_record",
-        description: `Record one memory entry for the work you just finished. ${CONTRACT}`,
+        description:
+          "Record one memory entry for the work you just finished. " +
+          "Returns plain text `Recorded #<id>` (or `Already recorded #<id>`); `<id>` is the number `deliver_result` takes. " +
+          CONTRACT,
         input: {
           type: "object",
           properties: {

@@ -717,21 +717,31 @@ describe("claims and consolidation", () => {
     } finally { await vfs.stop() }
   })
 
-  test("verifier binds to its empty-scope assignment and author key", async () => {
+  const verifierGrants = [
+    { action: "*", resource: "*", effect: "deny" },
+    ...["vfs_bind", "vfs_read", "vfs_verify"].map((name) => ({ action: name, resource: name, effect: "allow" })),
+  ]
+  const gateContext = () => ({ tools: Object.fromEntries(["vfs_bind", "vfs_read", "vfs_verify"].map((name) => [name, {}])), sessionID: "verify-child", agent: "verify", system: [] as Array<{ type: string; text: string }> })
+
+  test("a verifier gate arrives bound to its author, with the author's files listed and no bind tool", async () => {
     const author = { key: "author-key", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "hash" }
     const reviewer: Ctx = { sessionID: "verify-child", agent: "verify" }
     const vfs = await startVfs({
       sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      permissions: { verify: verifierGrants },
       storage: { "takt/vfs/bindings": [author] },
-      claims: [{ key: "gate-key", root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: "author-key" }],
+      claims: [
+        { key: "author-key", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/a.go", "src/b.go"] },
+        { key: "gate-key", root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: "author-key" },
+      ],
       respond: (call) => call.command === "bind" ? json({ ok: true, key: "gate-key", attempt_id: "a1", invariants_version: "v1" }) : undefined,
     })
     try {
-      await expect(vfs.run("vfs_bind", { scope: ["src/a.go"], author_key: "author-key" }, reviewer))
-        .rejects.toThrow("scope: [] and author_key: author-key")
-      expect(vfs.requests("vfs", "bind")).toEqual([])
-      await vfs.run("vfs_bind", { scope: [], author_key: "author-key" }, reviewer)
+      const event = gateContext()
+      await vfs.fire(vfs.session, "context", event)
       expect(vfs.requests("vfs", "bind")).toEqual([expect.objectContaining({ scope: [], author_key: "author-key", specialist: "verify" })])
+      expect(Object.keys(event.tools)).toEqual(["vfs_read", "vfs_verify"])
+      expect(event.system[0].text).toContain("author_key author-key: src/a.go, src/b.go")
       await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-gate" }, reviewer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-key" })])
     } finally { await vfs.stop() }
@@ -743,18 +753,38 @@ describe("claims and consolidation", () => {
     const gate = (author: string) => ({ key: `gate-${author}`, root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: author })
     const vfs = await startVfs({
       sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      permissions: { verify: verifierGrants },
       storage: { "takt/vfs/bindings": authors },
       claims: [gate("author-a"), gate("author-b")],
       respond: (call) => call.command === "bind" ? json({ ok: true, key: `gate-${call.request.author_key}`, attempt_id: "a1", invariants_version: "v1" }) : undefined,
     })
     try {
-      for (const { key } of authors) await vfs.run("vfs_bind", { scope: [], author_key: key }, reviewer)
+      await vfs.fire(vfs.session, "context", gateContext())
       expect(vfs.requests("vfs", "bind")).toEqual(authors.map(({ key }) => expect.objectContaining({ scope: [], author_key: key })))
       await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-a", author_key: "author-a" }, reviewer)
       await vfs.run("vfs_read", { path: "src/b.go", call_id: "read-b", author_key: "author-b" }, reviewer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-a" }), expect.objectContaining({ view_key: "author-b" })])
+      await expect(vfs.run("vfs_read", { path: "src/c.go", call_id: "read-c", author_key: "author-z" }, reviewer)).rejects.toThrow("is not one of your gates")
       for (const { key } of authors) await vfs.run("vfs_verify", { author_key: key, pass: true, finding: "holds" }, reviewer)
       expect(vfs.requests("vfs", "verify")).toEqual(authors.map(({ key }) => expect.objectContaining({ author_key: key, verifier_key: `gate-${key}`, pass: true })))
+      const again = gateContext()
+      await vfs.fire(vfs.session, "context", again)
+      expect(vfs.requests("vfs", "bind")).toHaveLength(2)
+    } finally { await vfs.stop() }
+  })
+
+  test("a specialist taking over staged work replaces the old binding and continues from its revision", async () => {
+    const old = { key: "author-1", agent: "dev", session: "root", dispatch: "dev-child", unit: "unit-dev", revision: 3, deltaHash: "old" }
+    const fixer: Ctx = { sessionID: "fix-child", agent: "fix" }
+    const vfs = await startVfs({
+      sessions: { "fix-child": { parentID: "root", title: "unit-fix" } },
+      storage: { "takt/vfs/bindings": [old] },
+      respond: (call) => call.command === "bind" ? json({ ok: true, key: "author-1", attempt_id: "2", invariants_version: "v1", revision: 3, delta_hash: "h3" }) : call.command === "op" ? json({ ok: true, revision: 4, delta_hash: "h4" }) : undefined,
+    })
+    try {
+      await vfs.run("vfs_bind", { scope: ["src/a.go"] }, fixer)
+      await vfs.run("vfs_write", { path: "src/a.go", content: "x", call_id: "w1" }, fixer)
+      expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ agent_id: "fix", work_unit_id: "unit-fix", author_key: "author-1", expected_revision: 3 })])
     } finally { await vfs.stop() }
   })
 
@@ -904,7 +934,7 @@ describe("delegated VFS context", () => {
     try {
       const event = contextFor()
       await vfs.fire(vfs.session, "context", event)
-      expect(event.system[0].text).toContain("You judge the staged work of author_key author-9 for work unit unit-a.")
+      expect(event.system[0].text).toContain("You judge the staged work of these authors for work unit unit-a; every gate is already bound.")
     } finally { await vfs.stop() }
   })
 
