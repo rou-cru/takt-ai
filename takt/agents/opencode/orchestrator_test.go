@@ -113,6 +113,8 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 		{"shell", "git push", "ask"},
 		{"shell", "git commit *", "ask"},
 		{"shell", "git reset --hard *", "ask"},
+		{"shell", "git clean *", "ask"},
+		{"shell", "git restore *", "ask"},
 		{"read", "**/.env", "deny"},
 		{"read", "**/.ssh/**", "deny"},
 	} {

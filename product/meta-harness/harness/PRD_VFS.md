@@ -20,7 +20,7 @@ Isolation is virtual rather than Git-based because a workspace is not necessaril
 | PR-VFS-GIT-2 | Execution specialists MAY use Git for read-only historical inspection (`git diff`, `git log`, `git show`, `git blame`, and status queries). |
 | PR-VFS-GIT-3 | Git commit creation is reserved to the orchestrator. Consolidation and commit are distinct steps. As orchestrator conduct, not harness enforcement, the milestone commit occurs only after the acceptance checks run against the materialized workspace have passed, and a workspace left temporarily failing while the DAG corrects it MUST NOT be committed as a milestone. |
 | PR-VFS-GIT-4 | Worktree creation for isolation is prohibited during standard DAG execution; isolation is guaranteed virtually by the VFS and contract boundaries. |
-| PR-VFS-GIT-5 | The harness gates for user approval the orchestrator's Git actions that publish or rewrite history: commit, push, force push, rebase, and hard reset. Other Git mutations are orchestrator conduct. |
+| PR-VFS-GIT-5 | The harness gates for user approval the orchestrator's Git actions that publish or rewrite history or discard work: commit, push, force push, rebase, hard reset, clean, and restore. Other Git mutations are orchestrator conduct. |
 | PR-VFS-GIT-6 | As orchestrator conduct, commits are Conventional Commits (`type(scope): subject`), short, with no signature or attribution trailer, unless the user says otherwise for that commit. |
 
 ### 2.2 Active Virtualization & Staging

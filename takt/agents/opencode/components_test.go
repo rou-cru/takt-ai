@@ -89,6 +89,21 @@ func TestRenderConfigComponents(t *testing.T) {
     },
     {
       "action": "shell",
+      "effect": "ask",
+      "resource": "git clean"
+    },
+    {
+      "action": "shell",
+      "effect": "ask",
+      "resource": "git clean *"
+    },
+    {
+      "action": "shell",
+      "effect": "ask",
+      "resource": "git restore *"
+    },
+    {
+      "action": "shell",
       "effect": "deny",
       "resource": "takt-ai memory*"
     },
