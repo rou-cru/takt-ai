@@ -279,6 +279,9 @@ func TestRenderConfigRejectsDuplicateAgentID(t *testing.T) {
 	}
 }
 
+// TestRenderConfigProjectsExplicitVFSGrants checks that each role receives exactly the
+// VFS tool permissions its explicit capability grant names, and no specialist drives
+// the VFS CLI through the shell.
 func TestRenderConfigProjectsExplicitVFSGrants(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -442,7 +445,7 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 					"vfs_delete": model.VFSCapabilityDelete, "vfs_discard": model.VFSCapabilityDiscard,
 					"vfs_verify": model.VFSCapabilityVerify, "vfs_consolidate": model.VFSCapabilityConsolidate,
 				}
-				if slices.Contains(agent.VFSCapabilities, capabilityByTool[tool]) && !(tool == "vfs_bind" && slices.Contains(agent.VFSCapabilities, model.VFSCapabilityVerify)) {
+				if slices.Contains(agent.VFSCapabilities, capabilityByTool[tool]) && (tool != "vfs_bind" || !slices.Contains(agent.VFSCapabilities, model.VFSCapabilityVerify)) {
 					toolWant = "allow"
 				}
 				if got := effectOf(rules, tool, "*"); got != toolWant {
@@ -497,6 +500,8 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *tes
 	}
 }
 
+// TestRenderConfigLetPlanningLanesWriteFiles checks that planning lanes keep native
+// edit and shell, while execution and verification roles follow their VFS grants.
 func TestRenderConfigLetPlanningLanesWriteFiles(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
