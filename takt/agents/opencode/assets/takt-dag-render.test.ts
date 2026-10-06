@@ -186,7 +186,27 @@ describe("sidebar list", () => {
       edges: [{ from: "design", to: "build" }, { from: "build", to: "review" }],
       activities: [{ activity_id: "plan", node_kind: "orchestrator", state: "in_flight" }],
     } as never
-    expect(sidebarRows(snapshot)).toEqual(["✓ design", "└ ● build", "  └ ◌ review", "", "◆ direct activity plan · running"])
+    expect(sidebarRows(snapshot)).toEqual(["✓ design", "● build ← design", "◌ review ← build", "", "◆ direct activity plan · running"])
+  })
+
+  test("draws disconnected graphs apart and shows every real prerequisite", () => {
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+    const snapshot = {
+      ...base,
+      nodes: ["T01", "T02", "T05", "T06", "pm", "spec"].map((id) => node({ id })),
+      edges: [
+        { from: "T01", to: "T05" }, { from: "T02", to: "T05" }, { from: "T02", to: "T06" },
+        { from: "pm", to: "spec" },
+      ],
+    } as never
+    expect(sidebarRows(snapshot)).toEqual([
+      "◌ T01", "◌ T02", "◌ T05 ← T01, T02", "◌ T06 ← T02",
+      "",
+      "◌ pm", "◌ spec ← pm",
+    ])
+    const layout = computeLayout(snapshot)
+    const ys = (ids: string[]) => ids.map((id) => layout.nodes.get(id)?.y ?? -1)
+    expect(Math.max(...ys(["T01", "T02", "T05", "T06"]))).toBeLessThan(Math.min(...ys(["pm", "spec"])))
   })
 })
 

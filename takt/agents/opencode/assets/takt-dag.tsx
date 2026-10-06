@@ -283,6 +283,33 @@ function computeDepths(snapshot: DagSnapshot): Map<string, number> {
   return depths
 }
 
+/**
+ * Node ids grouped by connectivity (edges read undirected): disconnected
+ * graphs are separate components and are drawn apart. Ordered by smallest id,
+ * members by id, so the result is deterministic.
+ */
+function connectedComponents(snapshot: DagSnapshot): string[][] {
+  const neighbours = new Map<string, string[]>()
+  for (const e of snapshot.edges) {
+    neighbours.set(e.from, [...(neighbours.get(e.from) ?? []), e.to])
+    neighbours.set(e.to, [...(neighbours.get(e.to) ?? []), e.from])
+  }
+  const seen = new Set<string>()
+  const components: string[][] = []
+  for (const id of snapshot.nodes.map((n) => n.id).sort(ordinal)) {
+    if (seen.has(id)) continue
+    const members: string[] = []
+    const pending = [id]
+    seen.add(id)
+    for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+      members.push(next)
+      for (const n of neighbours.get(next) ?? []) if (!seen.has(n)) { seen.add(n); pending.push(n) }
+    }
+    components.push(members.sort(ordinal))
+  }
+  return components.sort((a, b) => ordinal(a[0], b[0]))
+}
+
 /** A horizontal run an edge takes inside one inter-layer gap. */
 interface Turn {
   readonly edge: DagEdge
@@ -324,13 +351,16 @@ export function computeLayout(snapshot: DagSnapshot, previous?: Layout): Layout 
 
   const depths = computeDepths(snapshot)
   const depthOf = (id: string) => depths.get(id) ?? 0
-  const layers = new Map<number, string[]>()
-  for (const node of snapshot.nodes) layers.set(depthOf(node.id), [...(layers.get(depthOf(node.id)) ?? []), node.id])
-  // Within a layer nodes are ordered by id: identity only, so stable.
+  // Each component is a band of its own, stacked across the flow, so
+  // disconnected graphs never share a column. Within a layer nodes are ordered
+  // by id: identity only, so stable.
   const column = new Map<string, number>()
-  for (const ids of layers.values()) {
-    ids.sort(ordinal)
-    ids.forEach((id, index) => column.set(id, index))
+  let bandStart = 0
+  for (const members of connectedComponents(snapshot)) {
+    const layers = new Map<number, string[]>()
+    for (const id of members) layers.set(depthOf(id), [...(layers.get(depthOf(id)) ?? []), id])
+    for (const ids of layers.values()) ids.forEach((id, index) => column.set(id, bandStart + index))
+    bandStart += Math.max(...[...layers.values()].map((ids) => ids.length))
   }
   // Perpendicular position of a node: its row on screen.
   const xOf = (id: string) => (column.get(id) ?? 0) * g.pitch
@@ -650,15 +680,24 @@ export function sidebarHeader(snapshot: DagSnapshot | undefined, health: Health)
   return headerLine(snapshot, health)
 }
 
-// sidebarRows lays the DAG out top-down for a narrow column: one row per unit
-// in dependency order, indented under its prerequisites, then activities.
+// sidebarRows lists the DAG for a narrow column without implying structure it
+// lacks: one block per disconnected graph (blank row between), units in
+// dependency order (same-layer units are adjacent: parallel), each followed by
+// its real prerequisites; then activities.
 export function sidebarRows(snapshot: DagSnapshot): string[] {
   const depths = computeDepths(snapshot)
-  const ordered = [...snapshot.nodes].sort((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || ordinal(a.id, b.id))
-  const rows = ordered.map((node) => {
-    const depth = depths.get(node.id) ?? 0
-    return (depth > 0 ? "  ".repeat(depth - 1) + "└ " : "") + nodeText(node)
-  })
+  const byId = new Map(snapshot.nodes.map((n) => [n.id, n]))
+  const prerequisites = new Map<string, string[]>()
+  for (const e of snapshot.edges) prerequisites.set(e.to, [...(prerequisites.get(e.to) ?? []), e.from])
+  const blocks = connectedComponents(snapshot).map((members) =>
+    members
+      .sort((a, b) => (depths.get(a) ?? 0) - (depths.get(b) ?? 0) || ordinal(a, b))
+      .map((id) => {
+        const from = (prerequisites.get(id) ?? []).sort(ordinal)
+        return nodeText(byId.get(id) as DagNode) + (from.length > 0 ? ` ← ${from.join(", ")}` : "")
+      }),
+  )
+  const rows = blocks.flatMap((block, i) => (i > 0 ? ["", ...block] : block))
   const activities = snapshot.activities ?? []
   if (activities.length > 0 && rows.length > 0) rows.push("")
   return rows.concat(activities.map(activityText))
