@@ -44,6 +44,8 @@ Orchestration coordinates specialist work toward the user’s goal, manages depe
 
 ### 2.3 Workflow Frameworks
 
+The selection tree that realizes `PR-ORQ-29`..`32` is described in [WORKFLOW_SELECTION.md](WORKFLOW_SELECTION.md).
+
 | ID | Requirement |
 | --- | --- |
 | PR-ORQ-14 | A workflow framework is a supported reference for the software-development happy path, providing planning artifacts, theoretical support for decisions, and a shared way to understand progress. It is never the universal route for every kind of work. |

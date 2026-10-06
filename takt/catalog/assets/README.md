@@ -11,7 +11,9 @@ agent's memory skills. Only undeclared optional files are omitted.
 This order does not introduce an authority hierarchy. Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
 discovers them; they are not injected into initial prompts. Resource bytes are
-copied unchanged.
+copied unchanged, except that a double-brace `policy.<name>` marker in Markdown prose is
+replaced at install with the matching value of `takt/dispatch/admission_policy.yaml`;
+an unknown marker fails the install.
 
 Skill directories match their frontmatter `name`. References between skills are
 relative to the containing skill directory. Declare executable scripts as a list
@@ -29,7 +31,7 @@ section Engram's wiring places in `~/.config/opencode/AGENTS.md`.
 | Role | VFS tools | How it changes the workspace |
 | --- | --- | --- |
 | orchestrator | claims, `vfs_discard`, `vfs_consolidate` | native edit outside claimed paths; assigns, discards and consolidates staged work |
-| planning_author, direct_interlocutor | none | native edit outside claimed paths, delivering documents to the paths named; the analyst has no edit and only delivers findings |
+| planning_author, direct_interlocutor | none | native edit outside claimed paths, delivering documents to the paths named |
 | execution (dev, fix, simplify) | bind, write, read, delete | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
 | verification (verify) | bind, read, verify | none; judges staged work when assigned a gate, including GC deltas |
 | judge (judge-a, judge-b) | none | none |

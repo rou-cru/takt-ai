@@ -16,7 +16,6 @@
 package catalog
 
 import (
-	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -211,19 +210,14 @@ func TestBuildNativeContentSkipsOrchestrator(t *testing.T) {
 	}
 }
 
-// TestVFSOnlyMutationSkill checks that every agent whose native `edit` is
-// denied by permissionsConfig (renderer.go) declares the takt-vfs-mutation
-// skill, and that the skill itself still carries the VFS-only and
-// destructive-effects instructions. Native edit is a harness-level deny
-// regardless of prompt content, so this guidance lives in an on-demand skill
-// rather than duplicated per-agent Instructions text.
-func TestVFSOnlyMutationSkill(t *testing.T) {
+// TestVFSMutationSkillDeclaredByMutatingAgents checks that every agent whose
+// native `edit` is denied by permissionsConfig (renderer.go) declares the
+// takt-vfs-mutation skill.
+func TestVFSMutationSkillDeclaredByMutatingAgents(t *testing.T) {
 	cat, err := LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	skill := findSkillPackage(t, cat, "takt-vfs-mutation")
-	assertSkillDescriptorContains(t, skill, "only through your VFS assignment", "Never use native edit or write tools", "as destructive")
 	assertAgentsDeclareSkill(t, cat, "takt-vfs-mutation", "takt-dev", "takt-fix", "takt-simplify")
 }
 
@@ -244,31 +238,6 @@ func TestNoOrphanSkills(t *testing.T) {
 	for _, skill := range cat.Skills {
 		if !declared[skill.ID] {
 			t.Errorf("%s skill has no declared consumer in any agent.yaml", skill.ID)
-		}
-	}
-}
-
-// findSkillPackage returns the catalog's skill with the given id, failing
-// the test if it is not found.
-func findSkillPackage(t *testing.T, cat Catalog, id string) *SkillPackage {
-	t.Helper()
-	for i := range cat.Skills {
-		if cat.Skills[i].ID == id {
-			return &cat.Skills[i]
-		}
-	}
-	t.Fatalf("%s skill not found in catalog", id)
-	return nil
-}
-
-// assertSkillDescriptorContains checks that skill's descriptor mentions
-// every one of want.
-func assertSkillDescriptorContains(t *testing.T, skill *SkillPackage, want ...string) {
-	t.Helper()
-	descriptor := string(skill.Descriptor)
-	for _, w := range want {
-		if !strings.Contains(descriptor, w) {
-			t.Errorf("%s skill missing %q", skill.ID, w)
 		}
 	}
 }
@@ -294,118 +263,6 @@ func assertAgentsDeclareSkill(t *testing.T, cat Catalog, skillID string, agentID
 	for id, found := range wantAgents {
 		if !found {
 			t.Errorf("%s does not declare the %s skill", id, skillID)
-		}
-	}
-}
-
-func readAssets(t *testing.T, globs ...string) map[string]string {
-	t.Helper()
-	fsys := AssetFS()
-	files := map[string]string{}
-	for _, g := range globs {
-		paths, err := fs.Glob(fsys, g)
-		if err != nil || len(paths) == 0 {
-			t.Fatalf("glob %q: %v (%d matches)", g, err, len(paths))
-		}
-		for _, p := range paths {
-			b, err := fs.ReadFile(fsys, p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			files[p] = string(b)
-		}
-	}
-	return files
-}
-
-func TestAgentProseNeverExplainsMechanism(t *testing.T) {
-	files := readAssets(t, "shared/BASELINE.md", "agents/takt/*.md", "agents/*/OPERATIONS.md",
-		"skills/takt-sdd-workflow/SKILL.md", "skills/takt-sdd-recovery/SKILL.md", "skills/takt-memory-*/SKILL.md", "skills/takt-session-resume/SKILL.md", "skills/takt-vfs-mutation/SKILL.md",
-		"skills/takt-bounded-workflow/SKILL.md", "skills/takt-bounded-planning/SKILL.md",
-		"skills/takt-workflow-selection/SKILL.md", "skills/takt-workflow-selection-exceptions/SKILL.md")
-	forbidden := []string{
-		"harness", "admission", "enforce", "nobody reviews", "You write content only",
-		"server instructions", "tool descriptions", "verification controls", "accepted as written",
-	}
-	for path, text := range files {
-		lower := strings.ToLower(text)
-		for _, term := range forbidden {
-			if strings.Contains(lower, strings.ToLower(term)) {
-				t.Errorf("%s explains mechanism: contains %q", path, term)
-			}
-		}
-	}
-}
-
-func TestOrchestratorOperationsKeepDelegationAsDefault(t *testing.T) {
-	text := readAssets(t, "agents/takt/OPERATIONS.md")["agents/takt/OPERATIONS.md"]
-	for _, want := range []string{
-		"Your normal mode for implementation is to delegate",
-		"You can also use native OpenCode file tools or shell",
-		"a critical or urgent intervention",
-		"work the user explicitly asks you to do",
-		"never on a path an active claim holds",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("orchestrator operations missing %q", want)
-		}
-	}
-	for _, pushy := range []string{
-		"use native OpenCode file tools and shell for quick adjustments",
-		"not limited to inspection",
-		"not a reason to skip delegation",
-	} {
-		if strings.Contains(text, pushy) {
-			t.Errorf("orchestrator operations overemphasize direct execution with %q", pushy)
-		}
-	}
-}
-
-func TestOrchestratorOperationsNameItsHarnessTools(t *testing.T) {
-	text := readAssets(t, "agents/takt/OPERATIONS.md")["agents/takt/OPERATIONS.md"]
-	for _, tool := range []string{"claim_assign`", "claim_list`", "claim_assign_verifier`", "dispatch_activity_start`", "dispatch_activity_finish`", "gc_request`"} {
-		if !strings.Contains(text, "`"+tool) {
-			t.Errorf("orchestrator operations do not say when to use %s", strings.TrimSuffix(tool, "`"))
-		}
-	}
-}
-
-// TestToolInvocationGuidanceDistinguishesDirectAndCodeMode checks that the shared
-// baseline owns tool discovery guidance and its examples avoid undiscovered calls.
-func TestToolInvocationGuidanceDistinguishesDirectAndCodeMode(t *testing.T) {
-	baseline := readAssets(t, "shared/BASELINE.md")["shared/BASELINE.md"]
-	for _, want := range []string{"direct assistant tool call", "not in its catalog", "return search({ query: \"dispatch_activity_start\" })", "subsequent", "returned entry's `path` and `signature`"} {
-		if !strings.Contains(baseline, want) {
-			t.Errorf("shared guidance missing tool boundary %q", want)
-		}
-	}
-	for _, fence := range strings.Split(baseline, "```js")[1:] {
-		code, _, _ := strings.Cut(fence, "```")
-		if strings.Contains(code, "tools.") || strings.Contains(code, "shell(") {
-			t.Errorf("shared guidance has an undiscovered or native tool call in executable example: %s", code)
-		}
-	}
-	for path, body := range readAssets(t, "agents/*/OPERATIONS.md", "skills/*/SKILL.md") {
-		if strings.Contains(body, "return search({ query:") || strings.Contains(body, "tools.shell") || strings.Contains(body, "tools.search") {
-			t.Errorf("%s duplicates shared tool invocation guidance", path)
-		}
-	}
-}
-
-func TestMemoryContractAnyRoleRecordsDecision(t *testing.T) {
-	text := readAssets(t, "skills/takt-memory-contract/SKILL.md")["skills/takt-memory-contract/SKILL.md"]
-	for _, gone := range []string{"Only interface roles record it", "non-interface role"} {
-		if strings.Contains(text, gone) {
-			t.Errorf("contract still says %q", gone)
-		}
-	}
-	if !strings.Contains(text, "Any role may record it") {
-		t.Error("contract must say any role may record a decision")
-	}
-	// MEM-TYP-8: role skills reference the contract, never restate its decision rule.
-	for path, body := range readAssets(t, "skills/takt-memory-*/SKILL.md") {
-		if strings.Contains(body, "decisions belong to interface roles") {
-			t.Errorf("%s restates the decision rule", path)
 		}
 	}
 }

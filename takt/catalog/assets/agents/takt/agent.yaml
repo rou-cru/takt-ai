@@ -20,8 +20,6 @@ skills:
 - takt-bounded-workflow
 - takt-workflow-selection
 - takt-workflow-selection-exceptions
-- takt-handoff
-- takt-interlocutor-handoff
-- takt-interlocutor-exceptions
+- takt-interlocutor-lending
 - takt-git-commit
 - takt-vfs-coordination

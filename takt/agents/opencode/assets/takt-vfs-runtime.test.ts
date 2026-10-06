@@ -231,6 +231,7 @@ describe("takt-ai answers", () => {
       await expect(write()).rejects.toThrow("takt-ai vfs op exited 0: garbage")
       reply = { out: "", err: "stderr text", code: 4 }
       await expect(write()).rejects.toThrow("takt-ai vfs op exited 4: stderr text")
+      expect((await write().catch((e: Error) => e) as Error).cause).toBeUndefined()
       reply = json({ ok: false, error: "scope violation" })
       await expect(write()).rejects.toThrow("scope violation")
       reply = { out: JSON.stringify({ ok: false }), err: "denied upstream", code: 1 }
@@ -361,11 +362,13 @@ describe("delegation lifecycle", () => {
     } finally { await restarted.stop() }
   })
 
-  test("a producer that never delivers is nudged once, then its delegation fails and settles", async () => {
+  test.each(["Breakdown recorded.", "Completed report: all findings are listed in this chat.", "Created report.md; the result is in that file."])("a producer with only unstructured output (%s) is nudged once, then fails and settles", async (content) => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
       await admitProducer(vfs)
-      await expect(vfs.fire(vfs.tool, "execute.after", finished())).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
+      const event = finished()
+      event.result.content = content
+      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
       expect(vfs.log.prompts).toHaveLength(1)
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child-r" })
       expect(vfs.log.prompts[0].text).toContain("Call deliver_result")
@@ -414,7 +417,7 @@ describe("maintenance cycle", () => {
       expect(vfs.log.interrupts).toContain("gcv")
       expect(vfs.actions("gc")).toContain("recover")
       expect(vfs.log.prompts[0].sessionID).toBe("gcv")
-      expect(vfs.log.prompts[0].text).toContain("Harness cycle cycle-1; mandate complexity.")
+      expect(vfs.log.prompts[0].text).toContain("Maintenance cycle cycle-1; mandate complexity.")
       expect(vfs.log.prompts[0].text).toContain("gc_delta")
     } finally { await vfs.stop() }
   })
@@ -728,6 +731,27 @@ describe("claims and consolidation", () => {
       expect(vfs.requests("vfs", "bind")).toEqual([expect.objectContaining({ scope: [], author_key: "author-key", specialist: "verify" })])
       await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-gate" }, reviewer)
       expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-key" })])
+    } finally { await vfs.stop() }
+  })
+
+  test("one verifier unit judges several authors, each through its own gate", async () => {
+    const authors = ["author-a", "author-b"].map((key) => ({ key, agent: "dev", session: "root", dispatch: `${key}-child`, unit: key, revision: 1, deltaHash: `hash-${key}` }))
+    const reviewer: Ctx = { sessionID: "verify-child", agent: "verify" }
+    const gate = (author: string) => ({ key: `gate-${author}`, root_session_id: "root", work_unit_id: "gate", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: author })
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      storage: { "takt/vfs/bindings": authors },
+      claims: [gate("author-a"), gate("author-b")],
+      respond: (call) => call.command === "bind" ? json({ ok: true, key: `gate-${call.request.author_key}`, attempt_id: "a1", invariants_version: "v1" }) : undefined,
+    })
+    try {
+      for (const { key } of authors) await vfs.run("vfs_bind", { scope: [], author_key: key }, reviewer)
+      expect(vfs.requests("vfs", "bind")).toEqual(authors.map(({ key }) => expect.objectContaining({ scope: [], author_key: key })))
+      await vfs.run("vfs_read", { path: "src/a.go", call_id: "read-a", author_key: "author-a" }, reviewer)
+      await vfs.run("vfs_read", { path: "src/b.go", call_id: "read-b", author_key: "author-b" }, reviewer)
+      expect(vfs.requests("vfs", "op")).toEqual([expect.objectContaining({ view_key: "author-a" }), expect.objectContaining({ view_key: "author-b" })])
+      for (const { key } of authors) await vfs.run("vfs_verify", { author_key: key, pass: true, finding: "holds" }, reviewer)
+      expect(vfs.requests("vfs", "verify")).toEqual(authors.map(({ key }) => expect.objectContaining({ author_key: key, verifier_key: `gate-${key}`, pass: true })))
     } finally { await vfs.stop() }
   })
 

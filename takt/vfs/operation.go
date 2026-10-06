@@ -187,6 +187,11 @@ func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, b
 		if !assigned.Prelaunch || assigned.SessionID != identity.SessionID || assigned.WorkUnitID != identity.WorkUnitID || assigned.AgentID != identity.AgentID {
 			continue
 		}
+		// A verifier unit holds one gate per author it judges; a gate preassigned
+		// to another author is not this bind's assignment.
+		if assigned.GateAuthorKey != "" && identity.GateAuthorKey != "" && assigned.GateAuthorKey != identity.GateAuthorKey {
+			continue
+		}
 		if assigned.Specialist != identity.Specialist || assigned.GateAuthorKey != identity.GateAuthorKey ||
 			(identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID) ||
 			(len(identity.Invariants) > 0 && !slices.Equal(assigned.Invariants, identity.Invariants)) ||
@@ -588,7 +593,7 @@ func completeIdentity(identity Identity) bool {
 }
 func (f *FS) duplicateIdentity(identity Identity) bool {
 	for _, existing := range f.bindings {
-		if existing.sameAttempt(identity) && existing.AgentID == identity.AgentID {
+		if existing.sameAttempt(identity) && existing.AgentID == identity.AgentID && existing.GateAuthorKey == identity.GateAuthorKey {
 			return true
 		}
 	}
@@ -743,8 +748,7 @@ func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err erro
 }
 
 // admitLocked runs the checks that precede any effect: a bound identity, a
-// legitimate view, a fresh call, no unresolved collision and the caller's
-// revision. The call is consumed even when a later check rejects it.
+// legitimate view, a fresh call and the caller's revision. The call is consumed even when a later check rejects it.
 func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	identity, ok := f.bindings[op.Key]
 	if !ok || op.CallID == "" {
@@ -765,21 +769,10 @@ func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	if err := f.consumeCallLocked(identity.SessionID, op.CallID); err != nil {
 		return identity, err
 	}
-	if f.collidedLocked(identity) {
-		return identity, ErrCollision
-	}
 	if current := f.revisionOf(view); current != op.ExpectedRevision {
 		return identity, fmt.Errorf("%w: current revision %d; re-read and issue a fresh call", ErrStaleRevision, current)
 	}
 	return identity, nil
-}
-
-// collidedLocked reports an unresolved collision in id's own session, unit and
-// attempt; collisions of other units never block it. Caller must hold the lock.
-func (f *FS) collidedLocked(id Identity) bool {
-	return slices.ContainsFunc(f.collisions, func(c CollisionEvent) bool {
-		return c.SessionID == id.SessionID && c.WorkUnitID == id.WorkUnitID && c.AttemptID == id.AttemptID
-	})
 }
 
 // dispatchLocked performs an operation only when the bound catalog instance

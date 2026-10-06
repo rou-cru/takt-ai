@@ -1,6 +1,6 @@
 ---
 name: takt-workflow-selection-exceptions
-description: "The scenario satisfies more than one row of takt-workflow-selection's table at once, satisfies none of them clearly, or the user's explicit instruction conflicts with what the work actually needs once evaluated."
+description: "The workflow-selection tree cannot settle a route: uncertainty persists, no route fits after an adopted one reported a misfit, or proceeding requires changing an explicit user instruction."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,22 +9,15 @@ metadata:
 
 # Takt Workflow Selection Exceptions
 
-Exception handling for choosing a route under `takt-workflow-selection`, when the scenario
-does not resolve cleanly against its table.
+**Use the evidence already gathered.** Keep the route that reported a misfit, its reason,
+evidence, and constraints. Never re-adopt it under identical evidence. Neither ambiguity nor
+a misfit makes bounded the default.
 
-**An ambiguous signal is not resolved by guessing.** Whether no row's criteria clearly fit,
-or more than one does at once, treat both as the same case: do not force a fit and do not
-default silently to either the bounded route or the orchestrated one. State what is known
-and what is unclear about the scenario, and let the user decide the route before that phase
-starts.
+**Consult when the tree cannot settle the choice.** State what is known, what is unclear,
+and the concrete alternatives and risks. Await the user's answer before starting the
+affected phase. Do not guess or silently choose either route.
 
-**A conflict between the user's instruction and the evaluated work is named, not overridden
-or hidden.** When the user directly and explicitly asked for the bounded route but the
-work's evaluated scope clearly exceeds what one agent can carry alone, do not silently honor
-either side. Tell the user the concrete reason the bounded route does not fit, and proceed
-only on their answer — relaxing the constraint, accepting a staged bounded execution, or
-accepting the orchestrated route.
-
-**This is a normal branch, not a stalled session.** Escalating here is the correct outcome
-for a genuinely ambiguous or conflicting scenario, not a sign the orchestrator failed to
-decide.
+**Name an instruction conflict; never override it.** A directly requested bounded route that
+reports a misfit is explained to the user, and direction is obtained before relaxing the
+constraint, changing scope, or adopting an orchestrated route. Preserve unrelated progress.
+Consultation is a valid outcome, not a failure to choose.

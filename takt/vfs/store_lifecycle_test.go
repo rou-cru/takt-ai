@@ -275,7 +275,6 @@ func TestMutatorsRefuseOnceClosed(t *testing.T) {
 		"ReadAs":       func() error { _, err := f.ReadAs(read, key); return err },
 		"Verify":       func() error { return f.Verify(key, key, "late", 0, "", true, "") },
 		"Consolidate":  func() error { return f.ConsolidateCheckpoint(key, "late", 0) },
-		"Resolve":      func() error { return f.ResolveCollision(CollisionEvent{}) },
 		"Recover":      func() error { return f.Recover() },
 	} {
 		if err := call(); !errors.Is(err, ErrStoreFailed) {
@@ -315,5 +314,50 @@ func TestJournalPageIsBoundedAndFiltered(t *testing.T) {
 	}
 	if got := f.JournalPage("other-session", "", -1, MaxJournalPageSize); len(got) != 0 {
 		t.Fatalf("session filter leaked %+v", got)
+	}
+}
+
+func TestReopenDiscardsSavedCollisions(t *testing.T) {
+	f, root, state := durable(t)
+	bind(t, f, "owner", "u1", "dev", "a.go")
+	intruder := bind(t, f, "intruder", "u2", "dev", "b.go")
+	if _, err := f.Apply(Operation{Key: intruder, CallID: "before", Action: OpRead, Path: "a.go"}); !errors.Is(err, ErrCollision) {
+		t.Fatalf("foreign read = %v; want ErrCollision", err)
+	}
+	// finishLocked persists before notifying, so this also covers stores
+	// written by versions that retained collision history.
+	var data []byte
+	if err := f.db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&data); err != nil {
+		t.Fatal(err)
+	}
+	var saved storedState
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Collisions) != 1 {
+		t.Fatalf("saved collisions = %+v; want one historical event", saved.Collisions)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(root, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if len(reopened.collisions) != 0 || reopened.notifiedCollisions != 0 {
+		t.Fatalf("reopen retained collision notifications: %+v, %d", reopened.collisions, reopened.notifiedCollisions)
+	}
+	var seen []CollisionEvent
+	reopened.OnCollision(func(e CollisionEvent) { seen = append(seen, e) })
+	apply(t, reopened, applyCase{intruder, "own", 0, OpCreate, "b.go", "ok"})
+	if len(seen) != 0 {
+		t.Fatalf("replayed saved collisions: %+v", seen)
+	}
+	if _, err := reopened.Apply(Operation{Key: intruder, CallID: "after", ExpectedRevision: 1, Action: OpRead, Path: "a.go"}); !errors.Is(err, ErrCollision) {
+		t.Fatalf("foreign read after reopen = %v; want ErrCollision", err)
+	}
+	if len(seen) != 1 || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" || seen[0].Path != "a.go" {
+		t.Fatalf("new collision notification = %+v", seen)
 	}
 }

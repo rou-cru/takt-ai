@@ -61,13 +61,9 @@ var (
 	// mutating Git command.
 	ErrGitMutationDenied = errors.New("vfs: mutating git command denied for this role class")
 
-	// ErrCollision is returned when an agent attempts to mutate a file owned by
-	// another concurrently active agent.
-	ErrCollision = errors.New("vfs: write collision — file is owned by another agent")
-
-	// ErrConsolidationConflict is returned when consolidation is attempted while
-	// unresolved collisions exist in the same session, unit and attempt.
-	ErrConsolidationConflict = errors.New("vfs: consolidation blocked by unresolved collision")
+	// ErrCollision is returned when an agent touches a file owned by another
+	// concurrently active agent. It refuses only that operation.
+	ErrCollision = errors.New("vfs: another agent is working on this file")
 
 	// ErrVerificationRequired is returned when consolidation is attempted without
 	// a passing verification verdict.
@@ -249,7 +245,7 @@ type FS struct {
 	// owners maps slash-path → owning agent (exclusive write ownership).
 	owners map[string]AgentID
 
-	// collisions holds unresolved collision events.
+	// collisions holds events until synchronous notification; they block nothing.
 	collisions []CollisionEvent
 
 	// journal is the append-only action journal.
@@ -415,10 +411,6 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 		return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, d.verdict.Finding)
 	}
 
-	if f.collidedLocked(f.bindings[agent]) {
-		return ErrConsolidationConflict
-	}
-
 	if err := f.materializeLocked(agent, d); err != nil {
 		return err
 	}
@@ -433,23 +425,6 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 // Ordinary delegated work is gated by its delivery contract, not by VFS.
 func (f *FS) verdictRequiredLocked(agent AgentID) bool {
 	return f.bindings[agent].CycleID != ""
-}
-
-// ResolveCollision removes a matching collision from the unresolved list.
-// Attempting agent, owning agent and path must all match.
-func (f *FS) ResolveCollision(event CollisionEvent) (err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if err = f.readyLocked(); err != nil {
-		return err
-	}
-	defer f.finishLocked(&err)
-	f.collisions = slices.DeleteFunc(f.collisions, func(c CollisionEvent) bool {
-		return c.AttemptingAgent == event.AttemptingAgent &&
-			c.OwningAgent == event.OwningAgent &&
-			c.Path == event.Path
-	})
-	return nil
 }
 
 // ─── Git boundary guard ───────────────────────────────────────────────────────
@@ -517,7 +492,8 @@ func (f *FS) appendJournalLocked(entry JournalEntry) {
 	f.journal = append(f.journal, entry)
 }
 
-// checkOwnership returns ErrCollision if rel is owned by a different agent.
+// checkOwnership returns ErrCollision if rel is owned by a different agent. The
+// collision is recorded for observation only; it never blocks later operations.
 func (f *FS) checkOwnership(agent AgentID, rel string) error {
 	existing, owned := f.owners[rel]
 	if !owned {
@@ -542,8 +518,7 @@ func (f *FS) checkOwnership(agent AgentID, rel string) error {
 		event.OwningAgent = id.AgentID
 	}
 	f.collisions = append(f.collisions, event)
-	identity := f.bindings[agent]
-	return f.collisionError(identity, rel, existing)
+	return fmt.Errorf("%w: %q", ErrCollision, rel)
 }
 
 // readMergedLocked resolves rel as seen by agent: staging over physical disk.

@@ -18,10 +18,12 @@ package setup
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -108,7 +110,11 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 	artifacts := make([]Artifact, 0, len(pack.Files)+len(componentArtifacts)+1)
 	generatedPaths := make([]string, 0, len(pack.Files)+len(componentArtifacts))
 	for _, f := range pack.Files {
-		artifacts = append(artifacts, Artifact{Path: opencode.DeployPath(f.Path), Content: f.Content})
+		content, err := resolveCatalogContent(f.Path, f.Content)
+		if err != nil {
+			return TargetPlan{}, err
+		}
+		artifacts = append(artifacts, Artifact{Path: opencode.DeployPath(f.Path), Content: content})
 	}
 	artifacts = append(artifacts, componentArtifacts...)
 	for _, artifact := range artifacts {
@@ -126,4 +132,13 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 // sortArtifacts orders artifacts lexicographically by their relative path.
 func sortArtifacts(artifacts []Artifact) {
 	slices.SortFunc(artifacts, func(a, b Artifact) int { return cmp.Compare(a.Path, b.Path) })
+}
+
+// resolveCatalogContent fills the admission-policy markers of catalog prose;
+// every other resource is deployed byte for byte.
+func resolveCatalogContent(path string, content []byte) ([]byte, error) {
+	if !strings.HasSuffix(path, ".md") {
+		return content, nil
+	}
+	return dispatch.ResolvePolicyPlaceholders(content)
 }

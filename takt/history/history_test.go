@@ -151,16 +151,14 @@ func TestBudgetsDerivedFromReplay(t *testing.T) {
 }
 
 // TestInterlocutorBudgets pins the interlocutor holder accounting a switch,
-// an artifact-miss denial and a handoff produce (PR-HAR-24).
+// a denial and a handoff produce.
 func TestInterlocutorBudgets(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
 	switched := observed(t, "child", KindInterlocutorSwitched, "")
 	switched.Agent, switched.Artifact = "specialist", "artifacts/report.md"
-	miss := observed(t, "child", KindDenied, "")
-	miss.Cause = CauseInterlocutorArtifact
-	other := observed(t, "child", KindDenied, "")
-	other.Cause = CauseUncaptured
-	for _, e := range []Entry{switched, miss, other} {
+	denied := observed(t, "child", KindDenied, "")
+	denied.Cause = CauseUncaptured
+	for _, e := range []Entry{switched, denied} {
 		if err := h.Append(e); err != nil {
 			t.Fatalf("append %+v: %v", e, err)
 		}
@@ -169,16 +167,13 @@ func TestInterlocutorBudgets(t *testing.T) {
 	if got.InterlocutorHolder != "child" || got.InterlocutorAgent != "specialist" || got.InterlocutorArtifact != "artifacts/report.md" {
 		t.Fatalf("holder state %+v", got)
 	}
-	if got.InterlocutorArtifactMisses != 1 {
-		t.Fatalf("artifact misses %d; want 1", got.InterlocutorArtifactMisses)
-	}
 	handoff := observed(t, "child", KindInterlocutorHandoff, "")
 	handoff.Result = "Handoff"
 	if err := h.Append(handoff); err != nil {
 		t.Fatal(err)
 	}
 	got = h.Project().Budgets("root")
-	if got.InterlocutorHolder != "" || got.InterlocutorAgent != "" || got.InterlocutorArtifact != "" || got.InterlocutorArtifactMisses != 0 {
+	if got.InterlocutorHolder != "" || got.InterlocutorAgent != "" || got.InterlocutorArtifact != "" {
 		t.Fatalf("holder not cleared after handoff: %+v", got)
 	}
 }

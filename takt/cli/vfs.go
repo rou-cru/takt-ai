@@ -157,10 +157,7 @@ type request struct {
 	Command string `json:"command,omitempty"`
 	// consolidate
 	Checkpoint string `json:"checkpoint,omitempty"`
-	// resolve collision
-	CollisionPath  string `json:"collision_path,omitempty"`
-	CollisionOwner string `json:"collision_owner,omitempty"`
-	ClaimKey       string `json:"key,omitempty"`
+	ClaimKey   string `json:"key,omitempty"`
 }
 
 // response is the single JSON shape every mutation subcommand returns.
@@ -296,7 +293,7 @@ var claimCommandCapability = map[string]model.VFSCapability{
 func validVFSCommand(command string) bool {
 	_, claim := claimCommandCapability[command]
 	return claim || command == "bind" || command == "op" || command == "verify" || command == "consolidate" ||
-		command == "resolve" || command == "shell-prepare" || command == "shell-import"
+		command == "shell-prepare" || command == "shell-import"
 }
 
 // claimIdentity is the harness-owned identity of an assignment target, with the
@@ -397,8 +394,6 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, identity vfs.I
 		return mutateVerify(fs, req, identity)
 	case "consolidate":
 		return mutateConsolidate(fs, req, identity)
-	case "resolve":
-		return mutateResolve(fs, req)
 	case "shell-prepare":
 		return prepareShell(fs, state, req, identity)
 	case "shell-import":
@@ -525,13 +520,6 @@ func mutateConsolidate(fs *vfs.FS, req request, identity vfs.Identity) (response
 		return response{}, err
 	}
 	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision); err != nil {
-		return response{}, err
-	}
-	return response{OK: true}, nil
-}
-
-func mutateResolve(fs *vfs.FS, req request) (response, error) {
-	if err := fs.ResolveCollision(vfs.CollisionEvent{AttemptingAgent: vfs.AgentID(req.AgentID), OwningAgent: vfs.AgentID(req.CollisionOwner), Path: req.CollisionPath}); err != nil {
 		return response{}, err
 	}
 	return response{OK: true}, nil

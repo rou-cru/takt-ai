@@ -1,6 +1,6 @@
 ---
 name: takt-interlocutor-exceptions
-description: "Something unexpected happens while holding or requesting the borrowed chat interface: a document that never arrived, a user reply that is neither accept nor reject, a mid-session request to swap specialists, a change from outside the session, or unplanned cleanup work surfacing."
+description: "Something unexpected happens while holding the borrowed chat interface: a document that never arrived, a user reply that is neither accept nor reject, a mid-session request to swap specialists, a change from outside the session, or unplanned cleanup work surfacing."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,7 +9,7 @@ metadata:
 
 # Takt Interlocutor Exceptions
 
-Exception handling for an agent holding or requesting the borrowed chat interface, when
+Exception handling for an agent holding the borrowed chat interface, when
 something falls outside the normal handoff protocol.
 
 **A declared document that is missing is named, not filled in.** If a requirement the

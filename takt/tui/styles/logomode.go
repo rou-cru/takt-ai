@@ -71,9 +71,14 @@ func ProbeLogoMode(in, out *os.File) LogoMode {
 	if err != nil {
 		return ModeQuadrants
 	}
-	defer func() { _ = reader.Close() }()
-	defer reader.Cancel()
-	mode := measureLogoMode(out, reader, probeTimeout)
+	mode, finished := probeGraphics(out, reader, probeTimeout)
+	reader.Cancel()
+	// The read has returned before the reader closes, or it would race the close.
+	select {
+	case <-finished:
+	case <-time.After(probeTimeout):
+	}
+	_ = reader.Close()
 	_, _ = io.WriteString(out, probeClear)
 	return mode
 }
@@ -90,19 +95,31 @@ func logoModeOverride() (LogoMode, bool) {
 // measureLogoMode writes the probe to w and waits up to timeout for the
 // replies on r.
 func measureLogoMode(w io.Writer, r io.Reader, timeout time.Duration) LogoMode {
+	mode, _ := probeGraphics(w, r, timeout)
+	return mode
+}
+
+// probeGraphics is measureLogoMode that also reports when its read goroutine
+// has returned, so a caller can cancel the reader and wait before closing it.
+func probeGraphics(w io.Writer, r io.Reader, timeout time.Duration) (LogoMode, <-chan struct{}) {
+	finished := make(chan struct{})
 	if _, err := io.WriteString(w, graphicsProbe); err != nil {
-		return ModeQuadrants
+		close(finished)
+		return ModeQuadrants, finished
 	}
 	accepted := make(chan bool, 1)
-	go func() { accepted <- readGraphicsReply(r) }()
+	go func() {
+		defer close(finished)
+		accepted <- readGraphicsReply(r)
+	}()
 	select {
 	case ok := <-accepted:
 		if ok {
-			return ModeImage
+			return ModeImage, finished
 		}
 	case <-time.After(timeout):
 	}
-	return ModeQuadrants
+	return ModeQuadrants, finished
 }
 
 // readGraphicsReply reads up to the end of the DA1 reply and reports whether

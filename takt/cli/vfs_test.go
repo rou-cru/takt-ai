@@ -406,7 +406,7 @@ func TestVFSVerifyCallerMustOwnVerifierKey(t *testing.T) {
 }
 
 // TestVFSUnitsOfOneSessionAreSeparate keeps two units of one session apart in
-// journal and ownership, and lets one unit's collision block only that unit.
+// journal and ownership; a refused operation blocks nothing afterwards.
 func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	root := t.TempDir()
 	state := filepath.Join(t.TempDir(), "private")
@@ -415,7 +415,7 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	for id, u := range units {
 		bindUnitAuthorAndVerifier(t, mutate, id, u)
 	}
-	// u2 reaches for a path u1 owns: a collision inside u2 only.
+	// u2 reaches for a path u1 owns: only that operation is refused.
 	if _, err := mutate("op", vfsReq("u2", "dev", map[string]any{
 		"author_key": units["u2"].author.Key, "call_id": "trespass", "expected_revision": 1, "action": "create", "path": "a.go", "content": "x",
 	})); err == nil {
@@ -436,8 +436,8 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	}
 	if _, err := mutate("consolidate", vfsReq("u2", "dev", map[string]any{
 		"author_key": units["u2"].author.Key, "checkpoint": "cp", "expected_revision": 1,
-	})); err == nil || !strings.Contains(err.Error(), "unresolved collision") {
-		t.Fatalf("u2 consolidation over its own unresolved collision: %v", err)
+	})); err != nil {
+		t.Fatalf("u2 blocked by its own refused operation: %v", err)
 	}
 	for id, u := range units {
 		assertUnitJournalIsolated(t, root, state, id, u)
@@ -445,8 +445,8 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 	if content, err := os.ReadFile(filepath.Join(root, "a.go")); err != nil || string(content) != "u1" {
 		t.Fatalf("u1 not consolidated: %q, %v", content, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "b.go")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("u2 reached disk despite its collision")
+	if content, err := os.ReadFile(filepath.Join(root, "b.go")); err != nil || string(content) != "u2" {
+		t.Fatalf("u2 not consolidated: %q, %v", content, err)
 	}
 }
 

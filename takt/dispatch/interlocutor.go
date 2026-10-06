@@ -101,28 +101,10 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 	return errors.Join(h.Append(entry), e)
 }
 
-// ExpectedArtifact returns the standard artifact path declared by the
+// ExpectedArtifact returns the optional filesystem copy path declared by the
 // active switch for root, or "" if there is none.
 func ExpectedArtifact(h *history.History, root string) string {
 	return h.Project().Budgets(root).InterlocutorArtifact
-}
-
-// ArtifactMisses returns how many times a handoff for root has already been
-// denied for a missing standard artifact since the current holder took the
-// interface (PR-HAR-24: 0 means the next miss is the first).
-func ArtifactMisses(h *history.History, root string) int {
-	return h.Project().Budgets(root).InterlocutorArtifactMisses
-}
-
-// DenyArtifactMissing records one miss of the standard artifact declared for
-// root's active switch, for a caller that already confirmed via os.Stat (or
-// equivalent) that the file is absent.
-func DenyArtifactMissing(h *history.History, journalRef, root, childSession, agent string) error {
-	return h.Append(history.Entry{
-		Author: history.AuthorHarness, Kind: history.KindDenied, Cause: history.CauseInterlocutorArtifact,
-		SessionID: root, WorkUnitID: childSession, AttemptID: history.FirstAttempt,
-		Agent: agent, JournalRef: journalRef,
-	})
 }
 
 // HandoffOutcome is the negotiated result a handoff envelope carries: the

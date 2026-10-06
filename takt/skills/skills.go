@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -48,7 +49,13 @@ func LoadSkills() ([]SkillDefinition, error) {
 	definitions := make([]SkillDefinition, 0, len(c.Skills))
 	for _, pkg := range c.Skills {
 		for _, f := range pkg.Files {
-			definitions = append(definitions, SkillDefinition{Name: pkg.ID, FileName: f.Path, Content: f.Content})
+			content := f.Content
+			if strings.HasSuffix(f.Path, ".md") {
+				if content, err = dispatch.ResolvePolicyPlaceholders(content); err != nil {
+					return nil, fmt.Errorf("resolve skill %s/%s: %w", pkg.ID, f.Path, err)
+				}
+			}
+			definitions = append(definitions, SkillDefinition{Name: pkg.ID, FileName: f.Path, Content: content})
 		}
 	}
 

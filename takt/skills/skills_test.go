@@ -25,6 +25,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -55,6 +56,9 @@ func TestLoadSkillsPreservesAllEmbeddedFiles(t *testing.T) {
 		}
 		want, err := fs.ReadFile(catalog.AssetFS(), name)
 		if err != nil {
+			return err
+		}
+		if want, err = dispatch.ResolvePolicyPlaceholders(want); err != nil {
 			return err
 		}
 		got, ok := loaded[name]

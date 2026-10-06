@@ -25,12 +25,12 @@ func TestRunVFSRoutesAndRejectsUsage(t *testing.T) {
 
 // TestValidVFSCommand verifies every wire command is accepted and anything else is not.
 func TestValidVFSCommand(t *testing.T) {
-	for _, c := range []string{"claims", "assign", "assign-verifier", "release", "bind", "op", "verify", "consolidate", "resolve", "shell-prepare", "shell-import"} {
+	for _, c := range []string{"claims", "assign", "assign-verifier", "release", "bind", "op", "verify", "consolidate", "shell-prepare", "shell-import"} {
 		if !validVFSCommand(c) {
 			t.Errorf("validVFSCommand(%q) = false", c)
 		}
 	}
-	for _, c := range []string{"", "journal", "recover", "OP"} {
+	for _, c := range []string{"", "journal", "recover", "resolve", "OP"} {
 		if validVFSCommand(c) {
 			t.Errorf("validVFSCommand(%q) = true", c)
 		}
@@ -173,14 +173,10 @@ func TestVFSMutationsRejectForeignIdentity(t *testing.T) {
 	})
 }
 
-// TestVFSResolveAndClaimErrors verifies collision resolution is idempotent and claim commands validate their input.
-func TestVFSResolveAndClaimErrors(t *testing.T) {
+// TestVFSClaimErrors verifies claim commands validate their input.
+func TestVFSClaimErrors(t *testing.T) {
 	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
-	resolved, err := mutate("resolve", vfsReq("u1", "dev", map[string]any{"collision_path": "a.go", "collision_owner": "other"}))
-	if err != nil || !resolved.OK {
-		t.Fatalf("resolve = %+v, %v", resolved, err)
-	}
 	if _, err := mutate("release", map[string]any{"ipc_version": IPCVersion, "session_id": "s1", "key": "unknown"}); err == nil || !strings.Contains(err.Error(), "not a known binding key") {
 		t.Fatalf("release unknown error = %v", err)
 	}

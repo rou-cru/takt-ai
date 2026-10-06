@@ -70,10 +70,10 @@ func journalRef(entries []vfs.JournalEntry) string {
 	return entries[len(entries)-1].Ref()
 }
 
-// checkArtifact reports whether the standard artifact the active
+// checkArtifact reports whether the optional filesystem copy the active
 // interlocutor switch for session declared exists under workspace. Nothing
 // declared (no active switch, or none named) reports verified: PR-HAR-24
-// checks existence only when a standard artifact was named.
+// checks existence only when a copy was named.
 func checkArtifact(h *history.History, workspace, session string) bool {
 	path := protocol.ExpectedArtifact(h, session)
 	if path == "" {
@@ -83,20 +83,11 @@ func checkArtifact(h *history.History, workspace, session string) bool {
 	return err == nil
 }
 
-// handoffWithArtifactGate enforces PR-HAR-24: a missing standard artifact
-// denies the first handoff attempt (deterministic error, session stays
-// active); a second consecutive miss stops denying and reports the miss
-// inside the envelope instead, so the confirmation the specialist already
-// shows before every handoff (IR-20) is the escalation, not a second harness
-// query.
-func handoffWithArtifactGate(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
+// handoffWithCopyReport assembles the handoff envelope, whose Engram result
+// IDs BuildHandoffEnvelope validates, and reports whether the optional
+// filesystem copy declared at switch time exists; that copy never gates it.
+func handoffWithCopyReport(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
 	verified := checkArtifact(h, workspace, r.Session)
-	if !verified && protocol.ArtifactMisses(h, r.Session) == 0 {
-		if e := protocol.DenyArtifactMissing(h, ref, r.Session, r.Child, r.Agent); e != nil {
-			return nil, e
-		}
-		return nil, fmt.Errorf("dispatch: standard artifact %q does not exist; the session stays active for a retry", protocol.ExpectedArtifact(h, r.Session))
-	}
 	envelope, e := protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
 		Result: r.Result, AdditionalContext: r.AdditionalContext,
 		ExtraArtifacts: r.ExtraArtifacts, ResultIDs: r.ResultIDs,
@@ -263,7 +254,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"validate_inputs": func() (any, error) {
 			return nil, memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs)
 		},
-		"handoff":      func() (any, error) { return handoffWithArtifactGate(h, ref, workspace, r) },
+		"handoff":      func() (any, error) { return handoffWithCopyReport(h, ref, workspace, r) },
 		"abort_switch": func() (any, error) { return abortWithArtifactReport(h, ref, workspace, r) },
 		"contest": func() (any, error) {
 			p, e := protocol.LoadAdmissionPolicy()
