@@ -14,14 +14,14 @@ import {
   nodeKindFor,
   nodeText,
   ordinal,
-  sidebarHeader,
+  sidebarDetail,
   sidebarRows,
   SidebarGraph,
   topologyError,
   topologyKey,
 } from "./takt-dag"
 
-const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean }> = {}) =>
+const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string }> = {}) =>
   ({ id: "unit-1", state: "planned", launched: false, ...overrides }) as never
 
 describe("ordinal", () => {
@@ -177,40 +177,88 @@ describe("activity presentation", () => {
   })
 })
 
-describe("sidebar list", () => {
-  test("lays units out top-down, indented under prerequisites, then activities", () => {
-    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
-    const snapshot = {
-      ...base,
-      nodes: [node({ id: "build", state: "in_flight" }), node({ id: "design", state: "settled" }), node({ id: "review" })],
-      edges: [{ from: "design", to: "build" }, { from: "build", to: "review" }],
-      activities: [{ activity_id: "plan", node_kind: "orchestrator", state: "in_flight" }],
-    } as never
-    expect(sidebarRows(snapshot)).toEqual(["✓ design", "● build ← design", "◌ review ← build", "", "◆ direct activity plan · running"])
+describe("sidebar rows", () => {
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+  const text = (snapshot: never) => sidebarRows(snapshot).map((row) => row.text)
+  const diamond = [{ from: "intent-pm", to: "experience-design" }, { from: "intent-pm", to: "structure-arch" },
+    { from: "experience-design", to: "behavior-spec" }, { from: "structure-arch", to: "behavior-spec" }]
+
+  test("draws a planned diamond as lanes: the glyph is the node, edges are never named", () => {
+    const snapshot = { ...base, edges: diamond,
+      nodes: ["intent-pm", "experience-design", "structure-arch", "behavior-spec"].map((id) => node({ id })) } as never
+    expect(text(snapshot)).toEqual([
+      "◌ intent-pm",
+      "├─┐",
+      "◌ │ experience-design",
+      "│ ◌ structure-arch",
+      "├─┘",
+      "◌ behavior-spec",
+    ])
   })
 
-  test("draws disconnected graphs apart and shows every real prerequisite", () => {
-    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
-    const snapshot = {
-      ...base,
-      nodes: ["T01", "T02", "T05", "T06", "pm", "spec"].map((id) => node({ id })),
-      edges: [
-        { from: "T01", to: "T05" }, { from: "T02", to: "T05" }, { from: "T02", to: "T06" },
-        { from: "pm", to: "spec" },
-      ],
-    } as never
+  test("folds completed units into one muted row of their agents; active units show no agent", () => {
+    const snapshot = { ...base, edges: diamond, nodes: [
+      node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm" }),
+      node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design" }),
+      node({ id: "structure-arch", state: "in_flight", flight: "observed_running", agent: "arch" }),
+      node({ id: "behavior-spec" }),
+    ] } as never
     expect(sidebarRows(snapshot)).toEqual([
-      "◌ T01", "◌ T02", "◌ T05 ← T01, T02", "◌ T06 ← T02",
-      "",
-      "◌ pm", "◌ spec ← pm",
+      { text: "✓ pm design", tone: "muted" },
+      { text: "● structure-arch" },
+      { text: "◌ behavior-spec" },
     ])
-    const layout = computeLayout(snapshot)
-    const ys = (ids: string[]) => ids.map((id) => layout.nodes.get(id)?.y ?? -1)
-    expect(Math.max(...ys(["T01", "T02", "T05", "T06"]))).toBeLessThan(Math.min(...ys(["pm", "spec"])))
+  })
+
+  test("counts an agent's repeated completed work instead of repeating its label", () => {
+    const snapshot = { ...base, nodes: [
+      node({ id: "plan", state: "settled", outcome: "completed", agent: "pm" }),
+      ...["t1", "t2", "t3"].map((id) => node({ id, state: "settled", outcome: "completed", agent: "dev" })),
+    ], edges: ["t1", "t2", "t3"].map((to) => ({ from: "plan", to })) } as never
+    expect(text(snapshot)).toEqual(["✓ pm dev×3"])
+  })
+
+  test("groups a layer wider than the lane budget into one row", () => {
+    const wide = ["b", "c", "d", "e"]
+    const snapshot = { ...base, nodes: ["a", ...wide, "f"].map((id) => node({ id })),
+      edges: wide.flatMap((id) => [{ from: "a", to: id }, { from: id, to: "f" }]) } as never
+    expect(text(snapshot)).toEqual(["◌ a", "≡ ◌◌◌◌ 4 parallel", "◌ f"])
+  })
+
+  test("falls back to a flat list in dependency order when lanes exceed the budget", () => {
+    const snapshot = { ...base, nodes: ["r", "a", "b", "c", "a2", "b2", "c2", "z"].map((id) => node({ id })), edges: [
+      ...["a", "b", "c"].map((id) => ({ from: "r", to: id })),
+      ...["a", "b", "c"].map((id) => ({ from: id, to: `${id}2` })),
+      { from: "r", to: "z" }, { from: "c2", to: "z" },
+    ] } as never
+    expect(text(snapshot)).toEqual(["◌ r", "◌ a", "◌ b", "◌ c", "◌ a2", "◌ b2", "◌ c2", "◌ z"])
+  })
+
+  test("never wraps: a long identity is cut to the sidebar's 37 columns", () => {
+    const id = "an-identity-far-too-long-for-the-sidebar"
+    const [row] = text({ ...base, nodes: [node({ id })], edges: [] } as never)
+    expect(row).toBe(`◌ ${id.slice(0, 34)}…`)
+    expect(Bun.stringWidth(row)).toBe(37)
+  })
+
+  test("stacks disconnected graphs, hides withdrawn work, marks failures, lists running activities only", () => {
+    const snapshot = { ...base, nodes: [
+      node({ id: "pm", state: "settled", outcome: "failed" }), node({ id: "spec" }),
+      node({ id: "solo", state: "in_flight" }), node({ id: "gone", state: "withdrawn" }),
+    ], edges: [{ from: "pm", to: "spec" }], activities: [
+      { activity_id: "a1", node_kind: "orchestrator", state: "in_flight" },
+      { activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" },
+    ] } as never
+    expect(sidebarRows(snapshot)).toEqual([
+      { text: "✗ pm", tone: "error" },
+      { text: "◌ spec" },
+      { text: "● solo" },
+      { text: "◆ direct activity" },
+    ])
   })
 })
 
-describe("hasContent / headerLine / sidebarHeader", () => {
+describe("hasContent / headerLine / sidebarDetail", () => {
   const base = { schema_version: 1, projection_revision: 3, history_position: 3, session_id: "s", capture: "current", edges: [] } as const
 
   test("hasContent is true with nodes, activities, or neither", () => {
@@ -232,10 +280,12 @@ describe("hasContent / headerLine / sidebarHeader", () => {
     expect(headerLine(snapshot, "stale")).toBe("Takt DAG · stale")
   })
 
-  test("sidebarHeader mirrors headerLine's health precedence in one short line", () => {
-    expect(sidebarHeader(undefined, "waiting")).toBe("Takt DAG · waiting")
-    expect(sidebarHeader({ ...base, nodes: [] } as never, "confirmed")).toBe("Takt DAG")
-    expect(sidebarHeader({ ...base, nodes: [] } as never, "invalid")).toBe("Takt DAG · invalid")
+  test("sidebarDetail shows the health that needs attention, otherwise completed over live units", () => {
+    expect(sidebarDetail(undefined, "waiting")).toBe("waiting")
+    expect(sidebarDetail({ ...base, nodes: [] } as never, "confirmed")).toBe("")
+    expect(sidebarDetail({ ...base, nodes: [] } as never, "invalid")).toBe("invalid")
+    const nodes = [node({ id: "a", state: "settled" }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "withdrawn" })]
+    expect(sidebarDetail({ ...base, nodes } as never, "confirmed")).toBe("1/2")
   })
 })
 

@@ -3,6 +3,7 @@ context:
 description: Reduce uncertainty through codebase research, evidence, and compared
   alternatives.
 id: takt-analyst
+label: analyst
 instances:
 - analyst
 vfs_capabilities:

@@ -27,7 +27,7 @@ The projection is atemporal: the same history prefix and policy data MUST produc
 - A `takt.dag` route.
 - A `/takt-dag` command and optional `Ctrl+Shift+D` binding.
 - A layered graph with visible nodes and directed prerequisite edges.
-- The same graph in the OpenCode sidebar, visible without leaving the session and scrolling sideways as layers accumulate.
+- A compact form of the graph in the OpenCode sidebar, visible without leaving the session and never wider than the sidebar.
 - Fan-out, fan-in, multiple roots, and parallel branches.
 - Automatic replacement of the graph when a newer Takt projection revision is available.
 - Explicit capture states: current, stale, unavailable, and uncertain.
@@ -86,7 +86,15 @@ Takt DAG · projection 42 · capture: current
 
 The renderer MAY use a different layout or terminal drawing primitives, but it MUST preserve the same graph semantics: nodes and directed edges MUST remain visible, including joins and branches.
 
-Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer; the sidebar list names each unit's real prerequisites instead of implying ancestry by indentation. The implemented rendering flows left to right, one column per layer, and each node is a single-line box holding its source glyph, state glyph, source label and identity. The state glyph carries temporal state; the explicit source glyph/label distinguishes delegated work, direct orchestrator work and GC/maintenance. The box width accounts for the full label and identity. No agent name, wave or width annotation is drawn; the legend stays on the `takt.dag` route.
+Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer. The route's rendering flows left to right, one column per layer, and each node is a single-line box holding its source glyph, state glyph, source label and identity. The state glyph carries temporal state; the explicit source glyph/label distinguishes delegated work, direct orchestrator work and GC/maintenance. The box width accounts for the full label and identity. No agent name, wave or width annotation is drawn on the route; the legend stays there.
+
+The sidebar has 37 usable columns, fixed by the host, and scrolls only vertically, so its form is compact and no row ever wraps:
+
+- A bold `DAG` title followed by completed over live units, or by the capture health when it is not current.
+- One muted row folding every completed unit into the short labels of the agents that did the work, in dependency order; an agent's repeated work is counted (`dev×3`), not repeated.
+- The frontier (every unit neither completed nor withdrawn) as a lane graph read top-down: the state glyph is the node, each edge is a two-column lane carried down to its dependent, and joins and branches are drawn as connector rows. Edges from completed units are satisfied and omitted. Active and planned units show their identity only, never their agent.
+- A layer wider than the lane budget is one grouped row of its members' glyphs and count; a frontier that still needs more lanes is listed flat in dependency order.
+- Identities are cut with an ellipsis to the remaining width. Running activities follow as one row each; settled activities and withdrawn units stay on the route.
 
 ## 5. Graph semantics
 
@@ -237,7 +245,8 @@ The response MUST contain:
       "session_id": "api-session",
       "attempt_id": "1",
       "launched": true,
-      "prerequisites": ["storage"]
+      "prerequisites": ["storage"],
+      "agent": "arch"
     }
   ],
   "edges": [
@@ -259,6 +268,8 @@ The response MUST contain:
 `history_position` is an ordering and provenance value. It MUST NOT be interpreted as elapsed time or a timeout.
 
 `node_kind` is an additive field in schema version 1. A work-unit history record (`planned` or `admitted`) may omit it for legacy compatibility or set it to `delegated`; every work-unit node in a snapshot emits `delegated`. Direct orchestrator work uses the `orchestrator` activity kind, and non-delegated GC/maintenance uses `maintenance`, both in the separate activity record path. Consumers treat a missing work-unit `node_kind` from a legacy v1 producer as `delegated`; session, plan and cycle bookkeeping MUST NOT be given a fabricated work-unit identity. The discriminator is descriptive only and leaves committed prerequisites and delegated execution-order edges intact.
+
+`agent` is additive in schema version 1: the catalog's short label of the specialist admitted for the unit's current attempt, absent until the unit is first admitted. Plans do not declare it.
 
 `activities` is additive in schema version 1 and may be absent from legacy snapshots (the TUI treats it as empty). Each record contains only `activity_id`, `node_kind` (`orchestrator` or `maintenance`), `state`, and applicable `flight`/`outcome`. `activities` never appears in `nodes`, `Projection.Units`, or `edges`.
 

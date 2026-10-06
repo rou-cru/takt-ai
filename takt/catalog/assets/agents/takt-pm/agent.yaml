@@ -4,6 +4,7 @@ context:
   soul: SOUL.md
 description: Define product intent, value, scope, priorities, and measurable success.
 id: takt-pm
+label: pm
 instances:
 - pm
 vfs_capabilities:

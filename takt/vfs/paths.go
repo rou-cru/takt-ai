@@ -52,7 +52,7 @@ const tempPrefix = ".takt-vfs-"
 // reservedName reports whether a path component is Git metadata or one of
 // Takt's private staging names.
 func reservedName(part string) bool {
-	return strings.EqualFold(part, ".git") || strings.HasPrefix(strings.ToLower(part), tempPrefix)
+	return strings.EqualFold(part, ".git") || strings.EqualFold(part, ".takt-ai") || strings.HasPrefix(strings.ToLower(part), tempPrefix)
 }
 
 // validatePath rejects aliases rather than authorizing their target.

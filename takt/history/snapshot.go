@@ -84,6 +84,9 @@ type Node struct {
 	Launched      bool     `json:"launched"`
 	Contract      string   `json:"contract,omitempty"`
 	Prerequisites []string `json:"prerequisites,omitempty"`
+	// Agent identifies the specialist admitted for the current attempt; empty
+	// until the unit is first admitted.
+	Agent string `json:"agent,omitempty"`
 }
 
 // ActivityNode is a non-work-unit activity projected separately from Nodes.
@@ -184,7 +187,7 @@ func BuildSnapshot(entries []Entry) Snapshot {
 		s.Nodes = append(s.Nodes, Node{
 			ID: id, NodeKind: kind, SessionID: u.SessionID, AttemptID: u.AttemptID,
 			State: u.State, Flight: u.Flight, Outcome: u.Outcome,
-			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites,
+			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites, Agent: u.Agent,
 		})
 		for _, from := range prerequisites {
 			s.Edges = append(s.Edges, Edge{From: from, To: id})

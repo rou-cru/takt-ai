@@ -29,7 +29,7 @@ describe("DAG snapshot wire contract", () => {
   test("normalizes optional node and activity metadata while preserving valid wire fields", () => {
     const decoded = decodeSnapshot({
       schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "empty", plan_version: "plan-2",
-      nodes: [{ id: "active", node_kind: "delegated", session_id: "child", attempt_id: "try-1", state: "in_flight", flight: "observed_running", launched: true, contract: "ship safely", prerequisites: ["first"] },
+      nodes: [{ id: "active", node_kind: "delegated", session_id: "child", attempt_id: "try-1", state: "in_flight", flight: "observed_running", launched: true, contract: "ship safely", prerequisites: ["first"], agent: "arch" },
         { id: "done", state: "settled", outcome: "completed", launched: false }],
       edges: [{ from: "active", to: "done" }],
       activities: [{ activity_id: "work-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" },
@@ -37,7 +37,7 @@ describe("DAG snapshot wire contract", () => {
     })
     expect(decoded).toMatchObject({
       capture: "empty", plan_version: "plan-2",
-      nodes: [{ id: "active", flight: "observed_running", prerequisites: ["first"] }, { id: "done", outcome: "completed" }],
+      nodes: [{ id: "active", flight: "observed_running", prerequisites: ["first"], agent: "arch" }, { id: "done", outcome: "completed" }],
       edges: [{ from: "active", to: "done" }],
       activities: [{ activity_id: "work-1", flight: "observed_running" }, { activity_id: "maintenance-1", outcome: "interrupted" }],
     })
@@ -55,6 +55,7 @@ describe("DAG snapshot wire contract", () => {
       { id: "unit", state: "settled", outcome: "unknown", launched: false },
       { id: "unit", state: "planned", launched: "false" }, { id: "unit", state: "planned", launched: false, contract: 1 },
       { id: "unit", state: "planned", launched: false, prerequisites: ["valid", 3] },
+      { id: "unit", state: "planned", launched: false, agent: 7 },
     ]
     for (const node of invalidNodes) {
       expect(() => decodeSnapshot({ ...base, nodes: [node] })).toThrow("invalid DAG snapshot JSON")

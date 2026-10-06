@@ -23,4 +23,6 @@ import (
 type NativeSubAgentContent struct {
 	// Role decides the permission profile and whether users may talk to this specialist directly.
 	Role model.RoleClass `json:"role" yaml:"role"`
+	// Label is the definition's short display name, shared by its instances.
+	Label string `json:"label" yaml:"label"`
 }

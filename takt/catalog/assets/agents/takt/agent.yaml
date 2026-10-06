@@ -4,6 +4,7 @@ context:
   soul: SOUL.md
 description: Integrate the minimum sufficient crew toward the user's objective
 id: takt
+label: takt
 instances:
 - takt
 vfs_capabilities:

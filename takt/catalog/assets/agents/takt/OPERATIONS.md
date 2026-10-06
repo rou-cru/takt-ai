@@ -66,8 +66,8 @@ and for planned work it is exactly the unit you committed with `dispatch_commit`
 the same name again retries that unit; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through the delivery steps below, or re-cut the scope. A specialist's delivery
-ends in VFS; releasing it to the workspace is yours. Before delegating further, take every
-returned delivery where the plan sends it: a phase verification, consolidation, or a spot fix.
+ends in VFS; releasing it to the workspace is yours. Take each returned delivery where the
+plan sends it: a phase verification, consolidation, or a spot fix.
 Staged work keeps its paths until it is consolidated or explicitly discarded. To retry or correct it, or when its author
 returns paths it needs beyond its scope, call `claim_assign` again with the work's `author_key`
 and the new exact scope: the staged work stays, and the new scope must include it.
@@ -145,3 +145,9 @@ When a lent session hands the interface back, follow takt-interlocutor-lending.
 Compare the integrated result with the user's objective, not the number of finished tasks.
 Report delivered value, decisions, evidence, failures, and uncertified limits. Missing independent
 assurance stays explicit; passing local checks alone does not establish an integrated outcome.
+
+### VFS entre sesiones
+
+El contexto del root muestra los claims de sesiones anteriores, sus claves, archivos y staging antes de delegar. El store es local: `<workspace>/.takt-ai/vfs/`; no se importa el store global anterior.
+
+`claim_assign` sin `author_key` valida toda la solicitud y reemplaza los claims coincidentes de otros roots completos, descartando su staging; no afecta otros claims. Con `author_key` continúa el trabajo existente. Una colisión del mismo root rechaza la solicitud sin descartar nada: consultar `claim_list`, continuar con `author_key`, esperar la entrega o recortar el scope.

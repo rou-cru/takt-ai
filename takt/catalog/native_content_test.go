@@ -159,7 +159,7 @@ func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeS
 }
 
 func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
-	base := "id: x\ninstances: [x, y]\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"
+	base := "id: x\nlabel: x\ninstances: [x, y]\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"
 	for name, tc := range map[string]struct{ grant, want string }{
 		"missing instance":           {"vfs_capabilities: {x: [bind]}\n", "missing explicit VFS capability"},
 		"undeclared instance":        {"vfs_capabilities: {x: [bind], y: [], z: [read]}\n", "undeclared instance"},

@@ -113,6 +113,8 @@ type Unit struct {
 	AttemptID string `json:"attempt_id"`
 	// Dispatch is the host delegation that admitted the current attempt.
 	Dispatch string `json:"dispatch,omitempty"`
+	// Agent is the specialist instance admitted for the current attempt.
+	Agent string `json:"agent,omitempty"`
 	// State is the unit's temporal state.
 	State State `json:"state"`
 	// Flight is the in-flight condition while State is in flight.
@@ -337,7 +339,7 @@ func (p *Projection) fold(e Entry) {
 	case KindAdmitted:
 		// Each attempt starts unlaunched and without an outcome; the unit's
 		// contract and prerequisites carry over unchanged.
-		u.State, u.Flight, u.Outcome, u.Launched, u.Dispatch = StateInFlight, flightOf[e.Kind], "", false, e.Dispatch
+		u.State, u.Flight, u.Outcome, u.Launched, u.Dispatch, u.Agent = StateInFlight, flightOf[e.Kind], "", false, e.Dispatch, e.Agent
 	case KindPlanned:
 		u.State = StatePlanned
 		u.Committed = true

@@ -5,6 +5,7 @@ context:
 description: Define buildable architecture, boundaries, data flow, and exact interface
   contracts.
 id: takt-architect
+label: arch
 instances:
 - architect
 vfs_capabilities:

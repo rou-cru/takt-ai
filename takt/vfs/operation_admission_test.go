@@ -725,3 +725,104 @@ func TestConsolidateWithoutVerifierPreservesOwnershipAndBaseChecks(t *testing.T)
 		}
 	}
 }
+
+func TestAssignScopeAcrossRoots(t *testing.T) {
+	for _, scenario := range []string{"replace", "invalid path", "same root collision", "continue"} {
+		t.Run(scenario, func(t *testing.T) {
+			f, root, state := durable(t)
+			old := bind(t, f, "old", "old-unit", "dev", "index.html", "extra.html")
+			apply(t, f, applyCase{old, "create", 0, OpCreate, "index.html", "previous"})
+			peer := bind(t, f, "peer", "peer-unit", "dev", "peer.html")
+			same, err := f.AssignScope(Identity{SessionID: "new-root", WorkUnitID: "same-unit", AgentID: "same", Specialist: "dev"}, []string{"same.html"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			f, err = Open(root, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = f.Close() })
+			next := Identity{SessionID: "new-root", WorkUnitID: "new-unit", AgentID: "new", Specialist: "dev"}
+			scope := []string{"index.html"}
+			switch scenario {
+			case "invalid path":
+				scope = append(scope, "../escape")
+			case "same root collision":
+				scope = append(scope, "same.html")
+			case "continue":
+				if err := f.ReassignScope(next, old, scope); err != nil {
+					t.Fatal(err)
+				}
+				if string(f.staged[old].files["index.html"]) != "previous" {
+					t.Fatal("continuation lost staging")
+				}
+				return
+			}
+			key, err := f.AssignScope(next, scope)
+			if scenario != "replace" {
+				if err == nil {
+					t.Fatal("invalid assignment accepted")
+				}
+				if f.owners["index.html"] != old || !f.stagedLocked(old) || f.owners["extra.html"] != old {
+					t.Fatal("refusal discarded old claim")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.owners["index.html"] != key || f.stagedLocked(old) {
+				t.Fatal("prior claim not replaced")
+			}
+			if _, exists := f.owners["extra.html"]; exists {
+				t.Fatal("partial old claim retained")
+			}
+			if f.owners["peer.html"] != peer || f.owners["same.html"] != same {
+				t.Fatal("unrelated claim lost")
+			}
+			for _, claim := range f.OwnershipClaims("new-root") {
+				if claim.Key == old {
+					t.Fatal("discarded claim still pending")
+				}
+			}
+		})
+	}
+}
+
+func TestWorkspaceLocalStoreIsPrivate(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	global := filepath.Join(home, ".local", "share", "takt-ai", "vfs", "old-store")
+	previous, err := Open(root, global)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previous.AssignScope(id("old", "old", "dev"), []string{"index.html"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := previous.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, ".takt-ai", "vfs")
+	f, err := Open(root, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	for _, path := range []string{".takt-ai/vfs/state.db", ".takt-ai/other", ".TAKT-AI/vfs/new"} {
+		if _, err := f.AssignScope(id("a", "u", "dev"), []string{path}); !errors.Is(err, ErrInvalidPath) {
+			t.Fatalf("private path %s: %v", path, err)
+		}
+	}
+	info, err := os.Stat(state)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatalf("private store: %v %v", info, err)
+	}
+	if len(f.OwnershipClaims("s")) != 0 {
+		t.Fatal("new local store imported claims")
+	}
+}

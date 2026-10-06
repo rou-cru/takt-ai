@@ -9,6 +9,7 @@ const claimsCalls = []
 globalThis.Bun = {
   spawn(argv) {
     assert.equal(argv[0], "/test/takt-ai")
+    if (argv.includes("--state")) assert.equal(argv[argv.indexOf("--state") + 1], "/workspace/.takt-ai/vfs")
     const call = { argv }
     return {
       stdin: { write(json) { call.request = JSON.parse(json) }, end() {} },
@@ -97,3 +98,12 @@ const noPermission = await context("dev-none", [{ ...matching, agent_id: "dev-no
 assert.deepEqual(Object.keys(noPermission.tools), [])
 assert.deepEqual(noPermission.system, [])
 assert.ok(claimsCalls.length >= 4, "child contexts with permissions consult root claims")
+
+claimResponse = [{ ...matching, root_session_id: "previous", key: "old-key", staged: true, scope: ["index.html"] }]
+const rootEvent = { agent: "takt", sessionID: root, tools: {}, system: [] }
+for (const callback of hooks.context) await callback(rootEvent)
+assert.match(rootEvent.system[0].text, /old-key/)
+assert.match(rootEvent.system[0].text, /index.html/)
+assert.match(rootEvent.system[0].text, /"staged":true/)
+assert.match(rootEvent.system[0].text, /without author_key replaces/)
+assert.match(rootEvent.system[0].text, /with author_key it continues/)

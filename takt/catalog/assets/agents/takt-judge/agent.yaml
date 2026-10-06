@@ -3,6 +3,7 @@ context:
 description: Provide independent adversarial review when ordinary verification is
   insufficient.
 id: takt-judge
+label: judge
 instances:
 - judge-a
 - judge-b

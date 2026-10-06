@@ -2,7 +2,7 @@
 // The harness, not the model, supplies author, session and directory. Every
 // write goes through the durable VFS core: staging first, consolidation only
 // after an independent verifier's verdict. One private store per workspace.
-import { createHash, randomUUID } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import type { OpenCodeEvent } from "@opencode/client"
@@ -361,14 +361,8 @@ export default Plugin.define({
       await persist()
     }
 
-    // vfs.Open binds one store to exactly one workspace, so the state directory
-    // is derived from the absolute workspace path: slug + 8 hex chars of its
-    // SHA-256, kept outside the workspace itself.
     function stateDir(): string {
-      const abs = workspace.startsWith("/") ? workspace : `${process.env.HOME}/${workspace}`
-      const slug = abs.split("/").findLast(Boolean) ?? "workspace"
-      const hash = createHash("sha256").update(abs).digest("hex").slice(0, 8)
-      return `${process.env.HOME}/.local/share/takt-ai/vfs/${slug}-${hash}`
+      return resolve(workspace, ".takt-ai", "vfs")
     }
 
     // delegatedUnit is the work unit a dispatch session executes. The host
@@ -1024,12 +1018,17 @@ export default Plugin.define({
       }
     })
 
-    // The orchestrator learns about maintenance only while it matters: a small
-    // notice while a cycle is due or running, and one when it has concluded.
-    // Outside maintenance nothing is added to its context.
+    // Before delegation, surface prior-root ownership alongside maintenance
+    // notices. Neither context read introduces a startup gate.
     let maintenanceAnnounced = false
     await ctx.session.hook("context", async (event) => {
       if (event.agent !== ORCHESTRATOR_ID) return
+      const root = await rootSession(event.sessionID)
+      const claims = await takt("claims", { session_id: root }).then(r => r.claims ?? [], () => undefined)
+      if (claims !== undefined) {
+        const prior = claims.filter(claim => claim.root_session_id !== root)
+        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key replaces overlapping claims from other roots completely, discarding their staged work; with author_key it continues the existing work. Same-root collisions are refused.` })
+      }
       // A failed status read must never break the orchestrator's own request.
       const state = await coordinate({ action: "status" }).catch(() => undefined)
       if (state === undefined) return
@@ -1197,7 +1196,7 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept, only added paths are checked for collisions, and the set must include every path already staged.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. With author_key, continue existing work. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept, only added paths are checked for collisions, and the set must include every path already staged.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },

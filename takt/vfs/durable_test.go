@@ -212,7 +212,7 @@ func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseNeverStrandsStagedWork(t
 		t.Fatalf("persisted prior-session claim = %+v", claims)
 	}
 
-	_, err = f.AssignScope(Identity{SessionID: "other-session", WorkUnitID: "unit-b", AgentID: "fix-b", Specialist: "fix"}, []string{"a.go"})
+	_, err = f.AssignScope(Identity{SessionID: "root-session", WorkUnitID: "unit-b", AgentID: "fix-b", Specialist: "fix"}, []string{"a.go"})
 	var collision *CollisionError
 	if !errors.Is(err, ErrCollision) || !errors.As(err, &collision) {
 		t.Fatalf("conflict = %v, want typed ErrCollision", err)

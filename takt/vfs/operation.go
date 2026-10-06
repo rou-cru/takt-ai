@@ -151,6 +151,8 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error) {
 // AssignScope atomically reserves explicit exclusive ownership for a target
 // before its VFS session starts. The target instance must have explicit bind
 // and write grants in the catalog; role alone never authorizes an assignment.
+// Valid fresh assignments discard whole overlapping claims from other roots;
+// same-root collisions and explicit ReassignScope continuity remain unchanged.
 func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -174,10 +176,36 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 	}
 	// Assignment refusals are denial observations, not unresolved in-flight
 	// conflicts. Validate the complete request before capturing or claiming paths.
-	if err = f.checkClaimScope(identity, scope); err != nil {
+	prior := make(map[AgentID]bool)
+	for _, path := range scope {
+		// Read every base before discarding anything, including invalid paths.
+		if _, err = f.physical(path); err != nil {
+			return "", err
+		}
+	}
+	for _, path := range scope {
+		for claimed, owner := range f.owners {
+			if !strings.EqualFold(path, claimed) {
+				continue
+			}
+			if f.bindings[owner].SessionID == identity.SessionID {
+				return "", f.collisionError(identity, path, owner)
+			}
+			prior[owner] = true
+		}
+	}
+	// Capture the new claim first: a failed base read must preserve prior work.
+	key, err = f.claimLocked(identity, scope)
+	if err != nil {
 		return "", err
 	}
-	return f.claimLocked(identity, scope)
+	for owner := range prior {
+		f.rollbackLocked(owner)
+		held := f.bindings[owner]
+		held.Prelaunch = false
+		f.bindings[owner] = held
+	}
+	return key, nil
 }
 
 // adoptPrelaunchLocked adopts the prelaunch assignment matching identity, if

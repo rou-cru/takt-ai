@@ -93,6 +93,8 @@ func TestDagStatusPopulatedWorkspace(t *testing.T) {
 		{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root", WorkUnitID: "api",
 			AttemptID: history.FirstAttempt, Cause: history.CauseNone, PlanVersion: "v1", Contract: "api contract",
 			Prerequisites: []string{"storage"}},
+		{Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root", WorkUnitID: "storage",
+			AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured, Agent: "product-designer"},
 	}
 	for _, e := range entries {
 		if err := h.Append(e); err != nil {
@@ -125,6 +127,13 @@ func TestDagStatusPopulatedWorkspace(t *testing.T) {
 	edges, ok := got["edges"].([]any)
 	if !ok || len(edges) != 1 {
 		t.Fatalf("edges = %+v; want 1", got["edges"])
+	}
+	// Nodes are sorted by id: api (planned, no agent), then storage.
+	if agent, has := nodes[0].(map[string]any)["agent"]; has {
+		t.Fatalf("planned api agent = %v; want none", agent)
+	}
+	if agent := nodes[1].(map[string]any)["agent"]; agent != "design" {
+		t.Fatalf("admitted storage agent = %v; want the catalog label %q", agent, "design")
 	}
 }
 

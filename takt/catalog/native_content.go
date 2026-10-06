@@ -48,7 +48,7 @@ func buildNativeContent(c Catalog) (map[string]NativeSubAgentContent, error) {
 			return nil, err
 		}
 		for _, instanceID := range def.Instances {
-			content[instanceID] = NativeSubAgentContent{Role: def.Role}
+			content[instanceID] = NativeSubAgentContent{Role: def.Role, Label: def.Label}
 		}
 	}
 	return content, nil

@@ -321,8 +321,7 @@ The following is an available route, not a procession required of every change:
    judgment.
 4. **Execution:** dispatch READY nodes as dependencies clear, each delegation named with its
    node's committed unit identity. A returned delivery is complete in VFS and nothing more:
-   before delegating further, take it where its contract sends it (a verifier, consolidation,
-   or straight to disk). Work left staged has not been delivered. Ordinary handoffs reuse approvals; new final designs or scope
+   take it where its contract sends it (a verifier, consolidation, or straight to disk). Work left staged has not been delivered. Ordinary handoffs reuse approvals; new final designs or scope
    decisions obtain the required user approval.
 5. **Integration and acceptance:** preserve the single tail fan-in. The independent gate
    assesses a phase's staged deltas together before consolidation: one verifier node, preassigned
