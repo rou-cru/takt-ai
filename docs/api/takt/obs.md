@@ -78,6 +78,12 @@ const SchemaVersion = "2.0.0"
 const StateDirName = ".takt-ai"
 ```
 
+<a name="StoreFileName"></a>StoreFileName is the single event database, so every session and process of a workspace shares one stream.
+
+```go
+const StoreFileName = "events.db"
+```
+
 ## Variables
 
 <a name="ErrContentForbidden"></a>ErrContentForbidden fails validation when content slips in, so leaks surface immediately.

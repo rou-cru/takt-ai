@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/rou-cru/takt-ai/takt/obs"
 )
 
 // Shell decisions. PR-HAR-8 resolves every governed action to exactly one of
@@ -107,6 +109,14 @@ func shellRoot(stateDir, callID string) string {
 
 // PrepareShell classifies one command and lays out its private projection.
 // key may be empty: an unbound caller may still inspect, never mutate.
+// expected must match a bound caller's revision and is ignored when key is empty.
+// For callers without file scope, quoted spans are ignored when detecting
+// workspace mutations; the sandbox must still enforce the returned restrictions.
+// Preparation creates scratch and, for allowed mutations, projection files,
+// but does not execute the command. A policy denial returns a ShellDeny plan
+// with a nil error. Missing callID or stateDir, a blank command, or an unknown
+// nonempty key returns ErrIdentity; a revision mismatch returns ErrStaleRevision.
+// Store readiness and scratch or projection filesystem errors propagate.
 func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -125,7 +135,13 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 			return ShellPlan{}, ErrStaleRevision
 		}
 	}
+	// A caller with no scope can only inspect, so quoted text (a pattern, an
+	// inline script) is data, not a write; a write hidden in quotes, such as
+	// `sh -c '… > f'`, runs as an inspection and fails on the sandbox instead.
 	mutates := mutatesWorkspace(command)
+	if len(scope) == 0 {
+		mutates = mutatesWorkspace(unquoted(command))
+	}
 	decision, reason := f.classify(key, command, mutates, len(scope) > 0)
 	root := shellRoot(stateDir, callID)
 	if key == "" {
@@ -155,6 +171,12 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 	// denied here too; a captured mutation never sees the workspace at all.
 	plan.Cwd, plan.Writable, plan.Protected = f.rootDir, []string{plan.Scratch}, []string{f.rootDir}
 	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, userHome())...)
+	// The workspace event store records every session's activity; it is the
+	// orchestrator's to read, never a specialist's inspection.
+	store := filepath.Join(f.rootDir, obs.StateDirName, obs.StoreFileName)
+	if _, err := os.Stat(store); err == nil {
+		plan.Private = append(plan.Private, store)
+	}
 	if decision == ShellAsk {
 		plan.Writable = []string{everythingWritable}
 	}
@@ -317,6 +339,34 @@ func mutatesWorkspace(command string) bool {
 	words := shellWords(command)
 	return capturableRedirect(command) || containsAny(words, mutatingWords) ||
 		(containsAny(words, inPlaceWords) && containsAny(words, inPlaceFlags))
+}
+
+// unquoted drops single- and double-quoted spans, quotes included; a
+// backslash escapes the next character outside single quotes.
+func unquoted(command string) string {
+	var out strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range command {
+		switch {
+		case escaped:
+			escaped = false
+			if quote == 0 {
+				out.WriteRune(r)
+			}
+		case r == '\\' && quote != '\'':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
 }
 
 // capturableRedirect reports a redirection whose target is a file, ignoring

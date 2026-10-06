@@ -23,6 +23,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
@@ -208,6 +209,10 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		}
 	} else {
 		rules = append(rules, shellRules(spec.Role)...)
+		// The workspace event store records every session's activity; only the
+		// orchestrator reads it. The inspection sandbox keeps it private too; a
+		// shell that runs natively (a result agent, or enforcement off) does not.
+		rules = append(rules, permissionRule{"read", eventStoreResource, "deny"})
 		rules = append(rules, permissionRule{"subagent", allResources, "deny"})
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "deny"})
@@ -219,6 +224,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// V2 folds write and patch into edit, so one rule covers both.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
 		rules = append(rules, sensitiveEditDenies()...)
+		rules = append(rules, permissionRule{"edit", eventStoreResource, "deny"})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions
@@ -254,6 +260,9 @@ func modelRef(spec AgentSpec) any {
 	}
 	return spec.Model + "#" + spec.Variant
 }
+
+// eventStoreResource is the workspace event store as a permission resource.
+var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName
 
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.

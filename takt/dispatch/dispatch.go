@@ -625,7 +625,7 @@ func checkAdmittedUnchanged(p history.Projection, adds []PlanUnit) error {
 			continue
 		}
 		if existing.Contract != u.Contract || !slices.Equal(existing.Prerequisites, u.Prerequisites) {
-			return fmt.Errorf("dispatch: %s is no longer planned; its contract and prerequisites cannot change", u.Unit)
+			return fmt.Errorf("dispatch: %s is no longer planned; its contract and prerequisites cannot change; omit it from the revision", u.Unit)
 		}
 	}
 	return nil

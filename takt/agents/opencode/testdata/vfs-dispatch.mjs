@@ -115,11 +115,11 @@ assert.deepEqual(requestOf(calls.at(-1)), { action: "commit", session: "root", v
 
 await tools.dispatch_declare_recovery.execute({ objective: "obj1", result: "res1", point: "p1", scope: ["u1"], actions: 5, attempts: 2 }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
-assert.deepEqual(requestOf(calls.at(-1)), { action: "recovery", session: "root", objective: "obj1", result: "res1", point: "p1", scope: ["u1"], actions: 5, attempts: 2 })
+assert.deepEqual(requestOf(calls.at(-1)), { action: "recovery", session: "root", event: "obj1", objective: "obj1", result: "res1", point: "p1", scope: ["u1"], actions: 5, attempts: 2 })
 
 await tools.dispatch_close_recovery.execute({ objective: "obj1", evidence: "ev1", demonstrated: true }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
-assert.deepEqual(requestOf(calls.at(-1)), { action: "recovered", session: "root", objective: "obj1", evidence: "ev1", pass: true })
+assert.deepEqual(requestOf(calls.at(-1)), { action: "recovered", session: "root", event: "obj1", objective: "obj1", evidence: "ev1", pass: true })
 
 await tools.dispatch_restore.execute({ objective: "obj1", author_key: "key1" }, root)
 assert.equal(calls.at(-1).verb, "dispatch")

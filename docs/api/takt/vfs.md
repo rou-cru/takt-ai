@@ -301,7 +301,7 @@ func Open(rootDir, stateDir string) (_ *FS, err error)
 Open opens durable staging under an advisory lock on the workspace directory.
 
 <a name="FS.Apply"></a>
-### func \(\*FS\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L711>)
+### func \(\*FS\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L712>)
 
 ```go
 func (f *FS) Apply(op Operation) (OperationResult, error)
@@ -337,7 +337,7 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error)
 Bind registers a dispatch identity and acquires its explicit file scope. Role metadata comes from canonical content; VFS access comes only from the instance's explicit catalog capabilities.
 
 <a name="FS.BindingIdentity"></a>
-### func \(\*FS\) [BindingIdentity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L605>)
+### func \(\*FS\) [BindingIdentity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L606>)
 
 ```go
 func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
@@ -364,7 +364,7 @@ func (f *FS) CompleteCycle(cycleID string) (err error)
 CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
 
 <a name="FS.ConsolidateCheckpoint"></a>
-### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L894>)
+### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L895>)
 
 ```go
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
@@ -400,7 +400,7 @@ func (f *FS) DropCycleStaging(cycle string) (err error)
 DropCycleStaging discards only bindings owned by the specified cycle. Consolidated content must separately pass DiscardCycle's divergence checks.
 
 <a name="FS.ImportShell"></a>
-### func \(\*FS\) [ImportShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L193>)
+### func \(\*FS\) [ImportShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L207>)
 
 ```go
 func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) (result OperationResult, err error)
@@ -472,7 +472,7 @@ func (f *FS) PendingOrdinaryDeltas() int
 PendingOrdinaryDeltas counts unresolved ordinary deltas across the workspace, not just the requesting session or the proposed maintenance scope.
 
 <a name="FS.PrepareShell"></a>
-### func \(\*FS\) [PrepareShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L110>)
+### func \(\*FS\) [PrepareShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L112>)
 
 ```go
 func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error)
@@ -481,7 +481,7 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 PrepareShell classifies one command and lays out its private projection. key may be empty: an unbound caller may still inspect, never mutate.
 
 <a name="FS.ReadAs"></a>
-### func \(\*FS\) [ReadAs](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L716>)
+### func \(\*FS\) [ReadAs](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L717>)
 
 ```go
 func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
@@ -517,7 +517,7 @@ func (f *FS) RevokeOwnership(key AgentID) (err error)
 RevokeOwnership frees the paths a claim holds. The binding is kept so the unit's attempt count survives. A claim that holds staged work is refused rather than left as a delta nobody owns, which could never be consolidated.
 
 <a name="FS.Verify"></a>
-### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L823>)
+### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L824>)
 
 ```go
 func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string) (err error)
@@ -627,7 +627,7 @@ func (e JournalEntry) Ref() string
 Ref returns the entry's stable reference for telemetry.
 
 <a name="Operation"></a>
-## type [Operation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L649-L656>)
+## type [Operation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L650-L657>)
 
 Operation carries adapter\-controlled identity and a revision from the last result.
 
@@ -643,7 +643,7 @@ type Operation struct {
 ```
 
 <a name="OperationResult"></a>
-## type [OperationResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L659-L663>)
+## type [OperationResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L660-L664>)
 
 OperationResult returns the merged view content an operation produced.
 
@@ -712,7 +712,7 @@ type OwnershipClaim struct {
 ```
 
 <a name="ShellPlan"></a>
-## type [ShellPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L76-L96>)
+## type [ShellPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L78-L98>)
 
 ShellPlan is what the coordinator hands the sandbox wrapper for one command. Every path in it is resolved here from the binding's own scope; none of it is ever accepted from the model.
 

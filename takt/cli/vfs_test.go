@@ -257,7 +257,7 @@ func TestVFSMutationIPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !created.OK || created.Revision != 1 || created.DeltaHash == "" {
+	if !created.OK || *created.Revision != 1 || created.DeltaHash == "" {
 		t.Fatalf("create: %+v", created)
 	}
 
@@ -558,19 +558,19 @@ func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
 	}
 	read, err := mutate("op", vfsReq("gate", "verify", map[string]any{
 		"author_key": verifier.Key, "view_key": author.Key, "call_id": "r1",
-		"expected_revision": staged.Revision, "action": "read", "path": "app.go",
+		"expected_revision": *staged.Revision, "action": "read", "path": "app.go",
 	}))
 	if err != nil || read.Content != "package app" {
 		t.Fatalf("verifier read = %+v, %v", read, err)
 	}
 	if _, err = mutate("verify", vfsReq("gate", "verify", map[string]any{
 		"verifier_key": verifier.Key, "author_key": author.Key, "call_id": "v1",
-		"expected_revision": staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
+		"expected_revision": *staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
 	})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = mutate("consolidate", vfsReq("impl", "dev", map[string]any{
-		"author_key": author.Key, "checkpoint": "gate", "expected_revision": staged.Revision,
+		"author_key": author.Key, "checkpoint": "gate", "expected_revision": *staged.Revision,
 	})); err != nil {
 		t.Fatal(err)
 	}
@@ -659,5 +659,38 @@ func TestVFSVerifyIgnoresCycleAttributionButNotIdentity(t *testing.T) {
 	}
 	if err = verify("verify", "ok", nil); err != nil {
 		t.Fatalf("verify without repeating cycle fields: %v", err)
+	}
+}
+
+// TestVFSReadBeforeAnyWriteReportsRevisionZero covers a fix that reads the
+// workspace right after binding: the response must still state its revision.
+func TestVFSReadBeforeAnyWriteReportsRevisionZero(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("package main"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := newVFSMutator(t, root, state)("bind", vfsReq("u1", "dev", map[string]any{
+		"scope": []string{"app.go"}, "invariants": []string{"AGENTS.md"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(vfsReq("u1", "dev", map[string]any{
+		"author_key": bound.Key, "call_id": "r1", "expected_revision": 0, "action": "read", "path": "app.go",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if err = runVFS([]string{"op", "--workspace", root, "--state", state}, bytes.NewReader(payload), &out, &stderr); err != nil {
+		t.Fatalf("read: %v (%s)", err, stderr.String())
+	}
+	var raw map[string]any
+	if err = json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["revision"] != float64(0) || raw["delta_hash"] == "" || raw["content"] != "package main" {
+		t.Fatalf("read response = %v", raw)
 	}
 }

@@ -77,7 +77,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update routes input to the visible screen and action messages through runtime, then keeps the logo image over the cells the home reserves.
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L602>)
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/tui.go#L608>)
 
 ```go
 func (m Model) View() tea.View

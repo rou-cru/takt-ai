@@ -10,6 +10,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 )
 
 func vfsCaps(capabilities ...model.VFSCapability) []model.VFSCapability {
@@ -174,7 +175,13 @@ func TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole(t *testing.
 	if slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git *" }) > slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git diff" }) {
 		t.Errorf("git * deny must precede the read-only allows: %v", rules)
 	}
+	if effectOf(rules, "read", eventStoreGlob) != "deny" {
+		t.Errorf("dev may read the workspace event store: %v", rules)
+	}
 }
+
+// eventStoreGlob is the workspace event store as a permission resource.
+var eventStoreGlob = "**/" + obs.StateDirName + "/" + obs.StoreFileName
 
 func TestRenderConfigOrchestratorRoleHasEditAndSubagentPermission(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
@@ -188,6 +195,9 @@ func TestRenderConfigOrchestratorRoleHasEditAndSubagentPermission(t *testing.T) 
 	rules := decodeConfig(t, artifact.Content).Agents["takt"].Permissions
 	if effectOf(rules, "edit", "*") != "allow" || effectOf(rules, "subagent", "*") != "allow" {
 		t.Errorf("orchestrator role must get edit/subagent permission, got %v", rules)
+	}
+	if effectOf(rules, "read", eventStoreGlob) == "deny" {
+		t.Errorf("orchestrator must keep reading the workspace event store: %v", rules)
 	}
 }
 
@@ -541,5 +551,20 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 	}
 	if effectOf(rules, "skill", "someone-elses-skill") == "deny" {
 		t.Errorf("a skill Takt does not install was denied")
+	}
+}
+
+func TestRenderConfigNativeEditNeverReachesTheEventStore(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: "pm", Description: "Product specialist", Mode: "all", System: "Shape a proposal.", Model: "openai/gpt-5.6-luna", Role: model.RoleDirectInterlocutor, VFSCapabilities: vfsCaps()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := decodeConfig(t, artifact.Content).Agents["pm"].Permissions
+	if effectOf(rules, "edit", "*") != "allow" || effectOf(rules, "edit", eventStoreGlob) != "deny" {
+		t.Errorf("pm may edit the workspace event store: %v", rules)
 	}
 }
