@@ -23,6 +23,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
@@ -208,6 +209,10 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		}
 	} else {
 		rules = append(rules, shellRules(spec.Role)...)
+		// The workspace event store records every session's activity; only the
+		// orchestrator reads it. The inspection sandbox keeps it private too; a
+		// shell that runs natively (a result agent, or enforcement off) does not.
+		rules = append(rules, permissionRule{"read", "**/" + obs.StateDirName + "/" + obs.StoreFileName, "deny"})
 		rules = append(rules, permissionRule{"subagent", allResources, "deny"})
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "deny"})

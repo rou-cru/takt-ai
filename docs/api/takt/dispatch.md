@@ -13,7 +13,8 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [Constants](<#constants>)
 - [func Abort\(h \*history.History, journalRef, root, childSession, reason, origin string\) error](<#Abort>)
 - [func Account\(h \*history.History, entries \[\]vfs.JournalEntry\) error](<#Account>)
-- [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest, held bool\) error](<#Admit>)
+- [func Admissible\(h \*history.History, p AdmissionPolicy, req AdmissionRequest\) error](<#Admissible>)
+- [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest\) error](<#Admit>)
 - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(map\[string\]any, error\)](<#BuildAbortEnvelope>)
 - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(map\[string\]any, error\)](<#BuildHandoffEnvelope>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
@@ -52,12 +53,6 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 const AdmissionPolicyRef = "harness.admission"
 ```
 
-<a name="CauseHeld"></a>CauseHeld records an admission an external barrier held, rather than any budget.
-
-```go
-const CauseHeld = "control/admission-barrier"
-```
-
 <a name="CauseRepetition"></a>CauseRepetition denies a second delegation of a unit whose current attempt is still in flight: it would duplicate execution rather than retry it \(PR\-HAR\-17\).
 
 ```go
@@ -80,7 +75,7 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 Abort ends the temporary holder's turn for childSession without negotiation. origin must be exactly "user" or "harness" \(IR\-24: never the convening agent nor the temporary holder itself\).
 
 <a name="Account"></a>
-## func [Account](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L748>)
+## func [Account](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L758>)
 
 ```go
 func Account(h *history.History, entries []vfs.JournalEntry) error
@@ -88,14 +83,23 @@ func Account(h *history.History, entries []vfs.JournalEntry) error
 
 Account attributes recorded bus actions to the recovery scope that declared them and forces backtracking at exhaustion of either budget \(PR\-OBS\-PRG\-2, PR\-HAR\-6\).
 
-<a name="Admit"></a>
-## func [Admit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L142>)
+<a name="Admissible"></a>
+## func [Admissible](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L149>)
 
 ```go
-func Admit(h *history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest, held bool) error
+func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) error
 ```
 
-Admit is called before the host task tool. It reserves one concurrency slot indivisibly against the projection \(PR\-HAR\-16\); a refusal is recorded and stays visible. held is the caller's own reason \(if any\) to pause every admission regardless of budget, such as a maintenance cycle in flight; this package enforces it without knowing why it applies.
+Admissible reports the refusal Admit would record for req, without recording anything: a caller that must undo other work before admitting \(a maintenance cycle in flight\) does so only for an admission that will go through.
+
+<a name="Admit"></a>
+## func [Admit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L137>)
+
+```go
+func Admit(h *history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest) error
+```
+
+Admit is called before the host task tool. It reserves one concurrency slot indivisibly against the projection \(PR\-HAR\-16\); a refusal is recorded and stays visible.
 
 <a name="BuildAbortEnvelope"></a>
 ## func [BuildAbortEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L152>)
@@ -116,7 +120,7 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; filesystem copies are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
 
 <a name="CloseRecovery"></a>
-## func [CloseRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L726>)
+## func [CloseRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L736>)
 
 ```go
 func CloseRecovery(h *history.History, journalRef, event, session, objective, evidence string, demonstrated bool) error
@@ -125,7 +129,7 @@ func CloseRecovery(h *history.History, journalRef, event, session, objective, ev
 CloseRecovery closes a declared recovery, recording whether its result was demonstrated and linking the evidence. Only a demonstrated recovery breaks the objective's streak, and a claimed result without evidence is not one.
 
 <a name="Commit"></a>
-## func [Commit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L353>)
+## func [Commit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L363>)
 
 ```go
 func Commit(h *history.History, journalRef, session, version string, units []PlanUnit) error
@@ -134,7 +138,7 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\).
 
 <a name="Contest"></a>
-## func [Contest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L643>)
+## func [Contest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L653>)
 
 ```go
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error
@@ -143,7 +147,7 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 Contest admits at most the policy's distinct contests per session, upheld ones included. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
 
 <a name="CurrentAttempt"></a>
-## func [CurrentAttempt](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L120>)
+## func [CurrentAttempt](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L117>)
 
 ```go
 func CurrentAttempt(p history.Projection, event string) string
@@ -152,7 +156,7 @@ func CurrentAttempt(p history.Projection, event string) string
 CurrentAttempt is the attempt a lifecycle fact belongs to: the one the unit's latest admission opened.
 
 <a name="Declare"></a>
-## func [Declare](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L377>)
+## func [Declare](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L387>)
 
 ```go
 func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string) error
@@ -161,7 +165,7 @@ func Declare(h *history.History, journalRef, session, version, baseVersion strin
 Declare is the orchestrator's one plan declaration: the first one commits the baseline; once a plan stands, a declaration revises it and must name the version it revises, so a stale or silent rewrite of the plan is refused instead of recorded as a fresh commitment \(PR\-DAG\-MUT\-6\).
 
 <a name="DeclareRecovery"></a>
-## func [DeclareRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L684>)
+## func [DeclareRecovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L694>)
 
 ```go
 func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration) error
@@ -170,7 +174,7 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 DeclareRecovery admits bounded recovery of an objective. Consecutive failed recoveries close autonomous recovery for it until an enabling user decision is recorded; the objective identity carries that history \(PR\-HAR\-21, PR\-HAR\-22\).
 
 <a name="Except"></a>
-## func [Except](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L900>)
+## func [Except](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L910>)
 
 ```go
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error
@@ -188,7 +192,7 @@ func ExpectedArtifact(h *history.History, root string) string
 ExpectedArtifact returns the optional filesystem copy path declared by the active switch for root, or "" if there is none.
 
 <a name="Finish"></a>
-## func [Finish](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L200>)
+## func [Finish](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L210>)
 
 ```go
 func Finish(h *history.History, journalRef, event, session string) error
@@ -197,7 +201,7 @@ func Finish(h *history.History, journalRef, event, session string) error
 Finish records the observed effective termination of a dispatched unit, releasing its reserved slot. Cancellation\-pending or uncertain execution ends without a work result, so its outcome is interrupted \(PR\-DAG\-TMP\-1\).
 
 <a name="FinishActivity"></a>
-## func [FinishActivity](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L246>)
+## func [FinishActivity](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L256>)
 
 ```go
 func FinishActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, outcome history.Outcome) error
@@ -215,7 +219,7 @@ func Handoff(h *history.History, journalRef, root, callerSession, result string)
 Handoff ends the current temporary holder's turn and returns the interface to root. Only the session that is currently the holder may call this \(IR\-24: the convening agent never emits it\). result is one of "Standard", "EarlyHandoff", "TechFault", "Outraged" \(IR\-23\).
 
 <a name="Launch"></a>
-## func [Launch](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L299>)
+## func [Launch](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L309>)
 
 ```go
 func Launch(h *history.History, journalRef, event, session string) error
@@ -224,7 +228,7 @@ func Launch(h *history.History, journalRef, event, session string) error
 Launch records execution observed running. A repeat of an observed launch yields its recorded disposition, and a launch left uncertain by a communication failure must be reconciled before any repeat that could duplicate execution \(PR\-HAR\-17\).
 
 <a name="Reconcile"></a>
-## func [Reconcile](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L315>)
+## func [Reconcile](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L325>)
 
 ```go
 func Reconcile(h *history.History, journalRef, event, session string, running bool) error
@@ -233,7 +237,7 @@ func Reconcile(h *history.History, journalRef, event, session string, running bo
 Reconcile establishes what an uncertain launch did: execution observed running, or non\-start, which is the effective termination that finally releases the reservation. Uncertainty alone never releases it \(PR\-HAR\-18\).
 
 <a name="Record"></a>
-## func [Record](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L288>)
+## func [Record](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L298>)
 
 ```go
 func Record(h *history.History, journalRef, event, session string, kind history.Kind) error
@@ -251,7 +255,7 @@ func ResolvePolicyPlaceholders(content []byte) ([]byte, error)
 ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalog prose with the admission policy's value. A marker left unresolved is an error: unresolved prose would hand an agent a limit that does not exist.
 
 <a name="Restore"></a>
-## func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L864>)
+## func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L874>)
 
 ```go
 func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string, key vfs.AgentID) error
@@ -260,7 +264,7 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 Restore confirms restoration of an abandoned recovery scope's virtual state: the rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\).
 
 <a name="Revise"></a>
-## func [Revise](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L485>)
+## func [Revise](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L495>)
 
 ```go
 func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string) error
@@ -269,7 +273,7 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 Revise records a plan revision against its expected prior valid version \(PR\-DAG\-MUT\-6\). A valid revision is classified strategic or tactical by comparing the old and new plans \(PR\-DAG\-MUT\-4\) and applies as a whole; an invalid one is rejected with its reason recorded, touching no per\-unit state, so the last valid plan is untouched by construction.
 
 <a name="StartActivity"></a>
-## func [StartActivity](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L224>)
+## func [StartActivity](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L234>)
 
 ```go
 func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind) error
@@ -287,7 +291,7 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root that already has an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
 
 <a name="Withdraw"></a>
-## func [Withdraw](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L335>)
+## func [Withdraw](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L345>)
 
 ```go
 func Withdraw(h *history.History, journalRef, event, session string) error
@@ -330,7 +334,7 @@ func LoadAdmissionPolicy() (AdmissionPolicy, error)
 LoadAdmissionPolicy returns the shared embedded policy; callers must not mutate the result.
 
 <a name="AdmissionRequest"></a>
-## type [AdmissionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L130-L135>)
+## type [AdmissionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L127-L132>)
 
 AdmissionRequest identifies the unit an admission decision is made for: the work unit and session identities, the agent it would delegate to, and the dispatch identity to record against it.
 
@@ -358,7 +362,7 @@ type HandoffOutcome struct {
 ```
 
 <a name="PlanUnit"></a>
-## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L344-L348>)
+## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L354-L358>)
 
 PlanUnit is one unit of a plan commitment: its identity, its contract and its explicit prerequisite identities.
 
@@ -371,7 +375,7 @@ type PlanUnit struct {
 ```
 
 <a name="RecoveryDeclaration"></a>
-## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L667-L674>)
+## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L677-L684>)
 
 RecoveryDeclaration is what PR\-ORQ\-13 requires recorded before uncertain work begins: the binary expected result, both budgets, the objective identity, the prior recoverable point, and the explicit scope.
 

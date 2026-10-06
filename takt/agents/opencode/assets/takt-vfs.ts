@@ -1130,7 +1130,7 @@ export default Plugin.define({
           },
         })
 
-      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. A planned unit is executed by delegating it with the unit identity as the subagent description; delegating that name again retries the unit. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. Once a plan stands, change it by naming its current version as base_version: listed units are added or replaced, withdrawn units leave the plan.",
+      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. A planned unit is executed by delegating it with the unit identity as the subagent description; delegating that name again retries the unit. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. Once a plan stands, change it by naming its current version as base_version: list only the units the revision adds or replaces, withdrawn units leave the plan, and units already delegated stand as committed.",
         "commit",
         obj({
           version: str("Identifier of this baseline version"),
@@ -1226,7 +1226,7 @@ export default Plugin.define({
           actions: { type: "number", description: "Action budget this recovery may consume" },
           attempts: { type: "number", description: "Attempt budget: how many times this recovery may be retried" },
         }, ["objective", "result", "point", "scope", "actions", "attempts"]),
-        (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => args)
+        (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
       dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence.",
         "recovered",
@@ -1235,7 +1235,7 @@ export default Plugin.define({
           evidence: str("Evidence supporting the claimed result"),
           demonstrated: { type: "boolean", description: "Whether the declared result was actually demonstrated" },
         }, ["objective", "evidence", "demonstrated"]),
-        (args: { objective: string; evidence: string; demonstrated: boolean }) => ({ objective: args.objective, evidence: args.evidence, pass: args.demonstrated }))
+        (args: { objective: string; evidence: string; demonstrated: boolean }) => ({ event: args.objective, objective: args.objective, evidence: args.evidence, pass: args.demonstrated }))
 
       dispatch("dispatch_restore", "Confirm restoration of an abandoned recovery scope's virtual state after forced backtracking, by discarding the staged work of that scope.",
         "restore",

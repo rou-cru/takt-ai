@@ -661,3 +661,36 @@ func TestVFSVerifyIgnoresCycleAttributionButNotIdentity(t *testing.T) {
 		t.Fatalf("verify without repeating cycle fields: %v", err)
 	}
 }
+
+// TestVFSReadBeforeAnyWriteReportsRevisionZero covers a fix that reads the
+// workspace right after binding: the response must still state its revision.
+func TestVFSReadBeforeAnyWriteReportsRevisionZero(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "private")
+	if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("package main"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := newVFSMutator(t, root, state)("bind", vfsReq("u1", "dev", map[string]any{
+		"scope": []string{"app.go"}, "invariants": []string{"AGENTS.md"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(vfsReq("u1", "dev", map[string]any{
+		"author_key": bound.Key, "call_id": "r1", "expected_revision": 0, "action": "read", "path": "app.go",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if err = runVFS([]string{"op", "--workspace", root, "--state", state}, bytes.NewReader(payload), &out, &stderr); err != nil {
+		t.Fatalf("read: %v (%s)", err, stderr.String())
+	}
+	var raw map[string]any
+	if err = json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["revision"] != float64(0) || raw["delta_hash"] == "" || raw["content"] != "package main" {
+		t.Fatalf("read response = %v", raw)
+	}
+}

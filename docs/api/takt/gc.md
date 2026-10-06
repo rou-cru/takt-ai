@@ -43,6 +43,7 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func \(c \*Coordinator\) Admit\(h \*history.History, journalRef, event, session, agent, delegation string\) error](<#Coordinator.Admit>)
   - [func \(c \*Coordinator\) Advance\(ctx context.Context, fs \*vfs.FS, h \*history.History, entries \[\]vfs.JournalEntry, session string, reach Reach\) \(Decision, BarrierVerdict, error\)](<#Coordinator.Advance>)
   - [func \(c \*Coordinator\) Attach\(role, session string\) error](<#Coordinator.Attach>)
+  - [func \(c \*Coordinator\) Bind\(session string\)](<#Coordinator.Bind>)
   - [func \(c \*Coordinator\) Close\(reason string\)](<#Coordinator.Close>)
   - [func \(c \*Coordinator\) Held\(\) bool](<#Coordinator.Held>)
   - [func \(c \*Coordinator\) Observe\(entries \[\]vfs.JournalEntry\)](<#Coordinator.Observe>)
@@ -222,7 +223,7 @@ func AuthorizedFinding(f Finding, rs []Investigation) bool
 AuthorizedFinding reports whether a confirmed investigation with evidence stands behind f and the finding itself is eligible for mutation. This is the gate between analysis and source edits.
 
 <a name="AuthorizedScope"></a>
-## func [AuthorizedScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L290>)
+## func [AuthorizedScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L282>)
 
 ```go
 func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation) ([]string, error)
@@ -258,7 +259,7 @@ func IsTest(p string) bool
 IsTest reports whether p looks like test code, so liveness analysis can exclude it: test filename stems and test directories count, extensions decide nothing.
 
 <a name="SaveCoordinator"></a>
-## func [SaveCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L108>)
+## func [SaveCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L109>)
 
 ```go
 func SaveCoordinator(state string, c *Coordinator) error
@@ -305,7 +306,7 @@ func ParseAcceptanceResult(value string) (AcceptanceResult, error)
 ParseAcceptanceResult rejects anything outside the closed set, so a typo never reads as a passing cycle.
 
 <a name="AdmissionPolicy"></a>
-## type [AdmissionPolicy](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L33>)
+## type [AdmissionPolicy](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L32>)
 
 AdmissionPolicy holds the dispatch ceiling and session budgets; GC reads it to admit work, never to change it.
 
@@ -525,27 +526,29 @@ func (c *Codegraph) Dependents(ctx context.Context, path string) ([]string, erro
 Dependents returns the files reachable outward from path's symbols, sorted and deduplicated; unresolvable files or symbols yield nothing.
 
 <a name="Coordinator"></a>
-## type [Coordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L59-L70>)
+## type [Coordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L58-L71>)
 
 Coordinator is private workspace state, all access serialized by vfs.Open. In\-flight ordinary\-dispatch state is read from the history projection via package dispatch \(PR\-DAG\-AUT\-1\); Units and Mutations are GC's own pace counters for deciding when to trigger the next cycle \(PR\-MNT\-9/11\).
 
 ```go
 type Coordinator struct {
-    Version     int     `json:"version"`
-    Units       int     `json:"units"`
-    Mutations   int     `json:"mutations"`
-    Cursor      int     `json:"cursor"`
-    Deferrals   int     `json:"deferrals"`
-    NextMandate int     `json:"next_mandate"`
-    Requested   bool    `json:"requested"`
-    Draining    bool    `json:"draining"`
-    Cycle       *Cycle  `json:"cycle,omitempty"`
-    History     []Cycle `json:"history,omitempty"`
+    Version     int  `json:"version"`
+    Units       int  `json:"units"`
+    Mutations   int  `json:"mutations"`
+    Cursor      int  `json:"cursor"`
+    Deferrals   int  `json:"deferrals"`
+    NextMandate int  `json:"next_mandate"`
+    Requested   bool `json:"requested"`
+    // Session is the root session the pace counters belong to; another root
+    // session starts them over (see Bind).
+    Session string  `json:"session,omitempty"`
+    Cycle   *Cycle  `json:"cycle,omitempty"`
+    History []Cycle `json:"history,omitempty"`
 }
 ```
 
 <a name="LoadCoordinator"></a>
-### func [LoadCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L89>)
+### func [LoadCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L90>)
 
 ```go
 func LoadCoordinator(state string) (*Coordinator, error)
@@ -554,16 +557,16 @@ func LoadCoordinator(state string) (*Coordinator, error)
 LoadCoordinator reads the coordinator state, accepting a missing file as a fresh coordinator. A corrupt or future\-version file is an error, never silently reset.
 
 <a name="Coordinator.Admit"></a>
-### func \(\*Coordinator\) [Admit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L159>)
+### func \(\*Coordinator\) [Admit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L155>)
 
 ```go
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error
 ```
 
-Admit is GC's own admission barrier composed with the generic dispatch protocol: the collector's own dispatch never goes through ordinary admission \(it is attached to the cycle directly, via Attach\), and every other admission is held while a maintenance cycle is in flight. Everything else — concurrency, plan coverage, recovery budgets — is package dispatch's concern, not GC's.
+Admit composes ordinary dispatch admission with the session pace counters. Maintenance never holds an admission: the caller ends a cycle in flight before admitting. Concurrency, plan coverage and recovery budgets are package dispatch's concern, not GC's.
 
 <a name="Coordinator.Advance"></a>
-### func \(\*Coordinator\) [Advance](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L175>)
+### func \(\*Coordinator\) [Advance](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L171>)
 
 ```go
 func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, session string, reach Reach) (Decision, BarrierVerdict, error)
@@ -572,7 +575,7 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 Advance starts at most one cycle per trigger; the whole causal closure remains context.
 
 <a name="Coordinator.Attach"></a>
-### func \(\*Coordinator\) [Attach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L261>)
+### func \(\*Coordinator\) [Attach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L253>)
 
 ```go
 func (c *Coordinator) Attach(role, session string) error
@@ -580,8 +583,17 @@ func (c *Coordinator) Attach(role, session string) error
 
 Attach records the API\-created child before prompting it. Identities are never model arguments.
 
+<a name="Coordinator.Bind"></a>
+### func \(\*Coordinator\) [Bind](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L121>)
+
+```go
+func (c *Coordinator) Bind(session string)
+```
+
+Bind makes session the one the pace counters measure. A cycle is declared over its own session's delta \(PR\-MNT\-4\), so work a previous root session left behind in this workspace never counts toward the next session's cadence.
+
 <a name="Coordinator.Close"></a>
-### func \(\*Coordinator\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L248>)
+### func \(\*Coordinator\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L240>)
 
 ```go
 func (c *Coordinator) Close(reason string)
@@ -590,25 +602,25 @@ func (c *Coordinator) Close(reason string)
 Close retains closure evidence; rotation advances only for an actual cycle.
 
 <a name="Coordinator.Held"></a>
-### func \(\*Coordinator\) [Held](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L135>)
+### func \(\*Coordinator\) [Held](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L149>)
 
 ```go
 func (c *Coordinator) Held() bool
 ```
 
-Held reports whether dispatches are blocked: while draining or with a cycle mid\-flight, no new unit may be admitted.
+Held reports whether a maintenance cycle is in flight. It never gates ordinary dispatch: an admitted delegation ends the cycle instead.
 
 <a name="Coordinator.Observe"></a>
-### func \(\*Coordinator\) [Observe](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L118>)
+### func \(\*Coordinator\) [Observe](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L132>)
 
 ```go
 func (c *Coordinator) Observe(entries []vfs.JournalEntry)
 ```
 
-Observe consumes each effective ordinary journal mutation exactly once.
+Observe consumes each effective ordinary journal mutation exactly once. Only the bound session's mutations count; other sessions' entries are consumed without counting.
 
 <a name="Coordinator.Require"></a>
-### func \(\*Coordinator\) [Require](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L282>)
+### func \(\*Coordinator\) [Require](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L274>)
 
 ```go
 func (c *Coordinator) Require(session, role string) error
@@ -632,7 +644,7 @@ type Coverage struct {
 ```
 
 <a name="Cycle"></a>
-## type [Cycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L40-L53>)
+## type [Cycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L39-L52>)
 
 Cycle persists the declaration independently of mutations, including no\-op cycles.
 
@@ -927,7 +939,7 @@ func Declare(ctx context.Context, entries []vfs.JournalEntry, req Request, reach
 Declare builds the cycle declaration.
 
 <a name="PlanUnit"></a>
-## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L25>)
+## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L24>)
 
 PlanUnit is one unit of a plan commitment; aliased from package dispatch.
 
@@ -996,7 +1008,7 @@ type Reach func(ctx context.Context, path string) ([]string, error)
 ```
 
 <a name="RecoveryDeclaration"></a>
-## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L29>)
+## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L28>)
 
 RecoveryDeclaration declares bounded recovery before uncertain work begins \(PR\-ORQ\-13\); GC records it verbatim from the declarer.
 

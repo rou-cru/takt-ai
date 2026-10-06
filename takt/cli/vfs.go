@@ -165,7 +165,7 @@ type response struct {
 	OK        bool   `json:"ok"`
 	Key       string `json:"key,omitempty"`
 	Content   string `json:"content,omitempty"`
-	Revision  uint64 `json:"revision,omitempty"`
+	Revision  uint64 `json:"revision"`
 	DeltaHash string `json:"delta_hash,omitempty"`
 	Seq       int    `json:"seq,omitempty"`
 	Error     string `json:"error,omitempty"`

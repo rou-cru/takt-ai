@@ -255,6 +255,25 @@ func TestAssignVerifierRefusals(t *testing.T) {
 	})
 }
 
+// One verifier unit judging several authors holds one gate per author; each
+// gate must be adoptable under the single attempt its delegation is admitted as.
+func TestEveryGateOfOneVerifierUnitAdoptsTheAdmittedAttempt(t *testing.T) {
+	f, _, _ := durable(t)
+	authors := []AgentID{bind(t, f, "author1", "u1", "dev", "a.go"), bind(t, f, "author2", "u2", "dev", "b.go")}
+	for _, author := range authors {
+		if _, err := f.AssignVerifier(id("v", "vu", "verify"), author); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, author := range authors {
+		gate := id("v", "vu", "verify")
+		gate.AttemptID, gate.GateAuthorKey = "1", author
+		if _, err := f.Bind(gate, nil); err != nil {
+			t.Fatalf("gate for %s: %v", author, err)
+		}
+	}
+}
+
 func TestRevokeOwnershipNeverLeavesAnOwnerlessDelta(t *testing.T) {
 	f, _, _ := durable(t)
 	key := bind(t, f, "author", "u", "dev", "a.go", "b.go")

@@ -38,8 +38,8 @@ const (
 // StateDirName is the workspace-local state directory, shared with the execution history so all Takt state lives in one place.
 const StateDirName = ".takt-ai"
 
-// storeFileName is the single event database, so every session and process of a workspace shares one stream.
-const storeFileName = "events.db"
+// StoreFileName is the single event database, so every session and process of a workspace shares one stream.
+const StoreFileName = "events.db"
 
 const storeSchema = `
 PRAGMA busy_timeout=5000;
@@ -100,7 +100,7 @@ func StorePath(workspace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(abs, StateDirName, storeFileName), nil
+	return filepath.Join(abs, StateDirName, StoreFileName), nil
 }
 
 // OpenStore opens (creating if absent) the workspace event database in WAL mode with a busy timeout, so

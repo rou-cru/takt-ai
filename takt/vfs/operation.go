@@ -565,8 +565,9 @@ func (f *FS) joinedAttempt(identity Identity) (Identity, bool) {
 
 // highestOpenAttempt scans identity's unit's bindings for the highest
 // attempt number seen, and, among bindings at that number, the one that
-// still holds file ownership (an attempt stays open while its binding does).
-// A highest attempt with no owning binding is not open: it settled.
+// still holds file ownership or awaits launch (an attempt stays open while its
+// binding does, so every gate preassigned under one verifier unit shares it).
+// A highest attempt with no owning or pending binding is not open: it settled.
 func (f *FS) highestOpenAttempt(identity Identity) (int, Identity) {
 	owning := make(map[AgentID]bool, len(f.owners))
 	for _, owner := range f.owners {
@@ -581,7 +582,7 @@ func (f *FS) highestOpenAttempt(identity Identity) (int, Identity) {
 		if n > highest {
 			highest, open = n, Identity{}
 		}
-		if n == highest && owning[key] {
+		if n == highest && (owning[key] || existing.Prelaunch) {
 			open = existing
 		}
 	}

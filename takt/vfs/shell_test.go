@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rou-cru/takt-ai/takt/obs"
 )
 
 // shellRun stands in for the sandboxed command: it writes into the projection
@@ -167,6 +169,9 @@ func TestShellDecisions(t *testing.T) {
 		{"captured workspace mutation", scoped, "printf x > data.txt", ShellAllow},
 		{"mutation without a declared scope", verifier, "printf x > data.txt", ShellDeny},
 		{"mutation with no binding at all", "", "printf x > data.txt", ShellDeny},
+		{"quoted arrow is not a redirect", verifier, `node -e "const f = x => x"`, ShellAllow},
+		{"quoted mutating word is a pattern", verifier, `grep -n "install" README.md`, ShellAllow},
+		{"unquoted redirect after a quoted span", verifier, `echo "a" > data.txt`, ShellDeny},
 		{"mutating git denied for execution", scoped, "git commit -m wip", ShellDeny},
 		{"read-only git allowed", scoped, "git log --oneline", ShellAllow},
 		{"privilege escalation is approval-gated", scoped, "sudo tee /etc/hosts", ShellAsk},
@@ -220,7 +225,8 @@ func TestShellPrepareRejectsStaleRevisionAndUnknownBinding(t *testing.T) {
 
 func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	f, root, state := durable(t)
-	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets/token", "src/main.go", "node_modules/pkg/.env"} {
+	store := filepath.Join(obs.StateDirName, obs.StoreFileName)
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets/token", "src/main.go", "node_modules/pkg/.env", store} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
@@ -236,7 +242,7 @@ func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	if plan.Decision != ShellAllow {
 		t.Fatalf("inspection decision = %s (%s)", plan.Decision, plan.Reason)
 	}
-	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets"} {
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets", store} {
 		want := filepath.Join(root, filepath.FromSlash(rel))
 		if !containsCanonicalPath(t, plan.Private, want) {
 			t.Errorf("inspection may read %s; private = %v", rel, plan.Private)
