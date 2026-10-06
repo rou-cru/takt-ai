@@ -162,13 +162,15 @@ type request struct {
 
 // response is the single JSON shape every mutation subcommand returns.
 type response struct {
-	OK        bool   `json:"ok"`
-	Key       string `json:"key,omitempty"`
-	Content   string `json:"content,omitempty"`
-	Revision  uint64 `json:"revision"`
-	DeltaHash string `json:"delta_hash,omitempty"`
-	Seq       int    `json:"seq,omitempty"`
-	Error     string `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Key     string `json:"key,omitempty"`
+	Content string `json:"content,omitempty"`
+	// Revision is set only by operations on a staged view, where 0 is a real
+	// revision; every other answer omits it.
+	Revision  *uint64 `json:"revision,omitempty"`
+	DeltaHash string  `json:"delta_hash,omitempty"`
+	Seq       int     `json:"seq,omitempty"`
+	Error     string  `json:"error,omitempty"`
 	// AttemptID and InvariantsVersion report what the harness issued for a bind:
 	// the attempt this dispatch belongs to and the version of the invariant set
 	// that governs it.
@@ -458,7 +460,7 @@ func importShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (
 	if err != nil {
 		return response{}, err
 	}
-	return response{OK: true, Revision: result.Revision, DeltaHash: result.DeltaHash}, nil
+	return response{OK: true, Revision: &result.Revision, DeltaHash: result.DeltaHash}, nil
 }
 
 func mutateBind(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
@@ -494,7 +496,7 @@ func mutateOperation(fs *vfs.FS, req request, identity vfs.Identity) (response, 
 	if err != nil {
 		return response{}, err
 	}
-	return response{OK: true, Content: string(result.Content), Revision: result.Revision, DeltaHash: result.DeltaHash}, nil
+	return response{OK: true, Content: string(result.Content), Revision: &result.Revision, DeltaHash: result.DeltaHash}, nil
 }
 
 func mutateVerify(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {

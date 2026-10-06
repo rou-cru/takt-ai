@@ -553,3 +553,18 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 		t.Errorf("a skill Takt does not install was denied")
 	}
 }
+
+func TestRenderConfigNativeEditNeverReachesTheEventStore(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: "pm", Description: "Product specialist", Mode: "all", System: "Shape a proposal.", Model: "openai/gpt-5.6-luna", Role: model.RoleDirectInterlocutor, VFSCapabilities: vfsCaps()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := decodeConfig(t, artifact.Content).Agents["pm"].Permissions
+	if effectOf(rules, "edit", "*") != "allow" || effectOf(rules, "edit", eventStoreGlob) != "deny" {
+		t.Errorf("pm may edit the workspace event store: %v", rules)
+	}
+}

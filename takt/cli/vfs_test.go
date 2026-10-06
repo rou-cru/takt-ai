@@ -257,7 +257,7 @@ func TestVFSMutationIPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !created.OK || created.Revision != 1 || created.DeltaHash == "" {
+	if !created.OK || *created.Revision != 1 || created.DeltaHash == "" {
 		t.Fatalf("create: %+v", created)
 	}
 
@@ -558,19 +558,19 @@ func TestVFSGateChainAsThePluginDrivesIt(t *testing.T) {
 	}
 	read, err := mutate("op", vfsReq("gate", "verify", map[string]any{
 		"author_key": verifier.Key, "view_key": author.Key, "call_id": "r1",
-		"expected_revision": staged.Revision, "action": "read", "path": "app.go",
+		"expected_revision": *staged.Revision, "action": "read", "path": "app.go",
 	}))
 	if err != nil || read.Content != "package app" {
 		t.Fatalf("verifier read = %+v, %v", read, err)
 	}
 	if _, err = mutate("verify", vfsReq("gate", "verify", map[string]any{
 		"verifier_key": verifier.Key, "author_key": author.Key, "call_id": "v1",
-		"expected_revision": staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
+		"expected_revision": *staged.Revision, "delta_hash": staged.DeltaHash, "pass": true, "finding": "ok",
 	})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = mutate("consolidate", vfsReq("impl", "dev", map[string]any{
-		"author_key": author.Key, "checkpoint": "gate", "expected_revision": staged.Revision,
+		"author_key": author.Key, "checkpoint": "gate", "expected_revision": *staged.Revision,
 	})); err != nil {
 		t.Fatal(err)
 	}

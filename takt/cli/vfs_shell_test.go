@@ -164,7 +164,7 @@ func TestVFSShellIPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if imported.Revision == 0 || imported.DeltaHash == "" {
+	if *imported.Revision == 0 || imported.DeltaHash == "" {
 		t.Fatalf("import = %+v; want a staged revision and delta hash", imported)
 	}
 	if content, _ := os.ReadFile(filepath.Join(root, "data.txt")); string(content) != "line1\n" {
@@ -181,12 +181,12 @@ func TestVFSShellIPC(t *testing.T) {
 	}
 	if _, err = mutate("verify", vfsReq("u1", "verify", map[string]any{
 		"verifier_key": verifier.Key, "author_key": bound.Key, "call_id": "gate",
-		"expected_revision": imported.Revision, "delta_hash": imported.DeltaHash, "pass": true,
+		"expected_revision": *imported.Revision, "delta_hash": imported.DeltaHash, "pass": true,
 	})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = mutate("consolidate", vfsReq("u1", "dev", map[string]any{
-		"author_key": bound.Key, "checkpoint": "shell", "expected_revision": imported.Revision,
+		"author_key": bound.Key, "checkpoint": "shell", "expected_revision": *imported.Revision,
 	})); err != nil {
 		t.Fatal(err)
 	}
