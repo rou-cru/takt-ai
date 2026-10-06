@@ -15,7 +15,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
-	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
@@ -57,16 +56,18 @@ type Cycle struct {
 // package dispatch (PR-DAG-AUT-1); Units and Mutations are GC's own pace
 // counters for deciding when to trigger the next cycle (PR-MNT-9/11).
 type Coordinator struct {
-	Version     int     `json:"version"`
-	Units       int     `json:"units"`
-	Mutations   int     `json:"mutations"`
-	Cursor      int     `json:"cursor"`
-	Deferrals   int     `json:"deferrals"`
-	NextMandate int     `json:"next_mandate"`
-	Requested   bool    `json:"requested"`
-	Draining    bool    `json:"draining"`
-	Cycle       *Cycle  `json:"cycle,omitempty"`
-	History     []Cycle `json:"history,omitempty"`
+	Version     int  `json:"version"`
+	Units       int  `json:"units"`
+	Mutations   int  `json:"mutations"`
+	Cursor      int  `json:"cursor"`
+	Deferrals   int  `json:"deferrals"`
+	NextMandate int  `json:"next_mandate"`
+	Requested   bool `json:"requested"`
+	// Session is the root session the pace counters belong to; another root
+	// session starts them over (see Bind).
+	Session string  `json:"session,omitempty"`
+	Cycle   *Cycle  `json:"cycle,omitempty"`
+	History []Cycle `json:"history,omitempty"`
 }
 
 // Specialist identities used by the maintenance cycle. These are catalog
@@ -114,14 +115,27 @@ func SaveCoordinator(state string, c *Coordinator) error {
 	return e
 }
 
-// Observe consumes each effective ordinary journal mutation exactly once.
+// Bind makes session the one the pace counters measure. A cycle is declared
+// over its own session's delta (PR-MNT-4), so work a previous root session left
+// behind in this workspace never counts toward the next session's cadence.
+func (c *Coordinator) Bind(session string) {
+	if session == "" || session == c.Session {
+		return
+	}
+	c.reset()
+	c.Session = session
+}
+
+// Observe consumes each effective ordinary journal mutation exactly once. Only
+// the bound session's mutations count; other sessions' entries are consumed
+// without counting.
 func (c *Coordinator) Observe(entries []vfs.JournalEntry) {
 	for _, e := range entries {
 		if e.Seq <= c.Cursor {
 			continue
 		}
 		c.Cursor = e.Seq
-		if e.CycleID != "" || e.Outcome != "" || e.BeforeHash == e.AfterHash {
+		if e.CycleID != "" || e.Outcome != "" || e.BeforeHash == e.AfterHash || e.SessionID != "" && e.SessionID != c.Session {
 			continue
 		}
 		if e.Operation == vfs.OpCreate || e.Operation == vfs.OpPatch || e.Operation == vfs.OpDelete {
@@ -130,39 +144,21 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry) {
 	}
 }
 
-// Held reports whether dispatches are blocked: while draining or with a
-// cycle mid-flight, no new unit may be admitted.
-func (c *Coordinator) Held() bool { return c.Draining || c.Cycle != nil }
+// Held reports whether a maintenance cycle is in flight. It never gates
+// ordinary dispatch: an admitted delegation ends the cycle instead.
+func (c *Coordinator) Held() bool { return c.Cycle != nil }
 
-// holdsAdmission says whether the barrier refuses this delegation. While the
-// cycle is only being awaited (Draining), work that finishes what is already
-// running still runs: the cycle cannot start until staged deltas are verified
-// and consolidated, and that needs a verifier. Once the cycle is in flight
-// nothing is admitted.
-func (c *Coordinator) holdsAdmission(agent string) bool {
-	if c.Cycle != nil {
-		return true
-	}
-	if !c.Draining {
-		return false
-	}
-	role, err := vfs.SpecialistRole(agent)
-	return err != nil || role != model.RoleVerification
-}
-
-// Admit is GC's own admission barrier composed with the generic dispatch
-// protocol: the collector's own dispatch never goes through ordinary
-// admission (it is attached to the cycle directly, via Attach), and every
-// other admission is held while a maintenance cycle is in flight. Everything
-// else — concurrency, plan coverage, recovery budgets — is package dispatch's
-// concern, not GC's.
+// Admit composes ordinary dispatch admission with the session pace counters.
+// Maintenance never holds an admission: the caller ends a cycle in flight
+// before admitting. Concurrency, plan coverage and recovery budgets are
+// package dispatch's concern, not GC's.
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error {
 	p, e := dispatch.LoadAdmissionPolicy()
 	if e != nil {
 		return e
 	}
 	req := dispatch.AdmissionRequest{Event: event, Session: session, Agent: agent, Dispatch: delegation}
-	if e := dispatch.Admit(h, p, journalRef, req, c.holdsAdmission(agent)); e != nil {
+	if e := dispatch.Admit(h, p, journalRef, req); e != nil {
 		return e
 	}
 	c.Units++
@@ -189,47 +185,44 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 	if d.Outcome != OutcomeRun {
 		return d, BarrierVerdict{}, nil
 	}
-	c.Draining = true
 	proj := h.Project()
+	unfinished := unfinishedUnitIDs(proj)
 	b := Barrier(BarrierInput{
 		Decision: d, Deferrals: c.Deferrals,
-		ActiveUnits: proj.InFlight(), ActiveUnitIDs: inFlightUnitIDs(proj),
+		ActiveUnits: len(unfinished), ActiveUnitIDs: unfinished,
 		PendingOrdinaryDeltas: fs.PendingOrdinaryDeltas(), PendingDeltaIdentities: fs.PendingOrdinaryDeltaIdentities(),
 	})
 	c.Deferrals = b.Deferrals
 	if !b.Proceed {
-		// Due but not yet clear to start: legitimate, bounded by Deferrals
-		// toward MaxDeferrals above. Draining stays true on purpose.
+		// Due but the workspace is not idle: legitimate, bounded by Deferrals
+		// toward MaxDeferrals above. Nothing is held in the meantime.
 		return d, b, nil
 	}
 	id := make([]byte, cycleIDBytes)
 	if _, e = rand.Read(id); e != nil {
-		// The barrier cleared but the cycle still didn't start: this is not
-		// "a cycle is imminent" (Draining's reason to exist), and a
+		// The barrier cleared but the cycle still didn't start: a
 		// deterministic failure here must still count toward the abort valve
 		// instead of resetting to 0 every tick (PR-MNT-6).
 		c.Deferrals++
-		c.Draining = false
 		return d, b, e
 	}
 	plan, e := Declare(ctx, entries, Request{SessionID: session, CycleID: hex.EncodeToString(id), Mandate: mandateRotation[c.NextMandate]}, reach)
 	if e != nil {
 		c.Deferrals++
-		c.Draining = false
 		return d, b, e
 	}
 	c.Deferrals = 0
 	c.Cycle = &Cycle{Plan: plan, Phase: "baseline", Scope: []string{}, Sessions: map[string]string{}, Started: time.Now().UTC()}
-	c.Draining = false
 	return d, b, nil
 }
 
-// inFlightUnitIDs names the units ActiveUnits counts, so a stalled barrier
-// can say which units block it instead of just how many.
-func inFlightUnitIDs(p history.Projection) []string {
+// unfinishedUnitIDs names the units ActiveUnits counts: in flight, or planned
+// and still awaiting their turn, since the orchestrator is not idle while its
+// plan has work left. It lets a stalled barrier say which units block it.
+func unfinishedUnitIDs(p history.Projection) []string {
 	var out []string
 	for id, u := range p.Units {
-		if u.State == history.StateInFlight {
+		if u.State == history.StateInFlight || u.State == history.StatePlanned {
 			out = append(out, id)
 		}
 	}
@@ -241,7 +234,6 @@ func (c *Coordinator) reset() {
 	c.Mutations = 0
 	c.Deferrals = 0
 	c.Requested = false
-	c.Draining = false
 }
 
 // Close retains closure evidence; rotation advances only for an actual cycle.

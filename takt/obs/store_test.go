@@ -254,42 +254,6 @@ func assertEventsAllOfClass(t *testing.T, s *obs.Store, session string, class ob
 	}
 }
 
-// TestStoreActionsAndCountActionsFilterByClass checks the control-record read
-// API mirrors the event one: filter by ActionClass, count matches list.
-func TestStoreActionsAndCountActionsFilterByClass(t *testing.T) {
-	ws := t.TempDir()
-	s := openStore(t, ws)
-
-	rec := func(class obs.ActionClass) obs.ControlRecord {
-		return obs.ControlRecord{
-			ActionClass: class, TriggeringCondition: "cond", PolicyRef: "policy.ref", ActingAgent: "agent-a",
-			Correlations: obs.CorrelationIDs{SessionID: "s1"},
-		}
-	}
-	for _, class := range []obs.ActionClass{obs.ActionObserve, obs.ActionGate, obs.ActionObserve} {
-		if _, err := s.AppendAction(rec(class)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if n, err := s.CountActions("s1", obs.ActionObserve, 0, 0); err != nil || n != 2 {
-		t.Fatalf("CountActions Observe = %d, %v; want 2, nil", n, err)
-	}
-	if n, err := s.CountActions("s1", obs.ActionGate, 0, 0); err != nil || n != 1 {
-		t.Fatalf("CountActions Gate = %d, %v; want 1, nil", n, err)
-	}
-	if n, err := s.CountActions("s1", "", 0, 0); err != nil || n != 3 {
-		t.Fatalf("CountActions any = %d, %v; want 3, nil", n, err)
-	}
-	got, err := s.Actions("s1", obs.ActionGate, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].Record.ActionClass != obs.ActionGate || got[0].Record.PolicyRef != "policy.ref" {
-		t.Fatalf("Actions Gate = %+v", got)
-	}
-}
-
 func TestNewClassesRejectAttributesOutsideAllowlist(t *testing.T) {
 	clock := obs.NewClock()
 	for _, class := range []obs.EventClass{obs.EventDispatch, obs.EventUnitLifecycle, obs.EventToolActivity,

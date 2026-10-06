@@ -23,7 +23,7 @@ globalThis.Bun = {
     }
   },
 }
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
   if (call.argv[1] === "dispatch") return ["switch", "validate_results"].includes(requestOf(call).action) ? null : coordinator()
@@ -44,6 +44,7 @@ const permissionHooks = {}
 const sessionHooks = {}
 const synthetic = []
 const interrupted = []
+const unreachable = new Set()
 const promptedSessions = []
 let onPrompt = async (_sessionID, _text) => {}
 await plugin.setup({
@@ -56,7 +57,10 @@ await plugin.setup({
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
     wait: async () => {},
     synthetic: async (message) => { synthetic.push(message) },
-    interrupt: async ({ sessionID }) => { interrupted.push(sessionID) },
+    interrupt: async ({ sessionID }) => {
+      if (unreachable.has(sessionID)) throw new Error(`session ${sessionID} unreachable`)
+      interrupted.push(sessionID)
+    },
   },
   permission: { hook: async (name, callback) => { permissionHooks[name] ??= []; permissionHooks[name].push(callback); return { dispose() {} } } },
   agent: { get: async () => ({ data: { permissions: [] } }) },
@@ -181,6 +185,33 @@ await assert.rejects(() => delegate("execute.before", "u2", "call-3"), /ceiling/
 respond = () => undefined
 assert.deepEqual(store.get("takt/vfs/delegations"), {})
 
+// A delegation ends a running cleanup cycle only once it is admitted: a denied
+// one leaves the cycle's lanes running, an admitted one stops them, and a lane
+// that cannot be interrupted never refuses the admitted delegation.
+const runningCycle = { ...coordinator(), cycle: { plan: { session_id: "root", cycle_id: "yield-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" },
+  phase: "collect", scope: [], sessions: { collector: "lane-c", verifier: "lane-v" }, report: {}, started: "2026-01-01T00:00:00Z" } }
+let admission
+respond = (call) => {
+  if (call.argv[2] === "claims") return { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 }
+  if (!call.argv.includes("--request")) return undefined
+  const action = requestOf(call).action
+  if (action === "status") return { stdout: JSON.stringify(runningCycle), stderr: "", code: 0 }
+  return action === "admit" ? admission : undefined
+}
+admission = { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 }
+await assert.rejects(() => delegate("execute.before", "yield-denied", "call-y1", "pm"), /ceiling/)
+assert.deepEqual(interrupted, [], "a denied delegation stopped the cycle's lanes")
+admission = undefined
+unreachable.add("lane-c")
+await delegate("execute.before", "yield-admitted", "call-y2", "pm")
+assert.deepEqual(interrupted, ["lane-v"], "an admitted delegation left the cycle's lanes running")
+assert.ok(store.get("takt/vfs/delegations")["root:call-y2"], "a failed lane interruption refused the admitted delegation")
+unreachable.clear()
+interrupted.length = 0
+respond = () => undefined
+await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "yield-admitted", agent: "pm" })
+await delegate("execute.after", "yield-admitted", "call-y2", "pm")
+
 // Only an agent designed to work through the VFS needs its scope reserved
 // before launch: a planning lane is admitted without any claim, a VFS lane
 // without one is refused before admission.
@@ -239,7 +270,7 @@ await assert.rejects(tools.vfs_consolidate.execute({ author_key: "k1", checkpoin
 // The orchestrator's context carries a maintenance notice only while a cycle
 // is due or running, one closing notice after it, and nothing otherwise.
 const contextFor = async (agent, status) => {
-  const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false, ...status }
+  const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, ...status }
   if (status.cycle) state.cycle = { plan: { session_id: "root", cycle_id: "context-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" }, phase: status.cycle.phase, scope: [], sessions: {}, report: {}, started: "2026-01-01T00:00:00Z" }
   respond = (call) => requestOf(call).action === "status" ? { stdout: JSON.stringify(state), stderr: "", code: 0 } : undefined
   const event = { agent, sessionID: "root", system: [] }
@@ -247,11 +278,11 @@ const contextFor = async (agent, status) => {
   return event.system.map(part => part.text)
 }
 assert.deepEqual(await contextFor("takt", {}), [])
-assert.match((await contextFor("takt", { draining: true }))[0], /^Maintenance is due/)
-assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^Maintenance is due/)
-assert.match((await contextFor("takt", {}))[0], /^Maintenance concluded/)
+assert.match((await contextFor("takt", { cycle: { phase: "baseline" } }))[0], /^A cleanup cycle is running/)
+assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^A cleanup cycle is running/)
+assert.match((await contextFor("takt", {}))[0], /^The cleanup cycle concluded/)
 assert.deepEqual(await contextFor("takt", {}), [])
-assert.deepEqual(await contextFor("dev", { draining: true }), [])
+assert.deepEqual(await contextFor("dev", { cycle: { phase: "baseline" } }), [])
 
 // A switch registers with Go, carrying the created child session id, before
 // the child is ever prompted; a registration failure stops that

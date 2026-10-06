@@ -3,7 +3,7 @@
 
   [![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=rou-cru_takt-ai)](https://sonarcloud.io/summary/new_code?id=rou-cru_takt-ai)
   [![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/rou-cru/takt-ai?utm_source=oss&utm_medium=github&utm_campaign=rou-cru%2Ftakt-ai&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
-  [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+  [![Go](https://img.shields.io/badge/Go-1.27.1+-00ADD8?logo=go&logoColor=white)](https://go.dev)
   [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
   [![GitHub Release](https://img.shields.io/github/v/release/rou-cru/takt-ai)](https://github.com/rou-cru/takt-ai/releases)
 </div>
@@ -63,9 +63,6 @@ helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspac
 
 ## Documentation
 
-- [Intended usage](docs/intended-usage.md) — the mental model
-- [Usage](docs/usage.md) — commands, flags, and supported agents
-- [Architecture](docs/architecture.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## License

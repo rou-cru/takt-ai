@@ -80,7 +80,7 @@ func coordinatePrepare(ctx context.Context, workspace, state string, c *gc.Coord
 }
 
 func coordinateGC(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
-	entries, err := observeCoordination(fs, h, c)
+	entries, err := observeCoordination(fs, h, c, r.Session)
 	if err != nil {
 		return nil, err
 	}

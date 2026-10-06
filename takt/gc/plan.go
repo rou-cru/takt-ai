@@ -148,7 +148,7 @@ func Declare(ctx context.Context, entries []vfs.JournalEntry, req Request, reach
 	default:
 		return Plan{}, fmt.Errorf("gc: unknown mandate class %q: a cycle declares exactly one", req.Mandate)
 	}
-	p := Plan{Request: req, Delta: SessionDelta(entries, req.SessionID), Reachability: ReachJournalOnly, Gap: "no code graph available"}
+	p := Plan{Request: req, Delta: append([]Change{}, SessionDelta(entries, req.SessionID)...), Reachability: ReachJournalOnly, Gap: "no code graph available"}
 	var reached []string
 	if reach != nil {
 		var err error

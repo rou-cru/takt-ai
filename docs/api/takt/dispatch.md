@@ -14,7 +14,6 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Abort\(h \*history.History, journalRef, root, childSession, reason, origin string\) error](<#Abort>)
 - [func Account\(h \*history.History, entries \[\]vfs.JournalEntry\) error](<#Account>)
 - [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest, held bool\) error](<#Admit>)
-- [func ArtifactMisses\(h \*history.History, root string\) int](<#ArtifactMisses>)
 - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(map\[string\]any, error\)](<#BuildAbortEnvelope>)
 - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(map\[string\]any, error\)](<#BuildHandoffEnvelope>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
@@ -23,7 +22,6 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func CurrentAttempt\(p history.Projection, event string\) string](<#CurrentAttempt>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string\) error](<#Declare>)
 - [func DeclareRecovery\(h \*history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration\) error](<#DeclareRecovery>)
-- [func DenyArtifactMissing\(h \*history.History, journalRef, root, childSession, agent string\) error](<#DenyArtifactMissing>)
 - [func Except\(h \*history.History, journalRef, event, session, bound, objective string, allowance int\) error](<#Except>)
 - [func ExpectedArtifact\(h \*history.History, root string\) string](<#ExpectedArtifact>)
 - [func Finish\(h \*history.History, journalRef, event, session string\) error](<#Finish>)
@@ -32,6 +30,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Launch\(h \*history.History, journalRef, event, session string\) error](<#Launch>)
 - [func Reconcile\(h \*history.History, journalRef, event, session string, running bool\) error](<#Reconcile>)
 - [func Record\(h \*history.History, journalRef, event, session string, kind history.Kind\) error](<#Record>)
+- [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
 - [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string, key vfs.AgentID\) error](<#Restore>)
 - [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string\) error](<#Revise>)
 - [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
@@ -98,17 +97,8 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 
 Admit is called before the host task tool. It reserves one concurrency slot indivisibly against the projection \(PR\-HAR\-16\); a refusal is recorded and stays visible. held is the caller's own reason \(if any\) to pause every admission regardless of budget, such as a maintenance cycle in flight; this package enforces it without knowing why it applies.
 
-<a name="ArtifactMisses"></a>
-## func [ArtifactMisses](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L113>)
-
-```go
-func ArtifactMisses(h *history.History, root string) int
-```
-
-ArtifactMisses returns how many times a handoff for root has already been denied for a missing standard artifact since the current holder took the interface \(PR\-HAR\-24: 0 means the next miss is the first\).
-
 <a name="BuildAbortEnvelope"></a>
-## func [BuildAbortEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L170>)
+## func [BuildAbortEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L152>)
 
 ```go
 func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error)
@@ -117,7 +107,7 @@ func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childS
 BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and assembles the same IR\-22 envelope shape a handoff produces: no negotiated result, the abort's evidence as additional context, and the memory entries the holder recorded. Memory is indexed under the root session, by author, in memoryRoot, so the holder is read before the abort clears it.
 
 <a name="BuildHandoffEnvelope"></a>
-## func [BuildHandoffEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L141>)
+## func [BuildHandoffEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L123>)
 
 ```go
 func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error)
@@ -179,15 +169,6 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 
 DeclareRecovery admits bounded recovery of an objective. Consecutive failed recoveries close autonomous recovery for it until an enabling user decision is recorded; the objective identity carries that history \(PR\-HAR\-21, PR\-HAR\-22\).
 
-<a name="DenyArtifactMissing"></a>
-## func [DenyArtifactMissing](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L120>)
-
-```go
-func DenyArtifactMissing(h *history.History, journalRef, root, childSession, agent string) error
-```
-
-DenyArtifactMissing records one miss of the standard artifact declared for root's active switch, for a caller that already confirmed via os.Stat \(or equivalent\) that the file is absent.
-
 <a name="Except"></a>
 ## func [Except](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L900>)
 
@@ -204,7 +185,7 @@ Except records a scoped user exception before it enables any further work. It na
 func ExpectedArtifact(h *history.History, root string) string
 ```
 
-ExpectedArtifact returns the standard artifact path declared by the active switch for root, or "" if there is none.
+ExpectedArtifact returns the optional filesystem copy path declared by the active switch for root, or "" if there is none.
 
 <a name="Finish"></a>
 ## func [Finish](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L200>)
@@ -259,6 +240,15 @@ func Record(h *history.History, journalRef, event, session string, kind history.
 ```
 
 Record appends an observed lifecycle fact or an orchestrator declaration that consumes no budget and needs no disposition: launch, uncertainty, suspension, a cancellation request, a withdrawal, a stop declaration, an escalation.
+
+<a name="ResolvePolicyPlaceholders"></a>
+## func [ResolvePolicyPlaceholders](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/placeholders.go#L31>)
+
+```go
+func ResolvePolicyPlaceholders(content []byte) ([]byte, error)
+```
+
+ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalog prose with the admission policy's value. A marker left unresolved is an error: unresolved prose would hand an agent a limit that does not exist.
 
 <a name="Restore"></a>
 ## func [Restore](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/dispatch.go#L864>)
@@ -354,7 +344,7 @@ type AdmissionRequest struct {
 ```
 
 <a name="HandoffOutcome"></a>
-## type [HandoffOutcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L131-L136>)
+## type [HandoffOutcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/dispatch/interlocutor.go#L113-L118>)
 
 HandoffOutcome is the negotiated result a handoff envelope carries: the IR\-23 result, any additional context, extra filesystem artifacts, and the Engram IDs the holder recorded for delivered results.
 

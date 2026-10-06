@@ -483,7 +483,7 @@ func CorrectDriftContext(ctx context.Context, rootDir string, plans []TargetPlan
 CorrectDriftContext is CorrectDrift with cooperative cancellation; cancellation returns restored work with ctx.Err\(\).
 
 <a name="OpenCodePlanOptions"></a>
-## type [OpenCodePlanOptions](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L29-L35>)
+## type [OpenCodePlanOptions](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L31-L37>)
 
 OpenCodePlanOptions contains explicit OpenCode global projection inputs.
 
@@ -644,7 +644,7 @@ func OwnershipTargetFor(id string) (OwnershipTarget, error)
 OwnershipTargetFor converts an agent or ownership target identifier to an ownership target. It returns an error for unsupported identifiers.
 
 <a name="PlanRequest"></a>
-## type [PlanRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L39-L46>)
+## type [PlanRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L41-L48>)
 
 PlanRequest contains explicit native content and model overrides; assignments resolve from the semantic catalog.
 
@@ -815,7 +815,7 @@ type TargetPlan struct {
 ```
 
 <a name="BuildTargetPlans"></a>
-### func [BuildTargetPlans](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L51>)
+### func [BuildTargetPlans](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/plan.go#L53>)
 
 ```go
 func BuildTargetPlans(request PlanRequest) ([]TargetPlan, []catalog.Removal, error)

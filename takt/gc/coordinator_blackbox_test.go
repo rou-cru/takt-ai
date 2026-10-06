@@ -1,10 +1,12 @@
 package gc_test
 
 import (
+	"context"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -166,7 +168,9 @@ func TestCoordinatorAdmit(t *testing.T) {
 	}
 }
 
-func TestCoordinatorAdmitDeniedWhileHeld(t *testing.T) {
+// A cycle in flight never refuses an admission: the dispatching caller ends the
+// cycle, the coordinator does not hold the orchestrator.
+func TestCoordinatorAdmitIgnoresCycleInFlight(t *testing.T) {
 	h, err := history.Open(filepath.Join(t.TempDir(), "state"))
 	if err != nil {
 		t.Fatalf("history.Open() error = %v", err)
@@ -177,19 +181,28 @@ func TestCoordinatorAdmitDeniedWhileHeld(t *testing.T) {
 		}
 	})
 
-	// Held while a cycle is in flight (Cycle != nil): Admit's own barrier
-	// composed with dispatch's ordinary admission.
 	c := &gc.Coordinator{Version: 1, Cursor: -1, Cycle: &gc.Cycle{}}
-	if err := c.Admit(h, "", "unit-1", "session-1", "some-other-agent", "d1"); err == nil {
-		t.Fatal("Admit() while a cycle is in flight error = nil, want an error")
+	if err := c.Admit(h, "", "unit-1", "session-1", "some-other-agent", "d1"); err != nil {
+		t.Fatalf("Admit() while a cycle is in flight error = %v, want none", err)
 	}
-	if c.Units != 0 {
-		t.Errorf("Admit() denied but Units = %d, want 0", c.Units)
+	if c.Units != 1 {
+		t.Errorf("Admit() Units = %d, want 1", c.Units)
 	}
-	entries := h.Entries()
-	last := entries[len(entries)-1]
-	if last.Kind != history.KindDenied || last.Cause != dispatch.CauseHeld {
-		t.Errorf("Admit() denial last entry = %+v, want KindDenied cause %q", last, dispatch.CauseHeld)
+}
+
+func TestCoordinatorBindStartsPaceOverForAnotherSession(t *testing.T) {
+	c := &gc.Coordinator{Version: 1, Cursor: 100, Units: 4, Mutations: 18, Session: "old"}
+	c.Bind("")
+	if c.Units != 4 || c.Mutations != 18 || c.Session != "old" {
+		t.Fatalf("Bind(\"\") = %+v, want no change", c)
+	}
+	c.Bind("old")
+	if c.Units != 4 || c.Mutations != 18 {
+		t.Fatalf("Bind(same session) = %+v, want counters kept", c)
+	}
+	c.Bind("new")
+	if c.Units != 0 || c.Mutations != 0 || c.Session != "new" || c.Cursor != 100 {
+		t.Fatalf("Bind(new session) = %+v, want counters reset and cursor kept", c)
 	}
 }
 
@@ -221,5 +234,30 @@ func TestAuthorizedScopeRejectsFindingOutsideClosure(t *testing.T) {
 
 	if _, err := gc.AuthorizedScope(plan, findings, investigations); err == nil {
 		t.Fatal("AuthorizedScope() with an authorized finding outside the closure error = nil, want an error")
+	}
+}
+
+func TestCoordinatorObserveCountsOnlyTheBoundSession(t *testing.T) {
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Session: "root"}
+	c.Observe([]vfs.JournalEntry{
+		{Seq: 0, SessionID: "old", Operation: vfs.OpCreate, AfterHash: "a"},
+		{Seq: 1, SessionID: "root", Operation: vfs.OpCreate, AfterHash: "b"},
+	})
+	if c.Cursor != 1 || c.Mutations != 1 {
+		t.Errorf("Observe() = Cursor:%d Mutations:%d, want 1 and only the bound session's mutation", c.Cursor, c.Mutations)
+	}
+}
+
+func TestDeclareWithoutSessionDeltaSerializesAnEmptyArray(t *testing.T) {
+	plan, err := gc.Declare(context.Background(), nil, gc.Request{SessionID: "s", CycleID: "c", Mandate: gc.MandateDeadCode}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"delta":[]`) {
+		t.Errorf("plan = %s, want delta as an empty array", b)
 	}
 }

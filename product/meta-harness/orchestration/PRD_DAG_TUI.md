@@ -86,7 +86,7 @@ Takt DAG · projection 42 · capture: current
 
 The renderer MAY use a different layout or terminal drawing primitives, but it MUST preserve the same graph semantics: nodes and directed edges MUST remain visible, including joins and branches.
 
-The implemented rendering flows left to right, one column per layer, and each node is a single-line box holding its source glyph, state glyph, source label and identity. The state glyph carries temporal state; the explicit source glyph/label distinguishes delegated work, direct orchestrator work and GC/maintenance. The box width accounts for the full label and identity. No agent name, wave or width annotation is drawn; the legend stays on the `takt.dag` route.
+Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer; the sidebar list names each unit's real prerequisites instead of implying ancestry by indentation. The implemented rendering flows left to right, one column per layer, and each node is a single-line box holding its source glyph, state glyph, source label and identity. The state glyph carries temporal state; the explicit source glyph/label distinguishes delegated work, direct orchestrator work and GC/maintenance. The box width accounts for the full label and identity. No agent name, wave or width annotation is drawn; the legend stays on the `takt.dag` route.
 
 ## 5. Graph semantics
 

@@ -35,7 +35,7 @@ const (
 	PrivateTelemetryFileMode os.FileMode = 0o600
 )
 
-// StateDirName is the workspace-local state directory, shared with the project ledger so all Takt state lives in one place.
+// StateDirName is the workspace-local state directory, shared with the execution history so all Takt state lives in one place.
 const StateDirName = ".takt-ai"
 
 // storeFileName is the single event database, so every session and process of a workspace shares one stream.
@@ -248,71 +248,6 @@ func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeI
 	if class != "" {
 		query += ` AND event_class=?`
 		args = append(args, string(class))
-	}
-	var count int64
-	err := s.db.QueryRow(query, args...).Scan(&count)
-	return count, err
-}
-
-// actionRowColumns lists the columns Actions/CountActions scan, in order.
-const actionRowColumns = `id, written_at, action_class, triggering_condition, policy_ref, acting_agent,
-	work_unit_id, attempt_id, journal_entry_ref`
-
-// Actions returns up to limit persisted control actions for sessionID with id
-// in (afterID, beforeID], in id order. action filters to one ActionClass; the
-// zero value matches every action. beforeID of 0 means no upper bound; limit
-// of 0 means no limit.
-func (s *Store) Actions(sessionID string, action ActionClass, afterID, beforeID int64, limit int) (out []StoredAction, err error) {
-	query := `SELECT ` + actionRowColumns + ` FROM control_actions WHERE session_id=? AND id>?`
-	args := []any{sessionID, afterID}
-	if beforeID > 0 {
-		query += ` AND id<=?`
-		args = append(args, beforeID)
-	}
-	if action != "" {
-		query += ` AND action_class=?`
-		args = append(args, string(action))
-	}
-	query += ` ORDER BY id LIMIT ?`
-	if limit <= 0 {
-		limit = -1
-	}
-	args = append(args, limit)
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = errors.Join(err, rows.Close()) }()
-	for rows.Next() {
-		var (
-			a       StoredAction
-			written int64
-			class   string
-		)
-		r := &a.Record
-		if err := rows.Scan(&a.ID, &written, &class, &r.TriggeringCondition, &r.PolicyRef, &r.ActingAgent,
-			&r.Correlations.WorkUnitID, &r.Correlations.AttemptID, &r.Correlations.JournalEntryRef); err != nil {
-			return nil, err
-		}
-		a.WrittenAt = time.Unix(0, written)
-		r.ActionClass, r.Correlations.SessionID = ActionClass(class), sessionID
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// CountActions reports how many actions Actions would return for the same
-// filters, without loading them.
-func (s *Store) CountActions(sessionID string, action ActionClass, afterID, beforeID int64) (int64, error) {
-	query := `SELECT COUNT(*) FROM control_actions WHERE session_id=? AND id>?`
-	args := []any{sessionID, afterID}
-	if beforeID > 0 {
-		query += ` AND id<=?`
-		args = append(args, beforeID)
-	}
-	if action != "" {
-		query += ` AND action_class=?`
-		args = append(args, string(action))
 	}
 	var count int64
 	err := s.db.QueryRow(query, args...).Scan(&count)

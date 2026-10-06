@@ -190,6 +190,19 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				if e == nil || c.Cycle == nil || c.Cycle.Phase != "blocked" {
 					t.Fatalf("divergence failed open: %+v %v", c, e)
 				}
+				// A delegation never runs over a cycle whose delta could not be
+				// discarded: the admission waits, and nothing is admitted.
+				req, _ := json.Marshal(coordinationRequest{Action: "admit", Event: "after-divergence", Session: "root", Agent: "dev"})
+				var out, errout bytes.Buffer
+				if e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(req)}, &out, &errout); e == nil || !strings.Contains(e.Error(), "could not be unwound") {
+					t.Fatalf("admission over a blocked cycle: %v", e)
+				}
+				if _, admitted := gcProjection(t, state).Units["after-divergence"]; admitted {
+					t.Fatal("delegation admitted while the cycle's delta is live")
+				}
+				if held, e := gc.LoadCoordinator(state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {
+					t.Fatalf("blocked cycle lost: %+v %v", held, e)
+				}
 			}
 			got, e := os.ReadFile(filepath.Join(root, "a.go"))
 			if e != nil {

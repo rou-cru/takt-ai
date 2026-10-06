@@ -3,7 +3,7 @@
   "memory_record": {"ok":true,"result":{"id":42,"deduplicated":false}},
   "memory_close": {"ok":true,"result":{"end_anchor_id":43,"entries":2}},
   "memory_error": {"ok":false,"error":"session is closed"},
-  "coordinator": {"version":1,"units":3,"mutations":1,"cursor":2,"deferrals":0,"next_mandate":1,"requested":false,"draining":false,"cycle":{"plan":{"session_id":"root-session","cycle_id":"cycle-1","mandate_class":"complexity","delta":[{"path":"src/a.go","introduced":true}],"closure":["src/a.go","src/b.go"],"reachability":"codegraph"},"phase":"collect","scope":["src/a.go"],"sessions":{"collector":"session-collector","verifier":"session-verifier"},"report":{"findings":null,"coverage":null},"started":"0001-01-01T00:00:00Z"}},
+  "coordinator": {"version":1,"units":3,"mutations":1,"cursor":2,"deferrals":0,"next_mandate":1,"requested":false,"cycle":{"plan":{"session_id":"root-session","cycle_id":"cycle-1","mandate_class":"complexity","delta":[{"path":"src/a.go","introduced":true}],"closure":["src/a.go","src/b.go"],"reachability":"codegraph"},"phase":"collect","scope":["src/a.go"],"sessions":{"collector":"session-collector","verifier":"session-verifier"},"report":{"findings":null,"coverage":null},"started":"0001-01-01T00:00:00Z"}},
   "handoff": {"additional_context":"Implemented the requested change.","artifact_verified":true,"extra_artifacts":["result.md"],"memory":[42],"result":"Standard","session_entries":[42,43]},
   "abort": {"additional_context":"User cancelled the task.","artifact_verified":true,"extra_artifacts":[],"memory":[42],"result":"Aborted"},
   "dispatch_null": null,

@@ -197,7 +197,7 @@ func ReadOnlyGitSubcommands() []string
 ReadOnlyGitSubcommands returns the read\-only git subcommands.
 
 <a name="RequireVFSCapability"></a>
-## func [RequireVFSCapability](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L468>)
+## func [RequireVFSCapability](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L473>)
 
 ```go
 func RequireVFSCapability(instance string, capability model.VFSCapability) error
@@ -206,7 +206,7 @@ func RequireVFSCapability(instance string, capability model.VFSCapability) error
 RequireVFSCapability consults the canonical exact\-instance catalog grant. RoleClass describes the agent but never authorizes a VFS operation.
 
 <a name="SpecialistRole"></a>
-## func [SpecialistRole](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L450>)
+## func [SpecialistRole](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L455>)
 
 ```go
 func SpecialistRole(instance string) (model.RoleClass, error)
@@ -301,7 +301,7 @@ func Open(rootDir, stateDir string) (_ *FS, err error)
 Open opens durable staging under an advisory lock on the workspace directory.
 
 <a name="FS.Apply"></a>
-### func \(\*FS\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L706>)
+### func \(\*FS\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L711>)
 
 ```go
 func (f *FS) Apply(op Operation) (OperationResult, error)
@@ -319,7 +319,7 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 AssignScope atomically reserves explicit exclusive ownership for a target before its VFS session starts. The target instance must have explicit bind and write grants in the catalog; role alone never authorizes an assignment.
 
 <a name="FS.AssignVerifier"></a>
-### func \(\*FS\) [AssignVerifier](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L247>)
+### func \(\*FS\) [AssignVerifier](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L252>)
 
 ```go
 func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, err error)
@@ -337,7 +337,7 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error)
 Bind registers a dispatch identity and acquires its explicit file scope. Role metadata comes from canonical content; VFS access comes only from the instance's explicit catalog capabilities.
 
 <a name="FS.BindingIdentity"></a>
-### func \(\*FS\) [BindingIdentity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L600>)
+### func \(\*FS\) [BindingIdentity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L605>)
 
 ```go
 func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
@@ -346,7 +346,7 @@ func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
 BindingIdentity returns the identity a binding key was issued for, so a transport can check that a caller is the actor the key belongs to.
 
 <a name="FS.Close"></a>
-### func \(\*FS\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L338>)
+### func \(\*FS\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L340>)
 
 ```go
 func (f *FS) Close() error
@@ -364,7 +364,7 @@ func (f *FS) CompleteCycle(cycleID string) (err error)
 CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
 
 <a name="FS.ConsolidateCheckpoint"></a>
-### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L889>)
+### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L894>)
 
 ```go
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
@@ -418,7 +418,7 @@ func (f *FS) InspectDelta(key AgentID) StagedView
 InspectDelta returns a detached view; nil contents mean deletion.
 
 <a name="FS.JournalPage"></a>
-### func \(\*FS\) [JournalPage](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L359>)
+### func \(\*FS\) [JournalPage](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L361>)
 
 ```go
 func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEntry
@@ -445,7 +445,7 @@ func (f *FS) OnJournal(fn func(JournalEntry))
 OnJournal registers a handler called for every journal entry appended, in order and under the same lock and re\-entrancy rules as OnCollision.
 
 <a name="FS.OwnershipClaims"></a>
-### func \(\*FS\) [OwnershipClaims](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L293>)
+### func \(\*FS\) [OwnershipClaims](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L298>)
 
 ```go
 func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
@@ -481,7 +481,7 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 PrepareShell classifies one command and lays out its private projection. key may be empty: an unbound caller may still inspect, never mutate.
 
 <a name="FS.ReadAs"></a>
-### func \(\*FS\) [ReadAs](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L711>)
+### func \(\*FS\) [ReadAs](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L716>)
 
 ```go
 func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
@@ -490,7 +490,7 @@ func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
 ReadAs reads through the staged view of the author a verifier judges, so the gate assesses exactly the delta its verdict will cover. op.ExpectedRevision is the author's revision; any other caller or action is refused.
 
 <a name="FS.ReassignScope"></a>
-### func \(\*FS\) [ReassignScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L361>)
+### func \(\*FS\) [ReassignScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L366>)
 
 ```go
 func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error)
@@ -508,7 +508,7 @@ func (f *FS) Recover() (err error)
 Recover restores the pre\-flush snapshot after checking for incompatible writes.
 
 <a name="FS.RevokeOwnership"></a>
-### func \(\*FS\) [RevokeOwnership](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L337>)
+### func \(\*FS\) [RevokeOwnership](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L342>)
 
 ```go
 func (f *FS) RevokeOwnership(key AgentID) (err error)
@@ -517,7 +517,7 @@ func (f *FS) RevokeOwnership(key AgentID) (err error)
 RevokeOwnership frees the paths a claim holds. The binding is kept so the unit's attempt count survives. A claim that holds staged work is refused rather than left as a delta nobody owns, which could never be consolidated.
 
 <a name="FS.Verify"></a>
-### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L818>)
+### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L823>)
 
 ```go
 func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string) (err error)
@@ -627,7 +627,7 @@ func (e JournalEntry) Ref() string
 Ref returns the entry's stable reference for telemetry.
 
 <a name="Operation"></a>
-## type [Operation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L644-L651>)
+## type [Operation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L649-L656>)
 
 Operation carries adapter\-controlled identity and a revision from the last result.
 
@@ -643,7 +643,7 @@ type Operation struct {
 ```
 
 <a name="OperationResult"></a>
-## type [OperationResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L654-L658>)
+## type [OperationResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L659-L663>)
 
 OperationResult returns the merged view content an operation produced.
 

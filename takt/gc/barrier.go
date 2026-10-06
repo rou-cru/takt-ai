@@ -99,6 +99,6 @@ func (v BarrierVerdict) ControlRecord(agent string) (obs.ControlRecord, bool) {
 	}
 	// PR-MNT-3: a stalled barrier halts subsequent task dispatch and must
 	// reach a human, not merely be watched (PRD_GC's documented Failure
-	// Behavior, which ActionObserve here previously contradicted).
+	// Behavior).
 	return obs.ControlRecord{ActionClass: obs.ActionEscalate, TriggeringCondition: cond, PolicyRef: BarrierPolicyRef, ActingAgent: agent}, true
 }

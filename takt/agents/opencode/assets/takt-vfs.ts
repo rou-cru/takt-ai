@@ -39,7 +39,7 @@ type GCCycle = Record<string, unknown> & { phase: string; plan: GCPlan; scope: s
 type StagedView = { revision: number; delta_hash: string; files: Record<string, string | null> }
 type CoordinatorResponse = Record<string, unknown> & {
   version: number; units: number; mutations: number; cursor: number; deferrals: number
-  next_mandate: number; requested: boolean; draining: boolean; cycle?: GCCycle
+  next_mandate: number; requested: boolean; cycle?: GCCycle
   history?: GCCycle[]
 }
 type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: number[] }
@@ -125,7 +125,7 @@ export function isStagedView(value: Record<string, unknown>): value is StagedVie
 export function isCoordinator(value: Record<string, unknown>): value is CoordinatorResponse {
   return typeof value.version === "number" && typeof value.units === "number" && typeof value.mutations === "number" &&
     typeof value.cursor === "number" && typeof value.deferrals === "number" && typeof value.next_mandate === "number" &&
-    typeof value.requested === "boolean" && typeof value.draining === "boolean" &&
+    typeof value.requested === "boolean" &&
     (value.cycle === undefined || isResponseObject(value.cycle) && isGCCycle(value.cycle)) &&
     (value.history === undefined || Array.isArray(value.history) && value.history.every(item => isResponseObject(item) && isGCCycle(item)))
 }
@@ -159,8 +159,8 @@ export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
 
 // Notices the orchestrator receives around a maintenance cycle: conduct only.
 const MAINTENANCE_DUE =
-  "Maintenance is due. Delegate nothing new until it concludes. Work already running continues normally and is verified and consolidated as usual. A cleanup cycle then runs alone; the changes it makes were not requested by the user and are not a regression."
-const MAINTENANCE_DONE = "Maintenance concluded. Delegation and normal work resume."
+  "A cleanup cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
+const MAINTENANCE_DONE = "The cleanup cycle concluded. Delegation and normal work continue."
 
 // SANDBOX_ADAPTER is the sibling module takt-ai deploys next to this plugin. It
 // wraps a command with @anthropic-ai/sandbox-runtime; without it no shell
@@ -740,6 +740,18 @@ export default Plugin.define({
       await ctx.session.interrupt({ sessionID: id })
       return true
     }
+    // stopLanes interrupts a cycle's lane sessions together; one that fails
+    // does not keep the others running.
+    async function stopLanes(ids: readonly string[]): Promise<void> {
+      const results = await Promise.allSettled(ids.map(stopChild))
+      const failed = results.flatMap(r => r.status === "rejected" ? [r.reason] : [])
+      if (failed.length > 0) throw new AggregateError(failed, "GC lane interruption failed")
+    }
+    // cycleLanes lists the lane sessions of the cycle in flight, if any.
+    async function cycleLanes(session: string): Promise<string[]> {
+      const state = await coordinate({ action: "status", session })
+      return isCoordinatorResponse(state) && state.cycle ? Object.values(state.cycle.sessions ?? {}) : []
+    }
     // createChildSession and promptChild are the generic child-session trio:
     // GC's own pump and the interlocutor switch (below) both spin up a lane
     // session and seed it the same way, so neither owns this pair.
@@ -760,7 +772,7 @@ export default Plugin.define({
     const restoreGCCycle = once(async () => {
       const state = await coordinate({ action: "status" })
       if (isCoordinatorResponse(state) && state.cycle) {
-        for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
+        await stopLanes(Object.values(state.cycle.sessions ?? {}))
         await coordinate({ action: "recover", evidence: "plugin restart; previous turn cannot be safely resumed" })
       }
     })
@@ -771,7 +783,7 @@ export default Plugin.define({
           try {
             const state = await coordinate({ action: "status" })
             if (isCoordinatorResponse(state) && state.cycle) {
-              for (const id of Object.values(state.cycle.sessions ?? {})) await stopChild(id)
+              await stopLanes(Object.values(state.cycle.sessions ?? {}))
               await coordinate({ action: "abort", evidence: error instanceof Error ? error.message : "unknown error" })
             }
           } catch (recoveryError) {
@@ -781,6 +793,18 @@ export default Plugin.define({
           console.error("Takt GC", error)
         })
       }, 0)
+    }
+    // Whether a cycle is due is only asked when the root orchestrator goes idle:
+    // never mid-turn, never from a delegated specialist's or a lane's own idle.
+    async function startCycleWhenIdle(sessionID: string) {
+      try {
+        if (gcChildren.has(sessionID) || await rootSession(sessionID) !== sessionID) return
+        await restoreGCCycle()
+        await coordinate({ action: "tick", session: sessionID })
+        scheduleGC()
+      } catch (error) {
+        console.error("Takt GC", error)
+      }
     }
     async function pumpGC() {
       await restoreGCCycle()
@@ -879,12 +903,19 @@ export default Plugin.define({
       if (!inputs.has(unitKey(root, unit))) throw refused("missing_inputs", specialist, root, new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before delegating it, or declare that none exists yet`), unit)
       const delegation = `${event.sessionID}:${event.id}`
       if (VFS_AGENTS.includes(specialist) && !await findClaim(root, unit, specialist, ["pending"])) throw refused("missing_claim", specialist, root, new Error(`Takt VFS refused launch: no matching pending clean claim for session ${root}, work unit ${unit}, agent ${specialist}; assign the exact scope before launching`), unit)
+      // A cleanup cycle never holds a delegation: an admitted one ends the
+      // cycle and discards its delta, then its lanes stop. A denied one leaves
+      // the cycle and its lanes running.
+      const lanes = await cycleLanes(root)
       try {
         await dispatchAction({ action: "admit", event: unit, dispatch: delegation, session: root, agent: specialist })
       } catch (error) {
         const cause = error instanceof Error ? error : new Error("dispatch admission failed")
         throw refused("admission_denied", specialist, root, cause, unit)
       }
+      // The cycle is already closed: a lane that keeps running only meets
+      // refusals, so a failed interruption never refuses the delegation.
+      await stopLanes(lanes).catch(error => console.error("Takt GC lane interruption", error))
       // Only an admitted delegation is remembered: a denied one never ran.
       delegations.set(delegation, { unit, root, agent: specialist })
       await persistDelegations()
@@ -940,7 +971,6 @@ export default Plugin.define({
         }
       } else if (event.tool.startsWith("vfs_") && !gcChildren.has(event.sessionID)) {
         await restoreGCCycle()
-        await coordinate({ action: "tick", session: await rootSession(event.sessionID) })
         scheduleGC()
       }
     })
@@ -986,7 +1016,7 @@ export default Plugin.define({
       // A failed status read must never break the orchestrator's own request.
       const state = await coordinate({ action: "status" }).catch(() => undefined)
       if (state === undefined) return
-      const active = isCoordinatorResponse(state) && (state.draining === true || state.cycle != null)
+      const active = isCoordinatorResponse(state) && state.cycle != null
       if (active) {
         maintenanceAnnounced = true
         event.system.push({ type: "text", text: MAINTENANCE_DUE })
@@ -1022,6 +1052,7 @@ export default Plugin.define({
         observeModelUsage(event)
         if (event.type === "session.idle") {
           gcBusy.delete(event.data.sessionID)
+          void startCycleWhenIdle(event.data.sessionID)
           scheduleGC()
           continue
         }

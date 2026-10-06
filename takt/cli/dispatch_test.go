@@ -1323,3 +1323,48 @@ waitLoop:
 		t.Fatalf("real engram rejected its own freshly-saved observation: %v", e)
 	}
 }
+
+// TestDispatchAdmissionYieldsCycleOnlyWhenAdmitted proves a delegation ends a
+// maintenance cycle in flight only once its admission is certain: a denied one
+// leaves the cycle running, an admitted one closes it (PR-MNT-3).
+func TestDispatchAdmissionYieldsCycleOnlyWhenAdmitted(t *testing.T) {
+	_, state, call := dispatchHarness(t)
+	p, e := protocol.LoadAdmissionPolicy()
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < p.Concurrency.Specialists; i++ {
+		if _, e := call(coordinationRequest{Action: "admit", Event: fmt.Sprintf("busy-%d", i), Session: "root", Agent: "dev"}); e != nil {
+			t.Fatalf("admission %d denied: %v", i, e)
+		}
+	}
+	c, e := gc.LoadCoordinator(state)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c.Cycle = &gc.Cycle{Plan: gc.Plan{Request: gc.Request{CycleID: "cycle-1", SessionID: "root", Mandate: gc.MandateDeadCode}}, Phase: "collect"}
+	if e := gc.SaveCoordinator(state, c); e != nil {
+		t.Fatal(e)
+	}
+	got, e := call(coordinationRequest{Action: "admit", Event: "late", Session: "root", Agent: "dev"})
+	if e == nil || !strings.Contains(e.Error(), "ceiling") {
+		t.Fatalf("admission past the ceiling not denied: %v", e)
+	}
+	if got.Cycle == nil || got.Cycle.Phase != "collect" {
+		t.Fatalf("a denied delegation ended the cycle: %+v", got.Cycle)
+	}
+	if _, e := call(coordinationRequest{Action: "finish", Event: "busy-0", Session: "root"}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := call(coordinationRequest{Action: "commit", Session: "root", Version: "v1",
+		Plan: []gc.PlanUnit{{Unit: "late", Contract: "run after the cycle"}}}); e != nil {
+		t.Fatalf("commit: %v", e)
+	}
+	got, e = call(coordinationRequest{Action: "admit", Event: "late", Session: "root", Agent: "dev"})
+	if e != nil {
+		t.Fatalf("admissible delegation refused: %v", e)
+	}
+	if got.Cycle != nil || len(got.History) != 1 || !strings.HasPrefix(got.History[0].Reason, "yielded") {
+		t.Fatalf("admitted delegation did not end the cycle: %+v", got)
+	}
+}

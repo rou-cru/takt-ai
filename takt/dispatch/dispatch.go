@@ -91,9 +91,6 @@ func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	return p, nil
 }
 
-// CauseHeld records an admission an external barrier held, rather than any budget.
-const CauseHeld = "control/admission-barrier"
-
 // CauseRepetition denies a second delegation of a unit whose current attempt
 // is still in flight: it would duplicate execution rather than retry it
 // (PR-HAR-17).
@@ -136,19 +133,35 @@ type AdmissionRequest struct {
 
 // Admit is called before the host task tool. It reserves one concurrency slot
 // indivisibly against the projection (PR-HAR-16); a refusal is recorded and
-// stays visible. held is the caller's own reason (if any) to pause every
-// admission regardless of budget, such as a maintenance cycle in flight;
-// this package enforces it without knowing why it applies.
-func Admit(h *history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest, held bool) error {
+// stays visible.
+func Admit(h *history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest) error {
 	if req.Event == "" || req.Session == "" {
 		return errors.New("dispatch: identity required")
 	}
-	projection := h.Project()
+	entry, e := decide(h.Project(), p, req)
+	entry.JournalRef = journalRef
+	return errors.Join(h.Append(entry), e)
+}
+
+// Admissible reports the refusal Admit would record for req, without recording
+// anything: a caller that must undo other work before admitting (a maintenance
+// cycle in flight) does so only for an admission that will go through.
+func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) error {
+	if req.Event == "" || req.Session == "" {
+		return errors.New("dispatch: identity required")
+	}
+	_, e := decide(h.Project(), p, req)
+	return e
+}
+
+// decide is the admission decision over one projection: the entry to record
+// and, for a denial, why.
+func decide(projection history.Projection, p AdmissionPolicy, req AdmissionRequest) (history.Entry, error) {
 	unit, known := projection.Units[req.Event]
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
 		WorkUnitID: req.Event, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
-		Cause: history.CauseUncaptured, JournalRef: journalRef, PolicyRef: AdmissionPolicyRef,
+		Cause: history.CauseUncaptured, PolicyRef: AdmissionPolicyRef,
 	}
 	budgets := projection.Budgets(req.Session)
 	// Only a unit never seen before is new work: a planned unit is covered by
@@ -163,9 +176,6 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
 	var e error
 	switch {
-	case held:
-		entry.Kind, entry.Cause = history.KindDenied, CauseHeld
-		e = errors.New("dispatch: an admission barrier holds new dispatches")
 	case projection.InFlight() >= p.Concurrency.Specialists:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundConcurrency
 		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s)", p.Concurrency.Specialists, history.BoundConcurrency)
@@ -191,7 +201,7 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryActions
 		e = fmt.Errorf("harness: action budget of %d consumed for this recovery", actions)
 	}
-	return errors.Join(h.Append(entry), e)
+	return entry, e
 }
 
 // Finish records the observed effective termination of a dispatched unit,

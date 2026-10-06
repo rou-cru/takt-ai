@@ -388,7 +388,13 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.resize(message)
 	case tea.ColorProfileMsg:
 		// The program's detected profile, not env hints, selects the palette.
-		theme.SetMode(theme.ModeFor(message.Profile))
+		// NO_COLOR and TERM=dumb still force monochrome: the profile parser
+		// reads NO_COLOR as a boolean, so NO_COLOR=0 would otherwise color.
+		mode := theme.ModeFor(message.Profile)
+		if theme.DetectMode() == theme.ModeMono {
+			mode = theme.ModeMono
+		}
+		theme.SetMode(mode)
 		return m, nil
 	case tea.KeyPressMsg:
 		if next, cmd, handled := m.globalKey(message); handled {

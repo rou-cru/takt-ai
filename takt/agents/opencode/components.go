@@ -65,6 +65,11 @@ func permissionsConfig() []permissionRule {
 		{"shell", "git push --force *", "ask"},
 		{"shell", "git rebase *", "ask"},
 		{"shell", "git reset --hard *", "ask"},
+		// clean and restore discard untracked or uncommitted work, as a hard
+		// reset does.
+		{"shell", "git clean", "ask"},
+		{"shell", "git clean *", "ask"},
+		{"shell", "git restore *", "ask"},
 		// Memory is written only through the takt-memory plugin tools, which inject the harness identity.
 		{"shell", "takt-ai memory*", "deny"},
 		{"shell", "*takt-ai memory*", "deny"},

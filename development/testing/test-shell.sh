@@ -151,7 +151,7 @@ test_install() {
     archive="takt-ai_1.2.3_${os}_${arch}.tar.gz"
     printf '#!/bin/sh\nprintf "fixture v1.2.3\\n"\n' > "$TMP/payload/takt-ai"
     COPYFILE_DISABLE=1 tar -czf "$TMP/release/$archive" -C "$TMP/payload" takt-ai
-    [[ "$(wc -c < "$TMP/release/$archive")" -lt 1000 ]] || fail 'fixture must reproduce the old size rejection'
+    [[ "$(wc -c < "$TMP/release/$archive")" -lt 1000 ]] || fail 'fixture must stay a tiny archive: the installer must not reject small downloads'
     checksum() { (cd "$TMP/release" && shasum -a 256 "$archive" > checksums.txt); }
     checksum
     cat > "$TMP/bin/curl" <<'SH'

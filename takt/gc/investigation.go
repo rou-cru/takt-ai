@@ -123,9 +123,9 @@ func demoteMandate(m MandateClass) {
 
 // reversionRateThreshold is the fraction of registered work (the PR-MNT-9/
 // PR-MNT-11 denominator, never wall time) that a mandate class's attributed
-// reversions may reach before PR-MNT-32 demotes it. Set at 1/4: below that,
-// a handful of reverted edits reads as normal review friction; at or above
-// it, a quarter of the work this class is responsible for is coming back,
+// reversions may reach before PR-MNT-32 demotes it. Set at 1/4: up to that,
+// a handful of reverted edits reads as normal review friction; above it,
+// a quarter of the work this class is responsible for is coming back,
 // which is the class's changes failing to stick rather than noise.
 const reversionRateThreshold = 0.25
 
