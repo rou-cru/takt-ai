@@ -4,7 +4,7 @@ import plugin from "./takt-vfs.ts"
 // Same mocking style as vfs-dispatch.mjs: only Bun.spawn is a double, the
 // rendered artifact runs for real.
 const calls = []
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 let respond = (_call) => undefined
 globalThis.Bun = {
   spawn(argv, options) {

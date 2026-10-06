@@ -112,7 +112,11 @@ func abortWithArtifactReport(h *history.History, ref, workspace string, r coordi
 	return envelope, nil
 }
 
-func coordinateRoutineAction(h *history.History, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, bool, error) {
+// coordinateRoutine admits and finishes ordinary work. Maintenance never gates
+// either: an admission ends a cycle in flight first, so the orchestrator is
+// never made to wait for one (PR-MNT-3). Whether a cycle is due is decided only
+// when the session is idle, by `gc coordinate`'s tick.
+func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
 	unit := h.Project().Units[r.Event]
 	switch r.Action {
 	case "admit":
@@ -121,38 +125,29 @@ func coordinateRoutineAction(h *history.History, c *gc.Coordinator, entries []vf
 		repeated := unit.State != "" && unit.State != history.StatePlanned &&
 			(r.Dispatch == "" || unit.Dispatch == r.Dispatch)
 		if repeated {
-			return c, true, nil
+			return c, nil
 		}
-		return nil, false, c.Admit(h, journalRef(entries), r.Event, r.Session, r.Agent, r.Dispatch)
+		if c.Cycle != nil {
+			// A cycle that cannot be unwound records why on itself (blocked,
+			// with its reason); that never refuses the orchestrator's dispatch.
+			_ = abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed")
+		}
+		return c, c.Admit(h, journalRef(entries), r.Event, r.Session, r.Agent, r.Dispatch)
 	case "finish":
 		if unit.State != history.StateInFlight || (r.Dispatch != "" && unit.Dispatch != r.Dispatch) {
-			return c, true, nil
+			return c, nil
 		}
-		return nil, false, protocol.Finish(h, journalRef(entries), r.Event, r.Session)
+		return c, protocol.Finish(h, journalRef(entries), r.Event, r.Session)
 	}
-	return nil, false, nil
-}
-
-func coordinateRoutine(ctx context.Context, fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
-	result, handled, actionErr := coordinateRoutineAction(h, c, entries, r)
-	if handled {
-		return result, nil
-	}
-	// A denied admission is still a real tick: advance the GC barrier and its
-	// deferral limit. A repeated host call, above, consumes neither.
-	advanceResult, advanceErr := coordinateAdvance(ctx, fs, h, workspace, c, entries, r)
-	if actionErr != nil {
-		return nil, errors.Join(actionErr, advanceErr)
-	}
-	return advanceResult, advanceErr
+	return c, nil
 }
 
 // ordinaryDispatchActions are the crew dispatch actions any orchestrator may
 // take through `takt-ai dispatch`: admission, lifecycle, plan commitment,
 // contests, recovery, user exceptions, and the interlocutor stack
 // (switch/handoff/abort_switch). tick carries no GC cycle awareness of its
-// own; it only re-runs the same admission/recovery accounting pass admit and
-// finish already fall through to, so it belongs here too. Direct activity has
+// own; it only re-runs the accounting pass every request already begins with,
+// so it belongs here too. Direct activity has
 // its own activity_id and never enters the work-unit path. They are not GC's;
 // GC's own maintenance-cycle phases (prepare, baseline, findings,
 // investigate, authorize, collected, delta, verdict, acceptance, no-change,
@@ -218,11 +213,11 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 }
 
 func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
-	entries, e := observeCoordination(fs, h, c)
+	entries, e := observeCoordination(fs, h, c, r.Session)
 	if e != nil {
 		return nil, e
 	}
-	routine := func() (any, error) { return coordinateRoutine(ctx, fs, h, workspace, c, entries, r) }
+	routine := func() (any, error) { return coordinateRoutine(fs, h, workspace, c, entries, r) }
 	ref := journalRef(entries)
 	// record wires the observed facts and declarations that consume no budget.
 	record := func(kind history.Kind) func() (any, error) {
@@ -303,7 +298,8 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 
 // observeCoordination is the common journal observation and budget accounting
 // before either entry performs its own actions.
-func observeCoordination(fs *vfs.FS, h *history.History, c *gc.Coordinator) ([]vfs.JournalEntry, error) {
+func observeCoordination(fs *vfs.FS, h *history.History, c *gc.Coordinator, session string) ([]vfs.JournalEntry, error) {
+	c.Bind(session)
 	entries := journalEntries(fs, "")
 	c.Observe(entries)
 	if e := protocol.Account(h, entries); e != nil {

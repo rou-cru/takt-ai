@@ -63,7 +63,7 @@ func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 		want        Outcome
 	}{
 		"user request with no delta is skipped": {&Coordinator{Version: 1, Cursor: -1, Requested: true, Units: 5}, OutcomeSkip},
-		"starved cycle is aborted":              {&Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals, Draining: true}, OutcomeAbort},
+		"starved cycle is aborted":              {&Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals}, OutcomeAbort},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 			if d.Outcome != tc.want {
 				t.Fatalf("Outcome = %v, want %v", d.Outcome, tc.want)
 			}
-			if c.Units != 0 || c.Mutations != 0 || c.Deferrals != 0 || c.Requested || c.Draining || c.Cycle != nil {
+			if c.Units != 0 || c.Mutations != 0 || c.Deferrals != 0 || c.Requested || c.Cycle != nil {
 				t.Errorf("coordinator after %v = %+v, want the pace counters reset", tc.want, c)
 			}
 		})
@@ -116,8 +116,8 @@ func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 	if !slices.Equal(b.ActiveUnitIDs, []string{"unit-1"}) {
 		t.Errorf("ActiveUnitIDs = %v, want the blocking unit named", b.ActiveUnitIDs)
 	}
-	if c.Cycle != nil || !c.Draining || c.Deferrals != 1 || !c.Held() {
-		t.Errorf("coordinator = %+v, want draining with one deferral and no cycle", c)
+	if c.Cycle != nil || c.Deferrals != 1 || c.Held() {
+		t.Errorf("coordinator = %+v, want one deferral and no cycle", c)
 	}
 }
 
@@ -133,8 +133,8 @@ func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 	if d.Outcome != OutcomeRun || !b.Proceed {
 		t.Fatalf("Advance() = %+v %+v, want the cycle to proceed", d, b)
 	}
-	if c.Cycle == nil || c.Cycle.Phase != "baseline" || c.Draining || c.Deferrals != 0 {
-		t.Fatalf("coordinator = %+v, want a baseline cycle with the barrier lifted", c)
+	if c.Cycle == nil || c.Cycle.Phase != "baseline" || c.Deferrals != 0 {
+		t.Fatalf("coordinator = %+v, want a baseline cycle", c)
 	}
 	plan := c.Cycle.Plan
 	if plan.Mandate != MandateDuplication || plan.SessionID != advanceSession || len(plan.CycleID) != 2*cycleIDBytes {
@@ -171,22 +171,22 @@ func TestAdvanceCountsDeclarationFailureTowardAbort(t *testing.T) {
 	if err == nil {
 		t.Fatal("Advance() error = nil, want the declaration failure")
 	}
-	if c.Cycle != nil || c.Draining || c.Deferrals < 1 {
-		t.Errorf("coordinator = %+v, want no cycle, no drain and the failure counted as a deferral", c)
+	if c.Cycle != nil || c.Deferrals < 1 {
+		t.Errorf("coordinator = %+v, want no cycle and the failure counted as a deferral", c)
 	}
 }
 
-func TestInFlightUnitIDsAreSorted(t *testing.T) {
+func TestUnfinishedUnitIDsAreSorted(t *testing.T) {
 	proj := history.Projection{Units: map[string]history.Unit{
 		"b": {State: history.StateInFlight},
-		"a": {State: history.StateInFlight},
+		"a": {State: history.StatePlanned},
 		"c": {State: history.State("done")},
 	}}
-	if got := inFlightUnitIDs(proj); !slices.Equal(got, []string{"a", "b"}) {
-		t.Errorf("inFlightUnitIDs() = %v, want [a b]", got)
+	if got := unfinishedUnitIDs(proj); !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("unfinishedUnitIDs() = %v, want [a b]", got)
 	}
-	if got := inFlightUnitIDs(history.Projection{}); len(got) != 0 {
-		t.Errorf("inFlightUnitIDs(empty) = %v", got)
+	if got := unfinishedUnitIDs(history.Projection{}); len(got) != 0 {
+		t.Errorf("unfinishedUnitIDs(empty) = %v", got)
 	}
 }
 

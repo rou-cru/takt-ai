@@ -43,7 +43,7 @@ func TestGuardVFSDeniesCollectorBindOutsideCoordinator(t *testing.T) {
 
 func TestGuardVFSDeniesNewBindingsWhileBarrierHolds(t *testing.T) {
 	state := t.TempDir()
-	c := &gc.Coordinator{Version: 1, Cursor: -1, Draining: true}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Cycle: &gc.Cycle{}}
 	if err := gc.SaveCoordinator(state, c); err != nil {
 		t.Fatalf("SaveCoordinator() error = %v", err)
 	}

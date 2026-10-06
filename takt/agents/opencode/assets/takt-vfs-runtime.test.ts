@@ -51,7 +51,7 @@ const gcPlan = { session_id: "root", cycle_id: "cycle-1", mandate_class: "comple
 const gcCycle = (phase: string, sessions: Record<string, string>, extra: Record<string, unknown> = {}) =>
   ({ phase, plan: gcPlan, scope: ["a.go"], sessions, report: null, started: "2026-01-01T00:00:00Z", ...extra })
 const coordinator = (cycle?: unknown, extra: Record<string, unknown> = {}) =>
-  ({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false, draining: false, ...(cycle ? { cycle } : {}), ...extra })
+  ({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false, ...(cycle ? { cycle } : {}), ...extra })
 const claim = (extra: Record<string, unknown>) =>
   ({ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", ...extra })
 const shellPlan = (extra: Record<string, unknown> = {}) => ({
@@ -394,10 +394,13 @@ describe("delegation lifecycle", () => {
     } finally { await vfs.stop() }
   })
 
-  test("a finished VFS tool call ticks the coordinator for its root session", async () => {
+  test("only the root orchestrator going idle asks whether maintenance is due", async () => {
     const vfs = await startVfs({ sessions: unitSessions })
     try {
       await vfs.fire(vfs.tool, "execute.after", { tool: "vfs_write", sessionID: "dispatch", id: "t1", agent: "dev" })
+      vfs.publish({ id: "evt-leaf", created: 1, type: "session.idle", data: { sessionID: "dispatch" } } as OpenCodeEvent)
+      vfs.publish({ id: "evt-root", created: 2, type: "session.idle", data: { sessionID: "root" } } as OpenCodeEvent)
+      await until(() => vfs.requests("gc", "tick").length > 0)
       expect(vfs.requests("gc", "tick")).toEqual([{ action: "tick", session: "root" }])
     } finally { await vfs.stop() }
   })
@@ -542,7 +545,7 @@ describe("maintenance cycle", () => {
   })
 
   test("the orchestrator is told when maintenance starts and when it concludes, and only then", async () => {
-    let state: Reply = json(coordinator(undefined, { draining: true }))
+    let state: Reply = json(coordinator(gcCycle("baseline", {})))
     const vfs = await startVfs({ respond: (call) => call.kind === "gc" && call.command === "status" ? state : undefined })
     try {
       const notified = async () => {
@@ -550,9 +553,9 @@ describe("maintenance cycle", () => {
         await vfs.fire(vfs.session, "context", event)
         return event.system.map(({ text }) => text)
       }
-      expect((await notified())[0]).toContain("Maintenance is due")
+      expect((await notified())[0]).toContain("A cleanup cycle is running")
       state = json(coordinator())
-      expect((await notified())[0]).toContain("Maintenance concluded")
+      expect((await notified())[0]).toContain("The cleanup cycle concluded")
       expect(await notified()).toEqual([])
       state = { code: 1, err: "status unavailable" }
       expect(await notified()).toEqual([])

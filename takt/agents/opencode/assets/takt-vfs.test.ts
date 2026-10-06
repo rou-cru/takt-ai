@@ -71,7 +71,7 @@ describe("plugin setup", () => {
           if (command === "ingest") return "{}"
           if (command === "claims") return JSON.stringify({ ok: true, claims: [{ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/held.ts"] }] })
           if (argv[1] === "dispatch" && request.action === "switch") return JSON.stringify({ ok: true })
-          if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+          if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false })
           if (command === "shell-prepare") return JSON.stringify({ ok: true, shell: { decision: "ask", reason: "review each run", cwd: "/workspace", scratch: "/private/tmp", confirm: "/private/tmp/confirm", capture: false, writable: ["/workspace/src"], protected: ["/workspace/.git"], private: ["/private/secret"] } })
           if (command === "bind") return JSON.stringify({ ok: true, key: request.agent_id === "verify" ? "verifier-1" : "author-1", attempt_id: "attempt-1", invariants_version: "invariants-1", revision: 0, delta_hash: "delta-0" })
           return JSON.stringify({ ok: true, key: "claim-1", revision: 2, delta_hash: "delta-2", content: "staged content" })
@@ -361,7 +361,7 @@ describe("gc coordination shapes", () => {
   const plan = { session_id: "s", cycle_id: "c", mandate_class: "complexity", delta: [], closure: ["a.go"], reachability: "codegraph" }
   const cycle = { phase: "collect", plan, scope: ["a.go"], sessions: { collector: "s1" }, report: null, started: "2024-01-01T00:00:00Z" }
   const stagedView = { revision: 1, delta_hash: "h", files: { "a.go": "content", "b.go": null } }
-  const coordinator = { version: 1, units: 1, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 1, requested: false, draining: false }
+  const coordinator = { version: 1, units: 1, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 1, requested: false }
 
   test("isGCPlan / isGCCycle / isStagedView / isCoordinator accept well-formed shapes", () => {
     expect(isGCPlan(plan)).toBe(true)

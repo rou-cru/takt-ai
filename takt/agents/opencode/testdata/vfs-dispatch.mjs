@@ -23,7 +23,7 @@ globalThis.Bun = {
     }
   },
 }
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
   if (call.argv[1] === "dispatch") return ["switch", "validate_results"].includes(requestOf(call).action) ? null : coordinator()
@@ -239,7 +239,7 @@ await assert.rejects(tools.vfs_consolidate.execute({ author_key: "k1", checkpoin
 // The orchestrator's context carries a maintenance notice only while a cycle
 // is due or running, one closing notice after it, and nothing otherwise.
 const contextFor = async (agent, status) => {
-  const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false, ...status }
+  const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, ...status }
   if (status.cycle) state.cycle = { plan: { session_id: "root", cycle_id: "context-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" }, phase: status.cycle.phase, scope: [], sessions: {}, report: {}, started: "2026-01-01T00:00:00Z" }
   respond = (call) => requestOf(call).action === "status" ? { stdout: JSON.stringify(state), stderr: "", code: 0 } : undefined
   const event = { agent, sessionID: "root", system: [] }
@@ -247,11 +247,11 @@ const contextFor = async (agent, status) => {
   return event.system.map(part => part.text)
 }
 assert.deepEqual(await contextFor("takt", {}), [])
-assert.match((await contextFor("takt", { draining: true }))[0], /^Maintenance is due/)
-assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^Maintenance is due/)
-assert.match((await contextFor("takt", {}))[0], /^Maintenance concluded/)
+assert.match((await contextFor("takt", { cycle: { phase: "baseline" } }))[0], /^A cleanup cycle is running/)
+assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^A cleanup cycle is running/)
+assert.match((await contextFor("takt", {}))[0], /^The cleanup cycle concluded/)
 assert.deepEqual(await contextFor("takt", {}), [])
-assert.deepEqual(await contextFor("dev", { draining: true }), [])
+assert.deepEqual(await contextFor("dev", { cycle: { phase: "baseline" } }), [])
 
 // A switch registers with Go, carrying the created child session id, before
 // the child is ever prompted; a registration failure stops that

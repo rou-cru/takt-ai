@@ -5,7 +5,10 @@ import plugin from "./takt-vfs.ts"
 // so identity threading can be checked by position, not just by presence.
 const order = []
 const calls = []
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, draining: false })
+const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
+const idleEvents = []
+let wakeEvents
+const sessionIdle = (sessionID) => { idleEvents.push({ id: `idle-${sessionID}`, created: 1, type: "session.idle", data: { sessionID } }); const wake = wakeEvents; wakeEvents = undefined; wake?.() }
 let respond = (_call) => undefined
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
@@ -72,7 +75,7 @@ await plugin.setup({
       return { dispose() {} }
     },
   },
-  event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
+  event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => idleEvents.length ? Promise.resolve({ value: idleEvents.shift(), done: false }) : new Promise(resolve => { wakeEvents = () => resolve({ value: idleEvents.shift(), done: false }) }) }) }) },
 })
 
 const root = { sessionID: "root", agent: "takt" }
@@ -100,17 +103,16 @@ assert.equal(interrupted.includes(failedChild), true)
 respond = () => undefined
 
 // 2. rootSession() resolves a switch-created session (no parentID) through
-// its metadata.takt_switch fallback, exercised via the plain vfs_ tool tick
-// every tool call after triggers.
+// its metadata.takt_switch fallback: only the root orchestrator going idle asks
+// whether maintenance is due, so the switch-created child's idle never does.
 sessions.set("switch-root-child", { metadata: { takt_switch: "root" } })
 const gcCoordinateCalls = () => calls.filter(c => c.verb === "gc" && c.sub === "coordinate")
-mark = gcCoordinateCalls().length
-for (const hook of hooks["execute.after"]) {
-  await hook({ tool: "vfs_read", sessionID: "switch-root-child", agent: "dev", id: "tick-1", status: "completed" })
-}
-const tick = gcCoordinateCalls().slice(mark).find(c => requestOf(c).action === "tick")
-assert.ok(tick, "the vfs_ tool tick never reached gc coordinate")
-assert.equal(requestOf(tick).session, "root", "rootSession() did not resolve the switch-created session's root")
+const ticks = () => gcCoordinateCalls().filter(c => requestOf(c).action === "tick")
+sessionIdle("switch-root-child")
+sessionIdle("root")
+for (let i = 0; i < 100 && ticks().length === 0; i++) await new Promise(resolve => setTimeout(resolve, 10))
+assert.equal(ticks().length, 1, "exactly the root session's idle must reach gc coordinate")
+assert.equal(requestOf(ticks()[0]).session, "root", "rootSession() did not resolve the switch-created session's root")
 
 // 3. A dispatch_handoff from that same switch-created child reaches the
 // resolved root, not the child's own raw session id.

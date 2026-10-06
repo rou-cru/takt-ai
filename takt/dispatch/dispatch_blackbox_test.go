@@ -35,7 +35,7 @@ func loadPolicy(t *testing.T) dispatch.AdmissionPolicy {
 func TestRecordAppendsRawKind(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Record(h, "", "a", "s1", history.KindSuspended); err != nil {
@@ -51,7 +51,7 @@ func TestRecordAppendsRawKind(t *testing.T) {
 func TestLaunchIsIdempotentOnceObserved(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Launch(h, "", "a", "s1"); err != nil {
@@ -79,7 +79,7 @@ func TestLaunchRequiresAdmittedUnit(t *testing.T) {
 func TestReconcileRunningRecordsLaunch(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Record(h, "", "a", "s1", history.KindUncertain); err != nil {
@@ -97,7 +97,7 @@ func TestReconcileRunningRecordsLaunch(t *testing.T) {
 func TestReconcileNotRunningFinishesAsInterrupted(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Record(h, "", "a", "s1", history.KindUncertain); err != nil {
@@ -142,7 +142,7 @@ func TestReconcileNotRunningHasNothingToDoForUnitsNotInFlight(t *testing.T) {
 func TestReconcileRequiresUncertainFlight(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Reconcile(h, "", "a", "s1", true); err == nil {
@@ -169,7 +169,7 @@ func TestWithdrawRejectsAdmittedUnit(t *testing.T) {
 	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.Withdraw(h, "", "a", "s1"); err == nil {
@@ -187,7 +187,7 @@ func TestDeclareRecoveryAndCloseRecovery(t *testing.T) {
 	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 
@@ -239,7 +239,7 @@ func TestCloseRecoveryDemonstratedRequiresEvidence(t *testing.T) {
 	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover-a", "s1", recoveryDeclaration("obj1")); err != nil {
@@ -262,7 +262,7 @@ func TestAccountTracksScopedActionsAndForcesBacktrackAtExhaustion(t *testing.T) 
 	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}, false); err != nil {
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
 	declaration := recoveryDeclaration("obj1")
