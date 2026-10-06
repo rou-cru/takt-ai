@@ -90,8 +90,8 @@ func fullShell(frame Frame, inner int) string {
 	body := strings.TrimRight(frame.Body, "\n")
 
 	if frame.Home {
-		// The home composes its own centered block (logo, signature, menu) for
-		// HomeRows; it carries the signature, so no header row repeats it.
+		// The home composes its own centered block (logo, menu) for HomeRows
+		// and has no header row.
 		return paint(indent(fitLines(body, HomeRows(frame.Height)), frame.Width), frame.Width, frame.Height)
 	}
 	var block string

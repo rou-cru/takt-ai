@@ -168,9 +168,8 @@ ENTRYPOINT ["workspace-entrypoint"]
 # -v $PWD:/workspace roucru/takt-ai:dev`, log in or set a provider key, and
 # work. Published builds leave DEV_UID/DEV_GID at their default (1000); a
 # local `docker buildx bake dev` (e.g. via compose, for takt-ai contributors)
-# can still override them at build time to match the host uid exactly, same
-# as the old development/environment/Dockerfile did. A pulled image can
-# instead match a host uid at run time with `docker run --user $(id -u):$(id -g)`.
+# can still override them at build time to match the host uid exactly. A
+# pulled image can instead match a host uid at run time with `docker run --user $(id -u):$(id -g)`.
 # ---------------------------------------------------------------------------
 FROM toolchain AS dev
 LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
