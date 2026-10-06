@@ -645,6 +645,8 @@ func FuzzCanonicalPaths(f *testing.F) {
 	})
 }
 
+// TestBindOnlyForImplementationAndGateRoles checks that planning specialists cannot bind
+// with an empty scope, while verification instances can bind as gates.
 func TestBindOnlyForImplementationAndGateRoles(t *testing.T) {
 	f, _, _ := durable(t)
 	for _, specialist := range []string{"pm", "architect", "product-designer", "analyst", "spec", "tpm"} {

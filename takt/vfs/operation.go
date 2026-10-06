@@ -315,6 +315,9 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	return key, nil
 }
 
+// validateVerifierAuthorLocked requires authorKey to name a binding of another
+// specialist in the verifier's session that may write and was issued the same
+// invariant set the verifier is judged against.
 func (f *FS) validateVerifierAuthorLocked(verifier Identity, authorKey AgentID) error {
 	author, ok := f.bindings[authorKey]
 	if !ok || author.SessionID != verifier.SessionID || author.AgentID == verifier.AgentID {

@@ -24,7 +24,7 @@ differs. This is the common ground each variant starts from.
 - Native read tools freely, for the code and for any project context.
 - Shell for tests, linters, builds, type checks and read-only git.
 - Network for official documentation, library versions and advisories.
-- Route each command's output to the temporary directory (`$TMPDIR`), never into the project.
+- Route each command's output to the temporary directory (`$TMPDIR`), never into the project, and keep the caches and build artifacts of the tools you run outside it too: point them at `$TMPDIR` with their own flag or variable (`GOCACHE`, `XDG_CACHE_HOME`, `--cache-location`, `-o`) wherever the tool offers one.
 
 ## What you never do
 
@@ -39,7 +39,7 @@ change it, run the read-only form of that check and report what you found.
 | Mutate git (commit, add, checkout, stash, reset, clean) | Use read-only git |
 | Repair the defect you found | Report it; repairing belongs to another specialist |
 
-If a command modified a project file anyway, name the file in your report.
+If a command modified a project file anyway, such as a cache a tool offered no way to move, name the file in your report.
 
 ## Your report
 

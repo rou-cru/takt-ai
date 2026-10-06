@@ -154,6 +154,8 @@ func TestShellImportIsSingleUse(t *testing.T) {
 	}
 }
 
+// TestShellDecisions checks the allow, deny and approval-gated decision for shell
+// commands under each binding kind: scoped author, verifier, and no binding.
 func TestShellDecisions(t *testing.T) {
 	f, _, state := durable(t)
 	scoped := bind(t, f, "author", "unit", "dev", "data.txt")

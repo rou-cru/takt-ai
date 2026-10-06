@@ -82,6 +82,8 @@ func TestDefaultPlanRequestOpenCodeInterlocutorMode(t *testing.T) {
 	}
 }
 
+// TestBuildOpenCodePlanProjectsVFSGrantsPerInstance checks that the default OpenCode
+// plan allows or denies the VFS tools per instance according to its grants.
 func TestBuildOpenCodePlanProjectsVFSGrantsPerInstance(t *testing.T) {
 	request, err := DefaultPlanRequest()
 	if err != nil {

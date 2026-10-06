@@ -792,6 +792,9 @@ func TestAssignScopeAcrossRoots(t *testing.T) {
 	}
 }
 
+// TestWorkspaceLocalStoreIsPrivate checks that the workspace-local store is created
+// private (0700), cannot be claimed as workspace content, and imports no claims from
+// a store kept elsewhere.
 func TestWorkspaceLocalStoreIsPrivate(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()

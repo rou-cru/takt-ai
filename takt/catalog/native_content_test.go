@@ -100,6 +100,8 @@ func TestLoadNativeContentDeclaresRoleClass(t *testing.T) {
 	}
 }
 
+// TestSimplifyInstancesHoldOneAdmittedRoleEach checks that the simplify specialty is
+// one execution instance and that verification instances hold only verifier grants.
 func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	// The simplify specialty is a single execution instance, shared by
 	// ordinary cleanup and harness-attached GC collection. GC authority comes
