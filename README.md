@@ -4,7 +4,7 @@
   [![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=rou-cru_takt-ai)](https://sonarcloud.io/summary/new_code?id=rou-cru_takt-ai)
   [![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/rou-cru/takt-ai?utm_source=oss&utm_medium=github&utm_campaign=rou-cru%2Ftakt-ai&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
   [![Go](https://img.shields.io/badge/Go-1.27.1+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-  [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+  [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
   [![GitHub Release](https://img.shields.io/github/v/release/rou-cru/takt-ai)](https://github.com/rou-cru/takt-ai/releases)
 </div>
 
@@ -19,6 +19,20 @@ It's not a standalone agent, an LLM, or a simple collection of prompt plugins. I
 Takt AI integrates directly with coding agents:
 
 - **OpenCode**
+
+## Status
+
+Pre-v1. Releases are stable, but features planned for v1 are still being added and refined.
+
+## Platforms
+
+| Platform | Support |
+| --- | --- |
+| macOS ARM64 | Supported |
+| Linux | Supported |
+| macOS Intel | Expected to work, not validated |
+| WSL | Expected to work through Linux compatibility, not validated |
+| Windows | Not supported |
 
 ## Install
 
@@ -55,17 +69,28 @@ Linux `.deb`, `.rpm`, `.apk` and Arch packages are attached to every [release](h
 docker run --rm -p 4096:4096 -e OPENCODE_PASSWORD=change-me -v "$PWD:/workspace" roucru/takt-ai:latest
 ```
 
+Image options, environment variables and tags: [workspace image](deploy/workspace/README.md).
+
 > Enterprise-grade. Provides Takt AI as a standard environment for organizations and engineering teams.
 
 ```sh
 helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspaces --create-namespace
 ```
 
+Values and prerequisites: [Helm chart](charts/takt-ai/README.md).
+
+## Usage
+
+Run `takt-ai` and choose **Install**. The TUI guides the rest.
+
 ## Documentation
 
 - [Architecture](docs/design/architecture/README.md)
+- [CLI reference](docs/cli.md)
+- [Environment variables](docs/environment.md)
+- [API reference](docs/api)
 - [Contributing](CONTRIBUTING.md)
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0-or-later](LICENSE)
