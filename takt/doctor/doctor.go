@@ -40,6 +40,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -78,32 +79,37 @@ type DoctorReport struct {
 // exists for them.
 var doctorTools = []string{"takt-ai", "opencode", "engram"}
 
-// Injected seams, swapped in tests with t.Cleanup restore.
-var (
-	userHomeDir    = os.UserHomeDir
-	lookPath       = exec.LookPath
-	toolCopies     = scanToolCopies
-	httpFetch      = defaultHTTPFetch
-	diskFree       = statfsFreeBytes
-	workingDir     = os.Getwd
-	resolveProject = defaultResolveProject
-)
-
-// defaultResolveProject mirrors memory_record's own project detection, read-only.
-func defaultResolveProject(dir string) string {
-	return memory.ResolveProject(context.Background(), memory.Config{}, dir)
-}
-
-// controlPlaneHealth reports control-plane/bus health. Injectable seam so
-// doctor stays decoupled from session/obs (importing session here would risk
-// an import cycle). Default is warn — never fail when there is no live
-// session to inspect.
-var controlPlaneHealth = func() CheckResult {
+// controlPlaneCheck inspects the event store of the workspace doctor runs in:
+// it is the control plane's record, and the only part of it that outlives a
+// session. A workspace without a store yet is healthy, not degraded.
+func controlPlaneCheck(workspace string) CheckResult {
+	const name = "control-plane:health"
+	path, _ := obs.StorePath(workspace)
+	health, err := obs.InspectStore(workspace)
+	switch {
+	case err != nil:
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: "event store is unusable: " + err.Error(),
+			Remedy: "Move " + path + " aside; Takt recreates it, but its recorded history is lost",
+		}
+	case !health.Exists:
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no event store in this workspace yet"}
+	case !health.Private:
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusWarn,
+			Detail: "event store is readable by other users",
+			Remedy: "Run 'chmod 600 " + path + "'",
+		}
+	case health.Events == 0:
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "event store is intact, with no events recorded"}
+	}
 	return CheckResult{
-		Name:   "control-plane:health",
-		Status: CheckStatusWarn,
-		Detail: "no live session to inspect",
-		Remedy: "Run within a live session for a full control-plane check",
+		Name:   name,
+		Status: CheckStatusPass,
+		Detail: fmt.Sprintf("event store is intact: %d recorded, last at %s", health.Events, health.LastEventAt.Local().Format(time.DateTime)),
 	}
 }
 
@@ -111,16 +117,17 @@ var controlPlaneHealth = func() CheckResult {
 // checks do not affect the returned error: only internal failures (home
 // resolution, write errors) are returned as errors.
 func Run(stdout io.Writer) error {
-	home, err := userHomeDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	report := DoctorReport{Checks: toolChecks()}
-	report.Checks = append(report.Checks, controlPlaneHealth())
+	workspace := workingDirOrHome(home)
+	report.Checks = append(report.Checks, controlPlaneCheck(workspace))
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
 	report.Checks = append(report.Checks, engramChecks(home)...)
 	report.Checks = append(report.Checks, engramNativePluginCheck(home))
-	project := resolveProject(workingDirOrHome(home))
+	project := memory.ResolveProject(context.Background(), memory.Config{}, workspace)
 	report.Checks = append(report.Checks, engramDiagnosticsCheck(project), engramNeedsReviewCheck(project))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home))
@@ -140,7 +147,7 @@ func toolChecks() []CheckResult {
 // toolCheck verifies a tool resolves in PATH and flags shadowed duplicates.
 func toolCheck(tool string) CheckResult {
 	name := "tool:" + tool
-	path, err := lookPath(tool)
+	path, err := exec.LookPath(tool)
 	if err != nil {
 		return CheckResult{
 			Name:   name,
@@ -149,7 +156,7 @@ func toolCheck(tool string) CheckResult {
 			Remedy: fmt.Sprintf("Install %s or add its directory to PATH", tool),
 		}
 	}
-	if copies := toolCopies(tool); len(copies) > 1 {
+	if copies := scanToolCopies(tool); len(copies) > 1 {
 		return CheckResult{
 			Name:   name,
 			Status: CheckStatusWarn,
@@ -259,12 +266,6 @@ func deploymentResult(name, label string, totals deploymentTotals) CheckResult {
 	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("%d %s files deployed", totals.total, label)}
 }
 
-// codegraphVersionFn and resolveCodegraph run the codegraph checks; vars for test seams.
-var (
-	codegraphVersionFn = codegraph.VerifyVersion
-	resolveCodegraph   = codegraph.Resolve
-)
-
 // binaryChecks probes one managed binary: whether a compatible copy resolved
 // (on PATH or under Takt's managed path) and, when it did, its version. ok is
 // false when the binary is missing, so the caller can skip its remaining
@@ -294,26 +295,20 @@ func binaryChecks(prefix, expectedVersion, managedPath, missingRemedy, binary st
 // codegraphChecks verifies a compatible codegraph binary (on PATH or Takt's
 // managed copy) exists and answers its version, the two things its MCP entry needs.
 func codegraphChecks(home string) []CheckResult {
-	binary, found := resolveCodegraph(home)
+	binary, found := codegraph.Resolve(home)
 	checks, _ := binaryChecks("codegraph", codegraph.CodegraphVersion, codegraph.ManagedBinaryPath(home),
 		"Run 'takt-ai setup sync' to install codegraph so agents can explore the codebase",
-		binary, found, codegraphVersionFn)
+		binary, found, codegraph.VerifyVersion)
 	return checks
 }
-
-// engramVersionFn and resolveEngram run the engram checks; vars for test seams.
-var (
-	engramVersionFn = engram.VerifyVersion
-	resolveEngram   = engram.Resolve
-)
 
 // engramChecks verifies the engram installation (a compatible binary on PATH
 // or Takt's managed copy, its version output) and the MCP health endpoint answers.
 func engramChecks(home string) []CheckResult {
-	binary, found := resolveEngram(home)
+	binary, found := engram.Resolve(home)
 	checks, ok := binaryChecks("engram", engram.EngramVersion, engram.ManagedBinaryPath(home),
 		"Run 'takt-ai setup sync' to install engram so agents can reach the memory server",
-		binary, found, engramVersionFn)
+		binary, found, engram.VerifyVersion)
 	if !ok {
 		// Without the binary the remaining engram checks only produce noise.
 		return checks
@@ -321,7 +316,7 @@ func engramChecks(home string) []CheckResult {
 
 	const name = "engram:reachable"
 	healthURL := engramBaseURL() + "/health"
-	status, _, err := httpFetch(http.MethodGet, healthURL, nil, doctorHTTPTimeout)
+	status, _, err := fetch(healthURL)
 	if err != nil {
 		checks = append(checks, CheckResult{
 			Name:   name,
@@ -375,7 +370,7 @@ func engramBaseURL() string {
 // workingDirOrHome resolves the directory doctor should report a project
 // for. os.Getwd() failing is rare and not worth failing Run() over.
 func workingDirOrHome(home string) string {
-	if dir, err := workingDir(); err == nil {
+	if dir, err := os.Getwd(); err == nil {
 		return dir
 	}
 	return home
@@ -414,7 +409,7 @@ func errMessage(body []byte) string {
 func engramDiagnosticsCheck(project string) CheckResult {
 	const name = "engram:diagnostics"
 	u := engramBaseURL() + "/doctor?project=" + url.QueryEscape(project)
-	status, body, err := httpFetch(http.MethodGet, u, nil, doctorHTTPTimeout)
+	status, body, err := fetch(u)
 	if err != nil {
 		return CheckResult{Name: name, Status: CheckStatusWarn,
 			Detail: fmt.Sprintf("engram diagnostics unreachable at %s: %s", u, err)}
@@ -469,7 +464,7 @@ func engramNeedsReviewCheck(project string) CheckResult {
 	const name = "engram:needs-review"
 	const limit = 5
 	u := fmt.Sprintf("%s/review?project=%s&limit=%d", engramBaseURL(), url.QueryEscape(project), limit)
-	status, body, err := httpFetch(http.MethodGet, u, nil, doctorHTTPTimeout)
+	status, body, err := fetch(u)
 	if err != nil {
 		return CheckResult{Name: name, Status: CheckStatusWarn,
 			Detail: fmt.Sprintf("engram review list unreachable at %s: %s", u, err)}
@@ -520,7 +515,15 @@ func checkStatusForError(err error) CheckStatus {
 // every Takt plugin without an error of its own.
 func opencodeVersionCheck() CheckResult {
 	const name = "opencode:version"
-	handshake, err := openCodeHandshake()
+	handshake, err := opencode.Handshake(context.Background())
+	if errors.Is(err, opencodeapi.ErrVersion) {
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: opencodeapi.RedactError(err).Error(),
+			Remedy: "Upgrade OpenCode, then run 'takt-ai setup sync'",
+		}
+	}
 	if err != nil {
 		return CheckResult{
 			Name:   name,
@@ -529,20 +532,7 @@ func opencodeVersionCheck() CheckResult {
 			Remedy: "Check that 'opencode api GET /api/info' and the model API work",
 		}
 	}
-	if handshake.Major < opencodeapi.MinimumMajor {
-		return CheckResult{
-			Name:   name,
-			Status: CheckStatusFail,
-			Detail: fmt.Sprintf("OpenCode %s is installed; Takt needs V2 or newer", handshake.Version),
-			Remedy: "Upgrade OpenCode, then run 'takt-ai setup sync'",
-		}
-	}
 	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("OpenCode %s with functional V2 API", handshake.Version)}
-}
-
-// openCodeHandshake is the V2 capability lookup seam; tests replace it.
-var openCodeHandshake = func() (opencodeapi.Handshake, error) {
-	return opencode.Handshake(context.Background())
 }
 
 // opencodeVFSPluginCheck reports whether the governed VFS plugin is deployed
@@ -603,51 +593,56 @@ func checkDetailOrRemedy(err error, okDetail, remedy string) string {
 
 // diskCheck reports free space on the filesystem holding ~/.takt-ai.
 func diskCheck(home string) CheckResult {
-	const name = "disk:space"
-	const mb = 1024 * 1024
 	dir := filepath.Join(home, ".takt-ai")
-	free, err := diskFree(dir)
+	free, err := statfsFreeBytes(dir)
 	if err != nil {
 		return CheckResult{
-			Name:   name,
+			Name:   diskCheckName,
 			Status: CheckStatusWarn,
 			Detail: fmt.Sprintf("could not determine free disk space for %s", dir),
 		}
 	}
+	return ClassifyFreeSpace(dir, free)
+}
+
+// diskCheckName names the free-space check in the report.
+const diskCheckName = "disk:space"
+
+// ClassifyFreeSpace turns the bytes free on the filesystem holding dir into a
+// check result: a failure under 10 MB, a warning under 100 MB, a pass above.
+func ClassifyFreeSpace(dir string, free uint64) CheckResult {
+	const mb = 1024 * 1024
 	megabytes := free / mb
 	switch {
 	case free < 10*mb:
 		return CheckResult{
-			Name:   name,
+			Name:   diskCheckName,
 			Status: CheckStatusFail,
 			Detail: fmt.Sprintf("critically low disk space: %d MB free on %s filesystem", megabytes, dir),
 		}
 	case free < 100*mb:
 		return CheckResult{
-			Name:   name,
+			Name:   diskCheckName,
 			Status: CheckStatusWarn,
 			Detail: fmt.Sprintf("low disk space: %d MB free", megabytes),
 		}
 	default:
 		return CheckResult{
-			Name:   name,
+			Name:   diskCheckName,
 			Status: CheckStatusPass,
 			Detail: fmt.Sprintf("%d MB free on %s filesystem", megabytes, dir),
 		}
 	}
 }
 
-// defaultHTTPFetch performs one HTTP request and returns status plus body,
-// capped so a misbehaving server can't exhaust memory.
-func defaultHTTPFetch(method, url string, body io.Reader, timeout time.Duration) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(context.Background(), method, url, body)
+// fetch performs one GET and returns status plus body, capped so a
+// misbehaving server can't exhaust memory.
+func fetch(url string) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return 0, nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	resp, err := (&http.Client{Timeout: doctorHTTPTimeout}).Do(req)
 	if err != nil {
 		return 0, nil, err
 	}

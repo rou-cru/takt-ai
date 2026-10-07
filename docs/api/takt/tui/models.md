@@ -22,7 +22,7 @@ Package models lets the user reassign specialists' models after install, keeping
 
 
 <a name="Model"></a>
-## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L58-L75>)
+## type Model
 
 Model owns model\-reassignment interaction state.
 
@@ -33,7 +33,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L79>)
+### func New
 
 ```go
 func New(root string) Model
@@ -42,7 +42,7 @@ func New(root string) Model
 New creates a model\-reassignment screen rooted at the installation directory; a missing configuration is reported in View instead of blocking.
 
 <a name="Model.Dirty"></a>
-### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L248>)
+### func \(Model\) Dirty
 
 ```go
 func (m Model) Dirty() bool
@@ -51,7 +51,7 @@ func (m Model) Dirty() bool
 Dirty reports draft assignments that differ from the installed baseline.
 
 <a name="Model.Init"></a>
-### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L103>)
+### func \(Model\) Init
 
 ```go
 func (m Model) Init() tea.Cmd
@@ -60,7 +60,7 @@ func (m Model) Init() tea.Cmd
 Init discovers the available models for the picker New opened.
 
 <a name="Model.Run"></a>
-### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L111>)
+### func \(Model\) Run
 
 ```go
 func (m Model) Run() runtime.Run
@@ -69,7 +69,7 @@ func (m Model) Run() runtime.Run
 Run exposes the flow's action state so the shell gates quit and cancel.
 
 <a name="Model.Title"></a>
-### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L253>)
+### func \(Model\) Title
 
 ```go
 func (m Model) Title() string
@@ -78,7 +78,7 @@ func (m Model) Title() string
 Title identifies the flow and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L158>)
+### func \(Model\) Update
 
 ```go
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
@@ -87,7 +87,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 Update handles interaction and action results without performing lifecycle work.
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L266>)
+### func \(Model\) View
 
 ```go
 func (m Model) View() tea.View
@@ -96,7 +96,7 @@ func (m Model) View() tea.View
 View renders the active reassignment step.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/models/models.go#L34>)
+## type State
 
 State identifies the visible reassignment step.
 

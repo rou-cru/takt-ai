@@ -46,7 +46,7 @@ const ReplaceSentinel = "__replace__"
 ```
 
 <a name="InjectMCPServer"></a>
-## func [InjectMCPServer](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/mcp.go#L31>)
+## func InjectMCPServer
 
 ```go
 func InjectMCPServer(path, name string, command []string) (model.InjectionResult, error)
@@ -55,7 +55,7 @@ func InjectMCPServer(path, name string, command []string) (model.InjectionResult
 InjectMCPServer registers a local stdio MCP server under name in the OpenCode config at path. OpenCode requires command as an array for type:local servers; a separate "args" field is not accepted. The ReplaceSentinel swaps the whole server object so upgrades from a config with a separate "args" key converge instead of accumulating both shapes, and one merge patch keeps shared configs' user keys untouched.
 
 <a name="InjectMarkdownSection"></a>
-## func [InjectMarkdownSection](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/section.go#L74>)
+## func InjectMarkdownSection
 
 ```go
 func InjectMarkdownSection(existing, sectionID, content string) string
@@ -64,7 +64,7 @@ func InjectMarkdownSection(existing, sectionID, content string) string
 InjectMarkdownSection replaces or appends the section marked with HTML comments \<\!\-\- takt\-ai:SECTION\_ID \-\-\> in a markdown file.
 
 <a name="MergeJSONObjects"></a>
-## func [MergeJSONObjects](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/json_merge.go#L28>)
+## func MergeJSONObjects
 
 ```go
 func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error)
@@ -73,7 +73,7 @@ func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error)
 MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on conflicts; a malformed base is treated as an empty object.
 
 <a name="ReadFileOrEmpty"></a>
-## func [ReadFileOrEmpty](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/read.go#L49>)
+## func ReadFileOrEmpty
 
 ```go
 func ReadFileOrEmpty(path string) (string, error)
@@ -82,7 +82,7 @@ func ReadFileOrEmpty(path string) (string, error)
 ReadFileOrEmpty reads the file at path, returning an empty string instead of an error when the file does not exist.
 
 <a name="RemoveJSONKey"></a>
-## func [RemoveJSONKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/remove.go#L27>)
+## func RemoveJSONKey
 
 ```go
 func RemoveJSONKey(path string, key string, parents ...string) (bool, error)
@@ -91,7 +91,7 @@ func RemoveJSONKey(path string, key string, parents ...string) (bool, error)
 RemoveJSONKey deletes key from the object at parents, keeping all other user content. Objects left empty are pruned up the path, so an untouched config never keeps a bare "mcp": \{\}.
 
 <a name="RemoveMCPServer"></a>
-## func [RemoveMCPServer](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/mcp.go#L62>)
+## func RemoveMCPServer
 
 ```go
 func RemoveMCPServer(path, name string) (model.InjectionResult, error)
@@ -100,7 +100,7 @@ func RemoveMCPServer(path, name string) (model.InjectionResult, error)
 RemoveMCPServer strips the name entry so uninstalls leave no orphan keys and merged user keys are never touched.
 
 <a name="StageTempFile"></a>
-## func [StageTempFile](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/writer.go#L55>)
+## func StageTempFile
 
 ```go
 func StageTempFile(dir, pattern string, content []byte, perm fs.FileMode) (_ string, err error)
@@ -109,7 +109,7 @@ func StageTempFile(dir, pattern string, content []byte, perm fs.FileMode) (_ str
 StageTempFile writes content to a temp file in dir with the given mode and returns its path. The caller owns the rename; on error nothing is left behind.
 
 <a name="SyncDir"></a>
-## func [SyncDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/writer.go#L41>)
+## func SyncDir
 
 ```go
 func SyncDir(dir string) error
@@ -118,7 +118,7 @@ func SyncDir(dir string) error
 SyncDir flushes a directory entry to disk, tolerating filesystems that reject directory synchronization \(EINVAL\).
 
 <a name="WriteResult"></a>
-## type [WriteResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/writer.go#L88-L90>)
+## type WriteResult
 
 WriteResult reports the outcome of an atomic file write.
 
@@ -129,7 +129,7 @@ type WriteResult struct {
 ```
 
 <a name="MergeJSONFile"></a>
-### func [MergeJSONFile](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/read.go#L29>)
+### func MergeJSONFile
 
 ```go
 func MergeJSONFile(path string, overlay []byte) (WriteResult, error)
@@ -138,7 +138,7 @@ func MergeJSONFile(path string, overlay []byte) (WriteResult, error)
 MergeJSONFile reads the JSON file at path \(treating a missing file as empty/absent input\), merges overlay into it, and atomically writes the result back to path.
 
 <a name="WriteFileAtomic"></a>
-### func [WriteFileAtomic](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/filemerge/writer.go#L94>)
+### func WriteFileAtomic
 
 ```go
 func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult, error)

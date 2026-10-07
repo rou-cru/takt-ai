@@ -224,6 +224,7 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 	if e != nil {
 		return e
 	}
+	from := h.Project().Units[req.Event].State
 	response, e := coordinate(context.Background(), fs, h, *workspace, *state, c, req)
 	// Persist admission/lifecycle state even if the effect failed, exactly as
 	// `gc coordinate` does: the barrier and the recorded disposition stay held.
@@ -233,7 +234,24 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 	if e != nil {
 		return e
 	}
+	// A unit transition reports the states it moved between and the slots now
+	// held, which only the history knows, so the plugin's telemetry invents neither.
+	if lifecycleActions[req.Action] && response == c {
+		after := h.Project()
+		response = lifecycleResponse{c, after.InFlight(), from, after.Units[req.Event].State}
+	}
 	return json.NewEncoder(stdout).Encode(response)
+}
+
+// lifecycleActions are the dispatch actions that move a work unit between states.
+var lifecycleActions = map[string]bool{"admit": true, "launch": true, "finish": true}
+
+// lifecycleResponse is the coordinator state plus the transition it recorded.
+type lifecycleResponse struct {
+	*gc.Coordinator
+	InFlight  int           `json:"in_flight"`
+	FromState history.State `json:"from_state"`
+	ToState   history.State `json:"to_state"`
 }
 
 func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {

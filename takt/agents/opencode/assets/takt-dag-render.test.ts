@@ -96,12 +96,60 @@ describe("graph layout", () => {
     expect([...layout.nodes.keys()]).toEqual(["a", "b", "c", "d"])
     expect(layout.nodes.get("a")?.depth).toBe(0)
     expect(layout.nodes.get("c")?.depth).toBe(2)
-    expect(layout.paths.map((path) => path.length)).toEqual([4, 4, 6, 4])
+    expect(layout.paths.map((path) => path.length)).toEqual([3, 4, 8, 3])
     expect(layout.width).toBeGreaterThan(0)
     expect(layout.height).toBeGreaterThan(0)
-    expect(edgeRows(layout).join("\n")).toContain("┌")
+    expect(edgeRows(layout).join("\n")).toContain("─")
     expect(edgePorts(layout).some((port) => port.glyph === "▶")).toBe(true)
     expect(computeLayout(graph, layout)).toBe(layout)
+  })
+
+  const chain = (length: number) => ({
+    ...base,
+    nodes: Array.from({ length }, (_, i) => node({ id: `unit-${i}` })),
+    edges: Array.from({ length: length - 1 }, (_, i) => ({ from: `unit-${i}`, to: `unit-${i + 1}` })),
+  }) as never
+
+  test("a wide viewport keeps one band flowing right", () => {
+    const layout = computeLayout(chain(6), undefined, { width: 400, height: 100 })
+    expect(layout.bands).toBe(1)
+    expect(edgePorts(layout).every((port) => port.glyph === "▶")).toBe(true)
+  })
+
+  test("a narrow viewport wraps into a mirrored band below, joined through a gutter", () => {
+    const layout = computeLayout(chain(6), undefined, { width: 60, height: 100 })
+    expect(layout.bands).toBeGreaterThan(1)
+    expect(layout.width).toBeLessThan(computeLayout(chain(6)).width)
+    const first = layout.nodes.get("unit-0")
+    const last = layout.nodes.get("unit-5")
+    expect(last && first && last.y > first.y).toBe(true)
+    expect(edgePorts(layout).some((port) => port.glyph === "◀")).toBe(true)
+    const rows = edgeRows(layout)
+    expect(rows).toHaveLength(layout.height)
+    expect(rows.every((row) => row.length === layout.width)).toBe(true)
+  })
+
+  test("falls back to one band when the bands do not fit the height", () => {
+    const layout = computeLayout(chain(6), undefined, { width: 60, height: 5 })
+    expect(layout.bands).toBe(1)
+    expect(layout.width).toBe(computeLayout(chain(6)).width)
+  })
+
+  test("reuses the layout for a state-only update and relayouts when the viewport changes", () => {
+    const graph = chain(6)
+    const viewport = { width: 60, height: 100 }
+    const layout = computeLayout(graph, undefined, viewport)
+    expect(computeLayout(graph, layout, { ...viewport })).toBe(layout)
+    expect(computeLayout(graph, layout, { width: 400, height: 100 })).not.toBe(layout)
+  })
+
+  test("a layer-skipping edge crosses the layers it skips and wraps with the rest", () => {
+    const skip = { ...base, nodes: ["a", "b", "c", "d", "e"].map((id) => node({ id })),
+      edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "c", to: "d" }, { from: "d", to: "e" }, { from: "a", to: "e" }] } as never
+    const layout = computeLayout(skip, undefined, { width: 30, height: 100 })
+    expect(layout.bands).toBeGreaterThan(1)
+    expect(edgePorts(layout)).toHaveLength(5)
+    expect(edgeRows(layout).every((row) => row.length === layout.width)).toBe(true)
   })
 
   test("handles an empty graph and a graph without edges", () => {
@@ -206,7 +254,7 @@ describe("sidebar rows", () => {
     expect(sidebarRows(snapshot)).toEqual([
       { text: "✓ pm design", tone: "muted" },
       { text: "● structure-arch" },
-      { text: "◌ behavior-spec" },
+      { text: "└─◌ behavior-spec" },
     ])
   })
 
@@ -222,7 +270,7 @@ describe("sidebar rows", () => {
     const wide = ["b", "c", "d", "e"]
     const snapshot = { ...base, nodes: ["a", ...wide, "f"].map((id) => node({ id })),
       edges: wide.flatMap((id) => [{ from: "a", to: id }, { from: id, to: "f" }]) } as never
-    expect(text(snapshot)).toEqual(["◌ a", "≡ ◌◌◌◌ 4 parallel", "◌ f"])
+    expect(text(snapshot)).toEqual(["◌ a", "└─≡ ◌◌◌◌ 4 parallel", "  └─◌ f"])
   })
 
   test("falls back to a flat list in dependency order when lanes exceed the budget", () => {
@@ -232,6 +280,34 @@ describe("sidebar rows", () => {
       { from: "r", to: "z" }, { from: "c2", to: "z" },
     ] } as never
     expect(text(snapshot)).toEqual(["◌ r", "◌ a", "◌ b", "◌ c", "◌ a2", "◌ b2", "◌ c2", "◌ z"])
+  })
+
+  test("marks a chain with └─ and indents each further link", () => {
+    const snapshot = { ...base, nodes: ["a", "b", "c"].map((id) => node({ id })),
+      edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }] } as never
+    expect(text(snapshot)).toEqual(["◌ a", "└─◌ b", "  └─◌ c"])
+  })
+
+  test("a long chain caps its indent and every row fits the sidebar", () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `unit-${i}-with-a-long-identity`)
+    const snapshot = { ...base, nodes: ids.map((id) => node({ id })),
+      edges: ids.slice(1).map((to, i) => ({ from: ids[i], to })) } as never
+    const rows = text(snapshot)
+    for (const row of rows) expect(Bun.stringWidth(row)).toBeLessThanOrEqual(37)
+    expect(rows.at(-1)?.indexOf("└─")).toBe(rows.at(-2)?.indexOf("└─"))
+    expect(rows.at(-1)?.indexOf("└─")).toBeGreaterThan(0)
+  })
+
+  test("a chain unit that forks stays in its lane, under its fork row", () => {
+    const snapshot = { ...base, nodes: ["a", "b", "c", "d"].map((id) => node({ id })),
+      edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "b", to: "d" }] } as never
+    expect(text(snapshot)).toEqual(["◌ a", "◌ b", "├─┐", "◌ │ c", "  ◌ d"])
+  })
+
+  test("a unit beside an open lane, or not right below its parent, is not a chain link", () => {
+    const snapshot = { ...base, nodes: ["r", "a", "b", "a2"].map((id) => node({ id })),
+      edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }, { from: "a", to: "a2" }] } as never
+    expect(text(snapshot)).toEqual(["◌ r", "├─┐", "◌ │ a", "│ ◌ b", "◌ a2"])
   })
 
   test("never wraps: a long identity is cut to the sidebar's 37 columns", () => {
@@ -251,7 +327,7 @@ describe("sidebar rows", () => {
     ] } as never
     expect(sidebarRows(snapshot)).toEqual([
       { text: "✗ pm", tone: "error" },
-      { text: "◌ spec" },
+      { text: "└─◌ spec" },
       { text: "● solo" },
       { text: "◆ direct activity" },
     ])

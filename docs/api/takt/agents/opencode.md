@@ -53,7 +53,7 @@ var OpenCodePluginSDKVersion = pluginDevDependency("@opencode/plugin")
 ```
 
 <a name="AgentMode"></a>
-## func [AgentMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L33>)
+## func AgentMode
 
 ```go
 func AgentMode(role model.RoleClass) string
@@ -62,7 +62,7 @@ func AgentMode(role model.RoleClass) string
 AgentMode is primary for the orchestrator, all for interlocutors, subagent otherwise.
 
 <a name="AvailableModels"></a>
-## func [AvailableModels](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L20>)
+## func AvailableModels
 
 ```go
 func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error)
@@ -71,7 +71,7 @@ func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error)
 AvailableModels returns the models \(reference and display name\) exposed by the local OpenCode V2 API, preserving the server's order.
 
 <a name="ComposePrompt"></a>
-## func [ComposePrompt](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L46>)
+## func ComposePrompt
 
 ```go
 func ComposePrompt(def catalog.AgentDefinition, instanceID string) string
@@ -80,7 +80,7 @@ func ComposePrompt(def catalog.AgentDefinition, instanceID string) string
 ComposePrompt chains BASELINE, PERSONA, SOUL and OPERATIONS by file reference, then the memory paths.
 
 <a name="ConfigDir"></a>
-## func [ConfigDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L21>)
+## func ConfigDir
 
 ```go
 func ConfigDir() string
@@ -89,7 +89,7 @@ func ConfigDir() string
 ConfigDir is OpenCode's config root, relative to the install root.
 
 <a name="ConfigPath"></a>
-## func [ConfigPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L24>)
+## func ConfigPath
 
 ```go
 func ConfigPath() string
@@ -98,7 +98,7 @@ func ConfigPath() string
 ConfigPath returns the OpenCode config file path relative to the install root.
 
 <a name="DeployPath"></a>
-## func [DeployPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L27>)
+## func DeployPath
 
 ```go
 func DeployPath(rel string) string
@@ -107,7 +107,7 @@ func DeployPath(rel string) string
 DeployPath returns the deployed location of a package file at rel.
 
 <a name="FileRef"></a>
-## func [FileRef](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L30>)
+## func FileRef
 
 ```go
 func FileRef(rel string) string
@@ -116,7 +116,7 @@ func FileRef(rel string) string
 FileRef returns the \{file:...\} reference OpenCode resolves relative to the config root.
 
 <a name="Handshake"></a>
-## func [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/models.go#L33>)
+## func Handshake
 
 ```go
 func Handshake(ctx context.Context) (opencodeapi.Handshake, error)
@@ -125,7 +125,7 @@ func Handshake(ctx context.Context) (opencodeapi.Handshake, error)
 Handshake proves that the local OpenCode installation is functional for Takt before setup mutates anything \(PR\-ART\-2\).
 
 <a name="InstallSandboxDependency"></a>
-## func [InstallSandboxDependency](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L274>)
+## func InstallSandboxDependency
 
 ```go
 func InstallSandboxDependency(ctx context.Context, rootDir string) error
@@ -134,7 +134,7 @@ func InstallSandboxDependency(ctx context.Context, rootDir string) error
 InstallSandboxDependency npm\-installs the sandbox adapter's one dependency next to its deployed location. The adapter remains an optional component: absence of npm degrades shell capture but does not block other setup work.
 
 <a name="MemoryClause"></a>
-## func [MemoryClause](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/layout.go#L56>)
+## func MemoryClause
 
 ```go
 func MemoryClause(authorID string) string
@@ -143,7 +143,7 @@ func MemoryClause(authorID string) string
 MemoryClause names installed skill paths without injecting their content.
 
 <a name="Reload"></a>
-## func [Reload](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/reload.go#L15>)
+## func Reload
 
 ```go
 func Reload(ctx context.Context) error
@@ -152,7 +152,7 @@ func Reload(ctx context.Context) error
 Reload asks the user's OpenCode server to rebuild loaded locations after a deployment, using normal server resolution so the handoff affects the session the user will run.
 
 <a name="AgentSpec"></a>
-## type [AgentSpec](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L47-L63>)
+## type AgentSpec
 
 AgentSpec is one native OpenCode agent entry keyed by instance ID.
 
@@ -177,7 +177,7 @@ type AgentSpec struct {
 ```
 
 <a name="Artifact"></a>
-## type [Artifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L44>)
+## type Artifact
 
 Artifact is a filesystem\-free OpenCode projection. Path is relative to the user's home directory and Content is ready for a later deployer to write.
 
@@ -186,7 +186,7 @@ type Artifact = shared.Artifact
 ```
 
 <a name="OpenCodePluginPackageArtifact"></a>
-### func [OpenCodePluginPackageArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L176>)
+### func OpenCodePluginPackageArtifact
 
 ```go
 func OpenCodePluginPackageArtifact() Artifact
@@ -195,7 +195,7 @@ func OpenCodePluginPackageArtifact() Artifact
 OpenCodePluginPackageArtifact returns the package manifest for the shared OpenCode plugin directory. OpenCode resolves bare imports from this package root, so SDK dependencies must be declared here rather than left as transitive or manually\-installed node\_modules.
 
 <a name="RenderConfig"></a>
-### func [RenderConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L77>)
+### func RenderConfig
 
 ```go
 func RenderConfig(request ConfigRequest) (Artifact, error)
@@ -204,7 +204,7 @@ func RenderConfig(request ConfigRequest) (Artifact, error)
 RenderConfig returns the native OpenCode opencode.json artifact.
 
 <a name="TaktDagPluginArtifact"></a>
-### func [TaktDagPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L301>)
+### func TaktDagPluginArtifact
 
 ```go
 func TaktDagPluginArtifact(taktAIBinary string) Artifact
@@ -213,7 +213,7 @@ func TaktDagPluginArtifact(taktAIBinary string) Artifact
 TaktDagPluginArtifact returns the OpenCode TUI plugin rendering Takt's read\-only execution DAG projection \(PRD\_DAG\_TUI.md\). It is deployed at the documented discovery path \<config\>/plugins/\<name\>/tui.tsx, so no config file registers it; taktAIBinary is the takt\-ai path it polls.
 
 <a name="TaktMemoryPluginArtifact"></a>
-### func [TaktMemoryPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L101>)
+### func TaktMemoryPluginArtifact
 
 ```go
 func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
@@ -222,7 +222,7 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
 TaktMemoryPluginArtifact returns the OpenCode plugin exposing the memory tools; taktAIBinary is the absolute takt\-ai path the plugin spawns.
 
 <a name="TaktSandboxAdapterArtifact"></a>
-### func [TaktSandboxAdapterArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L241>)
+### func TaktSandboxAdapterArtifact
 
 ```go
 func TaktSandboxAdapterArtifact() Artifact
@@ -231,7 +231,7 @@ func TaktSandboxAdapterArtifact() Artifact
 TaktSandboxAdapterArtifact returns the sandbox adapter module the VFS plugin loads \(as "./takt\-sandbox.mjs", a sibling of the VFS plugin file\) to wrap shell commands with @anthropic\-ai/sandbox\-runtime before they run \(PR\-HAR\-15\). Without this deployed, every shell command is denied.
 
 <a name="TaktVFSPluginArtifact"></a>
-### func [TaktVFSPluginArtifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/components.go#L111>)
+### func TaktVFSPluginArtifact
 
 ```go
 func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact
@@ -240,7 +240,7 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact
 TaktVFSPluginArtifact returns the OpenCode plugin exposing the governed VFS tools; taktAIBinary is the absolute takt\-ai path the plugin spawns and shellEnforced decides whether it intercepts specialist shell commands.
 
 <a name="ConfigRequest"></a>
-## type [ConfigRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/opencode/renderer.go#L66-L74>)
+## type ConfigRequest
 
 ConfigRequest contains the native OpenCode global configuration projection.
 

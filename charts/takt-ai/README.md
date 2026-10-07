@@ -8,11 +8,11 @@ Every release publishes the chart, versioned in lockstep with the image it deplo
 
 ```sh
 # OCI (signed with cosign)
-helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --version 0.0.1 --namespace takt-workspaces
+helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspaces
 
 # Classic Helm repository (GitHub Pages)
 helm repo add takt-ai https://rou-cru.github.io/takt-ai
-helm install demo takt-ai/takt-ai --version 0.0.1 --namespace takt-workspaces
+helm install demo takt-ai/takt-ai --namespace takt-workspaces
 ```
 
 The `.tgz` is also attached to each GitHub release. With no image values set, the chart runs `docker.io/roucru/takt-ai:<appVersion>`.

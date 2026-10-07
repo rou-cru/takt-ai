@@ -2,7 +2,7 @@
 
 ## CI (`.github/workflows/ci.yml`)
 
-Every pull request and every push to `main` or `stage` runs the jobs below. `ci-required` is the single required check: it passes only when all of them succeed.
+Every pull request and every push to `main` or `trunk` runs the jobs below. `ci-required` is the single required check: it passes only when all of them succeed.
 
 | Job | What it gates |
 |---|---|

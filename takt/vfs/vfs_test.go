@@ -58,3 +58,30 @@ func TestGuardGitMutation_AllNonOrchestratorRolesDenied(t *testing.T) {
 		}
 	}
 }
+
+func TestGuardShellGit_IndirectionDenied(t *testing.T) {
+	executed := []string{
+		"git commit -m x", "command git commit -m x", "env GIT_DIR=x git reset --hard", "FOO=1 git push",
+		`sh -c "git clean -fd"`, `bash -c 'git checkout x'`, "/usr/bin/git checkout x", "cd a && git push",
+		"ls | git apply", "echo $(git stash)", `echo "$(git stash)"`, "eval git reset", "timeout 10 git push",
+		"find . -name x -exec git rm {} ;", "sudo -n git commit",
+		"{ git commit -m x; }", "if git push; then :; fi", "! git reset --hard", `for f in a; do git rm "$f"; done`,
+		"env -u HOME git commit", "sudo -u root git commit", "timeout -s KILL 10 git push", "nice -n 5 git push",
+		`bash -lc "git commit"`, "sh -ec 'git push'", "bash -o pipefail -c 'git push'", "bash -c -- 'git push'",
+	}
+	for _, command := range executed {
+		if err := vfs.GuardShellGit(command); !errors.Is(err, vfs.ErrGitMutationDenied) {
+			t.Errorf("GuardShellGit(%q) = %v; want ErrGitMutationDenied", command, err)
+		}
+	}
+	notExecuted := []string{
+		"command git status", "git log -1", "git", "ls", "grep -r git .", `grep -rn "git commit" docs`,
+		"echo git push", "rg 'git reset' && cat .gitignore", `sh -c "git diff"`, "cat git/commit.txt",
+		`bash -lc "git status"`, "bash script.sh -c 'git push'", "if grep -q git x; then :; fi",
+	}
+	for _, command := range notExecuted {
+		if err := vfs.GuardShellGit(command); err != nil {
+			t.Errorf("GuardShellGit(%q) = %v; want nil", command, err)
+		}
+	}
+}

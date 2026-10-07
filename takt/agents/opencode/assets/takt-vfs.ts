@@ -603,6 +603,29 @@ export default Plugin.define({
     // create.before has no session/agent context, so remember the orchestrator's
     // and RESULT_AGENTS' native-permission admission by exact command until create.
     const directShell = new Map<string, number>()
+    // admitDirect lets the orchestrator or a result agent run a command on the
+    // native shell, counting it for create.before.
+    const admitDirect = async (agent: string | undefined, sessionID: string, command: string, pending: AdmittedShell | undefined) => {
+      if (pending) throw new Error("Takt refused this shell command: an identical specialist command is pending")
+      // A result agent's native shell has no sandbox; its Git mutation is
+      // refused by the same classifier the shell plan applies (PR-CRW-5).
+      if (agent !== ORCHESTRATOR_ID) {
+        try {
+          await takt("shell-guard", { session_id: await rootSession(sessionID), command })
+        } catch (e) {
+          throw refused("git_mutation_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${e instanceof Error ? e.message : e}`))
+        }
+      }
+      directShell.set(command, (directShell.get(command) ?? 0) + 1)
+    }
+    // shellPlanOf reads the plan shell-prepare admitted, refusing a denial or
+    // a plan missing a field.
+    const shellPlanOf = (shell: VFSShellResponse | undefined, agent: string | undefined, sessionID: string): ShellPlan => {
+      if (!shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
+      if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${shell.reason}`))
+      if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
+      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private }
+    }
 
     if (VFS_SHELL_ENFORCED) {
       await ctx.tool.hook("execute.before", async (event) => {
@@ -615,8 +638,7 @@ export default Plugin.define({
         const pending = admittedShell.get(command)
         const direct = directShell.has(command)
         if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
-          if (pending) throw new Error("Takt refused this shell command: an identical specialist command is pending")
-          directShell.set(command, (directShell.get(command) ?? 0) + 1)
+          await admitDirect(event.agent, event.sessionID, command, pending)
           return
         }
         if (direct || (pending && pending.session !== event.sessionID)) {
@@ -636,10 +658,7 @@ export default Plugin.define({
                 agent_id: event.agent, specialist: event.agent }),
           call_id: callID, command,
         })
-        if (!res.shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
-        if (res.shell.decision === "deny") throw refused("shell_denied", event.agent ?? "", event.sessionID, new Error(`Takt refused this shell command: ${res.shell.reason}`))
-        if (typeof res.shell.cwd !== "string" || typeof res.shell.scratch !== "string" || typeof res.shell.confirm !== "string" || typeof res.shell.capture !== "boolean" || !res.shell.writable || !res.shell.protected || !res.shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
-        const plan: ShellPlan = { decision: res.shell.decision, reason: res.shell.reason, cwd: res.shell.cwd, scratch: res.shell.scratch, confirm: res.shell.confirm, capture: res.shell.capture, writable: res.shell.writable, protected: res.shell.protected, private: res.shell.private }
+        const plan = shellPlanOf(res.shell, event.agent, event.sessionID)
         admittedShell.set(command, {
           plan, callID, session: event.sessionID, key: b?.key, started: false, evaluated: false,
         })
@@ -773,17 +792,26 @@ export default Plugin.define({
     // cycle, reached under its own name rather than under GC's.
     const dispatchAction = (request: Record<string, unknown>): Promise<DispatchResponse> =>
       exclusive(async () => {
-        const result = await spawnCoordination(["dispatch"], request)
         const action = asString(request.action, "unknown")
         const session = asString(request.session, "")
         const event = asString(request.event, "")
         const agent = asString(request.agent, "harness")
+        let result: DispatchResponse
+        try {
+          result = await spawnCoordination(["dispatch"], request)
+        } catch (e) {
+          throw refused("dispatch_refused", agent, session, e instanceof Error ? e : new Error(String(e)), event)
+        }
+        // Only a unit transition carries the slots held and the states it moved
+        // between; other actions report none rather than an invented value.
+        const transition: Record<string, unknown> = result !== null && isResponseObject(result) ? result : {}
         observe("dispatch", "takt.orchestration", agent, session, {
-          decision: action, dispatch_id: event, reason_code: "dispatch_completed", parallelism: 0,
+          decision: action, dispatch_id: event, reason_code: "dispatch_completed",
+          ...(typeof transition.in_flight === "number" ? { parallelism: transition.in_flight } : {}),
         }, event)
         if (["admit", "launch", "finish"].includes(action)) {
           observe("unit_lifecycle", "takt.orchestration", agent, session, {
-            transition: action, from_state: "", to_state: action, specialist: agent, reason_code: "dispatch_completed",
+            transition: action, from_state: asString(transition.from_state, ""), to_state: asString(transition.to_state, ""), specialist: agent, reason_code: "dispatch_completed",
           }, event)
         }
         return result

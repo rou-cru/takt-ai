@@ -20,7 +20,7 @@ Package testutil provides shared test helpers for the TUI test suites.
 
 
 <a name="ActionRequest"></a>
-## func [ActionRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/testutil.go#L14>)
+## func ActionRequest
 
 ```go
 func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest
@@ -29,7 +29,7 @@ func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest
 ActionRequest extracts a runtime request from a command so tests share one unwrapping rule.
 
 <a name="FakeCodegraphScript"></a>
-## func [FakeCodegraphScript](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L24>)
+## func FakeCodegraphScript
 
 ```go
 func FakeCodegraphScript(version string) []byte
@@ -38,7 +38,7 @@ func FakeCodegraphScript(version string) []byte
 FakeCodegraphScript is the single fake \`codegraph \-\-version\` stub, so a CodegraphVersion bump cannot leave a stale fixture below the minimum.
 
 <a name="FakeEngramScript"></a>
-## func [FakeEngramScript](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L18>)
+## func FakeEngramScript
 
 ```go
 func FakeEngramScript(version string) []byte
@@ -47,7 +47,7 @@ func FakeEngramScript(version string) []byte
 FakeEngramScript is the single fake \`engram version\` stub every test uses, so version\-output drift fails in one place instead of four.
 
 <a name="FakeOpenCodeScript"></a>
-## func [FakeOpenCodeScript](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L30>)
+## func FakeOpenCodeScript
 
 ```go
 func FakeOpenCodeScript() []byte
@@ -56,7 +56,7 @@ func FakeOpenCodeScript() []byte
 FakeOpenCodeScript provides the V2 read/reload surface used by lifecycle verification tests without invoking a developer's real OpenCode process.
 
 <a name="RequireFixtures"></a>
-## func [RequireFixtures](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/fixtures.go#L31>)
+## func RequireFixtures
 
 ```go
 func RequireFixtures(t *testing.T, render func(width, height int) string)
@@ -65,7 +65,7 @@ func RequireFixtures(t *testing.T, render func(width, height int) string)
 RequireFixtures compares render's output with a committed golden file for every size and color mode: testdata/\<Test\>/\<mode\>/\<W\>x\<H\>.golden. render must build its screen inside the call, after the mode is set, so styles resolve for that mode. Regenerate with \`go test ./takt/tui/... \-update\` and review the files before committing them.
 
 <a name="RunWithFakeEngram"></a>
-## func [RunWithFakeEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/engram.go#L45>)
+## func RunWithFakeEngram
 
 ```go
 func RunWithFakeEngram(m *testing.M) int
@@ -74,7 +74,7 @@ func RunWithFakeEngram(m *testing.M) int
 RunWithFakeEngram runs m with a compatible fake engram first on PATH, so tests never use the host binary or download one. Call it from TestMain.
 
 <a name="Shows"></a>
-## func [Shows](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/testutil/testutil.go#L35>)
+## func Shows
 
 ```go
 func Shows(view, want string) bool

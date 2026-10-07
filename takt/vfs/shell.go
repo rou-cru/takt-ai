@@ -314,7 +314,7 @@ var (
 // classify resolves the command to allowed, approval-gated or denied.
 func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string, string) {
 	words := shellWords(command)
-	if gitMutation(words) {
+	if gitMutation(command) {
 		// PR-VFS-GIT-1 denies mutating git outside the orchestrator; PR-VFS-GIT-5
 		// gates the rest of its mutations on approval.
 		if err := GuardGitMutation(f.bindings[key].Role); err != nil {
@@ -410,15 +410,231 @@ func writesOutside(words []string, rootDir string) bool {
 	return false
 }
 
-// gitMutation reports a git invocation whose subcommand is not read-only.
-func gitMutation(words []string) bool {
-	readOnly := ReadOnlyGitSubcommands()
-	for i, word := range words {
-		if (word == "git" || strings.HasSuffix(word, "/git")) && i+1 < len(words) && !slices.Contains(readOnly, words[i+1]) {
+// gitMutation reports whether a command the line executes is git with a
+// subcommand outside the read-only set: each chained or piped command, behind
+// wrappers such as `command` or `env`, and the scripts `sh -c`, `eval`, `$(…)`
+// and `find -exec` run. A git that is only an argument, such as a grep
+// pattern, executes nothing and is not a mutation.
+func gitMutation(command string) bool {
+	for _, words := range shellCommands(command) {
+		if executedGitMutation(words) {
 			return true
 		}
 	}
 	return false
+}
+
+// gitWrappers run their remaining words as a command.
+var gitWrappers = []string{"command", "env", "exec", "sudo", "doas", "nohup", "time", "nice", "timeout", "stdbuf", "xargs", "builtin"}
+
+// gitWrapperValueFlags are the wrapper options whose value is the next word.
+var gitWrapperValueFlags = map[string][]string{
+	"env":     {"-u", "-C", "--unset", "--chdir"},
+	"sudo":    {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "--user", "--group", "--chdir", "--host", "--prompt", "--role", "--type", "--other-user"},
+	"doas":    {"-u", "-C"},
+	"timeout": {"-s", "-k", "--signal", "--kill-after"},
+	"nice":    {"-n", "--adjustment"},
+	"stdbuf":  {"-i", "-o", "-e", "--input", "--output", "--error"},
+	"xargs":   {"-I", "-n", "-L", "-P", "-d", "-E", "-s", "-a", "--max-args", "--max-lines", "--max-procs", "--delimiter", "--eof", "--max-chars", "--arg-file"},
+}
+
+// shellReservedWords open a compound command or negate a pipeline; the
+// command that follows them still runs.
+var shellReservedWords = []string{"{", "!", "if", "then", "else", "elif", "do", "while", "until"}
+
+// gitShells run the script that follows -c.
+var gitShells = []string{"sh", "bash", "zsh", "dash", "ksh"}
+
+// executedGitMutation reports whether one simple command, given as its words,
+// runs a mutating git: directly, behind its prefixes, or in the script a
+// shell, eval or find -exec runs. Only prefixes are skipped, so a git that
+// is merely a later argument does not count.
+func executedGitMutation(words []string) bool {
+	// Assignments, reserved words, wrappers and their flags, flag values or
+	// numeric arguments precede the command.
+	wrapper := ""
+prefix:
+	for len(words) > 0 {
+		word := words[0]
+		switch {
+		case slices.Contains(gitWrappers, word):
+			wrapper = word
+		case slices.Contains(gitWrapperValueFlags[wrapper], word) && len(words) > 1:
+			words = words[1:]
+		case shellAssignment(word) || slices.Contains(shellReservedWords, word) ||
+			strings.HasPrefix(word, "-") || startsWithDigit(word):
+		default:
+			break prefix
+		}
+		words = words[1:]
+	}
+	if len(words) == 0 {
+		return false
+	}
+	name := words[0]
+	switch {
+	case name == "git" || strings.HasSuffix(name, "/git"):
+		return len(words) > 1 && !slices.Contains(ReadOnlyGitSubcommands(), words[1])
+	case name == "eval":
+		return gitMutation(strings.Join(words[1:], " "))
+	case slices.Contains(gitShells, name) || slices.ContainsFunc(gitShells, func(sh string) bool { return strings.HasSuffix(name, "/"+sh) }):
+		return gitMutation(shellScript(words[1:]))
+	}
+	for i, word := range words {
+		if (word == "-exec" || word == "-execdir" || word == "-ok") && executedGitMutation(words[i+1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellScript returns the script a shell runs with -c, or "" when it runs
+// none. Options come first, short ones possibly clustered as in -lc; the
+// first operand after them is the script, and later words are its arguments.
+func shellScript(args []string) string {
+	inline := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			if inline && i+1 < len(args) {
+				return args[i+1]
+			}
+			return ""
+		case arg == "--rcfile" || arg == "--init-file":
+			i++
+		case strings.HasPrefix(arg, "--"):
+		case len(arg) > 1 && (arg[0] == '-' || arg[0] == '+'):
+			inline = inline || (arg[0] == '-' && strings.ContainsRune(arg[1:], 'c'))
+			// -o and -O take the option name as the next word.
+			if last := arg[len(arg)-1]; last == 'o' || last == 'O' {
+				i++
+			}
+		default:
+			if inline {
+				return arg
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// startsWithDigit reports a numeric wrapper argument, such as timeout's duration.
+func startsWithDigit(word string) bool {
+	return word != "" && unicode.IsDigit(rune(word[0]))
+}
+
+// shellAssignment reports a NAME=value prefix word.
+func shellAssignment(word string) bool {
+	i := strings.IndexByte(word, '=')
+	return i > 0 && strings.IndexFunc(word[:i], func(r rune) bool { return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }) < 0
+}
+
+// shellCommands splits a command line into the word lists of the simple
+// commands it runs, with quotes removed. Unquoted operators and parentheses end
+// a command; a command substitution, unquoted or inside double quotes, is a
+// command of its own.
+// ponytail: a lexer, not a shell; variable expansion, aliases, functions and
+// scripts on disk that run git pass. Only a sandbox protecting .git closes that.
+func shellCommands(command string) [][]string {
+	var commands [][]string
+	var words []string
+	var word strings.Builder
+	inWord := false
+	endWord := func() {
+		if inWord {
+			words = append(words, word.String())
+			word.Reset()
+			inWord = false
+		}
+	}
+	endCommand := func() {
+		endWord()
+		if len(words) > 0 {
+			commands = append(commands, words)
+			words = nil
+		}
+	}
+	runes := []rune(command)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case r == '\\' && i+1 < len(runes):
+			i++
+			word.WriteRune(runes[i])
+			inWord = true
+		case r == '\'':
+			j := i + 1
+			for j < len(runes) && runes[j] != '\'' {
+				j++
+			}
+			word.WriteString(string(runes[i+1 : min(j, len(runes))]))
+			inWord, i = true, j
+		case r == '"':
+			j := i + 1
+			for j < len(runes) && runes[j] != '"' {
+				if runes[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			quoted := string(runes[i+1 : min(j, len(runes))])
+			commands = append(commands, substitutions(quoted)...)
+			word.WriteString(quoted)
+			inWord, i = true, j
+		case unicode.IsSpace(r) && r != '\n':
+			endWord()
+		case strings.ContainsRune("|;&()`\n", r):
+			endCommand()
+		case r == '$' && i+1 < len(runes) && runes[i+1] == '(':
+			endCommand()
+		default:
+			word.WriteRune(r)
+			inWord = true
+		}
+	}
+	endCommand()
+	return commands
+}
+
+// substitutions returns the commands of each `$(…)` or backtick span inside a
+// double-quoted string, which the shell executes despite the quotes.
+func substitutions(quoted string) [][]string {
+	var commands [][]string
+	for _, open := range []string{"$(", "`"} {
+		for rest := quoted; ; {
+			i := strings.Index(rest, open)
+			if i < 0 {
+				break
+			}
+			rest = rest[i+len(open):]
+			closer := ")"
+			if open == "`" {
+				closer = "`"
+			}
+			end := strings.Index(rest, closer)
+			if end < 0 {
+				end = len(rest)
+			}
+			commands = append(commands, shellCommands(rest[:end])...)
+			rest = rest[end:]
+			if rest != "" {
+				rest = rest[1:]
+			}
+		}
+	}
+	return commands
+}
+
+// GuardShellGit refuses a command that executes a Git mutation, for a caller
+// that is not the orchestrator and whose shell runs natively, outside any
+// shell plan.
+func GuardShellGit(command string) error {
+	if gitMutation(command) {
+		return fmt.Errorf("%w: %s", ErrGitMutationDenied, command)
+	}
+	return nil
 }
 
 // shellWords splits a command into words, treating shell operators as

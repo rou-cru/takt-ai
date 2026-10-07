@@ -13,6 +13,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
+- [func GuardShellGit\(command string\) error](<#GuardShellGit>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
 - [func SpecialistRole\(instance string\) \(model.RoleClass, error\)](<#SpecialistRole>)
@@ -47,6 +48,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
   - [func \(f \*FS\) RevokeOwnership\(key AgentID\) \(err error\)](<#FS.RevokeOwnership>)
+  - [func \(f \*FS\) StagedState\(key AgentID\) \(revision uint64, deltaHash string, staged bool\)](<#FS.StagedState>)
   - [func \(f \*FS\) Verify\(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string\) \(err error\)](<#FS.Verify>)
 - [type Identity](<#Identity>)
 - [type InvariantSet](<#InvariantSet>)
@@ -179,7 +181,7 @@ var (
 ```
 
 <a name="GuardGitMutation"></a>
-## func [GuardGitMutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L434>)
+## func GuardGitMutation
 
 ```go
 func GuardGitMutation(role model.RoleClass) error
@@ -187,8 +189,17 @@ func GuardGitMutation(role model.RoleClass) error
 
 GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is.
 
+<a name="GuardShellGit"></a>
+## func GuardShellGit
+
+```go
+func GuardShellGit(command string) error
+```
+
+GuardShellGit refuses a command that executes a Git mutation, for a caller that is not the orchestrator and whose shell runs natively, outside any shell plan.
+
 <a name="ReadOnlyGitSubcommands"></a>
-## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L444>)
+## func ReadOnlyGitSubcommands
 
 ```go
 func ReadOnlyGitSubcommands() []string
@@ -197,7 +208,7 @@ func ReadOnlyGitSubcommands() []string
 ReadOnlyGitSubcommands returns the read\-only git subcommands.
 
 <a name="RequireVFSCapability"></a>
-## func [RequireVFSCapability](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L473>)
+## func RequireVFSCapability
 
 ```go
 func RequireVFSCapability(instance string, capability model.VFSCapability) error
@@ -206,7 +217,7 @@ func RequireVFSCapability(instance string, capability model.VFSCapability) error
 RequireVFSCapability consults the canonical exact\-instance catalog grant. RoleClass describes the agent but never authorizes a VFS operation.
 
 <a name="SpecialistRole"></a>
-## func [SpecialistRole](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L455>)
+## func SpecialistRole
 
 ```go
 func SpecialistRole(instance string) (model.RoleClass, error)
@@ -215,7 +226,7 @@ func SpecialistRole(instance string) (model.RoleClass, error)
 SpecialistRole resolves the role a catalog instance declares.
 
 <a name="AgentID"></a>
-## type [AgentID](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L56>)
+## type AgentID
 
 AgentID identifies the actor behind a VFS operation.
 
@@ -224,7 +235,7 @@ type AgentID string
 ```
 
 <a name="CollisionError"></a>
-## type [CollisionError](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L170-L179>)
+## type CollisionError
 
 CollisionError is a refused ownership request with the exact requested path and both dispatch identities. It is a denial observation, not unresolved in\-flight work; callers can still use errors.Is\(err, ErrCollision\).
 
@@ -242,7 +253,7 @@ type CollisionError struct {
 ```
 
 <a name="CollisionError.Error"></a>
-### func \(\*CollisionError\) [Error](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L182>)
+### func \(\*CollisionError\) Error
 
 ```go
 func (e *CollisionError) Error() string
@@ -251,7 +262,7 @@ func (e *CollisionError) Error() string
 Error renders the refused path and both dispatch identities behind it.
 
 <a name="CollisionError.Unwrap"></a>
-### func \(\*CollisionError\) [Unwrap](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L189>)
+### func \(\*CollisionError\) Unwrap
 
 ```go
 func (e *CollisionError) Unwrap() error
@@ -260,7 +271,7 @@ func (e *CollisionError) Unwrap() error
 Unwrap preserves errors.Is\(err, ErrCollision\) for typed refusals.
 
 <a name="CollisionEvent"></a>
-## type [CollisionEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L153-L165>)
+## type CollisionEvent
 
 CollisionEvent is emitted when the VFS intercepts a cross\-agent write collision.
 
@@ -281,7 +292,7 @@ type CollisionEvent struct {
 ```
 
 <a name="FS"></a>
-## type [FS](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L222-L261>)
+## type FS
 
 FS governs all in\-flight agent work for one session.
 
@@ -292,7 +303,7 @@ type FS struct {
 ```
 
 <a name="Open"></a>
-### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L64>)
+### func Open
 
 ```go
 func Open(rootDir, stateDir string) (_ *FS, err error)
@@ -301,7 +312,7 @@ func Open(rootDir, stateDir string) (_ *FS, err error)
 Open opens durable staging under an advisory lock on the workspace directory.
 
 <a name="FS.Apply"></a>
-### func \(\*FS\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L712>)
+### func \(\*FS\) Apply
 
 ```go
 func (f *FS) Apply(op Operation) (OperationResult, error)
@@ -310,25 +321,25 @@ func (f *FS) Apply(op Operation) (OperationResult, error)
 Apply validates identity, revision and replay, then persists the result.
 
 <a name="FS.AssignScope"></a>
-### func \(\*FS\) [AssignScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L154>)
+### func \(\*FS\) AssignScope
 
 ```go
 func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err error)
 ```
 
-AssignScope atomically reserves explicit exclusive ownership for a target before its VFS session starts. The target instance must have explicit bind and write grants in the catalog; role alone never authorizes an assignment.
+AssignScope atomically reserves explicit exclusive ownership for a target before its VFS session starts. The target instance must have explicit bind and write grants in the catalog; role alone never authorizes an assignment. Valid fresh assignments discard whole overlapping claims from other roots; same\-root collisions and explicit ReassignScope continuity remain unchanged.
 
 <a name="FS.AssignVerifier"></a>
-### func \(\*FS\) [AssignVerifier](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L252>)
+### func \(\*FS\) AssignVerifier
 
 ```go
 func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, err error)
 ```
 
-AssignVerifier reserves an empty\-scope verifier binding linked to one already\-issued author key. The orchestrator must do this before launching the verifier; identity and author key are harness\-owned inputs.
+AssignVerifier reserves an empty\-scope verifier binding linked to one already\-issued author key. The harness prepares it for the admitted attempt before launching the verifier; identity and author key are harness\-owned inputs.
 
 <a name="FS.Bind"></a>
-### func \(\*FS\) [Bind](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L124>)
+### func \(\*FS\) Bind
 
 ```go
 func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error)
@@ -337,7 +348,7 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error)
 Bind registers a dispatch identity and acquires its explicit file scope. Role metadata comes from canonical content; VFS access comes only from the instance's explicit catalog capabilities.
 
 <a name="FS.BindingIdentity"></a>
-### func \(\*FS\) [BindingIdentity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L606>)
+### func \(\*FS\) BindingIdentity
 
 ```go
 func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
@@ -346,7 +357,7 @@ func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
 BindingIdentity returns the identity a binding key was issued for, so a transport can check that a caller is the actor the key belongs to.
 
 <a name="FS.Close"></a>
-### func \(\*FS\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L340>)
+### func \(\*FS\) Close
 
 ```go
 func (f *FS) Close() error
@@ -355,7 +366,7 @@ func (f *FS) Close() error
 Close releases all handles. It never discards staged state or recovery data.
 
 <a name="FS.CompleteCycle"></a>
-### func \(\*FS\) [CompleteCycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/cycle.go#L81>)
+### func \(\*FS\) CompleteCycle
 
 ```go
 func (f *FS) CompleteCycle(cycleID string) (err error)
@@ -364,7 +375,7 @@ func (f *FS) CompleteCycle(cycleID string) (err error)
 CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
 
 <a name="FS.ConsolidateCheckpoint"></a>
-### func \(\*FS\) [ConsolidateCheckpoint](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L895>)
+### func \(\*FS\) ConsolidateCheckpoint
 
 ```go
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
@@ -373,7 +384,7 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes; a verdict, when present, remains bound to its evidence. An empty checkpoint label defaults to the author key and revision.
 
 <a name="FS.ConsolidatedBy"></a>
-### func \(\*FS\) [ConsolidatedBy](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/cycle.go#L99>)
+### func \(\*FS\) ConsolidatedBy
 
 ```go
 func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool)
@@ -382,7 +393,7 @@ func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool)
 ConsolidatedBy reports the cycle and mandate class that last consolidated path across every retained cycle \(open or completed\), so a caller staging a write can attribute a later re\-edit back to it \(PR\-MNT\-31\). path must match the slash\-relative form JournalEntry.Path and recoveryItem.Path use. It scans every retained cycle per call; index by path if that ever grows.
 
 <a name="FS.DiscardCycle"></a>
-### func \(\*FS\) [DiscardCycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/cycle.go#L119>)
+### func \(\*FS\) DiscardCycle
 
 ```go
 func (f *FS) DiscardCycle(cycleID string) (restored []string, err error)
@@ -391,7 +402,7 @@ func (f *FS) DiscardCycle(cycleID string) (restored []string, err error)
 DiscardCycle restores the workspace to the state before cycleID's consolidation, refusing to overwrite a path that changed since then.
 
 <a name="FS.DropCycleStaging"></a>
-### func \(\*FS\) [DropCycleStaging](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L58>)
+### func \(\*FS\) DropCycleStaging
 
 ```go
 func (f *FS) DropCycleStaging(cycle string) (err error)
@@ -400,7 +411,7 @@ func (f *FS) DropCycleStaging(cycle string) (err error)
 DropCycleStaging discards only bindings owned by the specified cycle. Consolidated content must separately pass DiscardCycle's divergence checks.
 
 <a name="FS.ImportShell"></a>
-### func \(\*FS\) [ImportShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L207>)
+### func \(\*FS\) ImportShell
 
 ```go
 func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) (result OperationResult, err error)
@@ -409,7 +420,7 @@ func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) 
 ImportShell admits the command's result as one VFS transaction: the captured projection becomes staged content through the same path the file tools use. A failing command keeps its delta, retained and unverified \(PR\-VFS\-CSL\-5\).
 
 <a name="FS.InspectDelta"></a>
-### func \(\*FS\) [InspectDelta](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L39>)
+### func \(\*FS\) InspectDelta
 
 ```go
 func (f *FS) InspectDelta(key AgentID) StagedView
@@ -418,7 +429,7 @@ func (f *FS) InspectDelta(key AgentID) StagedView
 InspectDelta returns a detached view; nil contents mean deletion.
 
 <a name="FS.JournalPage"></a>
-### func \(\*FS\) [JournalPage](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/storage.go#L361>)
+### func \(\*FS\) JournalPage
 
 ```go
 func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEntry
@@ -427,7 +438,7 @@ func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEn
 JournalPage returns bounded, content\-free journal entries.
 
 <a name="FS.OnCollision"></a>
-### func \(\*FS\) [OnCollision](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L289>)
+### func \(\*FS\) OnCollision
 
 ```go
 func (f *FS) OnCollision(fn func(CollisionEvent))
@@ -436,7 +447,7 @@ func (f *FS) OnCollision(fn func(CollisionEvent))
 OnCollision registers a handler called for every emitted collision event; the handler runs synchronously under the FS lock and must not call back into the FS.
 
 <a name="FS.OnJournal"></a>
-### func \(\*FS\) [OnJournal](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L297>)
+### func \(\*FS\) OnJournal
 
 ```go
 func (f *FS) OnJournal(fn func(JournalEntry))
@@ -445,7 +456,7 @@ func (f *FS) OnJournal(fn func(JournalEntry))
 OnJournal registers a handler called for every journal entry appended, in order and under the same lock and re\-entrancy rules as OnCollision.
 
 <a name="FS.OwnershipClaims"></a>
-### func \(\*FS\) [OwnershipClaims](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L298>)
+### func \(\*FS\) OwnershipClaims
 
 ```go
 func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
@@ -454,7 +465,7 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
 OwnershipClaims lists current claims in deterministic path order. A claim is Active only when adopted in currentSessionID; pending and prior\-session ownership remain visible and are never expired automatically.
 
 <a name="FS.PendingOrdinaryDeltaIdentities"></a>
-### func \(\*FS\) [PendingOrdinaryDeltaIdentities](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L17>)
+### func \(\*FS\) PendingOrdinaryDeltaIdentities
 
 ```go
 func (f *FS) PendingOrdinaryDeltaIdentities() []string
@@ -463,7 +474,7 @@ func (f *FS) PendingOrdinaryDeltaIdentities() []string
 PendingOrdinaryDeltaIdentities names the identity behind each unresolved ordinary delta PendingOrdinaryDeltas counts, so a stalled barrier can be explained instead of just measured.
 
 <a name="FS.PendingOrdinaryDeltas"></a>
-### func \(\*FS\) [PendingOrdinaryDeltas](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L10>)
+### func \(\*FS\) PendingOrdinaryDeltas
 
 ```go
 func (f *FS) PendingOrdinaryDeltas() int
@@ -472,16 +483,16 @@ func (f *FS) PendingOrdinaryDeltas() int
 PendingOrdinaryDeltas counts unresolved ordinary deltas across the workspace, not just the requesting session or the proposed maintenance scope.
 
 <a name="FS.PrepareShell"></a>
-### func \(\*FS\) [PrepareShell](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L112>)
+### func \(\*FS\) PrepareShell
 
 ```go
 func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error)
 ```
 
-PrepareShell classifies one command and lays out its private projection. key may be empty: an unbound caller may still inspect, never mutate.
+PrepareShell classifies one command and lays out its private projection. key may be empty: an unbound caller may still inspect, never mutate. expected must match a bound caller's revision and is ignored when key is empty. For callers without file scope, quoted spans are ignored when detecting workspace mutations; the sandbox must still enforce the returned restrictions. Preparation creates scratch and, for allowed mutations, projection files, but does not execute the command. A policy denial returns a ShellDeny plan with a nil error. Missing callID or stateDir, a blank command, or an unknown nonempty key returns ErrIdentity; a revision mismatch returns ErrStaleRevision. Store readiness and scratch or projection filesystem errors propagate.
 
 <a name="FS.ReadAs"></a>
-### func \(\*FS\) [ReadAs](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L717>)
+### func \(\*FS\) ReadAs
 
 ```go
 func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
@@ -490,16 +501,16 @@ func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
 ReadAs reads through the staged view of the author a verifier judges, so the gate assesses exactly the delta its verdict will cover. op.ExpectedRevision is the author's revision; any other caller or action is refused.
 
 <a name="FS.ReassignScope"></a>
-### func \(\*FS\) [ReassignScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L366>)
+### func \(\*FS\) ReassignScope
 
 ```go
 func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error)
 ```
 
-ReassignScope gives the work of an existing author key a new exact scope for its next attempt, keeping the staged delta. The delta's own paths must stay in the scope; only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
+ReassignScope gives the work of an existing author key a new exact scope for its next attempt, keeping the staged delta, and hands it to the unit, agent and specialist the request names. The delta's own paths must stay in the scope; only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
 
 <a name="FS.Recover"></a>
-### func \(\*FS\) [Recover](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/recovery.go#L289>)
+### func \(\*FS\) Recover
 
 ```go
 func (f *FS) Recover() (err error)
@@ -508,7 +519,7 @@ func (f *FS) Recover() (err error)
 Recover restores the pre\-flush snapshot after checking for incompatible writes.
 
 <a name="FS.RevokeOwnership"></a>
-### func \(\*FS\) [RevokeOwnership](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L342>)
+### func \(\*FS\) RevokeOwnership
 
 ```go
 func (f *FS) RevokeOwnership(key AgentID) (err error)
@@ -516,8 +527,17 @@ func (f *FS) RevokeOwnership(key AgentID) (err error)
 
 RevokeOwnership frees the paths a claim holds. The binding is kept so the unit's attempt count survives. A claim that holds staged work is refused rather than left as a delta nobody owns, which could never be consolidated.
 
+<a name="FS.StagedState"></a>
+### func \(\*FS\) StagedState
+
+```go
+func (f *FS) StagedState(key AgentID) (revision uint64, deltaHash string, staged bool)
+```
+
+revisionOf is the staged revision of key, zero when it has no delta. StagedState reports the revision and delta hash of the work staged under key, and whether any exists, so a binding that adopts existing work starts from it.
+
 <a name="FS.Verify"></a>
-### func \(\*FS\) [Verify](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L824>)
+### func \(\*FS\) Verify
 
 ```go
 func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string) (err error)
@@ -526,7 +546,7 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 Verify attaches a verification gate to an exact revision and delta hash.
 
 <a name="Identity"></a>
-## type [Identity](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L58-L85>)
+## type Identity
 
 Identity is supplied by the trusted coordinator's dispatch.
 
@@ -562,7 +582,7 @@ type Identity struct {
 ```
 
 <a name="InvariantSet"></a>
-## type [InvariantSet](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L36>)
+## type InvariantSet
 
 InvariantSet is the reference the verification gate judges a staged delta against: the governing documents in the precedence order PR\-VFS\-CSL\-3 fixes \(user goal and directives, the work unit's contract, the framework's planning artifacts\). Paths are workspace\-relative, each pinned by its content on disk.
 
@@ -571,7 +591,7 @@ type InvariantSet []string
 ```
 
 <a name="JournalEntry"></a>
-## type [JournalEntry](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L91-L129>)
+## type JournalEntry
 
 JournalEntry records a single VFS operation.
 
@@ -618,7 +638,7 @@ type JournalEntry struct {
 ```
 
 <a name="JournalEntry.Ref"></a>
-### func \(JournalEntry\) [Ref](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L132>)
+### func \(JournalEntry\) Ref
 
 ```go
 func (e JournalEntry) Ref() string
@@ -627,7 +647,7 @@ func (e JournalEntry) Ref() string
 Ref returns the entry's stable reference for telemetry.
 
 <a name="Operation"></a>
-## type [Operation](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L650-L657>)
+## type Operation
 
 Operation carries adapter\-controlled identity and a revision from the last result.
 
@@ -643,7 +663,7 @@ type Operation struct {
 ```
 
 <a name="OperationResult"></a>
-## type [OperationResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/operation.go#L660-L664>)
+## type OperationResult
 
 OperationResult returns the merged view content an operation produced.
 
@@ -656,7 +676,7 @@ type OperationResult struct {
 ```
 
 <a name="OperationType"></a>
-## type [OperationType](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L37>)
+## type OperationType
 
 OperationType classifies a VFS journal entry.
 
@@ -690,7 +710,7 @@ const OpShell OperationType = "shell"
 ```
 
 <a name="OwnershipClaim"></a>
-## type [OwnershipClaim](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L194-L207>)
+## type OwnershipClaim
 
 OwnershipClaim is one binding's currently held scope. Pending means the orchestrator assigned it before the target bound; Active means it belongs to the requested current session and has been adopted by the target.
 
@@ -712,7 +732,7 @@ type OwnershipClaim struct {
 ```
 
 <a name="ShellPlan"></a>
-## type [ShellPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L78-L98>)
+## type ShellPlan
 
 ShellPlan is what the coordinator hands the sandbox wrapper for one command. Every path in it is resolved here from the binding's own scope; none of it is ever accepted from the model.
 
@@ -741,7 +761,7 @@ type ShellPlan struct {
 ```
 
 <a name="StagedView"></a>
-## type [StagedView](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/maintenance.go#L32-L36>)
+## type StagedView
 
 StagedView is the exact candidate given to an independent verifier.
 
@@ -754,7 +774,7 @@ type StagedView struct {
 ```
 
 <a name="VerificationVerdict"></a>
-## type [VerificationVerdict](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L135-L150>)
+## type VerificationVerdict
 
 VerificationVerdict carries the gate verifier's result.
 

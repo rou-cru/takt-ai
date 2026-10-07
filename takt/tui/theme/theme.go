@@ -34,8 +34,9 @@ var mode = ModeColor
 func SetMode(m Mode) { mode = m; resolve() }
 
 // DetectMode reads the environment for the documented no-color fallback. It
-// only seeds the first frame: the program's reported color profile
-// (ModeFor) is the authority once the event loop delivers it.
+// seeds the first frame and stays authoritative afterwards: the program's
+// reported color profile (ModeFor) picks the palette, but NO_COLOR and
+// TERM=dumb always win over it.
 func DetectMode() Mode {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return ModeMono

@@ -181,6 +181,12 @@ func dispatchCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) e
 		_, err := fmt.Fprintf(stdout, "takt-ai %s\n", resolveVersion(version))
 		return err
 	case "doctor":
+		if len(args) > 1 {
+			if args[1] == "--help" || args[1] == "-h" {
+				return usageError(usage)
+			}
+			return fmt.Errorf("invalid usage: unexpected argument %q", args[1])
+		}
 		if err := doctor.Run(stdout); errors.Is(err, doctor.ErrUnhealthy) {
 			// The report already says what failed; the status lets scripts act.
 			return exitCode(1)

@@ -361,7 +361,7 @@ const OpenCodeLabel = "OpenCode"
 ```
 
 <a name="AgentsAssigned"></a>
-## func [AgentsAssigned](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/plural.go#L6>)
+## func AgentsAssigned
 
 ```go
 func AgentsAssigned(count int) string
@@ -370,7 +370,7 @@ func AgentsAssigned(count int) string
 AgentsAssigned states how many agents got a new model, in proper number.
 
 <a name="Back"></a>
-## func [Back](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L69>)
+## func Back
 
 ```go
 func Back() tea.Msg
@@ -379,7 +379,7 @@ func Back() tea.Msg
 Back requests navigation to the previous screen.
 
 <a name="BodyHeight"></a>
-## func [BodyHeight](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L287>)
+## func BodyHeight
 
 ```go
 func BodyHeight(height int) int
@@ -388,7 +388,7 @@ func BodyHeight(height int) int
 BodyHeight returns the visible rows inside a panel above a one\-line action row: the window Shell scrolls for most screens.
 
 <a name="Busy"></a>
-## func [Busy](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L64>)
+## func Busy
 
 ```go
 func Busy(operation string, marker string, progress Progress) string
@@ -397,7 +397,7 @@ func Busy(operation string, marker string, progress Progress) string
 Busy shows the finished phases, the current one with its marker and, when its total is known, a real progress bar and the file it is on. operation names the work until the first phase is reported.
 
 <a name="BusyFooter"></a>
-## func [BusyFooter](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L88>)
+## func BusyFooter
 
 ```go
 func BusyFooter(cancelRequested bool) string
@@ -406,7 +406,7 @@ func BusyFooter(cancelRequested bool) string
 BusyFooter offers cancellation while an operation runs; once requested it stays visible but unavailable, saying the current phase must finish.
 
 <a name="CheckList"></a>
-## func [CheckList](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L74>)
+## func CheckList
 
 ```go
 func CheckList(items []Item, cursor int, focused bool) string
@@ -415,7 +415,7 @@ func CheckList(items []Item, cursor int, focused bool) string
 CheckList renders independently checked rows so multi\-select stays visible.
 
 <a name="ContentRows"></a>
-## func [ContentRows](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L293>)
+## func ContentRows
 
 ```go
 func ContentRows(height, footerLines int) int
@@ -424,7 +424,7 @@ func ContentRows(height, footerLines int) int
 ContentRows returns the visible rows inside a panel above an action row of footerLines lines \(0 for none\); Shell uses the same arithmetic.
 
 <a name="Fields"></a>
-## func [Fields](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L23>)
+## func Fields
 
 ```go
 func Fields(fields []Field) string
@@ -433,7 +433,7 @@ func Fields(fields []Field) string
 Fields renders a summary with labels in one secondary column and values aligned after it, the label/value grammar of the review wireframe.
 
 <a name="FooterActions"></a>
-## func [FooterActions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L60>)
+## func FooterActions
 
 ```go
 func FooterActions(actions []FooterAction, cursor int, focused bool) string
@@ -442,7 +442,7 @@ func FooterActions(actions []FooterAction, cursor int, focused bool) string
 FooterActions renders the action row \(VDS §3\): only the focused button is filled; the others are text.secondary without fill, destructive ones keep danger.fg, and unavailable ones keep the disabled pair even when focused. Unavailable reasons go on their own line under the row, never inside it.
 
 <a name="Group"></a>
-## func [Group](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L47>)
+## func Group
 
 ```go
 func Group(title string, rows []Row) string
@@ -451,7 +451,7 @@ func Group(title string, rows []Row) string
 Group renders a titled group: the heading in the secondary role, then each row with its Lead in one aligned column and its Detail muted after it, so the facts read first and the qualifiers stay out of their way.
 
 <a name="HomeRows"></a>
-## func [HomeRows](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L306>)
+## func HomeRows
 
 ```go
 func HomeRows(height int) int
@@ -460,7 +460,7 @@ func HomeRows(height int) int
 HomeRows returns the rows the home composition may fill: everything above the bottom margin, since the home has no header.
 
 <a name="InnerWidth"></a>
-## func [InnerWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L316>)
+## func InnerWidth
 
 ```go
 func InnerWidth(width int) int
@@ -469,7 +469,7 @@ func InnerWidth(width int) int
 InnerWidth returns width inside margins.
 
 <a name="Menu"></a>
-## func [Menu](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L39>)
+## func Menu
 
 ```go
 func Menu(items []Item, cursor int) string
@@ -478,7 +478,7 @@ func Menu(items []Item, cursor int) string
 Menu renders a single selection whose only visible description is the one under the cursor, in one slot below the list. The slot always takes its line and the block is as wide as its widest label or description, so moving the cursor never shifts the menu.
 
 <a name="MoveCursor"></a>
-## func [MoveCursor](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L13>)
+## func MoveCursor
 
 ```go
 func MoveCursor(cursor, count, delta int) int
@@ -487,7 +487,7 @@ func MoveCursor(cursor, count, delta int) int
 MoveCursor wraps the cursor within count.
 
 <a name="Nudge"></a>
-## func [Nudge](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L28>)
+## func Nudge
 
 ```go
 func Nudge(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
@@ -496,7 +496,7 @@ func Nudge(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
 Nudge moves \*cursor within n rows on Up or Down.
 
 <a name="NudgeHorizontal"></a>
-## func [NudgeHorizontal](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L41>)
+## func NudgeHorizontal
 
 ```go
 func NudgeHorizontal(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
@@ -505,7 +505,7 @@ func NudgeHorizontal(cursor *int, n int, km keys.KeyMap, msg tea.Msg) bool
 NudgeHorizontal moves a cursor across options rendered in one row.
 
 <a name="Options"></a>
-## func [Options](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L19>)
+## func Options
 
 ```go
 func Options(options []string, cursor int, focused bool) string
@@ -514,7 +514,7 @@ func Options(options []string, cursor int, focused bool) string
 Options renders labels with a focus marker so the cursor survives focus changes.
 
 <a name="PanelWidth"></a>
-## func [PanelWidth](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L311>)
+## func PanelWidth
 
 ```go
 func PanelWidth(width int) int
@@ -523,7 +523,7 @@ func PanelWidth(width int) int
 PanelWidth returns the stable panel width for a terminal width.
 
 <a name="Scroll"></a>
-## func [Scroll](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L54>)
+## func Scroll
 
 ```go
 func Scroll(scroll, height int, key string) (int, bool)
@@ -532,7 +532,7 @@ func Scroll(scroll, height int, key string) (int, bool)
 Scroll applies pgup and pgdown for a screen of the given height.
 
 <a name="Selector"></a>
-## func [Selector](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L58>)
+## func Selector
 
 ```go
 func Selector(options []string, cursor, chosen int, focused bool) string
@@ -541,7 +541,7 @@ func Selector(options []string, cursor, chosen int, focused bool) string
 Selector renders one single\-choice field on a screen that holds several: each field's chosen value stays visible \(selection pair and • marker\) while the cursor \> moves elsewhere, so no decision is hidden by focus.
 
 <a name="Shell"></a>
-## func [Shell](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L65>)
+## func Shell
 
 ```go
 func Shell(frame Frame) string
@@ -550,7 +550,7 @@ func Shell(frame Frame) string
 Shell composes the signature header, the paneled body and the action row so every screen shares one layout. No key bar is rendered.
 
 <a name="Status"></a>
-## func [Status](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L33>)
+## func Status
 
 ```go
 func Status(state State, message string) string
@@ -559,7 +559,7 @@ func Status(state State, message string) string
 Status prefixes a message with its state.
 
 <a name="Toggle"></a>
-## func [Toggle](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/toggle.go#L6>)
+## func Toggle
 
 ```go
 func Toggle[T comparable](items []T, item T) []T
@@ -568,7 +568,7 @@ func Toggle[T comparable](items []T, item T) []T
 Toggle flips one selection so checklist flows share a single rule.
 
 <a name="Verification"></a>
-## func [Verification](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/verification.go#L38>)
+## func Verification
 
 ```go
 func Verification(report verify.Report) string
@@ -577,7 +577,7 @@ func Verification(report verify.Report) string
 Verification shows the verdict once, then one row per capability \(PR\-UX\-27\): verified rows are just their name; the others add state and explanation.
 
 <a name="BackMsg"></a>
-## type [BackMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L66>)
+## type BackMsg
 
 BackMsg asks the controller to pop the active flow.
 
@@ -586,7 +586,7 @@ type BackMsg struct{}
 ```
 
 <a name="Dirtier"></a>
-## type [Dirtier](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/nav.go#L72>)
+## type Dirtier
 
 Dirtier marks flows with unapplied drafts.
 
@@ -595,7 +595,7 @@ type Dirtier interface{ Dirty() bool }
 ```
 
 <a name="Field"></a>
-## type [Field](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L13-L16>)
+## type Field
 
 Field is one label/value row of an aligned summary; an empty Label continues the value of the row above.
 
@@ -607,7 +607,7 @@ type Field struct {
 ```
 
 <a name="FooterAction"></a>
-## type [FooterAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L35-L39>)
+## type FooterAction
 
 FooterAction is one labeled completion control.
 
@@ -620,7 +620,7 @@ type FooterAction struct {
 ```
 
 <a name="Actions"></a>
-### func [Actions](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L42>)
+### func Actions
 
 ```go
 func Actions(labels ...string) []FooterAction
@@ -629,7 +629,7 @@ func Actions(labels ...string) []FooterAction
 Actions builds available actions from labels so callers skip the struct boilerplate.
 
 <a name="Frame"></a>
-## type [Frame](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/shell.go#L14-L27>)
+## type Frame
 
 Frame holds everything needed to draw one screen.
 
@@ -651,7 +651,7 @@ type Frame struct {
 ```
 
 <a name="Item"></a>
-## type [Item](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/list.go#L11-L16>)
+## type Item
 
 Item is one selectable row so checked state travels with its label.
 
@@ -665,7 +665,7 @@ type Item struct {
 ```
 
 <a name="Progress"></a>
-## type [Progress](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L48-L55>)
+## type Progress
 
 Progress is a running operation's phases: the ones already finished, the current one with its real counts, and the file it is on.
 
@@ -681,7 +681,7 @@ type Progress struct {
 ```
 
 <a name="Row"></a>
-## type [Row](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fields.go#L39-L42>)
+## type Row
 
 Row is one line of a Group: Lead carries the fact \(a count and its noun, a file name\), Detail the muted qualifier after it. An empty Lead continues the row above.
 
@@ -693,7 +693,7 @@ type Row struct {
 ```
 
 <a name="Section"></a>
-## type [Section](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L13>)
+## type Section
 
 Section marks which screen region holds keyboard focus so lists and footers stay independent.
 
@@ -713,7 +713,7 @@ const (
 ```
 
 <a name="SwitchSection"></a>
-### func [SwitchSection](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/focus.go#L24>)
+### func SwitchSection
 
 ```go
 func SwitchSection(current Section, keymap keys.KeyMap, message tea.Msg) (Section, bool)
@@ -722,7 +722,7 @@ func SwitchSection(current Section, keymap keys.KeyMap, message tea.Msg) (Sectio
 SwitchSection moves focus between regions.
 
 <a name="Spinner"></a>
-## type [Spinner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L10-L12>)
+## type Spinner
 
 Spinner is one animated step marker owned by a flow's busy state.
 
@@ -733,7 +733,7 @@ type Spinner struct {
 ```
 
 <a name="NewSpinner"></a>
-### func [NewSpinner](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L15>)
+### func NewSpinner
 
 ```go
 func NewSpinner() Spinner
@@ -742,7 +742,7 @@ func NewSpinner() Spinner
 NewSpinner returns a MiniDot spinner; inert when animation is disabled.
 
 <a name="Spinner.Tick"></a>
-### func \(Spinner\) [Tick](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L20>)
+### func \(Spinner\) Tick
 
 ```go
 func (s Spinner) Tick() tea.Cmd
@@ -751,7 +751,7 @@ func (s Spinner) Tick() tea.Cmd
 Tick requests the next frame; nil when animation is disabled.
 
 <a name="Spinner.Update"></a>
-### func \(Spinner\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L28>)
+### func \(Spinner\) Update
 
 ```go
 func (s Spinner) Update(msg tea.Msg) (Spinner, tea.Cmd)
@@ -760,7 +760,7 @@ func (s Spinner) Update(msg tea.Msg) (Spinner, tea.Cmd)
 Update advances the animation and chains the next frame.
 
 <a name="Spinner.View"></a>
-### func \(Spinner\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/spinner.go#L41>)
+### func \(Spinner\) View
 
 ```go
 func (s Spinner) View() string
@@ -769,7 +769,7 @@ func (s Spinner) View() string
 View renders the current frame, or the ASCII baseline when disabled.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/status.go#L16>)
+## type State
 
 State names a result in words.
 
@@ -795,7 +795,7 @@ const (
 ```
 
 <a name="Table"></a>
-## type [Table](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L12>)
+## type Table
 
 Table holds a flow's transitions as data.
 
@@ -804,7 +804,7 @@ type Table[S comparable, M any] map[TransitionKey[S]]func(*M) (S, tea.Cmd)
 ```
 
 <a name="Table[S, M].Apply"></a>
-### func \(Table\[S, M\]\) [Apply](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L15>)
+### func \(Table\[S, M\]\) Apply
 
 ```go
 func (t Table[S, M]) Apply(m *M, from S, event string) (next S, cmd tea.Cmd, ok bool)
@@ -813,7 +813,7 @@ func (t Table[S, M]) Apply(m *M, from S, event string) (next S, cmd tea.Cmd, ok 
 Apply runs the rule for \(from, event\).
 
 <a name="TransitionKey"></a>
-## type [TransitionKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/ui/fsm.go#L6-L9>)
+## type TransitionKey
 
 TransitionKey names one rule in a transition table.
 

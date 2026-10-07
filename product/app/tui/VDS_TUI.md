@@ -165,12 +165,12 @@ The home has no header row and no signature line: the logo (its terminal represe
   │ for every project                                    │
   │                                                      │
   │ WHAT YOU GET                                         │
-  │ 13 agents        1 orchestrator · 12 specialists     │
+  │ [n] agents       1 orchestrator · [n] specialists    │
   │                  [n] on [provider/model]             │
   │                  [n] on OpenCode's default model     │
-  │ 27 skills                                            │
-  │  3 MCP servers   codegraph · context7 · engram       │
-  │  4 integrations  DAG panel · memory · sandbox · VFS  │
+  │ [n] skills                                           │
+  │ [n] MCP servers  codegraph · context7 · engram       │
+  │ [n] integrations DAG panel · memory · sandbox · VFS  │
   │                                                      │
   │ WHAT CHANGES ON DISK                                 │
   │ [n] new files · [n] updated                          │

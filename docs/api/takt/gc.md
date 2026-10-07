@@ -214,7 +214,7 @@ var DeclaredCoverage = Coverage{
 ```
 
 <a name="AuthorizedFinding"></a>
-## func [AuthorizedFinding](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L77>)
+## func AuthorizedFinding
 
 ```go
 func AuthorizedFinding(f Finding, rs []Investigation) bool
@@ -223,7 +223,7 @@ func AuthorizedFinding(f Finding, rs []Investigation) bool
 AuthorizedFinding reports whether a confirmed investigation with evidence stands behind f and the finding itself is eligible for mutation. This is the gate between analysis and source edits.
 
 <a name="AuthorizedScope"></a>
-## func [AuthorizedScope](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L282>)
+## func AuthorizedScope
 
 ```go
 func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation) ([]string, error)
@@ -232,7 +232,7 @@ func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigati
 AuthorizedScope bounds mutation paths, never truncates causal context.
 
 <a name="ChecksPass"></a>
-## func [ChecksPass](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L324>)
+## func ChecksPass
 
 ```go
 func ChecksPass(checks []CheckEvidence) bool
@@ -241,7 +241,7 @@ func ChecksPass(checks []CheckEvidence) bool
 ChecksPass reports whether every check ran to completion and exited zero. Empty evidence fails closed.
 
 <a name="GuardVFS"></a>
-## func [GuardVFS](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/guard.go#L11>)
+## func GuardVFS
 
 ```go
 func GuardVFS(state, command string, identity vfs.Identity, action, path string, authorKey vfs.AgentID, fs *vfs.FS) error
@@ -250,7 +250,7 @@ func GuardVFS(state, command string, identity vfs.Identity, action, path string,
 GuardVFS applies persisted harness authority at every transport boundary.
 
 <a name="IsTest"></a>
-## func [IsTest](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/deadcode.go#L80>)
+## func IsTest
 
 ```go
 func IsTest(p string) bool
@@ -259,7 +259,7 @@ func IsTest(p string) bool
 IsTest reports whether p looks like test code, so liveness analysis can exclude it: test filename stems and test directories count, extensions decide nothing.
 
 <a name="SaveCoordinator"></a>
-## func [SaveCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L109>)
+## func SaveCoordinator
 
 ```go
 func SaveCoordinator(state string, c *Coordinator) error
@@ -268,7 +268,7 @@ func SaveCoordinator(state string, c *Coordinator) error
 SaveCoordinator atomically persists the coordinator under state.
 
 <a name="SaveRefutations"></a>
-## func [SaveRefutations](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L126>)
+## func SaveRefutations
 
 ```go
 func SaveRefutations(state, cycleID string, refs []Refutation) error
@@ -277,7 +277,7 @@ func SaveRefutations(state, cycleID string, refs []Refutation) error
 SaveRefutations replaces the cycle's refutations. Callers serialize writers \(the CLI holds the workspace lock\); the rename keeps a crash from leaving a torn file.
 
 <a name="AcceptanceResult"></a>
-## type [AcceptanceResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/acceptance.go#L32>)
+## type AcceptanceResult
 
 AcceptanceResult is how the acceptance checks stood.
 
@@ -297,7 +297,7 @@ const (
 ```
 
 <a name="ParseAcceptanceResult"></a>
-### func [ParseAcceptanceResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/acceptance.go#L47>)
+### func ParseAcceptanceResult
 
 ```go
 func ParseAcceptanceResult(value string) (AcceptanceResult, error)
@@ -306,7 +306,7 @@ func ParseAcceptanceResult(value string) (AcceptanceResult, error)
 ParseAcceptanceResult rejects anything outside the closed set, so a typo never reads as a passing cycle.
 
 <a name="AdmissionPolicy"></a>
-## type [AdmissionPolicy](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L32>)
+## type AdmissionPolicy
 
 AdmissionPolicy holds the dispatch ceiling and session budgets; GC reads it to admit work, never to change it.
 
@@ -315,7 +315,7 @@ type AdmissionPolicy = dispatch.AdmissionPolicy
 ```
 
 <a name="Analyzer"></a>
-## type [Analyzer](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L42-L49>)
+## type Analyzer
 
 Analyzer is one project\-declared analysis tool with the exact version and commands that produce and report its version.
 
@@ -331,7 +331,7 @@ type Analyzer struct {
 ```
 
 <a name="BarrierInput"></a>
-## type [BarrierInput](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/barrier.go#L29-L44>)
+## type BarrierInput
 
 BarrierInput carries the A9 decision and the execution facts the barrier depends on. All facts are data supplied by the harness; the barrier reads no state of its own.
 
@@ -355,7 +355,7 @@ type BarrierInput struct {
 ```
 
 <a name="BarrierVerdict"></a>
-## type [BarrierVerdict](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/barrier.go#L47-L61>)
+## type BarrierVerdict
 
 BarrierVerdict says whether the cycle may start and what the caller must carry forward.
 
@@ -378,7 +378,7 @@ type BarrierVerdict struct {
 ```
 
 <a name="Barrier"></a>
-### func [Barrier](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/barrier.go#L67>)
+### func Barrier
 
 ```go
 func Barrier(in BarrierInput) BarrierVerdict
@@ -387,7 +387,7 @@ func Barrier(in BarrierInput) BarrierVerdict
 Barrier gates a due cycle on the maintenance barrier.
 
 <a name="BarrierVerdict.ControlRecord"></a>
-### func \(BarrierVerdict\) [ControlRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/barrier.go#L88>)
+### func \(BarrierVerdict\) ControlRecord
 
 ```go
 func (v BarrierVerdict) ControlRecord(agent string) (obs.ControlRecord, bool)
@@ -396,7 +396,7 @@ func (v BarrierVerdict) ControlRecord(agent string) (obs.ControlRecord, bool)
 ControlRecord renders a stopped barrier for the control bus.
 
 <a name="BarrierVerdict.Held"></a>
-### func \(BarrierVerdict\) [Held](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/barrier.go#L64>)
+### func \(BarrierVerdict\) Held
 
 ```go
 func (v BarrierVerdict) Held() bool
@@ -405,7 +405,7 @@ func (v BarrierVerdict) Held() bool
 Held says whether the barrier itself stopped a due cycle.
 
 <a name="Change"></a>
-## type [Change](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L67-L73>)
+## type Change
 
 Change is one path of the session's delta.
 
@@ -420,7 +420,7 @@ type Change struct {
 ```
 
 <a name="SessionDelta"></a>
-### func [SessionDelta](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L89>)
+### func SessionDelta
 
 ```go
 func SessionDelta(entries []vfs.JournalEntry, sessionID string) []Change
@@ -429,7 +429,7 @@ func SessionDelta(entries []vfs.JournalEntry, sessionID string) []Change
 SessionDelta returns the paths the session changed and did not roll back.
 
 <a name="CheckEvidence"></a>
-## type [CheckEvidence](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L62-L77>)
+## type CheckEvidence
 
 CheckEvidence is the recorded outcome of one acceptance check command.
 
@@ -453,7 +453,7 @@ type CheckEvidence struct {
 ```
 
 <a name="RunChecks"></a>
-### func [RunChecks](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L311>)
+### func RunChecks
 
 ```go
 func RunChecks(ctx context.Context, workspace string, p Preparation) []CheckEvidence
@@ -462,7 +462,7 @@ func RunChecks(ctx context.Context, workspace string, p Preparation) []CheckEvid
 RunChecks executes the project's acceptance checks against the workspace and returns one evidence record per check.
 
 <a name="Closure"></a>
-## type [Closure](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/acceptance.go#L66-L74>)
+## type Closure
 
 Closure is how a cycle ended once acceptance ran.
 
@@ -479,7 +479,7 @@ type Closure struct {
 ```
 
 <a name="Closure.ControlRecord"></a>
-### func \(Closure\) [ControlRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/acceptance.go#L80>)
+### func \(Closure\) ControlRecord
 
 ```go
 func (c Closure) ControlRecord(agent string) obs.ControlRecord
@@ -488,7 +488,7 @@ func (c Closure) ControlRecord(agent string) obs.ControlRecord
 ControlRecord renders the end of a cycle for the control bus.
 
 <a name="Closure.Discarded"></a>
-### func \(Closure\) [Discarded](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/acceptance.go#L77>)
+### func \(Closure\) Discarded
 
 ```go
 func (c Closure) Discarded() bool
@@ -497,7 +497,7 @@ func (c Closure) Discarded() bool
 Discarded reports whether the cycle has to be undone in full.
 
 <a name="Codegraph"></a>
-## type [Codegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/codegraph.go#L56>)
+## type Codegraph
 
 Codegraph is the Reach backed by the codegraph CLI, queried through the JSON of \`query\` and \`impact\`; only the symbols\-only file listing has no JSON form and is parsed line by line.
 
@@ -508,7 +508,7 @@ type Codegraph struct {
 ```
 
 <a name="NewCodegraph"></a>
-### func [NewCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/codegraph.go#L59>)
+### func NewCodegraph
 
 ```go
 func NewCodegraph(run Runner) *Codegraph
@@ -517,7 +517,7 @@ func NewCodegraph(run Runner) *Codegraph
 NewCodegraph builds the adapter over run.
 
 <a name="Codegraph.Dependents"></a>
-### func \(\*Codegraph\) [Dependents](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/codegraph.go#L66>)
+### func \(\*Codegraph\) Dependents
 
 ```go
 func (c *Codegraph) Dependents(ctx context.Context, path string) ([]string, error)
@@ -526,7 +526,7 @@ func (c *Codegraph) Dependents(ctx context.Context, path string) ([]string, erro
 Dependents returns the files reachable outward from path's symbols, sorted and deduplicated; unresolvable files or symbols yield nothing.
 
 <a name="Coordinator"></a>
-## type [Coordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L58-L71>)
+## type Coordinator
 
 Coordinator is private workspace state, all access serialized by vfs.Open. In\-flight ordinary\-dispatch state is read from the history projection via package dispatch \(PR\-DAG\-AUT\-1\); Units and Mutations are GC's own pace counters for deciding when to trigger the next cycle \(PR\-MNT\-9/11\).
 
@@ -548,7 +548,7 @@ type Coordinator struct {
 ```
 
 <a name="LoadCoordinator"></a>
-### func [LoadCoordinator](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L90>)
+### func LoadCoordinator
 
 ```go
 func LoadCoordinator(state string) (*Coordinator, error)
@@ -557,7 +557,7 @@ func LoadCoordinator(state string) (*Coordinator, error)
 LoadCoordinator reads the coordinator state, accepting a missing file as a fresh coordinator. A corrupt or future\-version file is an error, never silently reset.
 
 <a name="Coordinator.Admit"></a>
-### func \(\*Coordinator\) [Admit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L155>)
+### func \(\*Coordinator\) Admit
 
 ```go
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error
@@ -566,7 +566,7 @@ func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agen
 Admit composes ordinary dispatch admission with the session pace counters. Maintenance never holds an admission: the caller ends a cycle in flight before admitting. Concurrency, plan coverage and recovery budgets are package dispatch's concern, not GC's.
 
 <a name="Coordinator.Advance"></a>
-### func \(\*Coordinator\) [Advance](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L171>)
+### func \(\*Coordinator\) Advance
 
 ```go
 func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, session string, reach Reach) (Decision, BarrierVerdict, error)
@@ -575,7 +575,7 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 Advance starts at most one cycle per trigger; the whole causal closure remains context.
 
 <a name="Coordinator.Attach"></a>
-### func \(\*Coordinator\) [Attach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L253>)
+### func \(\*Coordinator\) Attach
 
 ```go
 func (c *Coordinator) Attach(role, session string) error
@@ -584,7 +584,7 @@ func (c *Coordinator) Attach(role, session string) error
 Attach records the API\-created child before prompting it. Identities are never model arguments.
 
 <a name="Coordinator.Bind"></a>
-### func \(\*Coordinator\) [Bind](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L121>)
+### func \(\*Coordinator\) Bind
 
 ```go
 func (c *Coordinator) Bind(session string)
@@ -593,7 +593,7 @@ func (c *Coordinator) Bind(session string)
 Bind makes session the one the pace counters measure. A cycle is declared over its own session's delta \(PR\-MNT\-4\), so work a previous root session left behind in this workspace never counts toward the next session's cadence.
 
 <a name="Coordinator.Close"></a>
-### func \(\*Coordinator\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L240>)
+### func \(\*Coordinator\) Close
 
 ```go
 func (c *Coordinator) Close(reason string)
@@ -602,7 +602,7 @@ func (c *Coordinator) Close(reason string)
 Close retains closure evidence; rotation advances only for an actual cycle.
 
 <a name="Coordinator.Held"></a>
-### func \(\*Coordinator\) [Held](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L149>)
+### func \(\*Coordinator\) Held
 
 ```go
 func (c *Coordinator) Held() bool
@@ -611,7 +611,7 @@ func (c *Coordinator) Held() bool
 Held reports whether a maintenance cycle is in flight. It never gates ordinary dispatch: an admitted delegation ends the cycle instead.
 
 <a name="Coordinator.Observe"></a>
-### func \(\*Coordinator\) [Observe](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L132>)
+### func \(\*Coordinator\) Observe
 
 ```go
 func (c *Coordinator) Observe(entries []vfs.JournalEntry)
@@ -620,7 +620,7 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry)
 Observe consumes each effective ordinary journal mutation exactly once. Only the bound session's mutations count; other sessions' entries are consumed without counting.
 
 <a name="Coordinator.Require"></a>
-### func \(\*Coordinator\) [Require](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L274>)
+### func \(\*Coordinator\) Require
 
 ```go
 func (c *Coordinator) Require(session, role string) error
@@ -629,7 +629,7 @@ func (c *Coordinator) Require(session, role string) error
 Require errors unless session is the persisted participant for role in the active cycle, so only attached children can drive cycle phases.
 
 <a name="Coverage"></a>
-## type [Coverage](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/deadcode.go#L49-L55>)
+## type Coverage
 
 Coverage declares one analyzer's reach so reports state what was seen.
 
@@ -644,7 +644,7 @@ type Coverage struct {
 ```
 
 <a name="Cycle"></a>
-## type [Cycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L39-L52>)
+## type Cycle
 
 Cycle persists the declaration independently of mutations, including no\-op cycles.
 
@@ -666,7 +666,7 @@ type Cycle struct {
 ```
 
 <a name="Decision"></a>
-## type [Decision](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L118-L127>)
+## type Decision
 
 Decision is the trigger result and, for run, skip and abort, the record itself.
 
@@ -684,7 +684,7 @@ type Decision struct {
 ```
 
 <a name="Decide"></a>
-### func [Decide](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L130>)
+### func Decide
 
 ```go
 func Decide(in TriggerInput, p TriggerPolicy) Decision
@@ -693,7 +693,7 @@ func Decide(in TriggerInput, p TriggerPolicy) Decision
 Decide maps pace counters and policy to run, skip or abort.
 
 <a name="Decision.ControlRecord"></a>
-### func \(Decision\) [ControlRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L159>)
+### func \(Decision\) ControlRecord
 
 ```go
 func (d Decision) ControlRecord(agent string) (obs.ControlRecord, bool)
@@ -702,7 +702,7 @@ func (d Decision) ControlRecord(agent string) (obs.ControlRecord, bool)
 ControlRecord renders the decision for the control bus.
 
 <a name="Decision.Recorded"></a>
-### func \(Decision\) [Recorded](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L156>)
+### func \(Decision\) Recorded
 
 ```go
 func (d Decision) Recorded() bool
@@ -711,7 +711,7 @@ func (d Decision) Recorded() bool
 Recorded says whether the decision must land on the control bus.
 
 <a name="EvidenceClass"></a>
-## type [EvidenceClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L35>)
+## type EvidenceClass
 
 EvidenceClass names what the analysis could not see.
 
@@ -735,7 +735,7 @@ const (
 ```
 
 <a name="Finding"></a>
-## type [Finding](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/deadcode.go#L18-L46>)
+## type Finding
 
 Finding is a tool\-computed candidate, not permission to mutate source.
 
@@ -772,7 +772,7 @@ type Finding struct {
 ```
 
 <a name="Actionable"></a>
-### func [Actionable](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L101>)
+### func Actionable
 
 ```go
 func Actionable(findings []Finding, refs []Refutation) []Finding
@@ -781,7 +781,7 @@ func Actionable(findings []Finding, refs []Refutation) []Finding
 Actionable returns findings judged dead and not refuted.
 
 <a name="Gap"></a>
-## type [Gap](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/deadcode.go#L64-L68>)
+## type Gap
 
 Gap is one coverage hole: a path, its language and why it was skipped.
 
@@ -794,7 +794,7 @@ type Gap struct {
 ```
 
 <a name="Investigation"></a>
-## type [Investigation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L15-L24>)
+## type Investigation
 
 Investigation records both successful and unsuccessful attempts to refute. A candidate is not mutation authority until explicit evidence survives review.
 
@@ -812,7 +812,7 @@ type Investigation struct {
 ```
 
 <a name="Investigate"></a>
-### func [Investigate](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L29>)
+### func Investigate
 
 ```go
 func Investigate(plan Plan, report Report, prior []Investigation, r Investigation) ([]Investigation, error)
@@ -821,7 +821,7 @@ func Investigate(plan Plan, report Report, prior []Investigation, r Investigatio
 Investigate validates r against the report, stamps it with the cycle identity and appends it to prior; conflicting evidence for the same finding is refused.
 
 <a name="MandateClass"></a>
-## type [MandateClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L29>)
+## type MandateClass
 
 MandateClass is one family of work in the collector's mandate.
 
@@ -847,7 +847,7 @@ const (
 ```
 
 <a name="MandateRateDecision"></a>
-## type [MandateRateDecision](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L140-L146>)
+## type MandateRateDecision
 
 MandateRateDecision is the reversion\-rate evaluation for one mandate class over one range of registered work, kept alongside its raw inputs so the rate is never logged or acted on without the counts behind it \(PR\-MNT\-11\).
 
@@ -862,7 +862,7 @@ type MandateRateDecision struct {
 ```
 
 <a name="EvaluateMandateReversionRate"></a>
-### func [EvaluateMandateReversionRate](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L166>)
+### func EvaluateMandateReversionRate
 
 ```go
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
@@ -871,7 +871,7 @@ func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clo
 EvaluateMandateReversionRate measures how often mandate's consolidated work gets reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires.
 
 <a name="MandateReversionRateInput"></a>
-## type [MandateReversionRateInput](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/investigation.go#L152-L159>)
+## type MandateReversionRateInput
 
 MandateReversionRateInput is what EvaluateMandateReversionRate measures a mandate class's reversion rate over: the class and session, the registered range \(afterID, beforeID\], the acting agent recorded on any resulting CONTAIN effect, and the work unit that effect is attributed to.
 
@@ -887,7 +887,7 @@ type MandateReversionRateInput struct {
 ```
 
 <a name="Outcome"></a>
-## type [Outcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L81>)
+## type Outcome
 
 Outcome is the decision, so the barrier consumes one closed set.
 
@@ -911,7 +911,7 @@ const (
 ```
 
 <a name="Plan"></a>
-## type [Plan](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L76-L86>)
+## type Plan
 
 Plan is the cycle declaration recorded before the cycle starts.
 
@@ -930,7 +930,7 @@ type Plan struct {
 ```
 
 <a name="Declare"></a>
-### func [Declare](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L142>)
+### func Declare
 
 ```go
 func Declare(ctx context.Context, entries []vfs.JournalEntry, req Request, reach Reach) (Plan, error)
@@ -939,7 +939,7 @@ func Declare(ctx context.Context, entries []vfs.JournalEntry, req Request, reach
 Declare builds the cycle declaration.
 
 <a name="PlanUnit"></a>
-## type [PlanUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L24>)
+## type PlanUnit
 
 PlanUnit is one unit of a plan commitment; aliased from package dispatch.
 
@@ -948,7 +948,7 @@ type PlanUnit = dispatch.PlanUnit
 ```
 
 <a name="Preparation"></a>
-## type [Preparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L53-L59>)
+## type Preparation
 
 Preparation is the frozen environment evidence: source snapshots, reviewed config and dependency digests captured before the cycle runs.
 
@@ -963,7 +963,7 @@ type Preparation struct {
 ```
 
 <a name="LoadPreparation"></a>
-### func [LoadPreparation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L288>)
+### func LoadPreparation
 
 ```go
 func LoadPreparation(workspace, state string) (Preparation, error)
@@ -972,7 +972,7 @@ func LoadPreparation(workspace, state string) (Preparation, error)
 LoadPreparation reloads persisted preparation after verifying its digests: any dependency or config change since Prepare fails the cycle instead of running acceptance against a moved baseline.
 
 <a name="Prepare"></a>
-### func [Prepare](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L174>)
+### func Prepare
 
 ```go
 func Prepare(ctx context.Context, workspace, state, session string) (Preparation, error)
@@ -981,7 +981,7 @@ func Prepare(ctx context.Context, workspace, state, session string) (Preparation
 Prepare validates the project config, digests its locks, verifies every analyzer's exact version and snapshots the sources under state, so acceptance always compares like with like.
 
 <a name="ProjectConfig"></a>
-## type [ProjectConfig](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/preparation.go#L29-L38>)
+## type ProjectConfig
 
 ProjectConfig is reviewed project configuration, never supplied by the collector. Executables must already be installed by the project's ordinary preparation.
 
@@ -999,7 +999,7 @@ type ProjectConfig struct {
 ```
 
 <a name="Reach"></a>
-## type [Reach](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L56>)
+## type Reach
 
 Reach answers what lies outward from a file: it returns the files reachable from path through the code graph. A nil Reach means no code graph is available, so the plan is usable without one.
 
@@ -1008,7 +1008,7 @@ type Reach func(ctx context.Context, path string) ([]string, error)
 ```
 
 <a name="RecoveryDeclaration"></a>
-## type [RecoveryDeclaration](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/coordinator.go#L28>)
+## type RecoveryDeclaration
 
 RecoveryDeclaration declares bounded recovery before uncertain work begins \(PR\-ORQ\-13\); GC records it verbatim from the declarer.
 
@@ -1017,7 +1017,7 @@ type RecoveryDeclaration = dispatch.RecoveryDeclaration
 ```
 
 <a name="Refutation"></a>
-## type [Refutation](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L64-L75>)
+## type Refutation
 
 Refutation is the outcome of investigating one finding.
 
@@ -1037,7 +1037,7 @@ type Refutation struct {
 ```
 
 <a name="LoadRefutations"></a>
-### func [LoadRefutations](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L118>)
+### func LoadRefutations
 
 ```go
 func LoadRefutations(state, cycleID string) ([]Refutation, error)
@@ -1046,7 +1046,7 @@ func LoadRefutations(state, cycleID string) ([]Refutation, error)
 LoadRefutations returns the refutations attached to a cycle. A missing file is an empty record, not an error.
 
 <a name="Refute"></a>
-### func [Refute](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/refutation.go#L78>)
+### func Refute
 
 ```go
 func Refute(plan Plan, report Report, existing []Refutation, r Refutation) ([]Refutation, error)
@@ -1055,7 +1055,7 @@ func Refute(plan Plan, report Report, existing []Refutation, r Refutation) ([]Re
 Refute records r against plan's cycle and returns the cycle's refutations.
 
 <a name="Report"></a>
-## type [Report](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/deadcode.go#L71-L75>)
+## type Report
 
 Report is one analysis pass: findings plus the coverage they rest on.
 
@@ -1068,7 +1068,7 @@ type Report struct {
 ```
 
 <a name="AnalyzePrepared"></a>
-### func [AnalyzePrepared](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/analyzers.go#L20>)
+### func AnalyzePrepared
 
 ```go
 func AnalyzePrepared(ctx context.Context, workspace string, plan Plan, p Preparation) (Report, error)
@@ -1077,7 +1077,7 @@ func AnalyzePrepared(ctx context.Context, workspace string, plan Plan, p Prepara
 AnalyzePrepared never installs tools: incomplete coverage, timeout and failed tools return errors, never a successful empty report.
 
 <a name="IntegrityFindings"></a>
-### func [IntegrityFindings](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/snapshot.go#L220>)
+### func IntegrityFindings
 
 ```go
 func IntegrityFindings(ctx context.Context, workspace string, plan Plan, p Preparation) (Report, error)
@@ -1086,7 +1086,7 @@ func IntegrityFindings(ctx context.Context, workspace string, plan Plan, p Prepa
 IntegrityFindings compares retained pre\-session text, never proposes removing old suppressions, and never authorizes removing a new one autonomously.
 
 <a name="Request"></a>
-## type [Request](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/plan.go#L60-L64>)
+## type Request
 
 Request is what the caller declares; the harness owns cycle identity and which mandate class runs.
 
@@ -1099,7 +1099,7 @@ type Request struct {
 ```
 
 <a name="Runner"></a>
-## type [Runner](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/codegraph.go#L33>)
+## type Runner
 
 Runner runs one codegraph subcommand against the workspace and returns stdout.
 
@@ -1108,7 +1108,7 @@ type Runner func(ctx context.Context, args ...string) ([]byte, error)
 ```
 
 <a name="ExecRunner"></a>
-### func [ExecRunner](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/codegraph.go#L36>)
+### func ExecRunner
 
 ```go
 func ExecRunner(binary, workspace string) Runner
@@ -1117,7 +1117,7 @@ func ExecRunner(binary, workspace string) Runner
 ExecRunner runs the codegraph binary with the workspace as its project.
 
 <a name="SourceSnapshot"></a>
-## type [SourceSnapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/snapshot.go#L29-L32>)
+## type SourceSnapshot
 
 SourceSnapshot is one retained file: its pre\-session content plus the function symbols parsed out of it.
 
@@ -1129,7 +1129,7 @@ type SourceSnapshot struct {
 ```
 
 <a name="SymbolSnapshot"></a>
-## type [SymbolSnapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/snapshot.go#L20-L25>)
+## type SymbolSnapshot
 
 SymbolSnapshot identifies declarations, not files: editing a file never protects all its old dead symbols. Bodies and line shifts do not change identity.
 
@@ -1143,7 +1143,7 @@ type SymbolSnapshot struct {
 ```
 
 <a name="TriggerInput"></a>
-## type [TriggerInput](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L104-L115>)
+## type TriggerInput
 
 TriggerInput carries the pace counters and state the decision depends on. The user request is data here, not a channel: the interface holder sets it \(PR\-MNT\-8\).
 
@@ -1163,7 +1163,7 @@ type TriggerInput struct {
 ```
 
 <a name="TriggerKind"></a>
-## type [TriggerKind](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L70>)
+## type TriggerKind
 
 TriggerKind says what asked for the cycle.
 
@@ -1183,7 +1183,7 @@ const (
 ```
 
 <a name="TriggerPolicy"></a>
-## type [TriggerPolicy](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L32-L43>)
+## type TriggerPolicy
 
 TriggerPolicy holds the cadence parameters so they live in policy data, never in execution paths.
 
@@ -1203,7 +1203,7 @@ type TriggerPolicy struct {
 ```
 
 <a name="LoadTriggerPolicy"></a>
-### func [LoadTriggerPolicy](<https://github.com/rou-cru/takt-ai/blob/main/takt/gc/trigger.go#L46>)
+### func LoadTriggerPolicy
 
 ```go
 func LoadTriggerPolicy() (TriggerPolicy, error)

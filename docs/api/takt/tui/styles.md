@@ -31,7 +31,7 @@ const LogoCell = '\u2800'
 ```
 
 <a name="ForgetLogo"></a>
-## func [ForgetLogo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logoimage.go#L73>)
+## func ForgetLogo
 
 ```go
 func ForgetLogo() string
@@ -40,7 +40,7 @@ func ForgetLogo() string
 ForgetLogo is the sequence removing the logo from the screen and freeing it from the terminal's memory, for when the TUI exits.
 
 <a name="HideLogo"></a>
-## func [HideLogo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logoimage.go#L67>)
+## func HideLogo
 
 ```go
 func HideLogo() string
@@ -49,7 +49,7 @@ func HideLogo() string
 HideLogo is the sequence removing the logo from the screen; the terminal keeps it stored for the next placement.
 
 <a name="ImageLogo"></a>
-## func [ImageLogo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logo.go#L32>)
+## func ImageLogo
 
 ```go
 func ImageLogo() bool
@@ -58,7 +58,7 @@ func ImageLogo() bool
 ImageLogo reports whether the logo is drawn as an image, which its caller then places over the cells Logo reserves.
 
 <a name="Logo"></a>
-## func [Logo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logo.go#L42>)
+## func Logo
 
 ```go
 func Logo(width, height int) string
@@ -67,7 +67,7 @@ func Logo(width, height int) string
 Logo draws the largest variant of the brand mark that fits in width×height cells, or "" when none does. Mono terminals get the Braille mark, whose shape survives the loss of color; color terminals get quadrants, or, when the logo is an image, a block of LogoCell the size of the variant.
 
 <a name="PlaceLogo"></a>
-## func [PlaceLogo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logoimage.go#L53>)
+## func PlaceLogo
 
 ```go
 func PlaceLogo(x, y, cols, rows int) string
@@ -76,7 +76,7 @@ func PlaceLogo(x, y, cols, rows int) string
 PlaceLogo is the sequence drawing the stored logo over cols×rows cells whose top\-left cell is \(x, y\), zero\-based. The cursor is saved and restored around it, so the renderer's idea of where it is stays true.
 
 <a name="SetLogoMode"></a>
-## func [SetLogoMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logo.go#L28>)
+## func SetLogoMode
 
 ```go
 func SetLogoMode(m LogoMode)
@@ -85,7 +85,7 @@ func SetLogoMode(m LogoMode)
 SetLogoMode sets how the color logo is drawn: Run stores what ProbeLogoMode measured, and fixtures pin quadrants.
 
 <a name="TransmitLogo"></a>
-## func [TransmitLogo](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logoimage.go#L32>)
+## func TransmitLogo
 
 ```go
 func TransmitLogo() string
@@ -94,7 +94,7 @@ func TransmitLogo() string
 TransmitLogo is the sequence storing the logo in the terminal, sent once before it is placed.
 
 <a name="LogoMode"></a>
-## type [LogoMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logomode.go#L14>)
+## type LogoMode
 
 LogoMode is how the color logo is drawn.
 
@@ -116,7 +116,7 @@ const (
 ```
 
 <a name="ProbeLogoMode"></a>
-### func [ProbeLogoMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/styles/logomode.go#L56>)
+### func ProbeLogoMode
 
 ```go
 func ProbeLogoMode(in, out *os.File) LogoMode
