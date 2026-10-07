@@ -14,7 +14,7 @@ Package testutil provides shared test helpers for setup and CLI test suites.
 
 
 <a name="TestPlanRequest"></a>
-## func [TestPlanRequest](<https://github.com/rou-cru/takt-ai/blob/main/takt/setup/testutil/testutil.go#L9>)
+## func TestPlanRequest
 
 ```go
 func TestPlanRequest() setup.PlanRequest

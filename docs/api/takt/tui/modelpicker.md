@@ -25,7 +25,7 @@ Package modelpicker edits one harness's specialist model drafts.
 
 
 <a name="Change"></a>
-## type [Change](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L272-L274>)
+## type Change
 
 Change is one agent whose draft model differs from the installed one.
 
@@ -36,7 +36,7 @@ type Change struct {
 ```
 
 <a name="Model"></a>
-## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L48-L72>)
+## type Model
 
 Model is the specialist model/effort draft.
 
@@ -60,7 +60,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L92>)
+### func New
 
 ```go
 func New() Model
@@ -69,7 +69,7 @@ func New() Model
 New creates a picker starting from no overrides.
 
 <a name="Model.Changes"></a>
-### func \(Model\) [Changes](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L290>)
+### func \(Model\) Changes
 
 ```go
 func (p Model) Changes() int
@@ -78,7 +78,7 @@ func (p Model) Changes() int
 Changes counts specialists whose draft assignment differs from the installed baseline.
 
 <a name="Model.Detail"></a>
-### func \(Model\) [Detail](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L375>)
+### func \(Model\) Detail
 
 ```go
 func (p Model) Detail() string
@@ -87,7 +87,7 @@ func (p Model) Detail() string
 Detail names the specialist being edited, or "" on the assignment list.
 
 <a name="Model.Frame"></a>
-### func \(Model\) [Frame](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L391>)
+### func \(Model\) Frame
 
 ```go
 func (p Model) Frame() ui.Frame
@@ -96,7 +96,7 @@ func (p Model) Frame() ui.Frame
 Frame returns the active phase's body and footer; the caller adds header and size.
 
 <a name="Model.Paste"></a>
-### func \(\*Model\) [Paste](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L239>)
+### func \(\*Model\) Paste
 
 ```go
 func (p *Model) Paste(text string)
@@ -105,7 +105,7 @@ func (p *Model) Paste(text string)
 Paste enters pasted text into the search filter.
 
 <a name="Model.Pending"></a>
-### func \(Model\) [Pending](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L278>)
+### func \(Model\) Pending
 
 ```go
 func (p Model) Pending() []Change
@@ -114,7 +114,7 @@ func (p Model) Pending() []Change
 Pending lists the agents whose draft model differs from the installed baseline, in roster order, as their user\-facing labels.
 
 <a name="Model.Preload"></a>
-### func \(\*Model\) [Preload](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L101>)
+### func \(\*Model\) Preload
 
 ```go
 func (p *Model) Preload(overrides map[string]model.ModelAssignment)
@@ -123,7 +123,7 @@ func (p *Model) Preload(overrides map[string]model.ModelAssignment)
 Preload starts the draft from the installed overrides.
 
 <a name="Model.Searching"></a>
-### func \(Model\) [Searching](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L386>)
+### func \(Model\) Searching
 
 ```go
 func (p Model) Searching() bool
@@ -132,7 +132,7 @@ func (p Model) Searching() bool
 Searching reports that the search field owns printable keys.
 
 <a name="Model.SparseOverrides"></a>
-### func \(Model\) [SparseOverrides](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L524>)
+### func \(Model\) SparseOverrides
 
 ```go
 func (p Model) SparseOverrides() map[string]model.ModelAssignment
@@ -141,7 +141,7 @@ func (p Model) SparseOverrides() map[string]model.ModelAssignment
 SparseOverrides returns the draft overrides, or nil when there are none.
 
 <a name="Model.Update"></a>
-### func \(\*Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/modelpicker/model_picker.go#L111>)
+### func \(\*Model\) Update
 
 ```go
 func (p *Model) Update(key tea.KeyPressMsg) (done, back bool)
