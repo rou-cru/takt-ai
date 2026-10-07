@@ -2,7 +2,7 @@ name: Regenerate gomarkdocs
 
 on:
   push:
-    branches: [stage]
+    branches: [trunk]
 
 permissions:
   contents: write
