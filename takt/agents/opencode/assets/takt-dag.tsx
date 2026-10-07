@@ -472,18 +472,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   // Wrap: a column that would overflow starts the next band.
   const total = colWidth.reduce((sum, w) => sum + w, 0) + gapWidth.reduce((sum, w) => sum + w, 0)
   const budget = total <= width ? Infinity : Math.max(width - 2 * WRAP_RESERVE, ...colWidth)
-  const bands: number[][] = [[0]]
-  let used = colWidth[0]
-  for (let c = 1; c <= lastDepth; c++) {
-    const need = gapWidth[c - 1] + colWidth[c]
-    if (used + need > budget) {
-      bands.push([c])
-      used = colWidth[c]
-    } else {
-      bands[bands.length - 1].push(c)
-      used += need
-    }
-  }
+  const bands = wrapBands(colWidth, gapWidth, budget)
   const bandOf = new Array<number>(lastDepth + 1)
   bands.forEach((cs, band) => cs.forEach((c) => { bandOf[c] = band }))
   // Even bands flow right, odd ones left.
@@ -515,16 +504,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   const leftMargin = leftLanes > 0 ? 2 + leftLanes : 0
   const bandWidth = bands.map((cs) => cs.reduce((sum, c, i) => sum + colWidth[c] + (i < cs.length - 1 ? gapWidth[c] : 0), 0))
   const right = leftMargin + Math.max(...bandWidth)
-  const colX: number[] = []
-  bands.forEach((cs, band) => {
-    if (band % 2 === 0) {
-      let x = leftMargin
-      for (const c of cs) { colX[c] = x; x += colWidth[c] + (gapWidth[c] ?? 0) }
-    } else {
-      let edge = right
-      for (const c of cs) { colX[c] = edge - colWidth[c]; edge = colX[c] - (gapWidth[c] ?? 0) }
-    }
-  })
+  const colX = columnX(bands, colWidth, gapWidth, leftMargin, right)
 
   const nodes: LayoutNode[] = members.map((id) => {
     const depth = depthOf(id)
@@ -538,7 +518,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     const points: Point[] = []
     const push = (x: number, y: number) => {
       const last = points.at(-1)
-      if (!last || last[0] !== x || last[1] !== y) points.push([x, y])
+      if (last?.[0] !== x || last[1] !== y) points.push([x, y])
     }
     let arrival: Point = [0, 0]
     chain.slice(1).forEach((to, i) => {
@@ -567,10 +547,44 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
       arrival = [end, ty]
     })
     paths.push(points)
-    heads.push({ x: arrival[0], y: arrival[1], glyph: flow(depthOfSlot(chain[chain.length - 1])) > 0 ? "▶" : "◀" })
+    heads.push({ x: arrival[0], y: arrival[1], glyph: flow(depthOfSlot(chain.at(-1) as string)) > 0 ? "▶" : "◀" })
   }
 
   return { nodes, paths, heads, width: right + (rightLanes > 0 ? 2 + rightLanes : 0), height, bands: bands.length }
+}
+
+// wrapBands groups the columns into bands no wider than budget: a column that
+// would overflow starts the next band.
+function wrapBands(colWidth: readonly number[], gapWidth: readonly number[], budget: number): number[][] {
+  const bands: number[][] = [[0]]
+  let used = colWidth[0]
+  for (let c = 1; c < colWidth.length; c++) {
+    const need = gapWidth[c - 1] + colWidth[c]
+    if (used + need > budget) {
+      bands.push([c])
+      used = colWidth[c]
+    } else {
+      (bands.at(-1) as number[]).push(c)
+      used += need
+    }
+  }
+  return bands
+}
+
+// columnX places every column: even bands run rightwards from leftMargin, odd
+// ones leftwards from right.
+function columnX(bands: readonly number[][], colWidth: readonly number[], gapWidth: readonly number[], leftMargin: number, right: number): number[] {
+  const colX: number[] = []
+  bands.forEach((cs, band) => {
+    if (band % 2 === 0) {
+      let x = leftMargin
+      for (const c of cs) { colX[c] = x; x += colWidth[c] + (gapWidth[c] ?? 0) }
+    } else {
+      let edge = right
+      for (const c of cs) { colX[c] = edge - colWidth[c]; edge = colX[c] - (gapWidth[c] ?? 0) }
+    }
+  })
+  return colX
 }
 
 // buildLayout stacks the graph's connected components top to bottom, each
@@ -978,6 +992,33 @@ function connectorRow(lanes: readonly (string | undefined)[], at: number, others
   return { text: mask.map((m) => LINE_GLYPHS[m] ?? " ").join("").trimEnd() }
 }
 
+// isChainLink reports a unit that alone follows the unit on the row above,
+// with no other lane open, and does not fork itself.
+function isChainLink(
+  item: FrontierItem,
+  previous: FrontierItem | undefined,
+  incoming: readonly number[],
+  at: number,
+  lanes: readonly (string | undefined)[],
+  children: ReadonlyMap<string, readonly string[]>,
+): boolean {
+  return (
+    incoming.length === 1 &&
+    previous !== undefined &&
+    (children.get(previous.id) ?? []).join() === item.id &&
+    (children.get(item.id) ?? []).length <= 1 &&
+    lanes.every((target, lane) => lane === at || target === undefined)
+  )
+}
+
+// unitRow draws a unit's row: its glyph in lane `at` among the open lanes, or,
+// for the chain-th link of a chain, the indented chain marker; then its label.
+function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undefined)[], chain: number): SidebarRow {
+  const cells = lanes.map((target, lane) => (lane === at ? item.glyph : target === undefined ? " " : "│"))
+  const gutter = chain > 0 ? `${CHAIN_INDENT.repeat(Math.min(chain - 1, MAX_CHAIN_INDENT))}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
+  return { text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) }
+}
+
 // laneRows lays the frontier out like `git log --graph`, top-down: the state
 // glyph is the node, sitting in its lane, and every edge is a lane carried
 // down to the unit it leads to. A unit that alone follows the unit on the row
@@ -998,18 +1039,10 @@ function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, 
       rows.push(connectorRow(lanes, at, incoming.slice(1), "merge"))
       for (const lane of incoming.slice(1)) lanes[lane] = undefined
     }
-    const linked =
-      incoming.length === 1 &&
-      previous !== undefined &&
-      (children.get(previous.id) ?? []).join() === item.id &&
-      (children.get(item.id) ?? []).length <= 1 &&
-      lanes.every((target, lane) => lane === at || target === undefined)
-    chain = linked ? chain + 1 : 0
+    chain = isChainLink(item, previous, incoming, at, lanes, children) ? chain + 1 : 0
     previous = item
     lanes[at] = item.id
-    const cells = lanes.map((target, lane) => (lane === at ? item.glyph : target === undefined ? " " : "│"))
-    const gutter = linked ? `${CHAIN_INDENT.repeat(Math.min(chain - 1, MAX_CHAIN_INDENT))}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
-    rows.push({ text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) })
+    rows.push(unitRow(item, at, lanes, chain))
     const [first, ...rest] = children.get(item.id) ?? []
     lanes[at] = first
     const forks = rest.map((child) => {
