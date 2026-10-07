@@ -427,13 +427,45 @@ func gitMutation(command string) bool {
 // gitWrappers run their remaining words as a command.
 var gitWrappers = []string{"command", "env", "exec", "sudo", "doas", "nohup", "time", "nice", "timeout", "stdbuf", "xargs", "builtin"}
 
+// gitWrapperValueFlags are the wrapper options whose value is the next word.
+var gitWrapperValueFlags = map[string][]string{
+	"env":     {"-u", "-C", "--unset", "--chdir"},
+	"sudo":    {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "--user", "--group", "--chdir", "--host", "--prompt", "--role", "--type", "--other-user"},
+	"doas":    {"-u", "-C"},
+	"timeout": {"-s", "-k", "--signal", "--kill-after"},
+	"nice":    {"-n", "--adjustment"},
+	"stdbuf":  {"-i", "-o", "-e", "--input", "--output", "--error"},
+	"xargs":   {"-I", "-n", "-L", "-P", "-d", "-E", "-s", "-a", "--max-args", "--max-lines", "--max-procs", "--delimiter", "--eof", "--max-chars", "--arg-file"},
+}
+
+// shellReservedWords open a compound command or negate a pipeline; the
+// command that follows them still runs.
+var shellReservedWords = []string{"{", "!", "if", "then", "else", "elif", "do", "while", "until"}
+
 // gitShells run the script that follows -c.
 var gitShells = []string{"sh", "bash", "zsh", "dash", "ksh"}
 
+// executedGitMutation reports whether one simple command, given as its words,
+// runs a mutating git: directly, behind its prefixes, or in the script a
+// shell, eval or find -exec runs. Only prefixes are skipped, so a git that
+// is merely a later argument does not count.
 func executedGitMutation(words []string) bool {
-	// Assignments, wrappers and their flags or numeric arguments precede the command.
-	for len(words) > 0 && (shellAssignment(words[0]) || slices.Contains(gitWrappers, words[0]) ||
-		strings.HasPrefix(words[0], "-") || startsWithDigit(words[0])) {
+	// Assignments, reserved words, wrappers and their flags, flag values or
+	// numeric arguments precede the command.
+	wrapper := ""
+prefix:
+	for len(words) > 0 {
+		word := words[0]
+		switch {
+		case slices.Contains(gitWrappers, word):
+			wrapper = word
+		case slices.Contains(gitWrapperValueFlags[wrapper], word) && len(words) > 1:
+			words = words[1:]
+		case shellAssignment(word) || slices.Contains(shellReservedWords, word) ||
+			strings.HasPrefix(word, "-") || startsWithDigit(word):
+		default:
+			break prefix
+		}
 		words = words[1:]
 	}
 	if len(words) == 0 {
@@ -446,9 +478,7 @@ func executedGitMutation(words []string) bool {
 	case name == "eval":
 		return gitMutation(strings.Join(words[1:], " "))
 	case slices.Contains(gitShells, name) || slices.ContainsFunc(gitShells, func(sh string) bool { return strings.HasSuffix(name, "/"+sh) }):
-		if i := slices.Index(words, "-c"); i > 0 && i+1 < len(words) {
-			return gitMutation(words[i+1])
-		}
+		return gitMutation(shellScript(words[1:]))
 	}
 	for i, word := range words {
 		if (word == "-exec" || word == "-execdir" || word == "-ok") && executedGitMutation(words[i+1:]) {
@@ -456,6 +486,38 @@ func executedGitMutation(words []string) bool {
 		}
 	}
 	return false
+}
+
+// shellScript returns the script a shell runs with -c, or "" when it runs
+// none. Options come first, short ones possibly clustered as in -lc; the
+// first operand after them is the script, and later words are its arguments.
+func shellScript(args []string) string {
+	inline := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			if inline && i+1 < len(args) {
+				return args[i+1]
+			}
+			return ""
+		case arg == "--rcfile" || arg == "--init-file":
+			i++
+		case strings.HasPrefix(arg, "--"):
+		case len(arg) > 1 && (arg[0] == '-' || arg[0] == '+'):
+			inline = inline || (arg[0] == '-' && strings.ContainsRune(arg[1:], 'c'))
+			// -o and -O take the option name as the next word.
+			if last := arg[len(arg)-1]; last == 'o' || last == 'O' {
+				i++
+			}
+		default:
+			if inline {
+				return arg
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 // startsWithDigit reports a numeric wrapper argument, such as timeout's duration.
