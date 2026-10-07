@@ -573,6 +573,8 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   return { nodes, paths, heads, width: right + (rightLanes > 0 ? 2 + rightLanes : 0), height, bands: bands.length }
 }
 
+// buildLayout stacks the graph's connected components top to bottom, each
+// laid out in bands no wider than width.
 function buildLayout(snapshot: DagSnapshot, width: number): Omit<Layout, "topologyKey" | "viewport"> {
   const depths = computeDepths(snapshot)
   const depthOf = (id: string) => depths.get(id) ?? 0
@@ -854,6 +856,9 @@ const GROUP_GLYPH = "≡"
 // indent per further link of the same chain.
 const CHAIN_GLYPH = "└─"
 const CHAIN_INDENT = "  "
+// Deepest indent a chain reaches, in CHAIN_INDENT steps; further links keep
+// it, so a long chain still fits SIDEBAR_COLUMNS.
+const MAX_CHAIN_INDENT = 4
 
 export type SidebarTone = "muted" | "error"
 export interface SidebarRow {
@@ -977,8 +982,9 @@ function connectorRow(lanes: readonly (string | undefined)[], at: number, others
 // glyph is the node, sitting in its lane, and every edge is a lane carried
 // down to the unit it leads to. A unit that alone follows the unit on the row
 // above, with no other lane open, has no connector row to show the edge, so it
-// is marked `└─` and indented one level per link. Undefined when the walk
-// needs more lanes than the budget.
+// is marked `└─` and indented one level per link, up to MAX_CHAIN_INDENT;
+// a unit that forks stays in its lane so its fork row lines up under it.
+// Undefined when the walk needs more lanes than the budget.
 function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, readonly string[]>): SidebarRow[] | undefined {
   const lanes: (string | undefined)[] = []
   const rows: SidebarRow[] = []
@@ -996,12 +1002,13 @@ function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, 
       incoming.length === 1 &&
       previous !== undefined &&
       (children.get(previous.id) ?? []).join() === item.id &&
+      (children.get(item.id) ?? []).length <= 1 &&
       lanes.every((target, lane) => lane === at || target === undefined)
     chain = linked ? chain + 1 : 0
     previous = item
     lanes[at] = item.id
     const cells = lanes.map((target, lane) => (lane === at ? item.glyph : target === undefined ? " " : "│"))
-    const gutter = linked ? `${CHAIN_INDENT.repeat(chain - 1)}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
+    const gutter = linked ? `${CHAIN_INDENT.repeat(Math.min(chain - 1, MAX_CHAIN_INDENT))}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
     rows.push({ text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) })
     const [first, ...rest] = children.get(item.id) ?? []
     lanes[at] = first

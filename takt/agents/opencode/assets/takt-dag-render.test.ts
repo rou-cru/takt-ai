@@ -288,6 +288,22 @@ describe("sidebar rows", () => {
     expect(text(snapshot)).toEqual(["◌ a", "└─◌ b", "  └─◌ c"])
   })
 
+  test("a long chain caps its indent and every row fits the sidebar", () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `unit-${i}-with-a-long-identity`)
+    const snapshot = { ...base, nodes: ids.map((id) => node({ id })),
+      edges: ids.slice(1).map((to, i) => ({ from: ids[i], to })) } as never
+    const rows = text(snapshot)
+    for (const row of rows) expect(Bun.stringWidth(row)).toBeLessThanOrEqual(37)
+    expect(rows.at(-1)?.indexOf("└─")).toBe(rows.at(-2)?.indexOf("└─"))
+    expect(rows.at(-1)?.indexOf("└─")).toBeGreaterThan(0)
+  })
+
+  test("a chain unit that forks stays in its lane, under its fork row", () => {
+    const snapshot = { ...base, nodes: ["a", "b", "c", "d"].map((id) => node({ id })),
+      edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "b", to: "d" }] } as never
+    expect(text(snapshot)).toEqual(["◌ a", "◌ b", "├─┐", "◌ │ c", "  ◌ d"])
+  })
+
   test("a unit beside an open lane, or not right below its parent, is not a chain link", () => {
     const snapshot = { ...base, nodes: ["r", "a", "b", "a2"].map((id) => node({ id })),
       edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }, { from: "a", to: "a2" }] } as never
