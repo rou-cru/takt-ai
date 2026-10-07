@@ -14,7 +14,7 @@ const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 4
 
 async function sameDirectory(left: string, right: string): Promise<boolean> {
-  const canonical = async (path: string) => realpath(path).catch(() => resolve(path))
+  const canonical = (path: string) => realpath(path).catch(() => resolve(path))
   const [leftPath, rightPath] = await Promise.all([canonical(left), canonical(right)])
   return leftPath === rightPath
 }
@@ -712,7 +712,7 @@ export default Plugin.define({
         }
       })
 
-      await ctx.permission.hook("evaluate", async (event) => {
+      await ctx.permission.hook("evaluate", (event) => {
         if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
@@ -952,7 +952,7 @@ export default Plugin.define({
     }
 
     const toolStartedAt = new Map<string, number>()
-    await ctx.tool.hook("execute.before", async (event) => {
+    await ctx.tool.hook("execute.before", (event) => {
       toolStartedAt.set(`${event.sessionID}:${event.id}`, Date.now())
     })
 
