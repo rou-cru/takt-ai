@@ -28,6 +28,9 @@ updates:
     target-branch: trunk
     schedule:
       interval: weekly
+    # @opentui/solid pins solid-js as an exact peer; it moves with that bump.
+    ignore:
+      - dependency-name: solid-js
     commit-message:
       prefix: "chore(deps)"
     groups:
