@@ -1,5 +1,5 @@
 # Dedicated test runtime: Node executes the rendered OpenCode TypeScript plugin.
-FROM node:24-bookworm-slim AS node
+FROM node:25-bookworm-slim AS node
 # Real codegraph for the E2E-C tests (dead-code findings over fixture workspaces).
 # 1.6.1 is the release the gc adapter's JSON surface was verified against; the
 # product itself resolves any release at or above takt/codegraph.CodegraphVersion.
