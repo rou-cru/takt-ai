@@ -85,7 +85,7 @@ func SelectableOrder() ([]model.ComponentID, error)
 SelectableOrder lists user\-choosable components in manifest order so prompts stay stable.
 
 <a name="AgentDefinition"></a>
-## type [AgentDefinition](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L31-L47>)
+## type [AgentDefinition](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L31-L50>)
 
 AgentDefinition retains references until the target adapter composes its prompt. VFS grants are always declared separately by exact instance ID.
 
@@ -95,6 +95,9 @@ type AgentDefinition struct {
     ID  string `yaml:"id"`
     // Instances lists the deployable instances sharing this definition.
     Instances []string `yaml:"instances"`
+    // Label is the short name every instance shows where space is scarce,
+    // such as the DAG sidebar's completed row.
+    Label string `yaml:"label"`
     // VFSGrants declares an explicit VFS capability list for every instance ID.
     // Grants never inherit from the definition or role.
     VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
@@ -110,7 +113,7 @@ type AgentDefinition struct {
 ```
 
 <a name="AgentDefinition.ComposeText"></a>
-### func \(AgentDefinition\) [ComposeText](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L405>)
+### func \(AgentDefinition\) [ComposeText](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L413>)
 
 ```go
 func (a AgentDefinition) ComposeText(fsys fs.FS) (string, error)
@@ -119,7 +122,7 @@ func (a AgentDefinition) ComposeText(fsys fs.FS) (string, error)
 ComposeText joins this agent's context files \(see ContextPaths\) into one flat prompt body.
 
 <a name="AgentDefinition.ContextPaths"></a>
-### func \(AgentDefinition\) [ContextPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L394>)
+### func \(AgentDefinition\) [ContextPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L402>)
 
 ```go
 func (a AgentDefinition) ContextPaths() []string
@@ -128,7 +131,7 @@ func (a AgentDefinition) ContextPaths() []string
 ContextPaths is the declared composition order, not an authority hierarchy.
 
 <a name="AgentDefinition.VFSCapabilities"></a>
-### func \(AgentDefinition\) [VFSCapabilities](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L52>)
+### func \(AgentDefinition\) [VFSCapabilities](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L55>)
 
 ```go
 func (a AgentDefinition) VFSCapabilities(instanceID string) ([]model.VFSCapability, bool)
@@ -173,7 +176,7 @@ type Capability struct {
 ```
 
 <a name="Catalog"></a>
-## type [Catalog](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L82-L89>)
+## type [Catalog](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L85-L92>)
 
 Catalog is the validated declarative content Takt deploys: agent definitions, skill packages, and free files shared across agents.
 
@@ -189,7 +192,7 @@ type Catalog struct {
 ```
 
 <a name="LoadFS"></a>
-### func [LoadFS](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L111>)
+### func [LoadFS](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L114>)
 
 ```go
 func LoadFS(fsys fs.FS) (Catalog, error)
@@ -198,7 +201,7 @@ func LoadFS(fsys fs.FS) (Catalog, error)
 LoadFS validates the entire package before any deployment can be planned; skill executables are declared in frontmatter, not taken from file modes.
 
 <a name="LoadPackages"></a>
-### func [LoadPackages](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L107>)
+### func [LoadPackages](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L110>)
 
 ```go
 func LoadPackages() (Catalog, error)
@@ -220,7 +223,7 @@ type ContextFiles struct {
 ```
 
 <a name="NativeSubAgentContent"></a>
-## type [NativeSubAgentContent](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/native.go#L23-L26>)
+## type [NativeSubAgentContent](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/native.go#L23-L28>)
 
 NativeSubAgentContent holds a crew member's target\-neutral identity.
 
@@ -228,11 +231,13 @@ NativeSubAgentContent holds a crew member's target\-neutral identity.
 type NativeSubAgentContent struct {
     // Role decides the permission profile and whether users may talk to this specialist directly.
     Role model.RoleClass `json:"role" yaml:"role"`
+    // Label is the definition's short display name, shared by its instances.
+    Label string `json:"label" yaml:"label"`
 }
 ```
 
 <a name="PackageFile"></a>
-## type [PackageFile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L61-L68>)
+## type [PackageFile](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L64-L71>)
 
 PackageFile preserves binary bytes and an explicit deployment mode.
 
@@ -278,7 +283,7 @@ func ReconcileSelection(selected []model.ComponentID) ([]model.ComponentID, []Re
 ReconcileSelection reconciles a selection against the embedded manifest for callers that hold no manifest.
 
 <a name="SkillPackage"></a>
-## type [SkillPackage](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L71-L78>)
+## type [SkillPackage](<https://github.com/rou-cru/takt-ai/blob/main/takt/catalog/packages.go#L74-L81>)
 
 SkillPackage is one validated skill: its package ID and SKILL.md descriptor bytes.
 

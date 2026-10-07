@@ -66,13 +66,6 @@ func TestScanToolCopiesListsEachPathDirectoryOnceInOrder(t *testing.T) {
 	}
 }
 
-func TestDefaultControlPlaneHealthWarnsWithoutALiveSession(t *testing.T) {
-	got := controlPlaneHealth()
-	if got.Name != "control-plane:health" || got.Status != CheckStatusWarn || got.Remedy == "" {
-		t.Errorf("default control-plane check = %#v, want a warning with a remedy", got)
-	}
-}
-
 func TestDefaultResolveProjectUsesEngramsOwnDetection(t *testing.T) {
 	dir := t.TempDir()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

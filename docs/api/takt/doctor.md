@@ -26,7 +26,7 @@ var ErrUnhealthy = errors.New("doctor: unhealthy")
 ```
 
 <a name="Run"></a>
-## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L113>)
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L135>)
 
 ```go
 func Run(stdout io.Writer) error
@@ -35,7 +35,7 @@ func Run(stdout io.Writer) error
 Run executes every doctor check and renders the report to stdout. Failed checks do not affect the returned error: only internal failures \(home resolution, write errors\) are returned as errors.
 
 <a name="CheckResult"></a>
-## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L64-L69>)
+## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L65-L70>)
 
 CheckResult is one health check outcome with an optional remediation hint.
 
@@ -49,7 +49,7 @@ type CheckResult struct {
 ```
 
 <a name="CheckStatus"></a>
-## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L54>)
+## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L55>)
 
 CheckStatus is the outcome of a single doctor check.
 
@@ -68,7 +68,7 @@ const (
 ```
 
 <a name="DoctorReport"></a>
-## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L72-L74>)
+## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L73-L75>)
 
 DoctorReport aggregates every check executed in one doctor run.
 

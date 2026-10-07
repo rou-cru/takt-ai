@@ -43,6 +43,8 @@ Package obs keeps one local event stream and control record so sessions stay obs
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
   - [func \(s \*Store\) CountEvents\(sessionID string, class EventClass, afterID, beforeID int64\) \(int64, error\)](<#Store.CountEvents>)
   - [func \(s \*Store\) Events\(sessionID string, class EventClass, afterID, beforeID int64, limit int\) \(out \[\]StoredEvent, err error\)](<#Store.Events>)
+- [type StoreHealth](<#StoreHealth>)
+  - [func InspectStore\(workspace string\) \(health StoreHealth, err error\)](<#InspectStore>)
 - [type StoredAction](<#StoredAction>)
 - [type StoredEvent](<#StoredEvent>)
 
@@ -488,6 +490,33 @@ func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int
 ```
 
 Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in id order \(the order AppendEvent assigns, i.e. the order work was registered — never wall\-clock time, per PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass; the zero value matches every class. beforeID of 0 means no upper bound; limit of 0 means no limit.
+
+<a name="StoreHealth"></a>
+## type [StoreHealth](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L34-L43>)
+
+StoreHealth is what a read\-only look at a workspace's event store found.
+
+```go
+type StoreHealth struct {
+    // Exists is false when the workspace has no event store yet, which is normal before its first session.
+    Exists bool
+    // Private reports that only the owner can reach the file, as OpenStore creates it.
+    Private bool
+    // Events counts the recorded events across all sessions.
+    Events int64
+    // LastEventAt is when the latest event was written; zero when none was.
+    LastEventAt time.Time
+}
+```
+
+<a name="InspectStore"></a>
+### func [InspectStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L48>)
+
+```go
+func InspectStore(workspace string) (health StoreHealth, err error)
+```
+
+InspectStore checks the workspace event store without changing anything, so a health check never creates the store or its directory. It fails when the file cannot be read as a database, is missing a table or fails SQLite's integrity check, because such a store cannot be relied on.
 
 <a name="StoredAction"></a>
 ## type [StoredAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L91-L95>)

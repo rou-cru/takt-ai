@@ -32,6 +32,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -100,23 +101,22 @@ func TestDefaultHTTPFetchAndStatfsFreeBytes(t *testing.T) {
 // arguments install passing defaults; an empty home installs a fresh temp dir.
 func withSeams(t *testing.T, home string, look func(string) (string, error), copies func(string) []string, get func(string, time.Duration) (int, error), free func(string) (uint64, error)) {
 	t.Helper()
-	origHome, origLook, origCopies, origFree, origVersion, origResolve, origControl := userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth
+	origHome, origLook, origCopies, origFree, origVersion, origResolve := userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram
 	origCodegraphResolve, origCodegraphVersion, origHandshake := resolveCodegraph, codegraphVersionFn, openCodeHandshake
 	origFetch, origWorkingDir, origResolveProject := httpFetch, workingDir, resolveProject
 	t.Cleanup(func() {
 		resolveCodegraph, codegraphVersionFn, openCodeHandshake = origCodegraphResolve, origCodegraphVersion, origHandshake
-		userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram, controlPlaneHealth = origHome, origLook, origCopies, origFree, origVersion, origResolve, origControl
+		userHomeDir, lookPath, toolCopies, diskFree, engramVersionFn, resolveEngram = origHome, origLook, origCopies, origFree, origVersion, origResolve
 		httpFetch, workingDir, resolveProject = origFetch, origWorkingDir, origResolveProject
 	})
 	// engram:diagnostics/engram:needs-review default to the empty-body,
 	// zero-value response ({}), which every case below reads as a clean pass.
 	httpFetch = func(string, string, io.Reader, time.Duration) (int, []byte, error) { return 200, []byte("{}"), nil }
 	resolveProject = func(string) string { return "test-project" }
-	// The passing control-plane default keeps the healthy-path test
-	// deterministic; dedicated tests override controlPlaneHealth explicitly.
-	controlPlaneHealth = func() CheckResult {
-		return CheckResult{Name: "control-plane:health", Status: CheckStatusPass, Detail: "control-plane healthy"}
-	}
+	// An empty workspace keeps the control-plane check deterministic and off
+	// any real event store; dedicated tests point workingDir at a prepared one.
+	workspace := t.TempDir()
+	workingDir = func() (string, error) { return workspace, nil }
 	if home == "" {
 		home = t.TempDir()
 		userHomeDir = func() (string, error) { return home, nil }
@@ -492,60 +492,90 @@ func TestRunReturnsWriteError(t *testing.T) {
 }
 
 func TestRunControlPlaneCheck(t *testing.T) {
+	event := func(t *testing.T, workspace string) {
+		t.Helper()
+		store, err := obs.OpenStore(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := store.Close(); err != nil {
+				t.Errorf("close store: %v", err)
+			}
+		}()
+		e := obs.NewEnvelope(obs.NewClock(), obs.PlaneVFS, "agent-a")
+		e.EventClass = obs.EventVFSDelta
+		e.Correlations.SessionID = "s1"
+		if _, err := store.AppendEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
 	tests := []struct {
 		name       string
-		health     func() CheckResult
-		wantSubstr []string
+		prepare    func(t *testing.T, workspace string)
+		wantStatus CheckStatus
+		wantDetail string
+		wantRemedy string
 	}{
-		{
-			name: "healthy passes",
-			health: func() CheckResult {
-				return CheckResult{Name: "control-plane:health", Status: CheckStatusPass, Detail: "control-plane healthy"}
-			},
-			wantSubstr: []string{
-				"[ok]",
-				"control-plane:health",
-				"control-plane healthy",
-			},
-		},
-		{
-			name: "degraded warns",
-			health: func() CheckResult {
-				return CheckResult{Name: "control-plane:health", Status: CheckStatusWarn, Detail: "bus degraded"}
-			},
-			wantSubstr: []string{
-				"[!!]",
-				"control-plane:health",
-				"bus degraded",
-				"Status:  degraded",
-			},
-		},
-		{
-			name: "no live session warns, never fails",
-			health: func() CheckResult {
-				return CheckResult{Name: "control-plane:health", Status: CheckStatusWarn, Detail: "no live session to inspect"}
-			},
-			wantSubstr: []string{
-				"[!!]",
-				"control-plane:health",
-				"no live session to inspect",
-				"Status:  degraded",
-			},
-		},
+		{"no store yet passes", func(*testing.T, string) {}, CheckStatusPass, "no event store in this workspace yet", ""},
+		{"recorded events pass", event, CheckStatusPass, "1 recorded", ""},
+		{"empty store passes", func(t *testing.T, workspace string) {
+			store, err := obs.OpenStore(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}, CheckStatusPass, "no events recorded", ""},
+		{"loose mode warns", func(t *testing.T, workspace string) {
+			event(t, workspace)
+			path, err := obs.StorePath(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, CheckStatusWarn, "readable by other users", "chmod 600"},
+		{"corrupt store fails", func(t *testing.T, workspace string) {
+			path, err := obs.StorePath(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(path), obs.PrivateTelemetryDirectoryMode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("this is not a sqlite database, not even close to one"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, CheckStatusFail, "event store is unusable", "Move"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			withSeams(t, t.TempDir(), nil, nil, nil, nil)
-			controlPlaneHealth = tc.health
-			var out bytes.Buffer
-			// A failing check makes Run report ErrUnhealthy after writing the report.
-			if err := Run(&out); err != nil && !errors.Is(err, ErrUnhealthy) {
-				t.Fatalf("Run() error = %v", err)
+			workspace := t.TempDir()
+			tc.prepare(t, workspace)
+			got := controlPlaneCheck(workspace)
+			if got.Name != "control-plane:health" || got.Status != tc.wantStatus {
+				t.Fatalf("controlPlaneCheck() = %#v, want %s", got, tc.wantStatus)
 			}
-			for _, want := range tc.wantSubstr {
-				assertContains(t, out.String(), want)
-			}
+			assertContains(t, got.Detail, tc.wantDetail)
+			assertContains(t, got.Remedy, tc.wantRemedy)
 		})
+	}
+}
+
+func TestRunControlPlaneCheckNeverCreatesStore(t *testing.T) {
+	withSeams(t, t.TempDir(), nil, nil, nil, nil)
+	workspace := t.TempDir()
+	workingDir = func() (string, error) { return workspace, nil }
+	var out bytes.Buffer
+	if err := Run(&out); err != nil && !errors.Is(err, ErrUnhealthy) {
+		t.Fatalf("Run() error = %v", err)
+	}
+	assertContains(t, out.String(), "control-plane:health")
+	if _, err := os.Stat(filepath.Join(workspace, obs.StateDirName)); !os.IsNotExist(err) {
+		t.Errorf("doctor created %s in the workspace: stat error = %v", obs.StateDirName, err)
 	}
 }
 

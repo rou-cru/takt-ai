@@ -40,6 +40,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -94,16 +95,37 @@ func defaultResolveProject(dir string) string {
 	return memory.ResolveProject(context.Background(), memory.Config{}, dir)
 }
 
-// controlPlaneHealth reports control-plane/bus health. Injectable seam so
-// doctor stays decoupled from session/obs (importing session here would risk
-// an import cycle). Default is warn — never fail when there is no live
-// session to inspect.
-var controlPlaneHealth = func() CheckResult {
+// controlPlaneCheck inspects the event store of the workspace doctor runs in:
+// it is the control plane's record, and the only part of it that outlives a
+// session. A workspace without a store yet is healthy, not degraded.
+func controlPlaneCheck(workspace string) CheckResult {
+	const name = "control-plane:health"
+	path, _ := obs.StorePath(workspace)
+	health, err := obs.InspectStore(workspace)
+	switch {
+	case err != nil:
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: "event store is unusable: " + err.Error(),
+			Remedy: "Move " + path + " aside; Takt recreates it, but its recorded history is lost",
+		}
+	case !health.Exists:
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no event store in this workspace yet"}
+	case !health.Private:
+		return CheckResult{
+			Name:   name,
+			Status: CheckStatusWarn,
+			Detail: "event store is readable by other users",
+			Remedy: "Run 'chmod 600 " + path + "'",
+		}
+	case health.Events == 0:
+		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "event store is intact, with no events recorded"}
+	}
 	return CheckResult{
-		Name:   "control-plane:health",
-		Status: CheckStatusWarn,
-		Detail: "no live session to inspect",
-		Remedy: "Run within a live session for a full control-plane check",
+		Name:   name,
+		Status: CheckStatusPass,
+		Detail: fmt.Sprintf("event store is intact: %d recorded, last at %s", health.Events, health.LastEventAt.Local().Format(time.DateTime)),
 	}
 }
 
@@ -116,11 +138,12 @@ func Run(stdout io.Writer) error {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	report := DoctorReport{Checks: toolChecks()}
-	report.Checks = append(report.Checks, controlPlaneHealth())
+	workspace := workingDirOrHome(home)
+	report.Checks = append(report.Checks, controlPlaneCheck(workspace))
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
 	report.Checks = append(report.Checks, engramChecks(home)...)
 	report.Checks = append(report.Checks, engramNativePluginCheck(home))
-	project := resolveProject(workingDirOrHome(home))
+	project := resolveProject(workspace)
 	report.Checks = append(report.Checks, engramDiagnosticsCheck(project), engramNeedsReviewCheck(project))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home))
