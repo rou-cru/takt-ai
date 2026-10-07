@@ -616,6 +616,15 @@ export default Plugin.define({
         const direct = directShell.has(command)
         if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
           if (pending) throw new Error("Takt refused this shell command: an identical specialist command is pending")
+          // A result agent's native shell has no sandbox; its Git mutation is
+          // refused by the same classifier the shell plan applies (PR-CRW-5).
+          if (event.agent !== ORCHESTRATOR_ID) {
+            try {
+              await takt("shell-guard", { session_id: await rootSession(event.sessionID), command })
+            } catch (e) {
+              throw refused("git_mutation_denied", event.agent ?? "", event.sessionID, new Error(`Takt refused this shell command: ${e instanceof Error ? e.message : e}`))
+            }
+          }
           directShell.set(command, (directShell.get(command) ?? 0) + 1)
           return
         }
@@ -773,17 +782,26 @@ export default Plugin.define({
     // cycle, reached under its own name rather than under GC's.
     const dispatchAction = (request: Record<string, unknown>): Promise<DispatchResponse> =>
       exclusive(async () => {
-        const result = await spawnCoordination(["dispatch"], request)
         const action = asString(request.action, "unknown")
         const session = asString(request.session, "")
         const event = asString(request.event, "")
         const agent = asString(request.agent, "harness")
+        let result: DispatchResponse
+        try {
+          result = await spawnCoordination(["dispatch"], request)
+        } catch (e) {
+          throw refused("dispatch_refused", agent, session, e instanceof Error ? e : new Error(String(e)), event)
+        }
+        // Only a unit transition carries the slots held and the states it moved
+        // between; other actions report none rather than an invented value.
+        const transition: Record<string, unknown> = result !== null && isResponseObject(result) ? result : {}
         observe("dispatch", "takt.orchestration", agent, session, {
-          decision: action, dispatch_id: event, reason_code: "dispatch_completed", parallelism: 0,
+          decision: action, dispatch_id: event, reason_code: "dispatch_completed",
+          ...(typeof transition.in_flight === "number" ? { parallelism: transition.in_flight } : {}),
         }, event)
         if (["admit", "launch", "finish"].includes(action)) {
           observe("unit_lifecycle", "takt.orchestration", agent, session, {
-            transition: action, from_state: "", to_state: action, specialist: agent, reason_code: "dispatch_completed",
+            transition: action, from_state: asString(transition.from_state, ""), to_state: asString(transition.to_state, ""), specialist: agent, reason_code: "dispatch_completed",
           }, event)
         }
         return result

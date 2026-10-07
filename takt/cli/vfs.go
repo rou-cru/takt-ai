@@ -209,6 +209,13 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if _, claim := claimCommandCapability[command]; claim {
 		return runVFSClaimControl(*workspace, *state, command, req, stdout)
 	}
+	// A shell that runs natively holds no plan; only its Git mutation is judged.
+	if command == "shell-guard" {
+		if err := vfs.GuardShellGit(req.Command); err != nil {
+			return err
+		}
+		return json.NewEncoder(stdout).Encode(response{OK: true})
+	}
 	// A bind for an identity outside the catalog is refused before any store is
 	// opened or created; the store would reject it anyway.
 	if err := validateBindRequest(command, req); err != nil {
@@ -295,7 +302,7 @@ var claimCommandCapability = map[string]model.VFSCapability{
 func validVFSCommand(command string) bool {
 	_, claim := claimCommandCapability[command]
 	return claim || command == "bind" || command == "op" || command == "verify" || command == "consolidate" ||
-		command == "shell-prepare" || command == "shell-import"
+		command == "shell-prepare" || command == "shell-import" || command == "shell-guard"
 }
 
 // claimIdentity is the harness-owned identity of an assignment target, with the
