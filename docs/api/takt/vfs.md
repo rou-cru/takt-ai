@@ -13,6 +13,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
+- [func GuardShellGit\(command string\) error](<#GuardShellGit>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
 - [func SpecialistRole\(instance string\) \(model.RoleClass, error\)](<#SpecialistRole>)
@@ -187,6 +188,15 @@ func GuardGitMutation(role model.RoleClass) error
 ```
 
 GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is.
+
+<a name="GuardShellGit"></a>
+## func [GuardShellGit](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/shell.go#L571>)
+
+```go
+func GuardShellGit(command string) error
+```
+
+GuardShellGit refuses a command that executes a Git mutation, for a caller that is not the orchestrator and whose shell runs natively, outside any shell plan.
 
 <a name="ReadOnlyGitSubcommands"></a>
 ## func [ReadOnlyGitSubcommands](<https://github.com/rou-cru/takt-ai/blob/main/takt/vfs/vfs.go#L444>)

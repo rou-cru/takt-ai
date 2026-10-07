@@ -60,6 +60,11 @@ not prescribe a universal planning or delivery workflow.
   disturb unrelated worktree changes, perform bulk rewrites, or add cleanup,
   normalization, fallback logic, configuration switches, or abstractions that
   the task does not require.
+- **Black-box tests**: tests live in an external `_test` package and use only
+  the exported API, driving the code through its real environment (`HOME`,
+  `PATH`, the working directory, a local test server) rather than swapped
+  package variables. Touching a test file means converting it; being already
+  white-box is not a reason to add more of the same.
 - **Evidence-based tests**: test user-visible behavior at the component
   boundary. For changes to installation, injection, update, state, or assets,
   assert the produced file, command result, or rendered output rather than an

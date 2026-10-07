@@ -13,6 +13,7 @@ Package doctor implements the \`takt\-ai doctor\` system health check: tool avai
 - [Variables](<#variables>)
 - [func Run\(stdout io.Writer\) error](<#Run>)
 - [type CheckResult](<#CheckResult>)
+  - [func ClassifyFreeSpace\(dir string, free uint64\) CheckResult](<#ClassifyFreeSpace>)
 - [type CheckStatus](<#CheckStatus>)
 - [type DoctorReport](<#DoctorReport>)
 
@@ -26,7 +27,7 @@ var ErrUnhealthy = errors.New("doctor: unhealthy")
 ```
 
 <a name="Run"></a>
-## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L135>)
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L119>)
 
 ```go
 func Run(stdout io.Writer) error
@@ -47,6 +48,15 @@ type CheckResult struct {
     Remedy string
 }
 ```
+
+<a name="ClassifyFreeSpace"></a>
+### func [ClassifyFreeSpace](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L613>)
+
+```go
+func ClassifyFreeSpace(dir string, free uint64) CheckResult
+```
+
+ClassifyFreeSpace turns the bytes free on the filesystem holding dir into a check result: a failure under 10 MB, a warning under 100 MB, a pass above.
 
 <a name="CheckStatus"></a>
 ## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L55>)
