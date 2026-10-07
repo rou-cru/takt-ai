@@ -19,3 +19,7 @@ testdata/
 # Helm templates are not YAML until rendered; the iac job renders the chart
 # and Checkov scans the resulting manifests.
 charts/*/templates/
+
+# Generated archify diagram pages: self-contained HTML embedding a vendored
+# viewer, rebuilt from the sibling sources/ directories.
+docs/design/architecture/**/diagrams/*.html
