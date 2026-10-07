@@ -54,9 +54,11 @@ cosign verify docker.io/roucru/takt-ai:<version> \
 
 Takt AI is built to avoid creating security gaps, within these limits:
 
-- **No telemetry.** Takt AI sends no usage data. Its only network traffic is
+- **No telemetry.** Takt AI sends no usage data. Its own network traffic is
   to the local memory service on the same machine, and the download of the
   pinned Engram release during installation, checked against a fixed SHA-256.
+  OpenCode's requests to the model providers you configure, and to the remote
+  Context7 service when enabled, are not Takt's traffic.
 - **Sensitive files blocked by default.** Agent reads and writes are denied for
   obvious secret-bearing paths such as `.env`, `.ssh/**`, `.aws/credentials`,
   `*.pem`, `*.key` and `secrets/**`.
@@ -70,8 +72,9 @@ Takt AI is built to avoid creating security gaps, within these limits:
 ## Local event record
 
 Takt AI keeps a record of its own activity for observability, in
-`.takt-ai/events.db` inside each workspace. It is a SQLite file readable and
-writable only by your user, and it never leaves your machine: nothing sends it
+`.takt-ai/events.db` inside each workspace. It is a SQLite file created
+readable and writable only by your user; if `doctor` warns that others can read
+it, restore those permissions. It never leaves your machine: nothing sends it
 anywhere.
 
 - **What it holds.** Metadata about what happened, in two tables: events
