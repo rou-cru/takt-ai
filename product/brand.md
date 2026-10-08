@@ -1,6 +1,6 @@
 # Takt AI — Brand Identity and Design Foundations
 
-**Actual implementation progress: 32%** — assessment of 14 numbered blocks (the brand does not use requirement IDs): 1 complete block, 7 partial, and 6 not integrated. The dark semantic palette reaches `takt/tui/theme/` and the logo has TUI generation/assets; some tone and interaction rules appear in copy and components. Web, documentation, and other applications have no verified surfaces in this repository, and several accessibility, layout, typography, and state contracts are documentary guidance, not implementation/acceptance evidence.
+**Actual implementation progress: 77%** — assessment of 13 numbered blocks that apply to the surfaces the product has (the brand does not use requirement IDs): 7 complete blocks, 6 partial, 0 not integrated. Gaps: sustained-capital group labels, the repository README departing from the stated descriptor and making an unevidenced claim, no documented alternative route for terminals below the minimum size, and the palette check not running automatically with the surface contract incomplete.
 
 **Version:** 3.0 · **Reference language:** English
 
@@ -243,7 +243,7 @@ Application rules:
 - A disabled action keeps an accessible explanation. Do not use global opacity or faint color as the only signal of unavailability.
 - Brand color may identify the logo, header, and structural regions of the product, not only commercial presentations. Its extent answers to composition and does not hide states or content. A validated text pair is required, e.g. `P100` on `P900`.
 - Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use must be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
-- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas (6.63:1); `brand.ink` keeps its shared value because `P400` falls below 4.5:1 on `N800`. `P300` is reserved for `focus.ring` so brand is not confused with focus. Single dark theme; no light variant exists.
+- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas (6.63:1); `brand.ink` keeps its shared value because `P400` falls below 4.5:1 on `N800`. `P300` stays the `focus.ring` value and is not used for the signature, so brand is not confused with focus. Single dark theme; no light variant exists.
 
 ### 5.4 Verified contrast and limits
 
@@ -275,7 +275,7 @@ These tests do not certify a real screen or terminal: transparencies, composite 
 
 ### 5.5 Themes, print, and degradation
 
-- Light and dark are equivalent brand expressions. On web, follow system preference and allow persistent choice; do not impose dark for being a technical tool.
+- On web, light and dark are equivalent brand expressions (the TUI is a single dark theme, `PR-UX-3`); follow system preference and allow persistent choice; do not impose dark for being a technical tool.
 - In terminal, respect the environment's capabilities and preferences per §12.3. Do not assume an ANSI palette equals these hexadecimals.
 - Print: white background, dark text, no unnecessary background blocks. States keep words or symbols and remain distinguishable in grays.
 - The brand MUST remain recognizable without color, keeping the logo on the home and composition in every context. Removing it must not prevent knowing focus, state, action, or hierarchy either.
@@ -286,12 +286,7 @@ These tests do not certify a real screen or terminal: transparencies, composite 
 
 **IBM Plex Sans** for brand, navigation, titles, and reading. **IBM Plex Mono** for code, commands, paths, identifiers, and values where alignment matters. Sharing a family brings coherence without turning the whole experience into code. Families and their distribution are consulted in the [official IBM Plex repository](https://github.com/IBM/plex).
 
-Web stacks:
-
-```css
---font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
---font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-```
+Web stacks: IBM Plex Sans with system-ui, -apple-system, Segoe UI and sans-serif fallbacks; IBM Plex Mono with ui-monospace, SFMono-Regular, Consolas and monospace fallbacks.
 
 Self-host the needed files, keep their license, and load only used weights/languages. Do not turn a remote font into a requirement for reading or using the product. The fallback must keep a functional layout. In TUI the user's font rules; these stacks are not imposed.
 
@@ -706,66 +701,6 @@ These scenarios guide design and verification.
 
 ## 14. Reproducible palette validation
 
-This script uses only standard Python, reads the normative tables of this file, and verifies decreasing luminance, text contrast, actions, states, limits, and focus on the intended backgrounds. It does not duplicate the palette into another source of truth. Run from the directory containing `brand.md`.
+The check lives in `development/quality/validate-palette.py`. It uses only standard Python and reads the normative tables of this file, so the palette is never duplicated into another source of truth. It verifies that each of the five ramps decreases in luminance; that text, brand ink and link tokens reach 4.5:1 on every background they appear on; that borders and the focus ring reach 3:1; that action and state foreground and background pairs reach 4.5:1; and that the selection border and focus ring reach 3:1 on the selection background.
 
-```python
-import re
-from pathlib import Path
-
-doc = Path("brand.md").read_text(encoding="utf-8")
-palette = {"white": "#FFFFFF", "black": "#000000"}
-tokens = {}
-for line in doc.splitlines():
-    cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
-    if len(cells) == 6 and cells[0].isdigit():
-        for family, value in zip("NPGAR", cells[1:]):
-            assert re.fullmatch(r"#[0-9A-F]{6}", value), value
-            palette[family + cells[0]] = value
-    if len(cells) == 3 and re.fullmatch(r"[a-z]+(?:\.[a-z]+)+", cells[0]):
-        tokens[cells[0]] = cells[1:]
-
-def luminance(key):
-    value = palette[key].lstrip("#")
-    rgb = [int(value[i:i + 2], 16) / 255 for i in (0, 2, 4)]
-    linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
-              for v in rgb]
-    return sum(v * w for v, w in zip(linear, (0.2126, 0.7152, 0.0722)))
-
-def contrast(a, b):
-    low, high = sorted((luminance(a), luminance(b)))
-    return (high + 0.05) / (low + 0.05)
-
-checks = []
-def check(fg, bg, minimum, label):
-    actual = contrast(fg, bg)
-    assert actual >= minimum, f"{label}: {fg}/{bg} = {actual:.4f}, requires {minimum}"
-    checks.append(actual)
-
-levels = (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950)
-for family in "NPGAR":
-    ramp = [luminance(f"{family}{level}") for level in levels]
-    assert all(a > b for a, b in zip(ramp, ramp[1:])), family
-
-for theme in (0, 1):
-    def value(name):
-        return tokens[name][theme]
-
-    backgrounds = ("bg.canvas", "bg.surface", "bg.raised", "bg.sunken", "bg.hover")
-    for bg in backgrounds:
-        for fg in ("text.primary", "text.secondary", "text.muted",
-                   "brand.ink", "link.default", "link.hover"):
-            check(value(fg), value(bg), 4.5, f"theme {theme}: {fg}/{bg}")
-        for edge in ("border.control", "focus.ring"):
-            check(value(edge), value(bg), 3, f"theme {theme}: {edge}/{bg}")
-    for group in ("action.primary", "action.danger"):
-        for state in ("bg", "hover", "pressed"):
-            check(value(group + ".fg"), value(group + "." + state), 4.5, group)
-    for group in ("info", "success", "warning", "danger", "selection", "disabled"):
-        check(value(group + ".fg"), value(group + ".bg"), 4.5, group)
-    check(value("selection.border"), value("selection.bg"), 3, "selection.border")
-    check(value("focus.ring"), value("selection.bg"), 3, "focus on selection")
-
-print(f"OK: 5 monotonic scales; {len(checks)} compliant pairs.")
-```
-
-The test excludes decorative separators and does not authorize arbitrary combinations of primitives. To add a new semantic pair or place controls on a colored background, extend its test cases. Categorical data combinations additionally require evaluating distinction by shape, label, and context on the real chart.
+The check excludes decorative separators and does not authorize arbitrary combinations of primitives. To add a new semantic pair or place controls on a colored background, extend its test cases. Categorical data combinations additionally require evaluating distinction by shape, label, and context on the real chart.

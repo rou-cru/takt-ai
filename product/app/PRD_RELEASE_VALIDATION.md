@@ -1,6 +1,6 @@
 # PRD: Release Experience Validation
 
-**Actual implementation progress: 25%** — 14 own requirements: 2 complete, 3 partial, 9 not integrated. `development/environment/Dockerfile` does prepare OpenCode 2.x and Takt without onboarding; `.github/workflows/ci.yml` runs host and containerized tests. I found no evidence of the first-use manual gate and real work, a prepared public release image, native macOS/ARM64 validation, or the visual/recovery matrix of PR-REL-11/12. The tests Dockerfile is a tooling image; it does not replace the user journey.
+**Actual implementation progress: 60%** — 14 own requirements: 3 complete, 6 partial, 1 not integrated, 4 manual external evidence (PR-REL-5/7/11/12, excluded from the percentage). There is no first-use image for manual trial, no encoded manual gate, no native macOS/ARM64 or arm64 test evidence, and no separation of expected-target results.
 
 ## 1. Problem
 
@@ -40,7 +40,7 @@ The operating-system and architecture scope this validation must cover is define
 | ID | Requirement |
 | --- | --- |
 | PR-REL-11 | Release evidence MUST evaluate the applicable acceptance criteria of [VDS_TUI §§5–6](tui/VDS_TUI.md) using its task, state, and environment matrix. Record actual build, terminal/capability profile, dimensions, steps and results. Palette calculations alone MUST NOT establish surface conformity. Open gaps MUST be explicit, and upgrade scenarios MUST be evidenced as first-release obligations. |
-| PR-REL-12 | Validation MUST include default installation and personalization/return, a focused model adjustment, feasible external-change uncertainty versus a known incompatible composition, scoped restoration, and injected partial failure/cancellation with actual recovery limits. Repeat pertinent journeys without color, with long text, in 80×24, 120×40 and 60×20 terminals, and verify below-minimum handling and linear output. Hidden risk, silent loss of intent, impossible configurations presented as valid, inaccessible exits, illegible functional text, or advertised but absent recovery MUST block approval. |
+| PR-REL-12 | Validation MUST include default installation and personalization/return, a focused model adjustment, feasible external-change uncertainty versus a known incompatible composition, scoped restoration, and injected partial failure/cancellation with actual recovery limits. Repeat pertinent journeys without color, with long text, in 120×32, 80×24 and 60×20 terminals, and verify below-minimum handling and linear output. Hidden risk, silent loss of intent, impossible configurations presented as valid, inaccessible exits, illegible functional text, or advertised but absent recovery MUST block approval. |
 
 ### 2.5 Test Image Reuse and Public Image
 

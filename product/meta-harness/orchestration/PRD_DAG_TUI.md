@@ -4,7 +4,7 @@
 
 Takt MUST provide a read-only OpenCode v2 TUI view that renders the execution DAG as a graph, not as a list. The view makes the orchestrator's declared route and the harness-observed execution state visible together without allowing the TUI to select, authorize, or mutate work.
 
-The first implementation is an MVP. Its purpose is to validate faithful live projection of the DAG. Session navigation, node actions, and graph editing are out of scope.
+The view validates faithful live projection of the DAG. It MUST NOT offer session navigation, node actions, or graph editing.
 
 ## 2. Authority and invariants
 
@@ -19,13 +19,13 @@ The first implementation is an MVP. Its purpose is to validate faithful live pro
 
 The projection is atemporal: the same history prefix and policy data MUST produce the same graph state. Wall-clock time, refresh age, and transport latency MUST NOT change a node's execution state or authorize a transition. They MAY be displayed as capture metadata only.
 
-## 3. MVP scope
+## 3. Scope
 
 ### Included
 
 - A TUI plugin loaded through OpenCode v2's TUI plugin mechanism.
 - A `takt.dag` route.
-- A `/takt-dag` command and optional `Ctrl+Shift+D` binding.
+- A `/takt-dag` command and optional `<leader>d` binding (`Ctrl+Shift+D` collides with OpenCode's delete-line).
 - A layered graph with visible nodes and directed prerequisite edges.
 - A compact form of the graph in the OpenCode sidebar, visible without leaving the session and never wider than the sidebar.
 - Fan-out, fan-in, multiple roots, and parallel branches.
@@ -47,7 +47,7 @@ The projection is atemporal: the same history prefix and policy data MUST produc
 
 ## 4. Required wireframe
 
-The MVP MUST render a graph with explicit edges. A dependency list or bullet list does not satisfy this requirement.
+The view MUST render a graph with explicit edges. A dependency list or bullet list does not satisfy this requirement.
 
 ```text
 Takt DAG · projection 42 · capture: current
@@ -143,9 +143,9 @@ Every work-unit node MUST have `node_kind: "delegated"`; direct orchestrator and
 | Activity | `orchestrator` | Direct work performed by the orchestrator itself. Direct work is allowed and is not an implicit policy violation. |
 | Activity | `maintenance` | Harness-run GC/maintenance that was not delegated as ordinary work. |
 
-This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Preserve the actual recorded identity. Do not synthesize work units for session, plan/revision or GC-cycle records; non-unit activity may be shown only under its own true identity and must not be relabeled as a work unit. Unplanned delegated units retain the execution-order inference; activity records do not gain inferred edges. Explicit prerequisites on committed work are always preserved. Legacy history without a discriminator projects as `delegated`, preserving the meaning of existing dispatched work.
+This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Preserve the actual recorded identity. Do not synthesize work units for session, plan/revision or GC-cycle records; non-unit activity may be shown only under its own true identity and must not be relabeled as a work unit. Unplanned delegated units retain the execution-order inference; activity records do not gain inferred edges. Explicit prerequisites on committed work are always preserved.
 
-Direct implementation and harness-run GC are non-work-unit activity records, kept outside `Projection.Units` and exposed in the snapshot's separate `activities` array. Their true `activity_id` (for GC, the actual `CycleID`) is the identity. The TUI renders them in a separate activity lane with activity-specific glyphs and no prerequisite edges; they do not add or group work units.
+Direct implementation and harness-run GC are non-work-unit activity records, kept outside the work-unit set and exposed in the snapshot's separate `activities` array. Their true `activity_id` (for GC, the actual `CycleID`) is the identity. The TUI renders them in a separate activity lane with activity-specific glyphs and no prerequisite edges; they do not add or group work units.
 
 ## 7. Observability required by the view
 
@@ -217,74 +217,42 @@ These values MUST remain content-free. Prompts, responses, file contents, argume
 
 ## 8. Snapshot contract
 
-Takt MUST expose a read-only snapshot command or local API. The initial implementation SHOULD use:
-
-```text
-takt-ai dag status --workspace <workspace> --session <root-session> --format json
-```
+Takt MUST expose a read-only snapshot command or local API. The `dag status` command of `takt-ai` serves it: it takes the workspace, the private state, the root session, and the output format (JSON), and changes nothing.
 
 The execution history is per workspace and outlives sessions, so `--session` scopes the projection to one root session; a session that has recorded nothing yet is an empty DAG, never an earlier session's graph. The TUI passes the root of the session it is showing and drops the displayed graph when that session changes.
 
 Work-unit nodes are the orchestrator's graph for the session: a committed plan is drawn as declared; ordinary work delegated without a commitment is drawn as it ran, so units run in sequence chain and units run together are siblings, each following the units already settled when it was first admitted. The separate activity lane may show directly recorded orchestrator and GC activity without adding work-unit nodes or edges.
 
-The response MUST contain:
+The response MUST contain these fields:
 
-```json
-{
-  "schema_version": 1,
-  "projection_revision": 42,
-  "history_position": 187,
-  "session_id": "root-session",
-  "capture": "current",
-  "nodes": [
-    {
-      "id": "api",
-      "node_kind": "delegated",
-      "state": "in_flight",
-      "flight": "observed_running",
-      "session_id": "api-session",
-      "attempt_id": "1",
-      "launched": true,
-      "prerequisites": ["storage"],
-      "agent": "arch"
-    }
-  ],
-  "edges": [
-    { "from": "storage", "to": "api" }
-  ],
-  "activities": [
-    {
-      "activity_id": "a13f86e2b7c94e6d",
-      "node_kind": "maintenance",
-      "state": "in_flight",
-      "flight": "observed_running"
-    }
-  ]
-}
-```
+| Field | Content |
+| :--- | :--- |
+| `schema_version` | Contract version, `1`. |
+| `projection_revision` | Monotonic revision of the projection. |
+| `history_position` | Position in the execution history the projection reflects. |
+| `session_id` | The root session the projection is scoped to. |
+| `capture` | Capture state of the snapshot, `current` in the nominal case. |
+| `nodes` | One record per work unit: `id`, `node_kind`, `state`, `flight`, `session_id`, `attempt_id`, `launched`, `prerequisites`, and `agent` once the unit is admitted. |
+| `edges` | One record per dependency, with `from` and `to` unit identities. |
+| `activities` | One record per direct or maintenance activity, with `activity_id`, `node_kind`, `state`, and `flight`. |
 
 `projection_revision` MUST be monotonic for a projection scope. The TUI MUST replace its snapshot only when the received revision is newer than the displayed revision.
 
 `history_position` is an ordering and provenance value. It MUST NOT be interpreted as elapsed time or a timeout.
 
-`node_kind` is an additive field in schema version 1. A work-unit history record (`planned` or `admitted`) may omit it for legacy compatibility or set it to `delegated`; every work-unit node in a snapshot emits `delegated`. Direct orchestrator work uses the `orchestrator` activity kind, and non-delegated GC/maintenance uses `maintenance`, both in the separate activity record path. Consumers treat a missing work-unit `node_kind` from a legacy v1 producer as `delegated`; session, plan and cycle bookkeeping MUST NOT be given a fabricated work-unit identity. The discriminator is descriptive only and leaves committed prerequisites and delegated execution-order edges intact.
+`node_kind` is an additive field in schema version 1. A work-unit history record (`planned` or `admitted`) may omit it or set it to `delegated`; every work-unit node in a snapshot emits `delegated`. Direct orchestrator work uses the `orchestrator` activity kind, and non-delegated GC/maintenance uses `maintenance`, both in the separate activity record path. A missing work-unit `node_kind` is read as `delegated`; session, plan and cycle bookkeeping MUST NOT be given a fabricated work-unit identity. The discriminator is descriptive only and leaves committed prerequisites and delegated execution-order edges intact.
 
 `agent` is additive in schema version 1: the catalog's short label of the specialist admitted for the unit's current attempt, absent until the unit is first admitted. Plans do not declare it.
 
-`activities` is additive in schema version 1 and may be absent from legacy snapshots (the TUI treats it as empty). Each record contains only `activity_id`, `node_kind` (`orchestrator` or `maintenance`), `state`, and applicable `flight`/`outcome`. `activities` never appears in `nodes`, `Projection.Units`, or `edges`.
+`activities` is additive in schema version 1 and may be absent (the TUI treats it as empty). Each record contains only `activity_id`, `node_kind` (`orchestrator` or `maintenance`), `state`, and applicable `flight`/`outcome`. `activities` never appears in nodes or edges.
 
-The plugin lane records direct activity through the ordinary dispatch CLI:
+The plugin lane records direct activity through the ordinary `takt-ai dispatch` command with the `activity_start` and `activity_finish` actions. Each names the root session, a stable activity identity, and the `orchestrator` node kind; finish also names the outcome.
 
-```text
-takt-ai dispatch --workspace <workspace> --state <private-state> --request '{"action":"activity_start","session":"<root-session>","activity_id":"<stable-activity-id>","node_kind":"orchestrator"}'
-takt-ai dispatch --workspace <workspace> --state <private-state> --request '{"action":"activity_finish","session":"<root-session>","activity_id":"<same-activity-id>","node_kind":"orchestrator","outcome":"completed"}'
-```
-
-`outcome` accepts `completed`, `failed`, or `interrupted`. The start and finish actions are idempotent for the same identity and disposition. Ordinary delegated execution continues through `admit`/`finish`; it MUST NOT be represented as an activity. The harness records a GC maintenance activity through the same history API using the exact `CycleID`: start immediately after `Coordinator.Advance` creates the cycle; finish `completed` after successful acceptance or no-change closure; finish `interrupted` after a successful abort/discard. A blocked or unresolved abort leaves the activity in flight. GC uses the activity API directly, not a fake dispatch or work-unit ID.
+`outcome` accepts `completed`, `failed`, or `interrupted`. The start and finish actions are idempotent for the same identity and disposition. Ordinary delegated execution continues through `admit`/`finish`; it MUST NOT be represented as an activity. The harness records a GC maintenance activity through the same history API using the exact `CycleID`: start immediately after the cycle is created; finish `completed` after successful acceptance or no-change closure; finish `interrupted` after a successful abort/discard. A blocked or unresolved abort leaves the activity in flight. GC uses the activity API directly, not a fake dispatch or work-unit ID.
 
 ## 9. Live update behavior
 
-The MVP MAY use bounded polling to obtain snapshots. The polling interval is a transport concern only; it MUST NOT participate in DAG state, progress budgets, detection, or enforcement.
+The view MAY use bounded polling to obtain snapshots. The polling interval is a transport concern only; it MUST NOT participate in DAG state, progress budgets, detection, or enforcement.
 
 The TUI MUST:
 
@@ -295,8 +263,6 @@ The TUI MUST:
 - mark the display stale when the last query fails;
 - stop polling when the last view showing the graph, the route or the sidebar, is disposed; views that are open together share one poll;
 - avoid redrawing when the projection revision is unchanged.
-
-A later implementation MAY replace polling with a local Takt snapshot stream. That change MUST preserve the same snapshot and revision contract.
 
 ## 10. OpenCode v2 capabilities used
 
@@ -320,7 +286,7 @@ The plugin MUST NOT depend on undocumented internal TUI components when the supp
 
 OpenCode's server-plugin events such as `message.updated`, `session.updated`, `tool.execute.before`, and `tool.execute.after` MAY trigger a refresh, but they are not authoritative DAG state. Takt's execution history remains authoritative.
 
-Opening sessions from the view (`context.ui.router.navigate({ type: "session" })`, `context.ui.tabs`) MAY be added in a later feature. It is explicitly excluded from this MVP.
+The view MUST NOT open sessions (`context.ui.router.navigate({ type: "session" })`, `context.ui.tabs`).
 
 ## 11. Failure behavior
 
@@ -339,33 +305,21 @@ Telemetry or TUI failure MUST NOT interrupt the governed execution path.
 
 ## 12. Acceptance criteria
 
-- [ ] OpenCode v2 loads the Takt TUI plugin from its plugin discovery path.
-- [ ] The plugin opens a dedicated DAG route.
-- [ ] The route renders nodes and directed edges, not a bullet list.
-- [ ] A linear chain renders correctly.
-- [ ] A fan-out renders correctly.
-- [ ] A fan-in renders correctly.
-- [ ] Multiple roots and parallel branches remain visible.
-- [ ] Planned, in-flight, settled, withdrawn, and uncertain states are distinguishable.
-- [ ] Delegated, direct orchestrator, and GC/maintenance nodes have explicit kinds, labels and glyphs independent of temporal state.
-- [ ] Direct and GC activities are projected separately from work units and rendered in an edge-free activity lane with their original activity IDs.
-- [ ] State changes do not unnecessarily move existing nodes.
-- [ ] A topology revision updates nodes and edges atomically.
-- [ ] The display uses a Takt projection derived from append-only history.
-- [ ] The display does not infer closure, failure, or execution from silence.
-- [ ] A failed refresh produces a stale or unavailable indicator.
-- [ ] The plugin does not expose prompts, responses, file contents, arguments, or secrets.
-- [ ] The TUI remains usable when Takt is unavailable.
-- [ ] The MVP requires no session selector and no execution control.
-
-## 13. Implementation sequence
-
-1. Add the content-free DAG snapshot DTO and `takt-ai dag status`.
-2. Adapt `history.Project` without introducing a second DAG state model.
-3. Add projection fixtures for chain, fan-out, fan-in, withdrawal, settlement, and uncertainty.
-4. Implement deterministic layered layout and edge routing.
-5. Implement the OpenCode v2 TUI route and graph renderer.
-6. Add revision-aware refresh and stale handling.
-7. Validate the plugin against the supported OpenCode v2 build.
-
-The MVP is complete when the TUI can show a changing, faithful DAG projection during a real Takt execution without requiring the user to inspect individual sessions or issue execution commands.
+- OpenCode v2 loads the Takt TUI plugin from its plugin discovery path.
+- The plugin opens a dedicated DAG route.
+- The route renders nodes and directed edges, not a bullet list.
+- A linear chain renders correctly.
+- A fan-out renders correctly.
+- A fan-in renders correctly.
+- Multiple roots and parallel branches remain visible.
+- Planned, in-flight, settled, withdrawn, and uncertain states are distinguishable.
+- Delegated, direct orchestrator, and GC/maintenance nodes have explicit kinds, labels and glyphs independent of temporal state.
+- Direct and GC activities are projected separately from work units and rendered in an edge-free activity lane with their original activity IDs.
+- State changes do not unnecessarily move existing nodes.
+- A topology revision updates nodes and edges atomically.
+- The display uses a Takt projection derived from append-only history.
+- The display does not infer closure, failure, or execution from silence.
+- A failed refresh produces a stale or unavailable indicator.
+- The plugin does not expose prompts, responses, file contents, arguments, or secrets.
+- The TUI remains usable when Takt is unavailable.
+- The view requires no session selector and no execution control.
