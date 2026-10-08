@@ -16,7 +16,11 @@ func TestRefreshRejectsChangedSpecialist(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
+			t.Cleanup(func() {
+				if err := f.Close(); err != nil {
+					t.Errorf("close filesystem: %v", err)
+				}
+			})
 			identity := vfs.Identity{SessionID: "s", WorkUnitID: "u", AgentID: "agent", Specialist: "dev"}
 			key, err := f.Bind(identity, []string{"a.go"})
 			if err != nil {
