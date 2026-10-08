@@ -267,7 +267,7 @@ ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalo
 func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string) error
 ```
 
-Restore confirms restoration of an abandoned recovery scope's virtual state: it rolls back the staged work of every unit the scope declares and records the restoration only once none is left. The rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\). A failed rollback leaves the scope unresolved and the same call repeats it for what remains.
+Restore confirms restoration of an abandoned recovery scope's virtual state: it releases every author claim, rolling back staged work, and records the restoration only once all operations succeed. The rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\). A failed rollback leaves the scope unresolved and the same call repeats it for what remains.
 
 <a name="Revise"></a>
 ## func Revise
