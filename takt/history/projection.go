@@ -177,6 +177,9 @@ type Recovery struct {
 	// abandonment decision and of confirmed restoration (PR-DAG-TMP-5).
 	Backtracked bool `json:"backtracked,omitempty"`
 	Restored    bool `json:"restored,omitempty"`
+	// Cause is the bound whose exhaustion abandoned the scope, so the way
+	// out of the abandonment names the allowance that lifts it.
+	Cause string `json:"cause,omitempty"`
 }
 
 // Unresolved reports a recovery that still governs its declared scope: open, or
@@ -392,6 +395,20 @@ func budgeted(b *Budgets, e Entry) bool {
 			r.Unreconciled, r.Cursor = false, refSeq(e.JournalRef)
 			b.Recoveries[e.Objective] = r
 		}
+		if e.Bound == BoundRecoveryActions || e.Bound == BoundRecoveryAttempts {
+			// The user's decision to continue lifts an abandonment: the scope
+			// reopens with the allowance beside what it already consumed, and
+			// its staged work was never touched.
+			if r := b.Recoveries[e.Objective]; e.Objective != "" && r.Backtracked && !r.Restored {
+				r.Open, r.Backtracked, r.Cause = true, false, ""
+				// The lifted closure no longer counts as a failed recovery; the
+				// reopened recovery's own closure decides the streak.
+				if r.Failures > 0 {
+					r.Failures--
+				}
+				b.Recoveries[e.Objective] = r
+			}
+		}
 	case KindStopped:
 		b.Stopped++
 	case KindEscalated:
@@ -421,7 +438,9 @@ func budgeted(b *Budgets, e Entry) bool {
 	case KindRecoveryClosed:
 		r := b.Recoveries[e.Objective]
 		r.Open = false
-		r.Backtracked = r.Backtracked || e.Outcome == OutcomeBacktracked
+		if e.Outcome == OutcomeBacktracked {
+			r.Backtracked, r.Cause = true, e.Cause
+		}
 		if e.Outcome == OutcomeCompleted {
 			r.Failures = 0
 		} else {

@@ -124,15 +124,15 @@ func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expecte
 		return ShellPlan{}, err
 	}
 	if callID == "" || strings.TrimSpace(command) == "" || stateDir == "" {
-		return ShellPlan{}, ErrIdentity
+		return ShellPlan{}, fmt.Errorf("%w: a shell command names its call, its command text and the state directory", ErrIdentity)
 	}
 	scope := f.scopeLocked(key)
 	if key != "" {
 		if _, ok := f.bindings[key]; !ok {
-			return ShellPlan{}, ErrIdentity
+			return ShellPlan{}, errNoBinding(key)
 		}
-		if f.revisionOf(key) != expected {
-			return ShellPlan{}, ErrStaleRevision
+		if current := f.revisionOf(key); current != expected {
+			return ShellPlan{}, fmt.Errorf("%w: current revision %d; repeat the command", ErrStaleRevision, current)
 		}
 	}
 	// A caller with no scope can only inspect, so quoted text (a pattern, an

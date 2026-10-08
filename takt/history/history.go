@@ -16,8 +16,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
 	_ "modernc.org/sqlite"
@@ -477,7 +480,7 @@ func (e Entry) validateKindFields() error {
 		// An exception enables further work: an unknown bound or an open-ended
 		// allowance would enable more than the user granted.
 		if !bounds[e.Bound] || e.Allowance <= 0 {
-			return errors.New("history: a user exception names a known bound and a finite allowance")
+			return fmt.Errorf("history: a user exception names a known bound (%s) and a finite allowance above zero", strings.Join(slices.Sorted(maps.Keys(bounds)), ", "))
 		}
 	case KindRevised:
 		if e.BaseVersion == "" || e.PlanVersion == "" {

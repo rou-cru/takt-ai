@@ -314,7 +314,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			return c, protocol.CloseRecovery(h, ref, r.Event, r.Session, r.Objective, r.Evidence, r.Pass)
 		},
 		"restore": func() (any, error) {
-			return c, protocol.Restore(h, fs, ref, r.Session, r.Objective, vfs.AgentID(r.Key))
+			return c, protocol.Restore(h, fs, ref, r.Session, r.Objective)
 		},
 		"exception": func() (any, error) {
 			return c, protocol.Except(h, ref, r.Event, r.Session, r.Bound, r.Objective, r.Allowance)

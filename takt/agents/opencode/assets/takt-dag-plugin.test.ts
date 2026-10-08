@@ -67,7 +67,7 @@ function startDag(respond: () => Reply) {
     ui: {
       router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate(destination: unknown) { navigated.push(destination) } },
       slot(value: Slot) {
-        if (value.prepend === "sidebar.content") sidebar = value
+        if (value.append === "sidebar.footer") sidebar = value
         if (value.append === "app") app = value
         return () => {}
       },

@@ -110,7 +110,7 @@ describe("DAG plugin registration", () => {
     } as never)
 
     expect(route?.name).toBe("takt.dag")
-    expect(slots.map(({ append, prepend }) => [append, prepend])).toEqual([["app", undefined], [undefined, "sidebar.content"]])
+    expect(slots.map(({ append, prepend }) => [append, prepend])).toEqual([["app", undefined], ["sidebar.footer", undefined]])
 
     slots[0].render()
     const command = layerFactory?.().commands.find(({ id }) => id === "takt.dag.open")

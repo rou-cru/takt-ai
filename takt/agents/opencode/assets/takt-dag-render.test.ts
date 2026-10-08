@@ -244,7 +244,7 @@ describe("sidebar rows", () => {
     ])
   })
 
-  test("folds completed units into one muted row of their agents; active units show no agent", () => {
+  test("keeps completed units in the graph, muted; only the glyph tells the state", () => {
     const snapshot = { ...base, edges: diamond, nodes: [
       node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm" }),
       node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design" }),
@@ -252,18 +252,22 @@ describe("sidebar rows", () => {
       node({ id: "behavior-spec" }),
     ] } as never
     expect(sidebarRows(snapshot)).toEqual([
-      { text: "✓ pm design", tone: "muted" },
-      { text: "● structure-arch" },
-      { text: "└─◌ behavior-spec" },
+      { text: "✓ intent-pm", tone: "muted" },
+      { text: "├─┐" },
+      { text: "✓ │ experience-design", tone: "muted" },
+      { text: "│ ● structure-arch" },
+      { text: "├─┘" },
+      { text: "◌ behavior-spec" },
     ])
   })
 
-  test("counts an agent's repeated completed work instead of repeating its label", () => {
-    const snapshot = { ...base, nodes: [
-      node({ id: "plan", state: "settled", outcome: "completed", agent: "pm" }),
-      ...["t1", "t2", "t3"].map((id) => node({ id, state: "settled", outcome: "completed", agent: "dev" })),
-    ], edges: ["t1", "t2", "t3"].map((to) => ({ from: "plan", to })) } as never
-    expect(text(snapshot)).toEqual(["✓ pm dev×3"])
+  test("folds the oldest rows into a leading count when the graph exceeds the row budget", () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `u${String(i).padStart(2, "0")}`)
+    const snapshot = { ...base, nodes: ids.map((id) => node({ id })), edges: [] } as never
+    const rows = sidebarRows(snapshot)
+    expect(rows).toHaveLength(16)
+    expect(rows[0]).toEqual({ text: "… 15 more", tone: "muted" })
+    expect(rows.at(-1)?.text).toBe("◌ u29")
   })
 
   test("groups a layer wider than the lane budget into one row", () => {
@@ -271,6 +275,15 @@ describe("sidebar rows", () => {
     const snapshot = { ...base, nodes: ["a", ...wide, "f"].map((id) => node({ id })),
       edges: wide.flatMap((id) => [{ from: "a", to: id }, { from: id, to: "f" }]) } as never
     expect(text(snapshot)).toEqual(["◌ a", "└─≡ ◌◌◌◌ 4 parallel", "  └─◌ f"])
+  })
+
+  test("mutes a group only once every unit in it is completed", () => {
+    const wide = ["b", "c", "d", "e"]
+    const done = { state: "settled", outcome: "completed", agent: "x" }
+    const group = (nodes: object[]) => sidebarRows({ ...base, nodes: [node({ id: "a", ...done }), ...nodes],
+      edges: wide.map((id) => ({ from: "a", to: id })) } as never)[1]
+    expect(group(wide.map((id) => node({ id, ...done })))).toEqual({ text: "└─≡ ✓✓✓✓ 4 parallel", tone: "muted" })
+    expect(group(wide.map((id, i) => node({ id, ...(i ? done : {}) })))).toEqual({ text: "└─≡ ◌✓✓✓ 4 parallel" })
   })
 
   test("falls back to a flat list in dependency order when lanes exceed the budget", () => {

@@ -132,6 +132,10 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error) {
 	if key, adopted, err := f.adoptPrelaunchLocked(identity, scope); adopted || err != nil {
 		return key, err
 	}
+	// Binding again is how an agent refreshes what it knows of its staged work.
+	if key, held, err := f.heldBindingLocked(identity, scope); held || err != nil {
+		return key, err
+	}
 	grants, declared, grantErr := instanceVFSCapabilities(identity.Specialist)
 	if grantErr != nil {
 		return "", grantErr
@@ -160,8 +164,14 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 		return "", err
 	}
 	defer f.finishLocked(&err)
-	if !completeIdentity(identity) || identity.Specialist == "" || len(scope) == 0 {
-		return "", ErrIdentity
+	if !completeIdentity(identity) {
+		return "", errIncompleteIdentity
+	}
+	if key, held, err := f.heldBindingLocked(identity, scope); held || err != nil {
+		return key, err
+	}
+	if identity.Specialist == "" || len(scope) == 0 {
+		return "", fmt.Errorf("%w: an assignment names the specialist and at least one path", ErrIdentity)
 	}
 	grants, _, grantErr := instanceVFSCapabilities(identity.Specialist)
 	if grantErr != nil {
@@ -170,6 +180,9 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 	if slices.Contains(grants, model.VFSCapabilityVerify) {
 		return "", fmt.Errorf("%w: verifier %q requires an empty-scope author_key gate assignment", ErrScopeDenied, identity.Specialist)
 	}
+	// Assigning the claim a unit already holds changes nothing; a different
+	// scope for it is a reassignment, which names the work it keeps.
+
 	identity.Prelaunch = true
 	if identity, err = f.bindableIdentity(identity, scope); err != nil {
 		return "", err
@@ -285,7 +298,7 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	}
 	defer f.finishLocked(&err)
 	if !completeIdentity(identity) || identity.Specialist == "" || authorKey == "" {
-		return "", ErrIdentity
+		return "", fmt.Errorf("%w: a verifier gate names its session, unit, agent and specialist, and the author_key it judges", ErrIdentity)
 	}
 	for _, capability := range []model.VFSCapability{model.VFSCapabilityRead, model.VFSCapabilityVerify} {
 		if err = RequireVFSCapability(identity.Specialist, capability); err != nil {
@@ -421,7 +434,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		return err
 	}
 	if len(scope) == 0 {
-		return ErrIdentity
+		return fmt.Errorf("%w: the new scope names at least one path", ErrIdentity)
 	}
 	var staged []string
 	if existing := f.staged[key]; existing != nil {
@@ -549,7 +562,7 @@ func instanceVFSCapabilities(instance string) ([]model.VFSCapability, bool, erro
 // capabilities, rejecting identities that may not bind or bind twice.
 func (f *FS) bindableIdentity(identity Identity, scope []string) (Identity, error) {
 	if !completeIdentity(identity) {
-		return identity, ErrIdentity
+		return identity, errIncompleteIdentity
 	}
 	role, err := SpecialistRole(identity.Specialist)
 	if err != nil {
@@ -569,7 +582,7 @@ func (f *FS) bindableIdentity(identity Identity, scope []string) (Identity, erro
 		return identity, err
 	}
 	if f.duplicateIdentity(identity) {
-		return identity, ErrIdentity
+		return identity, fmt.Errorf("%w: agent %q already holds a binding for this attempt of unit %q", ErrIdentity, identity.AgentID, identity.WorkUnitID)
 	}
 	return identity, nil
 }
@@ -633,6 +646,45 @@ func (f *FS) highestOpenAttempt(identity Identity) (int, Identity) {
 		}
 	}
 	return highest, open
+}
+
+// errNoBinding refuses a key no binding holds.
+func errNoBinding(key AgentID) error {
+	return fmt.Errorf("%w: key %q has no active binding; its claim was released or its work discarded, so the orchestrator assigns the scope again with claim_assign and delegates the unit again", ErrIdentity, key)
+}
+
+// errIncompleteIdentity refuses an identity the coordinator should have filled in.
+var errIncompleteIdentity = fmt.Errorf("%w: a binding names its session, work unit and agent", ErrIdentity)
+
+// heldBindingLocked finds the binding identity's attempt already holds. The same
+// scope answers with its key; another one is refused with the key that
+// reassigns it. held is false when the attempt holds nothing yet.
+func (f *FS) heldBindingLocked(identity Identity, scope []string) (AgentID, bool, error) {
+	if !completeIdentity(identity) {
+		return "", false, nil
+	}
+	identity.AttemptID, _ = f.attemptLocked(identity)
+	for key, existing := range f.bindings {
+		if !existing.sameAttempt(identity) || existing.AgentID != identity.AgentID || existing.GateAuthorKey != identity.GateAuthorKey {
+			continue
+		}
+		if existing.Specialist != identity.Specialist {
+			return "", true, fmt.Errorf("%w: unit %q holds %q for specialist %q, not %q; reassign it with claim_assign and that author_key", ErrScopeDenied, identity.WorkUnitID, key, existing.Specialist, identity.Specialist)
+		}
+		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityBind); err != nil {
+			return "", true, err
+		}
+		if len(scope) > 0 {
+			if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityWrite); err != nil {
+				return "", true, err
+			}
+		}
+		if !sameScope(f.ownedScopeLocked(key), scope) {
+			return "", true, fmt.Errorf("%w: unit %q already holds %q for this attempt with another scope; reassign it with claim_assign and that author_key", ErrScopeDenied, identity.WorkUnitID, key)
+		}
+		return key, true, nil
+	}
+	return "", false, nil
 }
 
 func completeIdentity(identity Identity) bool {
@@ -770,7 +822,7 @@ func (f *FS) Apply(op Operation) (OperationResult, error) { return f.apply(op, o
 // is the author's revision; any other caller or action is refused.
 func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error) {
 	if op.Action != OpRead {
-		return OperationResult{}, ErrIdentity
+		return OperationResult{}, fmt.Errorf("%w: another author's staged view is read-only", ErrIdentity)
 	}
 	return f.apply(op, author)
 }
@@ -806,26 +858,32 @@ func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err erro
 // legitimate view, a fresh call and the caller's revision. The call is consumed even when a later check rejects it.
 func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	identity, ok := f.bindings[op.Key]
-	if !ok || op.CallID == "" {
-		return identity, fmt.Errorf("%w: key %q has no active binding; ask the orchestrator to rebind", ErrIdentity, op.Key)
+	if !ok {
+		return identity, errNoBinding(op.Key)
+	}
+	if op.CallID == "" {
+		return identity, fmt.Errorf("%w: an operation names its call", ErrIdentity)
 	}
 	if view != op.Key {
 		target, ok := f.bindings[view]
-		if !ok || op.Action != OpRead {
-			return identity, ErrIdentity
+		if !ok {
+			return identity, fmt.Errorf("%w: view %q is not an author binding", ErrIdentity, view)
+		}
+		if op.Action != OpRead {
+			return identity, fmt.Errorf("%w: another author's staged view is read-only", ErrIdentity)
 		}
 		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityVerify); err != nil {
 			return identity, err
 		}
 		if !identity.verifies(view, target) {
-			return identity, ErrIdentity
+			return identity, fmt.Errorf("%w: this gate is not assigned to the author whose view %q it reads", ErrIdentity, view)
 		}
 	}
 	if err := f.consumeCallLocked(identity.SessionID, op.CallID); err != nil {
 		return identity, err
 	}
 	if current := f.revisionOf(view); current != op.ExpectedRevision {
-		return identity, fmt.Errorf("%w: current revision %d; re-read and issue a fresh call", ErrStaleRevision, current)
+		return identity, fmt.Errorf("%w: current revision %d; re-read and issue a fresh call, or bind again to learn the current revision", ErrStaleRevision, current)
 	}
 	return identity, nil
 }
@@ -927,7 +985,7 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 	v, vok := f.bindings[verifier]
 	a, aok := f.bindings[author]
 	if !vok || !aok || callID == "" {
-		return v, a, ErrIdentity
+		return v, a, fmt.Errorf("%w: a verdict names a bound verifier, a bound author and a call", ErrIdentity)
 	}
 	// The grant decides first: a caller without verify is told so, whatever
 	// binding it names.
@@ -935,7 +993,7 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 		return v, a, err
 	}
 	if !v.verifies(author, a) {
-		return v, a, ErrIdentity
+		return v, a, fmt.Errorf("%w: verifier %q is not assigned to judge author %q", ErrIdentity, verifier, author)
 	}
 	if v.AgentID == a.AgentID {
 		return v, a, ErrSelfVerification
@@ -956,14 +1014,14 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 		checkpoint = fmt.Sprintf("%s@%d", key, expected)
 	}
 	if _, ok := f.bindings[key]; !ok {
-		return ErrIdentity
+		return fmt.Errorf("%w: %q is not a known author key", ErrIdentity, key)
 	}
 	d := f.staged[key]
 	if d == nil || len(d.files) == 0 {
 		return ErrNothingStaged
 	}
 	if d.revision != expected {
-		return ErrStaleRevision
+		return fmt.Errorf("%w: the staged work is at revision %d, not %d; delegate a Verify of the author key again and consolidate against its revision", ErrStaleRevision, d.revision, expected)
 	}
 	if d.verdict != nil && d.verdict.DeltaHash != f.deltaHashLocked(key) {
 		return ErrInvalidVerdict
