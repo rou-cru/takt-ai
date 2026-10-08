@@ -226,10 +226,14 @@ func runSetup(args []string, stdin io.Reader, stdout, stderr io.Writer) (err err
 	if err != nil {
 		return err
 	}
-	// Run by hand without --input, stdin is the terminal, not a request: the
-	// recommended setup is what a person means.
+	// Run by hand without --input, stdin is the terminal, not a request: what a
+	// person means is the recorded installation when there is one, so its
+	// choices are preserved, and the recommended setup otherwise.
 	if invocation.inputPath == "-" && !invocation.inputSet && isTerminal(stdin) {
-		request, err := setup.DefaultPlanRequest()
+		request, err := setup.LoadInstalledConfig(invocation.root)
+		if errors.Is(err, os.ErrNotExist) {
+			request, err = setup.DefaultPlanRequest()
+		}
 		if err != nil {
 			return err
 		}

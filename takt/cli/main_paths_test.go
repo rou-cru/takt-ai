@@ -373,3 +373,30 @@ func TestSetupOnATerminalUsesTheRecommendedRequest(t *testing.T) {
 		t.Fatalf("setup on a terminal error = %v, stderr = %q", err, stderr.String())
 	}
 }
+
+// On a terminal, setup without --input preserves the recorded installation's
+// choices instead of reintroducing what the user omitted.
+func TestSetupOnATerminalPreservesTheRecordedInstallation(t *testing.T) {
+	original := isTerminal
+	isTerminal = func(io.Reader) bool { return true }
+	t.Cleanup(func() { isTerminal = original })
+	root := t.TempDir()
+	request, err := setup.DefaultPlanRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Components = []string{}
+	if err := setup.SaveInstalledConfig(root, request); err != nil {
+		t.Fatal(err)
+	}
+	var recorded, fresh bytes.Buffer
+	if err := run([]string{"setup", "sync", "--root", root, "--plan-only", "--json"}, strings.NewReader(""), &recorded, io.Discard); err != nil {
+		t.Fatalf("setup sync with a record error = %v", err)
+	}
+	if err := run([]string{"setup", "sync", "--root", t.TempDir(), "--plan-only", "--json"}, strings.NewReader(""), &fresh, io.Discard); err != nil {
+		t.Fatalf("setup sync without a record error = %v", err)
+	}
+	if recorded.String() == fresh.String() {
+		t.Fatal("the recorded exclusions did not change the plan: sync reintroduced what the user omitted")
+	}
+}
