@@ -915,6 +915,33 @@ interface FrontierItem {
   readonly tone?: SidebarTone
 }
 
+function sidebarNode(node: DagNode): FrontierItem {
+  const glyph = glyphFor(node)
+  let tone: SidebarTone | undefined
+  if (glyph === "✗") tone = "error"
+  else if (isCompleted(node)) tone = "muted"
+  return { id: node.id, glyph, label: node.id, ...(tone ? { tone } : {}) }
+}
+
+function appendSidebarLayer(
+  layer: readonly string[],
+  group: string,
+  byId: ReadonlyMap<string, DagNode>,
+  itemOf: Map<string, string>,
+  order: FrontierItem[],
+): void {
+  if (layer.length <= MAX_SIDEBAR_LANES) {
+    for (const id of layer) {
+      itemOf.set(id, id)
+      order.push(sidebarNode(byId.get(id) as DagNode))
+    }
+    return
+  }
+  for (const id of layer) itemOf.set(id, group)
+  const glyphs = layer.map((id) => glyphFor(byId.get(id) as DagNode)).join("")
+  order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel` })
+}
+
 // sidebarGraph is every unit that is not withdrawn, with the edges between
 // them: a unit changes glyph as it progresses but never leaves the graph.
 // Within each connected component a layer wider than the lane budget becomes
@@ -932,21 +959,7 @@ function sidebarGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children:
     const layers = new Map<number, string[]>()
     for (const id of members) layers.set(depths.get(id) ?? 0, [...(layers.get(depths.get(id) ?? 0) ?? []), id])
     for (const depth of [...layers.keys()].sort((a, b) => a - b)) {
-      const layer = (layers.get(depth) ?? []).toSorted(ordinal)
-      if (layer.length <= MAX_SIDEBAR_LANES) {
-        for (const id of layer) {
-          const node = byId.get(id) as DagNode
-          const glyph = glyphFor(node)
-          itemOf.set(id, id)
-          const tone = glyph === "✗" ? ("error" as const) : isCompleted(node) ? ("muted" as const) : undefined
-          order.push({ id, glyph, label: id, ...(tone ? { tone } : {}) })
-        }
-        continue
-      }
-      const group = `${component}:${depth}`
-      for (const id of layer) itemOf.set(id, group)
-      const glyphs = layer.map((id) => glyphFor(byId.get(id) as DagNode)).join("")
-      order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel` })
+      appendSidebarLayer((layers.get(depth) ?? []).toSorted(ordinal), `${component}:${depth}`, byId, itemOf, order)
     }
   })
   const position = new Map(order.map((item, index) => [item.id, index]))

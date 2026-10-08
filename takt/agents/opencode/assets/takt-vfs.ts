@@ -748,19 +748,28 @@ export default Plugin.define({
         event.message = strict.plan.reason
       })
 
+      async function finishShell(command: string, admitted: AdmittedShell, sessionID: string): Promise<void> {
+        if (!admitted.started || admitted.session !== sessionID) return
+        admittedShell.delete(command)
+        if (admitted.wrapper) await rm(admitted.wrapper, { recursive: true, force: true })
+        const b = admitted.key ? bindings.get(admitted.key) : undefined
+        if (!admitted.plan.capture || !b) return
+        // A failing command keeps its delta: it is imported, retained, and left
+        // unverified for the gate to judge.
+        await stage(b, "shell-import", { call_id: admitted.callID })
+      }
+
+      // Consume the live iterator sequentially: each import can advance the
+      // binding's revision, and an error must leave later admissions untouched.
+      async function finishShells(entries: IterableIterator<[string, AdmittedShell]>, sessionID: string): Promise<void> {
+        const next = entries.next()
+        if (next.done) return
+        await finishShell(next.value[0], next.value[1], sessionID)
+        return finishShells(entries, sessionID)
+      }
+
       // The command's result is admitted as one VFS transaction once it has ended.
-      await ctx.tool.hook("execute.after", async (event) => {
-        for (const [command, admitted] of admittedShell) {
-          if (!admitted.started || admitted.session !== event.sessionID) continue
-          admittedShell.delete(command)
-          if (admitted.wrapper) await rm(admitted.wrapper, { recursive: true, force: true })
-          const b = admitted.key ? bindings.get(admitted.key) : undefined
-          if (!admitted.plan.capture || !b) continue
-          // A failing command keeps its delta: it is imported, retained, and left
-          // unverified for the gate to judge.
-          await stage(b, "shell-import", { call_id: admitted.callID })
-        }
-      })
+      await ctx.tool.hook("execute.after", (event) => finishShells(admittedShell.entries(), event.sessionID))
     }
 
     // GC policy and lifecycle live in Go. This queue only transports host events
