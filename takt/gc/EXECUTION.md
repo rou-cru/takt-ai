@@ -13,8 +13,7 @@ Configure exactly one Go `dead-code` analyzer, with `tool: "deadcode"` and
 `command: ["go", "tool", "deadcode", "-json", "./..."]`. The workspace's module
 must pin the deadcode tool and its dependencies. A reviewed project-local
 executable with arguments `-json ./...` is also supported. `version_command`
-must report the pinned version. Existing version-1 config/state remains readable;
-production RTA deliberately rejects legacy test-root or filtered commands.
+must report the pinned version.
 
 RTA starts from production main/init roots, traverses callbacks/interface calls,
 and reports unreachable chains and cycles, even if tests call them. No main
@@ -43,9 +42,9 @@ Optional top-level `.takt/gc.json` fields are positive Go duration strings:
 | `ast_timeout` | `30s` | Each external AST parser invocation |
 
 An analyzer's optional `timeout` overrides `analyzer_timeout`. Empty/omitted
-fields in existing config or retained state use these defaults; zero, negative
+fields use these defaults; zero, negative
 or malformed durations fail validation. A shorter caller context always wins.
-`RunPrepared` retains its old signature with the analyzer default; `RunChecks`
+`RunPrepared` uses the analyzer default; `RunChecks`
 uses the configured check budget. There is no additional two-minute ceiling.
 
 Execution disables Go proxy/checksum/toolchain downloads and sets npm, uv and
