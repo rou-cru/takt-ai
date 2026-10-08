@@ -1,6 +1,6 @@
 # PRD: Takt Projection into OpenCode v2
 
-**Actual implementation progress: 43%** — 15 own requirements: 4 complete, 5 partial, 6 not integrated. `takt/agents/opencode/`, `takt/skills/`, `takt/lifecycle/`, and `takt/verify/` project and install native OpenCode artifacts; the official target is single and the plugin/runtime exists. Delivery of full capabilities, end-to-end operation, and validation that every artifact works/is not ignored still depend on the crew, harness, VFS, observability, and memory-maintenance gaps described in their PRDs.
+**Actual implementation progress: 77%** — 13 own requirements: 7 complete, 6 partial, 0 not integrated. Gaps: artifact validity is only checked after deployment and covers a subset of deployed artifacts, and proactive maintenance (dreaming) is not delivered through the OpenCode integration.
 
 ## 1. Problem
 
@@ -22,8 +22,6 @@ OpenCode v2 is Takt's only official harness. Takt defines its own canonical agen
 
 | ID | Requirement |
 | --- | --- |
-| PR-PLT-6 | The official integration is OpenCode v2. Its declared scope includes the complete Takt agent roster, tool installation, skills, memory writing, and runtime extensions required by the product. |
-| PR-PLT-7 | Takt-defined specialist agents, tool installation, skills, and observable behavior MUST be delivered completely through OpenCode v2. |
 | PR-PLT-8 | Proactive harness capabilities delivered through runtime extension code MUST be included in the OpenCode v2 integration. |
 | PR-PLT-9 | Memory writing MUST go through OpenCode v2 runtime tooling that records authorship, session, and links (`MEM-AUT-7`, `MEM-OPS-5`). The official integration MUST NOT ship with read-only memory. |
 

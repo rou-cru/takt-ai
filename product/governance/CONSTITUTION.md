@@ -1,6 +1,6 @@
 # Constitution of Takt AI
 
-**Actual implementation progress: 25%** — 12 authority articles assessed: 0 complete, 6 partial, 6 without verifiable integration. Agent guides/context and action confirmations partially reflect user authority and autonomy limits; enforcement of value, loyalty, disagreement, and goal direction exists by prompt (soft enforcement), and instruction continuity and user authority also exist by harness (deterministic enforcement) through the invariant set and action confirmations. A one-time exception not becoming a standing preference or carrying into a later session (Art. 5), and this agent never appropriating the user's own environment or tooling configuration (Art. 6), now carry prompt-only enforcement too.
+**Actual implementation progress: 50%** — 12 authority articles assessed: 0 complete, 12 partial, 0 without verifiable integration. Gaps: all twelve articles rest on explicit agent instruction, with deterministic support only for Git and secret-file permissions, confirmations for destructive actions and installed-file ownership; value, loyalty, disagreement, goal direction, the one-time exception rule and the orchestrator not performing an available specialty's judgment are enforced by prompt alone, as is the agent's conduct toward the user's environment.
 
 This document is the project's user-authority and collaboration standard. It decides conflicts in that domain.
 

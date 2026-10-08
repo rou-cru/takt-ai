@@ -1,6 +1,6 @@
 # PRD: TUI Architecture and State Machines
 
-**Actual implementation progress: 95%** — 21 own requirements: 20 complete, 0 partial, 1 not integrated (PR-TUI-25: no flow adjusts admission limits yet). Every flow (`takt/tui/install`, `uninstall`, `drift`, `models`, `diagnostics`) and the nested picker (`takt/tui/modelpicker/model_picker.go:143-178`) now route screen changes through the one generic `ui.Table[S,M]` mechanism (`takt/tui/ui/fsm.go:12-22`); the earlier claim that the models flow bypassed the shared table no longer holds — `models.go:113-148` and `model_picker.go` both build `ui.Table` values, and `grep -n '\.step = \|\.state = \|\.phase = '` across every flow shows direct assignment only inside constructors or `applyTransition`/`apply`, never a free-floating `switch`. The controller (`takt/tui/tui.go`) owns the model stack (`push`/`pop`/`active`, lines 134-161), replaces the stack on the install→models cross-flow jump (`routeTransitions()`, lines 189-193, PR-TUI-18), gates quit/back through a `Dirtier`-checked guard (`leave`, lines 461-473), and turns Ctrl+C during a running action into one cooperative `runtime.CancelRequest` (`cancel`, lines 484-496; `Run.Cancel`/`Result` ID-match in `takt/tui/runtime/run.go:42-87`, PR-TUI-20/21). Resize reaches every stacked model (`resize`, tui.go:422-428) and paste reaches only the foreground model (`paste`/`forward`, tui.go:407-420), matching PR-TUI-19's per-kind routing table. `takt/cli/main.go:92-96,168-173` checks `isInteractive` before ever constructing the Bubble Tea program, so the non-interactive contract in PR-TUI-11 is never bypassed by implicit terminal acquisition. PR-TUI-19, whose capability reports are the terminal's color profile, is complete: the controller consumes `tea.ColorProfileMsg` (`tui.go:389`) for surface capability, and every other clause (delivery order, guarded global intents, action-result routing, resize/paste targeting, discarded key releases) is verified in code.
+**Actual implementation progress: 95%** — 21 own requirements: 20 complete, 0 partial, 1 not integrated. Gap: PR-TUI-25, no flow adjusts admission limits.
 
 ## 1. Problem
 
@@ -30,7 +30,7 @@ Takt requires **maintainability, declarativity, and uniform composability** with
            ▼                                                    ▼
 ┌────────────────────────────────────────────────────────────────────┐
 │ Installation Flow Model                                [ACTIVE]    │
-│   Targets → Setup → Components → Conflicts → Review → Result       │
+│   Components → Conflicts → Review → Result                         │
 │                                            local FSM transitions   │
 ├────────────────────────────────────────────────────────────────────┤
 │ Main Menu (controller-owned)                            [BASE]     │

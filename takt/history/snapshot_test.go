@@ -5,51 +5,52 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package history
+package history_test
 
 import (
 	"encoding/json"
+	"github.com/rou-cru/takt-ai/takt/history"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-// planned builds a KindPlanned entry the way dispatch.Commit/Revise record
+// planned builds a history.KindPlanned entry the way dispatch.Commit/Revise record
 // one, without importing dispatch (history must not depend on its own
 // consumer).
-func planned(session, unit, version, contract string, prereqs []string) Entry {
-	return Entry{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: session, WorkUnitID: unit,
-		AttemptID: FirstAttempt, Cause: CauseNone, PlanVersion: version, Contract: contract, Prerequisites: prereqs}
+func planned(session, unit, version, contract string, prereqs []string) history.Entry {
+	return history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session, WorkUnitID: unit,
+		NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone, PlanVersion: version, Contract: contract, Prerequisites: prereqs}
 }
 
-// withdrawn builds a KindWithdrawn entry the way dispatch.Revise records one.
-func withdrawn(session, unit string) Entry {
-	return Entry{Author: AuthorOrchestrator, Kind: KindWithdrawn, SessionID: session, WorkUnitID: unit,
-		AttemptID: FirstAttempt, Cause: CauseUncaptured}
+// withdrawn builds a history.KindWithdrawn entry the way dispatch.Revise records one.
+func withdrawn(session, unit string) history.Entry {
+	return history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindWithdrawn, SessionID: session, WorkUnitID: unit,
+		AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured}
 }
 
-// revised builds a KindRevised entry the way dispatch.Revise records one.
-func revised(session, base, version, classification string) Entry {
-	return Entry{Author: AuthorOrchestrator, Kind: KindRevised, SessionID: session, WorkUnitID: session,
-		AttemptID: FirstAttempt, Cause: CauseNone, BaseVersion: base, PlanVersion: version, Classification: classification}
+// revised builds a history.KindRevised entry the way dispatch.Revise records one.
+func revised(session, base, version, classification string) history.Entry {
+	return history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindRevised, SessionID: session, WorkUnitID: session,
+		AttemptID: history.FirstAttempt, Cause: history.CauseNone, BaseVersion: base, PlanVersion: version, Classification: classification}
 }
 
-func activityRecord(session, id string, kind NodeKind, start bool, outcome Outcome) Entry {
-	e := Entry{SessionID: session, ActivityID: id, NodeKind: kind, Cause: CauseNone, Outcome: outcome}
-	if kind == NodeKindOrchestrator {
-		e.Author = AuthorOrchestrator
+func activityRecord(session, id string, kind history.NodeKind, start bool, outcome history.Outcome) history.Entry {
+	e := history.Entry{SessionID: session, ActivityID: id, NodeKind: kind, Cause: history.CauseNone, Outcome: outcome}
+	if kind == history.NodeKindOrchestrator {
+		e.Author = history.AuthorOrchestrator
 		if start {
-			e.Kind = KindActivityStarted
+			e.Kind = history.KindActivityStarted
 		} else {
-			e.Kind = KindActivityFinished
+			e.Kind = history.KindActivityFinished
 		}
 	} else {
-		e.Author = AuthorHarness
+		e.Author = history.AuthorHarness
 		if start {
-			e.Kind = KindMaintenanceStarted
+			e.Kind = history.KindMaintenanceStarted
 		} else {
-			e.Kind = KindMaintenanceFinished
+			e.Kind = history.KindMaintenanceFinished
 		}
 	}
 	return e
@@ -60,17 +61,17 @@ func activityRecord(session, id string, kind NodeKind, start bool, outcome Outco
 // committed once: plan_version and topology both come from the revision.
 func TestBuildSnapshotShapeAcrossARevision(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	entries := []Entry{
+	entries := []history.Entry{
 		planned("root", "storage", "v1", "storage contract", nil),
 		planned("root", "api", "v1", "api contract", []string{"storage"}),
-		observed(t, "storage", KindAdmitted, ""),
-		observed(t, "storage", KindLaunched, ""),
-		observed(t, "storage", KindTerminated, OutcomeCompleted),
+		observed(t, "storage", history.KindAdmitted, ""),
+		observed(t, "storage", history.KindLaunched, ""),
+		observed(t, "storage", history.KindTerminated, history.OutcomeCompleted),
 		// A valid revision: withdraw "api", add "api-v2" reconnected to
 		// "storage" (strategic, since a retained unit's prerequisites would
 		// change; here "api" is withdrawn rather than retained, but the
-		// revision entry itself is what Snapshot must reflect either way).
-		revised("root", "v1", "v2", ClassificationStrategic),
+		// revision entry itself is what history.Snapshot must reflect either way).
+		revised("root", "v1", "v2", history.ClassificationStrategic),
 		withdrawn("root", "api"),
 		planned("root", "api-v2", "v2", "api contract v2", []string{"storage"}),
 	}
@@ -79,26 +80,26 @@ func TestBuildSnapshotShapeAcrossARevision(t *testing.T) {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	got := BuildSnapshot(h.Entries())
-	want := Snapshot{
-		SchemaVersion:      SnapshotSchemaVersion,
+	got := history.BuildSnapshot(h.Entries())
+	want := history.Snapshot{
+		SchemaVersion:      history.SnapshotSchemaVersion,
 		ProjectionRevision: len(entries),
 		HistoryPosition:    len(entries),
 		SessionID:          "root",
-		Capture:            CaptureCurrent,
+		Capture:            history.CaptureCurrent,
 		PlanVersion:        "v2",
-		Nodes: []Node{
+		Nodes: []history.Node{
 			// A withdrawn unit keeps the contract/prerequisites its own
-			// KindPlanned entry recorded: Project never clears them on
-			// withdrawal, and Snapshot maps Project's Unit fields 1:1 rather
+			// history.KindPlanned entry recorded: Project never clears them on
+			// withdrawal, and history.Snapshot maps Project's history.Unit fields 1:1 rather
 			// than inventing a "withdrawal clears prerequisites" rule of
 			// its own.
-			{ID: "api", NodeKind: NodeKindDelegated, SessionID: "root", AttemptID: FirstAttempt, State: StateWithdrawn, Contract: "api contract", Prerequisites: []string{"storage"}},
-			{ID: "api-v2", NodeKind: NodeKindDelegated, SessionID: "root", AttemptID: FirstAttempt, State: StatePlanned, Contract: "api contract v2", Prerequisites: []string{"storage"}},
-			{ID: "storage", NodeKind: NodeKindDelegated, SessionID: "root", AttemptID: FirstAttempt, State: StateSettled, Outcome: OutcomeCompleted, Launched: true, Contract: "storage contract"},
+			{ID: "api", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Contract: "api contract", Prerequisites: []string{"storage"}},
+			{ID: "api-v2", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StatePlanned, Contract: "api contract v2", Prerequisites: []string{"storage"}},
+			{ID: "storage", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StateSettled, Outcome: history.OutcomeCompleted, Launched: true, Contract: "storage contract"},
 		},
-		Edges:      []Edge{{From: "storage", To: "api"}, {From: "storage", To: "api-v2"}},
-		Activities: []ActivityNode{},
+		Edges:      []history.Edge{{From: "storage", To: "api"}, {From: "storage", To: "api-v2"}},
+		Activities: []history.ActivityNode{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("snapshot %+v; want %+v", got, want)
@@ -110,7 +111,7 @@ func TestBuildSnapshotShapeAcrossARevision(t *testing.T) {
 // (PRD_DAG_TUI.md §8's "same prefix yields same snapshot").
 func TestBuildSnapshotIsDeterministic(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	entries := []Entry{
+	entries := []history.Entry{
 		planned("root", "a", "v1", "a contract", nil),
 		planned("root", "b", "v1", "b contract", []string{"a"}),
 		planned("root", "c", "v1", "c contract", []string{"a"}),
@@ -121,8 +122,8 @@ func TestBuildSnapshotIsDeterministic(t *testing.T) {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	first := BuildSnapshot(h.Entries())
-	second := BuildSnapshot(h.Entries())
+	first := history.BuildSnapshot(h.Entries())
+	second := history.BuildSnapshot(h.Entries())
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("snapshot not deterministic:\n%+v\n%+v", first, second)
 	}
@@ -135,7 +136,7 @@ func TestBuildSnapshotIsDeterministic(t *testing.T) {
 // topology with two roots, a fan-out and a fan-in.
 func TestBuildSnapshotEdgesChainFanOutFanInMultiRoot(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	entries := []Entry{
+	entries := []history.Entry{
 		planned("root", "domain", "v1", "domain contract", nil), // root 1
 		planned("root", "config", "v1", "config contract", nil), // root 2
 		planned("root", "storage", "v1", "storage contract", []string{"domain"}),
@@ -147,8 +148,8 @@ func TestBuildSnapshotEdgesChainFanOutFanInMultiRoot(t *testing.T) {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	got := BuildSnapshot(h.Entries())
-	want := []Edge{
+	got := history.BuildSnapshot(h.Entries())
+	want := []history.Edge{
 		{From: "storage", To: "api-docs"},
 		{From: "storage", To: "api-tests"},
 		{From: "config", To: "api-tests"},
@@ -165,9 +166,9 @@ func TestBuildSnapshotEdgesChainFanOutFanInMultiRoot(t *testing.T) {
 }
 
 // containsEdge avoids depending on edge ordering across nodes here:
-// BuildSnapshot's own determinism is already pinned separately above, this
+// history.BuildSnapshot's own determinism is already pinned separately above, this
 // test only cares that every declared prerequisite produced its edge.
-func containsEdge(edges []Edge, want Edge) bool {
+func containsEdge(edges []history.Edge, want history.Edge) bool {
 	for _, e := range edges {
 		if e == want {
 			return true
@@ -180,7 +181,7 @@ func containsEdge(edges []Edge, want Edge) bool {
 // as withdrawn, never silently dropped.
 func TestBuildSnapshotWithdrawal(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	for _, e := range []Entry{
+	for _, e := range []history.Entry{
 		planned("root", "a", "v1", "a contract", nil),
 		withdrawn("root", "a"),
 	} {
@@ -188,8 +189,8 @@ func TestBuildSnapshotWithdrawal(t *testing.T) {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	got := BuildSnapshot(h.Entries())
-	if len(got.Nodes) != 1 || got.Nodes[0].ID != "a" || got.Nodes[0].State != StateWithdrawn {
+	got := history.BuildSnapshot(h.Entries())
+	if len(got.Nodes) != 1 || got.Nodes[0].ID != "a" || got.Nodes[0].State != history.StateWithdrawn {
 		t.Fatalf("nodes %+v; want one withdrawn node", got.Nodes)
 	}
 }
@@ -198,27 +199,27 @@ func TestBuildSnapshotWithdrawal(t *testing.T) {
 // projection can carry.
 func TestBuildSnapshotSettlementOutcomes(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	outcomes := map[string]Outcome{
-		"completed":   OutcomeCompleted,
-		"failed":      OutcomeFailed,
-		"backtracked": OutcomeBacktracked,
-		"interrupted": OutcomeInterrupted,
+	outcomes := map[string]history.Outcome{
+		"completed":   history.OutcomeCompleted,
+		"failed":      history.OutcomeFailed,
+		"backtracked": history.OutcomeBacktracked,
+		"interrupted": history.OutcomeInterrupted,
 	}
 	for unit, outcome := range outcomes {
 		if err := h.Append(planned("root", unit, "v1", unit+" contract", nil)); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.Append(observed(t, unit, KindAdmitted, "")); err != nil {
+		if err := h.Append(observed(t, unit, history.KindAdmitted, "")); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.Append(observed(t, unit, KindTerminated, outcome)); err != nil {
+		if err := h.Append(observed(t, unit, history.KindTerminated, outcome)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got := BuildSnapshot(h.Entries())
-	seen := map[string]Outcome{}
+	got := history.BuildSnapshot(h.Entries())
+	seen := map[string]history.Outcome{}
 	for _, n := range got.Nodes {
-		if n.State != StateSettled {
+		if n.State != history.StateSettled {
 			t.Fatalf("node %+v not settled", n)
 		}
 		seen[n.ID] = n.Outcome
@@ -229,34 +230,34 @@ func TestBuildSnapshotSettlementOutcomes(t *testing.T) {
 }
 
 // TestBuildSnapshotUncertainFlight proves an unreconciled launch is reported
-// as the projection's own FlightUncertain sub-state, never omitted or
+// as the projection's own history.FlightUncertain sub-state, never omitted or
 // collapsed into a guessed settled outcome (PRD_DAG_TUI.md §7.4/§11).
 func TestBuildSnapshotUncertainFlight(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	for _, e := range []Entry{
+	for _, e := range []history.Entry{
 		planned("root", "a", "v1", "a contract", nil),
-		observed(t, "a", KindAdmitted, ""),
-		observed(t, "a", KindUncertain, ""),
+		observed(t, "a", history.KindAdmitted, ""),
+		observed(t, "a", history.KindUncertain, ""),
 	} {
 		if err := h.Append(e); err != nil {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	got := BuildSnapshot(h.Entries())
-	if len(got.Nodes) != 1 || got.Nodes[0].State != StateInFlight || got.Nodes[0].Flight != FlightUncertain {
-		t.Fatalf("nodes %+v; want one in-flight node with FlightUncertain", got.Nodes)
+	got := history.BuildSnapshot(h.Entries())
+	if len(got.Nodes) != 1 || got.Nodes[0].State != history.StateInFlight || got.Nodes[0].Flight != history.FlightUncertain {
+		t.Fatalf("nodes %+v; want one in-flight node with history.FlightUncertain", got.Nodes)
 	}
-	if got.Capture != CaptureUncertain {
-		t.Fatalf("capture = %q; want %q", got.Capture, CaptureUncertain)
+	if got.Capture != history.CaptureUncertain {
+		t.Fatalf("capture = %q; want %q", got.Capture, history.CaptureUncertain)
 	}
 }
 
 // TestBuildSnapshotEmptyHistoryIsExplicit proves a zero-entry history is
 // reported as an explicit empty DAG, distinguishable from unavailable.
 func TestBuildSnapshotEmptyHistoryIsExplicit(t *testing.T) {
-	got := BuildSnapshot(nil)
-	if got.Capture != CaptureEmpty {
-		t.Fatalf("capture = %q; want %q", got.Capture, CaptureEmpty)
+	got := history.BuildSnapshot(nil)
+	if got.Capture != history.CaptureEmpty {
+		t.Fatalf("capture = %q; want %q", got.Capture, history.CaptureEmpty)
 	}
 	if len(got.Nodes) != 0 || len(got.Edges) != 0 {
 		t.Fatalf("empty history produced data: %+v", got)
@@ -269,7 +270,7 @@ func TestBuildSnapshotEmptyHistoryIsExplicit(t *testing.T) {
 // TestSnapshotWireNames proves the JSON form carries the PRD_DAG_TUI.md §8
 // snake_case names while the in-memory projection values stay as they are.
 func TestSnapshotWireNames(t *testing.T) {
-	node := Node{ID: "a", NodeKind: NodeKindDelegated, State: StateInFlight, Flight: FlightRunning}
+	node := history.Node{ID: "a", NodeKind: history.NodeKindDelegated, State: history.StateInFlight, Flight: history.FlightRunning}
 	raw, err := json.Marshal(node)
 	if err != nil {
 		t.Fatal(err)
@@ -280,28 +281,28 @@ func TestSnapshotWireNames(t *testing.T) {
 }
 
 func TestBuildSnapshotNodeKindsPreserveIdentityAndPrerequisites(t *testing.T) {
-	entries := []Entry{
-		func() Entry {
+	entries := []history.Entry{
+		func() history.Entry {
 			e := planned("root", "delegated", "v1", "child work", nil)
-			e.NodeKind = NodeKindDelegated
+			e.NodeKind = history.NodeKindDelegated
 			return e
 		}(),
 		planned("root", "dependent", "v1", "depends on delegated work", []string{"delegated"}),
-		revised("root", "v1", "v2", ClassificationTactical),
+		revised("root", "v1", "v2", history.ClassificationTactical),
 	}
-	got := BuildSnapshot(entries)
-	kinds := make(map[string]NodeKind, len(got.Nodes))
+	got := history.BuildSnapshot(entries)
+	kinds := make(map[string]history.NodeKind, len(got.Nodes))
 	for _, node := range got.Nodes {
 		kinds[node.ID] = node.NodeKind
 	}
-	wantKinds := map[string]NodeKind{
-		"delegated": NodeKindDelegated,
-		"dependent": NodeKindDelegated,
+	wantKinds := map[string]history.NodeKind{
+		"delegated": history.NodeKindDelegated,
+		"dependent": history.NodeKindDelegated,
 	}
 	if !reflect.DeepEqual(kinds, wantKinds) {
 		t.Fatalf("node kinds %v; want %v", kinds, wantKinds)
 	}
-	wantEdges := []Edge{{From: "delegated", To: "dependent"}}
+	wantEdges := []history.Edge{{From: "delegated", To: "dependent"}}
 	if !reflect.DeepEqual(got.Edges, wantEdges) {
 		t.Fatalf("edges %+v; want %+v", got.Edges, wantEdges)
 	}
@@ -312,7 +313,7 @@ func TestBuildSnapshotNodeKindsPreserveIdentityAndPrerequisites(t *testing.T) {
 
 func TestWorkUnitEntriesRejectActivityNodeKinds(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	for _, kind := range []NodeKind{NodeKindOrchestrator, NodeKindMaintenance} {
+	for _, kind := range []history.NodeKind{history.NodeKindOrchestrator, history.NodeKindMaintenance} {
 		e := planned("root", string(kind), "v1", "not a work-unit activity", nil)
 		e.NodeKind = kind
 		if err := h.Append(e); err == nil {
@@ -325,17 +326,17 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
 	cycleID := "a13f86e2b7c94e6d"
 	directID := "orchestrator-activity-7fca2e"
-	entries := []Entry{
+	entries := []history.Entry{
 		planned("root", "base", "v1", "base", nil),
 		planned("root", "dependent", "v1", "dependent", []string{"base"}),
-		observed(t, "base", KindAdmitted, ""),
-		observed(t, "base", KindLaunched, ""),
-		observed(t, "base", KindTerminated, OutcomeCompleted),
-		observed(t, "later", KindAdmitted, ""), // ordinary legacy delegation follows settled base
-		activityRecord("root", directID, NodeKindOrchestrator, true, ""),
-		activityRecord("root", directID, NodeKindOrchestrator, false, OutcomeCompleted),
-		activityRecord("root", cycleID, NodeKindMaintenance, true, ""),
-		activityRecord("root", cycleID, NodeKindMaintenance, false, OutcomeInterrupted),
+		observed(t, "base", history.KindAdmitted, ""),
+		observed(t, "base", history.KindLaunched, ""),
+		observed(t, "base", history.KindTerminated, history.OutcomeCompleted),
+		observed(t, "later", history.KindAdmitted, ""), // ordinary delegation follows settled base
+		activityRecord("root", directID, history.NodeKindOrchestrator, true, ""),
+		activityRecord("root", directID, history.NodeKindOrchestrator, false, history.OutcomeCompleted),
+		activityRecord("root", cycleID, history.NodeKindMaintenance, true, ""),
+		activityRecord("root", cycleID, history.NodeKindMaintenance, false, history.OutcomeInterrupted),
 	}
 	for _, e := range entries {
 		if err := h.Append(e); err != nil {
@@ -352,7 +353,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if _, found := p.Units[cycleID]; found {
 		t.Fatalf("GC CycleID was folded into work units: %v", p.Units)
 	}
-	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != NodeKindOrchestrator || p.Activities[cycleID].NodeKind != NodeKindMaintenance {
+	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != history.NodeKindOrchestrator || p.Activities[cycleID].NodeKind != history.NodeKindMaintenance {
 		t.Fatalf("activities %+v; want direct and maintenance activities", p.Activities)
 	}
 	for _, e := range h.Entries() {
@@ -361,22 +362,22 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 		}
 	}
 
-	snapshot := BuildSnapshot(h.Entries())
+	snapshot := history.BuildSnapshot(h.Entries())
 	if len(snapshot.Nodes) != 3 {
 		t.Fatalf("work nodes=%+v; activities must stay outside nodes", snapshot.Nodes)
 	}
 	for _, node := range snapshot.Nodes {
-		if node.NodeKind != NodeKindDelegated {
-			t.Fatalf("legacy delegated unit %q got kind %q", node.ID, node.NodeKind)
+		if node.NodeKind != history.NodeKindDelegated {
+			t.Fatalf("delegated unit %q got kind %q", node.ID, node.NodeKind)
 		}
 	}
 	if len(snapshot.Activities) != 2 || snapshot.Activities[0].ActivityID != cycleID || snapshot.Activities[1].ActivityID != directID {
 		t.Fatalf("snapshot activities %+v; activity IDs must be retained and sorted", snapshot.Activities)
 	}
-	if snapshot.Activities[0].State != StateSettled || snapshot.Activities[0].Outcome != OutcomeInterrupted || snapshot.Activities[1].Outcome != OutcomeCompleted {
+	if snapshot.Activities[0].State != history.StateSettled || snapshot.Activities[0].Outcome != history.OutcomeInterrupted || snapshot.Activities[1].Outcome != history.OutcomeCompleted {
 		t.Fatalf("activity lifecycle state lost: %+v", snapshot.Activities)
 	}
-	if !containsEdge(snapshot.Edges, Edge{From: "base", To: "dependent"}) || !containsEdge(snapshot.Edges, Edge{From: "base", To: "later"}) || len(snapshot.Edges) != 2 {
+	if !containsEdge(snapshot.Edges, history.Edge{From: "base", To: "dependent"}) || !containsEdge(snapshot.Edges, history.Edge{From: "base", To: "later"}) || len(snapshot.Edges) != 2 {
 		t.Fatalf("activity entries changed declared/inferred unit edges: %+v", snapshot.Edges)
 	}
 	raw, err := json.Marshal(snapshot)
@@ -393,16 +394,16 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 // together are siblings, a later unit joins the frontier it followed, and a
 // committed unit keeps exactly its declared prerequisites.
 func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
-	run := func(unit string) []Entry {
-		return []Entry{observed(t, unit, KindAdmitted, ""), observed(t, unit, KindLaunched, "")}
+	run := func(unit string) []history.Entry {
+		return []history.Entry{observed(t, unit, history.KindAdmitted, ""), observed(t, unit, history.KindLaunched, "")}
 	}
-	done := func(units ...string) (out []Entry) {
+	done := func(units ...string) (out []history.Entry) {
 		for _, u := range units {
-			out = append(out, observed(t, u, KindTerminated, OutcomeCompleted))
+			out = append(out, observed(t, u, history.KindTerminated, history.OutcomeCompleted))
 		}
 		return
 	}
-	var entries []Entry
+	var entries []history.Entry
 	entries = append(entries, run("pm")...)
 	entries = append(entries, done("pm")...)
 	entries = append(entries, run("arch")...)
@@ -414,7 +415,7 @@ func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
 	entries = append(entries, run("tpm")...)
 
 	got := map[string][]string{}
-	for _, n := range BuildSnapshot(entries).Nodes {
+	for _, n := range history.BuildSnapshot(entries).Nodes {
 		got[n.ID] = n.Prerequisites
 	}
 	want := map[string][]string{
@@ -427,20 +428,20 @@ func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("prerequisites %v; want %v", got, want)
 	}
-	if empty := BuildSnapshot(nil); len(empty.Nodes) != 0 || empty.Capture != CaptureEmpty {
+	if empty := history.BuildSnapshot(nil); len(empty.Nodes) != 0 || empty.Capture != history.CaptureEmpty {
 		t.Fatalf("empty history drew %+v", empty)
 	}
 }
 
-// TestBuildSnapshotReportsStoppedAndEscalated checks that Snapshot exposes
-// Budgets' own Stopped/Escalated counters, the same way it already does for
+// TestBuildSnapshotReportsStoppedAndEscalated checks that history.Snapshot exposes
+// history.Budgets' own Stopped/Escalated counters, the same way it already does for
 // PlanVersion.
 func TestBuildSnapshotReportsStoppedAndEscalated(t *testing.T) {
-	entries := []Entry{
-		{Author: AuthorOrchestrator, Kind: KindStopped, SessionID: "root", WorkUnitID: "unit-1", AttemptID: FirstAttempt, Cause: CauseNone},
-		{Author: AuthorOrchestrator, Kind: KindEscalated, SessionID: "root", WorkUnitID: "unit-1", AttemptID: FirstAttempt, Cause: CauseNone},
+	entries := []history.Entry{
+		{Author: history.AuthorOrchestrator, Kind: history.KindStopped, SessionID: "root", WorkUnitID: "unit-1", AttemptID: history.FirstAttempt, Cause: history.CauseNone},
+		{Author: history.AuthorOrchestrator, Kind: history.KindEscalated, SessionID: "root", WorkUnitID: "unit-1", AttemptID: history.FirstAttempt, Cause: history.CauseNone},
 	}
-	got := BuildSnapshot(entries)
+	got := history.BuildSnapshot(entries)
 	if got.Stopped != 1 || got.Escalated != 1 {
 		t.Fatalf("Stopped = %d, Escalated = %d; want 1, 1", got.Stopped, got.Escalated)
 	}
@@ -453,14 +454,14 @@ func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
 	agentOf := func() string {
 		t.Helper()
-		nodes := BuildSnapshot(h.Entries()).Nodes
+		nodes := history.BuildSnapshot(h.Entries()).Nodes
 		if len(nodes) != 1 {
 			t.Fatalf("nodes = %+v, want one", nodes)
 		}
 		return nodes[0].Agent
 	}
-	admitted := func(agent, attempt string) Entry {
-		e := observed(t, "a", KindAdmitted, "")
+	admitted := func(agent, attempt string) history.Entry {
+		e := observed(t, "a", history.KindAdmitted, "")
 		e.Agent, e.AttemptID = agent, attempt
 		return e
 	}
@@ -470,7 +471,7 @@ func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
 	if got := agentOf(); got != "" {
 		t.Fatalf("planned agent = %q, want none", got)
 	}
-	for _, e := range []Entry{admitted("pm", FirstAttempt), observed(t, "a", KindTerminated, OutcomeFailed)} {
+	for _, e := range []history.Entry{admitted("pm", history.FirstAttempt), observed(t, "a", history.KindTerminated, history.OutcomeFailed)} {
 		if err := h.Append(e); err != nil {
 			t.Fatal(err)
 		}

@@ -754,8 +754,21 @@ describe("claims and consolidation", () => {
   test("claim_assign with an author key asks to keep the staged work", async () => {
     const vfs = await startVfs()
     try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", none: true }, orchestrator)
       await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go", "b.go"], author_key: "author-key" }, orchestrator)
       expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ author_key: "author-key", scope: ["a.go", "b.go"] })])
+    } finally { await vfs.stop() }
+  })
+
+  test("a claim is assigned with the invariants declared for its unit, and not before they are", async () => {
+    const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "validate_inputs" ? { out: "{}" } : undefined })
+    try {
+      const assign = () => vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go"] }, orchestrator)
+      await expect(assign()).rejects.toThrow("Declare the invariants work unit unit-a consumes")
+      expect(vfs.requests("vfs", "assign")).toEqual([])
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7, 8] }, orchestrator)
+      await assign()
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ invariants: ["engram:7", "engram:8"] })])
     } finally { await vfs.stop() }
   })
 

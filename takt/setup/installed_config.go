@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 )
 
 // InstalledConfigFilename records the PlanRequest last applied, so later operations reapply real custom choices.
@@ -69,14 +68,8 @@ func loadInstalledRecord(rootDir string) (installedRecord, error) {
 	if err := json.Unmarshal(raw, &record); err != nil {
 		return installedRecord{}, fmt.Errorf("parse installed config: %w", err)
 	}
-	record.Components = slices.DeleteFunc(record.Components, func(id string) bool { return retiredComponents[id] })
 	return record, nil
 }
-
-// retiredComponents were selectable in earlier releases and no longer exist.
-// Records written by those releases still list them; dropping them on load
-// keeps every later plan valid instead of failing on an unknown component.
-var retiredComponents = map[string]bool{"theme": true, "opencode-takt-logo": true}
 
 // InstalledVersion returns rootDir's recorded Takt version, or "" when absent or untracked.
 func InstalledVersion(rootDir string) string {

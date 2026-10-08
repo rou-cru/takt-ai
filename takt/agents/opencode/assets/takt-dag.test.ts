@@ -30,7 +30,7 @@ describe("DAG snapshot wire contract", () => {
     const decoded = decodeSnapshot({
       schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "empty", plan_version: "plan-2",
       nodes: [{ id: "active", node_kind: "delegated", session_id: "child", attempt_id: "try-1", state: "in_flight", flight: "observed_running", launched: true, contract: "ship safely", prerequisites: ["first"], agent: "arch" },
-        { id: "done", state: "settled", outcome: "completed", launched: false }],
+        { id: "done", node_kind: "delegated", state: "settled", outcome: "completed", launched: false }],
       edges: [{ from: "active", to: "done" }],
       activities: [{ activity_id: "work-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" },
         { activity_id: "maintenance-1", node_kind: "maintenance", state: "settled", outcome: "interrupted" }],

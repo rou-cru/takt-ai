@@ -39,7 +39,7 @@ afterAll(() => {
 })
 const snapshot = (extra: Record<string, unknown> = {}) => ({
   schema_version: 1, projection_revision: 4, history_position: 4, session_id: "root", capture: "current", plan_version: "plan-7",
-  nodes: [{ id: "unit-a", state: "settled", outcome: "completed", launched: true }], edges: [], activities: [], ...extra,
+  nodes: [{ id: "unit-a", node_kind: "delegated", state: "settled", outcome: "completed", launched: true }], edges: [], activities: [], ...extra,
 })
 const reply = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 
@@ -152,7 +152,7 @@ describe("DAG route view", () => {
   })
 
   test("a snapshot with a broken topology is rejected as invalid", async () => {
-    const twins = snapshot({ nodes: [{ id: "a", state: "planned", launched: false }, { id: "a", state: "planned", launched: false }] })
+    const twins = snapshot({ nodes: [{ id: "a", node_kind: "delegated", state: "planned", launched: false }, { id: "a", node_kind: "delegated", state: "planned", launched: false }] })
     const { frame } = await visit(() => reply(twins), (d) => d.route("root"))
     expect(frame).toContain("projection rejected: duplicate node identity")
     expect(frame).toContain("Takt DAG · invalid")

@@ -1,6 +1,6 @@
 # PRD: Setup Experience and Stack Selection
 
-**Actual implementation progress: 97%** — 31 own requirements: 29 complete, 2 partial, 0 not integrated. The versioned manifest `takt/catalog/capabilities.yaml` and `catalog.Reconcile` (`takt/catalog/capabilities.go:118`) deterministically enforce the mandatory core and dependency reconciliation; `takt/setup/deploy.go`'s stage/commit/rollback transaction and `conflict_impact.go`'s unrelated/uncertain/incompatible classification drive the real keep/restore review in `takt/tui/install/install.go`; `takt/agents/opencode/renderer.go:80` sets OpenCode's `default_agent` to the Takt orchestrator and `takt/verify/opencode.go` contacts the live OpenCode API (agents, MCP status, plugins) to report verified/not verified/not verifiable instead of inferring readiness from files written. The real gaps: `takt/tui/tui.go`'s menu has no Upgrade entry at all (PR-SET-33), and only one capability (context7) is actually omittable — no non-core skill or workflow is yet selectable (PR-SET-13).
+**Actual implementation progress: 95%** — 31 own requirements: 28 complete, 3 partial, 0 not integrated. Gaps: the menu has no Upgrade entry; only one capability is omittable and the manifest does not declare supporting managed assets.
 
 ## 1. Problem
 
@@ -16,7 +16,7 @@ Terms such as *capability*, *managed asset*, *platform*, *Takt default stack*, a
 | --- | --- |
 | PR-SET-1 | Setup MUST offer a complete Takt default configuration and optional customization over that same configuration. Customization MUST preserve prepared choices and return to the same review, not create an incompatible “expert mode” or a capability-limited simple product. |
 | PR-SET-2 | Takt default MUST include specialist agent definitions, skills for proactive orchestration workflows, essential MCP integrations for memory, codebase exploration, and documentation access, and curated skills intended to maintain consistent work across the models assigned to specialists. |
-| PR-SET-3 | Takt default MUST include the OpenCode v2 runtime extensions in the official integration scope, branding and customization details, and permission settings intended for safe operation without unnecessary blocking. |
+| PR-SET-3 | Takt default MUST include the OpenCode v2 runtime extensions in the official integration scope, customization details, and permission settings intended for safe operation without unnecessary blocking. |
 | PR-SET-4 | OpenCode v2 setup MUST offer an optional model-assignment tool. |
 
 ### 2.2 Detection and User Choice

@@ -47,18 +47,15 @@ func context7Config() map[string]any {
 func permissionsConfig() []permissionRule {
 	rules := []permissionRule{
 		{"shell", allResources, "allow"},
-		// Redirection, tee, sed -i, cp and mv used to carry their own "ask"
-		// rules here as a conservative fallback for mutations the VFS could
-		// not yet capture. They were dropped: the VFS plugin's
-		// permission.hook("evaluate") resolves every non-denied shell action
-		// through takt/vfs/shell.go's classify() and overwrites event.effect
-		// with that verdict regardless of what this static table said, so
-		// these rules were already inert. classify() captures the mutation
-		// (allow), denies it when its paths are not bound in scope, or asks
-		// only when the target is genuinely outside the workspace (git
-		// mutations, privilege escalation, absolute paths elsewhere) —
-		// PR-HAR-15's "deny rather than execute unstaged" now runs per
-		// command instead of by blanket static glob.
+		// Redirection, tee, sed -i, cp and mv carry no static "ask" rule: the VFS
+		// plugin's permission.hook("evaluate") resolves every non-denied shell
+		// action through takt/vfs/shell.go's classify() and overwrites event.effect
+		// with that verdict regardless of this static table. classify() captures
+		// the mutation (allow), denies it when its paths are not bound in scope, or
+		// asks only when the target is genuinely outside the workspace (git
+		// mutations, privilege escalation, absolute paths elsewhere). PR-HAR-15's
+		// "deny rather than execute unstaged" runs per command instead of by
+		// blanket static glob.
 		{"shell", "git commit *", "ask"},
 		{"shell", "git push", "ask"},
 		{"shell", "git push *", "ask"},

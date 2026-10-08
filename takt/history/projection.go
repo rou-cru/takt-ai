@@ -106,8 +106,7 @@ func AllowanceKey(bound, objective string) string {
 // Unit is a work unit as the replay derives it.
 type Unit struct {
 	SessionID string `json:"session_id"`
-	// NodeKind is delegated for explicitly tagged work. Empty means a legacy
-	// entry; snapshots map that case to NodeKindDelegated as well.
+	// NodeKind is the classification recorded on the unit's first entry.
 	NodeKind NodeKind `json:"node_kind,omitempty"`
 	// AttemptID identifies the attempt; FirstAttempt for the first one.
 	AttemptID string `json:"attempt_id"`
@@ -320,7 +319,6 @@ func (p *Projection) fold(e Entry) {
 		return
 	}
 	// The first explicit classification sticks to the real work-unit identity.
-	// Missing values remain compatible with old records and never rewrite it.
 	if u.NodeKind == "" && e.NodeKind == NodeKindDelegated {
 		u.NodeKind = e.NodeKind
 	}

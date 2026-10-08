@@ -84,7 +84,7 @@ func (idle) Unused() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"head": gc.StatusDead, "tail": gc.StatusDead, "left": gc.StatusDead, "right": gc.StatusDead, "OnlyTest": gc.StatusDead, "idle::Unused": gc.StatusDead, "fresh": gc.StatusPending}
+	want := map[string]string{"head": gc.StatusDead, "tail": gc.StatusDead, "left": gc.StatusDead, "right": gc.StatusDead, "OnlyTest": gc.StatusDead, "idle.Unused": gc.StatusDead, "fresh": gc.StatusPending}
 	if len(r.Findings) != len(want) {
 		t.Fatalf("RTA findings: %+v", r.Findings)
 	}

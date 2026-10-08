@@ -45,25 +45,6 @@ func TestInstalledConfigSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-func TestLoadInstalledConfigDropsRetiredComponents(t *testing.T) {
-	root := t.TempDir()
-	request := setuputil.TestPlanRequest()
-	request.Components = []string{"context7", "theme", "opencode-takt-logo"}
-	if err := setup.SaveInstalledConfig(root, request); err != nil {
-		t.Fatalf("SaveInstalledConfig() error = %v", err)
-	}
-	loaded, err := setup.LoadInstalledConfig(root)
-	if err != nil {
-		t.Fatalf("LoadInstalledConfig() error = %v", err)
-	}
-	if !reflect.DeepEqual(loaded.Components, []string{"context7"}) {
-		t.Fatalf("components = %v, want retired ids dropped", loaded.Components)
-	}
-	if _, _, err := setup.BuildTargetPlans(loaded); err != nil {
-		t.Fatalf("BuildTargetPlans() on an upgraded record error = %v", err)
-	}
-}
-
 func TestLoadInstalledConfigMissingIsNotExist(t *testing.T) {
 	_, err := setup.LoadInstalledConfig(t.TempDir())
 	if !errors.Is(err, os.ErrNotExist) {

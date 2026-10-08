@@ -24,7 +24,6 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func IsInstalled\(rootDir string\) bool](<#IsInstalled>)
 - [func RecordInstallation\(rootDir string, request PlanRequest\) error](<#RecordInstallation>)
 - [func RecordRiskAcceptances\(rootDir string, accepted \[\]RiskAcceptance\) error](<#RecordRiskAcceptances>)
-- [func ReleaseLegacyCLIConfig\(rootDir string\) error](<#ReleaseLegacyCLIConfig>)
 - [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
 - [func SafeJoin\(root, rel string\) \(string, error\)](<#SafeJoin>)
 - [func SaveInstalledConfig\(rootDir string, request PlanRequest\) error](<#SaveInstalledConfig>)
@@ -284,15 +283,6 @@ func RecordRiskAcceptances(rootDir string, accepted []RiskAcceptance) error
 ```
 
 RecordRiskAcceptances upserts accepted into rootDir's record by path.
-
-<a name="ReleaseLegacyCLIConfig"></a>
-## func ReleaseLegacyCLIConfig
-
-```go
-func ReleaseLegacyCLIConfig(rootDir string) error
-```
-
-ReleaseLegacyCLIConfig hands cli.json back to the user: it drops the dangling theme selection Takt wrote and forgets the file in the ownership manifest, so no later operation \(uninstall included\) replaces or deletes it. The user's own keys are kept. A root that never managed cli.json is a no\-op.
 
 <a name="ResolveComponents"></a>
 ## func ResolveComponents

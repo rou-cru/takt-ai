@@ -193,13 +193,6 @@ const VFS_AGENTS: string[] = "__TAKT_VFS_AGENTS__" as unknown as string[]
 // skill: their delegation must call deliver_result before it ends.
 const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
 
-// INVARIANT_DOCUMENTS are the governing documents a bind declares, in the
-// precedence order PR-VFS-CSL-3 fixes. AGENTS.md carries the goal and directives
-// the user set for this workspace; the harness pins each document by its content
-// and answers with the resulting set version. Dispatches carry no structured
-// declaration of SDD planning artifacts, so only user directives are declared.
-const INVARIANT_DOCUMENTS = ["AGENTS.md"]
-
 // BINDINGS_KEY holds the plugin's binding correlation across a runtime restart.
 // The attempt identity is not here: the harness issues it and keeps it durable.
 const BINDINGS_KEY = "takt/vfs/bindings"
@@ -227,6 +220,9 @@ function withText<C>(content: string | ReadonlyArray<C> | undefined, text: strin
 }
 // engramRefs renders Engram entry IDs the way agents cite them.
 const engramRefs = (ids: number[]) => ids.map(id => `Engram #${id}`).join(", ")
+// engramInvariants names the invariants a unit consumes the way the harness
+// pins them: each Engram entry is immutable, so its ID is its own pin.
+const engramInvariants = (ids: number[]) => ids.map(id => `engram:${id}`)
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
@@ -493,7 +489,7 @@ export default Plugin.define({
         // Sequential on purpose: each assignment supersedes the previous
         // attempt's gate for its author and prepared must keep issue order.
         const gate = await takt("assign-verifier", { session_id: root, work_unit_id: unit, agent_id: specialist, // NOSONAR
-          specialist, invariants: INVARIANT_DOCUMENTS, author_key: authorKey })
+          specialist, author_key: authorKey })
         if (gate.key) prepared.push(gate.key)
       }
       for (const [key, binding] of bindings) {
@@ -534,7 +530,7 @@ export default Plugin.define({
       // A verifier runs as its own unit; the author key alone links it to
       // the staged work it judges.
       const b: Binding = { key: "", agent: c.agent, session, dispatch: c.sessionID, unit, revision: 0, deltaHash: "", ...(author && authorKey ? { judges: authorKey, judgedRevision: author.revision, judgedHash: author.deltaHash, judgedPaths: [] } : {}) }
-      const res = await takt("bind", { ...identity(b), invariants: INVARIANT_DOCUMENTS, scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
+      const res = await takt("bind", { ...identity(b), ...(author ? {} : { invariants: engramInvariants(inputs.get(unitKey(session, unit)) ?? []) }), scope, ...(author && authorKey ? { author_key: authorKey } : {}) })
       b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
       // Adopting work already staged under the key continues from its revision.
       if (typeof res.revision === "number" && typeof res.delta_hash === "string") { b.revision = res.revision; b.deltaHash = res.delta_hash }
@@ -1339,7 +1335,11 @@ export default Plugin.define({
       }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
-        return { content: JSON.stringify(await takt("assign", { session_id: await rootSession(c.sessionID), work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: INVARIANT_DOCUMENTS, scope: args.scope, author_key: args.author_key })) }
+        const session = await rootSession(c.sessionID)
+        const unit = asString(args.work_unit_id, "").trim()
+        const consumed = inputs.get(unitKey(session, unit))
+        if (consumed === undefined) throw new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before assigning its claim, or declare that none exists yet`)
+        return { content: JSON.stringify(await takt("assign", { session_id: session, work_unit_id: unit, agent_id: args.agent, specialist: args.agent, invariants: engramInvariants(consumed), scope: args.scope, author_key: args.author_key })) }
       } })
       editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
@@ -1520,7 +1520,7 @@ export default Plugin.define({
           const unit = await delegatedUnit(c.sessionID)
           if (isResponseObject(input) && input.author_key !== undefined) throw new Error("vfs_bind only binds implementation scope; verifier access is automatic")
           const { b, res } = await bindAs(c, session, unit, args.scope)
-          return { content: `Bound as ${b.agent} to scope ${JSON.stringify(args.scope)}; unit ${unit}, attempt ${res.attempt_id}; invariants ${INVARIANT_DOCUMENTS.join(", ")} at version ${res.invariants_version}; author_key ${b.key}` }
+          return { content: `Bound as ${b.agent} to scope ${JSON.stringify(args.scope)}; unit ${unit}, attempt ${res.attempt_id}; invariants ${engramRefs(inputs.get(unitKey(session, unit)) ?? []) || "none"} at version ${res.invariants_version}; author_key ${b.key}` }
         },
       })
       editor.add({

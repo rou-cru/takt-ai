@@ -187,10 +187,8 @@ func finalizeFindings(out *Report) {
 	for i := range out.Findings {
 		f := &out.Findings[i]
 		if f.Mandate == MandateDeadCode && f.Language == "go" {
-			// Snapshot names use T.Method; preserve legacy CodeGraph T::Method IDs.
-			f.Symbol = strings.ReplaceAll(f.Symbol, ".", "::")
 			f.Kind, f.Status = "function", StatusDead
-			if strings.Contains(f.Symbol, "::") {
+			if strings.Contains(f.Symbol, ".") {
 				f.Kind = "method"
 			}
 			if f.Introduced {

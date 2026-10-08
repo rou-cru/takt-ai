@@ -130,8 +130,9 @@ type request struct {
 	WorkUnitID string `json:"work_unit_id"`
 	AgentID    string `json:"agent_id"`
 	Specialist string `json:"specialist"`
-	// Invariants declares the governing documents on a bind, in precedence
-	// order; a bind that joins an open attempt inherits that attempt's set.
+	// Invariants declares the governing invariants on a bind, in precedence
+	// order: Engram references (vfs.EngramInvariant) and workspace paths. A bind
+	// that joins an open attempt inherits that attempt's set.
 	Invariants vfs.InvariantSet `json:"invariants,omitempty"`
 	// Optional maintenance attribution; absent outside maintenance dispatches.
 	CycleID      string `json:"cycle_id,omitempty"`

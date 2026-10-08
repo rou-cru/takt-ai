@@ -68,8 +68,8 @@ func (f Flight) MarshalJSON() ([]byte, error) {
 }
 
 // Node is one work unit's content-free projection. Temporal fields and declared
-// prerequisites map Project's own state; NodeKind carries an explicit recorded
-// classification or the backward-compatible delegated default.
+// prerequisites map Project's own state; NodeKind carries the recorded
+// classification.
 type Node struct {
 	ID string `json:"id"`
 	// Work-unit nodes are delegated only; direct and maintenance records live in
@@ -180,12 +180,8 @@ func BuildSnapshot(entries []Entry) Snapshot {
 		if !u.Committed {
 			prerequisites = inferred[id]
 		}
-		kind := u.NodeKind
-		if kind == "" {
-			kind = NodeKindDelegated // legacy history carries no discriminator
-		}
 		s.Nodes = append(s.Nodes, Node{
-			ID: id, NodeKind: kind, SessionID: u.SessionID, AttemptID: u.AttemptID,
+			ID: id, NodeKind: NodeKindDelegated, SessionID: u.SessionID, AttemptID: u.AttemptID,
 			State: u.State, Flight: u.Flight, Outcome: u.Outcome,
 			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites, Agent: u.Agent,
 		})

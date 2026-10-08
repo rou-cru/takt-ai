@@ -22,7 +22,7 @@ specialists. SDD and bounded never govern the same implementation simultaneously
 | Situation | Outcome |
 | --- | --- |
 | The adopted route reports, with evidence, that it does not fit | Back to step 1 with the reason, evidence, and constraints; the same route is never re-adopted under identical evidence. |
-| The tree leads only to routes that already reported a misfit, and OPERATIONS' three direct-work tests hold | Takt adopts the phase's bounded route by decision, limited to that small action. |
+| The tree leads only to routes that already reported a misfit, and the adjustment is trivial: one file, one concern, and no contract or interface change or other lane's judgment | Takt adopts the phase's bounded route by decision, limited to that small action. |
 | Same, not trivial, and the work is bounded units within the unplanned-delegation limit | Delegation to the needed specialists; a single planning specialty still goes to its specialist. |
 | Uncertainty persists, nothing fits, or proceeding requires changing an explicit user instruction | Takt consults the user with evidence and alternatives and waits for direction. |
 
@@ -57,7 +57,7 @@ flowchart TD
     Conflict -->|Yes| Ask["Consult user"]
     Conflict -->|No| Fresh{"Tree reaches a route not yet ruled out by this evidence?"}
     Fresh -->|Yes| Start
-    Fresh -->|No| Trivial{"OPERATIONS direct-work tests hold?"}
+    Fresh -->|No| Trivial{"Trivial adjustment: one file, one concern, no contract change?"}
     Trivial -->|Yes| Direct["Bounded route by decision, small action only"]
     Trivial -->|No| Light{"Bounded units within the delegation limit?"}
     Light -->|Yes| Specialists["Delegate to specialists"]

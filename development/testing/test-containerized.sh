@@ -29,9 +29,9 @@ source "$REPO_ROOT/development/testing/test-packages.sh"
 #
 # Flags that accept a value (e.g. `-run`, `-bench`) consume the NEXT argument
 # as their value, so that argument must NOT be mistaken for a package. The
-# space-separated form `-run TestX` was previously misclassified: `TestX`
-# started with no `-`, so it was treated as a package, the default packages
-# were dropped, and `go test` ran with nothing to test in /src.
+# space-separated form `-run TestX` must not misclassify `TestX` as a package:
+# it starts with no `-`, so without the value-taking flag list it would drop the
+# default packages and leave `go test` with nothing to test in /src.
 #
 # - RESOLVED_ARGS: an array preserving every argument boundary, with defaults
 #   prepended only when no package was named. -args ends go flag parsing.

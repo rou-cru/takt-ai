@@ -64,13 +64,36 @@ requirements live in the documents listed in `INDEX.md`.
 | **maintenance cycle** | A bounded harness-controlled run outside active task execution, not an orchestrator work unit. GC over the workspace and dreaming over memory have separate contracts (`PRD_GC`, `PRD_DREAMING`), not inherited rules. |
 | **collector** | The simplification instance participating in a GC cycle, realigning the workspace to declared norms with bounded, behavior-preserving deltas and independent verification (`PRD_GC`). Not the name of every ordinary simplification assignment. |
 | **structural doctrine** | The engineering standard of `governance/DOCTRINE.md`: the structural norms governing how work is built, which the collector realigns to (`PR-MNT-13`). Deviating from it grounds a finding, never by itself a licence to correct (`STR-9`). |
-| **mandate class** | One of the families of work in the collector's mandate — removal of dead code, complexity, duplication, documentation, analyzer integrity. A cycle declares exactly one as its bounded scope (`PR-MNT-4`), which is also the unit damage is attributed to (`PR-MNT-31`). |
+| **mandate class** | One of the families of work in the collector's mandate, enumerated in `PR-MNT-4`. A cycle declares exactly one as its bounded scope (`PR-MNT-4`), which is also the unit damage is attributed to (`PR-MNT-31`). |
 | **workspace analyzer** | The static analysis layer over the code the crew builds, from which the collector's findings originate (`PR-MNT-24`). Distinct from the declarative detectors of the control bus (`PR-OBS-DET-1`..`4`), which observe crew execution rather than the code it produces. |
 | **masked dead code** | Code whose only callers are tests: the test establishes no use, it hides the code's death from analysis (`PR-MNT-25`). Not to be confused with code the session introduced whose consumer has not arrived yet (`PR-MNT-26`). |
 | **dreaming** | The long-term memory consolidation lifecycle: Periodic Simple Mode, user-present Deep Dream, and macro consolidation over closed sessions (`ARCH_MEMORY` §6, `PRD_DREAMING`). Distinct from workspace GC. |
 | **action** | One tool execution recorded by the control plane within the scope being measured; the unit in which bounded budgets and enforcement windows are counted (`PR-OBS-PRG-2` in `PRD_OBSERVABILITY`). Not a unit of elapsed time and not an agent's own count of its steps. |
 | **problem rate** | The rate of problems appearing during a session — checks that start failing, files re-edited after consolidation, discarded or redone work, recurring collisions — derived by the harness from deterministic signals, never from an agent's own account, over a denominator of recorded work rather than elapsed time (`PR-MNT-9` in `PRD_OBSERVABILITY`). Its stability, not its level, is what the system regulates. |
 | **user-instructed change** | A mutation an agent performs because the user asked for it. Attributed to the user, whatever its target. A target that happens to be Takt's installed configuration does not make it a Takt operation (`PR-CFG-3`). |
+| **abortion** | The interface transition that ends a temporary holder's layer without handoff, negotiation, or artifact; it originates only from the user or the harness (`IR-19`, `IR-24`). |
+| **Action Journal** | The immutable, append-only record of every operation performed against the VFS (`PR-VFS-JRN-1`). |
+| **claim** | The VFS record that grants one agent instance exclusive ownership of a file scope, pending or active, until released or revoked (`PR-VFS-COL-4`). |
+| **consolidation** | The deterministic flush of staged VFS state onto the physical filesystem, distinct from committing (`PR-VFS-CSL-1`, `PR-VFS-GIT-3`). |
+| **convening agent** | The agent that holds the interface and proposes a switch to lend it to a specialist (`IR-19`, `IR-24`). |
+| **DAG** | The directed acyclic graph of work units the orchestrator owns, shown as a projection of the execution history. |
+| **DAG projection** | The graph state derived deterministically from the execution history; it is never a mutable model of its own. Distinct from the platform projection of Takt into OpenCode v2. |
+| **envelope** | The four-field structure (Result, AdditionalContext, ExtraArtifacts, Memory) in which a temporary holder returns its outcome on handoff (`IR-22`). |
+| **execution history** | The append-only record of observed execution, written and sequenced only by the harness (`PR-DAG-REP-2`). |
+| **gate** | A point at which work proceeds only if a condition holds: a verification verdict before consolidation, or user approval before an action. |
+| **handoff** | The negotiated return of the interface: the temporary holder proposes it and delivers its envelope to the agent underneath, after user confirmation (`IR-19`, `IR-20`). |
+| **harness** | The deterministic layer Takt provides around the crew: admission, enforcement, execution history, and the VFS. It is not OpenCode, which is the base harness. |
+| **interface holder** | The agent at the top of the interlocutor stack, the only one that holds the chat interface and speaks to the user (`IR-14`). |
+| **interlocutor** | An agent that speaks directly with the user. The interlocutor stack has at most two layers: the active interlocutor and the one beneath it (`IR-14`, `IR-17`). |
+| **invariant** | A reference against which a staged delta is judged: in precedence order, the user's goal and directives, the work unit's contract, and the framework's planning artifacts; never an agent's own claim (`PR-VFS-CSL-3`). |
+| **milestone** | A point at which accepted work is committed by the orchestrator after acceptance checks pass on the materialized workspace (`PR-VFS-GIT-3`). |
+| **orchestrator** | The crew agent that dispatches work units, owns the DAG, and keeps every agent's delivery aligned to the goal (`PR-CRW-5`). |
+| **projection** | The delivery of Takt's agents and capabilities into OpenCode v2 through its native configuration, plugins, hooks, and permissions (`PR-PLT-2`). Distinct from the DAG projection. |
+| **switch** | The interface transition that lends the interface to a capable specialist by pushing it onto the interlocutor stack, after user confirmation (`IR-19`, `IR-20`). |
+| **temporary holder** | The specialist that holds the interface while it is lent, until handoff, early close, failure, or abortion (`IR-16`, `IR-19`). |
+| **verdict** | The judgment a verification instance, distinct from the author, issues on a staged delta; it must match the staged revision for consolidation to proceed (`PR-VFS-CSL-3`). |
+| **VFS** | The virtual file system that stages agents' file mutations, enforces exclusive ownership, and consolidates onto disk, leaving the physical filesystem untouched until consolidation (`PR-VFS-STG-1`, `PR-VFS-STG-2`). |
+| **work unit** | The unit of work the orchestrator dispatches to an agent under a contract, and the unit the DAG and the execution history record (`PR-CRW-5`, `PR-DAG-REP-3`). |
 
 ## 5. Release Scope Vocabulary
 

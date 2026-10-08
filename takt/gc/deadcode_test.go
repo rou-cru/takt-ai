@@ -71,7 +71,7 @@ func TestFindingsSharePreparedSemanticsAndStableRefutationIDs(t *testing.T) {
 	for _, f := range first.Findings {
 		got[f.ID] = f
 	}
-	if got["dead-code:lib.go#old"].Status != gc.StatusDead || got["dead-code:lib.go#T::Idle"].Kind != "method" || !got["dead-code:lib.go#T::Idle"].Exported || got["dead-code:new.go#fresh"].Status != gc.StatusPending {
+	if got["dead-code:lib.go#old"].Status != gc.StatusDead || got["dead-code:lib.go#T.Idle"].Kind != "method" || !got["dead-code:lib.go#T.Idle"].Exported || got["dead-code:new.go#fresh"].Status != gc.StatusPending {
 		t.Fatalf("findings: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".codegraph")); !errors.Is(err, os.ErrNotExist) {

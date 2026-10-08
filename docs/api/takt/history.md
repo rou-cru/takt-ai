@@ -535,7 +535,7 @@ const (
 <a name="Node"></a>
 ## type Node
 
-Node is one work unit's content\-free projection. Temporal fields and declared prerequisites map Project's own state; NodeKind carries an explicit recorded classification or the backward\-compatible delegated default.
+Node is one work unit's content\-free projection. Temporal fields and declared prerequisites map Project's own state; NodeKind carries the recorded classification.
 
 ```go
 type Node struct {
@@ -783,8 +783,7 @@ Unit is a work unit as the replay derives it.
 ```go
 type Unit struct {
     SessionID string `json:"session_id"`
-    // NodeKind is delegated for explicitly tagged work. Empty means a legacy
-    // entry; snapshots map that case to NodeKindDelegated as well.
+    // NodeKind is the classification recorded on the unit's first entry.
     NodeKind NodeKind `json:"node_kind,omitempty"`
     // AttemptID identifies the attempt; FirstAttempt for the first one.
     AttemptID string `json:"attempt_id"`
