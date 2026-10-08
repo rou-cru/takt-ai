@@ -864,6 +864,9 @@ const SIDEBAR_COLUMNS = 37
 // Graph lanes the sidebar gutter may use, two columns each. A layer with more
 // units than this is drawn as one grouped row instead.
 const MAX_SIDEBAR_LANES = 3
+// Rows the sidebar graph may use. It is pinned outside the host's scrollbox,
+// so an unbounded graph would squeeze the scrolling sections to nothing.
+const MAX_SIDEBAR_ROWS = 16
 // Gutter cell of a grouped layer row; its members' own glyphs follow it.
 const GROUP_GLYPH = "≡"
 // Gutter marker of a unit that alone follows the unit above it, and the
@@ -904,20 +907,6 @@ export function sidebarDetail(snapshot: DagSnapshot | undefined, health: Health)
   return units.length === 0 ? "" : `${units.filter(isCompleted).length}/${units.length}`
 }
 
-// completedRow folds every completed unit into one row naming who did the
-// work, in dependency order: the graph keeps its meaning as it shrinks.
-function completedRow(snapshot: DagSnapshot): SidebarRow[] {
-  const depths = computeDepths(snapshot)
-  const done = snapshot.nodes
-    .filter(isCompleted)
-    .toSorted((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || ordinal(a.id, b.id))
-  if (done.length === 0) return []
-  const counts = new Map<string, number>()
-  for (const n of done) counts.set(n.agent ?? n.id, (counts.get(n.agent ?? n.id) ?? 0) + 1)
-  const labels = [...counts].map(([label, count]) => (count > 1 ? `${label}×${count}` : label))
-  return [{ text: fit(`✓ ${labels.join(" ")}`, SIDEBAR_COLUMNS), tone: "muted" }]
-}
-
 /** One row of the frontier graph: a unit, or a layer too wide for its lanes. */
 interface FrontierItem {
   readonly id: string
@@ -926,13 +915,13 @@ interface FrontierItem {
   readonly tone?: SidebarTone
 }
 
-// frontierGraph is the work still ahead: every unit neither completed nor
-// withdrawn, with the edges between them. Edges from completed units are
-// satisfied and dropped. Within each connected component a layer wider than
-// the lane budget becomes one item; its units share a depth, so no edge joins
-// them and the contracted graph stays acyclic.
-function frontierGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children: Map<string, string[]> } {
-  const nodes = snapshot.nodes.filter((n) => !isCompleted(n) && n.state !== "withdrawn")
+// sidebarGraph is every unit that is not withdrawn, with the edges between
+// them: a unit changes glyph as it progresses but never leaves the graph.
+// Within each connected component a layer wider than the lane budget becomes
+// one item; its units share a depth, so no edge joins them and the contracted
+// graph stays acyclic.
+function sidebarGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children: Map<string, string[]> } {
+  const nodes = snapshot.nodes.filter((n) => n.state !== "withdrawn")
   const ids = new Set(nodes.map((n) => n.id))
   const frontier: DagSnapshot = { ...snapshot, nodes, edges: snapshot.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) }
   const depths = computeDepths(frontier)
@@ -949,7 +938,8 @@ function frontierGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children
           const node = byId.get(id) as DagNode
           const glyph = glyphFor(node)
           itemOf.set(id, id)
-          order.push({ id, glyph, label: id, ...(glyph === "✗" ? { tone: "error" as const } : {}) })
+          const tone = glyph === "✗" ? ("error" as const) : isCompleted(node) ? ("muted" as const) : undefined
+          order.push({ id, glyph, label: id, ...(tone ? { tone } : {}) })
         }
         continue
       }
@@ -1019,7 +1009,7 @@ function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undef
   return { text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) }
 }
 
-// laneRows lays the frontier out like `git log --graph`, top-down: the state
+// laneRows lays the graph out like `git log --graph`, top-down: the state
 // glyph is the node, sitting in its lane, and every edge is a lane carried
 // down to the unit it leads to. A unit that alone follows the unit on the row
 // above, with no other lane open, has no connector row to show the edge, so it
@@ -1058,20 +1048,23 @@ function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, 
 }
 
 /**
- * The DAG for the sidebar's narrow column: one muted row naming the agents
- * of completed work, then the frontier as a lane graph (a flat list in
- * dependency order when it needs more lanes than the budget), then running
- * activities. Every row fits SIDEBAR_COLUMNS.
+ * The DAG for the sidebar's narrow column: the whole graph as lanes (a flat
+ * list in dependency order when it needs more lanes than the budget), then
+ * running activities. Every row fits SIDEBAR_COLUMNS and the total never
+ * exceeds MAX_SIDEBAR_ROWS: the oldest rows fold into a leading "… N more".
  */
 export function sidebarRows(snapshot: DagSnapshot): SidebarRow[] {
-  const { order, children } = frontierGraph(snapshot)
+  const { order, children } = sidebarGraph(snapshot)
   const graph =
     laneRows(order, children) ??
     order.map((item) => ({ text: fit(`${item.glyph} ${item.label}`, SIDEBAR_COLUMNS), ...(item.tone ? { tone: item.tone } : {}) }))
   const activities = (snapshot.activities ?? [])
     .filter((a) => a.state === "in_flight")
     .map((a) => ({ text: fit(`◆ ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
-  return [...completedRow(snapshot), ...graph, ...activities]
+  const rows = [...graph, ...activities]
+  if (rows.length <= MAX_SIDEBAR_ROWS) return rows
+  const hidden = rows.length - (MAX_SIDEBAR_ROWS - 1)
+  return [{ text: `… ${hidden} more`, tone: "muted" }, ...rows.slice(hidden)]
 }
 
 /**
@@ -1313,7 +1306,7 @@ export default Plugin.define({
       },
     })
 
-    const releaseSidebar = context.ui.slot({ prepend: "sidebar.content", render: (input) => <SidebarView sessionID={input.sessionID} /> })
+    const releaseSidebar = context.ui.slot({ append: "sidebar.footer", render: (input) => <SidebarView sessionID={input.sessionID} /> })
 
     return () => {
       viewers = 0
