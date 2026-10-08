@@ -669,7 +669,7 @@ func (f *FS) heldBindingLocked(identity Identity, scope []string) (AgentID, bool
 			continue
 		}
 		if existing.Specialist != identity.Specialist {
-			return "", true, ErrScopeDenied
+			return "", true, fmt.Errorf("%w: unit %q holds %q for specialist %q, not %q; reassign it with claim_assign and that author_key", ErrScopeDenied, identity.WorkUnitID, key, existing.Specialist, identity.Specialist)
 		}
 		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityBind); err != nil {
 			return "", true, err

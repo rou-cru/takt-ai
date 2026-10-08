@@ -938,8 +938,13 @@ function appendSidebarLayer(
     return
   }
   for (const id of layer) itemOf.set(id, group)
-  const glyphs = layer.map((id) => glyphFor(byId.get(id) as DagNode)).join("")
-  order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel` })
+  const members = layer.map((id) => sidebarNode(byId.get(id) as DagNode))
+  // A failure anywhere in the group shows; the group is muted only once all of it is done.
+  let tone: SidebarTone | undefined
+  if (members.some((m) => m.tone === "error")) tone = "error"
+  else if (members.every((m) => m.tone === "muted")) tone = "muted"
+  const glyphs = members.map((m) => m.glyph).join("")
+  order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel`, ...(tone ? { tone } : {}) })
 }
 
 // sidebarGraph is every unit that is not withdrawn, with the edges between

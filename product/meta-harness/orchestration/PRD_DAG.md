@@ -183,7 +183,7 @@ during recovery:
                                   orchestrator chooses another route or escalates
 ```
 
-The harness has the recovery boundary before the risk is taken. Both bounds are counted in recorded facts — admitted attempts and recorded actions — never in readings of a clock, so the same recorded prefix exhausts the budget at the same point on replay (`PR-DAG-REP-1`). It grants no further attempt at exhaustion without the user's exception (`PR-HAR-22`), infer the abandoned branch from code, or rewind the entire session. A successful result remains subject to existing verification and consolidation contracts; an execution-history entry alone does not materialize or restore files. Declared backtracking remains available separately (`PR-DAG-TMP-5`), and repeated failed recoveries require escalation (`PR-ORQ-13`, `PR-ORQ-5`).
+The harness has the recovery boundary before the risk is taken. Both bounds are counted in recorded facts — admitted attempts and recorded actions — never in readings of a clock, so the same recorded prefix exhausts the budget at the same point on replay (`PR-DAG-REP-1`). It grants no further attempt at exhaustion without the user's exception (`PR-HAR-22`); it does not infer the abandoned branch from code or rewind the entire session. A successful result remains subject to existing verification and consolidation contracts; an execution-history entry alone does not materialize or restore files. Declared backtracking remains available separately (`PR-DAG-TMP-5`), and repeated failed recoveries require escalation (`PR-ORQ-13`, `PR-ORQ-5`).
 
 ### 2.4 Temporal Partitioning of the Projection
 

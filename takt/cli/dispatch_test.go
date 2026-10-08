@@ -997,7 +997,8 @@ func exceptionReopensRecovery(t *testing.T, bin string) {
 		s.stage(key, "scope-unit", fmt.Sprintf("more-%d", i), 1)
 		s.must(tick())
 	}
-	if r := s.recovery("goal"); r.Open || !r.Backtracked || r.Used != budget+allowance {
+	// One recovery extended by the user is one failure, not one per closure.
+	if r := s.recovery("goal"); r.Open || !r.Backtracked || r.Used != budget+allowance || r.Failures != 1 {
 		t.Fatalf("the allowance did not exhaust at the recorded total: %+v", r)
 	}
 }
@@ -1031,7 +1032,7 @@ func attemptBudget(t *testing.T, bin string) {
 	// The user's exception on the attempt bound reopens it for one more attempt.
 	s.deniedAs(retry("only-attempt"), history.BoundRecoveryAttempts)
 	s.must(request{Action: "exception", Session: rootSession, Bound: history.BoundRecoveryAttempts, Objective: "other", Allowance: 1})
-	if r := s.recovery("other"); !r.Open || r.Backtracked {
+	if r := s.recovery("other"); !r.Open || r.Backtracked || r.Failures != 0 {
 		t.Fatalf("the exception did not reopen the recovery: %+v", r)
 	}
 	s.must(retry("only-attempt"))

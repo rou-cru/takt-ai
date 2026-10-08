@@ -277,6 +277,15 @@ describe("sidebar rows", () => {
     expect(text(snapshot)).toEqual(["◌ a", "└─≡ ◌◌◌◌ 4 parallel", "  └─◌ f"])
   })
 
+  test("mutes a group only once every unit in it is completed", () => {
+    const wide = ["b", "c", "d", "e"]
+    const done = { state: "settled", outcome: "completed", agent: "x" }
+    const group = (nodes: object[]) => sidebarRows({ ...base, nodes: [node({ id: "a", ...done }), ...nodes],
+      edges: wide.map((id) => ({ from: "a", to: id })) } as never)[1]
+    expect(group(wide.map((id) => node({ id, ...done })))).toEqual({ text: "└─≡ ✓✓✓✓ 4 parallel", tone: "muted" })
+    expect(group(wide.map((id, i) => node({ id, ...(i ? done : {}) })))).toEqual({ text: "└─≡ ◌✓✓✓ 4 parallel" })
+  })
+
   test("falls back to a flat list in dependency order when lanes exceed the budget", () => {
     const snapshot = { ...base, nodes: ["r", "a", "b", "c", "a2", "b2", "c2", "z"].map((id) => node({ id })), edges: [
       ...["a", "b", "c"].map((id) => ({ from: "r", to: id })),

@@ -401,6 +401,11 @@ func budgeted(b *Budgets, e Entry) bool {
 			// its staged work was never touched.
 			if r := b.Recoveries[e.Objective]; e.Objective != "" && r.Backtracked && !r.Restored {
 				r.Open, r.Backtracked, r.Cause = true, false, ""
+				// The lifted closure no longer counts as a failed recovery; the
+				// reopened recovery's own closure decides the streak.
+				if r.Failures > 0 {
+					r.Failures--
+				}
 				b.Recoveries[e.Objective] = r
 			}
 		}
