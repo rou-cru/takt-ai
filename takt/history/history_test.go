@@ -32,16 +32,20 @@ func open(t *testing.T, state string) *History {
 // observed builds an entry attributed to the kind's own semantic author.
 func observed(t *testing.T, unit string, kind Kind, outcome Outcome) Entry {
 	t.Helper()
-	return Entry{Author: AuthorOf(kind), Kind: kind, SessionID: "root", WorkUnitID: unit,
+	e := Entry{Author: AuthorOf(kind), Kind: kind, SessionID: "root", WorkUnitID: unit,
 		AttemptID: FirstAttempt, Cause: CauseUncaptured, Outcome: outcome}
+	if kind == KindAdmitted {
+		e.NodeKind = NodeKindDelegated
+	}
+	return e
 }
 
 func TestProjectionLifecycleAndReplay(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	h := open(t, state)
 	entries := []Entry{
-		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "a", AttemptID: FirstAttempt, Cause: CauseNone},
-		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "b", AttemptID: FirstAttempt, Cause: CauseNone},
+		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "a", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, Cause: CauseNone},
+		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "b", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, Cause: CauseNone},
 		observed(t, "a", KindAdmitted, ""),
 		observed(t, "a", KindLaunched, ""),
 		observed(t, "a", KindCancelRequested, ""),
@@ -62,10 +66,10 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 		t.Fatalf("in flight %d; want 3", p.InFlight())
 	}
 	want := map[string]Unit{
-		"a": {SessionID: "root", AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightCancelling, Launched: true, Committed: true},
-		"b": {SessionID: "root", AttemptID: FirstAttempt, State: StateWithdrawn, Committed: true},
-		"c": {SessionID: "root", AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightPendingLaunch},
-		"e": {SessionID: "root", AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightUncertain},
+		"a": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightCancelling, Launched: true, Committed: true},
+		"b": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateWithdrawn, Committed: true},
+		"c": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightPendingLaunch},
+		"e": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightUncertain},
 	}
 	if !reflect.DeepEqual(p.Units, want) {
 		t.Fatalf("projection %+v; want %+v", p.Units, want)

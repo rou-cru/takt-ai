@@ -20,7 +20,7 @@ import (
 // consumer).
 func planned(session, unit, version, contract string, prereqs []string) Entry {
 	return Entry{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: session, WorkUnitID: unit,
-		AttemptID: FirstAttempt, Cause: CauseNone, PlanVersion: version, Contract: contract, Prerequisites: prereqs}
+		NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, Cause: CauseNone, PlanVersion: version, Contract: contract, Prerequisites: prereqs}
 }
 
 // withdrawn builds a KindWithdrawn entry the way dispatch.Revise records one.
@@ -331,7 +331,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 		observed(t, "base", KindAdmitted, ""),
 		observed(t, "base", KindLaunched, ""),
 		observed(t, "base", KindTerminated, OutcomeCompleted),
-		observed(t, "later", KindAdmitted, ""), // ordinary legacy delegation follows settled base
+		observed(t, "later", KindAdmitted, ""), // ordinary delegation follows settled base
 		activityRecord("root", directID, NodeKindOrchestrator, true, ""),
 		activityRecord("root", directID, NodeKindOrchestrator, false, OutcomeCompleted),
 		activityRecord("root", cycleID, NodeKindMaintenance, true, ""),
@@ -367,7 +367,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	}
 	for _, node := range snapshot.Nodes {
 		if node.NodeKind != NodeKindDelegated {
-			t.Fatalf("legacy delegated unit %q got kind %q", node.ID, node.NodeKind)
+			t.Fatalf("delegated unit %q got kind %q", node.ID, node.NodeKind)
 		}
 	}
 	if len(snapshot.Activities) != 2 || snapshot.Activities[0].ActivityID != cycleID || snapshot.Activities[1].ActivityID != directID {

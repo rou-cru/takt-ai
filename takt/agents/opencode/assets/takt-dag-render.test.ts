@@ -11,7 +11,6 @@ import {
   glyphFor,
   hasContent,
   headerLine,
-  nodeKindFor,
   nodeText,
   ordinal,
   sidebarDetail,
@@ -22,7 +21,7 @@ import {
 } from "./takt-dag"
 
 const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string }> = {}) =>
-  ({ id: "unit-1", state: "planned", launched: false, ...overrides }) as never
+  ({ id: "unit-1", node_kind: "delegated", state: "planned", launched: false, ...overrides }) as never
 
 describe("ordinal", () => {
   test("orders strings lexicographically", () => {
@@ -45,7 +44,7 @@ describe("activityError", () => {
 })
 
 describe("topologyError", () => {
-  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
 
   test("accepts a valid acyclic snapshot", () => {
     const snapshot = { ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }] } as never
@@ -83,7 +82,7 @@ describe("topologyKey", () => {
 })
 
 describe("graph layout", () => {
-  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
 
   test("lays out branching depth and layer-skipping edges with deterministic routes", () => {
     const graph = {
@@ -168,10 +167,6 @@ describe("graph layout", () => {
 })
 
 describe("node presentation", () => {
-  test("nodeKindFor defaults to delegated when node_kind is absent", () => {
-    expect(nodeKindFor(node())).toBe("delegated")
-    expect(nodeKindFor(node({ node_kind: "delegated" }))).toBe("delegated")
-  })
   test("glyphFor covers every state/flight/outcome combination", () => {
     expect(glyphFor(node({ state: "planned" }))).toBe("◌")
     expect(glyphFor(node({ state: "withdrawn" }))).toBe("×")
@@ -191,7 +186,7 @@ describe("node presentation", () => {
   })
 
   test("renders activity-only and layered graph views in both layouts", async () => {
-    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
     const activity = { activity_id: "review-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" }
     const snapshots = [
       { ...base, nodes: [], edges: [], activities: [activity] },
@@ -226,7 +221,7 @@ describe("activity presentation", () => {
 })
 
 describe("sidebar rows", () => {
-  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
   const text = (snapshot: never) => sidebarRows(snapshot).map((row) => row.text)
   const diamond = [{ from: "intent-pm", to: "experience-design" }, { from: "intent-pm", to: "structure-arch" },
     { from: "experience-design", to: "behavior-spec" }, { from: "structure-arch", to: "behavior-spec" }]
@@ -348,7 +343,7 @@ describe("sidebar rows", () => {
 })
 
 describe("hasContent / headerLine / sidebarDetail", () => {
-  const base = { schema_version: 1, projection_revision: 3, history_position: 3, session_id: "s", capture: "current", edges: [] } as const
+  const base = { schema_version: 1, projection_revision: 3, history_position: 3, session_id: "s", capture: "current", edges: [], activities: [] } as const
 
   test("hasContent is true with nodes, activities, or neither", () => {
     expect(hasContent({ ...base, nodes: [node()] } as never)).toBe(true)
@@ -383,12 +378,12 @@ describe("hasContent / headerLine / sidebarDetail", () => {
 // needs a <text> parent. These render the exact falsy branches that used to
 // crash — no activities, no problem, no snapshot yet.
 describe("crash regressions: falsy branches under a plain box", () => {
-  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current" } as const
+  const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
 
   test("GraphView renders without throwing when there are no activities", async () => {
     const build = (activities: unknown) =>
       ({ ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }], activities }) as never
-    for (const activities of [undefined, []]) {
+    for (const activities of [[]]) {
       const setup = await testRender(() => GraphView({ snapshot: build(activities), mode: "route" }) as never, { width: 60, height: 20 })
       try {
         await setup.renderOnce()

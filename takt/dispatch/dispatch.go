@@ -174,7 +174,7 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	unit, known := projection.Units[req.Event]
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
-		WorkUnitID: req.Event, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
+		WorkUnitID: req.Event, NodeKind: history.NodeKindDelegated, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
 		Cause: history.CauseUncaptured, PolicyRef: AdmissionPolicyRef,
 	}
 	budgets := projection.Budgets(req.Session)
@@ -385,7 +385,7 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 	for _, u := range units {
 		e := h.Append(history.Entry{
 			Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
-			WorkUnitID: u.Unit, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
+			WorkUnitID: u.Unit, NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
 			JournalRef: journalRef, PlanVersion: version, Contract: u.Contract, Prerequisites: u.Prerequisites,
 		})
 		if e != nil {
@@ -538,7 +538,7 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 	for _, u := range adds {
 		e := h.Append(history.Entry{
 			Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
-			WorkUnitID: u.Unit, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
+			WorkUnitID: u.Unit, NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
 			JournalRef: journalRef, PlanVersion: newVersion, Contract: u.Contract, Prerequisites: u.Prerequisites,
 		})
 		if e != nil {

@@ -32,8 +32,7 @@ const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "mainten
 
 interface DagNode {
   readonly id: string
-  /** Always emitted by the current snapshot producer; absent in legacy v1 snapshots. */
-  readonly node_kind?: "delegated"
+  readonly node_kind: "delegated"
   readonly session_id?: string
   readonly attempt_id?: string
   readonly state: DagNodeState
@@ -92,10 +91,10 @@ export function decodeSnapshot(value: unknown): DagResponse {
       !isString(value.session_id) || !oneOf(value.capture, DAG_CAPTURES) ||
       (value.plan_version !== undefined && !isString(value.plan_version)) ||
       !Array.isArray(value.nodes) || !Array.isArray(value.edges) ||
-      (value.activities !== undefined && !Array.isArray(value.activities))) return invalid()
+      !Array.isArray(value.activities)) return invalid()
   const nodes: DagNode[] = value.nodes.map((raw): DagNode => {
     if (!isRecord(raw) || !isString(raw.id) || raw.id.length === 0 || !oneOf(raw.state, DAG_STATES) ||
-        !isOptional(raw.node_kind, isOneOf(["delegated"] as const)) ||
+        raw.node_kind !== "delegated" ||
         !isOptional(raw.session_id, isString) ||
         !isOptional(raw.attempt_id, isString) ||
         !isOptional(raw.flight, isOneOf(DAG_FLIGHTS)) ||
@@ -106,7 +105,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
         !isOptional(raw.agent, isString) ||
         (raw.state !== "in_flight" && raw.flight !== undefined) ||
         (raw.state !== "settled" && raw.outcome !== undefined)) return invalid()
-    return { id: raw.id, ...(raw.node_kind === undefined ? {} : { node_kind: raw.node_kind }),
+    return { id: raw.id, node_kind: raw.node_kind,
       ...(raw.session_id === undefined ? {} : { session_id: raw.session_id }),
       ...(raw.attempt_id === undefined ? {} : { attempt_id: raw.attempt_id }), state: raw.state,
       ...(raw.flight === undefined ? {} : { flight: raw.flight }),
@@ -119,7 +118,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
     if (!isRecord(raw) || !isString(raw.from) || !isString(raw.to)) return invalid()
     return { from: raw.from, to: raw.to }
   })
-  const activities: DagActivity[] | undefined = value.activities?.map((raw: unknown): DagActivity => {
+  const activities: DagActivity[] = value.activities.map((raw: unknown): DagActivity => {
     if (!isRecord(raw) || !isString(raw.activity_id) ||
         !oneOf(raw.node_kind, DAG_ACTIVITY_KINDS) ||
         (raw.state !== "in_flight" && raw.state !== "settled") ||
@@ -134,7 +133,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
   return { schema_version: 1, projection_revision: value.projection_revision,
     history_position: value.history_position, session_id: value.session_id,
     capture: value.capture, ...(value.plan_version === undefined ? {} : { plan_version: value.plan_version }),
-    nodes, edges, ...(activities === undefined ? {} : { activities }) }
+    nodes, edges, activities }
 }
 
 interface DagSnapshot {
@@ -146,8 +145,8 @@ interface DagSnapshot {
   readonly plan_version?: string
   readonly nodes: readonly DagNode[]
   readonly edges: readonly DagEdge[]
-  /** Absent only on legacy v1 snapshots. Activities are not work units or edge endpoints. */
-  readonly activities?: readonly DagActivity[]
+  /** Activities are not work units or edge endpoints. */
+  readonly activities: readonly DagActivity[]
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +166,7 @@ export function activityError(activities: readonly DagActivity[]): string | unde
 export function topologyError(snapshot: DagSnapshot): string | undefined {
   const ids = new Set(snapshot.nodes.map((n) => n.id))
   if (ids.size !== snapshot.nodes.length) return "duplicate node identity"
-  const invalidActivity = activityError(snapshot.activities ?? [])
+  const invalidActivity = activityError(snapshot.activities)
   if (invalidActivity) return invalidActivity
   for (const e of snapshot.edges) {
     if (!ids.has(e.from) || !ids.has(e.to)) return `edge ${e.from} -> ${e.to} names an unknown node`
@@ -270,7 +269,7 @@ export function ordinal(a: string, b: string): number {
 }
 
 export function topologyKey(snapshot: DagSnapshot): string {
-  const nodeIds = snapshot.nodes.map((n) => `${n.id}:${nodeKindFor(n)}`).sort(ordinal)
+  const nodeIds = snapshot.nodes.map((n) => `${n.id}:${n.node_kind}`).sort(ordinal)
   const edgeKeys = snapshot.edges.map((e) => `${e.from}->${e.to}`).sort(ordinal)
   return `${nodeIds.join(",")}|${edgeKeys.join(",")}`
 }
@@ -699,10 +698,6 @@ export function glyphFor(node: DagNode): string {
   }
 }
 
-export function nodeKindFor(node: DagNode): "delegated" {
-  return node.node_kind ?? "delegated"
-}
-
 // A node reads as its state and identity; the kind is omitted while
 // "delegated" is the only kind, since it would tell nothing apart.
 export function nodeText(node: DagNode): string {
@@ -752,7 +747,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
   // Solid runs a component body once per mount, so this closure carries the
   // last layout across reactive re-runs and a state-only update reuses it.
   let previous: Layout | undefined
-  const activities = createMemo(() => props.snapshot.activities ?? [])
+  const activities = createMemo(() => props.snapshot.activities)
   const activityHeight = createMemo(() => activities().length === 0 ? 0 : 4)
   const terminal = props.mode === "route" ? useTerminalDimensions() : undefined
   // The route wraps the graph into bands to fit the terminal; the sidebar's
@@ -835,7 +830,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
 
 /** Work units or activities: an activity-only snapshot still has a lane to draw. */
 export function hasContent(snapshot: DagSnapshot): boolean {
-  return snapshot.nodes.length > 0 || (snapshot.activities?.length ?? 0) > 0
+  return snapshot.nodes.length > 0 || snapshot.activities.length > 0
 }
 
 // progressLine counts what a person tracks: units done and running.
@@ -1076,7 +1071,7 @@ export function sidebarRows(snapshot: DagSnapshot): SidebarRow[] {
   const graph =
     laneRows(order, children) ??
     order.map((item) => ({ text: fit(`${item.glyph} ${item.label}`, SIDEBAR_COLUMNS), ...(item.tone ? { tone: item.tone } : {}) }))
-  const activities = (snapshot.activities ?? [])
+  const activities = snapshot.activities
     .filter((a) => a.state === "in_flight")
     .map((a) => ({ text: fit(`◆ ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
   const rows = [...graph, ...activities]
