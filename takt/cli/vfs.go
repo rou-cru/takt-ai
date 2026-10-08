@@ -420,7 +420,7 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, identity vfs.I
 func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field string) error {
 	bound, ok := fs.BindingIdentity(key)
 	if field == "verifier_key" && (!ok || bound.GateAuthorKey != identity.GateAuthorKey || identity.GateAuthorKey == "") {
-		return fmt.Errorf("%w: caller is not the identity bound to %s", vfs.ErrIdentity, field)
+		return fmt.Errorf("%w: caller is not the identity bound to %s; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", vfs.ErrIdentity, field)
 	}
 	bound.Role, bound.AttemptID, bound.InvariantsHash, bound.Invariants = "", "", "", nil
 	bound.CycleID, bound.MandateClass = "", ""
@@ -429,7 +429,7 @@ func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field st
 	identity.CycleID, identity.MandateClass = "", ""
 	identity.GateAuthorKey = ""
 	if !ok || !reflect.DeepEqual(bound, identity) {
-		return fmt.Errorf("%w: caller is not the identity bound to %s", vfs.ErrIdentity, field)
+		return fmt.Errorf("%w: caller is not the identity bound to %s; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", vfs.ErrIdentity, field)
 	}
 	return nil
 }

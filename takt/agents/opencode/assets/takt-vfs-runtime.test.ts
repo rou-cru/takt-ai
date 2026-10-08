@@ -261,6 +261,28 @@ describe("takt-ai answers", () => {
     } finally { await vfs.stop() }
   })
 
+  test("operations an agent issues together each start from the revision the previous one left", async () => {
+    let current = 0
+    const vfs = await startVfs({
+      sessions: unitSessions,
+      respond: (call) => {
+        if (call.command !== "op") return undefined
+        if (call.request.expected_revision !== current) return json({ ok: false, error: "vfs: revision changed" })
+        current += 1
+        return json({ ok: true, revision: current, delta_hash: `d${current}` })
+      },
+    })
+    try {
+      await vfs.run("vfs_bind", { scope: ["src/a.go", "src/b.go"] })
+      await Promise.all([
+        vfs.run("vfs_write", { path: "src/a.go", content: "a" }),
+        vfs.run("vfs_write", { path: "src/b.go", content: "b" }),
+        vfs.run("vfs_read", { path: "src/a.go" }),
+      ])
+      expect(vfs.requests("vfs", "op").map((request) => request.expected_revision)).toEqual([0, 1, 2])
+    } finally { await vfs.stop() }
+  })
+
   test("a coordination command that exits non-zero reports its stderr", async () => {
     const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "commit" ? { code: 1, err: "plan rejected" } : undefined })
     try {

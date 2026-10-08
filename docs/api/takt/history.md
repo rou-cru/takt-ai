@@ -687,6 +687,9 @@ type Recovery struct {
     // abandonment decision and of confirmed restoration (PR-DAG-TMP-5).
     Backtracked bool `json:"backtracked,omitempty"`
     Restored    bool `json:"restored,omitempty"`
+    // Cause is the bound whose exhaustion abandoned the scope, so the way
+    // out of the abandonment names the allowance that lifts it.
+    Cause string `json:"cause,omitempty"`
 }
 ```
 

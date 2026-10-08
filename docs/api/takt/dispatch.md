@@ -32,7 +32,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Reconcile\(h \*history.History, journalRef, event, session string, running bool\) error](<#Reconcile>)
 - [func Record\(h \*history.History, journalRef, event, session string, kind history.Kind\) error](<#Record>)
 - [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
-- [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string, key vfs.AgentID\) error](<#Restore>)
+- [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string\) error](<#Restore>)
 - [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string\) error](<#Revise>)
 - [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
 - [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
@@ -51,6 +51,12 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 
 ```go
 const AdmissionPolicyRef = "harness.admission"
+```
+
+<a name="CauseNoFailure"></a>CauseNoFailure denies a contest of work with no recorded terminal failure.
+
+```go
+const CauseNoFailure = "control/no-terminal-failure"
 ```
 
 <a name="CauseRepetition"></a>CauseRepetition denies a second delegation of a unit whose current attempt is still in flight: it would duplicate execution rather than retry it \(PR\-HAR\-17\).
@@ -144,7 +150,7 @@ Commit records a plan commitment: the units it covers become planned, so a later
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error
 ```
 
-Contest admits at most the policy's distinct contests per session, upheld ones included. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
+Contest records the contest of a unit attempt that ended without a result and admits at most the policy's distinct contests per session, upheld ones included. Judging the contested work is a Verify delegation of the orchestrator's. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
 
 <a name="CurrentAttempt"></a>
 ## func CurrentAttempt
@@ -180,7 +186,7 @@ DeclareRecovery admits bounded recovery of an objective. Consecutive failed reco
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error
 ```
 
-Except records a scoped user exception before it enables any further work. It names the bound, the scope, and a finite additional allowance; consumption already recorded stands \(PR\-HAR\-22\).
+Except records a scoped user exception before it enables any further work. It names the bound, the scope, and a finite additional allowance; consumption already recorded stands \(PR\-HAR\-22\). An exception that could not enable anything is refused with the one that would. event only labels the record and defaults to the objective, or the bound when there is none.
 
 <a name="ExpectedArtifact"></a>
 ## func ExpectedArtifact
@@ -258,10 +264,10 @@ ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalo
 ## func Restore
 
 ```go
-func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string, key vfs.AgentID) error
+func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string) error
 ```
 
-Restore confirms restoration of an abandoned recovery scope's virtual state: the rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\).
+Restore confirms restoration of an abandoned recovery scope's virtual state: it rolls back the staged work of every unit the scope declares and records the restoration only once none is left. The rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\). A failed rollback leaves the scope unresolved and the same call repeats it for what remains.
 
 <a name="Revise"></a>
 ## func Revise

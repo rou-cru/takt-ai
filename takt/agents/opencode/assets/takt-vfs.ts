@@ -403,7 +403,21 @@ export default Plugin.define({
       return next
     }
 
-    const takt = (command: string, request: Record<string, unknown>) => exclusive(() => taktUnlocked(command, request))
+    // A request that reads state a queued call can change (a binding's revision)
+    // is passed as a function, so it is built when its turn in the queue comes.
+    type Request = Record<string, unknown>
+    const takt = (command: string, request: Request | (() => Request)) =>
+      exclusive(() => taktUnlocked(command, typeof request === "function" ? request() : request))
+    // stage runs one operation on b's own staged work. The revision it expects is
+    // read, and the answer recorded, inside the queue: calls an agent issues
+    // together each start from the revision the previous one left.
+    const stage = (b: Binding, command: string, fields: Request) => exclusive(async () => {
+      const res = await taktUnlocked(command, {
+        ...identity(b), author_key: b.key, call_id: randomUUID(), expected_revision: b.revision, ...fields,
+      })
+      await record(b, res)
+      return res
+    })
     // findClaim returns the claim held for exactly this root session, work unit and
     // agent instance while it is in one of the given states; a verifier unit holds
     // one gate per judged author, so authorKey narrows the match to that gate.
@@ -651,13 +665,12 @@ export default Plugin.define({
         } catch {
           b = undefined // an unbound caller may still inspect; it may not mutate
         }
-        const res = await takt("shell-prepare", {
-          ...(b
-            ? { ...identity(b), author_key: b.key, expected_revision: b.revision }
-            : { session_id: await rootSession(event.sessionID), work_unit_id: event.sessionID,
-                agent_id: event.agent, specialist: event.agent }),
+        const unbound = b ? undefined : { session_id: await rootSession(event.sessionID), work_unit_id: event.sessionID,
+          agent_id: event.agent, specialist: event.agent }
+        const res = await takt("shell-prepare", () => ({
+          ...(b ? { ...identity(b), author_key: b.key, expected_revision: b.revision } : unbound),
           call_id: callID, command,
-        })
+        }))
         const plan = shellPlanOf(res.shell, event.agent, event.sessionID)
         admittedShell.set(command, {
           plan, callID, session: event.sessionID, key: b?.key, started: false, evaluated: false,
@@ -745,9 +758,7 @@ export default Plugin.define({
           if (!admitted.plan.capture || !b) continue
           // A failing command keeps its delta: it is imported, retained, and left
           // unverified for the gate to judge.
-          await record(b, await takt("shell-import", {
-            ...identity(b), author_key: b.key, call_id: admitted.callID, expected_revision: b.revision,
-          }))
+          await stage(b, "shell-import", { call_id: admitted.callID })
         }
       })
     }
@@ -1338,20 +1349,20 @@ export default Plugin.define({
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
       dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
-      dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins: a binary expected result, a prior recoverable point, explicit scope, and both budgets. Present evidence and alternatives to the user and await their decision before a second recovery of the same objective.",
+      dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins: a binary expected result, a prior recoverable point, explicit scope, and both budgets. The scope cannot overlap a recovery that is still open or abandoned and not restored. After repeated failed recoveries of the same objective, present evidence and alternatives to the user and await their decision.",
         "recovery",
         obj({
           objective: str("Identity of the objective being recovered"),
           result: str("The binary expected result that would demonstrate recovery"),
           point: str("Reference to the prior recoverable point"),
           scope: { type: "array", items: { type: "string" }, description: "Work unit identities this recovery's scope covers" },
-          actions: { type: "number", description: "Action budget this recovery may consume" },
-          attempts: { type: "number", description: "Attempt budget: how many times this recovery may be retried" },
+          actions: { type: "number", description: "Action budget: the governed calls, reads included, that the scope's units may make" },
+          attempts: { type: "number", description: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one" },
         }, ["objective", "result", "point", "scope", "actions", "attempts"]),
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close a declared recovery: record whether its result was demonstrated and link the evidence.",
+      dispatch("dispatch_close_recovery", "Close an open declared recovery: record whether its result was demonstrated and link the evidence. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
@@ -1361,25 +1372,24 @@ export default Plugin.define({
         /** Maps the recovery result to history fields, using the objective as the work unit and demonstrated as pass. */
         (args: { objective: string; evidence: string; demonstrated: boolean }) => ({ event: args.objective, objective: args.objective, evidence: args.evidence, pass: args.demonstrated }))
 
-      dispatch("dispatch_restore", "Confirm restoration of an abandoned recovery scope's virtual state after forced backtracking, by discarding the staged work of that scope.",
+      dispatch("dispatch_restore", "Drop an abandoned recovery scope: reverts all the staged work of its units, after which a new recovery can be declared. It waits until the scope's delegations have returned; call it again then.",
         "restore",
         obj({
           objective: str("Identity of the abandoned recovery's objective"),
-          author_key: str("The author_key of the staged work inside the abandoned scope"),
-        }, ["objective", "author_key"]),
-        (args: { objective: string; author_key: string }) => ({ objective: args.objective, key: args.author_key }))
+        }, ["objective"]),
+        (args: { objective: string }) => ({ objective: args.objective }))
 
-      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted.",
+      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. A recovery bound needs the objective. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
         "exception",
         obj({
-          event: str("Work unit the exception applies to"),
+          event: str("Optional label for the record"),
           bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, one of: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts" },
-          objective: str("Recovery objective the exception applies to, if the bound is recovery-scoped"),
+          objective: str("Recovery objective the exception applies to; required for the recovery bounds"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
-        }, ["event", "bound", "allowance"]),
-        (args: { event: string; bound: string; objective?: string; allowance: number }) => args)
+        }, ["bound", "allowance"]),
+        (args: { event?: string; bound: string; objective?: string; allowance: number }) => args)
 
-      dispatch("dispatch_contest", "Contest a specifically identified terminal failure by requesting independent verification against the invariants that already applied to it. You request it; you do not choose or re-dispatch the verifier.",
+      dispatch("dispatch_contest", "Contest the recorded terminal failure of a unit attempt, one that ended without a result: it records the contest and spends one of the contests. Judging the contested work is a Verify delegation of yours.",
         "contest",
         obj({
           event: str("The work unit whose recorded terminal failure is contested"),
@@ -1515,12 +1525,8 @@ export default Plugin.define({
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; content: string; author_key?: string }>(input)
           const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
-          const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: randomUUID(),
-            expected_revision: b.revision, action: "create", path: args.path, content: args.content,
-          })
-          await record(b, res)
-          return { content: `Staged ${args.path} at revision ${b.revision} (delta_hash ${b.deltaHash})` }
+          const res = await stage(b, "op", { action: "create", path: args.path, content: args.content })
+          return { content: `Staged ${args.path} at revision ${res.revision} (delta_hash ${res.delta_hash})` }
         },
       })
       editor.add({
@@ -1537,30 +1543,30 @@ export default Plugin.define({
           const b = gate ?? own(c)
           const judged = b.judges ? bindings.get(b.judges) : undefined
           if (judged) {
-            const { revision, deltaHash } = judged
-            // A gate reads exactly the author's staged state it will judge.
-            const res = await takt("op", {
-              ...identity(b), author_key: b.key, view_key: judged.key, call_id: randomUUID(),
-              expected_revision: revision, action: "read", path: args.path,
+            // The author's state is read and the gate's judged state recorded in
+            // one turn of the queue, so the verdict covers exactly what was read.
+            return exclusive(async () => {
+              const { revision, deltaHash } = judged
+              // A gate reads exactly the author's staged state it will judge.
+              const res = await taktUnlocked("op", {
+                ...identity(b), author_key: b.key, view_key: judged.key, call_id: randomUUID(),
+                expected_revision: revision, action: "read", path: args.path,
+              })
+              // The verdict covers the state of the last read. Files read under an
+              // earlier state may be outdated, so the read that moved it names them.
+              const moved = b.judgedHash !== deltaHash || b.judgedRevision !== revision
+              const outdated = moved ? (b.judgedPaths ?? []).filter(path => path !== args.path) : []
+              b.judgedRevision = revision
+              b.judgedHash = deltaHash
+              b.judgedPaths = moved ? [args.path] : [...new Set([...(b.judgedPaths ?? []), args.path])]
+              await persist()
+              const note = outdated.length > 0
+                ? `The author's staged work changed after you read: ${outdated.join(", ")}. What you read there may be outdated; read those files again before attaching the verdict.\n\n`
+                : ""
+              return { content: `${note}${res.content ?? ""}` }
             })
-            // The verdict covers the state of the last read. Files read under an
-            // earlier state may be outdated, so the read that moved it names them.
-            const moved = b.judgedHash !== deltaHash || b.judgedRevision !== revision
-            const outdated = moved ? (b.judgedPaths ?? []).filter(path => path !== args.path) : []
-            b.judgedRevision = revision
-            b.judgedHash = deltaHash
-            b.judgedPaths = moved ? [args.path] : [...new Set([...(b.judgedPaths ?? []), args.path])]
-            await persist()
-            const note = outdated.length > 0
-              ? `The author's staged work changed after you read: ${outdated.join(", ")}. What you read there may be outdated; read those files again before attaching the verdict.\n\n`
-              : ""
-            return { content: `${note}${res.content ?? ""}` }
           }
-          const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: randomUUID(),
-            expected_revision: b.revision, action: "read", path: args.path,
-          })
-          await record(b, res)
+          const res = await stage(b, "op", { action: "read", path: args.path })
           return { content: res.content ?? "" }
         },
       })
@@ -1574,12 +1580,8 @@ export default Plugin.define({
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; author_key?: string }>(input)
           const b = await binding(c, typeof args.author_key === "string" ? args.author_key : undefined)
-          const res = await takt("op", {
-            ...identity(b), author_key: b.key, call_id: randomUUID(),
-            expected_revision: b.revision, action: "delete", path: args.path,
-          })
-          await record(b, res)
-          return { content: `Staged deletion of ${args.path} at revision ${b.revision} (delta_hash ${b.deltaHash})` }
+          const res = await stage(b, "op", { action: "delete", path: args.path })
+          return { content: `Staged deletion of ${args.path} at revision ${res.revision} (delta_hash ${res.delta_hash})` }
         },
       })
       editor.add({
@@ -1595,10 +1597,10 @@ export default Plugin.define({
           if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
-          await takt("op", {
+          await takt("op", () => ({
             ...identity(b), author_key: b.key, call_id: randomUUID(),
             expected_revision: b.revision, action: "rollback",
-          })
+          }))
           await release(b)
           return { content: "Discarded staged delta" }
         },
@@ -1621,11 +1623,11 @@ export default Plugin.define({
           if (!verifier) throw new Error("author_key is not assigned to this verifier delegation")
           // The verdict covers the last staged state delivered/read by this gate;
           // the store rejects it if the author has since changed that state.
-          await takt("verify", {
+          await takt("verify", () => ({
             ...identity(verifier), verifier_key: verifier.key, author_key: args.author_key, call_id: randomUUID(),
             expected_revision: verifier.judgedRevision, delta_hash: verifier.judgedHash,
             pass: args.pass, finding: args.finding,
-          }).catch(error => {
+          })).catch(error => {
             const reason = error instanceof Error ? error.message : String(error)
             throw new Error(`${reason}; if the author's staged work changed since you read it, read it again with vfs_read and attach the verdict again`)
           })
@@ -1648,9 +1650,9 @@ export default Plugin.define({
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
           try {
-            await takt("consolidate", {
+            await takt("consolidate", () => ({
               ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
-            })
+            }))
           } catch (error) {
             if (error instanceof Error && /physical base changed|recovery required/.test(error.message))
               error.message += "; freeze this path and escalate with the report"

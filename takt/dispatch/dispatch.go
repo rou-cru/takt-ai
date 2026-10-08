@@ -23,13 +23,17 @@
 package dispatch
 
 import (
+	"cmp"
+	"crypto/rand"
 	// Required blank import: the embed directive below depends on this package.
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -98,6 +102,16 @@ const CauseRepetition = "control/unit-in-flight"
 
 // CauseWithdrawn denies delegating a unit its plan withdrew.
 const CauseWithdrawn = "control/unit-withdrawn"
+
+// CauseNoFailure denies a contest of work with no recorded terminal failure.
+const CauseNoFailure = "control/no-terminal-failure"
+
+// scopeExit is how an abandoned recovery scope goes on: the user decides, and
+// each decision is one call (PR-ORQ-13, PR-HAR-22). bound is the allowance the
+// abandonment spent.
+func scopeExit(objective, bound string) string {
+	return fmt.Sprintf("ask the user: to continue, dispatch_exception on %s for objective %q with a finite allowance; to drop the scope, dispatch_restore for objective %q", bound, objective, objective)
+}
 
 // nextAttempt is the attempt an admission opens: the first for work never
 // admitted, the following one when a settled unit is retried (PR-DAG-MUT-8).
@@ -172,34 +186,35 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	// attempt of that recovery and records which one it belongs to.
 	objective, recovery := budgets.Scope(req.Event)
 	entry.Objective = objective
+	ceiling := p.Concurrency.Specialists + budgets.Allowance[history.BoundConcurrency]
 	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
 	var e error
 	switch {
-	case projection.InFlight() >= p.Concurrency.Specialists:
+	case projection.InFlight() >= ceiling:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundConcurrency
-		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s)", p.Concurrency.Specialists, history.BoundConcurrency)
+		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s); delegate again once a delegation returns, or ask the user to raise the ceiling with dispatch_exception on %s", ceiling, history.BoundConcurrency, history.BoundConcurrency)
 	case known && unit.State == history.StateInFlight:
 		entry.Kind, entry.Cause = history.KindDenied, CauseRepetition
 		e = fmt.Errorf("harness: work unit %q is already in flight; a retry starts only once its current attempt settles", req.Event)
 	case known && unit.State == history.StateWithdrawn:
 		entry.Kind, entry.Cause = history.KindDenied, CauseWithdrawn
-		e = fmt.Errorf("harness: work unit %q was withdrawn from the plan", req.Event)
+		e = fmt.Errorf("harness: work unit %q was withdrawn from the plan; delegate the work under a new unit name", req.Event)
 	case newUnit && budgets.Unplanned >= p.Budgets.UnplannedUnits+budgets.Allowance[history.BoundUnplanned]:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundUnplanned
-		e = fmt.Errorf("harness: unplanned delegation bound of %d reached; commit a plan covering this unit and delegate it under that identity, or record the user's enabling decision on bound %s", p.Budgets.UnplannedUnits, history.BoundUnplanned)
+		e = fmt.Errorf("harness: unplanned delegation bound of %d reached; commit a plan covering this unit with dispatch_commit and delegate it under that identity, or ask the user for dispatch_exception on bound %s", p.Budgets.UnplannedUnits, history.BoundUnplanned)
 	case objective != "" && !recovery.Open:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryAttempts
-		e = errors.New("harness: this recovery scope is abandoned; no further attempt is admitted")
+		e = fmt.Errorf("harness: recovery %q is abandoned, its %s spent; %s", objective, recovery.Cause, scopeExit(objective, recovery.Cause))
 	case objective != "" && recovery.Unreconciled:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryActions
-		e = errors.New("harness: action consumption of this recovery is unestablished; admission waits for reconciliation")
+		e = fmt.Errorf("harness: action consumption of this recovery is unestablished; admission waits for reconciliation, which only the user's dispatch_exception on %s for objective %q provides", history.BoundRecoveryActions, objective)
 	case objective != "" && len(recovery.Attempted) >= attempts:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryAttempts
-		e = fmt.Errorf("harness: attempt budget of %d consumed for this recovery; the admitted attempt may still finish", attempts)
+		e = fmt.Errorf("harness: attempt budget of %d consumed for this recovery; the admitted attempt may still finish; for more attempts ask the user for dispatch_exception on %s for objective %q", attempts, history.BoundRecoveryAttempts, objective)
 	case objective != "" && recovery.Used >= actions:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryActions
-		e = fmt.Errorf("harness: action budget of %d consumed for this recovery", actions)
+		e = fmt.Errorf("harness: action budget of %d consumed for this recovery; for more actions ask the user for dispatch_exception on %s for objective %q", actions, history.BoundRecoveryActions, objective)
 	}
 	return entry, e
 }
@@ -647,8 +662,10 @@ func classify(current, resulting []PlanUnit) string {
 	return history.ClassificationTactical
 }
 
-// Contest admits at most the policy's distinct contests per session, upheld
-// ones included. A transport duplicate of the same targeted failure returns its
+// Contest records the contest of a unit attempt that ended without a result and
+// admits at most the policy's distinct contests per session, upheld ones
+// included. Judging the contested work is a Verify delegation of the
+// orchestrator's. A transport duplicate of the same targeted failure returns its
 // recorded disposition without consuming again (PR-HAR-17, PR-HAR-20).
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error {
 	if event == "" || session == "" {
@@ -664,11 +681,24 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 		JournalRef: journalRef, PolicyRef: AdmissionPolicyRef,
 	}
 	var e error
-	if len(budgets.Contests) >= p.Budgets.Contests+budgets.Allowance[history.BoundContests] {
+	switch {
+	case !terminalFailure(h.Entries(), event, attempt):
+		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, CauseNoFailure
+		e = fmt.Errorf("harness: work unit %q has no recorded terminal failure to contest; to correct its delivery, claim_assign its author_key and delegate the unit again, or delegate a Verify of that author_key to judge it", event)
+	case len(budgets.Contests) >= p.Budgets.Contests+budgets.Allowance[history.BoundContests]:
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.BoundContests
-		e = fmt.Errorf("harness: contest allowance of %d consumed; a scoped user exception is required", p.Budgets.Contests)
+		e = fmt.Errorf("harness: contest allowance of %d consumed; ask the user for dispatch_exception on %s", p.Budgets.Contests, history.BoundContests)
 	}
 	return errors.Join(h.Append(entry), e)
+}
+
+// terminalFailure reports whether the unit's attempt ended without a result:
+// failed, backtracked or interrupted. A completed attempt has nothing to contest.
+func terminalFailure(entries []history.Entry, event, attempt string) bool {
+	return slices.ContainsFunc(entries, func(e history.Entry) bool {
+		return e.Kind == history.KindTerminated && e.WorkUnitID == event && e.AttemptID == attempt &&
+			e.Outcome != history.OutcomeCompleted
+	})
 }
 
 // RecoveryDeclaration is what PR-ORQ-13 requires recorded before uncertain work
@@ -708,34 +738,48 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 		e = reason
 	}
 	allowed := p.Budgets.RecoveryFailures + budgets.Allowance[history.AllowanceKey(history.BoundRecovery, d.Objective)]
+	owner, owned := scopeOwner(budgets, d.Scope)
 	switch {
 	case d.Objective == "" || d.Result == "" || d.Point == "" || len(d.Scope) == 0 || d.Actions <= 0 || d.Attempts <= 0:
-		deny(causeIncomplete, errors.New("harness: a recovery declares a binary result, both budgets, an objective, a recoverable point and its scope"))
+		deny(causeIncomplete, errors.New("harness: a recovery declares a binary result, both budgets, an objective, a recoverable point and its scope; declare it again with every field set and both budgets above zero"))
 	case d.Actions > p.Recovery.MaxActions || d.Attempts > p.Recovery.MaxAttempts:
-		deny(history.BoundRecoveryActions, fmt.Errorf("harness: declared budgets exceed the admissible ceiling of %d actions and %d attempts", p.Recovery.MaxActions, p.Recovery.MaxAttempts))
-	case overlaps(budgets, d.Scope):
-		deny(history.BoundRecoveryAttempts, errors.New("harness: the declared scope belongs to an unresolved recovery"))
+		deny(history.BoundRecoveryActions, fmt.Errorf("harness: declared budgets exceed the admissible ceiling of %d actions and %d attempts; declare it again within them", p.Recovery.MaxActions, p.Recovery.MaxAttempts))
+	case owner != "":
+		deny(history.BoundRecoveryAttempts, overlapError(owner, owned))
 	case budgets.Recoveries[d.Objective].Failures >= allowed:
-		deny(history.BoundRecovery, fmt.Errorf("harness: %d consecutive failed recoveries of this objective require escalation", p.Budgets.RecoveryFailures))
+		deny(history.BoundRecovery, fmt.Errorf("harness: %d consecutive failed recoveries of this objective require escalation; present the evidence and alternatives to the user and, on their decision, call dispatch_exception on %s for objective %q, then declare the recovery again", allowed, history.BoundRecovery, d.Objective))
 	}
 	return errors.Join(h.Append(entry), e)
 }
 
-// overlaps reports a declared scope whose work already belongs to an unresolved
-// recovery, which would make scope membership ambiguous.
-func overlaps(budgets history.Budgets, scope []string) bool {
-	return slices.ContainsFunc(scope, func(unit string) bool {
-		objective, _ := budgets.Scope(unit)
-		return objective != ""
-	})
+// scopeOwner names the unresolved recovery a declared scope's work already
+// belongs to, which would make scope membership ambiguous; empty when none.
+func scopeOwner(budgets history.Budgets, scope []string) (string, history.Recovery) {
+	for _, unit := range scope {
+		if objective, recovery := budgets.Scope(unit); objective != "" {
+			return objective, recovery
+		}
+	}
+	return "", history.Recovery{}
+}
+
+// overlapError says what resolves the recovery a declared scope collides with.
+func overlapError(objective string, recovery history.Recovery) error {
+	if recovery.Open {
+		return fmt.Errorf("harness: the declared scope belongs to recovery %q, which is still open; close it with dispatch_close_recovery or declare disjoint units", objective)
+	}
+	return fmt.Errorf("harness: the declared scope belongs to recovery %q, abandoned with its %s spent; %s", objective, recovery.Cause, scopeExit(objective, recovery.Cause))
 }
 
 // CloseRecovery closes a declared recovery, recording whether its result was
 // demonstrated and linking the evidence. Only a demonstrated recovery breaks the
 // objective's streak, and a claimed result without evidence is not one.
 func CloseRecovery(h *history.History, journalRef, event, session, objective, evidence string, demonstrated bool) error {
-	if !h.Project().Budgets(session).Recoveries[objective].Open {
-		return errors.New("dispatch: no declared recovery of that objective is open")
+	if recovery := h.Project().Budgets(session).Recoveries[objective]; !recovery.Open {
+		if recovery.Backtracked && !recovery.Restored {
+			return fmt.Errorf("dispatch: recovery %q was abandoned, not left open; %s", objective, scopeExit(objective, recovery.Cause))
+		}
+		return fmt.Errorf("dispatch: no declared recovery %q is open; check the objective identity", objective)
 	}
 	if demonstrated && evidence == "" {
 		return errors.New("harness: a demonstrated recovery result must link its evidence")
@@ -868,50 +912,108 @@ func journalPosition(seq int) string {
 	return "journal/" + strconv.Itoa(seq)
 }
 
+// restoreCallBytes is the entropy of a rollback's call identity: every attempt
+// gets a fresh one, so a rollback that failed after consuming its call can be
+// repeated.
+const restoreCallBytes = 8
+
+// restoreCall names one rollback of a recovery's staged work.
+func restoreCall(objective string) (string, error) {
+	random := make([]byte, restoreCallBytes)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	return "recovery-restore/" + objective + "/" + hex.EncodeToString(random), nil
+}
+
 // Restore confirms restoration of an abandoned recovery scope's virtual state:
-// the rollback records the resulting state on the Action Journal and leaves
-// unrelated progress untouched (PR-VFS-STG-6, PR-HAR-18).
-func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string, key vfs.AgentID) error {
+// it releases every author claim, rolling back staged work, and records
+// the restoration only once all operations succeed. The rollback records the resulting
+// state on the Action Journal and leaves unrelated progress untouched
+// (PR-VFS-STG-6, PR-HAR-18). A failed rollback leaves the scope unresolved and
+// the same call repeats it for what remains.
+func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string) error {
 	projection := h.Project()
 	recovery := projection.Budgets(session).Recoveries[objective]
 	switch {
-	case !recovery.Backtracked || recovery.Restored:
-		return errors.New("dispatch: no abandoned recovery of that objective awaits restoration")
+	case recovery.Open:
+		return fmt.Errorf("dispatch: recovery %q is still open; close it with dispatch_close_recovery before anything is restored", objective)
+	case recovery.Restored:
+		return fmt.Errorf("dispatch: recovery %q is already restored; declare a new recovery to go on", objective)
+	case !recovery.Backtracked:
+		return fmt.Errorf("dispatch: no abandoned recovery %q exists; check the objective identity", objective)
 	case slices.ContainsFunc(recovery.Scope, func(unit string) bool {
 		return projection.Units[unit].State == history.StateInFlight
 	}):
-		return errors.New("harness: restoration waits until the affected executions can no longer act")
+		return fmt.Errorf("harness: restoration waits until the affected executions can no longer act; call dispatch_restore for %q again once the delegations of %s have returned", objective, strings.Join(recovery.Scope, ", "))
 	}
-	identity, bound := fs.BindingIdentity(key)
-	if !bound || !slices.Contains(recovery.Scope, identity.WorkUnitID) {
-		return errors.New("harness: the restored delta must belong to the declared recovery scope")
-	}
-	result, e := fs.Apply(vfs.Operation{
-		Key: key, CallID: "recovery-restore/" + objective, Action: vfs.OpRollback,
-		ExpectedRevision: fs.InspectDelta(key).Revision,
-	})
-	if e != nil {
-		// Unconfirmed restoration leaves the failure visible and the scope
-		// unresolved; abandonment never claims restoration.
-		return e
+	var restored []string
+	for _, claim := range fs.OwnershipClaims(session) {
+		if claim.AuthorKey != "" || claim.RootSessionID != session || !slices.Contains(recovery.Scope, claim.WorkUnitID) {
+			continue
+		}
+		if claim.Staged {
+			call, e := restoreCall(objective)
+			if e != nil {
+				return e
+			}
+			// An unconfirmed rollback leaves the failure visible and the scope
+			// unresolved; abandonment never claims restoration.
+			result, e := fs.Apply(vfs.Operation{
+				Key: claim.Key, CallID: call, Action: vfs.OpRollback, ExpectedRevision: fs.InspectDelta(claim.Key).Revision,
+			})
+			if e != nil {
+				return fmt.Errorf("dispatch: restoring %s of recovery %q failed: %w; call dispatch_restore again to retry what remains", claim.Key, objective, e)
+			}
+			restored = append(restored, fmt.Sprintf("%s@%d", claim.Key, result.Revision))
+		}
+		if e := fs.RevokeOwnership(claim.Key); e != nil {
+			return fmt.Errorf("dispatch: releasing %s of recovery %q failed: %w; call dispatch_restore again to retry what remains", claim.Key, objective, e)
+		}
 	}
 	return h.Append(history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindRestored, SessionID: session,
 		WorkUnitID: recovery.Unit, AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured,
 		JournalRef: journalRef, PolicyRef: AdmissionPolicyRef, Objective: objective,
 		Point: recovery.Point, Scope: recovery.Scope,
-		Evidence: fmt.Sprintf("revision/%d", result.Revision),
+		Evidence: "restored/" + strings.Join(restored, ","),
 	})
 }
 
 // Except records a scoped user exception before it enables any further work. It
 // names the bound, the scope, and a finite additional allowance; consumption
-// already recorded stands (PR-HAR-22).
+// already recorded stands (PR-HAR-22). An exception that could not enable
+// anything is refused with the one that would. event only labels the record and
+// defaults to the objective, or the bound when there is none.
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error {
+	if e := checkException(h.Project().Budgets(session), bound, objective); e != nil {
+		return e
+	}
+	if event == "" {
+		event = cmp.Or(objective, bound)
+	}
 	return h.Append(history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindException, SessionID: session,
 		WorkUnitID: event, AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured,
 		JournalRef: journalRef, PolicyRef: AdmissionPolicyRef,
 		Bound: bound, Objective: objective, Allowance: allowance,
 	})
+}
+
+// checkException refuses an exception that would be recorded and read by
+// nothing: a recovery bound without its objective, or the wrong recovery bound
+// for the one that abandoned a scope.
+func checkException(budgets history.Budgets, bound, objective string) error {
+	switch bound {
+	case history.BoundRecovery, history.BoundRecoveryActions, history.BoundRecoveryAttempts:
+		if objective == "" {
+			return fmt.Errorf("dispatch: an exception on %s names the recovery objective it applies to", bound)
+		}
+	}
+	recovery := budgets.Recoveries[objective]
+	spentLimit := bound == history.BoundRecoveryActions || bound == history.BoundRecoveryAttempts
+	if spentLimit && recovery.Backtracked && !recovery.Restored && bound != recovery.Cause {
+		return fmt.Errorf("dispatch: recovery %q was abandoned because its %s was spent; the exception that lifts it is on %s", objective, recovery.Cause, recovery.Cause)
+	}
+	return nil
 }

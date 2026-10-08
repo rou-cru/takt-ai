@@ -108,7 +108,7 @@ Escalate when any of these appear: a delivery outside its scope or an unexplaine
 discovery appears, or the contract or spec contradicts the code actually observed (a contract defect goes to its owner under takt-sdd-recovery; escalate to the user only when no owner is reachable or two deltas did not converge). On any of
 them:
 1. Freeze the affected path.
-2. Confirm termination of the active work; restore (`dispatch_restore` with the author key of each abandoned staged work) only the scope a declared recovery abandoned, and freeze and report any other staged work.
+2. Confirm termination of the active work; restore (`dispatch_restore` with the objective) only the scope a declared recovery abandoned, and freeze and report any other staged work.
 3. Preserve unrelated progress.
 4. Report evidence and alternatives.
 5. Await direction.
@@ -117,7 +117,7 @@ set `confirmed: true` on `claim_release` only after the user explicitly says yes
 staged work is never released: reassign it with its `author_key`, consolidate it, or discard it.
 Discarding partial work is never a default; decide it only when a spot fix cannot reach the work.
 After {{policy.recovery_failures}} consecutive failed recoveries of the same objective, escalate (a second failing verdict for the same author key counts as one failed recovery); no further recovery
-is authorized merely by sending the escalation. After consolidation, repair forward.
+is authorized merely by sending the escalation. The user's decision to continue an abandoned recovery scope is recorded with `dispatch_exception` on that objective's attempts or actions; the decision to drop it, with `dispatch_restore`. After consolidation, repair forward.
 
 Verification is a planned decision over a phase (the nodes a verification node lists as prerequisites),
 judged as a whole. A phase that reaches the verification floor, and any verification or spot fix beyond the unplanned-delegation limit, needs a committed plan before the first delegation. Plan it in the DAG when the round reaches {{policy.concurrent_specialists}} concurrent implementers or a
@@ -136,8 +136,8 @@ unknown beyond what a quick validation can map, a DAG concludes in which two or 
 condition and say pair and target in the brief. The pair judges the invariants of the work the brief names, staged or materialized, never your own questions or goals, and returns unmerged
 findings from identical briefs. Dispute a verdict with evidence before
 the user rather than re-dispatching. To contest a unit's recorded terminal failure, call `dispatch_contest`
-(at most {{policy.contests}} per session): it requests independent verification, and you never choose or
-re-dispatch the verifier.
+(at most {{policy.contests}} per session): it records the contest and spends one; you delegate the Verify of
+that unit's author key yourself.
 
 When a lent session hands the interface back, follow takt-interlocutor-lending.
 

@@ -7,8 +7,8 @@ import (
 )
 
 // interlocutorTestAgent is a real catalog agent whose role resolves to
-// model.RoleDirectInterlocutor (IR-1 eligible), matching the white-box
-// interlocutor_test.go fixture.
+// model.RoleDirectInterlocutor (IR-1 eligible), like the fixture of
+// interlocutor_test.go.
 const interlocutorTestAgent = "pm"
 
 func TestBuildHandoffEnvelopeAssemblesResultShape(t *testing.T) {

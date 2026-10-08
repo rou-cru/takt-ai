@@ -304,7 +304,7 @@ func (f *FS) OnJournal(fn func(JournalEntry)) {
 func (f *FS) stageLocked(agent AgentID, path string, content []byte) error {
 	identity, ok := f.bindings[agent]
 	if !ok {
-		return ErrIdentity
+		return errNoBinding(agent)
 	}
 	capability := model.VFSCapabilityWrite
 	if content == nil {
@@ -363,7 +363,7 @@ func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool)
 	if !authorizedStagedView {
 		identity, ok := f.bindings[agent]
 		if !ok {
-			return nil, ErrIdentity
+			return nil, errNoBinding(agent)
 		}
 		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityRead); err != nil {
 			return nil, err
@@ -497,7 +497,7 @@ func (f *FS) appendJournalLocked(entry JournalEntry) {
 func (f *FS) checkOwnership(agent AgentID, rel string) error {
 	existing, owned := f.owners[rel]
 	if !owned {
-		return fmt.Errorf("%w: %q is outside this binding's scope; ask the orchestrator to rebind with that path", ErrScopeDenied, rel)
+		return fmt.Errorf("%w: %q is outside this binding's scope; return that path to the orchestrator, which adds it with claim_assign and your author_key and delegates the unit again", ErrScopeDenied, rel)
 	}
 	if existing == agent {
 		return nil

@@ -121,9 +121,9 @@ await tools.dispatch_close_recovery.execute({ objective: "obj1", evidence: "ev1"
 assert.equal(calls.at(-1).verb, "dispatch")
 assert.deepEqual(requestOf(calls.at(-1)), { action: "recovered", session: "root", event: "obj1", objective: "obj1", evidence: "ev1", pass: true })
 
-await tools.dispatch_restore.execute({ objective: "obj1", author_key: "key1" }, root)
+await tools.dispatch_restore.execute({ objective: "obj1" }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
-assert.deepEqual(requestOf(calls.at(-1)), { action: "restore", session: "root", objective: "obj1", key: "key1" })
+assert.deepEqual(requestOf(calls.at(-1)), { action: "restore", session: "root", objective: "obj1" })
 
 // The exception names its bound exactly as the history records it.
 assert.ok(tools.dispatch_exception.input.properties.bound.enum.includes("budget/unplanned-units"))
