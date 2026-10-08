@@ -30,26 +30,40 @@ import (
 )
 
 // InvariantSet is the reference the verification gate judges a staged delta
-// against: the governing documents in the precedence order PR-VFS-CSL-3 fixes
-// (user goal and directives, the work unit's contract, the framework's planning
-// artifacts). Paths are workspace-relative, each pinned by its content on disk.
+// against, in the precedence order PR-VFS-CSL-3 fixes (user goal and
+// directives, the work unit's contract, the framework's planning artifacts).
+// An entry is either an Engram reference (see EngramInvariant), which pins
+// itself because an entry is immutable and a revision is another entry, or a
+// workspace-relative path pinned by its content on disk.
 type InvariantSet []string
+
+// engramInvariantPrefix marks an invariant that is an Engram entry.
+const engramInvariantPrefix = "engram:"
+
+// EngramInvariant is the invariant that names the Engram entry id.
+func EngramInvariant(id int64) string {
+	return engramInvariantPrefix + strconv.FormatInt(id, 10)
+}
 
 // invariantScheme versions the derivation below, so a version computed by a
 // later scheme can never be mistaken for one computed by this scheme.
 const invariantScheme = "inv1"
 
 // invariantsVersionLocked is the set's version: it changes whenever a declared
-// document is added, removed, reordered or edited, which is what makes evidence
-// stop governing under PR-VFS-CSL-7.
+// invariant is added, removed, reordered or, for a path, edited, which is what
+// makes evidence stop governing under PR-VFS-CSL-7.
 func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
 	pinned := []string{invariantScheme}
-	for _, document := range set {
-		base, err := f.physical(document)
-		if err != nil {
-			return "", fmt.Errorf("%w: invariant document %q: %w", ErrIdentity, document, err)
+	for _, invariant := range set {
+		if strings.HasPrefix(invariant, engramInvariantPrefix) {
+			pinned = append(pinned, invariant)
+			continue
 		}
-		pinned = append(pinned, document+"\x00"+hashOf(base.Content, base.Present))
+		base, err := f.physical(invariant)
+		if err != nil {
+			return "", fmt.Errorf("%w: invariant document %q: %w", ErrIdentity, invariant, err)
+		}
+		pinned = append(pinned, invariant+"\x00"+hashOf(base.Content, base.Present))
 	}
 	return invariantScheme + ":" + hashOf([]byte(strings.Join(pinned, "\n")), true), nil
 }
@@ -307,6 +321,11 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	}
 	identity.GateAuthorKey = authorKey
 	identity.Prelaunch = true
+	// The gate is judged against the invariants its author was issued; a caller
+	// that declares none takes them from the author binding.
+	if author, ok := f.bindings[authorKey]; ok && len(identity.Invariants) == 0 {
+		identity.Invariants = author.Invariants
+	}
 	if identity, err = f.bindableIdentity(identity, nil); err != nil {
 		return "", err
 	}

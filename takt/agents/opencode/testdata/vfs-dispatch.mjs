@@ -26,7 +26,7 @@ globalThis.Bun = {
 const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
-  if (call.argv[1] === "dispatch") return ["switch", "validate_results"].includes(requestOf(call).action) ? null : coordinator()
+  if (call.argv[1] === "dispatch") return ["switch", "validate_results", "validate_inputs"].includes(requestOf(call).action) ? null : coordinator()
   if (call.argv[1] === "gc" && call.argv[2] === "coordinate") return coordinator()
   if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
   return { ok: true }
@@ -81,8 +81,9 @@ const root = { sessionID: "root", agent: "takt" }
 // the dispatch admission will consume.
 const claim = { key: "claim-current", root_session_id: "root", work_unit_id: "u1", agent_id: "dev", target_instance: "dev", pending: true, active: false, scope: ["a.txt"] }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim] }), stderr: "", code: 0 } : undefined
+await tools.dispatch_inputs.execute({ work_unit_id: "u1", result_ids: [7] }, root)
 await tools.claim_assign.execute({ work_unit_id: "u1", agent: "dev", scope: ["a.txt"] }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", work_unit_id: "u1", agent_id: "dev", specialist: "dev", invariants: ["AGENTS.md"], scope: ["a.txt"] })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", work_unit_id: "u1", agent_id: "dev", specialist: "dev", invariants: ["engram:7"], scope: ["a.txt"] })
 
 // Release selects only an exact key listed by claim_list. Claims nobody works
 // under (prior-root, or a current-root reservation not yet launched) need no

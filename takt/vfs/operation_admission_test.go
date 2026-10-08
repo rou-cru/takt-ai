@@ -1015,3 +1015,63 @@ func TestVerifierRetryReplacesUnadoptedGate(t *testing.T) {
 		t.Fatalf("retry adopted %q, %v; want %q", adopted, err, fresh)
 	}
 }
+
+// An Engram invariant pins itself: its version needs no workspace document, and
+// changes with the entries declared and their precedence order.
+func TestEngramInvariantsVersion(t *testing.T) {
+	versionOf := func(set ...int64) string {
+		t.Helper()
+		f, _, _ := newStore(t)
+		set2 := make(vfs.InvariantSet, 0, len(set))
+		for _, id := range set {
+			set2 = append(set2, vfs.EngramInvariant(id))
+		}
+		key, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: set2}, []string{"a.go"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity, _ := f.BindingIdentity(key)
+		return identity.InvariantsHash
+	}
+	base := versionOf(7, 8)
+	if again := versionOf(7, 8); again != base {
+		t.Errorf("the same entries gave versions %q and %q", base, again)
+	}
+	for name, other := range map[string]string{
+		"another entry": versionOf(7, 9),
+		"reordered":     versionOf(8, 7),
+		"fewer entries": versionOf(7),
+		"none":          versionOf(),
+	} {
+		if other == base {
+			t.Errorf("%s kept version %q", name, base)
+		}
+	}
+}
+
+// A gate in a unit of its own, declaring nothing, is judged against the
+// invariants its author was issued, so its verdict governs the author's work.
+func TestVerifierGateInheritsTheAuthorsEngramInvariants(t *testing.T) {
+	f, _, _ := newStore(t)
+	set := vfs.InvariantSet{vfs.EngramInvariant(7), vfs.EngramInvariant(8)}
+	author, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "impl", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: set}, []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := apply(t, f, applyCase{author, "create", 0, vfs.OpCreate, "a.go", "v1"})
+	gate, err := f.AssignVerifier(ident("judge", "verify-impl", "verify"), author)
+	if err != nil {
+		t.Fatalf("AssignVerifier() = %v; a gate declaring no invariants must take its author's", err)
+	}
+	judged, _ := f.BindingIdentity(gate)
+	authored, _ := f.BindingIdentity(author)
+	if judged.InvariantsHash != authored.InvariantsHash {
+		t.Fatalf("gate version %q; want the author's %q", judged.InvariantsHash, authored.InvariantsHash)
+	}
+	if err := f.Verify(gate, author, "v1", staged.Revision, staged.DeltaHash, true, ""); err != nil {
+		t.Fatalf("Verify() = %v", err)
+	}
+	if err := f.ConsolidateCheckpoint(author, "cp", staged.Revision); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() = %v; the verdict was judged against the author's invariants", err)
+	}
+}

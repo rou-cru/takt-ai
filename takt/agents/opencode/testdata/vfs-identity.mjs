@@ -28,8 +28,9 @@ async function bind(tools, messages, ctx, unit, authorKey) {
   const message = messages.at(-1)
   assert.equal(message.command, "bind")
   checkIdentity(message.request, ctx, unit)
-  // A bind declares the governing documents; the harness pins them.
-  assert.deepEqual(message.request.invariants, ["AGENTS.md"])
+  // An author's bind declares the invariants its unit consumes (none here); a
+  // verifier's gate takes its author's from the harness.
+  assert.deepEqual(message.request.invariants, authorKey ? undefined : [])
   // A verifier's bind names the staged work it judges; an author's names none.
   assert.equal(message.request.author_key, authorKey)
   assert.ok(result.content.includes("at version inv1:test"))

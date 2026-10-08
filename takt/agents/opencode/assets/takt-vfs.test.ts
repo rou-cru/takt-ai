@@ -140,6 +140,7 @@ describe("plugin setup", () => {
       expect((await execute("claim_list", {}, orchestrator)).content).toContain("claim-1")
       await expect(execute("claim_release", { claim_key: "missing" }, orchestrator)).rejects.toThrow("unknown claim_key missing")
       await execute("claim_release", { claim_key: "claim-1", confirmed: true }, orchestrator)
+      await execute("dispatch_inputs", { work_unit_id: "unit-b", none: true }, orchestrator)
       await execute("claim_assign", { work_unit_id: "unit-b", agent: "test", scope: ["src/new.ts"] }, orchestrator)
       await execute("dispatch_commit", { version: "plan-1", plan: [{ unit: "unit-b", contract: "unit tests" }] }, orchestrator)
       await execute("dispatch_activity_start", { activity_id: "activity-1", node_kind: "orchestrator" }, orchestrator)
