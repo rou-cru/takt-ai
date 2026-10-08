@@ -1049,6 +1049,18 @@ func TestEngramInvariantsVersion(t *testing.T) {
 	}
 }
 
+// An invariant that names no Engram entry is refused at binding instead of
+// being pinned as if it were one.
+func TestMalformedEngramInvariantIsRefused(t *testing.T) {
+	for _, invariant := range []string{"engram:", "engram:abc", "engram:0", "engram:-3"} {
+		f, _, _ := newStore(t)
+		_, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: vfs.InvariantSet{invariant}}, []string{"a.go"})
+		if !errors.Is(err, vfs.ErrIdentity) {
+			t.Errorf("Bind with %q error = %v, want ErrIdentity", invariant, err)
+		}
+	}
+}
+
 // A gate in a unit of its own, declaring nothing, is judged against the
 // invariants its author was issued, so its verdict governs the author's work.
 func TestVerifierGateInheritsTheAuthorsEngramInvariants(t *testing.T) {

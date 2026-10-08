@@ -240,11 +240,11 @@ The response MUST contain these fields:
 
 `history_position` is an ordering and provenance value. It MUST NOT be interpreted as elapsed time or a timeout.
 
-`node_kind` is an additive field in schema version 1. A work-unit history record (`planned` or `admitted`) may omit it or set it to `delegated`; every work-unit node in a snapshot emits `delegated`. Direct orchestrator work uses the `orchestrator` activity kind, and non-delegated GC/maintenance uses `maintenance`, both in the separate activity record path. A missing work-unit `node_kind` is read as `delegated`; session, plan and cycle bookkeeping MUST NOT be given a fabricated work-unit identity. The discriminator is descriptive only and leaves committed prerequisites and delegated execution-order edges intact.
+`node_kind` is an additive field in schema version 1. Every work-unit node in a snapshot emits `delegated`. Direct orchestrator work uses the `orchestrator` activity kind, and non-delegated GC/maintenance uses `maintenance`, both in the separate activity record path. Session, plan and cycle bookkeeping MUST NOT be given a fabricated work-unit identity. The discriminator is descriptive only and leaves committed prerequisites and delegated execution-order edges intact.
 
 `agent` is additive in schema version 1: the catalog's short label of the specialist admitted for the unit's current attempt, absent until the unit is first admitted. Plans do not declare it.
 
-`activities` is additive in schema version 1 and may be absent (the TUI treats it as empty). Each record contains only `activity_id`, `node_kind` (`orchestrator` or `maintenance`), `state`, and applicable `flight`/`outcome`. `activities` never appears in nodes or edges.
+`activities` is additive in schema version 1 and is always present, as an empty array when there are no activities. Each record contains only `activity_id`, `node_kind` (`orchestrator` or `maintenance`), `state`, and applicable `flight`/`outcome`. `activities` never appears in nodes or edges.
 
 The plugin lane records direct activity through the ordinary `takt-ai dispatch` command with the `activity_start` and `activity_finish` actions. Each names the root session, a stable activity identity, and the `orchestrator` node kind; finish also names the outcome.
 

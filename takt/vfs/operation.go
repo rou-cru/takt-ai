@@ -56,7 +56,11 @@ func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
 	pinned := []string{invariantScheme}
 	for _, invariant := range set {
 		if strings.HasPrefix(invariant, engramInvariantPrefix) {
-			pinned = append(pinned, invariant)
+			id, perr := strconv.ParseInt(strings.TrimPrefix(invariant, engramInvariantPrefix), 10, 64)
+			if perr != nil || id <= 0 {
+				return "", fmt.Errorf("%w: invariant %q is not a valid Engram reference", ErrIdentity, invariant)
+			}
+			pinned = append(pinned, EngramInvariant(id))
 			continue
 		}
 		base, err := f.physical(invariant)

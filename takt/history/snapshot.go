@@ -181,7 +181,7 @@ func BuildSnapshot(entries []Entry) Snapshot {
 			prerequisites = inferred[id]
 		}
 		s.Nodes = append(s.Nodes, Node{
-			ID: id, NodeKind: u.NodeKind, SessionID: u.SessionID, AttemptID: u.AttemptID,
+			ID: id, NodeKind: NodeKindDelegated, SessionID: u.SessionID, AttemptID: u.AttemptID,
 			State: u.State, Flight: u.Flight, Outcome: u.Outcome,
 			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites, Agent: u.Agent,
 		})

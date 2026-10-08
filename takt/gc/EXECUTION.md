@@ -44,7 +44,7 @@ Optional top-level `.takt/gc.json` fields are positive Go duration strings:
 An analyzer's optional `timeout` overrides `analyzer_timeout`. Empty/omitted
 fields use these defaults; zero, negative
 or malformed durations fail validation. A shorter caller context always wins.
-`RunPrepared` uses the analyzer default; `RunChecks`
+Analyzer invocations use the configured `analyzer_timeout`, or the `10m` default; `RunChecks`
 uses the configured check budget. There is no additional two-minute ceiling.
 
 Execution disables Go proxy/checksum/toolchain downloads and sets npm, uv and

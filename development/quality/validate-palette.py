@@ -28,13 +28,15 @@ def contrast(a, b):
 checks = []
 def check(fg, bg, minimum, label):
     actual = contrast(fg, bg)
-    assert actual >= minimum, f"{label}: {fg}/{bg} = {actual:.4f}, requires {minimum}"
+    if actual < minimum:
+        raise SystemExit(f"{label}: {fg}/{bg} = {actual:.4f}, requires {minimum}")
     checks.append(actual)
 
 levels = (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950)
 for family in "NPGAR":
     ramp = [luminance(f"{family}{level}") for level in levels]
-    assert all(a > b for a, b in zip(ramp, ramp[1:])), family
+    if not all(a > b for a, b in zip(ramp, ramp[1:])):
+        raise SystemExit(f"ramp {family} is not strictly decreasing in luminance")
 
 for theme in (0, 1):
     def value(name):

@@ -1336,9 +1336,10 @@ export default Plugin.define({
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
         const session = await rootSession(c.sessionID)
-        const consumed = inputs.get(unitKey(session, asString(args.work_unit_id, "").trim()))
-        if (consumed === undefined) throw new Error(`Declare the invariants work unit ${asString(args.work_unit_id, "")} consumes with dispatch_inputs before assigning its claim, or declare that none exists yet`)
-        return { content: JSON.stringify(await takt("assign", { session_id: session, work_unit_id: args.work_unit_id, agent_id: args.agent, specialist: args.agent, invariants: engramInvariants(consumed), scope: args.scope, author_key: args.author_key })) }
+        const unit = asString(args.work_unit_id, "").trim()
+        const consumed = inputs.get(unitKey(session, unit))
+        if (consumed === undefined) throw new Error(`Declare the invariants work unit ${unit} consumes with dispatch_inputs before assigning its claim, or declare that none exists yet`)
+        return { content: JSON.stringify(await takt("assign", { session_id: session, work_unit_id: unit, agent_id: args.agent, specialist: args.agent, invariants: engramInvariants(consumed), scope: args.scope, author_key: args.author_key })) }
       } })
       editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)

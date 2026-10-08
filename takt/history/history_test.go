@@ -5,19 +5,29 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package history
+package history_test
 
 import (
 	"database/sql"
+	"github.com/rou-cru/takt-ai/takt/history"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func open(t *testing.T, state string) *History {
+// The on-disk contract the store promises: its file name and the owner-only
+// modes that keep the execution history unreadable to other users.
+const (
+	storeFile                   = "history.sqlite"
+	privateDirMode  os.FileMode = 0o700
+	privateFileMode os.FileMode = 0o600
+)
+
+func open(t *testing.T, state string) *history.History {
 	t.Helper()
-	h, err := Open(state)
+	h, err := history.Open(state)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -30,12 +40,12 @@ func open(t *testing.T, state string) *History {
 }
 
 // observed builds an entry attributed to the kind's own semantic author.
-func observed(t *testing.T, unit string, kind Kind, outcome Outcome) Entry {
+func observed(t *testing.T, unit string, kind history.Kind, outcome history.Outcome) history.Entry {
 	t.Helper()
-	e := Entry{Author: AuthorOf(kind), Kind: kind, SessionID: "root", WorkUnitID: unit,
-		AttemptID: FirstAttempt, Cause: CauseUncaptured, Outcome: outcome}
-	if kind == KindAdmitted {
-		e.NodeKind = NodeKindDelegated
+	e := history.Entry{Author: history.AuthorOf(kind), Kind: kind, SessionID: "root", WorkUnitID: unit,
+		AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured, Outcome: outcome}
+	if kind == history.KindAdmitted {
+		e.NodeKind = history.NodeKindDelegated
 	}
 	return e
 }
@@ -43,17 +53,17 @@ func observed(t *testing.T, unit string, kind Kind, outcome Outcome) Entry {
 func TestProjectionLifecycleAndReplay(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	h := open(t, state)
-	entries := []Entry{
-		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "a", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, Cause: CauseNone},
-		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "b", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, Cause: CauseNone},
-		observed(t, "a", KindAdmitted, ""),
-		observed(t, "a", KindLaunched, ""),
-		observed(t, "a", KindCancelRequested, ""),
-		observed(t, "b", KindWithdrawn, ""),
-		observed(t, "c", KindAdmitted, ""),
-		{Author: AuthorHarness, Kind: KindDenied, SessionID: "root", WorkUnitID: "d", AttemptID: FirstAttempt, Cause: BoundContests},
-		observed(t, "e", KindAdmitted, ""),
-		observed(t, "e", KindUncertain, ""),
+	entries := []history.Entry{
+		{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root", WorkUnitID: "a", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone},
+		{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root", WorkUnitID: "b", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone},
+		observed(t, "a", history.KindAdmitted, ""),
+		observed(t, "a", history.KindLaunched, ""),
+		observed(t, "a", history.KindCancelRequested, ""),
+		observed(t, "b", history.KindWithdrawn, ""),
+		observed(t, "c", history.KindAdmitted, ""),
+		{Author: history.AuthorHarness, Kind: history.KindDenied, SessionID: "root", WorkUnitID: "d", AttemptID: history.FirstAttempt, Cause: history.BoundContests},
+		observed(t, "e", history.KindAdmitted, ""),
+		observed(t, "e", history.KindUncertain, ""),
 	}
 	for _, e := range entries {
 		if err := h.Append(e); err != nil {
@@ -65,27 +75,27 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 	if p.InFlight() != 3 {
 		t.Fatalf("in flight %d; want 3", p.InFlight())
 	}
-	want := map[string]Unit{
-		"a": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightCancelling, Launched: true, Committed: true},
-		"b": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateWithdrawn, Committed: true},
-		"c": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightPendingLaunch},
-		"e": {SessionID: "root", NodeKind: NodeKindDelegated, AttemptID: FirstAttempt, State: StateInFlight, Flight: FlightUncertain},
+	want := map[string]history.Unit{
+		"a": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightCancelling, Launched: true, Committed: true},
+		"b": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Committed: true},
+		"c": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightPendingLaunch},
+		"e": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightUncertain},
 	}
 	if !reflect.DeepEqual(p.Units, want) {
 		t.Fatalf("projection %+v; want %+v", p.Units, want)
 	}
 	// A pending admission that terminates never appears executed.
-	if err := h.Append(observed(t, "c", KindTerminated, OutcomeInterrupted)); err != nil {
+	if err := h.Append(observed(t, "c", history.KindTerminated, history.OutcomeInterrupted)); err != nil {
 		t.Fatal(err)
 	}
-	if u := h.Project().Units["c"]; u.State != StateSettled || u.Outcome != OutcomeInterrupted || u.Launched {
+	if u := h.Project().Units["c"]; u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted || u.Launched {
 		t.Fatalf("settled without launch: %+v", u)
 	}
 	// A later entry never rewrites a settled unit.
-	if err := h.Append(observed(t, "c", KindLaunched, "")); err != nil {
+	if err := h.Append(observed(t, "c", history.KindLaunched, "")); err != nil {
 		t.Fatal(err)
 	}
-	if u := h.Project().Units["c"]; u.State != StateSettled || u.Launched {
+	if u := h.Project().Units["c"]; u.State != history.StateSettled || u.Launched {
 		t.Fatalf("settled unit rewritten: %+v", u)
 	}
 	// A second consumer replaying the same prefix derives the same projection.
@@ -103,53 +113,53 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 // counted once per unit, plan coverage is not, and duplicates collapse.
 func TestBudgetsDerivedFromReplay(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	contest := func(unit, attempt string) Entry {
-		e := observed(t, unit, KindContested, "")
+	contest := func(unit, attempt string) history.Entry {
+		e := observed(t, unit, history.KindContested, "")
 		e.AttemptID = attempt
 		return e
 	}
-	recovery := func(kind Kind, objective string, outcome Outcome) Entry {
+	recovery := func(kind history.Kind, objective string, outcome history.Outcome) history.Entry {
 		e := observed(t, "scope", kind, outcome)
 		e.Objective = objective
 		return e
 	}
-	for _, e := range []Entry{
-		{Author: AuthorOrchestrator, Kind: KindPlanned, SessionID: "root", WorkUnitID: "covered", AttemptID: FirstAttempt, Cause: CauseNone, Contract: "c"},
-		observed(t, "covered", KindAdmitted, ""),
-		observed(t, "loose", KindAdmitted, ""),
-		observed(t, "loose", KindAdmitted, ""),
-		contest("loose", FirstAttempt),
-		contest("loose", FirstAttempt),
+	for _, e := range []history.Entry{
+		{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root", WorkUnitID: "covered", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Contract: "c"},
+		observed(t, "covered", history.KindAdmitted, ""),
+		observed(t, "loose", history.KindAdmitted, ""),
+		observed(t, "loose", history.KindAdmitted, ""),
+		contest("loose", history.FirstAttempt),
+		contest("loose", history.FirstAttempt),
 		contest("loose", "2"),
-		recovery(KindRecoveryDeclared, "goal", ""),
-		recovery(KindRecoveryClosed, "goal", OutcomeFailed),
-		recovery(KindRecoveryDeclared, "goal", ""),
-		recovery(KindRecoveryClosed, "goal", OutcomeFailed),
-		recovery(KindRecoveryDeclared, "other", ""),
-		recovery(KindRecoveryClosed, "other", OutcomeFailed),
-		recovery(KindRecoveryDeclared, "other", ""),
-		recovery(KindRecoveryClosed, "other", OutcomeCompleted),
-		{Author: AuthorHarness, Kind: KindException, SessionID: "root", WorkUnitID: "loose", AttemptID: FirstAttempt,
-			Cause: CauseUncaptured, Bound: BoundRecovery, Objective: "goal", Allowance: 1},
+		recovery(history.KindRecoveryDeclared, "goal", ""),
+		recovery(history.KindRecoveryClosed, "goal", history.OutcomeFailed),
+		recovery(history.KindRecoveryDeclared, "goal", ""),
+		recovery(history.KindRecoveryClosed, "goal", history.OutcomeFailed),
+		recovery(history.KindRecoveryDeclared, "other", ""),
+		recovery(history.KindRecoveryClosed, "other", history.OutcomeFailed),
+		recovery(history.KindRecoveryDeclared, "other", ""),
+		recovery(history.KindRecoveryClosed, "other", history.OutcomeCompleted),
+		{Author: history.AuthorHarness, Kind: history.KindException, SessionID: "root", WorkUnitID: "loose", AttemptID: history.FirstAttempt,
+			Cause: history.CauseUncaptured, Bound: history.BoundRecovery, Objective: "goal", Allowance: 1},
 	} {
 		if err := h.Append(e); err != nil {
 			t.Fatalf("append %+v: %v", e, err)
 		}
 	}
-	want := Budgets{
+	want := history.Budgets{
 		Unplanned: 1,
 		Contests:  map[string]bool{"loose/1": true, "loose/2": true},
-		Recoveries: map[string]Recovery{
+		Recoveries: map[string]history.Recovery{
 			"goal":  {Failures: 2, Unit: "scope", Attempted: map[string]bool{}, Cursor: -1},
 			"other": {Unit: "scope", Attempted: map[string]bool{}, Cursor: -1},
 		},
-		Allowance: map[string]int{AllowanceKey(BoundRecovery, "goal"): 1},
+		Allowance: map[string]int{history.AllowanceKey(history.BoundRecovery, "goal"): 1},
 	}
 	if got := h.Project().Budgets("root"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("budgets %+v; want %+v", got, want)
 	}
 	// Another session's budgets are its own.
-	if got := h.Project().Budgets("elsewhere"); !reflect.DeepEqual(got, Budgets{}) {
+	if got := h.Project().Budgets("elsewhere"); !reflect.DeepEqual(got, history.Budgets{}) {
 		t.Fatalf("budgets leaked across sessions: %+v", got)
 	}
 }
@@ -158,11 +168,11 @@ func TestBudgetsDerivedFromReplay(t *testing.T) {
 // a denial and a handoff produce.
 func TestInterlocutorBudgets(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	switched := observed(t, "child", KindInterlocutorSwitched, "")
+	switched := observed(t, "child", history.KindInterlocutorSwitched, "")
 	switched.Agent, switched.Artifact = "specialist", "artifacts/report.md"
-	denied := observed(t, "child", KindDenied, "")
-	denied.Cause = CauseUncaptured
-	for _, e := range []Entry{switched, denied} {
+	denied := observed(t, "child", history.KindDenied, "")
+	denied.Cause = history.CauseUncaptured
+	for _, e := range []history.Entry{switched, denied} {
 		if err := h.Append(e); err != nil {
 			t.Fatalf("append %+v: %v", e, err)
 		}
@@ -171,7 +181,7 @@ func TestInterlocutorBudgets(t *testing.T) {
 	if got.InterlocutorHolder != "child" || got.InterlocutorAgent != "specialist" || got.InterlocutorArtifact != "artifacts/report.md" {
 		t.Fatalf("holder state %+v", got)
 	}
-	handoff := observed(t, "child", KindInterlocutorHandoff, "")
+	handoff := observed(t, "child", history.KindInterlocutorHandoff, "")
 	handoff.Result = "Handoff"
 	if err := h.Append(handoff); err != nil {
 		t.Fatal(err)
@@ -185,10 +195,10 @@ func TestInterlocutorBudgets(t *testing.T) {
 func TestStoreIsAppendOnly(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	h := open(t, state)
-	if err := h.Append(observed(t, "a", KindAdmitted, "")); err != nil {
+	if err := h.Append(observed(t, "a", history.KindAdmitted, "")); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", filepath.Join(state, historyFile))
+	db, err := sql.Open("sqlite", filepath.Join(state, storeFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,25 +216,25 @@ func TestStoreIsAppendOnly(t *testing.T) {
 
 func TestAppendRejectsInvalidEntries(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	valid := observed(t, "a", KindAdmitted, "")
-	cases := map[string]func(Entry) Entry{
-		"author":    func(e Entry) Entry { e.Author = "auditor"; return e },
-		"kind":      func(e Entry) Entry { e.Kind = "consolidated"; return e },
-		"node kind": func(e Entry) Entry { e.NodeKind = "guess"; return e },
-		"identity":  func(e Entry) Entry { e.WorkUnitID = ""; return e },
-		"cause":     func(e Entry) Entry { e.Cause = ""; return e },
-		"outcome":   func(e Entry) Entry { e.Outcome = OutcomeCompleted; return e },
-		"terminal":  func(e Entry) Entry { e.Kind = KindTerminated; return e },
-		"objective": func(e Entry) Entry {
-			e.Kind, e.Author = KindRecoveryDeclared, AuthorOrchestrator
+	valid := observed(t, "a", history.KindAdmitted, "")
+	cases := map[string]func(history.Entry) history.Entry{
+		"author":    func(e history.Entry) history.Entry { e.Author = "auditor"; return e },
+		"kind":      func(e history.Entry) history.Entry { e.Kind = "consolidated"; return e },
+		"node kind": func(e history.Entry) history.Entry { e.NodeKind = "guess"; return e },
+		"identity":  func(e history.Entry) history.Entry { e.WorkUnitID = ""; return e },
+		"cause":     func(e history.Entry) history.Entry { e.Cause = ""; return e },
+		"outcome":   func(e history.Entry) history.Entry { e.Outcome = history.OutcomeCompleted; return e },
+		"terminal":  func(e history.Entry) history.Entry { e.Kind = history.KindTerminated; return e },
+		"objective": func(e history.Entry) history.Entry {
+			e.Kind, e.Author = history.KindRecoveryDeclared, history.AuthorOrchestrator
 			return e
 		},
-		"unknown bound": func(e Entry) Entry {
-			e.Kind, e.Bound, e.Allowance = KindException, "budget/invented", 1
+		"unknown bound": func(e history.Entry) history.Entry {
+			e.Kind, e.Bound, e.Allowance = history.KindException, "budget/invented", 1
 			return e
 		},
-		"open-ended allowance": func(e Entry) Entry {
-			e.Kind, e.Bound = KindException, BoundContests
+		"open-ended allowance": func(e history.Entry) history.Entry {
+			e.Kind, e.Bound = history.KindException, history.BoundContests
 			return e
 		},
 	}
