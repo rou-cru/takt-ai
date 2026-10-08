@@ -12,6 +12,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func EngramInvariant\(id int64\) string](<#EngramInvariant>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
 - [func GuardShellGit\(command string\) error](<#GuardShellGit>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
@@ -179,6 +180,15 @@ var (
     ErrCycleDiverged = errors.New("vfs: workspace diverged from what the cycle consolidated — not restored")
 )
 ```
+
+<a name="EngramInvariant"></a>
+## func EngramInvariant
+
+```go
+func EngramInvariant(id int64) string
+```
+
+EngramInvariant is the invariant that names the Engram entry id.
 
 <a name="GuardGitMutation"></a>
 ## func GuardGitMutation
@@ -584,7 +594,7 @@ type Identity struct {
 <a name="InvariantSet"></a>
 ## type InvariantSet
 
-InvariantSet is the reference the verification gate judges a staged delta against: the governing documents in the precedence order PR\-VFS\-CSL\-3 fixes \(user goal and directives, the work unit's contract, the framework's planning artifacts\). Paths are workspace\-relative, each pinned by its content on disk.
+InvariantSet is the reference the verification gate judges a staged delta against, in the precedence order PR\-VFS\-CSL\-3 fixes \(user goal and directives, the work unit's contract, the framework's planning artifacts\). An entry is either an Engram reference \(see EngramInvariant\), which pins itself because an entry is immutable and a revision is another entry, or a workspace\-relative path pinned by its content on disk.
 
 ```go
 type InvariantSet []string
