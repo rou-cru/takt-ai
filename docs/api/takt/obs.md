@@ -95,7 +95,7 @@ var ErrContentForbidden = errors.New("obs: envelope must not carry file contents
 ```
 
 <a name="PublishCollisionEvent"></a>
-## func [PublishCollisionEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L383>)
+## func PublishCollisionEvent
 
 ```go
 func PublishCollisionEvent(bus *Bus, clock *Clock, attemptingAgent, owningAgent, path, workUnitID string) error
@@ -104,7 +104,7 @@ func PublishCollisionEvent(bus *Bus, clock *Clock, attemptingAgent, owningAgent,
 PublishCollisionEvent publishes a cross\-agent write collision intercepted by the VFS.
 
 <a name="PublishControlEffectEvent"></a>
-## func [PublishControlEffectEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L419>)
+## func PublishControlEffectEvent
 
 ```go
 func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string) error
@@ -113,7 +113,7 @@ func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent
 PublishControlEffectEvent publishes the PR\-OBS\-CTL\-5 event for every control action beyond OBSERVE \(THROTTLE, CONTAIN, ROLLBACK, GATE, ESCALATE\). Deciding when to act belongs to takt/gc; this only makes the chosen action observable on the bus.
 
 <a name="PublishCycleReeditEvent"></a>
-## func [PublishCycleReeditEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L400>)
+## func PublishCycleReeditEvent
 
 ```go
 func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClass, pathHash, workUnitID string) error
@@ -122,7 +122,7 @@ func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClas
 PublishCycleReeditEvent publishes the PR\-MNT\-31 event for a path a maintenance cycle already consolidated that is edited again, attributing the reversion to that cycle and its mandate class instead of leaving it unattributed.
 
 <a name="PublishVFSEvent"></a>
-## func [PublishVFSEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L369>)
+## func PublishVFSEvent
 
 ```go
 func PublishVFSEvent(bus *Bus, clock *Clock, agent, journalRef, workUnitID string, attributes map[string]any) error
@@ -131,7 +131,7 @@ func PublishVFSEvent(bus *Bus, clock *Clock, agent, journalRef, workUnitID strin
 PublishVFSEvent constructs and publishes an envelope referencing a VFS journal entry by ref, describing it through attributes without content.
 
 <a name="StorePath"></a>
-## func [StorePath](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L98>)
+## func StorePath
 
 ```go
 func StorePath(workspace string) (string, error)
@@ -140,7 +140,7 @@ func StorePath(workspace string) (string, error)
 StorePath returns where a workspace keeps its event database, the only location the store ever uses.
 
 <a name="ActionClass"></a>
-## type [ActionClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L216>)
+## type ActionClass
 
 ActionClass names one control response ordered by intrusiveness so escalation stays predictable.
 
@@ -168,7 +168,7 @@ const (
 ```
 
 <a name="Bus"></a>
-## type [Bus](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L284-L302>)
+## type Bus
 
 Bus keeps one ordered stream plus decisions so control stays deterministic and local.
 
@@ -179,7 +179,7 @@ type Bus struct {
 ```
 
 <a name="NewBus"></a>
-### func [NewBus](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L305>)
+### func NewBus
 
 ```go
 func NewBus(sessionID string, clock *Clock) *Bus
@@ -188,7 +188,7 @@ func NewBus(sessionID string, clock *Clock) *Bus
 NewBus creates one bus per session so events never leak across runs.
 
 <a name="Bus.AttachStore"></a>
-### func \(\*Bus\) [AttachStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L313>)
+### func \(\*Bus\) AttachStore
 
 ```go
 func (b *Bus) AttachStore(s *Store)
@@ -197,7 +197,7 @@ func (b *Bus) AttachStore(s *Store)
 AttachStore persists everything published from now on, so a bus outlives its process.
 
 <a name="Bus.Degrade"></a>
-### func \(\*Bus\) [Degrade](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L355>)
+### func \(\*Bus\) Degrade
 
 ```go
 func (b *Bus) Degrade(reason string)
@@ -206,7 +206,7 @@ func (b *Bus) Degrade(reason string)
 Degrade marks the control plane as unavailable. The fallback posture is the static deterministic budgets defined elsewhere.
 
 <a name="Bus.Publish"></a>
-### func \(\*Bus\) [Publish](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L320>)
+### func \(\*Bus\) Publish
 
 ```go
 func (b *Bus) Publish(e Envelope) error
@@ -215,7 +215,7 @@ func (b *Bus) Publish(e Envelope) error
 Publish appends one validated event plus its watch record so nothing enters silently.
 
 <a name="Bus.SessionID"></a>
-### func \(\*Bus\) [SessionID](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L363>)
+### func \(\*Bus\) SessionID
 
 ```go
 func (b *Bus) SessionID() string
@@ -224,7 +224,7 @@ func (b *Bus) SessionID() string
 SessionID returns the session identifier for this bus instance.
 
 <a name="Clock"></a>
-## type [Clock](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L198-L201>)
+## type Clock
 
 Clock owns monotonic session time so budgets never break on clock adjustments.
 
@@ -235,7 +235,7 @@ type Clock struct {
 ```
 
 <a name="NewClock"></a>
-### func [NewClock](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L204>)
+### func NewClock
 
 ```go
 func NewClock() *Clock
@@ -244,7 +244,7 @@ func NewClock() *Clock
 NewClock starts a session clock so all later budgets share one origin.
 
 <a name="Clock.Now"></a>
-### func \(\*Clock\) [Now](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L209>)
+### func \(\*Clock\) Now
 
 ```go
 func (c *Clock) Now() SessionTime
@@ -253,7 +253,7 @@ func (c *Clock) Now() SessionTime
 Now reads elapsed session time so callers share one consistent clock.
 
 <a name="ControlRecord"></a>
-## type [ControlRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L253-L266>)
+## type ControlRecord
 
 ControlRecord keeps one decision with its reason so later review can audit what happened.
 
@@ -275,7 +275,7 @@ type ControlRecord struct {
 ```
 
 <a name="ControlRecord.Validate"></a>
-### func \(\*ControlRecord\) [Validate](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L269>)
+### func \(\*ControlRecord\) Validate
 
 ```go
 func (r *ControlRecord) Validate() error
@@ -284,7 +284,7 @@ func (r *ControlRecord) Validate() error
 Validate rejects incomplete decisions so every recorded action stays auditable.
 
 <a name="CorrelationIDs"></a>
-## type [CorrelationIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L105-L114>)
+## type CorrelationIDs
 
 CorrelationIDs links one event to its session and work so scattered signals stay joinable.
 
@@ -302,7 +302,7 @@ type CorrelationIDs struct {
 ```
 
 <a name="Envelope"></a>
-## type [Envelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L117-L134>)
+## type Envelope
 
 Envelope carries one normalized event without content so telemetry stays safe to keep and share.
 
@@ -328,7 +328,7 @@ type Envelope struct {
 ```
 
 <a name="NewEnvelope"></a>
-### func [NewEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L182>)
+### func NewEnvelope
 
 ```go
 func NewEnvelope(clock *Clock, source SourcePlane, agent string) Envelope
@@ -337,7 +337,7 @@ func NewEnvelope(clock *Clock, source SourcePlane, agent string) Envelope
 NewEnvelope builds a pre\-stamped envelope so callers cannot forget versions or timestamps.
 
 <a name="Envelope.Validate"></a>
-### func \(\*Envelope\) [Validate](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L153>)
+### func \(\*Envelope\) Validate
 
 ```go
 func (e *Envelope) Validate() error
@@ -346,7 +346,7 @@ func (e *Envelope) Validate() error
 Validate rejects content leaks and missing owners so bad events fail before reaching the stream.
 
 <a name="EventClass"></a>
-## type [EventClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L52>)
+## type EventClass
 
 EventClass names what an event means so consumers can filter without parsing payloads.
 
@@ -390,7 +390,7 @@ const (
 ```
 
 <a name="SessionTime"></a>
-## type [SessionTime](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L195>)
+## type SessionTime
 
 SessionTime counts time since session start so budgets survive wall\-clock jumps.
 
@@ -399,7 +399,7 @@ type SessionTime = time.Duration
 ```
 
 <a name="SourcePlane"></a>
-## type [SourcePlane](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L33>)
+## type SourcePlane
 
 SourcePlane names where an event came from so mixed signals stay separable.
 
@@ -427,7 +427,7 @@ const (
 ```
 
 <a name="Store"></a>
-## type [Store](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L79-L81>)
+## type Store
 
 Store persists events and control actions in one workspace\-local SQLite file so separate process invocations share a single stream. Row id is the order.
 
@@ -438,7 +438,7 @@ type Store struct {
 ```
 
 <a name="OpenStore"></a>
-### func [OpenStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L108>)
+### func OpenStore
 
 ```go
 func OpenStore(workspace string) (*Store, error)
@@ -447,7 +447,7 @@ func OpenStore(workspace string) (*Store, error)
 OpenStore opens \(creating if absent\) the workspace event database in WAL mode with a busy timeout, so concurrent invocations wait for each other instead of failing.
 
 <a name="Store.AppendAction"></a>
-### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L256>)
+### func \(\*Store\) AppendAction
 
 ```go
 func (s *Store) AppendAction(r ControlRecord) (int64, error)
@@ -456,7 +456,7 @@ func (s *Store) AppendAction(r ControlRecord) (int64, error)
 AppendAction validates then writes one control action and returns its id.
 
 <a name="Store.AppendEvent"></a>
-### func \(\*Store\) [AppendEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L141>)
+### func \(\*Store\) AppendEvent
 
 ```go
 func (s *Store) AppendEvent(e Envelope) (int64, error)
@@ -465,7 +465,7 @@ func (s *Store) AppendEvent(e Envelope) (int64, error)
 AppendEvent validates then writes one event under its own session and returns its id. The session clock is not stored: it restarts each process, so row id is the order.
 
 <a name="Store.Close"></a>
-### func \(\*Store\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L137>)
+### func \(\*Store\) Close
 
 ```go
 func (s *Store) Close() error
@@ -474,7 +474,7 @@ func (s *Store) Close() error
 Close releases the database handle.
 
 <a name="Store.CountEvents"></a>
-### func \(\*Store\) [CountEvents](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L239>)
+### func \(\*Store\) CountEvents
 
 ```go
 func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error)
@@ -483,7 +483,7 @@ func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeI
 CountEvents reports how many events Events would return for the same filters without loading them, so a consumer can cheaply derive a rate's numerator or denominator \(a count of registered work, PR\-MNT\-9/PR\-MNT\-11\).
 
 <a name="Store.Events"></a>
-### func \(\*Store\) [Events](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L179>)
+### func \(\*Store\) Events
 
 ```go
 func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int64, limit int) (out []StoredEvent, err error)
@@ -492,7 +492,7 @@ func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int
 Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in AppendEvent's id order — registration order, never wall\-clock time \(PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass, the zero value matching all; beforeID or limit of 0 means unbounded.
 
 <a name="StoreHealth"></a>
-## type [StoreHealth](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L34-L43>)
+## type StoreHealth
 
 StoreHealth is what a read\-only look at a workspace's event store found.
 
@@ -510,7 +510,7 @@ type StoreHealth struct {
 ```
 
 <a name="InspectStore"></a>
-### func [InspectStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L49>)
+### func InspectStore
 
 ```go
 func InspectStore(workspace string) (health StoreHealth, err error)
@@ -519,7 +519,7 @@ func InspectStore(workspace string) (health StoreHealth, err error)
 InspectStore checks the workspace event store without changing anything, so a health check never creates the store or its directory. It fails when the file is not readable as a database, is missing a table, or fails SQLite's integrity check: such a store cannot be relied on.
 
 <a name="StoredAction"></a>
-## type [StoredAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L91-L95>)
+## type StoredAction
 
 StoredAction is one persisted control action with its row id and write time.
 
@@ -532,7 +532,7 @@ type StoredAction struct {
 ```
 
 <a name="StoredEvent"></a>
-## type [StoredEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L84-L88>)
+## type StoredEvent
 
 StoredEvent is one persisted event with its row id and write time, so readers can resume by id.
 
