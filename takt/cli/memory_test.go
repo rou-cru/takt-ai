@@ -75,6 +75,7 @@ func TestMemoryCommandExitCodes(t *testing.T) {
 		{"close resumed session", "close", `{"author":"takt","session":"ses_1","directory":"/work/demo","objective":"Refine parser","state":"Parser refined"}`, 0, `"end_anchor_id"`},
 		{"quoted wording accepted", "record", strings.NewReplacer("ses_1", "ses_words", "Split the parser", "Quoted: will", "The parser mixes IO and parsing.", "se verificó todo").Replace(record), 0, `"ok":true`},
 		{"invalid json", "record", `{"author":`, 2, "invalid request"},
+		{"capabilities invalid json", "capabilities", `{"author":`, 2, "invalid request"},
 		{"unknown field", "record", strings.Replace(record, `"author"`, `"confirmed_by":"x","author"`, 1), 2, "unknown field"},
 		{"multiple values", "continue", `{} {}`, 2, "multiple JSON values"},
 		{"unknown verb", "delete", `{}`, 1, "unknown memory command"},
