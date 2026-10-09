@@ -203,7 +203,7 @@ type RecordResult struct {
 func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordResult, err error)
 ```
 
-Record validates and writes one memory into Engram under the session's lock, rejecting closed sessions and contract violations.
+Record validates and writes one memory into Engram under the session's lock. A new entry resumes a previously closed host conversation; historical close anchors remain in Engram. Contract violations are still rejected.
 
 <a name="RelatesTo"></a>
 ## type RelatesTo

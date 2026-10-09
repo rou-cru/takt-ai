@@ -229,6 +229,14 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, sensitiveEditDenies()...)
 		rules = append(rules, permissionRule{"edit", eventStoreResource, "deny"})
 	}
+	rules = append(rules, permissionRule{"memory_record", allResources, "allow"})
+	lifecycleEffect := "deny"
+	if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
+		lifecycleEffect = "allow"
+	}
+	for _, name := range []string{"memory_continue_session", "memory_close_session"} {
+		rules = append(rules, permissionRule{name, allResources, lifecycleEffect})
+	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions
 	// override these denies with session permissions; coordinator admission is

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rou-cru/takt-ai/takt/history"
 	"golang.org/x/sys/unix"
 	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
 	_ "modernc.org/sqlite"
@@ -123,7 +124,7 @@ func resolveStateDir(stateDir, workspace string) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(resolved, suffix)
-	if dir != filepath.Join(workspace, ".takt-ai", "vfs") {
+	if dir != history.StateDir(workspace) {
 		if err := ensureOutsideWorkspace(workspace, dir); err != nil {
 			return "", err
 		}

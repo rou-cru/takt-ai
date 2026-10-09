@@ -4,6 +4,7 @@ import { resolve } from "node:path"
 import memoryPlugin, { closeResult, isObject, recordResult } from "./takt-memory"
 
 const contracts = JSON.parse(readFileSync(resolve(import.meta.dir, "../testdata/contracts.json"), "utf8"))
+type MemoryContextEvent = { agent: string; sessionID: string; tools: Record<string, MemoryTool | undefined>; system: Array<{ type: string; text: string }> }
 type MemoryTool = { name: string; execute: (input: unknown, context: never) => Promise<{ content: string }> }
 
 describe("plugin setup", () => {
@@ -30,7 +31,7 @@ describe("plugin setup", () => {
     try {
       await memoryPlugin.setup({
         location: { directory: "/workspace" },
-        session: { async get({ sessionID }: { sessionID: string }) { return { id: sessionID } } },
+        session: { async hook() { return { dispose() {} } }, async get({ sessionID }: { sessionID: string }) { return { id: sessionID } } },
         tool: { async transform(callback: (editor: { add: (definition: MemoryTool) => void }) => void) {
           callback({ add(definition) { tools.set(definition.name, definition) } })
           return { dispose() {} }
@@ -150,9 +151,10 @@ async function startMemory(options: {
       if (event) yield event
     }
   }
+  let contextHook: (event: MemoryContextEvent) => Promise<void>
   const cleanup = await memoryPlugin.setup({
     location: { directory: "/workspace" },
-    session: { async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } } },
+    session: { async hook(_name: string, callback: typeof contextHook) { contextHook = callback; return { dispose() {} } }, async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } } },
     tool: { async transform(callback: (editor: { add: (definition: MemoryTool) => void }) => void) {
       callback({ add(definition) { tools.set(definition.name, definition) } })
       return { dispose() {} }
@@ -163,6 +165,11 @@ async function startMemory(options: {
     } },
   } as never)
   return {
+    context: async (agent: string, sessionID = "root", available = [...tools.keys()]) => {
+      const event = { agent, sessionID, tools: Object.fromEntries(available.map(name => [name, tools.get(name)])), system: [] as Array<{ type: string; text: string }> }
+      await contextHook(event)
+      return event
+    },
     requests, created, discoveries: () => discoveries,
     run: (name: string, input: unknown, ctx = context) => tools.get(name)!.execute(input, ctx as never),
     publish(event: MemoryEvent) { events.push(event); wake?.() },
@@ -329,5 +336,52 @@ describe("session deletion", () => {
       await sleep(10)
       expect(memory.requests.filter(({ command }) => command === "close")).toHaveLength(1)
     } finally { memory.stop() }
+  })
+})
+
+
+describe("effective memory catalog", () => {
+  test("Spec keeps record and never receives lifecycle schemas or instructions", async () => {
+    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
+    try {
+      const event = await memory.context("spec")
+      expect(Object.keys(event.tools)).toEqual(["memory_record"])
+      expect(JSON.stringify(event)).not.toContain("memory_continue_session")
+      expect(JSON.stringify(event)).not.toContain("memory_close_session")
+      expect(memory.requests[0].request).toEqual({ author: "spec", session: "root", directory: "/workspace" })
+    } finally { memory.stop() }
+  })
+  test("both GC lanes retain recording without lifecycle names", async () => {
+    const memory = await startMemory({ sessions: { gcc: { metadata: { takt_gc: "cycle" } }, gcv: { metadata: { takt_gc: "cycle" } } }, respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
+    try {
+      for (const [agent, session] of [["simplify", "gcc"], ["verify", "gcv"]]) {
+        const event = await memory.context(agent, session)
+        expect(Object.keys(event.tools)).toEqual(["memory_record"])
+        expect(event.system).toEqual([])
+      }
+    } finally { memory.stop() }
+  })
+  test("ownership grants and revokes lifecycle on each turn through the switch root", async () => {
+    let holder = "architect"
+    const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "root" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
+    try {
+      const granted = await memory.context("architect", "child")
+      expect(Object.keys(granted.tools)).toHaveLength(3)
+      expect(JSON.stringify(granted.system)).toContain("memory_continue_session")
+      expect(memory.requests[0].request.session).toBe("root")
+      holder = "pm"
+      const revoked = await memory.context("architect", "child")
+      expect(Object.keys(revoked.tools)).toEqual(["memory_record"])
+      expect(revoked.system).toEqual([])
+      expect(Object.keys((await memory.context("pm")).tools)).toHaveLength(3)
+    } finally { memory.stop() }
+  })
+  test("uncertain authority fails closed and never widens native grants", async () => {
+    for (const reply of [{ code: 1, out: "failure" }, { out: JSON.stringify({ ok: true, result: {} }) }]) {
+      const memory = await startMemory({ respond: () => reply })
+      try { expect(Object.keys((await memory.context("takt")).tools)).toEqual(["memory_record"]) } finally { memory.stop() }
+    }
+    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record", "memory_continue_session", "memory_close_session"] }) }) })
+    try { expect((await memory.context("takt", "root", ["memory_record"])).system).toEqual([]) } finally { memory.stop() }
   })
 })

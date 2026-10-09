@@ -17,14 +17,6 @@ import (
 // has an explicit rule for every agent, every tool the prose tells an agent to
 // use is one that agent may call, and no edit allow reopens a secret.
 
-// memoryTools are open to every agent by design: each role records its own
-// memory, and the memory plugin supplies author and session itself.
-var memoryTools = []string{"memory_record", "memory_continue_session", "memory_close_session"}
-
-// cycleTools are granted by the maintenance session's own permissions, not by
-// any agent entry, so an agent's text may name them while its entry denies them.
-var cycleTools = []string{"gc_baseline", "gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_delta", "gc_verdict", "gc_acceptance", "gc_no_change"}
-
 type renderedCatalog struct {
 	pack    catalog.Catalog
 	specs   []opencode.AgentSpec
@@ -84,9 +76,6 @@ func pluginTools(t *testing.T) []string {
 func TestEveryPluginToolHasExplicitRuleForEveryAgent(t *testing.T) {
 	r := renderCatalog(t)
 	for _, tool := range pluginTools(t) {
-		if slices.Contains(memoryTools, tool) {
-			continue
-		}
 		for _, spec := range r.specs {
 			if effectOf(r.config.Agents[spec.ID].Permissions, tool, "*") == "" {
 				t.Errorf("%s has no explicit rule for plugin tool %s", spec.ID, tool)
@@ -123,10 +112,10 @@ func TestNoEditAllowReopensASecret(t *testing.T) {
 	}
 }
 
-var backticked = regexp.MustCompile("`([a-z]+_[a-z_]+)`")
+var toolMention = regexp.MustCompile(`\b([a-z]+_[a-z_]+)\b`)
 
 // TestProseNamesOnlyToolsItsReadersMayCall fails when a text tells its readers
-// to use a plugin tool that every agent carrying that text is denied.
+// to use a plugin tool that any agent carrying that text is denied.
 func TestProseNamesOnlyToolsItsReadersMayCall(t *testing.T) {
 	r := renderCatalog(t)
 	tools := pluginTools(t)
@@ -136,17 +125,16 @@ func TestProseNamesOnlyToolsItsReadersMayCall(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range backticked.FindAllStringSubmatch(string(text), -1) {
+		for _, m := range toolMention.FindAllStringSubmatch(string(text), -1) {
 			tool := m[1]
-			if !slices.Contains(tools, tool) || slices.Contains(memoryTools, tool) || slices.Contains(cycleTools, tool) {
+			if !slices.Contains(tools, tool) {
 				continue
 			}
 			checked++
-			usable := slices.ContainsFunc(readers, func(id string) bool {
-				return effectOf(r.config.Agents[id].Permissions, tool, "*") != "deny"
-			})
-			if !usable {
-				t.Errorf("%s tells %v to use %s, which each of them is denied", p, readers, tool)
+			for _, id := range readers {
+				if effectOf(r.config.Agents[id].Permissions, tool, "*") != "allow" {
+					t.Errorf("%s tells %s to use denied tool %s", p, id, tool)
+				}
 			}
 		}
 	}
@@ -155,5 +143,26 @@ func TestProseNamesOnlyToolsItsReadersMayCall(t *testing.T) {
 	}
 	if _, ok := r.loaders[catalog.BaselinePath]; !ok {
 		t.Fatalf("BASELINE is not in any agent's context: %v", slices.Sorted(maps.Keys(r.loaders)))
+	}
+}
+
+func TestMemoryPermissionsMatchEveryInstanceRole(t *testing.T) {
+	r := renderCatalog(t)
+	for _, spec := range r.specs {
+		t.Run(spec.ID, func(t *testing.T) {
+			rules := r.config.Agents[spec.ID].Permissions
+			if effectOf(rules, "memory_record", "*") != "allow" {
+				t.Fatal("record must remain available")
+			}
+			want := "deny"
+			if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
+				want = "allow"
+			}
+			for _, name := range []string{"memory_continue_session", "memory_close_session"} {
+				if got := effectOf(rules, name, "*"); got != want {
+					t.Errorf("%s = %s, want %s", name, got, want)
+				}
+			}
+		})
 	}
 }

@@ -71,7 +71,8 @@ func TestMemoryCommandExitCodes(t *testing.T) {
 	}{
 		{"record ok", "record", record, 0, `"ok":true`},
 		{"close ok", "close", `{"author":"takt","session":"ses_1","directory":"/work/demo","objective":"Split parser","state":"Parser split"}`, 0, `"end_anchor_id"`},
-		{"record after close", "record", record, 2, "already closed"},
+		{"record after close resumes", "record", strings.Replace(record, "Split the parser", "Refined the parser", 1), 0, `"ok":true`},
+		{"close resumed session", "close", `{"author":"takt","session":"ses_1","directory":"/work/demo","objective":"Refine parser","state":"Parser refined"}`, 0, `"end_anchor_id"`},
 		{"quoted wording accepted", "record", strings.NewReplacer("ses_1", "ses_words", "Split the parser", "Quoted: will", "The parser mixes IO and parsing.", "se verificó todo").Replace(record), 0, `"ok":true`},
 		{"invalid json", "record", `{"author":`, 2, "invalid request"},
 		{"unknown field", "record", strings.Replace(record, `"author"`, `"confirmed_by":"x","author"`, 1), 2, "unknown field"},
@@ -94,5 +95,37 @@ func TestMemoryCommandEngramUnreachable(t *testing.T) {
 	line, code := runMemoryCLI(t, "record", `{"author":"dev","session":"ses_1","directory":"/w","nature":"proposal","scope":"project","title":"T","content":"C"}`)
 	if code != 1 || line["ok"] != false {
 		t.Fatalf("code=%d line=%v, want internal failure", code, line)
+	}
+}
+
+func TestMemoryCapabilitiesReadOnly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	for _, tt := range []struct {
+		author string
+		count  int
+	}{{"spec", 1}, {"takt", 3}, {"architect", 3}} {
+		t.Run(tt.author, func(t *testing.T) {
+			input, err := json.Marshal(map[string]string{"author": tt.author, "session": "root", "directory": dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			line, code := runMemoryCLI(t, "capabilities", string(input))
+			if code != 0 || line["ok"] != true {
+				t.Fatalf("%v: %v", code, line)
+			}
+			tools, ok := line["result"].([]any)
+			if !ok || len(tools) != tt.count || tools[0] != "memory_record" {
+				t.Fatal(line)
+			}
+		})
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("read-only query mutated workspace: %v %v", entries, err)
+	}
+	_, code := runMemoryCLI(t, "capabilities", `{"author":"spec","unexpected":true}`)
+	if code != invalidRequestExitStatus {
+		t.Fatalf("unknown identity fields accepted: %d", code)
 	}
 }

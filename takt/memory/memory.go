@@ -309,7 +309,8 @@ func (s *openSession) fixContinuity(ctx context.Context, cfg Config) error {
 }
 
 // Record validates and writes one memory into Engram under the session's
-// lock, rejecting closed sessions and contract violations.
+// lock. A new entry resumes a previously closed host conversation; historical
+// close anchors remain in Engram. Contract violations are still rejected.
 func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordResult, err error) {
 	if err := validateRecord(req); err != nil {
 		return RecordResult{}, err
@@ -369,9 +370,6 @@ func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author s
 }
 
 func (s *openSession) prepareRecord(ctx context.Context, cfg Config, req RecordRequest) error {
-	if s.index != nil && s.index.EndAnchor != 0 {
-		return reject("session %q is already closed; memory can no longer be recorded in it", req.Session)
-	}
 	if err := s.client.ensureServe(ctx); err != nil {
 		return err
 	}
@@ -419,6 +417,10 @@ func (s *openSession) recordLinks(ctx context.Context, cfg Config, req RecordReq
 		entry.Relation, entry.Target = rel.Relation, rel.ID
 	}
 	l.Entries = append(l.Entries, entry)
+	// OpenCode reuses its root session when the user continues after a reported
+	// result. Only a successfully linked new entry reopens memory: failed writes
+	// and deduplicated retries leave the previous close intact.
+	l.EndAnchor = 0
 	return saveSessionIndex(cfg.Root, l)
 }
 
@@ -633,6 +635,23 @@ func loadPreviousSessionIndex(cfg Config, previous string) (*sessionIndex, error
 	return prev, nil
 }
 
+// CapabilitiesRequest identifies a harness-resolved caller without model input.
+type CapabilitiesRequest struct {
+	Author    string `json:"author"`
+	Session   string `json:"session"`
+	Directory string `json:"directory"`
+}
+
+// Capabilities projects session ownership without writing memory. An unavailable
+// ownership authority hides lifecycle operations, but never prevents recording.
+func Capabilities(req CapabilitiesRequest) []string {
+	tools := []string{"memory_record"}
+	if requireSession(req.Session, req.Directory) == nil && holdsSession(req.Author, req.Session, req.Directory) == nil {
+		tools = append(tools, "memory_continue_session", "memory_close_session")
+	}
+	return tools
+}
+
 // holdsSession accepts the orchestrator, or the role holding the user
 // conversation only when it is either the base (no switch ever recorded) or
 // the temporary holder the interlocutor stack (IR-14..17) currently has on
@@ -648,12 +667,19 @@ func holdsSession(author, session, directory string) (err error) {
 	if !role.HoldsInterface() {
 		return reject("only the agent holding the user conversation links or closes a session")
 	}
-	h, err := history.Open(directory)
+	info, err := os.Stat(directory)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, h.Close()) }()
-	budgets := h.Project().Budgets(session)
+	if !info.IsDir() {
+		return reject("workspace directory is not a directory")
+	}
+	// Read the same private store dispatch uses, never a history at workspace root.
+	projection, err := history.ReadProjection(history.StateDir(directory))
+	if err != nil {
+		return err
+	}
+	budgets := projection.Budgets(session)
 	if budgets.InterlocutorHolder == "" || author == budgets.InterlocutorAgent {
 		return nil
 	}

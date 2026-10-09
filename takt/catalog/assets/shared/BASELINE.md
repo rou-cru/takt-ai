@@ -9,7 +9,7 @@ There are two separate tool interfaces. For a native tool (for example, `shell`)
 Tools exposed through **Code Mode**, including Takt coordination and result tools named in this contract or a skill, are called through the native `execute` tool with JavaScript in its `code` input. Inside that code, `search` is a global function, not a property of `tools`. For example, to discover a Takt tool, call `execute` with:
 
 ```js
-return search({ query: "dispatch_activity_start" })
+return search({ query: "memory_record" })
 ```
 
 Read the returned entry's `path` and `signature`. In a **subsequent** `execute` call, invoke that exact path on `tools` with the listed input. Do not invent a path from the tool name or call `tools.search`. If discovery returns no matching tool, stop instead of guessing another interface.

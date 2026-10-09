@@ -254,8 +254,8 @@ const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknow
 // everything an ordinary verification uses (shell, web, Engram reads); only the
 // collector stages its authorized change.
 const GC_LANE_TOOLS: Record<string, string[]> = {
-  collector: ["read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record", "memory_continue_session", "memory_close_session"],
-  verifier: ["read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_search", "engram_mem_get_observation", "engram_mem_context", "memory_record", "memory_continue_session", "memory_close_session"],
+  collector: ["gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change", "read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record"],
+  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_search", "engram_mem_get_observation", "engram_mem_context", "memory_record"],
 }
 
 // gcSessionPermissions is the ruleset a GC child session is created with: only
@@ -263,7 +263,6 @@ const GC_LANE_TOOLS: Record<string, string[]> = {
 // is removed from the session's tool snapshot entirely.
 const gcSessionPermissions = (role: string) => [
   { action: "*", resource: "*", effect: "deny" as const },
-  { action: "gc_*", resource: "*", effect: "allow" as const },
   ...GC_LANE_TOOLS[role].map(action => ({ action, resource: "*", effect: "allow" as const })),
   ...SENSITIVE_READ_GLOBS.map(glob => ({ action: "read", resource: `**/${glob}`, effect: "deny" as const })),
 ]
@@ -988,7 +987,7 @@ export default Plugin.define({
       if (gcChildren.has(event.sessionID)) {
         // The session's own permission ruleset already removes everything else;
         // this is the second lock, for a tool that reaches execution anyway.
-        const allowed = event.tool.startsWith("gc_") || (GC_LANE_TOOLS[gcLaneRole.get(event.sessionID) ?? ""] ?? []).includes(event.tool)
+        const allowed = (GC_LANE_TOOLS[gcLaneRole.get(event.sessionID) ?? ""] ?? []).includes(event.tool)
         if (!allowed) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This maintenance cycle does not use that tool"))
         return
       }
@@ -1529,7 +1528,7 @@ export default Plugin.define({
         input: obj({
           path: str(),
           content: str(),
-          author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
+          author_key: str("Assigned binding key; defaults to your own latest binding"),
         }, ["path", "content"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; content: string; author_key?: string }>(input)
@@ -1584,7 +1583,7 @@ export default Plugin.define({
         description: "Stage the deletion of a file inside your declared scope. Staged virtually; the workspace copy is untouched until verified and consolidated.",
         input: obj({
           path: str(),
-          author_key: str("Binding key from vfs_bind; defaults to your own latest binding"),
+          author_key: str("Assigned binding key; defaults to your own latest binding"),
         }, ["path"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; author_key?: string }>(input)
@@ -1739,10 +1738,16 @@ export default Plugin.define({
             }
             lines.push(`author_key ${key}: ${(owned.find(x => x.key === key)?.scope ?? []).join(", ")}${note}`)
           }
-          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. Read staged files with vfs_read naming their author_key; read project context with native read tools and run validation checks without editing the project, and attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on.\n${lines.join("\n")}` })
+          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""} read project context with native read tools and run validation checks without editing the project.${allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""}\n${lines.join("\n")}` })
           return
         }
-        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. Bind with vfs_bind using exactly this scope, stage changes with vfs_write and vfs_delete, read your staged view with vfs_read, and return the author_key in your handoff.` })
+        const conduct = [
+          allowed.includes("vfs_bind") ? "Bind with vfs_bind using exactly this scope." : "",
+          allowed.includes("vfs_write") ? "Stage changes with vfs_write." : "",
+          allowed.includes("vfs_delete") ? "Stage deletions with vfs_delete." : "",
+          allowed.includes("vfs_read") ? "Read your staged view with vfs_read." : "",
+        ].filter(Boolean).join(" ")
+        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. ${conduct} Return the author_key in your handoff.` })
       } catch { removeVFS() }
     })
 

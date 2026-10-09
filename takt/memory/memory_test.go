@@ -20,8 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/model"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -574,11 +579,13 @@ Parser split; CLI unwired`, first.ID, second.ID, second.ID, first.ID)
 	_, err = Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo"})
 	wantValidation(t, err)
 
-	// A2: a closed session accepts no more entries.
+	// A new result resumes the same host conversation after a close.
 	late := base()
 	late.Title = "Renamed the parser"
 	_, err = Record(ctx, cfg, late)
-	wantValidation(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// A3: anchors are not memory entries, so nothing relates to them.
 	for _, anchor := range []int64{l.StartAnchor, res.EndAnchorID} {
@@ -847,7 +854,7 @@ func TestEntryIDsForSession(t *testing.T) {
 // once one has been.
 func TestHoldsSessionInterlocutorHolder(t *testing.T) {
 	dir := t.TempDir()
-	h, err := history.Open(dir)
+	h, err := history.Open(filepath.Join(dir, ".takt-ai", "vfs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -883,5 +890,121 @@ func TestHoldsSessionBaseHolderWithoutSwitch(t *testing.T) {
 	}
 	if err := holdsSession("dev", "root", dir); err == nil {
 		t.Fatal("a role that never holds the interface should fail")
+	}
+}
+
+func TestCapabilitiesProjectsEveryCatalogInstance(t *testing.T) {
+	cat, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, def := range cat.Agents {
+		for _, id := range def.Instances {
+			t.Run(id, func(t *testing.T) {
+				tools := Capabilities(CapabilitiesRequest{Author: id, Session: "root", Directory: dir})
+				want := []string{"memory_record"}
+				if def.Role == model.RoleOrchestrator || def.Role.HoldsInterface() {
+					want = append(want, "memory_continue_session", "memory_close_session")
+				}
+				if !slices.Equal(tools, want) {
+					t.Fatalf("got %v, want %v", tools, want)
+				}
+				if len(want) == 1 {
+					if err := Continue(context.Background(), Config{}, ContinueRequest{Author: id, Session: "root", Directory: dir}); err == nil {
+						t.Fatal("unauthorized direct continue accepted")
+					}
+					if _, err := Close(context.Background(), Config{}, CloseRequest{Author: id, Session: "root", Directory: dir}); err == nil {
+						t.Fatal("unauthorized direct close accepted")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestCapabilitiesFailClosedAndReflectHolder(t *testing.T) {
+	dir := t.TempDir()
+	h, err := history.Open(filepath.Join(dir, ".takt-ai", "vfs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		author, directory string
+		count             int
+	}{
+		{"architect", dir, 3}, {"pm", dir, 1}, {"takt", dir, 3}, {"spec", dir, 1}, {"unknown", dir, 1}, {"architect", "", 1},
+	} {
+		t.Run(tt.author+tt.directory, func(t *testing.T) {
+			got := Capabilities(CapabilitiesRequest{Author: tt.author, Session: "root", Directory: tt.directory})
+			if len(got) != tt.count || got[0] != "memory_record" {
+				t.Fatalf("unexpected capabilities: %v", got)
+			}
+		})
+	}
+}
+
+func TestCapabilitiesDoesNotCreateHistory(t *testing.T) {
+	dir := t.TempDir()
+	if got := Capabilities(CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 3 {
+		t.Fatal(got)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("capabilities wrote workspace: %v, %v", entries, err)
+	}
+	state := filepath.Join(dir, ".takt-ai", "vfs")
+	if err := os.MkdirAll(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "history.sqlite"), []byte("corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Capabilities(CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 1 {
+		t.Fatal(got)
+	}
+}
+
+func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
+	dir := t.TempDir()
+	state := filepath.Join(dir, ".takt-ai", "vfs")
+	h, err := history.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	for _, holder := range []string{"architect", "pm"} {
+		if holder == "pm" {
+			if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorHandoff, SessionID: "root", WorkUnitID: "architect-child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Result: "Standard"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: holder + "-child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: holder, Artifact: "artifacts/report.md"}); err != nil {
+			t.Fatal(err)
+		}
+		for _, author := range []string{"architect", "pm"} {
+			got := Capabilities(CapabilitiesRequest{Author: author, Session: "root", Directory: dir})
+			want := 1
+			if author == holder {
+				want = 3
+			}
+			if len(got) != want {
+				t.Fatalf("holder %s, author %s: %v", holder, author, got)
+			}
+			if author != holder {
+				if err := Continue(context.Background(), Config{}, ContinueRequest{Author: author, Session: "root", Directory: dir}); err == nil {
+					t.Fatal("non-holder continue allowed")
+				}
+				if _, err := Close(context.Background(), Config{}, CloseRequest{Author: author, Session: "root", Directory: dir}); err == nil {
+					t.Fatal("non-holder close allowed")
+				}
+			}
+		}
 	}
 }
