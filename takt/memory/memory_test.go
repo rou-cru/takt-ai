@@ -978,7 +978,11 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
+	t.Cleanup(func() {
+		if err := h.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	for _, holder := range []string{"architect", "pm"} {
 		if holder == "pm" {
 			if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorHandoff, SessionID: "root", WorkUnitID: "architect-child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Result: "Standard"}); err != nil {
