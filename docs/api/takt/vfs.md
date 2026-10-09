@@ -32,7 +32,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) BindingIdentity\(key AgentID\) \(Identity, bool\)](<#FS.BindingIdentity>)
   - [func \(f \*FS\) Close\(\) error](<#FS.Close>)
   - [func \(f \*FS\) CompleteCycle\(cycleID string\) \(err error\)](<#FS.CompleteCycle>)
-  - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64\) \(err error\)](<#FS.ConsolidateCheckpoint>)
+  - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64, acceptFailing bool\) \(err error\)](<#FS.ConsolidateCheckpoint>)
   - [func \(f \*FS\) ConsolidatedBy\(path string\) \(cycleID, mandateClass string, ok bool\)](<#FS.ConsolidatedBy>)
   - [func \(f \*FS\) DiscardCycle\(cycleID string\) \(restored \[\]string, err error\)](<#FS.DiscardCycle>)
   - [func \(f \*FS\) DropCycleStaging\(cycle string\) \(err error\)](<#FS.DropCycleStaging>)
@@ -61,6 +61,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type OwnershipClaim](<#OwnershipClaim>)
 - [type ShellPlan](<#ShellPlan>)
 - [type StagedView](<#StagedView>)
+- [type VerdictSummary](<#VerdictSummary>)
 - [type VerificationVerdict](<#VerificationVerdict>)
 
 
@@ -161,6 +162,12 @@ var (
     // ErrVerificationRequired is returned when consolidation is attempted without
     // a passing verification verdict.
     ErrVerificationRequired = errors.New("vfs: consolidation requires a passing verification verdict")
+
+    // ErrFailingVerdict is returned when consolidation is attempted over a
+    // current failing verdict without the user's explicit acceptance. Verdicts
+    // inform; this refusal only asks for that acceptance, and the staged work is
+    // kept.
+    ErrFailingVerdict = errors.New("vfs: a current verification verdict failed; consolidating needs the user's explicit acceptance")
 
     // ErrSelfVerification is returned when the authoring agent attempts to
     // verify its own delta.
@@ -388,10 +395,10 @@ CompleteCycle releases cycleID's discard state after it closed without regressin
 ### func \(\*FS\) ConsolidateCheckpoint
 
 ```go
-func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
+func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error)
 ```
 
-ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes; a verdict, when present, remains bound to its evidence. An empty checkpoint label defaults to the author key and revision.
+ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes. Verdicts inform: a current failing one refuses unless acceptFailing carries the user's explicit acceptance, and a stale one is ignored. A maintenance cycle's verdict stays a gate bound to its evidence. An empty checkpoint label defaults to the author key and revision.
 
 <a name="FS.ConsolidatedBy"></a>
 ### func \(\*FS\) ConsolidatedBy
@@ -738,6 +745,8 @@ type OwnershipClaim struct {
     Pending   bool    `json:"pending"`
     // Staged is true while the claim holds staged work, which a release refuses.
     Staged bool `json:"staged,omitempty"`
+    // Verdicts lists the current verdict of each judge of this staged work.
+    Verdicts []VerdictSummary `json:"verdicts,omitempty"`
 }
 ```
 
@@ -780,6 +789,19 @@ type StagedView struct {
     Revision uint64             `json:"revision"`
     Hash     string             `json:"delta_hash"`
     Files    map[string]*string `json:"files"`
+}
+```
+
+<a name="VerdictSummary"></a>
+## type VerdictSummary
+
+VerdictSummary is one judge's current verdict as the orchestrator reads it.
+
+```go
+type VerdictSummary struct {
+    VerifierKey AgentID `json:"verifier_key"`
+    Pass        bool    `json:"pass"`
+    Finding     string  `json:"finding,omitempty"`
 }
 ```
 
