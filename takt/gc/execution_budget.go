@@ -5,13 +5,16 @@ import (
 	"time"
 )
 
-// Default execution timeouts when gc.json omits them: checks get the largest
-// budget, analyzers a bit less, and version/AST probes the least.
+// Default execution timeouts when gc.json omits them.
 const (
-	DefaultCheckTimeout    = 15 * time.Minute
+	// DefaultCheckTimeout bounds one acceptance check command.
+	DefaultCheckTimeout = 15 * time.Minute
+	// DefaultAnalyzerTimeout bounds one analyzer run.
 	DefaultAnalyzerTimeout = 10 * time.Minute
-	DefaultVersionTimeout  = 30 * time.Second
-	DefaultASTTimeout      = 30 * time.Second
+	// DefaultVersionTimeout bounds one tool-version probe.
+	DefaultVersionTimeout = 30 * time.Second
+	// DefaultASTTimeout bounds one AST extraction pass.
+	DefaultASTTimeout = 30 * time.Second
 )
 
 func validateTimeouts(cfg ProjectConfig) error {
@@ -27,7 +30,8 @@ func validateTimeouts(cfg ProjectConfig) error {
 	return nil
 }
 
-// Callers validate config first; empty values in old gc.json/state use defaults.
+// durationOrDefault falls back when the value is empty; malformed values use
+// the fallback too because callers validate config first.
 func durationOrDefault(value string, fallback time.Duration) time.Duration {
 	if value == "" {
 		return fallback

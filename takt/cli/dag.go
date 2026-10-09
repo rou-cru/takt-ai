@@ -77,11 +77,10 @@ func runDag(args []string, stdout, stderr io.Writer) error {
 }
 
 // readSnapshot opens the workspace's execution history the same way
-// dispatch/vfs/gc do, and derives its DAG snapshot. It never initializes a
-// new store for a mistyped path (mirroring gc.go's and vfs.go's own
-// "existing store required" guard): an absent history is a read failure, not
-// a legitimately empty plan, so it is checked before history.Open, which
-// would otherwise create one.
+// dispatch/vfs/gc do and derives its DAG snapshot. It never initializes a store
+// for a mistyped path (mirroring gc.go's and vfs.go's "existing store
+// required" guard): an absent history is a read failure, not an empty plan, and
+// is checked before history.Open, which would create one.
 func readSnapshot(workspace, state, session string) (snap history.Snapshot, err error) {
 	if info, statErr := os.Stat(workspace); statErr != nil || !info.IsDir() {
 		return history.Snapshot{}, fmt.Errorf("dag: workspace %q is not an existing directory", workspace)

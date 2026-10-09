@@ -119,10 +119,10 @@ func list[W, T any](ctx context.Context, c *Client, path string, convert func(W)
 }
 
 // Reload restarts the background server, then asks it to rebuild every loaded
-// location; a failure is returned as an error, never treated as a silent
-// success. A location reload alone is not enough after a deployment: the
-// server that loaded plugins before their dependencies were installed keeps
-// failing to resolve those packages until its process is replaced.
+// location; a failure is an error, never a silent success. A location reload
+// alone is not enough after a deployment: a server that loaded plugins before
+// their dependencies were installed keeps failing to resolve them until its
+// process is replaced.
 func (c *Client) Reload(ctx context.Context) error {
 	if _, err := c.invoke(ctx, "service restart", []string{"service", "restart"}); err != nil {
 		return err

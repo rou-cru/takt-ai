@@ -23,7 +23,7 @@ Package uninstall provides the target\-scoped managed\-file uninstall screen.
 
 
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L79-L114>)
 
 Model owns only uninstall interaction state. It emits lifecycle action messages; runtime.Adapter owns the uninstall itself as one busy operation, including the retention handoff for modified files.
 
@@ -36,7 +36,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L117>)
 
 ```go
 func New(rootDir string) Model
@@ -45,7 +45,7 @@ func New(rootDir string) Model
 New creates an uninstall screen rooted at rootDir.
 
 <a name="Model.Dirty"></a>
-### func \(Model\) Dirty
+### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L156>)
 
 ```go
 func (model Model) Dirty() bool
@@ -54,7 +54,7 @@ func (model Model) Dirty() bool
 Dirty reports answers that have not been applied yet.
 
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L147>)
 
 ```go
 func (Model) Init() tea.Cmd
@@ -63,7 +63,7 @@ func (Model) Init() tea.Cmd
 Init has no startup work.
 
 <a name="Model.Run"></a>
-### func \(Model\) Run
+### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L150>)
 
 ```go
 func (m Model) Run() runtime.Run
@@ -72,7 +72,7 @@ func (m Model) Run() runtime.Run
 Run exposes the flow's action state so the shell gates quit and cancel.
 
 <a name="Model.State"></a>
-### func \(Model\) State
+### func \(Model\) [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L153>)
 
 ```go
 func (model Model) State() State
@@ -81,7 +81,7 @@ func (model Model) State() State
 State returns the visible uninstall step.
 
 <a name="Model.Title"></a>
-### func \(Model\) Title
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L408>)
 
 ```go
 func (model Model) Title() string
@@ -90,7 +90,7 @@ func (model Model) Title() string
 Title identifies the flow and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L164>)
 
 ```go
 func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
@@ -99,7 +99,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update handles interaction and action results without performing lifecycle work.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L424>)
 
 ```go
 func (model Model) View() tea.View
@@ -108,7 +108,7 @@ func (model Model) View() tea.View
 View renders the active uninstall step.
 
 <a name="State"></a>
-## type State
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/uninstall/uninstall.go#L21>)
 
 State identifies the visible uninstall step.
 

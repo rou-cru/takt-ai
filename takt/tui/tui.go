@@ -646,10 +646,10 @@ const homeLogoMaxRows = 16
 // the composition stays balanced at every size.
 const homeGapMin = 4
 
-// menuBody composes the home (PR-UX-2A): the logo with the menu beside it,
-// vertically centered on the ring, or stacked under it when narrow; the whole
-// block centered in the screen. The logo takes the largest variant that
-// fits; a terminal too small for any variant shows the menu alone.
+// menuBody composes the home (PR-UX-2A): the logo beside the menu, vertically
+// centered, or stacked under it when narrow, with the whole block centered in
+// the screen. The logo takes the largest variant that fits; a terminal too
+// small for any variant shows the menu alone.
 func (m Model) menuBody() string {
 	items := []ui.Item{}
 	for _, item := range m.visibleMenu() {

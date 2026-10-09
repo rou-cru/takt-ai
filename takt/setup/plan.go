@@ -62,11 +62,11 @@ func BuildTargetPlans(request PlanRequest) ([]TargetPlan, []catalog.Removal, err
 	return []TargetPlan{plan}, removals, nil
 }
 
-// buildOpenCodePlan builds an OpenCode configuration plan from the declarative catalog and the
-// selected model, using the default model when none is specified. Per-instance overrides take
-// precedence over the fallback model. OpenCode does not compile a per-agent
-// prompt file: it deploys the catalog tree as-is and points each agent's prompt at it via {file:...}
-// references (opencode.ComposePrompt), so no global prompt artifact is generated here (see README.md).
+// buildOpenCodePlan builds an OpenCode configuration plan from the declarative
+// catalog, the default selected model and the per-instance overrides that take
+// precedence. OpenCode compiles no per-agent prompt file: the catalog tree is
+// deployed as-is and each agent's prompt points at it via {file:...}
+// references (opencode.ComposePrompt), so no global prompt artifact is built.
 func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.ModelAssignment, components []model.ComponentID) (TargetPlan, error) {
 	modelID := options.Model
 	pack, err := catalog.LoadPackages()

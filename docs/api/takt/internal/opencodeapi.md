@@ -6,18 +6,11 @@
 import "github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 ```
 
-Package opencodeapi is Takt's single adapter to the OpenCode v2 HTTP API.
+Package opencodeapi is Takt's single adapter to the OpenCode v2 HTTP API. That API is experimental \(routes under /api/\*, response shapes that can gain fields\), so model listing, setup verification and configuration reload all go through here and Takt moves in exactly one place when OpenCode does.
 
-That API is experimental: its routes live under /api/\*, response shapes can gain fields at any release, and even the CLI entry point may change how it resolves the server. Every consumer of that surface — model listing \(R1\), setup verification \(R2\) and configuration reload \(R3\) — goes through this package, so when OpenCode moves, Takt moves in exactly one place.
+The adapter shells out to the installed "opencode" binary \("opencode api"\) rather than speaking HTTP directly, reusing OpenCode's own server discovery, authentication and startup instead of duplicating and drifting from it.
 
-The adapter shells out to the installed "opencode" binary instead of speaking HTTP directly. The binary knows how to find, authenticate against and start the right server \(background service, \-\-server URL, or a private \-\-standalone instance\); re\-implementing that resolution in Takt would duplicate OpenCode's own connection logic and drift away from it. The subcommand used is "opencode api", which takes an HTTP method and a path, forwards them to the resolved server and prints the raw response body.
-
-Errors are typed because consumers must fail visibly and differently depending on the situation \(PR\-ART\-2: never mutate on a broken foundation\):
-
-- ErrBinaryMissing: no usable opencode binary — installation cannot even start, so callers should report "not installed" rather than "broken".
-- ErrUnavailable: the binary exists but the API did not answer — the server is down, unreachable, or the call failed; callers must treat this as "not verifiable", never as "verified".
-- ErrVersion: the server answered but is too old for the V2 surface Takt requires — callers must abort before mutating anything.
-- ErrInvalidResponse: the API answered but not with the expected JSON — evidence of drift between OpenCode and this adapter.
+Errors are typed so consumers fail visibly and differently \(PR\-ART\-2: never mutate on a broken foundation\): ErrBinaryMissing \(not installed\), ErrUnavailable \(not verifiable\), ErrVersion \(too old; abort before mutating\) and ErrInvalidResponse \(drift\).
 
 ## Index
 
@@ -90,7 +83,7 @@ var (
 ```
 
 <a name="RedactError"></a>
-## func RedactError
+## func [RedactError](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/redact.go#L25>)
 
 ```go
 func RedactError(err error) error
@@ -99,7 +92,7 @@ func RedactError(err error) error
 RedactError removes credentials and prompt contents before an API error is included in user\-facing diagnostics. It preserves the original error chain.
 
 <a name="Agent"></a>
-## type Agent
+## type [Agent](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L67-L71>)
 
 Agent is one agent OpenCode has registered.
 
@@ -112,7 +105,7 @@ type Agent struct {
 ```
 
 <a name="Client"></a>
-## type Client
+## type [Client](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L63-L68>)
 
 Client is the entry point of the adapter. It is safe to create once and share: it holds no mutable state, only configuration.
 
@@ -123,7 +116,7 @@ type Client struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L97>)
 
 ```go
 func New(options ...Option) *Client
@@ -132,7 +125,7 @@ func New(options ...Option) *Client
 New builds a Client that delegates to the "opencode" binary in PATH with the default per\-call timeout.
 
 <a name="Client.Agents"></a>
-### func \(\*Client\) Agents
+### func \(\*Client\) [Agents](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L82>)
 
 ```go
 func (c *Client) Agents(ctx context.Context) ([]Agent, error)
@@ -143,7 +136,7 @@ Agents returns the agents the server currently registered, in registration order
 Route: GET /api/agent \(agent.list\).
 
 <a name="Client.DefaultModel"></a>
-### func \(\*Client\) DefaultModel
+### func \(\*Client\) [DefaultModel](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L50>)
 
 ```go
 func (c *Client) DefaultModel(ctx context.Context) (*Model, error)
@@ -152,7 +145,7 @@ func (c *Client) DefaultModel(ctx context.Context) (*Model, error)
 DefaultModel returns the model used when a session has no explicit model selection, or nil when the server has no default configured. The nil is a meaningful answer, not an error.
 
 <a name="Client.Handshake"></a>
-### func \(\*Client\) Handshake
+### func \(\*Client\) [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L137>)
 
 ```go
 func (c *Client) Handshake(ctx context.Context) (Handshake, error)
@@ -161,7 +154,7 @@ func (c *Client) Handshake(ctx context.Context) (Handshake, error)
 Handshake proves the local OpenCode is functional for Takt, walking the failure ladder from binary to API to version to model routes; the error type names the layer that failed.
 
 <a name="Client.Info"></a>
-### func \(\*Client\) Info
+### func \(\*Client\) [Info](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L23>)
 
 ```go
 func (c *Client) Info(ctx context.Context) (Info, error)
@@ -172,7 +165,7 @@ Info returns the exact version of the server the CLI resolves. It is the cheapes
 Route: GET /api/info \(server.info\).
 
 <a name="Client.MCPStatus"></a>
-### func \(\*Client\) MCPStatus
+### func \(\*Client\) [MCPStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L74>)
 
 ```go
 func (c *Client) MCPStatus(ctx context.Context) ([]MCPServer, error)
@@ -183,7 +176,7 @@ MCPStatus returns every configured MCP server with the connection state the serv
 Route: GET /api/mcp \(mcp.list\).
 
 <a name="Client.Models"></a>
-### func \(\*Client\) Models
+### func \(\*Client\) [Models](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L43>)
 
 ```go
 func (c *Client) Models(ctx context.Context) ([]Model, error)
@@ -192,7 +185,7 @@ func (c *Client) Models(ctx context.Context) ([]Model, error)
 Models returns the models the server currently exposes, in API order. An empty list is returned as\-is, no error: deciding whether "no models" is fatal belongs to the consumer.
 
 <a name="Client.Plugins"></a>
-### func \(\*Client\) Plugins
+### func \(\*Client\) [Plugins](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L96>)
 
 ```go
 func (c *Client) Plugins(ctx context.Context) ([]Plugin, error)
@@ -203,16 +196,16 @@ Plugins returns the enabled server plugins and whether each one loaded.
 Route: GET /api/plugin \(plugin.list\).
 
 <a name="Client.Reload"></a>
-### func \(\*Client\) Reload
+### func \(\*Client\) [Reload](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L126>)
 
 ```go
 func (c *Client) Reload(ctx context.Context) error
 ```
 
-Reload restarts the background server, then asks it to rebuild every loaded location; a failure is returned as an error, never treated as a silent success. A location reload alone is not enough after a deployment: the server that loaded plugins before their dependencies were installed keeps failing to resolve those packages until its process is replaced.
+Reload restarts the background server, then asks it to rebuild every loaded location; a failure is an error, never a silent success. A location reload alone is not enough after a deployment: a server that loaded plugins before their dependencies were installed keeps failing to resolve them until its process is replaced.
 
 <a name="Client.Skills"></a>
-### func \(\*Client\) Skills
+### func \(\*Client\) [Skills](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/endpoints.go#L89>)
 
 ```go
 func (c *Client) Skills(ctx context.Context) ([]Skill, error)
@@ -223,7 +216,7 @@ Skills returns the skills the server discovered and can load on demand.
 Route: GET /api/skill \(skill.list\).
 
 <a name="Handshake"></a>
-## type Handshake
+## type [Handshake](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L90-L93>)
 
 Handshake is the outcome of checking that the local OpenCode is functional for Takt before anything is installed or mutated.
 
@@ -235,7 +228,7 @@ type Handshake struct {
 ```
 
 <a name="Info"></a>
-## type Info
+## type [Info](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L8-L10>)
 
 Info is the identity of the running OpenCode server; only the fields the handshake needs are surfaced from the API payload.
 
@@ -246,7 +239,7 @@ type Info struct {
 ```
 
 <a name="MCPServer"></a>
-## type MCPServer
+## type [MCPServer](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L60-L64>)
 
 MCPServer is one configured MCP server with the connection state OpenCode actually observes — not what configuration files claim.
 
@@ -259,7 +252,7 @@ type MCPServer struct {
 ```
 
 <a name="MCPState"></a>
-## type MCPState
+## type [MCPState](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L42>)
 
 MCPState is the connection state OpenCode reports for an MCP server. An unknown state fails parsing so verification never mistakes a half\-connected server for a working one.
 
@@ -271,16 +264,21 @@ type MCPState string
 
 ```go
 const (
+    // MCPConnected means the server responded to OpenCode.
     MCPConnected MCPState = "connected"
-    MCPPending   MCPState = "pending"
-    MCPDisabled  MCPState = "disabled"
-    MCPFailed    MCPState = "failed"
+    // MCPPending means the server is still being brought up.
+    MCPPending MCPState = "pending"
+    // MCPDisabled means configuration turned the server off.
+    MCPDisabled MCPState = "disabled"
+    // MCPFailed means the server could not start or respond.
+    MCPFailed MCPState = "failed"
+    // MCPNeedsAuth means the server requires credentials before it connects.
     MCPNeedsAuth MCPState = "needs_auth"
 )
 ```
 
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L33-L37>)
 
 Model is the structured replacement for parsing "opencode models" text. Only Ref is read anywhere; the rest of the wire payload \(name, status, capabilities, limits, cost\) is validated on decode but not carried.
 
@@ -293,7 +291,7 @@ type Model struct {
 ```
 
 <a name="ModelRef"></a>
-## type ModelRef
+## type [ModelRef](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L14-L18>)
 
 ModelRef names a model the way OpenCode does everywhere: provider plus model id, optionally pinned to a reasoning variant \("provider/model\#variant"\).
 
@@ -306,7 +304,7 @@ type ModelRef struct {
 ```
 
 <a name="ModelRef.String"></a>
-### func \(ModelRef\) String
+### func \(ModelRef\) [String](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L23>)
 
 ```go
 func (r ModelRef) String() string
@@ -315,7 +313,7 @@ func (r ModelRef) String() string
 String renders the reference in OpenCode's canonical "provider/model" or "provider/model\#variant" form, matching what "opencode models" prints and what configuration files accept.
 
 <a name="Option"></a>
-## type Option
+## type [Option](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L71>)
 
 Option customises a Client at construction time.
 
@@ -324,7 +322,7 @@ type Option func(*Client)
 ```
 
 <a name="WithDir"></a>
-### func WithDir
+### func [WithDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L91>)
 
 ```go
 func WithDir(dir string) Option
@@ -333,7 +331,7 @@ func WithDir(dir string) Option
 WithDir runs the CLI from dir so workspace\-local OpenCode locations are discovered alongside the environment overrides.
 
 <a name="WithEnv"></a>
-### func WithEnv
+### func [WithEnv](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L85>)
 
 ```go
 func WithEnv(env []string) Option
@@ -342,7 +340,7 @@ func WithEnv(env []string) Option
 WithEnv adds environment overrides to every CLI call. The adapter keeps the caller's environment and replaces only variables named here.
 
 <a name="WithRunner"></a>
-### func WithRunner
+### func [WithRunner](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/client.go#L75>)
 
 ```go
 func WithRunner(r runner) Option
@@ -351,7 +349,7 @@ func WithRunner(r runner) Option
 WithRunner replaces the process execution layer. It is a test\-support seam for callers that need to stub the CLI without shipping a fake binary.
 
 <a name="Plugin"></a>
-## type Plugin
+## type [Plugin](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L81-L86>)
 
 Plugin is one server plugin with its loading result. Status is a decision input for verification, so an unknown status fails parsing instead of being mapped to something optimistic.
 
@@ -365,7 +363,7 @@ type Plugin struct {
 ```
 
 <a name="Skill"></a>
-## type Skill
+## type [Skill](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/opencodeapi/types.go#L74-L76>)
 
 Skill is one skill OpenCode has discovered and made loadable.
 

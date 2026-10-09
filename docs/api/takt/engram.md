@@ -52,7 +52,7 @@ var ContractSkillPath = path.Join(MemorySkillsDir, ContractSkillID, catalog.Skil
 ```
 
 <a name="Acquire"></a>
-## func Acquire
+## func [Acquire](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/acquire.go#L88>)
 
 ```go
 func Acquire(ctx context.Context, root string) (string, error)
@@ -61,7 +61,7 @@ func Acquire(ctx context.Context, root string) (string, error)
 Acquire returns Resolve's path when found, or downloads and installs the pinned release.
 
 <a name="Inject"></a>
-## func Inject
+## func [Inject](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/inject.go#L29>)
 
 ```go
 func Inject(homeDir, engramCommand string) (model.InjectionResult, error)
@@ -70,7 +70,7 @@ func Inject(homeDir, engramCommand string) (model.InjectionResult, error)
 Inject adds memory support to OpenCode.
 
 <a name="ManagedBinaryPath"></a>
-## func ManagedBinaryPath
+## func [ManagedBinaryPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/acquire.go#L70>)
 
 ```go
 func ManagedBinaryPath(root string) string
@@ -79,7 +79,7 @@ func ManagedBinaryPath(root string) string
 ManagedBinaryPath returns where Takt installs its own engram copy.
 
 <a name="MemorySkillPath"></a>
-## func MemorySkillPath
+## func [MemorySkillPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/memory.go#L77>)
 
 ```go
 func MemorySkillPath(authorID string) string
@@ -88,7 +88,7 @@ func MemorySkillPath(authorID string) string
 MemorySkillPath returns the deployed memory skill for one author. It is the canonical path builder used by native target adapters.
 
 <a name="NativePluginFootprints"></a>
-## func NativePluginFootprints
+## func [NativePluginFootprints](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/memory.go#L90>)
 
 ```go
 func NativePluginFootprints(homeDir string) []string
@@ -97,7 +97,7 @@ func NativePluginFootprints(homeDir string) []string
 NativePluginFootprints lists installs of Engram's own plugin.
 
 <a name="Remove"></a>
-## func Remove
+## func [Remove](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/remove.go#L26>)
 
 ```go
 func Remove(homeDir string) (model.InjectionResult, error)
@@ -106,7 +106,7 @@ func Remove(homeDir string) (model.InjectionResult, error)
 Remove strips memory support so uninstalls leave no orphan keys or files, and merged user keys are never touched.
 
 <a name="Resolve"></a>
-## func Resolve
+## func [Resolve](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/acquire.go#L75>)
 
 ```go
 func Resolve(root string) (string, bool)
@@ -115,7 +115,7 @@ func Resolve(root string) (string, bool)
 Resolve searches for an engram binary whose version is compatible.
 
 <a name="RoleSkillID"></a>
-## func RoleSkillID
+## func [RoleSkillID](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/memory.go#L65>)
 
 ```go
 func RoleSkillID(authorID string) string
@@ -124,7 +124,7 @@ func RoleSkillID(authorID string) string
 RoleSkillID maps an author to its specialty's memory skill.
 
 <a name="VerifyVersion"></a>
-## func VerifyVersion
+## func [VerifyVersion](<https://github.com/rou-cru/takt-ai/blob/main/takt/engram/verify.go#L33>)
 
 ```go
 func VerifyVersion(binary string) (string, error)

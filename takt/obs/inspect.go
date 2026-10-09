@@ -42,9 +42,10 @@ type StoreHealth struct {
 	LastEventAt time.Time
 }
 
-// InspectStore checks the workspace event store without changing anything, so a health check never creates
-// the store or its directory. It fails when the file cannot be read as a database, is missing a table or
-// fails SQLite's integrity check, because such a store cannot be relied on.
+// InspectStore checks the workspace event store without changing anything, so a
+// health check never creates the store or its directory. It fails when the file
+// is not readable as a database, is missing a table, or fails SQLite's
+// integrity check: such a store cannot be relied on.
 func InspectStore(workspace string) (health StoreHealth, err error) {
 	path, err := StorePath(workspace)
 	if err != nil {

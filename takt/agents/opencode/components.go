@@ -23,10 +23,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// context7Config returns the mcp entry for the context7 component. V2 nests
-// every server under mcp.servers and spells the switch as "disabled". The map
-// shape matches a deep merge of the canonical context7 overlay into
-// opencode.json.
+// context7Config returns the context7 MCP server entry, shaped to deep-merge
+// into opencode.json.
 func context7Config() map[string]any {
 	return map[string]any{
 		"servers": map[string]any{
@@ -39,11 +37,9 @@ func context7Config() map[string]any {
 	}
 }
 
-// permissionsConfig returns the canonical OpenCode permission rules: shell and
-// read are permissive by default with ask rules for state-changing Git
-// commands and deny rules for secret files and credentials. V2 evaluates the
-// array in order and the last match wins, so every blanket allow is emitted
-// before the narrower rules that override it.
+// permissionsConfig returns the canonical permission rules. V2 applies the
+// array in order and the last match wins, so blanket allows precede the
+// narrower rules that override them.
 func permissionsConfig() []permissionRule {
 	rules := []permissionRule{
 		{"shell", allResources, "allow"},
@@ -166,10 +162,9 @@ func resultAgentIDs() []string {
 	return ids
 }
 
-// OpenCodePluginPackageArtifact returns the package manifest for the shared
-// OpenCode plugin directory. OpenCode resolves bare imports from this package
-// root, so SDK dependencies must be declared here rather than left as
-// transitive or manually-installed node_modules.
+// OpenCodePluginPackageArtifact returns the shared plugin directory's package
+// manifest. OpenCode resolves bare imports from this root, so SDK dependencies
+// must be declared here.
 func OpenCodePluginPackageArtifact() Artifact {
 	manifest := struct {
 		Private      bool              `json:"private"`

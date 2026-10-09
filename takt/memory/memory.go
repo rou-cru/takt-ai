@@ -652,10 +652,9 @@ func Capabilities(req CapabilitiesRequest) []string {
 	return tools
 }
 
-// holdsSession accepts the orchestrator, or the role holding the user
-// conversation only when it is either the base (no switch ever recorded) or
-// the temporary holder the interlocutor stack (IR-14..17) currently has on
-// session's root.
+// holdsSession accepts the orchestrator, or the interface-holding role only
+// when it is either the base (no switch recorded) or the temporary holder the
+// interlocutor stack (IR-14..17) currently has on session's root.
 func holdsSession(author, session, directory string) (err error) {
 	role, err := authorRole(author)
 	if err != nil {

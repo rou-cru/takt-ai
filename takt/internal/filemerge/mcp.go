@@ -23,11 +23,10 @@ import (
 )
 
 // InjectMCPServer registers a local stdio MCP server under name in the OpenCode
-// config at path. OpenCode requires command as an array for type:local
-// servers; a separate "args" field is not accepted. The ReplaceSentinel swaps
-// the whole server object so upgrades from a config with a separate "args" key
-// converge instead of accumulating both shapes, and one merge patch keeps
-// shared configs' user keys untouched.
+// config at path. OpenCode requires command as an array for type:local servers
+// (a separate "args" field is rejected); ReplaceSentinel swaps the whole server
+// object so upgrades from the old shape converge instead of accumulating both,
+// and the merge patch leaves shared configs' user keys untouched.
 func InjectMCPServer(path, name string, command []string) (model.InjectionResult, error) {
 	overlay := map[string]any{
 		model.MCPKeyOpenCode: map[string]any{

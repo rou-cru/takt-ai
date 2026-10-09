@@ -23,7 +23,7 @@ Package drift shows which managed files differ from their installed definition a
 
 
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L61-L78>)
 
 Model displays one asynchronous drift inspection.
 
@@ -34,7 +34,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L81>)
 
 ```go
 func New(root string) Model
@@ -43,7 +43,7 @@ func New(root string) Model
 New creates a drift inspection screen rooted at the installation directory.
 
 <a name="Model.Dirty"></a>
-### func \(Model\) Dirty
+### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L324>)
 
 ```go
 func (m Model) Dirty() bool
@@ -52,7 +52,7 @@ func (m Model) Dirty() bool
 Dirty reports a file selection that has not been applied yet.
 
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L94>)
 
 ```go
 func (m Model) Init() tea.Cmd
@@ -61,7 +61,7 @@ func (m Model) Init() tea.Cmd
 Init scans for drift without modifying anything on disk; with nothing installed there is nothing to compare, so the scan is skipped.
 
 <a name="Model.Run"></a>
-### func \(Model\) Run
+### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L105>)
 
 ```go
 func (m Model) Run() runtime.Run
@@ -70,7 +70,7 @@ func (m Model) Run() runtime.Run
 Run exposes the flow's action state so the shell gates quit and cancel.
 
 <a name="Model.State"></a>
-### func \(Model\) State
+### func \(Model\) [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L90>)
 
 ```go
 func (m Model) State() State
@@ -79,7 +79,7 @@ func (m Model) State() State
 State reports the visible step.
 
 <a name="Model.Title"></a>
-### func \(Model\) Title
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L329>)
 
 ```go
 func (m Model) Title() string
@@ -88,7 +88,7 @@ func (m Model) Title() string
 Title identifies the flow and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L109>)
 
 ```go
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
@@ -97,7 +97,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 Update receives the scan result, drives selection/review, and requests navigation back.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L345>)
 
 ```go
 func (m Model) View() tea.View
@@ -106,7 +106,7 @@ func (m Model) View() tea.View
 View renders the active drift step.
 
 <a name="State"></a>
-## type State
+## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/drift/drift.go#L20>)
 
 State identifies the visible drift step.
 

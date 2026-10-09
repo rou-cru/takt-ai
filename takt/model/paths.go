@@ -17,21 +17,24 @@ package model
 
 import "path/filepath"
 
-// Home-relative install paths shared by inject, remove, verify and doctor.
-// Manifest slash-paths live with setup; these are OS paths from a home root.
-
-// Home-relative file and directory names for each harness, plus the plugin
-// filenames Takt deploys into OpenCode's plugin directory.
+// OpenCode's home-relative configuration paths and the plugin filenames Takt
+// deploys into its plugin directory.
 const (
-	OpenCodeConfigDir  = ".config/opencode"
+	// OpenCodeConfigDir is OpenCode's configuration directory under home.
+	OpenCodeConfigDir = ".config/opencode"
+	// OpenCodeConfigFile is OpenCode's configuration filename.
 	OpenCodeConfigFile = "opencode.json"
 	// OpenCodeConfigRelativePath is the slash-separated manifest path owned by OpenCode.
 	OpenCodeConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeConfigFile
-	AgentsPromptFile           = "AGENTS.md"
+	// AgentsPromptFile is OpenCode's global agent prompt file.
+	AgentsPromptFile = "AGENTS.md"
 
+	// OpenCodePluginsDir is the directory OpenCode loads plugins from.
 	OpenCodePluginsDir = "plugins"
-	EngramPluginFile   = "engram.ts"
-	VFSPluginFile      = "takt-vfs.ts"
+	// EngramPluginFile is the deployed Engram memory plugin filename.
+	EngramPluginFile = "engram.ts"
+	// VFSPluginFile is the deployed governed-VFS plugin filename.
+	VFSPluginFile = "takt-vfs.ts"
 )
 
 // MCP object keys per target native config.

@@ -27,7 +27,7 @@ var ErrUnhealthy = errors.New("doctor: unhealthy")
 ```
 
 <a name="Run"></a>
-## func Run
+## func [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L125>)
 
 ```go
 func Run(stdout io.Writer) error
@@ -36,7 +36,7 @@ func Run(stdout io.Writer) error
 Run executes every doctor check and renders the report to stdout. Failed checks do not affect the returned error: only internal failures \(home resolution, write errors\) are returned as errors.
 
 <a name="CheckResult"></a>
-## type CheckResult
+## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L71-L76>)
 
 CheckResult is one health check outcome with an optional remediation hint.
 
@@ -50,7 +50,7 @@ type CheckResult struct {
 ```
 
 <a name="ClassifyFreeSpace"></a>
-### func ClassifyFreeSpace
+### func [ClassifyFreeSpace](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L618>)
 
 ```go
 func ClassifyFreeSpace(dir string, free uint64) CheckResult
@@ -59,7 +59,7 @@ func ClassifyFreeSpace(dir string, free uint64) CheckResult
 ClassifyFreeSpace turns the bytes free on the filesystem holding dir into a check result: a failure under 10 MB, a warning under 100 MB, a pass above.
 
 <a name="CheckStatus"></a>
-## type CheckStatus
+## type [CheckStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L55>)
 
 CheckStatus is the outcome of a single doctor check.
 
@@ -67,18 +67,24 @@ CheckStatus is the outcome of a single doctor check.
 type CheckStatus string
 ```
 
-<a name="CheckStatusPass"></a>Check outcomes: pass, warn \(works but needs attention\), fail \(broken or missing\).
+<a name="CheckStatusPass"></a>Check outcomes.
 
 ```go
 const (
+    // CheckStatusPass describes a check that holds, including benign states
+    // such as a workspace with no event store yet.
     CheckStatusPass CheckStatus = "pass"
+    // CheckStatusWarn describes something functional but needing attention,
+    // for example a store readable by other users.
     CheckStatusWarn CheckStatus = "warn"
+    // CheckStatusFail describes a broken or missing capability, paired with a
+    // Remedy hint in the report.
     CheckStatusFail CheckStatus = "fail"
 )
 ```
 
 <a name="DoctorReport"></a>
-## type DoctorReport
+## type [DoctorReport](<https://github.com/rou-cru/takt-ai/blob/main/takt/doctor/doctor.go#L79-L81>)
 
 DoctorReport aggregates every check executed in one doctor run.
 

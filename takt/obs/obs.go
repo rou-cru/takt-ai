@@ -394,10 +394,9 @@ func PublishCollisionEvent(bus *Bus, clock *Clock, attemptingAgent, owningAgent,
 	return bus.Publish(env)
 }
 
-// PublishCycleReeditEvent publishes the event PR-MNT-31 requires when a path
-// a maintenance cycle already consolidated gets edited again: it attributes
-// the reversion back to that cycle and its mandate class instead of letting
-// it look like an unattributed edit.
+// PublishCycleReeditEvent publishes the PR-MNT-31 event for a path a maintenance
+// cycle already consolidated that is edited again, attributing the reversion to
+// that cycle and its mandate class instead of leaving it unattributed.
 func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClass, pathHash, workUnitID string) error {
 	env := NewEnvelope(clock, PlaneVFS, agent)
 	env.EventClass = EventCycleReedit
@@ -413,10 +412,10 @@ func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClas
 	return bus.Publish(env)
 }
 
-// PublishControlEffectEvent publishes the typed event PR-OBS-CTL-5 requires
-// for every control action beyond OBSERVE: THROTTLE, CONTAIN, ROLLBACK, GATE
-// or ESCALATE. Deciding *when* to throttle, contain or roll back belongs to
-// takt/gc; this only makes the chosen action's effect observable on the bus.
+// PublishControlEffectEvent publishes the PR-OBS-CTL-5 event for every control
+// action beyond OBSERVE (THROTTLE, CONTAIN, ROLLBACK, GATE, ESCALATE). Deciding
+// when to act belongs to takt/gc; this only makes the chosen action observable
+// on the bus.
 func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string) error {
 	class, ok := controlEffectEvents[action]
 	if !ok {

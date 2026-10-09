@@ -113,9 +113,8 @@ func abortWithArtifactReport(h *history.History, ref, workspace string, r coordi
 }
 
 // coordinateRoutine admits and finishes ordinary work. Maintenance never gates
-// either: an admission ends a cycle in flight first, so the orchestrator is
-// never made to wait for one (PR-MNT-3). Whether a cycle is due is decided only
-// when the session is idle, by `gc coordinate`'s tick.
+// either: an admission ends a cycle in flight first (PR-MNT-3). Whether a cycle
+// is due is decided only when the session is idle, by `gc coordinate`'s tick.
 func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
 	unit := h.Project().Units[r.Event]
 	switch r.Action {
@@ -142,11 +141,10 @@ func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.C
 
 // yieldGCCycle ends a maintenance cycle in flight for a delegation that will be
 // admitted, discarding the cycle's delta in full (PR-MNT-3, PR-MNT-16). A
-// delegation the budgets deny leaves the cycle running: Admit records that
-// denial on its own. A cycle whose delta cannot be discarded refuses the
-// admission instead, so new work never runs over live maintenance changes; the
-// cycle stays recorded as blocked with its reason, and the next admission
-// retries the unwinding.
+// delegation the budgets deny leaves the cycle running (Admit records that
+// denial). A cycle whose delta cannot be discarded refuses the admission, so
+// new work never runs over live maintenance changes; it stays recorded as
+// blocked and the next admission retries.
 func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordinator, r coordinationRequest) error {
 	if c.Cycle == nil {
 		return nil
@@ -166,17 +164,12 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 	return nil
 }
 
-// ordinaryDispatchActions are the crew dispatch actions any orchestrator may
-// take through `takt-ai dispatch`: admission, lifecycle, plan commitment,
-// contests, recovery, user exceptions, and the interlocutor stack
-// (switch/handoff/abort_switch). tick carries no GC cycle awareness of its
-// own; it only re-runs the accounting pass every request already begins with,
-// so it belongs here too. Direct activity has
-// its own activity_id and never enters the work-unit path. They are not GC's;
-// GC's own maintenance-cycle phases (prepare, baseline, findings,
-// investigate, authorize, collected, delta, verdict, acceptance, no-change,
-// attach, recover, abort) and its own trigger bookkeeping (request, status)
-// stay under `takt-ai gc coordinate`.
+// ordinaryDispatchActions are the crew actions any orchestrator may take
+// through `takt-ai dispatch`: admission, lifecycle, plan commitment, contests,
+// recovery, user exceptions, the interlocutor stack, and tick (which re-runs
+// the accounting pass every request begins with). Direct activity uses its own
+// activity_id and never enters the work-unit path. GC's own cycle phases and
+// trigger bookkeeping stay under `takt-ai gc coordinate`.
 var ordinaryDispatchActions = map[string]bool{
 	"admit": true, "finish": true, "tick": true,
 	"activity_start": true, "activity_finish": true,
@@ -188,9 +181,8 @@ var ordinaryDispatchActions = map[string]bool{
 }
 
 // runDispatch admits and drives ordinary crew work through the execution
-// history: the same underlying protocol `gc coordinate` uses to gate its own
-// cycle, exposed under its own name so the orchestrator does not need to look
-// under `gc` to find it.
+// history: the protocol `gc coordinate` uses for its own cycle, exposed under
+// its own name so the orchestrator need not look under `gc`.
 func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 	flags := flag.NewFlagSet("dispatch", flag.ContinueOnError)
 	flags.SetOutput(stderr)

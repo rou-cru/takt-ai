@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/lifecycle"
 ```
 
-Package lifecycle dispatches the install, sync, and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime. It sits above setup, skills and engram and composes them \(hosting this dispatch in setup would create an import cycle through skills\).
+Package lifecycle dispatches the install, sync and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime, composing setup, skills and engram. It sits above them because hosting this dispatch in setup would create an import cycle through skills.
 
 ## Index
 
@@ -43,7 +43,7 @@ const (
 ```
 
 <a name="Cancelled"></a>
-## func Cancelled
+## func [Cancelled](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L90>)
 
 ```go
 func Cancelled(ctx context.Context, err error) bool
@@ -52,7 +52,7 @@ func Cancelled(ctx context.Context, err error) bool
 Cancelled reports whether err is ctx's own cancellation, i.e. the operation stopped cooperatively rather than failed.
 
 <a name="InjectCodegraph"></a>
-## func InjectCodegraph
+## func [InjectCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L543>)
 
 ```go
 func InjectCodegraph(rootDir, codegraphCommand string) error
@@ -61,7 +61,7 @@ func InjectCodegraph(rootDir, codegraphCommand string) error
 InjectCodegraph wires the codegraph MCP server into OpenCode, using codegraphCommand \(from codegraph.Acquire\) verbatim.
 
 <a name="InjectEngram"></a>
-## func InjectEngram
+## func [InjectEngram](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L405>)
 
 ```go
 func InjectEngram(rootDir, engramCommand string) error
@@ -70,7 +70,7 @@ func InjectEngram(rootDir, engramCommand string) error
 InjectEngram wires the engram MCP server into OpenCode, using engramCommand verbatim. \`engram setup\` is never run: Takt's memory contract skill is the only source of memory rules.
 
 <a name="InstallCodegraph"></a>
-## func InstallCodegraph
+## func [InstallCodegraph](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L383>)
 
 ```go
 func InstallCodegraph(ctx context.Context, rootDir string) error
@@ -79,7 +79,7 @@ func InstallCodegraph(ctx context.Context, rootDir string) error
 InstallCodegraph acquires the pinned CodeGraph tool and writes the MCP entry with its resolved absolute path. CodeGraph is a required workspace capability; acquisition or injection errors must be reported to the caller.
 
 <a name="PreviewLifecycle"></a>
-## func PreviewLifecycle
+## func [PreviewLifecycle](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L166>)
 
 ```go
 func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) (any, error)
@@ -88,7 +88,7 @@ func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) 
 PreviewLifecycle computes what one lifecycle action would do without changing the environment.
 
 <a name="InstallPreview"></a>
-## type InstallPreview
+## type [InstallPreview](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L156-L162>)
 
 InstallPreview is the install/sync preview payload: the target plans BuildTargetPlans would apply, plus any conflicts DetectConflicts finds between those plans and what is already on disk.
 
@@ -103,7 +103,7 @@ type InstallPreview struct {
 ```
 
 <a name="LifecycleResult"></a>
-## type LifecycleResult
+## type [LifecycleResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L44-L70>)
 
 LifecycleResult is the union of deploy and uninstall outcomes.
 
@@ -138,7 +138,7 @@ type LifecycleResult struct {
 ```
 
 <a name="Outcome"></a>
-## type Outcome
+## type [Outcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L73>)
 
 Outcome is the typed end state of a mutating operation.
 
@@ -163,7 +163,7 @@ const (
 ```
 
 <a name="CancelledOutcome"></a>
-### func CancelledOutcome
+### func [CancelledOutcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L95>)
 
 ```go
 func CancelledOutcome(applied int) Outcome
@@ -172,7 +172,7 @@ func CancelledOutcome(applied int) Outcome
 CancelledOutcome types a cancelled operation by whether it applied anything.
 
 <a name="Runtime"></a>
-## type Runtime
+## type [Runtime](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L128-L139>)
 
 Runtime carries external provider\-action execution seams.
 
@@ -192,7 +192,7 @@ type Runtime struct {
 ```
 
 <a name="NewRuntime"></a>
-### func NewRuntime
+### func [NewRuntime](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L143>)
 
 ```go
 func NewRuntime() Runtime
@@ -201,7 +201,7 @@ func NewRuntime() Runtime
 NewRuntime wires the production OpenCode V2 preflight and handoff while keeping Runtime's zero value useful for isolated lifecycle tests.
 
 <a name="Runtime.Run"></a>
-### func \(Runtime\) Run
+### func \(Runtime\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/lifecycle/lifecycle.go#L207>)
 
 ```go
 func (runtime Runtime) Run(ctx context.Context, action string, rootDir string, request setup.PlanRequest, preserve ...string) (LifecycleResult, error)

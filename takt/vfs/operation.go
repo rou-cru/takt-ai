@@ -611,13 +611,12 @@ func (f *FS) bindableIdentity(identity Identity, scope []string) (Identity, erro
 }
 
 // attemptLocked returns the attempt this dispatch belongs to and the invariant
-// set that governs it. Delegated work carries the attempt its admission issued;
+// set governing it. Delegated work carries the attempt its admission issued;
 // otherwise, as for maintenance cycles, the store counts attempts itself. An
-// attempt stays open while a binding of its unit still holds file ownership, so
-// a maintenance verifier sharing its cycle's unit joins the author it judges,
-// and a retry after consolidation or
-// discard opens the next attempt. Bindings and ownership are durable, so a
-// restart neither restarts the count nor reuses an identity.
+// attempt stays open while a binding of its unit holds file ownership, so a
+// maintenance verifier joins the author it judges, while a retry after
+// consolidation or discard opens the next attempt. Bindings and ownership are
+// durable, so a restart neither restarts the count nor reuses an identity.
 func (f *FS) attemptLocked(identity Identity) (string, InvariantSet) {
 	// An attempt the delegation's admission already issued is authoritative:
 	// the bind joins it, inheriting the invariant set it was opened with.

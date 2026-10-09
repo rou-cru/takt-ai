@@ -183,10 +183,10 @@ var arrayUnionKeys = map[string]bool{
 	"skills":  true,
 }
 
-// unionArrays returns the base entries first, then the overlay entries that
-// are not already present — a stable, order-preserving union. User entries
-// keep their original order and precedence, so re-running an install (or the
-// merge itself twice) yields the same array: idempotent by construction.
+// unionArrays returns the base entries first, then the overlay entries not
+// already present — a stable, order-preserving union. User entries keep their
+// order and precedence, so re-running an install (or the merge twice) yields
+// the same array: idempotent by construction.
 func unionArrays(base, overlay []any) []any {
 	merged := make([]any, 0, safeCap(len(base), len(overlay)))
 	merged = append(merged, base...)
@@ -206,10 +206,10 @@ func containsArrayEntry(entries []any, candidate any) bool {
 	return slices.ContainsFunc(entries, func(entry any) bool { return reflect.DeepEqual(entry, candidate) })
 }
 
-// safeCap returns a+b as an allocation size hint, or 0 if the addition would
-// overflow int (base/overlay lengths come from parsed JSON, so both are
-// attacker-influenced). Zero just drops the capacity hint; append still
-// grows the allocation as needed, so this never affects correctness.
+// safeCap returns a+b as an allocation size hint, or 0 on int overflow
+// (lengths come from parsed JSON, so they are attacker-influenced). Zero only
+// drops the capacity hint; append still grows the allocation, so correctness
+// is unaffected.
 func safeCap(a, b int) int {
 	sum := a + b
 	if sum < a {

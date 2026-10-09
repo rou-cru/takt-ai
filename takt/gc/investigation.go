@@ -145,10 +145,9 @@ type MandateRateDecision struct {
 	Demoted        bool         `json:"demoted"`
 }
 
-// MandateReversionRateInput is what EvaluateMandateReversionRate measures a
-// mandate class's reversion rate over: the class and session, the registered
-// range (afterID, beforeID], the acting agent recorded on any resulting
-// CONTAIN effect, and the work unit that effect is attributed to.
+// MandateReversionRateInput is what EvaluateMandateReversionRate measures: the
+// class and session, the registered range (afterID, beforeID], and the acting
+// agent and work unit recorded on any CONTAIN effect.
 type MandateReversionRateInput struct {
 	Agent      string
 	SessionID  string
@@ -159,10 +158,10 @@ type MandateReversionRateInput struct {
 }
 
 // EvaluateMandateReversionRate measures how often mandate's consolidated work
-// gets reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
+// is reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
 // session events in (afterID, beforeID], never elapsed time (PR-MNT-9/11).
-// Above reversionRateThreshold it demotes mandate to proposal-only (PR-MNT-32)
-// and publishes the CONTAIN effect PR-OBS-CTL-5 requires.
+// Above reversionRateThreshold it demotes the mandate to proposal-only
+// (PR-MNT-32) and publishes the CONTAIN effect PR-OBS-CTL-5 requires.
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
 	reedits, err := store.Events(in.SessionID, obs.EventCycleReedit, in.AfterID, in.BeforeID, 0)
 	if err != nil {

@@ -150,8 +150,8 @@ func (c *Coordinator) Held() bool { return c.Cycle != nil }
 
 // Admit composes ordinary dispatch admission with the session pace counters.
 // Maintenance never holds an admission: the caller ends a cycle in flight
-// before admitting. Concurrency, plan coverage and recovery budgets are
-// package dispatch's concern, not GC's.
+// first. Concurrency, plan coverage and recovery budgets belong to package
+// dispatch, not GC.
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error {
 	p, e := dispatch.LoadAdmissionPolicy()
 	if e != nil {
