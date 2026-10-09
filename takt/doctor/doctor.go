@@ -62,8 +62,8 @@ const (
 	// CheckStatusWarn describes something functional but needing attention,
 	// for example a store readable by other users.
 	CheckStatusWarn CheckStatus = "warn"
-	// CheckStatusFail describes a broken or missing capability, paired with a
-	// Remedy hint in the report.
+	// CheckStatusFail describes a broken or missing capability. The report
+	// may include a Remedy hint.
 	CheckStatusFail CheckStatus = "fail"
 )
 

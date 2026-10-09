@@ -107,12 +107,13 @@ func shellRoot(stateDir, callID string) string {
 	return filepath.Join(filepath.Dir(stateDir), "shell-"+digest[:shellRootHashLen])
 }
 
-// PrepareShell classifies one command and lays out its private projection.
-// key may be empty: an unbound caller may inspect but never mutate, and
-// expected then does not apply. Quoted spans are not treated as mutations for
-// callers without file scope, but the sandbox still enforces the returned
-// restrictions. It creates scratch and projection files but does not execute
-// the command; a policy denial returns a ShellDeny plan with a nil error.
+// PrepareShell classifies one command and prepares its sandbox files.
+// key may be empty: an unbound caller may inspect but cannot mutate the
+// workspace, and expected then does not apply. Quoted spans are not treated as
+// mutations for callers without file scope, but the sandbox still enforces the
+// returned restrictions. Non-denied plans create scratch; only allowed workspace
+// mutations create a projection. Preparation does not execute the command;
+// a policy denial returns a ShellDeny plan with a nil error.
 // Identity and revision problems, and store or filesystem errors, propagate.
 func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error) {
 	f.mu.Lock()

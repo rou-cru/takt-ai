@@ -647,7 +647,7 @@ const homeLogoMaxRows = 16
 const homeGapMin = 4
 
 // menuBody composes the home (PR-UX-2A): the logo beside the menu, vertically
-// centered, or stacked under it when narrow, with the whole block centered in
+// centered, or stacked above it when narrow, with the whole block centered in
 // the screen. The logo takes the largest variant that fits; a terminal too
 // small for any variant shows the menu alone.
 func (m Model) menuBody() string {
