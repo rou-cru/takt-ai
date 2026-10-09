@@ -34,7 +34,7 @@ func consolidatedCycle(g *gcRig, agent string) vfs.AgentID {
 	if err := g.verdict(key, r, true); err != nil {
 		g.t.Fatal(err)
 	}
-	if err := g.f.ConsolidateCheckpoint(key, "cp-"+agent, r.Revision); err != nil {
+	if err := g.f.ConsolidateCheckpoint(key, "cp-"+agent, r.Revision, false); err != nil {
 		g.t.Fatal(err)
 	}
 	return key
@@ -102,7 +102,7 @@ func TestDiscardCycleSpansEveryDeltaOfTheCycle(t *testing.T) {
 	if err = g.verdict(second, r, true); err != nil {
 		t.Fatal(err)
 	}
-	if err = g.f.ConsolidateCheckpoint(second, "cp-2", r.Revision); err != nil {
+	if err = g.f.ConsolidateCheckpoint(second, "cp-2", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := g.disk("a.txt"); a != "newer-a" {
@@ -225,7 +225,7 @@ func TestWorkOutsideACycleRetainsNothing(t *testing.T) {
 	if err = g.verdict(key, r, true); err != nil {
 		t.Fatal(err)
 	}
-	if err = g.f.ConsolidateCheckpoint(key, "cp-dev", r.Revision); err != nil {
+	if err = g.f.ConsolidateCheckpoint(key, "cp-dev", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := g.disk("a.txt"); a != "dev-a" {

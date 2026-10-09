@@ -595,7 +595,7 @@ func orphanedBarrierHold(t *testing.T, bin string) {
 				if err := fs.Verify(verifier, author, "verify", applied.Revision, applied.DeltaHash, true, ""); err != nil {
 					t.Fatal(err)
 				}
-				if err := fs.ConsolidateCheckpoint(author, "keepalive", applied.Revision); err != nil {
+				if err := fs.ConsolidateCheckpoint(author, "keepalive", applied.Revision, false); err != nil {
 					t.Fatal(err)
 				}
 				if err := fs.Close(); err != nil {

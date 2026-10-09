@@ -124,13 +124,13 @@ func TestMaintenanceBindsAndConsolidatesOnPass(t *testing.T) {
 	g := newGCRig(t)
 	key := g.bind("collector", gcSpecialist, "a.txt", "b.txt", "c.txt")
 	r := g.stage(key)
-	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision); err == nil {
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err == nil {
 		t.Fatal("consolidated without a verdict")
 	}
 	if err := g.verdict(key, r, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision); err != nil {
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := g.disk("a.txt"); a != "new-a" {
@@ -169,7 +169,7 @@ func TestMaintenanceFailingVerdictKeepsDeltaForCoordinatorDiscard(t *testing.T) 
 	if err != nil || string(seen.Content) != "new-a" {
 		t.Fatalf("staged view = %q, %v; want retained delta", seen.Content, err)
 	}
-	if err = g.f.ConsolidateCheckpoint(key, "cp", seen.Revision); err == nil {
+	if err = g.f.ConsolidateCheckpoint(key, "cp", seen.Revision, false); err == nil {
 		t.Fatal("rejected delta consolidated")
 	}
 }

@@ -286,7 +286,7 @@ func gcCycleWorkspace(t *testing.T) (string, string) {
 	if err = fs.Verify(verifier, key, "v", r.Revision, r.DeltaHash, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err = fs.ConsolidateCheckpoint(key, "cp", r.Revision); err != nil {
+	if err = fs.ConsolidateCheckpoint(key, "cp", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	if err = fs.Close(); err != nil {

@@ -258,7 +258,7 @@ func TestConsolidateReportsFlushOnBus(t *testing.T) {
 	if err := s.FS.Verify(verifier, key, "gate", r.Revision, r.DeltaHash, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FS.ConsolidateCheckpoint(key, "checkpoint", r.Revision); err != nil {
+	if err := s.FS.ConsolidateCheckpoint(key, "checkpoint", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 

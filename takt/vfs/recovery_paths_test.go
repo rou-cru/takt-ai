@@ -61,7 +61,7 @@ func TestConsolidateCreatesMissingDirectoriesAndDeletesFiles(t *testing.T) {
 	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "deep/er/new.txt", "fresh"})
 	r = apply(t, f, applyCase{key, "delete", r.Revision, OpDelete, "old.txt", ""})
 	gate(t, f, key, r)
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); err != nil {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(root, "deep/er/new.txt"))
@@ -91,7 +91,7 @@ func TestConsolidateRefusesWhenBaseChangedAfterStaging(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte(externalContent), newFileMode); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); !errors.Is(err, ErrBaseChanged) {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); !errors.Is(err, ErrBaseChanged) {
 		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrBaseChanged", err)
 	}
 	if data, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(data) != externalContent {
@@ -114,7 +114,7 @@ func TestFlushDetectsForeignContentWrittenDuringFlush(t *testing.T) {
 		}
 		return nil
 	}
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); !errors.Is(err, ErrBaseChanged) {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); !errors.Is(err, ErrBaseChanged) {
 		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrBaseChanged", err)
 	}
 	if _, err := readForTest(f, key, "a.txt"); !errors.Is(err, ErrRecoveryRequired) {
@@ -135,7 +135,7 @@ func TestCheckpointPersistenceFailureFaultsTheStore(t *testing.T) {
 	if _, err := f.db.Exec(`CREATE TRIGGER fail_state BEFORE UPDATE ON state BEGIN SELECT RAISE(ABORT,'disk full'); END;`); err != nil {
 		t.Fatal(err)
 	}
-	err := f.ConsolidateCheckpoint(key, "cp", r.Revision)
+	err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false)
 	if !errors.Is(err, ErrStoreFailed) || !errors.Is(err, ErrFlushPartial) {
 		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrStoreFailed and ErrFlushPartial", err)
 	}
@@ -154,7 +154,7 @@ func TestRecoverJournalsTheRestoration(t *testing.T) {
 	}
 	key, r := stagedAndGated(t, f, "a.txt", "staged", OpPatch)
 	failAt(f, "verified")
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); !errors.Is(err, errInjected) {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); !errors.Is(err, errInjected) {
 		t.Fatalf("ConsolidateCheckpoint() = %v; want the injected failure", err)
 	}
 	f.failpoint = nil
@@ -176,7 +176,7 @@ func TestRecoverJournalsTheRestoration(t *testing.T) {
 	if !restored {
 		t.Fatal("journal does not record the restoration")
 	}
-	if err := f.ConsolidateCheckpoint(key, "retry", r.Revision); err != nil {
+	if err := f.ConsolidateCheckpoint(key, "retry", r.Revision, false); err != nil {
 		t.Fatalf("staged work could not be flushed again after recovery: %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func TestRecoverRefusesATouchedPathTurnedSymlink(t *testing.T) {
 	f, root, _ := durable(t)
 	key, r := stagedAndGated(t, f, "a.txt", "staged", OpCreate)
 	failAt(f, "after/a.txt")
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); !errors.Is(err, errInjected) {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); !errors.Is(err, errInjected) {
 		t.Fatalf("ConsolidateCheckpoint() = %v", err)
 	}
 	f.failpoint = nil
@@ -214,7 +214,7 @@ func TestRecoverRetriesAfterACheckpointFailure(t *testing.T) {
 	f, root, _ := durable(t)
 	key, r := stagedAndGated(t, f, "a.txt", "staged", OpCreate)
 	failAt(f, "after/a.txt")
-	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision); !errors.Is(err, errInjected) {
+	if err := f.ConsolidateCheckpoint(key, "cp", r.Revision, false); !errors.Is(err, errInjected) {
 		t.Fatalf("ConsolidateCheckpoint() = %v", err)
 	}
 	failAt(f, "restored/a.txt")

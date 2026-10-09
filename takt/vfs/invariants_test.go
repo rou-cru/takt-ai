@@ -33,9 +33,9 @@ func directives(t *testing.T, root, content string) string {
 	return "AGENTS.md"
 }
 
-// TestVerdictBoundToInvariantSetVersion: a pass applies only to the invariant
-// set it was judged against, so editing a governing document after the verdict
-// requires new verification before the evidence governs (PR-VFS-CSL-7).
+// TestVerdictBoundToInvariantSetVersion: a verdict applies only to the invariant
+// set it was judged against, so editing a governing document after it leaves
+// the evidence stale: it no longer asks for acceptance (PR-VFS-CSL-7).
 func TestVerdictBoundToInvariantSetVersion(t *testing.T) {
 	f, root, _ := durable(t)
 	set := InvariantSet{directives(t, root, "verify before you consolidate")}
@@ -57,22 +57,22 @@ func TestVerdictBoundToInvariantSetVersion(t *testing.T) {
 	}
 
 	staged := apply(t, f, applyCase{author, "c1", 0, OpCreate, "app.go", "package main"})
-	if err = f.Verify(verifier, author, "v1", staged.Revision, staged.DeltaHash, true, ""); err != nil {
+	if err = f.Verify(verifier, author, "v1", staged.Revision, staged.DeltaHash, false, "breaks the directive"); err != nil {
 		t.Fatal(err)
 	}
 
-	directives(t, root, "verify before you consolidate, and never on a Friday")
-	if err = f.ConsolidateCheckpoint(author, "cp", staged.Revision); !errors.Is(err, ErrInvalidVerdict) {
-		t.Fatalf("consolidation under a changed invariant set = %v; want ErrInvalidVerdict", err)
+	// Under the judged set the failing verdict is current and asks for acceptance.
+	if err = f.ConsolidateCheckpoint(author, "cp", staged.Revision, false); !errors.Is(err, ErrFailingVerdict) {
+		t.Fatalf("consolidation under the judged invariant set = %v; want ErrFailingVerdict", err)
 	}
 	if _, err = os.Stat(filepath.Join(root, "app.go")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("ungoverned delta reached disk")
+		t.Fatal("refused delta reached disk")
 	}
 
-	// The same evidence governs again once its set reads as it did when judged.
-	directives(t, root, "verify before you consolidate")
-	if err = f.ConsolidateCheckpoint(author, "cp", staged.Revision); err != nil {
-		t.Fatalf("consolidation under the judged invariant set: %v", err)
+	// Once the set changes the verdict no longer describes the governing text.
+	directives(t, root, "verify before you consolidate, and never on a Friday")
+	if err = f.ConsolidateCheckpoint(author, "cp", staged.Revision, false); err != nil {
+		t.Fatalf("consolidation under a changed invariant set: %v", err)
 	}
 }
 

@@ -152,8 +152,11 @@ type request struct {
 	// ViewKey is the author whose staged view a verifier reads through.
 	ViewKey   string `json:"view_key,omitempty"`
 	DeltaHash string `json:"delta_hash,omitempty"`
-	Pass      bool   `json:"pass,omitempty"`
-	Finding   string `json:"finding,omitempty"`
+	// AcceptFailing carries the user's explicit acceptance to consolidate work
+	// a current verdict failed; only the plugin sets it, after asking the user.
+	AcceptFailing bool   `json:"accept_failing,omitempty"`
+	Pass          bool   `json:"pass,omitempty"`
+	Finding       string `json:"finding,omitempty"`
 	// shell-prepare: the exact command the plan and any approval identify.
 	Command string `json:"command,omitempty"`
 	// consolidate
@@ -542,7 +545,7 @@ func mutateConsolidate(fs *vfs.FS, req request, identity vfs.Identity) (response
 	if err := vfs.RequireVFSCapability(vfs.OrchestratorInstance, model.VFSCapabilityConsolidate); err != nil {
 		return response{}, err
 	}
-	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision); err != nil {
+	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision, req.AcceptFailing); err != nil {
 		return response{}, err
 	}
 	return response{OK: true}, nil

@@ -517,11 +517,11 @@ func TestReassignScopeClearsTheVerdictOfTheOldRevision(t *testing.T) {
 	if err := r.f.Verify(r.verifier, r.author, "reject", r.staged.Revision, r.staged.DeltaHash, false, "needs work"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision); !errors.Is(err, vfs.ErrVerificationRequired) {
-		t.Fatalf("ConsolidateCheckpoint() = %v; want the failing verdict to block it", err)
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); !errors.Is(err, vfs.ErrFailingVerdict) {
+		t.Fatalf("ConsolidateCheckpoint() = %v; want the failing verdict to ask for acceptance", err)
 	}
 	reassign(t, r.f, ident("author", "u", "dev"), r.author, "a.go")
-	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision); err != nil {
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() after the reassignment = %v; want the old verdict cleared", err)
 	}
 }
@@ -701,7 +701,7 @@ func TestRefusedForeignAccessNeverBlocksConsolidation(t *testing.T) {
 		t.Fatalf("collision handler saw %d events; want the rejected bind observed too", len(seen))
 	}
 
-	if err := f.ConsolidateCheckpoint(intruder, "own", staged.Revision); err != nil {
+	if err := f.ConsolidateCheckpoint(intruder, "own", staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() after refused foreign access = %v", err)
 	}
 	if data, err := os.ReadFile(filepath.Join(root, "b.go")); err != nil || string(data) != "ok" {
@@ -781,7 +781,7 @@ func TestVerifyRefusals(t *testing.T) {
 	} {
 		refused(t, name+": Verify()", tc.call(), tc.want)
 	}
-	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev); err != nil {
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() = %v; a refused verdict was attached to the delta", err)
 	}
 }
@@ -804,34 +804,37 @@ func TestUnreadableInvariantDocumentsRefuseTheVerdictAndItsConsolidation(t *test
 		err := r.f.Verify(r.verifier, r.author, "inv", r.staged.Revision, r.staged.DeltaHash, false, "does not meet the contract")
 		refused(t, "Verify()", err, vfs.ErrIdentity)
 		restore()
-		if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision); err != nil {
+		if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); err != nil {
 			t.Fatalf("ConsolidateCheckpoint() = %v; a verdict was attached although its invariants could not be pinned", err)
 		}
 	})
 	t.Run("consolidation", func(t *testing.T) {
 		r := newVerdictRig(t, document)
-		if err := r.f.Verify(r.verifier, r.author, "pass", r.staged.Revision, r.staged.DeltaHash, true, ""); err != nil {
+		if err := r.f.Verify(r.verifier, r.author, "reject", r.staged.Revision, r.staged.DeltaHash, false, "does not meet the contract"); err != nil {
 			t.Fatal(err)
 		}
 		restore := unreadable(t, r.root, document)
-		refused(t, "ConsolidateCheckpoint()", r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision), vfs.ErrIdentity)
-		restore()
-		if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision); err != nil {
-			t.Fatalf("ConsolidateCheckpoint() once the documents are readable = %v", err)
+		// A verdict whose invariants cannot be read cannot be shown to be current.
+		if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); err != nil {
+			t.Fatalf("ConsolidateCheckpoint() = %v; an unverifiable verdict must not ask for acceptance", err)
 		}
+		restore()
 	})
 }
 
-func TestFailingVerdictBlocksConsolidationWithItsFinding(t *testing.T) {
+func TestFailingVerdictAsksForAcceptanceWithItsFinding(t *testing.T) {
 	r := newVerdictRig(t)
 	const finding = "missing edge case"
 	if err := r.f.Verify(r.verifier, r.author, "reject", r.staged.Revision, r.staged.DeltaHash, false, finding); err != nil {
 		t.Fatal(err)
 	}
-	err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision)
+	err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false)
 	// The finding is how the orchestrator learns what to correct.
-	if !errors.Is(err, vfs.ErrVerificationRequired) || !strings.Contains(err.Error(), finding) {
-		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrVerificationRequired carrying %q", err, finding)
+	if !errors.Is(err, vfs.ErrFailingVerdict) || !strings.Contains(err.Error(), finding) {
+		t.Fatalf("ConsolidateCheckpoint() = %v; want ErrFailingVerdict carrying %q", err, finding)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, true); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() with the user's acceptance = %v", err)
 	}
 	for _, e := range r.f.JournalPage("", "", -1, vfs.MaxJournalPageSize) {
 		entry, marshalErr := json.Marshal(e)
@@ -841,6 +844,72 @@ func TestFailingVerdictBlocksConsolidationWithItsFinding(t *testing.T) {
 		if strings.Contains(string(entry), finding) {
 			t.Fatalf("the finding leaked into the content-free journal: %s", entry)
 		}
+	}
+}
+
+// Judges report side by side: each keeps its own verdict, a judge's new verdict
+// replaces only its own, and the orchestrator reads every current one.
+func TestEachJudgeKeepsItsOwnVerdict(t *testing.T) {
+	r := newVerdictRig(t)
+	other := bind(t, r.f, "judge-b", "u", "verify")
+	rev, hash := r.staged.Revision, r.staged.DeltaHash
+	if err := r.f.Verify(r.verifier, r.author, "a1", rev, hash, false, "misses the edge case"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.f.Verify(other, r.author, "b1", rev, hash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	reported := func() map[vfs.AgentID]vfs.VerdictSummary {
+		for _, claim := range r.f.OwnershipClaims(testSession) {
+			if claim.Key == r.author {
+				byJudge := map[vfs.AgentID]vfs.VerdictSummary{}
+				for _, v := range claim.Verdicts {
+					byJudge[v.VerifierKey] = v
+				}
+				return byJudge
+			}
+		}
+		t.Fatal("author claim not listed")
+		return nil
+	}
+	got := reported()
+	if len(got) != 2 || got[r.verifier].Pass || got[r.verifier].Finding != "misses the edge case" || !got[other].Pass {
+		t.Fatalf("verdicts = %+v; want judge A failing with its finding and judge B passing, side by side", got)
+	}
+	if err := r.f.Verify(other, r.author, "b2", rev, hash, false, "also fails"); err != nil {
+		t.Fatal(err)
+	}
+	got = reported()
+	if len(got) != 2 || got[r.verifier].Finding != "misses the edge case" || got[other].Pass {
+		t.Fatalf("verdicts = %+v; want only judge B's verdict replaced", got)
+	}
+	err := r.f.ConsolidateCheckpoint(r.author, "cp", rev, false)
+	if !errors.Is(err, vfs.ErrFailingVerdict) || !strings.Contains(err.Error(), "misses the edge case") || !strings.Contains(err.Error(), "also fails") {
+		t.Fatalf("ConsolidateCheckpoint() = %v; want every failing finding listed", err)
+	}
+	if r.f.InspectDelta(r.author).Revision != rev {
+		t.Fatal("a verdict or its refusal changed the staged work")
+	}
+}
+
+// A passing verdict from one judge never hides another judge's failure, and a
+// new change to the work leaves every earlier verdict stale.
+func TestVerdictsNeverHideEachOtherAndGoStaleTogether(t *testing.T) {
+	r := newVerdictRig(t)
+	other := bind(t, r.f, "judge-b", "u", "verify")
+	rev, hash := r.staged.Revision, r.staged.DeltaHash
+	if err := r.f.Verify(other, r.author, "b1", rev, hash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.f.Verify(r.verifier, r.author, "a1", rev, hash, false, "fails"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev, false); !errors.Is(err, vfs.ErrFailingVerdict) {
+		t.Fatalf("ConsolidateCheckpoint() = %v; a pass must not hide the other judge's failure", err)
+	}
+	next := apply(t, r.f, applyCase{r.author, "edit", rev, vfs.OpPatch, "a.go", "v2"})
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", next.Revision, false); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() after a change = %v; earlier verdicts are stale", err)
 	}
 }
 
@@ -857,7 +926,7 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 		"stale revision":        {r.author, "cp", rev + 1, vfs.ErrStaleRevision},
 		"binding without delta": {r.verifier, "cp", 0, vfs.ErrNothingStaged},
 	} {
-		refused(t, name+": ConsolidateCheckpoint()", r.f.ConsolidateCheckpoint(tc.key, tc.checkpoint, tc.revision), tc.want)
+		refused(t, name+": ConsolidateCheckpoint()", r.f.ConsolidateCheckpoint(tc.key, tc.checkpoint, tc.revision, false), tc.want)
 	}
 }
 
@@ -865,7 +934,7 @@ func TestConsolidateCheckpointRefusals(t *testing.T) {
 // revision alone; the claim is released and a blank label is accepted.
 func TestConsolidateCheckpointWithoutAGate(t *testing.T) {
 	r := newVerdictRig(t)
-	if err := r.f.ConsolidateCheckpoint(r.author, "  ", r.staged.Revision); err != nil {
+	if err := r.f.ConsolidateCheckpoint(r.author, "  ", r.staged.Revision, false); err != nil {
 		t.Fatalf("authorized consolidation without a gate and with a blank label = %v", err)
 	}
 	if data, err := os.ReadFile(filepath.Join(r.root, "a.go")); err != nil || string(data) != "v1" {
@@ -874,7 +943,7 @@ func TestConsolidateCheckpointWithoutAGate(t *testing.T) {
 	if claim, ok := claimOf(r.f, r.author); ok && len(claim.Scope) != 0 {
 		t.Fatal("consolidation retained the author's ownership")
 	}
-	refused(t, "consolidating again", r.f.ConsolidateCheckpoint(r.author, "again", r.staged.Revision), vfs.ErrNothingStaged)
+	refused(t, "consolidating again", r.f.ConsolidateCheckpoint(r.author, "again", r.staged.Revision, false), vfs.ErrNothingStaged)
 }
 
 func TestAssignScopeAcrossRoots(t *testing.T) {
@@ -1083,7 +1152,7 @@ func TestVerifierGateInheritsTheAuthorsEngramInvariants(t *testing.T) {
 	if err := f.Verify(gate, author, "v1", staged.Revision, staged.DeltaHash, true, ""); err != nil {
 		t.Fatalf("Verify() = %v", err)
 	}
-	if err := f.ConsolidateCheckpoint(author, "cp", staged.Revision); err != nil {
+	if err := f.ConsolidateCheckpoint(author, "cp", staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() = %v; the verdict was judged against the author's invariants", err)
 	}
 }

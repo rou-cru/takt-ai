@@ -398,9 +398,10 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim {
 		claims = append(claims, OwnershipClaim{
 			Key: key, AgentID: identity.AgentID, TargetInstance: identity.Specialist, RootSessionID: identity.SessionID,
 			WorkUnitID: identity.WorkUnitID, Scope: scope, AuthorKey: identity.GateAuthorKey,
-			Active:  identity.SessionID == currentSessionID && !identity.Prelaunch,
-			Pending: identity.Prelaunch,
-			Staged:  f.stagedLocked(key),
+			Active:   identity.SessionID == currentSessionID && !identity.Prelaunch,
+			Pending:  identity.Prelaunch,
+			Staged:   f.stagedLocked(key),
+			Verdicts: f.currentVerdictsLocked(key),
 		})
 	}
 	return claims
@@ -501,7 +502,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		}
 	}
 	maps.Copy(d.bases, bases)
-	d.verdict = nil
+	d.verdicts = nil
 	return nil
 }
 
@@ -948,7 +949,7 @@ func (f *FS) rollbackLocked(key AgentID) {
 		}
 		d.files = map[string][]byte{}
 		d.bases = map[string]baseFile{}
-		d.verdict = nil
+		d.verdicts = nil
 		d.revision++
 	}
 	f.releaseOwnershipLocked(key)
@@ -984,7 +985,10 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 	if err != nil {
 		return err
 	}
-	d.verdict = &VerificationVerdict{Pass: pass, Finding: finding, VerifierID: v.AgentID, VerifierRole: v.Role, Revision: expected, DeltaHash: deltaHash, Invariants: a.Invariants, InvariantsHash: version}
+	if d.verdicts == nil {
+		d.verdicts = make(map[AgentID]*VerificationVerdict)
+	}
+	d.verdicts[verifier] = &VerificationVerdict{Pass: pass, Finding: finding, VerifierID: v.AgentID, VerifierRole: v.Role, Revision: expected, DeltaHash: deltaHash, Invariants: a.Invariants, InvariantsHash: version}
 	// Findings may contain sensitive source excerpts: retain in private state,
 	// never export them in the content-free journal.
 	outcome := "rejected"
@@ -1023,10 +1027,59 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 	return v, a, f.consumeCallLocked(v.SessionID, callID)
 }
 
+// currentVerdictsLocked returns key's verdicts that still describe its staged
+// work: same delta and same invariant set as when they were judged. A verdict
+// whose invariants can no longer be read cannot be shown to be current.
+func (f *FS) currentVerdictsLocked(key AgentID) []VerdictSummary {
+	d := f.staged[key]
+	if d == nil {
+		return nil
+	}
+	hash := f.deltaHashLocked(key)
+	var current []VerdictSummary
+	for _, verifier := range slices.Sorted(maps.Keys(d.verdicts)) {
+		v := d.verdicts[verifier]
+		if v.DeltaHash != hash {
+			continue
+		}
+		if version, err := f.invariantsVersionLocked(v.Invariants); err != nil || version != v.InvariantsHash {
+			continue
+		}
+		current = append(current, VerdictSummary{VerifierKey: verifier, Pass: v.Pass, Finding: v.Finding})
+	}
+	return current
+}
+
+// consolidationAcceptedLocked lets ordinary work through unless a current
+// verdict failed and the user has not accepted consolidating it anyway.
+func (f *FS) consolidationAcceptedLocked(key AgentID, acceptFailing bool) error {
+	if acceptFailing {
+		return nil
+	}
+	return f.failingVerdictsLocked(key)
+}
+
+// failingVerdictsLocked refuses with every current failing finding, so the
+// orchestrator and the user see each judge's report.
+func (f *FS) failingVerdictsLocked(key AgentID) error {
+	var findings []string
+	for _, v := range f.currentVerdictsLocked(key) {
+		if !v.Pass {
+			findings = append(findings, fmt.Sprintf("%s: %s", v.VerifierKey, v.Finding))
+		}
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", ErrFailingVerdict, strings.Join(findings, "; "))
+}
+
 // ConsolidateCheckpoint is a trusted coordinator operation that consolidates
-// authorized staged changes; a verdict, when present, remains bound to its
-// evidence. An empty checkpoint label defaults to the author key and revision.
-func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error) {
+// authorized staged changes. Verdicts inform: a current failing one refuses
+// unless acceptFailing carries the user's explicit acceptance, and a stale one
+// is ignored. A maintenance cycle's verdict stays a gate bound to its evidence.
+// An empty checkpoint label defaults to the author key and revision.
+func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
@@ -1045,17 +1098,23 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 	if d.revision != expected {
 		return fmt.Errorf("%w: the staged work is at revision %d, not %d; delegate a Verify of the author key again and consolidate against its revision", ErrStaleRevision, d.revision, expected)
 	}
-	if d.verdict != nil && d.verdict.DeltaHash != f.deltaHashLocked(key) {
-		return ErrInvalidVerdict
-	}
-	if d.verdict != nil {
-		// A supplied verdict only governs the invariant set it actually judged.
-		version, err := f.invariantsVersionLocked(d.verdict.Invariants)
-		if err != nil {
+	if !f.verdictRequiredLocked(key) {
+		if err = f.consolidationAcceptedLocked(key, acceptFailing); err != nil {
 			return err
 		}
-		if version != d.verdict.InvariantsHash {
-			return fmt.Errorf("%w: the applicable invariant set changed since the verdict", ErrInvalidVerdict)
+	} else {
+		for _, v := range d.verdicts {
+			if v.DeltaHash != f.deltaHashLocked(key) {
+				return ErrInvalidVerdict
+			}
+			// A supplied verdict only governs the invariant set it actually judged.
+			version, err := f.invariantsVersionLocked(v.Invariants)
+			if err != nil {
+				return err
+			}
+			if version != v.InvariantsHash {
+				return fmt.Errorf("%w: the applicable invariant set changed since the verdict", ErrInvalidVerdict)
+			}
 		}
 	}
 	start := len(f.journal)

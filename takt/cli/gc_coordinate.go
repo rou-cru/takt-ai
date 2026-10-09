@@ -246,7 +246,7 @@ func coordinateVerdict(h *history.History, fs *vfs.FS, workspace, state string, 
 	if e := gc.SaveCoordinator(state, c); e != nil {
 		return nil, e
 	}
-	if e := fs.ConsolidateCheckpoint(c.Cycle.AuthorKey, c.Cycle.Plan.CycleID, delta.Revision); e != nil {
+	if e := fs.ConsolidateCheckpoint(c.Cycle.AuthorKey, c.Cycle.Plan.CycleID, delta.Revision, false); e != nil {
 		return nil, e
 	}
 	c.Cycle.Phase = "acceptance"
