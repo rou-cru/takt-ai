@@ -90,22 +90,70 @@ func TestRecordRejectsMalformedShapes(t *testing.T) {
 	}
 }
 
-func TestRecordIntoClosedSessionIsRejected(t *testing.T) {
-	_, cfg := newFake(t)
+func TestRecordResumesClosedSession(t *testing.T) {
+	f, cfg := newFake(t)
 	ctx := context.Background()
-	if _, err := Record(ctx, cfg, base()); err != nil {
+	req := base()
+	req.Directory = t.TempDir()
+	first, err := Record(ctx, cfg, req)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: t.TempDir()}); err != nil {
+	closeReq := CloseRequest{Author: "takt", Session: req.Session, Directory: req.Directory}
+	closed, err := Close(ctx, cfg, closeReq)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, err := Record(ctx, cfg, base())
-	wantValidation(t, err)
-	if !strings.Contains(err.Error(), "already closed") {
-		t.Errorf("error = %v, want a closed-session rejection", err)
+
+	// Retrying an old result is not new work and must not reopen the session.
+	duplicate, err := Record(ctx, cfg, req)
+	if err != nil || duplicate.ID != first.ID || !duplicate.Deduplicated {
+		t.Fatalf("retry = %+v, %v", duplicate, err)
 	}
-	_, err = Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: t.TempDir()})
+	_, err = Close(ctx, cfg, closeReq)
 	wantValidation(t, err)
+
+	// Invalid new work must also leave the previous close intact.
+	late := req
+	late.Author, late.Title = "spec", "Refined acceptance invariant"
+	// An unavailable backend must not reopen the persisted session either.
+	offline := cfg
+	offline.EngramURL = unusedPort
+	if _, err := Record(ctx, offline, late); err == nil {
+		t.Fatal("offline record succeeded")
+	}
+	_, err = Close(ctx, cfg, closeReq)
+	wantValidation(t, err)
+
+	late.RelatesTo = &RelatesTo{ID: closed.EndAnchorID, Relation: "supplements"}
+	_, err = Record(ctx, cfg, late)
+	wantValidation(t, err)
+	_, err = Close(ctx, cfg, closeReq)
+	wantValidation(t, err)
+
+	late.RelatesTo = &RelatesTo{ID: first.ID, Relation: "supplements"}
+	result, err := Record(ctx, cfg, late)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSessionResultIDs(ctx, cfg, req.Session, late.Author, []int64{result.ID}); err != nil {
+		t.Fatal(err)
+	}
+	closeReq.State = "Acceptance invariant refined"
+	resumed, err := Close(ctx, cfg, closeReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Entries != 2 || resumed.EndAnchorID == closed.EndAnchorID {
+		t.Fatalf("resumed close = %+v; previous = %+v", resumed, closed)
+	}
+	if f.byID(closed.EndAnchorID).ID != closed.EndAnchorID {
+		t.Fatal("previous close was lost")
+	}
+	ids, err := EntryIDsForSession(cfg.Root, req.Session)
+	if err != nil || !slices.Equal(ids, []int64{first.ID, result.ID}) {
+		t.Fatalf("session results = %v, %v", ids, err)
+	}
 }
 
 func TestRecordRelatesToRules(t *testing.T) {

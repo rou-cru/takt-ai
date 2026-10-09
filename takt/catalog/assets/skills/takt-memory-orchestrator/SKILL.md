@@ -29,6 +29,8 @@ Do not write a session history.
   - `state`: what is true now, in present tense — which decisions govern, which disputes
     remain open as facts ("X and Y disagree on Z"), what was delivered.
 - A specialist holding the lent interface hands it back and never closes the session; closing is yours.
+- New work in the same conversation resumes its memory on the first new recorded entry.
+  Earlier close anchors remain historical snapshots; close again after reporting that work.
 - A context compaction is not a session close: do not close the session for it.
 
 ## Never records

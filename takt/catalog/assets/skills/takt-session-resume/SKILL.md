@@ -1,6 +1,6 @@
 ---
 name: takt-session-resume
-description: "The user says this work continues earlier work, with or without a session id. Explains locating the previous session from memory, declaring continuity, and resuming from where that work stands."
+description: "The user says this work continues earlier work, with or without a session id. Explains locating the previous session from memory and resuming from where that work stands."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,16 +9,8 @@ metadata:
 
 # Takt Session Resume
 
-Two separate decisions. **Resuming** is reaching an objective that earlier work did not
-reach: never start from zero, establish where things stand. **Declaring continuity**
-(`memory_continue_session`) keeps the memory narrative unbroken. Resuming never waits on
-the declaration, and failing to declare never stops the resume.
-
-The declaration becomes a permanent link with this session's first new memory entry. Until
-then it is replaced by a new call and withdrawn by an empty id. Declare once the user gave
-the id or confirmed the candidate. That answer can be careless, so it is not the final
-confirmation: reaching the first entry without the user objecting is. If the user signals
-before that point that this is not the continuity they meant, replace or withdraw it.
+Resuming is reaching an objective that earlier work did not reach: never start from
+zero, establish where things stand.
 
 ## Locating the session
 
@@ -40,16 +32,14 @@ interrupted.
 
 | Situation | Action |
 |---|---|
-| Id given, session exists and is closed | Declare; resume from its state at close |
-| Id given, session exists and was interrupted | Do not declare; resume as an interrupted session |
+| Id given, session exists and is closed | Resume from its state at close |
+| Id given, session exists and was interrupted | Resume as an interrupted session |
 | Id given, no such session | Say so; search as if no id was given |
-| Candidate confirmed, closed | Declare; resume from its state at close |
-| Candidate confirmed, interrupted | Do not declare; read its entries in order; resume confirming the cut-off point |
+| Candidate confirmed, closed | Resume from its state at close |
+| Candidate confirmed, interrupted | Read its entries in order; resume confirming the cut-off point |
 | Candidate rejected | Offer the next two or three strongest candidates |
-| None recognized | Follow the user: a new hint means a new search; starting without the earlier context means withdrawing any declaration and starting |
+| None recognized | Follow the user: a new hint means a new search; starting without the earlier context means starting fresh |
 | No recorded session matches anywhere | Say so; ask for a hint or start fresh |
-| User signals, before the first entry, a different continuity | Replace or withdraw the declaration |
-| Declaration rejected | Do not retry; resume without it |
 
 ## Resuming
 
@@ -63,5 +53,5 @@ interrupted.
 
 ## Anything else
 
-Declare nothing doubtful. Show the user what you found and resume only once they confirm
+Show the user what you found and resume only once they confirm
 which work it is and where it stands.

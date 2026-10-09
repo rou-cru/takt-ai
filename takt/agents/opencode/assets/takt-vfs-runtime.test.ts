@@ -1208,6 +1208,8 @@ describe("delegated VFS context", () => {
       const event = contextFor()
       await vfs.fire(vfs.session, "context", event)
       expect(toolNames(event)).toEqual(["vfs_bind", "vfs_write", "read"])
+      expect(JSON.stringify(event.system)).not.toContain("vfs_delete")
+      expect(JSON.stringify(event.system)).not.toContain("vfs_read")
       expect(event.system).toEqual([{ type: "text", text: expect.stringContaining("Work unit unit-a owns exactly these workspace-relative paths: src/a.go, src/b.go.") }])
     } finally { await vfs.stop() }
   })

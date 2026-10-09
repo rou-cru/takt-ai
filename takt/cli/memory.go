@@ -53,7 +53,7 @@ func runMemory(args []string, stdin io.Reader, stdout io.Writer) error {
 
 func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 	if len(args) != 1 {
-		return nil, errors.New("usage: takt-ai memory record|continue|close < request.json")
+		return nil, errors.New("usage: takt-ai memory record|continue|close|capabilities < request.json")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -63,6 +63,12 @@ func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 	cfg.EngramBinary, _ = engram.Resolve(home)
 	ctx := context.Background()
 	switch args[0] {
+	case "capabilities":
+		req, err := decodeMemory[memory.CapabilitiesRequest](stdin)
+		if err != nil {
+			return nil, err
+		}
+		return memory.Capabilities(req), nil
 	case "record":
 		req, err := decodeMemory[memory.RecordRequest](stdin)
 		if err != nil {
@@ -82,7 +88,7 @@ func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 		}
 		return memory.Close(ctx, cfg, req)
 	}
-	return nil, fmt.Errorf("unknown memory command %q (valid: record, continue, close)", args[0])
+	return nil, fmt.Errorf("unknown memory command %q (valid: record, continue, close, capabilities)", args[0])
 }
 
 // decodeMemory treats a malformed request as a contract rejection so the caller sees why (exit 2).

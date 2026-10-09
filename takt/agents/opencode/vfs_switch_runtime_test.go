@@ -73,9 +73,29 @@ func TestTaktVFSPluginGCLaneToolsGrantMemoryAccess(t *testing.T) {
 		if line == "" {
 			t.Fatalf("GC_LANE_TOOLS.%s not found", role)
 		}
-		for _, tool := range []string{"memory_record", "memory_continue_session", "memory_close_session"} {
+		laneTools := regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(line, -1)
+		granted := map[string]bool{}
+		for _, match := range laneTools {
+			granted[match[1]] = true
+		}
+		for _, tool := range []string{"gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance"} {
+			if granted[tool] != (role == "verifier") {
+				t.Errorf("%s grant for %s does not match its lane", role, tool)
+			}
+		}
+		for _, tool := range []string{"gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change"} {
+			if granted[tool] != (role == "collector") {
+				t.Errorf("%s grant for %s does not match its lane", role, tool)
+			}
+		}
+		for _, tool := range []string{"memory_record"} {
 			if !strings.Contains(line, `"`+tool+`"`) {
 				t.Errorf("GC_LANE_TOOLS.%s missing %q: %s", role, tool, line)
+			}
+		}
+		for _, tool := range []string{"memory_continue_session", "memory_close_session"} {
+			if strings.Contains(line, `"`+tool+`"`) {
+				t.Errorf("GC lane %s grants lifecycle tool %s", role, tool)
 			}
 		}
 	}

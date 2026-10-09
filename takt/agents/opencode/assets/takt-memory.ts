@@ -136,12 +136,32 @@ export default Plugin.define({
       return res.result
     }
 
+    // Re-evaluate ownership on every model turn, including interlocutor changes.
+    // Native permissions have already projected the catalog; only subtract here.
+    await ctx.session.hook("context", async (event) => {
+      let authorized: string[] = []
+      try {
+        const session = await rootSession(event.sessionID)
+        const response = await takt("capabilities", { author: event.agent, session, directory: pluginDirectory })
+        if (response.ok && Array.isArray(response.result) && response.result.every(value => typeof value === "string")) authorized = response.result
+      } catch { /* Ownership unavailable: recording remains available. */ }
+      for (const name of ["memory_continue_session", "memory_close_session"]) {
+        if (!authorized.includes(name)) delete event.tools?.[name]
+      }
+      if (event.tools?.memory_continue_session && authorized.includes("memory_continue_session")) {
+        event.system.push({ type: "text", text: "When resuming earlier work, memory_continue_session declares a closed previous session after the user gives its id or confirms the candidate. Before the first new memory entry, replace a mistaken declaration or withdraw it with an empty id. The first entry fixes the link. Interrupted sessions cannot be linked. Resuming never waits on this declaration; if rejected, resume without retrying." })
+      }
+      if (event.tools?.memory_close_session && authorized.includes("memory_close_session")) {
+        event.system.push({ type: "text", text: "When the user ends the session or the requested work is reported, call memory_close_session once with its objective and present state. Compaction is not a session close. New recorded work resumes the same conversation without deleting earlier close anchors." })
+      }
+    })
+
     await ctx.tool.transform((editor) => {
       editor.add({
         name: "memory_record",
         description:
           "Record one memory entry for the work you just finished. " +
-          "Returns plain text `Recorded #<id>` (or `Already recorded #<id>`); `<id>` is the number `deliver_result` takes. " +
+          "Returns plain text `Recorded #<id>` (or `Already recorded #<id>`); `<id>` identifies the recorded artifact. " +
           CONTRACT,
         input: {
           type: "object",
@@ -231,7 +251,8 @@ export default Plugin.define({
       editor.add({
         name: "memory_close_session",
         description:
-          "Close this session's memory with its objective and state, once: when the user ends the session or the requested work is reported. " +
+          "Close this session's memory with its objective and state when the user ends the session or the requested work is reported. " +
+          "New recorded work resumes the same conversation without deleting earlier close anchors. " +
           `A context compaction is not a session close. ${CONTRACT}`,
         input: {
           type: "object",

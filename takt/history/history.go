@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -32,6 +33,9 @@ const (
 	// historyFile lives in the same private state directory as the VFS store:
 	// the execution history is not hot telemetry (PR-DAG-REP-2).
 	historyFile = "history.sqlite"
+	// workspaceStateDir and vfsStateDir locate that directory under a workspace.
+	workspaceStateDir = ".takt-ai"
+	vfsStateDir       = "vfs"
 	// stateDirectoryMode keeps the execution history unreadable to other users.
 	stateDirectoryMode os.FileMode = 0o700
 	// stateFileMode keeps the store private even if the directory mode is relaxed.
@@ -342,6 +346,38 @@ func Open(stateDir string) (*History, error) {
 		return nil, errors.Join(err, db.Close())
 	}
 	return h, nil
+}
+
+// StateDir is the private state directory of a workspace, shared by the VFS
+// store and the execution history.
+func StateDir(workspace string) string {
+	return filepath.Join(workspace, workspaceStateDir, vfsStateDir)
+}
+
+// ReadProjection reads the existing history without creating a store or schema.
+// An absent history is the empty projection; malformed existing history fails.
+func ReadProjection(stateDir string) (_ Projection, err error) {
+	path, err := filepath.Abs(filepath.Join(stateDir, historyFile))
+	if err != nil {
+		return Projection{}, err
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return Project(nil), nil
+	} else if err != nil {
+		return Projection{}, err
+	}
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return Projection{}, err
+	}
+	defer func() { err = errors.Join(err, db.Close()) }()
+	db.SetMaxOpenConns(1)
+	h := &History{db: db}
+	if err := h.replay(); err != nil {
+		return Projection{}, err
+	}
+	return h.Project(), nil
 }
 
 // Close releases the store handle.
