@@ -11,6 +11,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
+// TestSelectorDescribedShowsOnlyTheFocusedDescriptionAndKeepsItsSize checks that only the focused description is shown, the chosen marker stays put, and the block never changes size.
 func TestSelectorDescribedShowsOnlyTheFocusedDescriptionAndKeepsItsSize(t *testing.T) {
 	items := []ui.Item{
 		{Label: "One", Description: "first"},

@@ -18,6 +18,7 @@ import (
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
+	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 	"github.com/rou-cru/takt-ai/takt/tui/uninstall"
 )
@@ -29,6 +30,7 @@ var (
 	escKey  = tea.KeyPressMsg{Code: tea.KeyEscape}
 )
 
+// press feeds messages to the model in order and returns the resulting model.
 func press(t *testing.T, model uninstall.Model, messages ...tea.Msg) uninstall.Model {
 	t.Helper()
 	for _, message := range messages {
@@ -88,6 +90,7 @@ func uninstallRequest(t *testing.T, model uninstall.Model) (uninstall.Model, run
 	return next.(uninstall.Model), testutil.ActionRequest(t, command)
 }
 
+// TestEngramScreenShowsOnlyTheFocusedOptionDescription checks that all labels stay visible while only the focused choice's description is shown.
 func TestEngramScreenShowsOnlyTheFocusedOptionDescription(t *testing.T) {
 	screen := engramScreen(t)
 	if got := screen.Title(); got != ui.TextUninstallEngramTitle {
@@ -110,6 +113,7 @@ func TestEngramScreenShowsOnlyTheFocusedOptionDescription(t *testing.T) {
 	}
 }
 
+// TestEngramAnswerReachesTheUninstallRequest checks that the chosen Engram answer makes the flow dirty and travels in the uninstall request.
 func TestEngramAnswerReachesTheUninstallRequest(t *testing.T) {
 	screen := press(t, engramScreen(t), downKey, upKey, downKey)
 	if screen.Dirty() {
@@ -125,6 +129,7 @@ func TestEngramAnswerReachesTheUninstallRequest(t *testing.T) {
 	}
 }
 
+// TestEngramQuestionStaysBlockedWhenThePlanCannotBePrepared checks that an unreadable ownership manifest is reported and Continue does not reach review.
 func TestEngramQuestionStaysBlockedWhenThePlanCannotBePrepared(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setuputil.TestPlanRequest()); err != nil {
@@ -143,6 +148,7 @@ func TestEngramQuestionStaysBlockedWhenThePlanCannotBePrepared(t *testing.T) {
 	}
 }
 
+// TestModifiedFilesMustAllBeDecidedBeforeContinuing checks that every modified file is decided before the flow advances and that the decisions reach the request.
 func TestModifiedFilesMustAllBeDecidedBeforeContinuing(t *testing.T) {
 	screen, edited := modifiedScreen(t)
 	if screen.State() != uninstall.StateModified {
@@ -164,7 +170,7 @@ func TestModifiedFilesMustAllBeDecidedBeforeContinuing(t *testing.T) {
 	if screen.State() != uninstall.StateModified {
 		t.Fatalf("state = %v, want to stay on the modified questions while a file is undecided", screen.State())
 	}
-	if v := viewText(screen); !strings.Contains(v, ui.TextKeepMine) {
+	if v := viewText(screen); !strings.Contains(v, theme.Icon.Chosen+ui.TextKeepMine) {
 		t.Errorf("first file's decision is not visible:\n%s", v)
 	}
 
@@ -184,6 +190,7 @@ func TestModifiedFilesMustAllBeDecidedBeforeContinuing(t *testing.T) {
 	}
 }
 
+// TestBackNavigationAcrossSteps checks that Esc and the Back action return one step at a time and leave the flow from the first step.
 func TestBackNavigationAcrossSteps(t *testing.T) {
 	// The modified step leaves the flow.
 	screen, _ := modifiedScreen(t)
@@ -211,6 +218,7 @@ func TestBackNavigationAcrossSteps(t *testing.T) {
 	}
 }
 
+// TestBusyScreenIgnoresKeysAndAdvancesSpinner checks that a running uninstall ignores keys, advances its spinner and survives unknown messages.
 func TestBusyScreenIgnoresKeysAndAdvancesSpinner(t *testing.T) {
 	screen := press(t, engramScreen(t), enterKey)
 	screen, _ = uninstallRequest(t, screen)
@@ -234,6 +242,7 @@ func TestBusyScreenIgnoresKeysAndAdvancesSpinner(t *testing.T) {
 	}
 }
 
+// TestResultBodiesForCancelledAndFailedRuns checks the result screen for each way a run can end.
 func TestResultBodiesForCancelledAndFailedRuns(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -279,6 +288,7 @@ func TestResultBodiesForCancelledAndFailedRuns(t *testing.T) {
 	}
 }
 
+// TestDirtyIsFalseOnceFinishedOrNotInstalled checks that a finished flow is no longer dirty and that a missing installation keeps the plain title.
 func TestDirtyIsFalseOnceFinishedOrNotInstalled(t *testing.T) {
 	screen := press(t, engramScreen(t), downKey, downKey, enterKey)
 	screen, request := uninstallRequest(t, screen)
