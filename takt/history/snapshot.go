@@ -136,8 +136,9 @@ type Snapshot struct {
 // Project is a pure fold over entries (PR-DAG-REP-1), entry count alone gives a
 // deterministic, monotonic projection_revision equal to history_position. The
 // plan belongs to one root session, named as the earliest-appearing SessionID
-// in Seq order; a history that genuinely mixes root sessions is not
-// disambiguated further.
+// in Seq order, and only that session's units and activities are drawn: a unit
+// name is unique within its root, so another root's units would collide. A
+// caller that wants another root filters the entries to it first.
 func BuildSnapshot(entries []Entry) Snapshot {
 	p, inferred := projectWithExecutionOrder(entries)
 	session := rootSession(entries)
@@ -168,6 +169,9 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	slices.Sort(keys)
 	for _, key := range keys {
 		u := p.Units[key]
+		if u.SessionID != session {
+			continue
+		}
 		id := u.WorkUnitID
 		if u.Flight == FlightUncertain {
 			s.Capture = CaptureUncertain
@@ -192,6 +196,9 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	slices.Sort(activityIDs)
 	for _, id := range activityIDs {
 		a := p.Activities[id]
+		if a.SessionID != session {
+			continue
+		}
 		s.Activities = append(s.Activities, ActivityNode{
 			ActivityID: a.ActivityID, NodeKind: a.NodeKind, State: a.State,
 			Flight: a.Flight, Outcome: a.Outcome,

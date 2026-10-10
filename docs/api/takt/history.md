@@ -778,7 +778,7 @@ type Snapshot struct {
 func BuildSnapshot(entries []Entry) Snapshot
 ```
 
-BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order; a history that genuinely mixes root sessions is not disambiguated further.
+BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
 
 <a name="State"></a>
 ## type State

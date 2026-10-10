@@ -301,6 +301,7 @@ describe("takt-ai answers", () => {
 describe("delegation lifecycle", () => {
   const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-1", input })
   const declareNone = (vfs: Awaited<ReturnType<typeof startVfs>>, unit: string) => vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+  // acceptInputs lets the harness validate every declared input and result.
   const acceptInputs = (call: Call) => call.kind === "dispatch" && (call.command === "validate_inputs" || call.command === "validate_results") ? { out: "{}" } : undefined
 
   test("a delegation is refused until its consumed invariants are declared", async () => {
@@ -378,6 +379,7 @@ describe("delegation lifecycle", () => {
     expect(context.tools).toEqual({})
     return context.system as Array<{ text: string }>
   }
+  // finished is the host's report that the producer's delegation completed.
   const finished = () => ({ tool: "subagent", sessionID: "root", id: "call-r", status: "completed", result: { content: "Breakdown recorded." } })
 
   test("the specialist receives the invariants declared for its unit, or their declared absence", async () => {
@@ -556,6 +558,29 @@ describe("delegation lifecycle", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a background watch that fails is taken up again by the next reconciliation", async () => {
+    const missing: string[] = []
+    const vfs = await startVfs({
+      sessions: producerSessions, missing,
+      wait: async () => { throw new Error("host unreachable") },
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "unit-r", root: "root", agent: RESULT_AGENT, background: true, child: "child-r" } } },
+    })
+    const delegate = async (unit: string) => {
+      await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
+    }
+    try {
+      await delegate("unit-a")
+      await until(() => vfs.errors.some(([label]) => label === "Takt background watch"))
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
+      // By the next pass the host no longer has the child: it is reconciled.
+      missing.push("child-r")
+      await delegate("unit-b")
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "unit-r", dispatch: "old:1", session: "root" }])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object).sort()).toEqual(["root:call-unit-a", "root:call-unit-b"])
+    } finally { await vfs.stop() }
+  })
+
   test("a resumed session runs the unit its new delegation names", async () => {
     const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
     try {
@@ -579,6 +604,7 @@ describe("delegation lifecycle", () => {
 
   test("model usage is attributed to who ran in that session", async () => {
     const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
+    // usage is a host usage event for sessionID; usageOf finds what was recorded for it.
     const usage = (id: string, sessionID: string) => ({ id, created: 1, type: "session.usage.updated",
       data: { sessionID, cost: 0.01, tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } } }) as unknown as OpenCodeEvent
     const usageOf = (sessionID: string) => vfs.requests("obs", "ingest").find((r) => r.event_class === "model_usage" && r.session_id === sessionID)

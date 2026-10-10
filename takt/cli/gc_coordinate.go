@@ -172,6 +172,9 @@ func coordinateInvestigation(c *gc.Coordinator, r coordinationRequest) (any, err
 	return c.Cycle, nil
 }
 
+// coordinateAuthorization turns a cycle's investigated findings into the
+// collector's scoped binding and the verifier's gate over it; a retry reuses
+// what an earlier try reserved.
 func coordinateAuthorization(fs *vfs.FS, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	if e := c.Require(r.Session, "collector"); e != nil {
 		return nil, e

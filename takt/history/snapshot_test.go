@@ -12,6 +12,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/history"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -507,9 +508,33 @@ func TestInferredPrerequisitesStayInTheirRoot(t *testing.T) {
 	if mine, _ := p.Unit("root", "pm"); mine.State != history.StateInFlight || mine.AttemptID != history.FirstAttempt {
 		t.Fatalf("root's pm = %+v; want its own first attempt in flight", mine)
 	}
-	for _, n := range history.BuildSnapshot(entries).Nodes {
-		if n.SessionID == "root" && len(n.Prerequisites) != 0 {
+	// Like `dag --session root`: the snapshot is drawn from root's own entries.
+	mine := slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != "root" })
+	for _, n := range history.BuildSnapshot(mine).Nodes {
+		if len(n.Prerequisites) != 0 {
 			t.Fatalf("root's %s inferred %v from another root", n.ID, n.Prerequisites)
 		}
+	}
+}
+
+// A history mixing two roots that name a unit alike draws only the earliest
+// root's unit: node identities never collide.
+func TestBuildSnapshotDrawsOnlyItsOwnRoot(t *testing.T) {
+	in := func(session string, e history.Entry) history.Entry {
+		e.SessionID = session
+		return e
+	}
+	entries := []history.Entry{
+		in("root", observed(t, "impl", history.KindAdmitted, "")),
+		in("other", observed(t, "impl", history.KindAdmitted, "")),
+		in("other", observed(t, "impl", history.KindTerminated, history.OutcomeCompleted)),
+		in("other", observed(t, "only-other", history.KindAdmitted, "")),
+	}
+	s := history.BuildSnapshot(entries)
+	if s.SessionID != "root" || len(s.Nodes) != 1 {
+		t.Fatalf("snapshot of %q drew %+v; want root's impl alone", s.SessionID, s.Nodes)
+	}
+	if n := s.Nodes[0]; n.ID != "impl" || n.SessionID != "root" || n.State != history.StateInFlight {
+		t.Fatalf("node = %+v; want root's impl, still in flight", n)
 	}
 }

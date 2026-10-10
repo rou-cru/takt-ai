@@ -14,6 +14,7 @@ const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 4
 
 async function sameDirectory(left: string, right: string): Promise<boolean> {
+  // canonical resolves symlinks, falling back to the plain path when it cannot.
   const canonical = (path: string) => realpath(path).catch(() => resolve(path))
   const [leftPath, rightPath] = await Promise.all([canonical(left), canonical(right)])
   return leftPath === rightPath
@@ -310,6 +311,7 @@ export default Plugin.define({
     // the map is reloaded here and written back on every change, so a rehydrated
     // dispatch keeps speaking for the attempt the harness issued it.
     for (const b of ((await ctx.storage.get(BINDINGS_KEY)) as Binding[] | undefined) ?? []) bindings.set(b.key, b)
+    // persist writes the bindings back to durable storage.
     const persist = () => ctx.storage.set(BINDINGS_KEY, [...bindings.values()])
     // delegations maps each in-flight host subagent call to the work unit it
     // executes, so its end is recorded against the unit it was admitted as. It
@@ -336,25 +338,34 @@ export default Plugin.define({
     // attempt, and the unit's staged work and claims stay as they are. A unit
     // that is no longer in flight has nothing to reconcile and succeeds at once.
     const inherited = new Map(delegations)
-    let reconciling: Promise<void> | undefined
-    const reconcileStoredDelegations = () => reconciling ??= (async () => {
-      for (const [delegation, d] of inherited) {
-        // A background child runs in the host, not in this process: it outlives
-        // a plugin restart. It ends its delegation when its turn ends, and only
-        // a child the host no longer has is reconciled as not running.
-        if (d.background && d.child && await watchBackground(delegation, d.child)) continue
-        try {
-          // The dispatch names this very delegation: a later attempt of the unit
-          // admitted under another one is never marked uncertain or ended here.
-          await dispatchAction({ action: "uncertain", event: d.unit, dispatch: delegation, session: d.root })
-          await dispatchAction({ action: "reconcile", event: d.unit, dispatch: delegation, session: d.root, pass: false })
-          inherited.delete(delegation)
-          delegations.delete(delegation)
-          await persistDelegations()
-        } catch (error) {
-          console.error("Takt could not reconcile a stored delegation yet", delegation, error)
-        }
+    // Delegations whose background watch failed wait here for the next pass:
+    // re-adding them to inherited during a pass would revisit them in it.
+    const retryInherited = new Map<string, Delegation>()
+    // reconcileOne ends one stored delegation, or keeps it for the next pass.
+    async function reconcileOne(delegation: string, d: Delegation) {
+      // A background child runs in the host, not in this process: it outlives
+      // a plugin restart. It ends its delegation when its turn ends, and only
+      // a child the host no longer has is reconciled as not running.
+      if (d.background && d.child && await watchBackground(delegation, d.child)) return
+      try {
+        // The dispatch names this very delegation: a later attempt of the unit
+        // admitted under another one is never marked uncertain or ended here.
+        await dispatchAction({ action: "uncertain", event: d.unit, dispatch: delegation, session: d.root })
+        await dispatchAction({ action: "reconcile", event: d.unit, dispatch: delegation, session: d.root, pass: false })
+        inherited.delete(delegation)
+        delegations.delete(delegation)
+        await persistDelegations()
+      } catch (error) {
+        console.error("Takt could not reconcile a stored delegation yet", delegation, error)
       }
+    }
+    let reconciling: Promise<void> | undefined
+    // reconcileStoredDelegations ends what an earlier process left in flight;
+    // dispatchAction already serializes the calls each one makes to the core.
+    const reconcileStoredDelegations = () => reconciling ??= (async () => {
+      for (const [delegation, d] of retryInherited) inherited.set(delegation, d)
+      retryInherited.clear()
+      await Promise.all([...inherited].map(([delegation, d]) => reconcileOne(delegation, d)))
     })().finally(() => { reconciling = undefined })
     // deliveries tracks a producer's result delivery per delegation, for its
     // life only; it is not durable, unlike bindings/delegations above, because
@@ -950,6 +961,7 @@ export default Plugin.define({
       }
       if (released) await persist()
     }
+    // pumpGC prompts the lane the in-flight cycle's phase needs, once per phase.
     async function pumpGC() {
       await restoreGCCycle()
       const state = await coordinate({ action: "status" })
@@ -990,6 +1002,7 @@ export default Plugin.define({
       // Agent catalog model assignments remain authoritative: no model override.
       await promptChild(child, `Maintenance cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${instructions[cycle.phase]}`)
     }
+    // gcTool runs one maintenance action for the lane attached to its role.
     async function gcTool(action: string, c: { sessionID: string; agent: string }, fields: Record<string, unknown> = {}) {
       const role = ["baseline", "delta", "verdict", "acceptance"].includes(action) ? "verifier" : "collector"
       const expected = role === "verifier" ? "verify" : "simplify"
@@ -1192,7 +1205,12 @@ export default Plugin.define({
       boundChildren.add(child)
       void ctx.session.wait({ sessionID: child })
         .then(() => settleBackground(child))
-        .catch(error => console.error("Takt background watch", child, error))
+        .catch(error => {
+          // Nothing else may end it: the next pass looks at the child again.
+          console.error("Takt background watch", child, error)
+          const d = delegations.get(delegation)
+          if (d) retryInherited.set(delegation, d)
+        })
       return true
     }
 
@@ -1271,13 +1289,14 @@ export default Plugin.define({
     // accounting fields; message text, prompts and tool output never cross into
     // Takt telemetry. Event IDs prevent duplicate delivery from counting twice.
     const observedUsageEvents = new Set<string>()
+    // observeModelUsage records one usage event against who ran in its session.
     function observeModelUsage(event: OpenCodeEvent) {
       if (event.type !== "session.usage.updated") return
       if (observedUsageEvents.has(event.id)) return
       const { sessionID, cost, tokens } = event.data
       // Usage belongs to who ran in that session: its latest binding, else the
       // delegation it runs; a root session's own usage is the harness's.
-      const binding = [...bindings.values()].filter((candidate) => candidate.dispatch === sessionID).at(-1)
+      const binding = [...bindings.values()].findLast((candidate) => candidate.dispatch === sessionID)
       const delegation = [...delegations.values()].find((d) => d.child === sessionID)
       const attributes = {
         usage_event_id: event.id,
@@ -1296,6 +1315,7 @@ export default Plugin.define({
     // model never supplies it.
     let confirmations: ReturnType<(typeof OpenCode)["make"]> | undefined
     const pendingReplies = new Map<string, (reply: string) => void>()
+    // confirmWithUser asks the user through OpenCode and throws on a refusal.
     async function confirmWithUser(action: string, resource: string, metadata: Record<string, string>, c: { sessionID: string; agent: string; messageID: string; id: string }) {
       if (!confirmations) {
         // Loaded only when a user is actually asked: no other path needs the client.
@@ -1321,11 +1341,8 @@ export default Plugin.define({
           pendingReplies.get(event.data.requestID)?.(event.data.reply)
           continue
         }
-        // A child is learned as soon as the host creates it, so one that ends
-        // before its first turn still ends its delegation.
         if (event.type === "session.created") {
-          const { sessionID, agent } = event.data
-          if (agent) await adoptChild(sessionID, agent).catch(error => console.error("Takt child adoption", sessionID, error))
+          await onSessionCreated(event.data.sessionID, event.data.agent)
           continue
         }
         if (event.type === "session.idle") {
@@ -1335,26 +1352,32 @@ export default Plugin.define({
           scheduleGC()
           continue
         }
-        // The temporary interlocutor died without handing off or being
-        // explicitly aborted; the harness itself reports the abort so the
-        // stack is never left pointing at a session that no longer exists.
-        if (event.type === "session.deleted") {
-          // A deleted child never goes idle: its background delegation ends here.
-          await settleBackground(event.data.sessionID).catch(error => console.error("Takt background settle", error))
-        }
-        if (event.type === "session.deleted" && event.data.sessionID === interlocutorChild) {
-          const child = interlocutorChild
-          const root = interlocutorRoot
-          interlocutorChild = undefined
-          interlocutorRoot = undefined
-          if (root) {
-            await dispatchAction({ action: "abort_switch", session: root, child, evidence: "session ended", origin: "harness" })
-              .then(envelope => returnInterface(root, "a lent session that ended without a handoff", envelope))
-              .catch(error => console.error("Takt interlocutor abort_switch", error))
-          }
-        }
+        if (event.type === "session.deleted") await onSessionDeleted(event.data.sessionID)
       }
     })().catch(() => undefined) // an aborted subscription is an ordinary shutdown
+
+    // onSessionCreated learns a child as soon as the host creates it, so one
+    // that ends before its first turn still ends its delegation.
+    async function onSessionCreated(sessionID: string, agent: string | undefined) {
+      if (agent) await adoptChild(sessionID, agent).catch(error => console.error("Takt child adoption", sessionID, error))
+    }
+
+    // onSessionDeleted ends what the deleted session held. A deleted child never
+    // goes idle, so its background delegation ends here. A temporary
+    // interlocutor that died without handing off or being explicitly aborted is
+    // reported by the harness itself, so the stack never points at a session
+    // that no longer exists.
+    async function onSessionDeleted(sessionID: string) {
+      await settleBackground(sessionID).catch(error => console.error("Takt background settle", error))
+      if (sessionID !== interlocutorChild) return
+      const root = interlocutorRoot
+      interlocutorChild = undefined
+      interlocutorRoot = undefined
+      if (!root) return
+      await dispatchAction({ action: "abort_switch", session: root, child: sessionID, evidence: "session ended", origin: "harness" })
+        .then(envelope => returnInterface(root, "a lent session that ended without a handoff", envelope))
+        .catch(error => console.error("Takt interlocutor abort_switch", error))
+    }
 
     await ctx.tool.transform(async (editor) => {
       const subagent = editor.get("subagent")
@@ -1818,6 +1841,7 @@ export default Plugin.define({
           if (c.agent !== ORCHESTRATOR_ID) throw new Error("vfs_consolidate belongs to the orchestrator")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
+          // consolidate asks the core, passing the user's acceptance when given.
           const consolidate = (acceptFailing: boolean) => takt("consolidate", () => ({
             ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
             ...(acceptFailing ? { accept_failing: true } : {}),

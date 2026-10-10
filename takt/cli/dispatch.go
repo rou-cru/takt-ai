@@ -259,6 +259,8 @@ type lifecycleResponse struct {
 	ToState   history.State `json:"to_state"`
 }
 
+// coordinate runs one dispatch action against the history, the VFS and the
+// coordinator, after observing what the journal recorded since the last call.
 func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	entries, e := observeCoordination(fs, h, c, r.Session)
 	if e != nil {
