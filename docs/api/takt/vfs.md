@@ -42,6 +42,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) OnCollision\(fn func\(CollisionEvent\)\)](<#FS.OnCollision>)
   - [func \(f \*FS\) OnJournal\(fn func\(JournalEntry\)\)](<#FS.OnJournal>)
   - [func \(f \*FS\) OwnershipClaims\(currentSessionID string\) \[\]OwnershipClaim](<#FS.OwnershipClaims>)
+  - [func \(f \*FS\) PendingGate\(identity Identity, authorKey AgentID\) \(AgentID, bool\)](<#FS.PendingGate>)
   - [func \(f \*FS\) PendingOrdinaryDeltaIdentities\(\) \[\]string](<#FS.PendingOrdinaryDeltaIdentities>)
   - [func \(f \*FS\) PendingOrdinaryDeltas\(\) int](<#FS.PendingOrdinaryDeltas>)
   - [func \(f \*FS\) PrepareShell\(key AgentID, callID, command, stateDir string, expected uint64\) \(ShellPlan, error\)](<#FS.PrepareShell>)
@@ -480,6 +481,15 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
 ```
 
 OwnershipClaims lists current claims in deterministic path order. A claim is Active only when adopted in currentSessionID; pending and prior\-session ownership remain visible and are never expired automatically.
+
+<a name="FS.PendingGate"></a>
+### func \(\*FS\) PendingGate
+
+```go
+func (f *FS) PendingGate(identity Identity, authorKey AgentID) (AgentID, bool)
+```
+
+PendingGate returns the unadopted, current gate identity's judge already holds over authorKey in the same unit and attempt; an empty attempt matches the open one, as the store numbers maintenance attempts itself. A coordinator that retries its own step reuses that gate instead of asking AssignVerifier, which refuses a second gate for one judge and author.
 
 <a name="FS.PendingOrdinaryDeltaIdentities"></a>
 ### func \(\*FS\) PendingOrdinaryDeltaIdentities

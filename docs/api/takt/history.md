@@ -13,6 +13,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [Constants](<#constants>)
 - [func AllowanceKey\(bound, objective string\) string](<#AllowanceKey>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
+- [func UnitKey\(session, unit string\) string](<#UnitKey>)
 - [type Activity](<#Activity>)
 - [type ActivityNode](<#ActivityNode>)
 - [type Author](<#Author>)
@@ -38,6 +39,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func ReadProjection\(stateDir string\) \(\_ Projection, err error\)](<#ReadProjection>)
   - [func \(p Projection\) Budgets\(session string\) Budgets](<#Projection.Budgets>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
+  - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
 - [type Recovery](<#Recovery>)
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
 - [type Snapshot](<#Snapshot>)
@@ -156,6 +158,15 @@ func StateDir(workspace string) string
 ```
 
 StateDir is the private state directory of a workspace, shared by the VFS store and the execution history.
+
+<a name="UnitKey"></a>
+## func UnitKey
+
+```go
+func UnitKey(session, unit string) string
+```
+
+UnitKey names session's work unit unit in Projection.Units.
 
 <a name="Activity"></a>
 ## type Activity
@@ -623,6 +634,8 @@ Projection is the derived execution DAG state. It is never edited in place: it i
 
 ```go
 type Projection struct {
+    // Units is keyed by UnitKey: a unit name belongs to the root session that
+    // declared or admitted it, and another root may reuse it.
     Units map[string]Unit `json:"units"`
     // Activities contains direct orchestrator and maintenance activity, outside
     // the work-unit map and its dispatch budgets.
@@ -668,6 +681,15 @@ func (p Projection) InFlight() int
 ```
 
 InFlight counts the units holding a concurrency slot: admitted pending launch, running, suspended, cancellation\-pending and uncertain alike \(PR\-HAR\-16, PR\-HAR\-18\).
+
+<a name="Projection.Unit"></a>
+### func \(Projection\) Unit
+
+```go
+func (p Projection) Unit(session, unit string) (Unit, bool)
+```
+
+Unit returns session's work unit named unit, and whether it is known.
 
 <a name="Recovery"></a>
 ## type Recovery
@@ -799,6 +821,8 @@ Unit is a work unit as the replay derives it.
 ```go
 type Unit struct {
     SessionID string `json:"session_id"`
+    // WorkUnitID is the unit's name within its root session.
+    WorkUnitID string `json:"work_unit_id"`
     // NodeKind is the classification recorded on the unit's first entry.
     NodeKind NodeKind `json:"node_kind,omitempty"`
     // AttemptID identifies the attempt; FirstAttempt for the first one.
