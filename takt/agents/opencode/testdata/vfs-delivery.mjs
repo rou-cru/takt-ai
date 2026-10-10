@@ -331,7 +331,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   assert.ok(verdict, "the verdict never reached the core")
   assert.equal(verdict.stdin.verifier_key, "gate-1")
   // Without its delivery the verifier's delegation fails like any producer's.
-  await assert.rejects(delegate("execute.after", "review", "call-review", "verify", "completed", gates), /the specialist ended without delivering its result/)
+  await assert.rejects(() => delegate("execute.after", "review", "call-review", "verify", "completed", gates), /the specialist ended without delivering its result/)
   assert.deepEqual(promptedSessions, ["review"], "the verifier was not nudged once to deliver")
   // A second review that delivers ends cleanly with the result handed back.
   claims.splice(1)
