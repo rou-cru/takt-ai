@@ -7,7 +7,9 @@
     "lint": "eslint --ext .js,.mjs,.cjs,.ts,.tsx ."
   },
   "overrides": {
-    "@babel/core": "7.29.6"
+    "@babel/core": "7.29.6",
+    "seroval": "1.6.2",
+    "seroval-plugins": "1.6.2"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
