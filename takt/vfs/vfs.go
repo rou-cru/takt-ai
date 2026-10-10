@@ -216,6 +216,7 @@ type OwnershipClaim struct {
 
 // VerdictSummary is one judge's current verdict as the orchestrator reads it.
 type VerdictSummary struct {
+	// VerifierKey names the judge: its agent instance, not one of its gates.
 	VerifierKey AgentID `json:"verifier_key"`
 	Pass        bool    `json:"pass"`
 	Finding     string  `json:"finding,omitempty"`
@@ -230,7 +231,8 @@ type agentDelta struct {
 	revision uint64
 	bases    map[string]baseFile
 	// verdicts holds each judge's attached verification result, keyed by the
-	// judge's gate; a judge's later verdict replaces only its own.
+	// judge's agent instance; a judge's later verdict replaces only its own,
+	// whichever of its delegations attached it.
 	verdicts map[AgentID]*VerificationVerdict
 }
 
@@ -423,13 +425,8 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 	// Only a maintenance cycle's work is gated by its verdict; for ordinary
 	// work verdicts inform and ConsolidateCheckpoint asks for acceptance.
 	if f.verdictRequiredLocked(agent) {
-		if len(d.verdicts) == 0 {
-			return ErrVerificationRequired
-		}
-		for _, key := range slices.Sorted(maps.Keys(d.verdicts)) {
-			if v := d.verdicts[key]; !v.Pass {
-				return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, v.Finding)
-			}
+		if err := f.maintenanceGateLocked(agent); err != nil {
+			return err
 		}
 	}
 
@@ -439,6 +436,25 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 
 	delete(f.staged, agent)
 	f.releaseOwnershipLocked(agent)
+	return nil
+}
+
+// maintenanceGateLocked lets a maintenance cycle's work through only on
+// current verdicts that all pass. A verdict that no longer describes the work
+// or its invariant set is evidence of nothing: it neither passes nor refuses.
+func (f *FS) maintenanceGateLocked(agent AgentID) error {
+	current := f.currentVerdictsLocked(agent)
+	if len(current) == 0 {
+		if len(f.staged[agent].verdicts) > 0 {
+			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now", ErrInvalidVerdict)
+		}
+		return ErrVerificationRequired
+	}
+	for _, v := range current {
+		if !v.Pass {
+			return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, v.Finding)
+		}
+	}
 	return nil
 }
 

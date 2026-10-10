@@ -303,7 +303,7 @@ func TestAdoptionRefusesMismatchedAssignment(t *testing.T) {
 		scope  []string
 	}{
 		"another specialist":  {func(i *vfs.Identity) { i.Specialist = "fix" }, nil},
-		"another attempt":     {func(i *vfs.Identity) { i.AttemptID = outsideAttempt }, nil},
+		"an earlier attempt":  {func(i *vfs.Identity) { i.AttemptID = "0" }, nil},
 		"another invariants":  {func(i *vfs.Identity) { i.Invariants = vfs.InvariantSet{"spec.md"} }, nil},
 		"another gate author": {func(i *vfs.Identity) { i.GateAuthorKey = "someone" }, nil},
 		"another scope":       {func(*vfs.Identity) {}, []string{"other.go"}},
@@ -847,8 +847,9 @@ func TestFailingVerdictAsksForAcceptanceWithItsFinding(t *testing.T) {
 	}
 }
 
-// Judges report side by side: each keeps its own verdict, a judge's new verdict
-// replaces only its own, and the orchestrator reads every current one.
+// Judges report side by side, each named by its agent instance: each keeps its
+// own verdict, a judge's new verdict replaces only its own, and the
+// orchestrator reads every current one.
 func TestEachJudgeKeepsItsOwnVerdict(t *testing.T) {
 	r := newVerdictRig(t)
 	other := bind(t, r.f, "judge-b", "u", "verify")
@@ -873,14 +874,14 @@ func TestEachJudgeKeepsItsOwnVerdict(t *testing.T) {
 		return nil
 	}
 	got := reported()
-	if len(got) != 2 || got[r.verifier].Pass || got[r.verifier].Finding != "misses the edge case" || !got[other].Pass {
+	if len(got) != 2 || got["judge"].Pass || got["judge"].Finding != "misses the edge case" || !got["judge-b"].Pass {
 		t.Fatalf("verdicts = %+v; want judge A failing with its finding and judge B passing, side by side", got)
 	}
 	if err := r.f.Verify(other, r.author, "b2", rev, hash, false, "also fails"); err != nil {
 		t.Fatal(err)
 	}
 	got = reported()
-	if len(got) != 2 || got[r.verifier].Finding != "misses the edge case" || got[other].Pass {
+	if len(got) != 2 || got["judge"].Finding != "misses the edge case" || got["judge-b"].Pass {
 		t.Fatalf("verdicts = %+v; want only judge B's verdict replaced", got)
 	}
 	err := r.f.ConsolidateCheckpoint(r.author, "cp", rev, false)
@@ -1154,5 +1155,100 @@ func TestVerifierGateInheritsTheAuthorsEngramInvariants(t *testing.T) {
 	}
 	if err := f.ConsolidateCheckpoint(author, "cp", staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() = %v; the verdict was judged against the author's invariants", err)
+	}
+}
+
+// rejudge re-delegates judge over author as a later attempt of unit and adopts
+// the gate it is issued, as the plugin does when the verifier starts.
+func rejudge(t *testing.T, f *vfs.FS, judge, unit, attempt string, author vfs.AgentID) vfs.AgentID {
+	t.Helper()
+	identity := vfs.Identity{SessionID: testSession, WorkUnitID: unit, AttemptID: attempt, AgentID: vfs.AgentID(judge), Specialist: "verify"}
+	gate, err := f.AssignVerifier(identity, author)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.GateAuthorKey = author
+	if adopted, err := f.Bind(identity, nil); err != nil || adopted != gate {
+		t.Fatalf("adopt = %q, %v; want %q", adopted, err, gate)
+	}
+	return gate
+}
+
+// A judge delegated again over unchanged work speaks with its latest verdict
+// only: the failure it withdrew neither asks for acceptance nor is listed.
+func TestARetriedJudgeReplacesItsOwnVerdict(t *testing.T) {
+	r := newVerdictRig(t)
+	rev, hash := r.staged.Revision, r.staged.DeltaHash
+	if err := r.f.Verify(r.verifier, r.author, "first", rev, hash, false, "wrong"); err != nil {
+		t.Fatal(err)
+	}
+	gate := rejudge(t, r.f, "judge", "u", "2", r.author)
+	if err := r.f.Verify(gate, r.author, "second", rev, hash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	claim, _ := claimOf(r.f, r.author)
+	if len(claim.Verdicts) != 1 || claim.Verdicts[0].VerifierKey != "judge" || !claim.Verdicts[0].Pass {
+		t.Fatalf("verdicts = %+v; want only the judge's latest, passing", claim.Verdicts)
+	}
+	if err := r.f.ConsolidateCheckpoint(r.author, "cp", rev, false); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() = %v; the judge withdrew its failure", err)
+	}
+}
+
+// A gate a later delegation of the same judge replaced no longer judges, even
+// one already adopted by a run that is still going, and is no longer listed.
+func TestASupersededGateNoLongerJudges(t *testing.T) {
+	r := newVerdictRig(t)
+	rev, hash := r.staged.Revision, r.staged.DeltaHash
+	gate := rejudge(t, r.f, "judge", "u", "2", r.author)
+	err := r.f.Verify(r.verifier, r.author, "late", rev, hash, false, "stale run")
+	if !errors.Is(err, vfs.ErrIdentity) || !strings.Contains(err.Error(), "replaced") {
+		t.Fatalf("Verify() through the replaced gate = %v; want ErrIdentity naming the replacement", err)
+	}
+	if _, listed := claimOf(r.f, r.verifier); listed {
+		t.Fatal("the replaced gate is still listed as a claim")
+	}
+	if _, listed := claimOf(r.f, gate); !listed {
+		t.Fatal("the current gate is not listed")
+	}
+	if err := r.f.Verify(gate, r.author, "current", rev, hash, true, ""); err != nil {
+		t.Fatalf("Verify() through the current gate = %v", err)
+	}
+}
+
+// An author whose specialist ended before binding is delegated again: the
+// admitted attempt adopts the assignment the earlier one left pending, with
+// its key and scope, instead of being refused.
+func TestARetriedAuthorAdoptsTheAssignmentItsEarlierAttemptLeft(t *testing.T) {
+	f, _, _ := newStore(t)
+	assigned := ident("dev", "u", "dev")
+	key, err := f.AssignScope(assigned, []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry := assigned
+	retry.AttemptID = "2"
+	adopted, err := f.Bind(retry, []string{"a.go"})
+	if err != nil || adopted != key {
+		t.Fatalf("Bind() of attempt 2 = %q, %v; want the pending assignment %q", adopted, err, key)
+	}
+	if bound, _ := f.BindingIdentity(key); bound.AttemptID != "2" || bound.Prelaunch {
+		t.Fatalf("adopted binding = %+v; want attempt 2, adopted", bound)
+	}
+}
+
+// A refused verdict does not spend its call: the same call attaches it once
+// its cause is gone, and only then is a replay refused.
+func TestARefusedVerdictCanBeAttachedAgainUnderItsCall(t *testing.T) {
+	r := newVerdictRig(t)
+	rev, hash := r.staged.Revision, r.staged.DeltaHash
+	if err := r.f.Verify(r.verifier, r.author, "verdict", rev+1, hash, true, ""); !errors.Is(err, vfs.ErrInvalidVerdict) {
+		t.Fatalf("Verify() at a wrong revision = %v; want ErrInvalidVerdict", err)
+	}
+	if err := r.f.Verify(r.verifier, r.author, "verdict", rev, hash, true, ""); err != nil {
+		t.Fatalf("Verify() again under the same call = %v", err)
+	}
+	if err := r.f.Verify(r.verifier, r.author, "verdict", rev, hash, true, ""); !errors.Is(err, vfs.ErrDuplicateCall) {
+		t.Fatalf("Verify() replay = %v; want ErrDuplicateCall", err)
 	}
 }
