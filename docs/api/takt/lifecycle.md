@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/lifecycle"
 ```
 
-Package lifecycle dispatches the install, sync, and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime. It sits above setup, skills and engram and composes them \(hosting this dispatch in setup would create an import cycle through skills\).
+Package lifecycle dispatches the install, sync and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime, composing setup, skills and engram. It sits above them because hosting this dispatch in setup would create an import cycle through skills.
 
 ## Index
 

@@ -49,10 +49,9 @@ const probeClear = "\r\x1b[2K"
 // replyMaxBytes bounds how much input is read while waiting for the replies.
 const replyMaxBytes = 256
 
-// ProbeLogoMode picks how the color logo is drawn on the terminal on in and
-// out. TAKT_LOGO wins; otherwise the terminal is asked, never identified by
-// name: an image only when it accepts kitty graphics, quadrants when it does
-// not, does not answer, or is not a terminal.
+// ProbeLogoMode picks how the color logo is drawn on terminal in and out.
+// TAKT_LOGO wins; otherwise the terminal is asked, never identified by name:
+// an image only when it accepts kitty graphics, quadrants otherwise.
 func ProbeLogoMode(in, out *os.File) LogoMode {
 	if mode, ok := logoModeOverride(); ok {
 		return mode

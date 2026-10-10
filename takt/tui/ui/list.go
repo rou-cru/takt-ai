@@ -33,9 +33,8 @@ func optionList(options []string, cursor int, base lipgloss.Style) string {
 }
 
 // Menu renders a single selection whose only visible description is the one
-// under the cursor, in one slot below the list. The slot always takes its
-// line and the block is as wide as its widest label or description, so moving
-// the cursor never shifts the menu.
+// under the cursor, in one fixed slot below the list. The block is as wide as
+// its widest label or description, so moving the cursor never shifts it.
 func Menu(items []Item, cursor int) string {
 	indent := strings.Repeat(" ", lipgloss.Width(theme.Icon.Cursor))
 	width := 0

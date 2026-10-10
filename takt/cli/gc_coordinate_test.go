@@ -91,7 +91,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if e = fs.Verify(verifier, author, "verify", result.Revision, result.DeltaHash, true, ""); e != nil {
 				t.Fatal(e)
 			}
-			if e = fs.ConsolidateCheckpoint(author, "ordinary", result.Revision); e != nil {
+			if e = fs.ConsolidateCheckpoint(author, "ordinary", result.Revision, false); e != nil {
 				t.Fatal(e)
 			}
 			if e := fs.Close(); e != nil {

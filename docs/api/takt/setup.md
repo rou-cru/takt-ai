@@ -210,7 +210,7 @@ BeginOperation records action as in progress under rootDir and returns the func 
 func ContentMatches(artifactPath string, current, want []byte) bool
 ```
 
-ContentMatches reports whether current already holds want, the way deploy would leave it: for opencode.json, MCP servers a later injection step owns are excluded first, since want never has them either. Any other path falls back to a plain byte comparison.
+ContentMatches reports whether current already holds want the way deploy would leave it: for opencode.json, MCP servers a later injection owns are excluded first \(want never has them either\); any other path is byte\-equal.
 
 <a name="DriftLabel"></a>
 ## func DriftLabel

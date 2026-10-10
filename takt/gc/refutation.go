@@ -36,14 +36,22 @@ type EvidenceClass string
 
 // Evidence classes are the closed set of blind spots a refutation may cite.
 const (
+	// EvidenceDynamicDispatch cites a call site the analyzer could not resolve statically.
 	EvidenceDynamicDispatch EvidenceClass = "dynamic-dispatch"
-	EvidenceReflection      EvidenceClass = "reflection"
-	EvidenceConfigWiring    EvidenceClass = "config-wiring"
-	EvidenceFrameworkEntry  EvidenceClass = "framework-entrypoint"
-	EvidenceSerialization   EvidenceClass = "serialization"
-	EvidenceReExport        EvidenceClass = "re-export"
-	EvidenceValueReference  EvidenceClass = "value-reference"
-	EvidencePublicContract  EvidenceClass = "public-contract"
+	// EvidenceReflection cites a reflective access hiding the actual target.
+	EvidenceReflection EvidenceClass = "reflection"
+	// EvidenceConfigWiring cites wiring decided by configuration, not code.
+	EvidenceConfigWiring EvidenceClass = "config-wiring"
+	// EvidenceFrameworkEntry cites a live entry the framework invokes directly.
+	EvidenceFrameworkEntry EvidenceClass = "framework-entrypoint"
+	// EvidenceSerialization cites a type read or written through serialization.
+	EvidenceSerialization EvidenceClass = "serialization"
+	// EvidenceReExport cites a re-exported symbol whose use is outside the analyzed set.
+	EvidenceReExport EvidenceClass = "re-export"
+	// EvidenceValueReference cites a value use the analyzer treated as a reference.
+	EvidenceValueReference EvidenceClass = "value-reference"
+	// EvidencePublicContract cites a published contract consumers rely on.
+	EvidencePublicContract EvidenceClass = "public-contract"
 )
 
 var evidenceClasses = []EvidenceClass{

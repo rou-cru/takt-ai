@@ -32,7 +32,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) BindingIdentity\(key AgentID\) \(Identity, bool\)](<#FS.BindingIdentity>)
   - [func \(f \*FS\) Close\(\) error](<#FS.Close>)
   - [func \(f \*FS\) CompleteCycle\(cycleID string\) \(err error\)](<#FS.CompleteCycle>)
-  - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64\) \(err error\)](<#FS.ConsolidateCheckpoint>)
+  - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64, acceptFailing bool\) \(err error\)](<#FS.ConsolidateCheckpoint>)
   - [func \(f \*FS\) ConsolidatedBy\(path string\) \(cycleID, mandateClass string, ok bool\)](<#FS.ConsolidatedBy>)
   - [func \(f \*FS\) DiscardCycle\(cycleID string\) \(restored \[\]string, err error\)](<#FS.DiscardCycle>)
   - [func \(f \*FS\) DropCycleStaging\(cycle string\) \(err error\)](<#FS.DropCycleStaging>)
@@ -61,6 +61,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type OwnershipClaim](<#OwnershipClaim>)
 - [type ShellPlan](<#ShellPlan>)
 - [type StagedView](<#StagedView>)
+- [type VerdictSummary](<#VerdictSummary>)
 - [type VerificationVerdict](<#VerificationVerdict>)
 
 
@@ -161,6 +162,12 @@ var (
     // ErrVerificationRequired is returned when consolidation is attempted without
     // a passing verification verdict.
     ErrVerificationRequired = errors.New("vfs: consolidation requires a passing verification verdict")
+
+    // ErrFailingVerdict is returned when consolidation is attempted over a
+    // current failing verdict without the user's explicit acceptance. Verdicts
+    // inform; this refusal only asks for that acceptance, and the staged work is
+    // kept.
+    ErrFailingVerdict = errors.New("vfs: a current verification verdict failed; consolidating needs the user's explicit acceptance")
 
     // ErrSelfVerification is returned when the authoring agent attempts to
     // verify its own delta.
@@ -388,10 +395,10 @@ CompleteCycle releases cycleID's discard state after it closed without regressin
 ### func \(\*FS\) ConsolidateCheckpoint
 
 ```go
-func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error)
+func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error)
 ```
 
-ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes; a verdict, when present, remains bound to its evidence. An empty checkpoint label defaults to the author key and revision.
+ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes. Verdicts inform: a current failing one refuses unless acceptFailing carries the user's explicit acceptance, and a stale one is ignored. A maintenance cycle's current verdicts stay a gate that must pass. An empty checkpoint label defaults to the author key and revision.
 
 <a name="FS.ConsolidatedBy"></a>
 ### func \(\*FS\) ConsolidatedBy
@@ -499,7 +506,7 @@ PendingOrdinaryDeltas counts unresolved ordinary deltas across the workspace, no
 func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error)
 ```
 
-PrepareShell classifies one command and lays out its private projection. key may be empty: an unbound caller may still inspect, never mutate. expected must match a bound caller's revision and is ignored when key is empty. For callers without file scope, quoted spans are ignored when detecting workspace mutations; the sandbox must still enforce the returned restrictions. Preparation creates scratch and, for allowed mutations, projection files, but does not execute the command. A policy denial returns a ShellDeny plan with a nil error. Missing callID or stateDir, a blank command, or an unknown nonempty key returns ErrIdentity; a revision mismatch returns ErrStaleRevision. Store readiness and scratch or projection filesystem errors propagate.
+PrepareShell classifies one command and prepares its sandbox files. key may be empty: an unbound caller may inspect but cannot mutate the workspace, and expected then does not apply. Quoted spans are not treated as mutations for callers without file scope, but the sandbox still enforces the returned restrictions. Non\-denied plans create scratch; only allowed workspace mutations create a projection. Preparation does not execute the command; a policy denial returns a ShellDeny plan with a nil error. Identity and revision problems, and store or filesystem errors, propagate.
 
 <a name="FS.ReadAs"></a>
 ### func \(\*FS\) ReadAs
@@ -588,6 +595,9 @@ type Identity struct {
     // Prelaunch marks an orchestrator-assigned binding that the target has not
     // adopted yet. It is persisted with the binding, not inferred from age.
     Prelaunch bool
+    // Superseded marks a verifier gate that a later assignment of the same
+    // judge over the same author replaced: it no longer attaches verdicts.
+    Superseded bool
 }
 ```
 
@@ -738,6 +748,8 @@ type OwnershipClaim struct {
     Pending   bool    `json:"pending"`
     // Staged is true while the claim holds staged work, which a release refuses.
     Staged bool `json:"staged,omitempty"`
+    // Verdicts lists the current verdict of each judge of this staged work.
+    Verdicts []VerdictSummary `json:"verdicts,omitempty"`
 }
 ```
 
@@ -780,6 +792,20 @@ type StagedView struct {
     Revision uint64             `json:"revision"`
     Hash     string             `json:"delta_hash"`
     Files    map[string]*string `json:"files"`
+}
+```
+
+<a name="VerdictSummary"></a>
+## type VerdictSummary
+
+VerdictSummary is one judge's current verdict as the orchestrator reads it.
+
+```go
+type VerdictSummary struct {
+    // VerifierKey names the judge: its agent instance, not one of its gates.
+    VerifierKey AgentID `json:"verifier_key"`
+    Pass        bool    `json:"pass"`
+    Finding     string  `json:"finding,omitempty"`
 }
 ```
 

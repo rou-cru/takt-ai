@@ -184,10 +184,10 @@ func retainMemory(ctx context.Context, dataDir string, retainedDir *retentionDir
 }
 
 // snapshotDatabase writes a consistent single-file copy of a SQLite database
-// with VACUUM INTO. Copying engram.db beside its -wal would miss committed
-// pages still in the log and tear while Engram servers are running; VACUUM
-// INTO reads through SQLite, so the snapshot is transactionally consistent
-// even then. The source opens read-only and is never modified.
+// with VACUUM INTO. Copying the file beside its -wal would miss committed pages
+// still in the log and tear while servers run; VACUUM INTO reads through
+// SQLite, so the snapshot is transactionally consistent. The source is opened
+// read-only and never modified.
 func snapshotDatabase(ctx context.Context, source, destination string) (err error) {
 	if err := os.MkdirAll(filepath.Dir(destination), RetainedDirectoryMode); err != nil {
 		return err

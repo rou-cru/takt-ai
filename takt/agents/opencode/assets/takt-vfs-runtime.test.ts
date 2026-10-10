@@ -348,7 +348,7 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-v", agent: VFS_AGENT }))
       expect(vfs.actions("dispatch")).toEqual(["admit", "launch"])
       expect(vfs.requests("dispatch", "admit")[0]).toMatchObject({ event: "unit-v", dispatch: "root:call-1", session: "root", agent: VFS_AGENT })
-      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "root:call-1": { unit: "unit-v", root: "root", agent: VFS_AGENT } })
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "root:call-1": { unit: "unit-v", root: "root", agent: VFS_AGENT, caller: "root" } })
     } finally { await vfs.stop() }
   })
 
@@ -408,7 +408,7 @@ describe("delegation lifecycle", () => {
       await admitProducer(vfs)
       const event = finished()
       event.result.content = content
-      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow("the specialist ended without delivering its result; delegating the same unit again retries it")
+      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow("the specialist ended without delivering its result; resume its session to ask for it")
       expect(vfs.log.prompts).toHaveLength(1)
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child-r" })
       expect(vfs.log.prompts[0].text).toContain("Call deliver_result")
@@ -431,6 +431,115 @@ describe("delegation lifecycle", () => {
       expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #4, Engram #5, Engram #6")
       expect(vfs.log.prompts).toEqual([])
       expect(vfs.actions("dispatch").at(-1)).toBe("finish")
+    } finally { await vfs.stop() }
+  })
+
+  test("a background producer stays in flight after its launch returns and settles when its child goes idle", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
+      await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] })
+      const event = finished()
+      await vfs.fire(vfs.tool, "execute.after", event)
+      expect(event.result.content).toBe("Breakdown recorded.")
+      expect(vfs.log.prompts).toEqual([])
+      expect(vfs.requests("dispatch", "finish")).toEqual([])
+      vfs.publish({ id: "evt-child", created: 1, type: "session.idle", data: { sessionID: "child-r" } } as OpenCodeEvent)
+      await until(() => vfs.requests("dispatch", "finish").length > 0)
+      expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", session: "root" }])
+      expect(vfs.log.prompts).toEqual([])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  // A retry of a unit runs in a new session; the session of the earlier
+  // attempt, still around under the same title, never stands in for it.
+  test("an earlier attempt's session neither credits a retry nor becomes its child", async () => {
+    const sessions = { ...producerSessions, "child-r2": { parentID: "root", title: "unit-r" } }
+    const vfs = await startVfs({ sessions, respond: acceptInputs })
+    const old = { sessionID: "child-r", agent: RESULT_AGENT }
+    try {
+      await admitProducer(vfs)
+      await vfs.run("deliver_result", { result_ids: [4] }, old)
+      await vfs.fire(vfs.tool, "execute.after", finished())
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r2", input: { description: "unit-r", agent: RESULT_AGENT } })
+      await vfs.fire(vfs.session, "context", { tools: {}, ...old, system: [] })
+      await vfs.run("deliver_result", { result_ids: [9] }, old)
+      await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r2", agent: RESULT_AGENT, system: [] })
+      await expect(vfs.fire(vfs.tool, "execute.after", { ...finished(), id: "call-r2" })).rejects.toThrow("ended without delivering")
+      expect(vfs.log.prompts.map((prompt) => prompt.sessionID)).toEqual(["child-r2"])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  test("a resumed session is the child of the delegation that names it", async () => {
+    const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
+    const child = { sessionID: "child-r", agent: RESULT_AGENT }
+    try {
+      await admitProducer(vfs)
+      await vfs.fire(vfs.tool, "execute.after", { ...finished(), status: "error" })
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r2", input: { description: "unit-r", agent: RESULT_AGENT, sessionID: "child-r" } })
+      await vfs.run("deliver_result", { result_ids: [5] }, child)
+      const event = { ...finished(), id: "call-r2" }
+      await vfs.fire(vfs.tool, "execute.after", event)
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #5")
+    } finally { await vfs.stop() }
+  })
+
+  test("a delegation stays recorded until its end is", async () => {
+    let recorded: unknown
+    const holder: { vfs?: Awaited<ReturnType<typeof startVfs>> } = {}
+    const vfs = await startVfs({ sessions: producerSessions, respond: (call) => {
+      if (call.kind === "dispatch" && call.command === "finish") recorded = holder.vfs?.storage.get(DELEGATIONS_KEY)
+      return acceptInputs(call)
+    } })
+    holder.vfs = vfs
+    try {
+      await admitProducer(vfs)
+      await vfs.run("deliver_result", { result_ids: [4] }, { sessionID: "child-r", agent: RESULT_AGENT })
+      await vfs.fire(vfs.tool, "execute.after", finished())
+      expect(Object.keys(recorded as object)).toEqual(["root:call-r"])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  test("a deleted background child ends its delegation", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
+      await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] })
+      await vfs.fire(vfs.tool, "execute.after", finished())
+      vfs.publish({ id: "evt-gone", created: 1, type: "session.deleted", data: { sessionID: "child-r" } } as OpenCodeEvent)
+      await until(() => vfs.requests("dispatch", "finish").length > 0)
+      expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", session: "root" }])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  test("a settled inherited delegation is not reconciled again over a later attempt", async () => {
+    const vfs = await startVfs({
+      sessions: producerSessions,
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "unit-r", root: "root", agent: RESULT_AGENT, background: true, child: "child-r" } } },
+    })
+    try {
+      vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "child-r" } } as OpenCodeEvent)
+      await until(() => vfs.requests("dispatch", "finish").length > 0)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
+      expect(vfs.requests("dispatch", "reconcile")).toEqual([])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object)).toEqual(["root:call-r"])
+    } finally { await vfs.stop() }
+  })
+
+  test("a launch the core refuses is not remembered", async () => {
+    const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "launch" ? { code: 1, err: "unit already settled" } : undefined })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })).rejects.toThrow("unit already settled")
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
     } finally { await vfs.stop() }
   })
 
@@ -751,6 +860,26 @@ describe("claims and consolidation", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a released claim's binding speaks for nobody afterwards", async () => {
+    const vfs = await startVfs({ sessions: unitSessions, claims: [claim({ key: "author-1", scope: ["src/a.go"] })] })
+    try {
+      await vfs.run("vfs_bind", { scope: ["src/a.go"] })
+      await vfs.run("claim_release", { claim_key: "author-1" }, orchestrator)
+      await expect(vfs.run("vfs_write", { path: "src/a.go", content: "x" })).rejects.toThrow("no VFS binding in this delegation")
+    } finally { await vfs.stop() }
+  })
+
+  test("binding again to an earlier key makes it the one a call without author_key uses", async () => {
+    const keys = ["k1", "k2", "k1"]
+    const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "bind"
+      ? json({ ok: true, key: keys.shift(), attempt_id: "1", invariants_version: "inv", revision: 0, delta_hash: "d0" }) : undefined })
+    try {
+      for (const scope of [["a.go"], ["b.go"], ["a.go"]]) await vfs.run("vfs_bind", { scope })
+      await vfs.run("vfs_write", { path: "a.go", content: "x" })
+      expect(vfs.requests("vfs", "op").at(-1)).toMatchObject({ author_key: "k1" })
+    } finally { await vfs.stop() }
+  })
+
   test("claim_assign with an author key asks to keep the staged work", async () => {
     const vfs = await startVfs()
     try {
@@ -825,6 +954,25 @@ describe("claims and consolidation", () => {
       const again = gateContext()
       await vfs.fire(vfs.session, "context", again)
       expect(vfs.requests("vfs", "bind")).toHaveLength(2)
+    } finally { await vfs.stop() }
+  })
+
+  test("two verifiers judging the same author concurrently each read and attach a verdict", async () => {
+    const author = { key: "author-a", agent: "dev", session: "root", dispatch: "author-a-child", unit: "author-a", revision: 1, deltaHash: "hash-a" }
+    const gate = (unit: string) => ({ key: `gate-${unit}`, root_session_id: "root", work_unit_id: unit, agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: "author-a" })
+    const judges = ["judge-1", "judge-2"].map((unit) => ({ unit, ctx: { sessionID: `${unit}-child`, agent: "verify" } as Ctx }))
+    const vfs = await startVfs({
+      sessions: Object.fromEntries(judges.map(({ unit, ctx }) => [ctx.sessionID, { parentID: "root", title: unit }])),
+      permissions: { verify: verifierGrants },
+      storage: { "takt/vfs/bindings": [author] },
+      claims: judges.map(({ unit }) => gate(unit)),
+      respond: (call) => call.command === "bind" ? json({ ok: true, key: `gate-${call.request.work_unit_id}`, attempt_id: "a1", invariants_version: "v1" }) : undefined,
+    })
+    try {
+      for (const { ctx } of judges) await vfs.fire(vfs.session, "context", { ...gateContext(), sessionID: ctx.sessionID })
+      await Promise.all(judges.map(({ ctx }) => vfs.run("vfs_read", { path: "src/a.go", author_key: "author-a" }, ctx)))
+      await Promise.all(judges.map(({ ctx }) => vfs.run("vfs_verify", { author_key: "author-a", pass: true, finding: "holds" }, ctx)))
+      expect(vfs.requests("vfs", "verify").map((request) => request.verifier_key)).toEqual(["gate-judge-1", "gate-judge-2"])
     } finally { await vfs.stop() }
   })
 
@@ -1005,6 +1153,47 @@ describe("claims and consolidation", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a judge delegated again under another unit no longer judges through its earlier gate", async () => {
+    const author = { key: "author-0", agent: "dev", session: "root", dispatch: "dev-0", unit: "writer-0", revision: 1, deltaHash: "hash-0" }
+    const claims: Record<string, unknown>[] = [{ key: author.key, root_session_id: "root", work_unit_id: author.unit,
+      agent_id: "dev", target_instance: "dev", active: true, scope: ["author-0.go"] }]
+    const first = { sessionID: "verify-1", agent: "verify" }
+    const second = { sessionID: "verify-2", agent: "verify" }
+    const vfs = await startVfs({
+      sessions: { "verify-1": { parentID: "root", title: "gate-1" }, "verify-2": { parentID: "root", title: "gate-2" } },
+      permissions: { verify: verifierGrants }, claims,
+      storage: { "takt/vfs/bindings": [author] },
+      respond: call => {
+        if (call.kind !== "vfs") return undefined
+        if (call.command === "assign-verifier") {
+          const key = `gate-${String(call.request.work_unit_id)}`
+          claims.push({ key, root_session_id: "root", work_unit_id: call.request.work_unit_id, agent_id: "verify",
+            target_instance: "verify", pending: true, scope: [], author_key: call.request.author_key })
+          return json({ ok: true, key })
+        }
+        if (call.command === "bind") {
+          const gate = claims.find(gate => gate.pending && gate.work_unit_id === call.request.work_unit_id)
+          if (!gate) throw new Error("no pending gate")
+          gate.pending = false
+          gate.active = true
+          return json({ ok: true, key: gate.key, attempt_id: "1", invariants_version: "inv" })
+        }
+        return undefined
+      },
+    })
+    try {
+      for (const [unit, judge] of [["gate-1", first], ["gate-2", second]] as const) {
+        await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+        await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: unit,
+          input: { agent: "verify", description: unit, author_keys: [author.key] } })
+        await vfs.fire(vfs.session, "context", { ...judge, system: [] })
+      }
+      await expect(vfs.run("vfs_verify", { author_key: author.key, pass: false, finding: "stale" }, first)).rejects.toThrow("not assigned to this verifier delegation")
+      await vfs.run("vfs_verify", { author_key: author.key, pass: true, finding: "reviewed" }, second)
+      expect(vfs.requests("vfs", "verify")).toEqual([expect.objectContaining({ verifier_key: "gate-gate-2", author_key: author.key })])
+    } finally { await vfs.stop() }
+  })
+
   test.each([[[]], [["a", "a"]], [["a", " "]], ["a"]])("author_keys %j is refused before anything is admitted", async (authorKeys) => {
     const vfs = await startVfs({ permissions: { verify: verifierGrants } })
     try {
@@ -1085,6 +1274,67 @@ describe("claims and consolidation", () => {
       await expect(vfs.run("vfs_consolidate", { author_key: "author-1", checkpoint: "cp" }, orchestrator)).rejects.toThrow(/^disk full$/)
       expect(vfs.storage.get("takt/vfs/bindings")).toMatchObject([{ key: "author-1" }])
     } finally { await vfs.stop() }
+  })
+
+  // Verdicts inform; the core only asks that the user accept consolidating work
+  // a current verdict failed, and the plugin asks through the OpenCode service.
+  describe("consolidating over a failing verdict", () => {
+    const failing = "vfs: a current verification verdict failed; consolidating needs the user's explicit acceptance: gate-a: misses the edge case"
+    const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
+    const withService = (effects: Array<"allow" | "deny" | "ask">) => {
+      const created: Array<Record<string, unknown>> = []
+      mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+      mock.module("@opencode/client", () => ({
+        OpenCode: { make: () => ({ permission: { create: async (request: Record<string, unknown>) => {
+          created.push(request)
+          return { effect: effects.shift() ?? "allow", id: `request-${created.length}` }
+        } } }) },
+      }))
+      return created
+    }
+    const start = (refuse: boolean) => startVfs({
+      sessions: unitSessions,
+      respond: (call) => call.command === "consolidate"
+        ? (refuse && call.request.accept_failing !== true ? json({ ok: false, error: failing }) : json({ ok: true }))
+        : undefined,
+    })
+
+    test("the user's acceptance consolidates with it; the model never supplies it", async () => {
+      const created = withService(["ask"])
+      const vfs = await start(true)
+      try {
+        await vfs.run("vfs_bind", { scope: ["src/a.go"] })
+        const done = vfs.run("vfs_consolidate", { author_key: "author-1", checkpoint: "cp", accept_failing: true }, caller)
+        await until(() => created.length === 1)
+        await sleep(1)
+        expect(created[0]).toMatchObject({ sessionID: "root", action: "vfs_consolidate_failing", metadata: { findings: failing } })
+        vfs.publish({ id: "evt-reply", created: 1, type: "permission.replied", data: { requestID: "request-1", reply: "once" } } as OpenCodeEvent)
+        expect((await done).content).toBe("Consolidated to workspace")
+        expect(vfs.requests("vfs", "consolidate").map((request) => request.accept_failing)).toEqual([undefined, true])
+      } finally { await vfs.stop() }
+    })
+
+    test("a refusal keeps the work staged", async () => {
+      const created = withService(["deny"])
+      const vfs = await start(true)
+      try {
+        await vfs.run("vfs_bind", { scope: ["src/a.go"] })
+        await expect(vfs.run("vfs_consolidate", { author_key: "author-1" }, caller)).rejects.toThrow("Permission denied: vfs_consolidate_failing")
+        expect(created).toHaveLength(1)
+        expect(vfs.requests("vfs", "consolidate")).toHaveLength(1)
+        expect(vfs.storage.get("takt/vfs/bindings")).toMatchObject([{ key: "author-1" }])
+      } finally { await vfs.stop() }
+    })
+
+    test("without a failing verdict nobody is asked", async () => {
+      const created = withService([])
+      const vfs = await start(false)
+      try {
+        await vfs.run("vfs_bind", { scope: ["src/a.go"] })
+        expect((await vfs.run("vfs_consolidate", { author_key: "author-1" }, caller)).content).toBe("Consolidated to workspace")
+        expect(created).toEqual([])
+      } finally { await vfs.stop() }
+    })
   })
 })
 

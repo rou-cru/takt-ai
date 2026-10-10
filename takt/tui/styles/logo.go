@@ -35,10 +35,10 @@ func ImageLogo() bool { return mode == ModeImage && !theme.Mono() }
 // pattern, blank in every font, that nothing else on the home draws.
 const LogoCell = '\u2800'
 
-// Logo draws the largest variant of the brand mark that fits in width×height
-// cells, or "" when none does. Mono terminals get the Braille mark, whose
-// shape survives the loss of color; color terminals get quadrants, or, when
-// the logo is an image, a block of LogoCell the size of the variant.
+// Logo draws the largest brand-mark variant that fits in width×height cells,
+// or "" when none does. Mono terminals get Braille, whose shape survives the
+// loss of color; color terminals get quadrants, or a LogoCell block when the
+// logo is an image.
 func Logo(width, height int) string {
 	variants := generatedLogoQuadrants
 	if theme.Mono() {

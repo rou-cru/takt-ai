@@ -121,7 +121,7 @@ func stagedCount(f *FS, key AgentID) int {
 
 func hasVerdict(f *FS, key AgentID) bool {
 	d, ok := f.staged[key]
-	return ok && d.verdict != nil
+	return ok && len(d.verdicts) > 0
 }
 
 func gate(t *testing.T, f *FS, key AgentID, r OperationResult) {
@@ -164,7 +164,7 @@ func TestDurableReopenAndContentFreeJournal(t *testing.T) {
 		t.Fatal("evidence leaked data or binding")
 	}
 	gate(t, f, key, read)
-	if e = f.ConsolidateCheckpoint(key, "milestone", r.Revision); e != nil {
+	if e = f.ConsolidateCheckpoint(key, "milestone", r.Revision, false); e != nil {
 		t.Fatal(e)
 	}
 	content, e := os.ReadFile(filepath.Join(root, "dir/new.txt"))
@@ -256,7 +256,7 @@ func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseNeverStrandsStagedWork(t
 	if err != nil || string(read.Content) != "staged" {
 		t.Fatalf("authorized staged-view read after refused release = %q, %v", read.Content, err)
 	}
-	if err = f.ConsolidateCheckpoint(key, "deliver", created.Revision); err != nil {
+	if err = f.ConsolidateCheckpoint(key, "deliver", created.Revision, false); err != nil {
 		t.Fatalf("consolidation after refused release = %v", err)
 	}
 	if claims = f.OwnershipClaims("root-session"); len(claims) != 1 || claims[0].AgentID != "verify" {
@@ -351,7 +351,7 @@ func TestGateRevisionIdentityAndReplay(t *testing.T) {
 	if hasVerdict(f, key) {
 		t.Fatal("edit retained gate")
 	}
-	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision); e != nil {
+	if e := f.ConsolidateCheckpoint(key, "checkpoint", next.Revision, false); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -400,7 +400,7 @@ func TestEveryFlushBoundaryRecoversAfterReopen(t *testing.T) {
 				}
 				return nil
 			}
-			if f.ConsolidateCheckpoint(key, "checkpoint", r.Revision) == nil {
+			if f.ConsolidateCheckpoint(key, "checkpoint", r.Revision, false) == nil {
 				t.Fatal("missing injected failure")
 			}
 			if _, e := readForTest(f, key, "a"); !errors.Is(e, ErrRecoveryRequired) {
@@ -448,7 +448,7 @@ func TestRecoveryNeverOverwritesExternalChange(t *testing.T) {
 		}
 		return nil
 	}
-	if f.ConsolidateCheckpoint(key, "checkpoint", r.Revision) == nil {
+	if f.ConsolidateCheckpoint(key, "checkpoint", r.Revision, false) == nil {
 		t.Fatal("expected failure")
 	}
 	f.failpoint = nil
@@ -528,7 +528,7 @@ func TestAbruptProcessRecovery(t *testing.T) {
 			}
 			return nil
 		}
-		_ = f.ConsolidateCheckpoint(key, "checkpoint", r.Revision)
+		_ = f.ConsolidateCheckpoint(key, "checkpoint", r.Revision, false)
 		os.Exit(74)
 	}
 	if testing.Short() {
@@ -589,7 +589,7 @@ func TestRecoveryRetainsManifestOnRestorationFailure(t *testing.T) {
 		}
 		return nil
 	}
-	if f.ConsolidateCheckpoint(key, "c", r.Revision) == nil {
+	if f.ConsolidateCheckpoint(key, "c", r.Revision, false) == nil {
 		t.Fatal("no failure")
 	}
 	f.failpoint = func(p string) error {

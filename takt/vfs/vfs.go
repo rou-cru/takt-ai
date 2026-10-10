@@ -69,6 +69,12 @@ var (
 	// a passing verification verdict.
 	ErrVerificationRequired = errors.New("vfs: consolidation requires a passing verification verdict")
 
+	// ErrFailingVerdict is returned when consolidation is attempted over a
+	// current failing verdict without the user's explicit acceptance. Verdicts
+	// inform; this refusal only asks for that acceptance, and the staged work is
+	// kept.
+	ErrFailingVerdict = errors.New("vfs: a current verification verdict failed; consolidating needs the user's explicit acceptance")
+
 	// ErrSelfVerification is returned when the authoring agent attempts to
 	// verify its own delta.
 	ErrSelfVerification = errors.New("vfs: an agent cannot verify its own delta")
@@ -204,6 +210,16 @@ type OwnershipClaim struct {
 	Pending   bool    `json:"pending"`
 	// Staged is true while the claim holds staged work, which a release refuses.
 	Staged bool `json:"staged,omitempty"`
+	// Verdicts lists the current verdict of each judge of this staged work.
+	Verdicts []VerdictSummary `json:"verdicts,omitempty"`
+}
+
+// VerdictSummary is one judge's current verdict as the orchestrator reads it.
+type VerdictSummary struct {
+	// VerifierKey names the judge: its agent instance, not one of its gates.
+	VerifierKey AgentID `json:"verifier_key"`
+	Pass        bool    `json:"pass"`
+	Finding     string  `json:"finding,omitempty"`
 }
 
 // agentDelta tracks staged mutations and verification state for a single agent.
@@ -214,8 +230,10 @@ type agentDelta struct {
 	files    map[string][]byte
 	revision uint64
 	bases    map[string]baseFile
-	// verdict holds the attached verification result, nil until set.
-	verdict *VerificationVerdict
+	// verdicts holds each judge's attached verification result, keyed by the
+	// judge's agent instance; a judge's later verdict replaces only its own,
+	// whichever of its delegations attached it.
+	verdicts map[AgentID]*VerificationVerdict
 }
 
 // FS governs all in-flight agent work for one session.
@@ -330,7 +348,7 @@ func (f *FS) stageLocked(agent AgentID, path string, content []byte) error {
 	}
 	d := f.ensureDelta(agent)
 	d.revision++
-	d.verdict = nil
+	d.verdicts = nil
 
 	var staged []byte
 	op, after := OpDelete, ""
@@ -404,11 +422,12 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 		}
 	}
 
-	if d.verdict == nil && f.verdictRequiredLocked(agent) {
-		return ErrVerificationRequired
-	}
-	if d.verdict != nil && !d.verdict.Pass {
-		return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, d.verdict.Finding)
+	// Only a maintenance cycle's work is gated by its verdict; for ordinary
+	// work verdicts inform and ConsolidateCheckpoint asks for acceptance.
+	if f.verdictRequiredLocked(agent) {
+		if err := f.maintenanceGateLocked(agent); err != nil {
+			return err
+		}
 	}
 
 	if err := f.materializeLocked(agent, d); err != nil {
@@ -417,6 +436,25 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 
 	delete(f.staged, agent)
 	f.releaseOwnershipLocked(agent)
+	return nil
+}
+
+// maintenanceGateLocked lets a maintenance cycle's work through only on
+// current verdicts that all pass. A verdict that no longer describes the work
+// or its invariant set is evidence of nothing: it neither passes nor refuses.
+func (f *FS) maintenanceGateLocked(agent AgentID) error {
+	current := f.currentVerdictsLocked(agent)
+	if len(current) == 0 {
+		if len(f.staged[agent].verdicts) > 0 {
+			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now", ErrInvalidVerdict)
+		}
+		return ErrVerificationRequired
+	}
+	for _, v := range current {
+		if !v.Pass {
+			return fmt.Errorf("%w: finding: %s", ErrVerificationRequired, v.Finding)
+		}
+	}
 	return nil
 }
 

@@ -110,7 +110,7 @@ PublishCollisionEvent publishes a cross\-agent write collision intercepted by th
 func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string) error
 ```
 
-PublishControlEffectEvent publishes the typed event PR\-OBS\-CTL\-5 requires for every control action beyond OBSERVE: THROTTLE, CONTAIN, ROLLBACK, GATE or ESCALATE. Deciding \*when\* to throttle, contain or roll back belongs to takt/gc; this only makes the chosen action's effect observable on the bus.
+PublishControlEffectEvent publishes the PR\-OBS\-CTL\-5 event for every control action beyond OBSERVE \(THROTTLE, CONTAIN, ROLLBACK, GATE, ESCALATE\). Deciding when to act belongs to takt/gc; this only makes the chosen action observable on the bus.
 
 <a name="PublishCycleReeditEvent"></a>
 ## func PublishCycleReeditEvent
@@ -119,7 +119,7 @@ PublishControlEffectEvent publishes the typed event PR\-OBS\-CTL\-5 requires for
 func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClass, pathHash, workUnitID string) error
 ```
 
-PublishCycleReeditEvent publishes the event PR\-MNT\-31 requires when a path a maintenance cycle already consolidated gets edited again: it attributes the reversion back to that cycle and its mandate class instead of letting it look like an unattributed edit.
+PublishCycleReeditEvent publishes the PR\-MNT\-31 event for a path a maintenance cycle already consolidated that is edited again, attributing the reversion to that cycle and its mandate class instead of leaving it unattributed.
 
 <a name="PublishVFSEvent"></a>
 ## func PublishVFSEvent
@@ -480,7 +480,7 @@ Close releases the database handle.
 func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error)
 ```
 
-CountEvents reports how many events Events would return for the same filters, without loading them, so a consumer can derive a rate's numerator or denominator \(a count of registered work, per PR\-MNT\-9/PR\-MNT\-11\) over one row\-id range cheaply.
+CountEvents reports how many events Events would return for the same filters without loading them, so a consumer can cheaply derive a rate's numerator or denominator \(a count of registered work, PR\-MNT\-9/PR\-MNT\-11\).
 
 <a name="Store.Events"></a>
 ### func \(\*Store\) Events
@@ -489,7 +489,7 @@ CountEvents reports how many events Events would return for the same filters, wi
 func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int64, limit int) (out []StoredEvent, err error)
 ```
 
-Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in id order \(the order AppendEvent assigns, i.e. the order work was registered — never wall\-clock time, per PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass; the zero value matches every class. beforeID of 0 means no upper bound; limit of 0 means no limit.
+Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in AppendEvent's id order — registration order, never wall\-clock time \(PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass, the zero value matching all; beforeID or limit of 0 means unbounded.
 
 <a name="StoreHealth"></a>
 ## type StoreHealth
@@ -516,7 +516,7 @@ type StoreHealth struct {
 func InspectStore(workspace string) (health StoreHealth, err error)
 ```
 
-InspectStore checks the workspace event store without changing anything, so a health check never creates the store or its directory. It fails when the file cannot be read as a database, is missing a table or fails SQLite's integrity check, because such a store cannot be relied on.
+InspectStore checks the workspace event store without changing anything, so a health check never creates the store or its directory. It fails when the file is not readable as a database, is missing a table, or fails SQLite's integrity check: such a store cannot be relied on.
 
 <a name="StoredAction"></a>
 ## type StoredAction

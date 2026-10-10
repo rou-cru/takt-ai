@@ -15,11 +15,10 @@
 
 // Package dispatch is the generic admission and lifecycle protocol for any
 // unit of work an orchestrator dispatches, backed by the execution history
-// projection. It owns no process state of its own: every fact it decides is
-// read from and appended to the *history.History it is given. A caller that
-// holds its own reason to pause admission (a maintenance barrier, a drain)
-// passes that as held; this package does not know why admission might be
-// held, only that it can be.
+// projection. It owns no process state: every fact it decides is read from and
+// appended to the *history.History it is given. A caller with its own reason to
+// pause admission (a maintenance barrier, a drain) passes it as held; this
+// package need not know why.
 package dispatch
 
 import (
@@ -662,11 +661,11 @@ func classify(current, resulting []PlanUnit) string {
 	return history.ClassificationTactical
 }
 
-// Contest records the contest of a unit attempt that ended without a result and
-// admits at most the policy's distinct contests per session, upheld ones
-// included. Judging the contested work is a Verify delegation of the
-// orchestrator's. A transport duplicate of the same targeted failure returns its
-// recorded disposition without consuming again (PR-HAR-17, PR-HAR-20).
+// Contest records the contest of a unit attempt that ended without a result,
+// admitting at most the policy's distinct contests per session, upheld ones
+// included. Judging the contested work is the orchestrator's Verify delegation.
+// A transport duplicate of the same targeted failure returns its recorded
+// disposition without consuming again (PR-HAR-17, PR-HAR-20).
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error {
 	if event == "" || session == "" {
 		return errors.New("dispatch: contest identity required")
@@ -927,11 +926,10 @@ func restoreCall(objective string) (string, error) {
 }
 
 // Restore confirms restoration of an abandoned recovery scope's virtual state:
-// it releases every author claim, rolling back staged work, and records
-// the restoration only once all operations succeed. The rollback records the resulting
-// state on the Action Journal and leaves unrelated progress untouched
-// (PR-VFS-STG-6, PR-HAR-18). A failed rollback leaves the scope unresolved and
-// the same call repeats it for what remains.
+// it releases every author claim, rolling back staged work, and records the
+// restoration only once all operations succeed, leaving unrelated progress
+// untouched (PR-VFS-STG-6, PR-HAR-18). A failed rollback leaves the scope
+// unresolved and a repeat call retries what remains.
 func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string) error {
 	projection := h.Project()
 	recovery := projection.Budgets(session).Recoveries[objective]
@@ -980,11 +978,11 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 	})
 }
 
-// Except records a scoped user exception before it enables any further work. It
-// names the bound, the scope, and a finite additional allowance; consumption
-// already recorded stands (PR-HAR-22). An exception that could not enable
-// anything is refused with the one that would. event only labels the record and
-// defaults to the objective, or the bound when there is none.
+// Except records a scoped user exception before it enables further work: the
+// bound, the scope and a finite additional allowance (consumption already
+// recorded stands, PR-HAR-22). An exception that could enable nothing is
+// refused with the one that would. event only labels the record, defaulting to
+// the objective or the bound when there is none.
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error {
 	if e := checkException(h.Project().Budgets(session), bound, objective); e != nil {
 		return e

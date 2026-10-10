@@ -94,8 +94,11 @@ const (
 
 // Reasons keep skip and abort explainable in the record.
 const (
-	ReasonInFlight      = "cycle_in_flight"
-	ReasonNoDelta       = "no_delta"
+	// ReasonInFlight marks a skip because the previous cycle has not completed.
+	ReasonInFlight = "cycle_in_flight"
+	// ReasonNoDelta marks a skip because the workspace recorded no changes.
+	ReasonNoDelta = "no_delta"
+	// ReasonDeferralLimit marks an abort after the policy's consecutive deferrals ran out.
 	ReasonDeferralLimit = "deferral_limit"
 )
 

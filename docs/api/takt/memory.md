@@ -11,12 +11,14 @@ Package memory writes agent memories into Engram with harness\-owned metadata, l
 ## Index
 
 - [Constants](<#constants>)
+- [func Capabilities\(req CapabilitiesRequest\) \[\]string](<#Capabilities>)
 - [func Continue\(ctx context.Context, cfg Config, req ContinueRequest\) \(err error\)](<#Continue>)
 - [func EntryIDsByAuthor\(root, session, author string\) \(\[\]int64, error\)](<#EntryIDsByAuthor>)
 - [func EntryIDsForSession\(root, session string\) \(\[\]int64, error\)](<#EntryIDsForSession>)
 - [func ResolveProject\(ctx context.Context, cfg Config, dir string\) string](<#ResolveProject>)
 - [func ValidateResultIDs\(ctx context.Context, cfg Config, ids \[\]int64\) error](<#ValidateResultIDs>)
 - [func ValidateSessionResultIDs\(ctx context.Context, cfg Config, session, author string, ids \[\]int64\) error](<#ValidateSessionResultIDs>)
+- [type CapabilitiesRequest](<#CapabilitiesRequest>)
 - [type CloseRequest](<#CloseRequest>)
 - [type CloseResult](<#CloseResult>)
   - [func Close\(ctx context.Context, cfg Config, req CloseRequest\) \(result CloseResult, err error\)](<#Close>)
@@ -42,6 +44,15 @@ const (
     PrivateStateFileMode os.FileMode = 0o600
 )
 ```
+
+<a name="Capabilities"></a>
+## func Capabilities
+
+```go
+func Capabilities(req CapabilitiesRequest) []string
+```
+
+Capabilities projects session ownership without writing memory. An unavailable ownership authority hides lifecycle operations, but never prevents recording.
 
 <a name="Continue"></a>
 ## func Continue
@@ -96,6 +107,19 @@ func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author s
 ```
 
 ValidateSessionResultIDs accepts only results author itself recorded in session: an existing entry from another author, session or project is not this delivery's result.
+
+<a name="CapabilitiesRequest"></a>
+## type CapabilitiesRequest
+
+CapabilitiesRequest identifies a harness\-resolved caller without model input.
+
+```go
+type CapabilitiesRequest struct {
+    Author    string `json:"author"`
+    Session   string `json:"session"`
+    Directory string `json:"directory"`
+}
+```
 
 <a name="CloseRequest"></a>
 ## type CloseRequest

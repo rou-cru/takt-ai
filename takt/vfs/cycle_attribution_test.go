@@ -38,7 +38,7 @@ func TestCycleAttributionSealedAndDurable(t *testing.T) {
 		t.Fatal("out-of-scope create allowed")
 	}
 	gate(t, f, key, r)
-	if e = f.ConsolidateCheckpoint(key, "cp", r.Revision); e != nil {
+	if e = f.ConsolidateCheckpoint(key, "cp", r.Revision, false); e != nil {
 		t.Fatal(e)
 	}
 	check := func(f *FS) {

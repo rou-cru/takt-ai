@@ -6,18 +6,11 @@
 import "github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 ```
 
-Package opencodeapi is Takt's single adapter to the OpenCode v2 HTTP API.
+Package opencodeapi is Takt's single adapter to the OpenCode v2 HTTP API. That API is experimental \(routes under /api/\*, response shapes that can gain fields\), so model listing, setup verification and configuration reload all go through here and Takt moves in exactly one place when OpenCode does.
 
-That API is experimental: its routes live under /api/\*, response shapes can gain fields at any release, and even the CLI entry point may change how it resolves the server. Every consumer of that surface — model listing \(R1\), setup verification \(R2\) and configuration reload \(R3\) — goes through this package, so when OpenCode moves, Takt moves in exactly one place.
+The adapter shells out to the installed "opencode" binary \("opencode api"\) rather than speaking HTTP directly, reusing OpenCode's own server discovery, authentication and startup instead of duplicating and drifting from it.
 
-The adapter shells out to the installed "opencode" binary instead of speaking HTTP directly. The binary knows how to find, authenticate against and start the right server \(background service, \-\-server URL, or a private \-\-standalone instance\); re\-implementing that resolution in Takt would duplicate OpenCode's own connection logic and drift away from it. The subcommand used is "opencode api", which takes an HTTP method and a path, forwards them to the resolved server and prints the raw response body.
-
-Errors are typed because consumers must fail visibly and differently depending on the situation \(PR\-ART\-2: never mutate on a broken foundation\):
-
-- ErrBinaryMissing: no usable opencode binary — installation cannot even start, so callers should report "not installed" rather than "broken".
-- ErrUnavailable: the binary exists but the API did not answer — the server is down, unreachable, or the call failed; callers must treat this as "not verifiable", never as "verified".
-- ErrVersion: the server answered but is too old for the V2 surface Takt requires — callers must abort before mutating anything.
-- ErrInvalidResponse: the API answered but not with the expected JSON — evidence of drift between OpenCode and this adapter.
+Errors are typed so consumers fail visibly and differently \(PR\-ART\-2: never mutate on a broken foundation\): ErrBinaryMissing \(not installed\), ErrUnavailable \(not verifiable\), ErrVersion \(too old; abort before mutating\) and ErrInvalidResponse \(drift\).
 
 ## Index
 
@@ -209,7 +202,7 @@ Route: GET /api/plugin \(plugin.list\).
 func (c *Client) Reload(ctx context.Context) error
 ```
 
-Reload restarts the background server, then asks it to rebuild every loaded location; a failure is returned as an error, never treated as a silent success. A location reload alone is not enough after a deployment: the server that loaded plugins before their dependencies were installed keeps failing to resolve those packages until its process is replaced.
+Reload restarts the background server, then asks it to rebuild every loaded location; a failure is an error, never a silent success. A location reload alone is not enough after a deployment: a server that loaded plugins before their dependencies were installed keeps failing to resolve them until its process is replaced.
 
 <a name="Client.Skills"></a>
 ### func \(\*Client\) Skills
@@ -271,10 +264,15 @@ type MCPState string
 
 ```go
 const (
+    // MCPConnected means the server responded to OpenCode.
     MCPConnected MCPState = "connected"
-    MCPPending   MCPState = "pending"
-    MCPDisabled  MCPState = "disabled"
-    MCPFailed    MCPState = "failed"
+    // MCPPending means the server is still being brought up.
+    MCPPending MCPState = "pending"
+    // MCPDisabled means configuration turned the server off.
+    MCPDisabled MCPState = "disabled"
+    // MCPFailed means the server could not start or respond.
+    MCPFailed MCPState = "failed"
+    // MCPNeedsAuth means the server requires credentials before it connects.
     MCPNeedsAuth MCPState = "needs_auth"
 )
 ```

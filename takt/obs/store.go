@@ -173,10 +173,9 @@ const eventRowColumns = `id, written_at, schema_version, wall_timestamp, source,
 	work_unit_id, attempt_id, journal_entry_ref, attributes`
 
 // Events returns up to limit persisted events for sessionID with id in
-// (afterID, beforeID], in id order (the order AppendEvent assigns, i.e. the
-// order work was registered — never wall-clock time, per PR-MNT-9/PR-MNT-11).
-// class filters to one EventClass; the zero value matches every class.
-// beforeID of 0 means no upper bound; limit of 0 means no limit.
+// (afterID, beforeID], in AppendEvent's id order — registration order, never
+// wall-clock time (PR-MNT-9/PR-MNT-11). class filters to one EventClass, the
+// zero value matching all; beforeID or limit of 0 means unbounded.
 func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int64, limit int) (out []StoredEvent, err error) {
 	query := `SELECT ` + eventRowColumns + ` FROM events WHERE session_id=? AND id>?`
 	args := []any{sessionID, afterID}
@@ -234,10 +233,9 @@ func scanEventRow(rows *sql.Rows, sessionID string) (StoredEvent, error) {
 	return ev, nil
 }
 
-// CountEvents reports how many events Events would return for the same
-// filters, without loading them, so a consumer can derive a rate's numerator
-// or denominator (a count of registered work, per PR-MNT-9/PR-MNT-11) over
-// one row-id range cheaply.
+// CountEvents reports how many events Events would return for the same filters
+// without loading them, so a consumer can cheaply derive a rate's numerator or
+// denominator (a count of registered work, PR-MNT-9/PR-MNT-11).
 func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error) {
 	query := `SELECT COUNT(*) FROM events WHERE session_id=? AND id>?`
 	args := []any{sessionID, afterID}

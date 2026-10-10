@@ -124,13 +124,13 @@ func TestMaintenanceBindsAndConsolidatesOnPass(t *testing.T) {
 	g := newGCRig(t)
 	key := g.bind("collector", gcSpecialist, "a.txt", "b.txt", "c.txt")
 	r := g.stage(key)
-	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision); err == nil {
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err == nil {
 		t.Fatal("consolidated without a verdict")
 	}
 	if err := g.verdict(key, r, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision); err != nil {
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := g.disk("a.txt"); a != "new-a" {
@@ -169,7 +169,7 @@ func TestMaintenanceFailingVerdictKeepsDeltaForCoordinatorDiscard(t *testing.T) 
 	if err != nil || string(seen.Content) != "new-a" {
 		t.Fatalf("staged view = %q, %v; want retained delta", seen.Content, err)
 	}
-	if err = g.f.ConsolidateCheckpoint(key, "cp", seen.Revision); err == nil {
+	if err = g.f.ConsolidateCheckpoint(key, "cp", seen.Revision, false); err == nil {
 		t.Fatal("rejected delta consolidated")
 	}
 }
@@ -202,5 +202,30 @@ func TestMaintenanceCannotVerifyItself(t *testing.T) {
 		if err = g.f.Verify(judge, key, "self-"+string(judge), r.Revision, r.DeltaHash, true, ""); !errors.Is(err, vfs.ErrScopeDenied) {
 			t.Fatalf("collector verdict by %q = %v; want explicit-capability denial (collector holds no verify grant)", judge, err)
 		}
+	}
+}
+
+// A cycle judge delegated again replaces its own verdict: its withdrawn
+// failure no longer gates the cycle's consolidation.
+func TestMaintenanceRetriedJudgeGatesWithItsLatestVerdict(t *testing.T) {
+	g := newGCRig(t)
+	key := g.bind("collector", gcSpecialist, "a.txt", "b.txt", "c.txt")
+	r := g.stage(key)
+	if err := g.verdict(key, r, false); err != nil {
+		t.Fatal(err)
+	}
+	retry := vfs.Identity{SessionID: "s", WorkUnitID: "u", AttemptID: "2", AgentID: vfs.AgentID("judge-" + string(key)), Specialist: "verify", CycleID: "cycle-1", MandateClass: "dead-code"}
+	gate, err := g.f.AssignVerifier(retry, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err == nil {
+		t.Fatal("consolidated over the judge's failing verdict")
+	}
+	if err := g.f.Verify(gate, key, "verdict-retry", r.Revision, r.DeltaHash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.f.ConsolidateCheckpoint(key, "cp", r.Revision, false); err != nil {
+		t.Fatalf("ConsolidateCheckpoint() = %v; the judge's latest verdict passes", err)
 	}
 }

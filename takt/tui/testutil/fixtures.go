@@ -23,11 +23,11 @@ var fixtureModes = []struct {
 	{"mono", theme.ModeMono},
 }
 
-// RequireFixtures compares render's output with a committed golden file for
-// every size and color mode: testdata/<Test>/<mode>/<W>x<H>.golden. render
-// must build its screen inside the call, after the mode is set, so styles
-// resolve for that mode. Regenerate with `go test ./takt/tui/... -update`
-// and review the files before committing them.
+// RequireFixtures compares render's output with the committed golden file for
+// every size and color mode: testdata/<Test>/<mode>/<W>x<H>.golden. render must
+// build its screen inside the call, after the mode is set, so styles resolve
+// for that mode. Regenerate with `go test ./takt/tui/... -update` and review
+// before committing.
 func RequireFixtures(t *testing.T, render func(width, height int) string) {
 	t.Helper()
 	t.Cleanup(func() { theme.SetMode(theme.ModeColor); styles.SetLogoMode(styles.ModeQuadrants) })

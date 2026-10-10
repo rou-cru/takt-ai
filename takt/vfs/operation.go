@@ -100,6 +100,9 @@ type Identity struct {
 	// Prelaunch marks an orchestrator-assigned binding that the target has not
 	// adopted yet. It is persisted with the binding, not inferred from age.
 	Prelaunch bool
+	// Superseded marks a verifier gate that a later assignment of the same
+	// judge over the same author replaced: it no longer attaches verdicts.
+	Superseded bool
 }
 
 // sameUnit reports whether both identities belong to one work unit.
@@ -251,8 +254,9 @@ func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, b
 		if assigned.GateAuthorKey != "" && identity.GateAuthorKey != "" && assigned.GateAuthorKey != identity.GateAuthorKey {
 			continue
 		}
+		retried := f.retriedAssignmentLocked(assigned, identity)
 		if assigned.Specialist != identity.Specialist || assigned.GateAuthorKey != identity.GateAuthorKey ||
-			(identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID) ||
+			(identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID && !retried) ||
 			(len(identity.Invariants) > 0 && !slices.Equal(assigned.Invariants, identity.Invariants)) ||
 			(len(scope) > 0 && !sameScope(f.ownedScopeLocked(assignedKey), scope)) {
 			return "", true, ErrScopeDenied
@@ -260,11 +264,32 @@ func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, b
 		if err := f.requireAdoptionGrantsLocked(assigned); err != nil {
 			return "", true, err
 		}
+		if retried {
+			assigned.AttemptID = identity.AttemptID
+		}
 		assigned.Prelaunch = false
 		f.bindings[assignedKey] = assigned
 		return assignedKey, true, nil
 	}
 	return "", false, nil
+}
+
+// retriedAssignmentLocked reports whether identity is a later admitted attempt
+// of the unit taking over an author assignment an earlier attempt never adopted
+// (its specialist ended before binding). The assignment, its key and anything
+// staged under it continue under the admitted attempt, as a reassignment would.
+func (f *FS) retriedAssignmentLocked(assigned, identity Identity) bool {
+	if assigned.GateAuthorKey != "" || identity.AttemptID == "" {
+		return false
+	}
+	was, errWas := strconv.Atoi(assigned.AttemptID)
+	now, errNow := strconv.Atoi(identity.AttemptID)
+	if errWas != nil || errNow != nil || now <= was {
+		return false
+	}
+	renumbered := assigned
+	renumbered.AttemptID = identity.AttemptID
+	return !f.duplicateIdentity(renumbered)
 }
 
 // requireAdoptionGrantsLocked checks the catalog grants an adopted assignment
@@ -336,12 +361,14 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	if err = f.validateVerifierAuthorLocked(identity, authorKey); err != nil {
 		return "", err
 	}
-	// A retry supersedes any unadopted gate from an earlier attempt. Leaving
-	// it pending would make adoption depend on map iteration order.
+	// A new assignment of this judge over this author supersedes every earlier
+	// gate of it, adopted or not and under any unit: the judge speaks through
+	// its latest delegation only, so a run it replaced cannot overwrite its
+	// verdict, and a pending one is never adopted by map iteration order.
 	for previousKey, previous := range f.bindings {
-		if previous.sameUnit(identity) && previous.AgentID == identity.AgentID &&
-			previous.GateAuthorKey == authorKey && previous.AttemptID != identity.AttemptID && previous.Prelaunch {
-			previous.Prelaunch = false
+		if previous.SessionID == identity.SessionID && previous.AgentID == identity.AgentID &&
+			previous.GateAuthorKey == authorKey && !previous.Superseded {
+			previous.Prelaunch, previous.Superseded = false, true
 			f.bindings[previousKey] = previous
 		}
 	}
@@ -383,6 +410,9 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim {
 	owning := maps.Clone(paths)
 	for key, identity := range f.bindings {
 		_, authorOwns := owning[identity.GateAuthorKey]
+		if identity.Superseded {
+			continue
+		}
 		if identity.Prelaunch || (identity.GateAuthorKey != "" && authorOwns) {
 			if _, exists := paths[key]; !exists {
 				paths[key] = []string{}
@@ -398,9 +428,10 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim {
 		claims = append(claims, OwnershipClaim{
 			Key: key, AgentID: identity.AgentID, TargetInstance: identity.Specialist, RootSessionID: identity.SessionID,
 			WorkUnitID: identity.WorkUnitID, Scope: scope, AuthorKey: identity.GateAuthorKey,
-			Active:  identity.SessionID == currentSessionID && !identity.Prelaunch,
-			Pending: identity.Prelaunch,
-			Staged:  f.stagedLocked(key),
+			Active:   identity.SessionID == currentSessionID && !identity.Prelaunch,
+			Pending:  identity.Prelaunch,
+			Staged:   f.stagedLocked(key),
+			Verdicts: f.currentVerdictsLocked(key),
 		})
 	}
 	return claims
@@ -501,7 +532,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 		}
 	}
 	maps.Copy(d.bases, bases)
-	d.verdict = nil
+	d.verdicts = nil
 	return nil
 }
 
@@ -611,13 +642,12 @@ func (f *FS) bindableIdentity(identity Identity, scope []string) (Identity, erro
 }
 
 // attemptLocked returns the attempt this dispatch belongs to and the invariant
-// set that governs it. Delegated work carries the attempt its admission issued;
+// set governing it. Delegated work carries the attempt its admission issued;
 // otherwise, as for maintenance cycles, the store counts attempts itself. An
-// attempt stays open while a binding of its unit still holds file ownership, so
-// a maintenance verifier sharing its cycle's unit joins the author it judges,
-// and a retry after consolidation or
-// discard opens the next attempt. Bindings and ownership are durable, so a
-// restart neither restarts the count nor reuses an identity.
+// attempt stays open while a binding of its unit holds file ownership, so a
+// maintenance verifier joins the author it judges, while a retry after
+// consolidation or discard opens the next attempt. Bindings and ownership are
+// durable, so a restart neither restarts the count nor reuses an identity.
 func (f *FS) attemptLocked(identity Identity) (string, InvariantSet) {
 	// An attempt the delegation's admission already issued is authoritative:
 	// the bind joins it, inheriting the invariant set it was opened with.
@@ -949,7 +979,7 @@ func (f *FS) rollbackLocked(key AgentID) {
 		}
 		d.files = map[string][]byte{}
 		d.bases = map[string]baseFile{}
-		d.verdict = nil
+		d.verdicts = nil
 		d.revision++
 	}
 	f.releaseOwnershipLocked(key)
@@ -985,7 +1015,17 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 	if err != nil {
 		return err
 	}
-	d.verdict = &VerificationVerdict{Pass: pass, Finding: finding, VerifierID: v.AgentID, VerifierRole: v.Role, Revision: expected, DeltaHash: deltaHash, Invariants: a.Invariants, InvariantsHash: version}
+	// The call is spent only by a verdict that lands: a refused one may be
+	// attached again under the same call once its cause is gone.
+	if err = f.consumeCallLocked(v.SessionID, callID); err != nil {
+		return err
+	}
+	if d.verdicts == nil {
+		d.verdicts = make(map[AgentID]*VerificationVerdict)
+	}
+	// One verdict per judge: its latest replaces its earlier one, whichever
+	// delegation of it attached that.
+	d.verdicts[v.AgentID] = &VerificationVerdict{Pass: pass, Finding: finding, VerifierID: v.AgentID, VerifierRole: v.Role, Revision: expected, DeltaHash: deltaHash, Invariants: a.Invariants, InvariantsHash: version}
 	// Findings may contain sensitive source excerpts: retain in private state,
 	// never export them in the content-free journal.
 	outcome := "rejected"
@@ -1002,8 +1042,9 @@ func validVerdict(d *agentDelta, expected uint64, actualHash, deltaHash string, 
 	return d != nil && d.revision == expected && actualHash == deltaHash && (pass || strings.TrimSpace(finding) != "")
 }
 
-// admitVerifierLocked resolves both bindings and consumes callID: the verifier
-// must be entitled to judge the author, and never the author itself.
+// admitVerifierLocked resolves both bindings: the verifier must be the current
+// gate entitled to judge the author, and never the author itself. The caller
+// spends callID once the verdict is valid.
 func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a Identity, err error) {
 	v, vok := f.bindings[verifier]
 	a, aok := f.bindings[author]
@@ -1018,16 +1059,68 @@ func (f *FS) admitVerifierLocked(verifier, author AgentID, callID string) (v, a 
 	if !v.verifies(author, a) {
 		return v, a, fmt.Errorf("%w: verifier %q is not assigned to judge author %q", ErrIdentity, verifier, author)
 	}
+	if v.Superseded {
+		return v, a, fmt.Errorf("%w: a later delegation of %q replaced gate %q over author %q; only that delegation attaches its verdict", ErrIdentity, v.AgentID, verifier, author)
+	}
 	if v.AgentID == a.AgentID {
 		return v, a, ErrSelfVerification
 	}
-	return v, a, f.consumeCallLocked(v.SessionID, callID)
+	return v, a, nil
+}
+
+// currentVerdictsLocked returns key's verdicts that still describe its staged
+// work: same delta and same invariant set as when they were judged. A verdict
+// whose invariants can no longer be read cannot be shown to be current.
+func (f *FS) currentVerdictsLocked(key AgentID) []VerdictSummary {
+	d := f.staged[key]
+	if d == nil {
+		return nil
+	}
+	hash := f.deltaHashLocked(key)
+	var current []VerdictSummary
+	for _, verifier := range slices.Sorted(maps.Keys(d.verdicts)) {
+		v := d.verdicts[verifier]
+		if v.DeltaHash != hash {
+			continue
+		}
+		if version, err := f.invariantsVersionLocked(v.Invariants); err != nil || version != v.InvariantsHash {
+			continue
+		}
+		current = append(current, VerdictSummary{VerifierKey: verifier, Pass: v.Pass, Finding: v.Finding})
+	}
+	return current
+}
+
+// consolidationAcceptedLocked lets ordinary work through unless a current
+// verdict failed and the user has not accepted consolidating it anyway.
+func (f *FS) consolidationAcceptedLocked(key AgentID, acceptFailing bool) error {
+	if acceptFailing {
+		return nil
+	}
+	return f.failingVerdictsLocked(key)
+}
+
+// failingVerdictsLocked refuses with every current failing finding, so the
+// orchestrator and the user see each judge's report.
+func (f *FS) failingVerdictsLocked(key AgentID) error {
+	var findings []string
+	for _, v := range f.currentVerdictsLocked(key) {
+		if !v.Pass {
+			findings = append(findings, fmt.Sprintf("%s: %s", v.VerifierKey, v.Finding))
+		}
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", ErrFailingVerdict, strings.Join(findings, "; "))
 }
 
 // ConsolidateCheckpoint is a trusted coordinator operation that consolidates
-// authorized staged changes; a verdict, when present, remains bound to its
-// evidence. An empty checkpoint label defaults to the author key and revision.
-func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64) (err error) {
+// authorized staged changes. Verdicts inform: a current failing one refuses
+// unless acceptFailing carries the user's explicit acceptance, and a stale one
+// is ignored. A maintenance cycle's current verdicts stay a gate that must pass.
+// An empty checkpoint label defaults to the author key and revision.
+func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
@@ -1046,17 +1139,11 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 	if d.revision != expected {
 		return fmt.Errorf("%w: the staged work is at revision %d, not %d; delegate a Verify of the author key again and consolidate against its revision", ErrStaleRevision, d.revision, expected)
 	}
-	if d.verdict != nil && d.verdict.DeltaHash != f.deltaHashLocked(key) {
-		return ErrInvalidVerdict
-	}
-	if d.verdict != nil {
-		// A supplied verdict only governs the invariant set it actually judged.
-		version, err := f.invariantsVersionLocked(d.verdict.Invariants)
-		if err != nil {
+	// A maintenance cycle's verdict gates in consolidateLocked; ordinary
+	// work asks for acceptance only over a current failing verdict.
+	if !f.verdictRequiredLocked(key) {
+		if err = f.consolidationAcceptedLocked(key, acceptFailing); err != nil {
 			return err
-		}
-		if version != d.verdict.InvariantsHash {
-			return fmt.Errorf("%w: the applicable invariant set changed since the verdict", ErrInvalidVerdict)
 		}
 	}
 	start := len(f.journal)

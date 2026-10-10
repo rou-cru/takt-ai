@@ -152,8 +152,11 @@ type request struct {
 	// ViewKey is the author whose staged view a verifier reads through.
 	ViewKey   string `json:"view_key,omitempty"`
 	DeltaHash string `json:"delta_hash,omitempty"`
-	Pass      bool   `json:"pass,omitempty"`
-	Finding   string `json:"finding,omitempty"`
+	// AcceptFailing carries the user's explicit acceptance to consolidate work
+	// a current verdict failed; only the plugin sets it, after asking the user.
+	AcceptFailing bool   `json:"accept_failing,omitempty"`
+	Pass          bool   `json:"pass,omitempty"`
+	Finding       string `json:"finding,omitempty"`
 	// shell-prepare: the exact command the plan and any approval identify.
 	Command string `json:"command,omitempty"`
 	// consolidate
@@ -413,11 +416,10 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, identity vfs.I
 }
 
 // verifyIdentity rejects a request whose declared identity does not match the
-// identity actually bound to key. Role, attempt and invariants are
-// harness-derived at bind time, so the request never restates them; both
-// sides are cleared of those fields before the comparison. Because Identity
-// also carries WorkUnitID, a mismatched work unit is rejected by the same
-// check, so no separate WorkUnitID comparison is needed.
+// identity bound to key. Role, attempt, invariants, cycle and mandate class are
+// harness-derived at bind time, so both sides are cleared of them before the
+// comparison; because Identity also carries WorkUnitID, a mismatched work unit
+// is rejected by the same check.
 func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field string) error {
 	bound, ok := fs.BindingIdentity(key)
 	if field == "verifier_key" && (!ok || bound.GateAuthorKey != identity.GateAuthorKey || identity.GateAuthorKey == "") {
@@ -435,15 +437,13 @@ func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field st
 	return nil
 }
 
-// prepareShell resolves the sandbox plan for one command. The writable paths,
-// private scratch, and protected paths are derived from the binding's scope,
-// workspace, state directory, and call ID. Preparation may create scratch and
-// projection files; it does not execute the command.
-// An empty AuthorKey skips identity verification and uses an unbound plan that
-// keeps the workspace write-protected. A supplied key must match identity, and
-// ExpectedRevision must match that binding's revision.
-// Identity and preparation errors propagate to the caller. A policy denial is
-// instead returned with OK true and Shell.Decision set to deny.
+// prepareShell resolves the sandbox plan for one command from the binding's
+// scope, workspace, state directory and call ID; preparation may create scratch
+// and projection files but does not execute the command. An empty AuthorKey
+// skips identity verification and uses an unbound, write-protected plan; a
+// supplied key must match identity, and ExpectedRevision the binding's
+// revision. Identity and preparation errors propagate; a policy denial returns
+// OK true with Shell.Decision deny.
 func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if key != "" {
@@ -459,11 +459,11 @@ func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) 
 }
 
 // importShell admits the command's captured result as one VFS transaction.
-// AuthorKey must match identity, and ExpectedRevision must match the binding's
-// revision. Success returns the resulting revision, including zero, and delta
-// hash, even if the shell command exited unsuccessfully. Identity and import
-// errors propagate, including missing descendant confirmation, stale revisions,
-// persistence failures, and sandbox cleanup failures.
+// AuthorKey must match identity and ExpectedRevision the binding's revision.
+// Success returns the resulting revision (including zero) and delta hash even
+// when the command exited unsuccessfully; identity and import errors
+// (unconfirmed descendants, stale revisions, persistence or cleanup failures)
+// propagate.
 func importShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
@@ -495,10 +495,9 @@ func mutateBind(fs *vfs.FS, req request, identity vfs.Identity) (response, error
 
 // mutateOperation reads or changes staged work after verifying the caller's
 // identity; an empty AuthorKey defaults to identity.AgentID. ViewKey selects
-// the author's staged view for a verifier read, and ExpectedRevision refers to
-// the selected view. Success returns any read content, the resulting revision
-// (including zero), and delta hash. Identity, action, and VFS errors propagate,
-// including access refusals, stale revisions, duplicate calls, and storage errors.
+// the staged view a verifier reads, and ExpectedRevision refers to that view.
+// Success returns any read content, the resulting revision (including zero) and
+// delta hash; identity, action and VFS errors propagate.
 func mutateOperation(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
 	key := vfs.AgentID(req.AuthorKey)
 	if key == "" {
@@ -546,7 +545,7 @@ func mutateConsolidate(fs *vfs.FS, req request, identity vfs.Identity) (response
 	if err := vfs.RequireVFSCapability(vfs.OrchestratorInstance, model.VFSCapabilityConsolidate); err != nil {
 		return response{}, err
 	}
-	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision); err != nil {
+	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision, req.AcceptFailing); err != nil {
 		return response{}, err
 	}
 	return response{OK: true}, nil

@@ -63,10 +63,9 @@ func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry Ownershi
 // plain byte comparison against it would read every fresh install as drift.
 var injectedMCPServers = []string{"engram", "codegraph"}
 
-// ContentMatches reports whether current already holds want, the way deploy
-// would leave it: for opencode.json, MCP servers a later injection step owns
-// are excluded first, since want never has them either. Any other path falls
-// back to a plain byte comparison.
+// ContentMatches reports whether current already holds want the way deploy
+// would leave it: for opencode.json, MCP servers a later injection owns are
+// excluded first (want never has them either); any other path is byte-equal.
 func ContentMatches(artifactPath string, current, want []byte) bool {
 	if artifactPath != opencode.ConfigPath() {
 		return bytes.Equal(current, want)

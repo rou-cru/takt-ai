@@ -74,11 +74,10 @@ const (
 )
 ```
 
-<a name="TextMenuInstall"></a>Text constants are static user\-facing strings. They are exported so screens compose them by name and grep stays the only way a string moves.
+<a name="TextMenuInstall"></a>Text constants the screens compose by name; grep stays the only way a string moves.
 
 ```go
 const (
-    // Menu.
     TextMenuInstall      = "Install"
     TextMenuAssignModels = "Assign models"
     TextMenuCheckDrift   = "Check for drift"
@@ -87,7 +86,6 @@ const (
     TextMenuConfigure    = "Configure installation"
     TextMenuQuit         = "Quit"
 
-    // Menu descriptions: one per option, shown only under the cursor.
     TextMenuInstallDesc      = "Agents, skills and MCP servers on OpenCode v2"
     TextMenuConfigureDesc    = "Change components or reapply Takt's files"
     TextMenuAssignModelsDesc = "Choose the model each agent runs on"
@@ -96,23 +94,22 @@ const (
     TextMenuDiagnosticsDesc  = "Check that each capability works"
     TextMenuQuitDesc         = "Leave Takt"
 
-    // Guard overlay.
     TextGuardKeepEditing   = "Keep editing"
     TextGuardDiscard       = "Discard changes"
     TextGuardDiscardBody   = "Leaving now discards the edits you have not applied."
     TextGuardUnappliedWord = "Unapplied changes"
 
-    // Shell chrome.
-    TextBrand            = "Takt AI"
+    // TextBrand is the wordmark shown in the shell header.
+    TextBrand = "Takt AI"
+    // TextShellTooSmallFmt names the minimum size, the current size and the fix.
     TextShellTooSmallFmt = "Terminal too small: need at least %dx%d (current %dx%d). Resize to continue."
 
-    // Busy / footer primitives.
+    // TextCancelRequested is the footer suffix shown while a cancellation is pending.
     TextCancelRequested  = "stopping after the current phase"
     TextActionCancel     = "Cancel"
     TextEarlierPhasesFmt = "%d earlier phases done"
     TextUnavailableIntro = "Unavailable: "
 
-    // Shared actions.
     TextActionBackToMenu      = "Back to menu"
     TextActionRepair          = "Repair"
     TextActionQuit            = "Quit"
@@ -131,7 +128,8 @@ const (
     TextActionRescan          = "Check again"
     TextActionAssignAnother   = "Assign another"
 
-    // Install flow.
+    // TextOpenCodeNotFound keeps the install going when the harness binary is
+    // absent: the configuration deploys so a later install works.
     TextOpenCodeNotFound    = "OpenCode was not found on PATH — Takt installs its configuration anyway."
     TextTitleInstall        = "Install"
     TextTitleConfigure      = "Configure installation"
@@ -211,8 +209,9 @@ const (
     TextUseDrift            = "Use Check for drift from the menu to restore these files later."
     TextTakeEffectFmt       = "Changes take effect the next time you start %s."
 
-    // Uninstall flow.
     TextUninstallModifiedTitle = "Uninstall · Modified files"
+    // TextUninstallEngramTitle precedes the retention choice: the Engram data
+    // lives outside the Takt footprint, so uninstall asks explicitly.
     TextUninstallEngramTitle   = "Uninstall · Engram database"
     TextUninstallReviewTitle   = "Uninstall · Review"
     TextUninstallResultTitle   = "Uninstall · Result"
@@ -255,7 +254,6 @@ const (
     TextModifiedSuffix         = " - your modified version"
     TextReasonSep              = " - "
 
-    // Drift flow.
     TextDriftSelectTitle  = "Check for drift · Select"
     TextDriftReviewTitle  = "Check for drift · Review"
     TextDriftResultTitle  = "Check for drift · Result"
@@ -313,13 +311,15 @@ const (
     TextModelsTitleFmt    = "Assign models · %s"
 
     // Model picker.
-    TextPickerInheritFmt   = "inherits %s default"
-    TextPickerAllAgents    = "All agents"
-    TextPickerMixed        = "different models"
-    TextPickerChangedMark  = "• "
-    TextModelsAgentsStep   = "Agents"
-    TextModelsAssignedOne  = "Model assigned to 1 agent."
-    TextModelsAssignedFmt  = "Models assigned to %d agents."
+    TextPickerInheritFmt  = "inherits %s default"
+    TextPickerAllAgents   = "All agents"
+    TextPickerMixed       = "different models"
+    TextPickerChangedMark = "• "
+    TextModelsAgentsStep  = "Agents"
+    TextModelsAssignedOne = "Model assigned to 1 agent."
+    TextModelsAssignedFmt = "Models assigned to %d agents."
+    // TextPickerNoChanges states the picker's no-op case so the footer can
+    // disable commitment without a hint of what to change.
     TextPickerNoChanges    = "No changes to apply"
     TextPickerCurrent      = "Current: "
     TextPickerLoadingFmt   = "Loading %s models."
@@ -335,7 +335,9 @@ const (
     TextDiagCheckingTitle = "Diagnostics · Checking"
     TextDiagReportTitle   = "Diagnostics · Capabilities"
     TextDiagBusy          = "Checking each capability…"
-    TextDiagNone          = "No capability could be checked."
+    // TextDiagNone covers the case where no capability check produced any
+    // evidence at all, so the report stays honest instead of showing zero rows.
+    TextDiagNone = "No capability could be checked."
 
     // Shared outcome.
     TextCancelledNone      = "Cancelled before any change was applied."
@@ -475,7 +477,7 @@ InnerWidth returns width inside margins.
 func Menu(items []Item, cursor int) string
 ```
 
-Menu renders a single selection whose only visible description is the one under the cursor, in one slot below the list. The slot always takes its line and the block is as wide as its widest label or description, so moving the cursor never shifts the menu.
+Menu renders a single selection whose only visible description is the one under the cursor, in one fixed slot below the list. The block is as wide as its widest label or description, so moving the cursor never shifts it.
 
 <a name="MoveCursor"></a>
 ## func MoveCursor

@@ -12,6 +12,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 
 - [Constants](<#constants>)
 - [func AllowanceKey\(bound, objective string\) string](<#AllowanceKey>)
+- [func StateDir\(workspace string\) string](<#StateDir>)
 - [type Activity](<#Activity>)
 - [type ActivityNode](<#ActivityNode>)
 - [type Author](<#Author>)
@@ -34,6 +35,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [type Outcome](<#Outcome>)
 - [type Projection](<#Projection>)
   - [func Project\(entries \[\]Entry\) Projection](<#Project>)
+  - [func ReadProjection\(stateDir string\) \(\_ Projection, err error\)](<#ReadProjection>)
   - [func \(p Projection\) Budgets\(session string\) Budgets](<#Projection.Budgets>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
 - [type Recovery](<#Recovery>)
@@ -145,6 +147,15 @@ func AllowanceKey(bound, objective string) string
 ```
 
 AllowanceKey names the scope an exception's allowance applies to: a bound, narrowed by objective where the exception is objective\-scoped, so an exception never authorizes unrelated work \(PR\-HAR\-22\).
+
+<a name="StateDir"></a>
+## func StateDir
+
+```go
+func StateDir(workspace string) string
+```
+
+StateDir is the private state directory of a workspace, shared by the VFS store and the execution history.
 
 <a name="Activity"></a>
 ## type Activity
@@ -631,6 +642,15 @@ func Project(entries []Entry) Projection
 
 Project derives the projection from a recorded prefix. It reads no external state and no clock, so the same prefix always yields the same projection.
 
+<a name="ReadProjection"></a>
+### func ReadProjection
+
+```go
+func ReadProjection(stateDir string) (_ Projection, err error)
+```
+
+ReadProjection reads the existing history without creating a store or schema. An absent history is the empty projection; malformed existing history fails.
+
 <a name="Projection.Budgets"></a>
 ### func \(Projection\) Budgets
 
@@ -736,11 +756,7 @@ type Snapshot struct {
 func BuildSnapshot(entries []Entry) Snapshot
 ```
 
-BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix. It calls Project once and only maps its output: nothing here recomputes a state Project already computes.
-
-Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position.
-
-The plan belongs to one root/orchestrator session; Snapshot names it by taking the earliest\-appearing SessionID in entries \(Seq order\). A workspace whose history genuinely mixes more than one root session is not a case this function tries to disambiguate further.
+BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order; a history that genuinely mixes root sessions is not disambiguated further.
 
 <a name="State"></a>
 ## type State

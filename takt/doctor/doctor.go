@@ -54,10 +54,16 @@ const (
 // CheckStatus is the outcome of a single doctor check.
 type CheckStatus string
 
-// Check outcomes: pass, warn (works but needs attention), fail (broken or missing).
+// Check outcomes.
 const (
+	// CheckStatusPass describes a check that holds, including benign states
+	// such as a workspace with no event store yet.
 	CheckStatusPass CheckStatus = "pass"
+	// CheckStatusWarn describes something functional but needing attention,
+	// for example a store readable by other users.
 	CheckStatusWarn CheckStatus = "warn"
+	// CheckStatusFail describes a broken or missing capability. The report
+	// may include a Remedy hint.
 	CheckStatusFail CheckStatus = "fail"
 )
 
@@ -268,8 +274,7 @@ func deploymentResult(name, label string, totals deploymentTotals) CheckResult {
 
 // binaryChecks probes one managed binary: whether a compatible copy resolved
 // (on PATH or under Takt's managed path) and, when it did, its version. ok is
-// false when the binary is missing, so the caller can skip its remaining
-// checks instead of producing noise.
+// false when the binary is missing, so the caller skips its remaining checks.
 func binaryChecks(prefix, expectedVersion, managedPath, missingRemedy, binary string, found bool, verifyVersion func(string) (string, error)) ([]CheckResult, bool) {
 	var binaryErr error
 	if !found {
@@ -551,8 +556,8 @@ func opencodeMemoryPluginCheck(home string) CheckResult {
 
 // opencodeSandboxAdapterCheck reports whether the sandbox adapter the VFS
 // plugin loads to wrap shell commands is deployed. Without it every shell
-// command is denied (PR-HAR-15 fail-closed), which is safe but leaves shell
-// unusable, so a missing adapter is worth surfacing on its own.
+// command is denied (PR-HAR-15 fail-closed): safe, but shell is unusable, so
+// the missing adapter is surfaced on its own.
 func opencodeSandboxAdapterCheck(home string) CheckResult {
 	// "takt-sandbox.mjs" matches the filename TaktSandboxAdapterArtifact
 	// deploys and the sibling name the VFS plugin loads it by; no model

@@ -132,17 +132,12 @@ type Snapshot struct {
 }
 
 // BuildSnapshot derives the content-free DAG snapshot from the recorded
-// prefix. It calls Project once and only maps its output: nothing here
-// recomputes a state Project already computes.
-//
-// Because Project is a pure fold over entries (PR-DAG-REP-1), entry count
-// alone gives a deterministic, monotonic projection_revision equal to
-// history_position.
-//
-// The plan belongs to one root/orchestrator session; Snapshot names it by
-// taking the earliest-appearing SessionID in entries (Seq order). A workspace
-// whose history genuinely mixes more than one root session is not a case this
-// function tries to disambiguate further.
+// prefix, mapping Project's output without recomputing any state. Because
+// Project is a pure fold over entries (PR-DAG-REP-1), entry count alone gives a
+// deterministic, monotonic projection_revision equal to history_position. The
+// plan belongs to one root session, named as the earliest-appearing SessionID
+// in Seq order; a history that genuinely mixes root sessions is not
+// disambiguated further.
 func BuildSnapshot(entries []Entry) Snapshot {
 	p, inferred := projectWithExecutionOrder(entries)
 	session := rootSession(entries)
@@ -204,14 +199,13 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	return s
 }
 
-// projectWithExecutionOrder is Project plus the structure of ordinary work the
-// orchestrator delegated without committing a plan. That work has no declared
-// prerequisites, so the graph shows it as it ran: an uncovered delegated unit
-// follows the units already settled when it was first admitted, reduced to the
-// frontier, and units admitted while others were still in flight stay side by
-// side. Non-work-unit activities are folded separately and receive no edges.
-// Committed units keep exactly their declared prerequisites. The result is a
-// pure fold of the recorded prefix, like the projection itself.
+// projectWithExecutionOrder is Project plus the inferred structure of ordinary
+// work the orchestrator delegated without a plan commitment: such a unit has no
+// declared prerequisites, so it follows the units settled at its admission
+// (reduced to the frontier) and units admitted together stay side by side.
+// Activities are folded separately and get no edges. Committed units keep
+// exactly their declared prerequisites. The result is a pure fold of the
+// recorded prefix.
 func projectWithExecutionOrder(entries []Entry) (Projection, map[string][]string) {
 	p := newProjection()
 	inferred := map[string][]string{}

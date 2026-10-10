@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto"
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
-import type { OpenCodeEvent } from "@opencode/client"
+import type { OpenCode, OpenCodeEvent } from "@opencode/client"
 import { join, resolve } from "node:path"
 import { Plugin } from "@opencode/plugin"
 
@@ -208,6 +208,9 @@ const EXCEPTION_BOUNDS = [
 const DELEGATIONS_KEY = "takt/vfs/delegations"
 // INPUTS_KEY holds the invariants each root/unit was declared to consume.
 const INPUTS_KEY = "takt/vfs/inputs"
+// FAILING_VERDICT is how the core words a refusal to consolidate over a current
+// failing verdict: only the user's acceptance lets the work through.
+const FAILING_VERDICT = "a current verification verdict failed"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
@@ -308,10 +311,17 @@ export default Plugin.define({
     // executes, so its end is recorded against the unit it was admitted as. It
     // is durable for the same reason bindings are, and carries its root session
     // so a restart can end it without asking a host that no longer runs it.
-    type Delegation = { unit: string; root: string; agent?: string }
+    // `caller` is the session that ran the subagent call; `child` is the session
+    // the delegation runs in, named by a resume or learned from the child's own
+    // first context. A background delegation outlives its tool call: it settles
+    // when that child goes idle or is deleted.
+    type Delegation = { unit: string; root: string; agent?: string; caller?: string; background?: boolean; child?: string }
     const delegations = new Map<string, Delegation>(
       Object.entries(((await ctx.storage.get(DELEGATIONS_KEY)) as Record<string, Delegation> | undefined) ?? {}))
     const persistDelegations = () => ctx.storage.set(DELEGATIONS_KEY, Object.fromEntries(delegations))
+    // A session that already ran one delegation never becomes the child of
+    // another by showing up again: only a resume names it explicitly.
+    const boundChildren = new Set([...delegations.values()].flatMap(d => d.child ? [d.child] : []))
     // A host subagent call lives inside the process that started it, so a call
     // recorded by an earlier process died with it: its liveness is uncertain, and
     // it is reconciled as not running, which releases its slot (PR-HAR-18). Only
@@ -335,9 +345,9 @@ export default Plugin.define({
         }
       }
     })().finally(() => { reconciling = undefined })
-    // deliveries and childOf track a producer's result delivery for the life
-    // of one delegation only; neither is durable, unlike bindings/delegations
-    // above, because a producer whose process died must redeliver anyway.
+    // deliveries tracks a producer's result delivery per delegation, for its
+    // life only; it is not durable, unlike bindings/delegations above, because
+    // a producer whose process died must redeliver anyway.
     const deliveries = new Map<string, number[]>()
     // inputs holds, per root/unit, the Engram IDs of the invariants the
     // orchestrator declared that unit consumes; an empty list is the declared
@@ -346,7 +356,6 @@ export default Plugin.define({
     const inputs = new Map<string, number[]>(
       Object.entries(((await ctx.storage.get(INPUTS_KEY)) as Record<string, number[]> | undefined) ?? {}))
     const persistInputs = () => ctx.storage.set(INPUTS_KEY, Object.fromEntries(inputs))
-    const childOf = new Map<string, string>()
     const unitKey = (root: string, unit: string) => `${root}\0${unit}`
     // record keeps the binding, and its durable copy, in step with the harness's
     // answer to an operation.
@@ -491,8 +500,11 @@ export default Plugin.define({
           specialist, author_key: authorKey })
         if (gate.key) prepared.push(gate.key)
       }
+      // The core supersedes this judge's earlier gates over these authors under
+      // any unit; they stop speaking for it here too.
       for (const [key, binding] of bindings) {
-        if (binding.session === root && binding.unit === unit && binding.agent === specialist && binding.judges) bindings.delete(key)
+        if (binding.session === root && binding.agent === specialist && binding.judges &&
+          (binding.unit === unit || authorKeys.includes(binding.judges))) bindings.delete(key)
       }
       await persist()
     }
@@ -533,6 +545,8 @@ export default Plugin.define({
       b.key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
       // Adopting work already staged under the key continues from its revision.
       if (typeof res.revision === "number" && typeof res.delta_hash === "string") { b.revision = res.revision; b.deltaHash = res.delta_hash }
+      // Re-adopting a key moves it to the end, where own() finds the latest binding.
+      bindings.delete(b.key)
       bindings.set(b.key, b)
       await persist()
       return { b, res }
@@ -1037,26 +1051,38 @@ export default Plugin.define({
       // refusals, so a failed interruption never refuses the delegation.
       await stopLanes(lanes).catch(error => console.error("Takt GC lane interruption", error))
       // Only an admitted delegation is remembered: a denied one never ran.
-      delegations.set(delegation, { unit, root, agent: specialist })
+      // A resume names its child; a new child is learned from its first context.
+      const resumed = typeof input.sessionID === "string" && input.sessionID ? input.sessionID : undefined
+      if (resumed) boundChildren.add(resumed)
+      delegations.set(delegation, {
+        unit, root, agent: specialist, caller: event.sessionID,
+        ...(input.background === true ? { background: true } : {}), ...(resumed ? { child: resumed } : {}),
+      })
       await persistDelegations()
       // The subagent tool runs synchronously right after this hook returns, so
       // its execution is observed running immediately — this is a recorded
       // fact of this architecture, not an inferred one (PR-HAR-16).
-      await dispatchAction({ action: "launch", event: unit, session: root })
+      try {
+        await dispatchAction({ action: "launch", event: unit, session: root })
+      } catch (error) {
+        // A launch the core refuses never runs, so nothing would ever end it.
+        delegations.delete(delegation)
+        await persistDelegations()
+        throw error
+      }
       scheduleGC()
     })
 
     // collectDelivery returns the Engram IDs a completed producer delivered for
     // its unit. Bounded to one retry: a producer that forgot deliver_result gets
     // a single nudge, never an unbounded prompt loop.
-    async function collectDelivery(key: string): Promise<number[]> {
-      const child = childOf.get(key)
-      if (!deliveries.has(key) && child) {
+    async function collectDelivery(delegation: string, child: string | undefined): Promise<number[]> {
+      if (!deliveries.has(delegation) && child) {
         await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
         await ctx.session.wait({ sessionID: child })
       }
-      const delivered = deliveries.get(key)
-      if (!delivered) throw new Error("the specialist ended without delivering its result; delegating the same unit again retries it")
+      const delivered = deliveries.get(delegation)
+      if (!delivered) throw new Error("the specialist ended without delivering its result; resume its session to ask for it")
       return delivered
     }
 
@@ -1074,26 +1100,66 @@ export default Plugin.define({
         const delegation = `${event.sessionID}:${event.id}`
         const d = delegations.get(delegation)
         if (d === undefined) return
-        delegations.delete(delegation)
-        await persistDelegations()
-        const key = unitKey(d.root, d.unit)
+        // A background launch returns at once: the specialist is still running.
+        if (d.background && event.status === "completed") return
         try {
           if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "")) {
-            const delivered = await collectDelivery(key)
+            const delivered = await collectDelivery(delegation, d.child)
             // The orchestrator receives the delivered IDs with the result itself.
             event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${engramRefs(delivered)}`) }
           }
         } finally {
-          deliveries.delete(key)
-          childOf.delete(key)
-          await dispatchAction({ action: "finish", event: d.unit, dispatch: delegation, session: d.root })
-          scheduleGC()
+          await endDelegation(delegation, d)
         }
       } else if (event.tool.startsWith("vfs_") && !gcChildren.has(event.sessionID)) {
         await restoreGCCycle()
         scheduleGC()
       }
     })
+
+    // A background delegation ends when its child goes idle. There is no tool
+    // result to amend: whatever the child said, a question or a missing delivery
+    // included, reaches the orchestrator as the child's own notification.
+    async function settleBackground(child: string) {
+      const found = [...delegations].find(([, d]) => d.background && d.child === child)
+      if (found) await endDelegation(...found)
+    }
+
+    // adoptChild returns the delegation that session runs, learning it on the
+    // child's first call. The child of a delegation is a new session its caller
+    // created for it, titled after its unit: a session that already ran another
+    // delegation, such as an earlier attempt of the same unit, is never mistaken
+    // for it.
+    async function adoptChild(session: string, agent: string): Promise<string | undefined> {
+      const bound = [...delegations].find(([, d]) => d.child === session && d.agent === agent)
+      if (bound) return bound[0]
+      if (boundChildren.has(session) || gcChildren.has(session)) return undefined
+      const info = await ctx.session.get({ sessionID: session })
+      if (!info.parentID) return undefined
+      const [root, unit] = await Promise.all([rootSession(session), delegatedUnit(session)])
+      const launched = [...delegations].find(([, d]) => d.child === undefined && d.root === root && d.unit === unit &&
+        d.agent === agent && (d.caller === undefined || d.caller === info.parentID))
+      if (!launched) return undefined
+      launched[1].child = session
+      boundChildren.add(session)
+      await persistDelegations()
+      return launched[0]
+    }
+
+    // endDelegation records the end before forgetting the delegation: a restart
+    // in between finds the durable record and reconciles it, instead of leaving
+    // the unit in flight with nothing left to end it.
+    async function endDelegation(delegation: string, d: Delegation) {
+      deliveries.delete(delegation)
+      try {
+        await dispatchAction({ action: "finish", event: d.unit, dispatch: delegation, session: d.root })
+      } finally {
+        delegations.delete(delegation)
+        inherited.delete(delegation)
+        await persistDelegations()
+        scheduleGC()
+      }
+    }
 
     // A native edit never lands on a path a VFS claim holds: that path belongs
     // to the staged work of its unit until it is consolidated or discarded, so
@@ -1172,10 +1238,38 @@ export default Plugin.define({
     }
 
     const abort = new AbortController()
+    // A user's acceptance is asked through the local OpenCode service, the
+    // endpoint every built-in approval rides on, and answered as an event. The
+    // model never supplies it.
+    let confirmations: ReturnType<(typeof OpenCode)["make"]> | undefined
+    const pendingReplies = new Map<string, (reply: string) => void>()
+    async function confirmWithUser(action: string, resource: string, metadata: Record<string, string>, c: { sessionID: string; agent: string; messageID: string; id: string }) {
+      if (!confirmations) {
+        // Loaded only when a user is actually asked: no other path needs the client.
+        const [{ OpenCode }, { Service }] = await Promise.all([import("@opencode/client"), import("@opencode/client/service")])
+        const endpoint = await Service.discover()
+        if (!endpoint) throw new Error("cannot reach the local OpenCode service to ask for confirmation")
+        confirmations = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
+      }
+      const request = await confirmations.permission.create({
+        sessionID: c.sessionID, action, resources: [resource], metadata, agent: c.agent,
+        source: { type: "tool", messageID: c.messageID, id: c.id },
+      })
+      if (request.effect === "allow") return
+      if (request.effect === "deny") throw new Error(`Permission denied: ${action}`)
+      const reply = await new Promise<string>((resolve) => pendingReplies.set(request.id, resolve))
+      pendingReplies.delete(request.id)
+      if (reply === "reject") throw new Error(`Permission denied: ${action}`)
+    }
     void (async () => {
       for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
         observeModelUsage(event)
+        if (event.type === "permission.replied") {
+          pendingReplies.get(event.data.requestID)?.(event.data.reply)
+          continue
+        }
         if (event.type === "session.idle") {
+          await settleBackground(event.data.sessionID).catch(error => console.error("Takt background settle", error))
           gcBusy.delete(event.data.sessionID)
           void startCycleWhenIdle(event.data.sessionID)
           scheduleGC()
@@ -1184,6 +1278,10 @@ export default Plugin.define({
         // The temporary interlocutor died without handing off or being
         // explicitly aborted; the harness itself reports the abort so the
         // stack is never left pointing at a session that no longer exists.
+        if (event.type === "session.deleted") {
+          // A deleted child never goes idle: its background delegation ends here.
+          await settleBackground(event.data.sessionID).catch(error => console.error("Takt background settle", error))
+        }
         if (event.type === "session.deleted" && event.data.sessionID === interlocutorChild) {
           const child = interlocutorChild
           const root = interlocutorRoot
@@ -1351,7 +1449,10 @@ export default Plugin.define({
         if (claim.root_session_id === session && claim.active === true && args.confirmed !== true) {
           throw new Error(`WARNING: agent ${claim.agent_id} (instance ${claim.target_instance}, active) owns [${(claim.scope ?? []).join(", ")}]. Ask the user via the orchestrator's native question mechanism whether to release this exact claim; retry with confirmed:true only after an explicit yes. This server plugin cannot present dialogs or verify confirmation. Ownership was not released.`)
         }
-        return { content: JSON.stringify(await takt("release", { session_id: session, key: claim.key })) }
+        const released = await takt("release", { session_id: session, key: claim.key })
+        // A released key speaks for nobody: no later call resolves to it.
+        if (claim.key !== undefined && bindings.delete(claim.key)) await persist()
+        return { content: JSON.stringify(released) }
       } })
 
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
@@ -1644,7 +1745,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_consolidate",
-        description: "Move authorized staged work into the workspace by author_key. When a verdict applies, it must pass and match the staged revision; ownership and physical-base checks always apply.",
+        description: "Move authorized staged work into the workspace by author_key. Verdicts inform your decision; if a current one failed, the user is asked to accept consolidating anyway and a refusal keeps the work staged. Ownership and physical-base checks always apply.",
         input: obj({
           author_key: str("The author_key of the staged work to consolidate"),
           checkpoint: str("Optional short label hashed into the journal; defaults to the author key and revision"),
@@ -1657,10 +1758,19 @@ export default Plugin.define({
           if (c.agent !== ORCHESTRATOR_ID) throw new Error("vfs_consolidate belongs to the orchestrator")
           const b = bindings.get(args.author_key)
           if (b?.session !== await rootSession(c.sessionID)) throw new Error("author_key does not name staged work of this session")
+          const consolidate = (acceptFailing: boolean) => takt("consolidate", () => ({
+            ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
+            ...(acceptFailing ? { accept_failing: true } : {}),
+          }))
           try {
-            await takt("consolidate", () => ({
-              ...identity(b), author_key: b.key, checkpoint: args.checkpoint, expected_revision: b.revision,
-            }))
+            try {
+              await consolidate(false)
+            } catch (error) {
+              if (!(error instanceof Error) || !error.message.includes(FAILING_VERDICT)) throw error
+              // The core's refusal lists every failing finding; the user sees them.
+              await confirmWithUser("vfs_consolidate_failing", b.unit, { author_key: b.key, findings: error.message }, c)
+              await consolidate(true)
+            }
           } catch (error) {
             if (error instanceof Error && /physical base changed|recovery required/.test(error.message))
               error.message += "; freeze this path and escalate with the report"
@@ -1679,10 +1789,11 @@ export default Plugin.define({
         async execute(input: unknown, c) {
           const args = toolInput<{ result_ids: number[] }>(input)
           const root = await rootSession(c.sessionID)
-          const unit = await delegatedUnit(c.sessionID)
           await dispatchAction({ action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
-          const key = unitKey(root, unit)
-          deliveries.set(key, [...(deliveries.get(key) ?? []), ...args.result_ids])
+          // Only the session a running delegation runs in delivers for it: an
+          // earlier attempt's session of the same unit never credits this one.
+          const running = await adoptChild(c.sessionID, c.agent)
+          if (running) deliveries.set(running, [...(deliveries.get(running) ?? []), ...args.result_ids])
           const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
           return { content: `Delivered ${count} result id(s)` }
         },
@@ -1698,6 +1809,8 @@ export default Plugin.define({
       try {
         const info = await ctx.session.get({ sessionID: event.sessionID })
         if (!info.parentID) return
+        // Learned first: nothing this context does later may keep it from its delegation.
+        await adoptChild(event.sessionID, event.agent)
         const agent = await ctx.agent.get({ agentID: event.agent })
         const rules = agent.data.permissions
         const explicitlyAllows = (toolName: string) => {
@@ -1711,7 +1824,6 @@ export default Plugin.define({
         const allowed = VFS_TOOL_NAMES.filter(name => explicitlyAllows(name))
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
-        if (RESULT_AGENTS.includes(event.agent)) childOf.set(unitKey(root, unit), event.sessionID)
         const consumed = inputs.get(unitKey(root, unit))
         if (consumed) event.system.push({ type: "text", text: consumed.length > 0
           ? `Work unit ${unit} consumes these invariants: ${engramRefs(consumed)}. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.`

@@ -29,19 +29,25 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 
 ## Constants
 
-<a name="OpenCodeConfigDir"></a>Home\-relative file and directory names for each harness, plus the plugin filenames Takt deploys into OpenCode's plugin directory.
+<a name="OpenCodeConfigDir"></a>OpenCode's home\-relative configuration paths and the plugin filenames Takt deploys into its plugin directory.
 
 ```go
 const (
-    OpenCodeConfigDir  = ".config/opencode"
+    // OpenCodeConfigDir is OpenCode's configuration directory under home.
+    OpenCodeConfigDir = ".config/opencode"
+    // OpenCodeConfigFile is OpenCode's configuration filename.
     OpenCodeConfigFile = "opencode.json"
     // OpenCodeConfigRelativePath is the slash-separated manifest path owned by OpenCode.
     OpenCodeConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeConfigFile
-    AgentsPromptFile           = "AGENTS.md"
+    // AgentsPromptFile is OpenCode's global agent prompt file.
+    AgentsPromptFile = "AGENTS.md"
 
+    // OpenCodePluginsDir is the directory OpenCode loads plugins from.
     OpenCodePluginsDir = "plugins"
-    EngramPluginFile   = "engram.ts"
-    VFSPluginFile      = "takt-vfs.ts"
+    // EngramPluginFile is the deployed Engram memory plugin filename.
+    EngramPluginFile = "engram.ts"
+    // VFSPluginFile is the deployed governed-VFS plugin filename.
+    VFSPluginFile = "takt-vfs.ts"
 )
 ```
 

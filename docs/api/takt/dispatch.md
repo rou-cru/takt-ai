@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/dispatch"
 ```
 
-Package dispatch is the generic admission and lifecycle protocol for any unit of work an orchestrator dispatches, backed by the execution history projection. It owns no process state of its own: every fact it decides is read from and appended to the \*history.History it is given. A caller that holds its own reason to pause admission \(a maintenance barrier, a drain\) passes that as held; this package does not know why admission might be held, only that it can be.
+Package dispatch is the generic admission and lifecycle protocol for any unit of work an orchestrator dispatches, backed by the execution history projection. It owns no process state: every fact it decides is read from and appended to the \*history.History it is given. A caller with its own reason to pause admission \(a maintenance barrier, a drain\) passes it as held; this package need not know why.
 
 ## Index
 
@@ -114,7 +114,7 @@ Admit is called before the host task tool. It reserves one concurrency slot indi
 func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error)
 ```
 
-BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and assembles the same IR\-22 envelope shape a handoff produces: no negotiated result, the abort's evidence as additional context, and the memory entries the holder recorded. Memory is indexed under the root session, by author, in memoryRoot, so the holder is read before the abort clears it.
+BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and assembles the IR\-22 envelope shape a handoff produces: no negotiated result, the abort's evidence as additional context, and the memory entries the holder recorded. Those are read from memoryRoot by author before the abort clears the holder.
 
 <a name="BuildHandoffEnvelope"></a>
 ## func BuildHandoffEnvelope
@@ -150,7 +150,7 @@ Commit records a plan commitment: the units it covers become planned, so a later
 func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, attempt string) error
 ```
 
-Contest records the contest of a unit attempt that ended without a result and admits at most the policy's distinct contests per session, upheld ones included. Judging the contested work is a Verify delegation of the orchestrator's. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
+Contest records the contest of a unit attempt that ended without a result, admitting at most the policy's distinct contests per session, upheld ones included. Judging the contested work is the orchestrator's Verify delegation. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
 
 <a name="CurrentAttempt"></a>
 ## func CurrentAttempt
@@ -186,7 +186,7 @@ DeclareRecovery admits bounded recovery of an objective. Consecutive failed reco
 func Except(h *history.History, journalRef, event, session, bound, objective string, allowance int) error
 ```
 
-Except records a scoped user exception before it enables any further work. It names the bound, the scope, and a finite additional allowance; consumption already recorded stands \(PR\-HAR\-22\). An exception that could not enable anything is refused with the one that would. event only labels the record and defaults to the objective, or the bound when there is none.
+Except records a scoped user exception before it enables further work: the bound, the scope and a finite additional allowance \(consumption already recorded stands, PR\-HAR\-22\). An exception that could enable nothing is refused with the one that would. event only labels the record, defaulting to the objective or the bound when there is none.
 
 <a name="ExpectedArtifact"></a>
 ## func ExpectedArtifact
@@ -267,7 +267,7 @@ ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalo
 func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective string) error
 ```
 
-Restore confirms restoration of an abandoned recovery scope's virtual state: it releases every author claim, rolling back staged work, and records the restoration only once all operations succeed. The rollback records the resulting state on the Action Journal and leaves unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\). A failed rollback leaves the scope unresolved and the same call repeats it for what remains.
+Restore confirms restoration of an abandoned recovery scope's virtual state: it releases every author claim, rolling back staged work, and records the restoration only once all operations succeed, leaving unrelated progress untouched \(PR\-VFS\-STG\-6, PR\-HAR\-18\). A failed rollback leaves the scope unresolved and a repeat call retries what remains.
 
 <a name="Revise"></a>
 ## func Revise
@@ -294,7 +294,7 @@ StartActivity records non\-work\-unit orchestrator or maintenance activity. Acti
 func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error
 ```
 
-Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root that already has an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
+Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
 
 <a name="Withdraw"></a>
 ## func Withdraw

@@ -128,14 +128,18 @@ const (
 )
 ```
 
-<a name="DefaultCheckTimeout"></a>Default execution timeouts when gc.json omits them: checks get the largest budget, analyzers a bit less, and version/AST probes the least.
+<a name="DefaultCheckTimeout"></a>Default execution timeouts when gc.json omits them.
 
 ```go
 const (
-    DefaultCheckTimeout    = 15 * time.Minute
+    // DefaultCheckTimeout bounds one acceptance check command.
+    DefaultCheckTimeout = 15 * time.Minute
+    // DefaultAnalyzerTimeout bounds one analyzer run.
     DefaultAnalyzerTimeout = 10 * time.Minute
-    DefaultVersionTimeout  = 30 * time.Second
-    DefaultASTTimeout      = 30 * time.Second
+    // DefaultVersionTimeout bounds one tool-version probe.
+    DefaultVersionTimeout = 30 * time.Second
+    // DefaultASTTimeout bounds one AST extraction pass.
+    DefaultASTTimeout = 30 * time.Second
 )
 ```
 
@@ -154,8 +158,11 @@ const (
 
 ```go
 const (
-    ReasonInFlight      = "cycle_in_flight"
-    ReasonNoDelta       = "no_delta"
+    // ReasonInFlight marks a skip because the previous cycle has not completed.
+    ReasonInFlight = "cycle_in_flight"
+    // ReasonNoDelta marks a skip because the workspace recorded no changes.
+    ReasonNoDelta = "no_delta"
+    // ReasonDeferralLimit marks an abort after the policy's consecutive deferrals ran out.
     ReasonDeferralLimit = "deferral_limit"
 )
 ```
@@ -563,7 +570,7 @@ LoadCoordinator reads the coordinator state, accepting a missing file as a fresh
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error
 ```
 
-Admit composes ordinary dispatch admission with the session pace counters. Maintenance never holds an admission: the caller ends a cycle in flight before admitting. Concurrency, plan coverage and recovery budgets are package dispatch's concern, not GC's.
+Admit composes ordinary dispatch admission with the session pace counters. Maintenance never holds an admission: the caller ends a cycle in flight first. Concurrency, plan coverage and recovery budgets belong to package dispatch, not GC.
 
 <a name="Coordinator.Advance"></a>
 ### func \(\*Coordinator\) Advance
@@ -723,14 +730,22 @@ type EvidenceClass string
 
 ```go
 const (
+    // EvidenceDynamicDispatch cites a call site the analyzer could not resolve statically.
     EvidenceDynamicDispatch EvidenceClass = "dynamic-dispatch"
-    EvidenceReflection      EvidenceClass = "reflection"
-    EvidenceConfigWiring    EvidenceClass = "config-wiring"
-    EvidenceFrameworkEntry  EvidenceClass = "framework-entrypoint"
-    EvidenceSerialization   EvidenceClass = "serialization"
-    EvidenceReExport        EvidenceClass = "re-export"
-    EvidenceValueReference  EvidenceClass = "value-reference"
-    EvidencePublicContract  EvidenceClass = "public-contract"
+    // EvidenceReflection cites a reflective access hiding the actual target.
+    EvidenceReflection EvidenceClass = "reflection"
+    // EvidenceConfigWiring cites wiring decided by configuration, not code.
+    EvidenceConfigWiring EvidenceClass = "config-wiring"
+    // EvidenceFrameworkEntry cites a live entry the framework invokes directly.
+    EvidenceFrameworkEntry EvidenceClass = "framework-entrypoint"
+    // EvidenceSerialization cites a type read or written through serialization.
+    EvidenceSerialization EvidenceClass = "serialization"
+    // EvidenceReExport cites a re-exported symbol whose use is outside the analyzed set.
+    EvidenceReExport EvidenceClass = "re-export"
+    // EvidenceValueReference cites a value use the analyzer treated as a reference.
+    EvidenceValueReference EvidenceClass = "value-reference"
+    // EvidencePublicContract cites a published contract consumers rely on.
+    EvidencePublicContract EvidenceClass = "public-contract"
 )
 ```
 
@@ -868,12 +883,12 @@ type MandateRateDecision struct {
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
 ```
 
-EvaluateMandateReversionRate measures how often mandate's consolidated work gets reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires.
+EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires.
 
 <a name="MandateReversionRateInput"></a>
 ## type MandateReversionRateInput
 
-MandateReversionRateInput is what EvaluateMandateReversionRate measures a mandate class's reversion rate over: the class and session, the registered range \(afterID, beforeID\], the acting agent recorded on any resulting CONTAIN effect, and the work unit that effect is attributed to.
+MandateReversionRateInput is what EvaluateMandateReversionRate measures: the class and session, the registered range \(afterID, beforeID\], and the acting agent and work unit recorded on any CONTAIN effect.
 
 ```go
 type MandateReversionRateInput struct {

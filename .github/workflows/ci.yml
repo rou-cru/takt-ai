@@ -203,7 +203,9 @@ jobs:
         name: Grype vulnerability gate
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
-          sbom: sbom.spdx.json
+          # Scanning the tree, not the SBOM, keeps a file location on every
+          # result: Code Scanning refuses SARIF results without one.
+          path: "."
           fail-build: true
           severity-cutoff: high
           only-fixed: true

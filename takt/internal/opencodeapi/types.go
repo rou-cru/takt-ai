@@ -43,10 +43,15 @@ type MCPState string
 
 // MCP states as reported by GET /api/mcp.
 const (
+	// MCPConnected means the server responded to OpenCode.
 	MCPConnected MCPState = "connected"
-	MCPPending   MCPState = "pending"
-	MCPDisabled  MCPState = "disabled"
-	MCPFailed    MCPState = "failed"
+	// MCPPending means the server is still being brought up.
+	MCPPending MCPState = "pending"
+	// MCPDisabled means configuration turned the server off.
+	MCPDisabled MCPState = "disabled"
+	// MCPFailed means the server could not start or respond.
+	MCPFailed MCPState = "failed"
+	// MCPNeedsAuth means the server requires credentials before it connects.
 	MCPNeedsAuth MCPState = "needs_auth"
 )
 

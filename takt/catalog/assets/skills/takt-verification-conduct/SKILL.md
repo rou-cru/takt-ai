@@ -52,3 +52,4 @@ If a command modified a project file anyway, such as a cache a tool offered no w
   `supplements` the earlier one. Never rewrite the earlier report.
 - Deliver the entry's ID with `deliver_result`.
 - State evidence only. Whoever delegated you decides what follows.
+- When something blocks you, end your turn stating the blocker; whoever delegated you receives it and can resume you.

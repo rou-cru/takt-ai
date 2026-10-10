@@ -29,7 +29,8 @@ a spot fix; discard only when a spot fix cannot reach the work.
 
 Consolidate authorized staged work with `vfs_consolidate`; its label is optional. Whether a
 phase is verified is a planned DAG decision. Declare the phase's `author_keys` in one verifier
-delegation; every gate is ready when the verifier starts, retries included; a verdict that exists must pass
-before its author consolidates, and an author whose verdict fails goes to a spot fix through
+delegation; every gate is ready when the verifier starts, retries included; each judge holds one verdict per
+author, and delegating it again replaces its earlier one; verdicts inform you; consolidating over a
+current failing one needs the user's acceptance, which the harness asks for, and an author whose verdict fails normally goes to a spot fix through
 `claim_assign` with its author_key. On a physical-base change, keep the affected path frozen and
 report the competing state.

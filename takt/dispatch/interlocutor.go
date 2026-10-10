@@ -41,11 +41,11 @@ func interlocutorRole(agent string) (model.RoleClass, error) {
 	return entry.Role, nil
 }
 
-// Switch registers a new temporary interlocutor-stack holder for root. Only
-// a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor
-// is eligible (IR-1); a root that already has an active holder refuses a
-// second one (IR-19: no chaining). expectedArtifact is the standard artifact
-// path this switch declares, fixed here and never renegotiated (PR-HAR-24).
+// Switch registers a new temporary interlocutor-stack holder for root. Only a
+// targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is
+// eligible (IR-1); a root with an active holder refuses a second one (IR-19: no
+// chaining). expectedArtifact is the standard artifact path this switch
+// declares, fixed here and never renegotiated (PR-HAR-24).
 func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error {
 	role, roleErr := interlocutorRole(targetAgent)
 	entry := history.Entry{
@@ -144,11 +144,10 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 	}, nil
 }
 
-// BuildAbortEnvelope ends the temporary holder's turn (IR-24) and assembles
-// the same IR-22 envelope shape a handoff produces: no negotiated result, the
-// abort's evidence as additional context, and the memory entries the holder
-// recorded. Memory is indexed under the root session, by author, in
-// memoryRoot, so the holder is read before the abort clears it.
+// BuildAbortEnvelope ends the temporary holder's turn (IR-24) and assembles the
+// IR-22 envelope shape a handoff produces: no negotiated result, the abort's
+// evidence as additional context, and the memory entries the holder recorded.
+// Those are read from memoryRoot by author before the abort clears the holder.
 func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error) {
 	holder := h.Project().Budgets(root).InterlocutorAgent
 	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {

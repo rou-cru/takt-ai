@@ -40,10 +40,10 @@ func isMergeableConfig(path string) bool {
 	return strings.HasSuffix(path, ".json")
 }
 
-// carryInjectedMCPServers copies the injected MCP servers already on disk into
+// carryInjectedMCPServers copies the MCP servers already injected on disk into
 // a rendered opencode.json artifact. The rendered content never holds them, so
-// without this any partial redeploy (e.g. a model reassignment) would silently
-// drop memory and codegraph until the next full install re-injected them.
+// without this a partial redeploy (e.g. a model reassignment) would silently
+// drop memory and codegraph until the next full install.
 func carryInjectedMCPServers(rootDir string, artifact Artifact) (Artifact, error) {
 	if artifact.Path != opencode.ConfigPath() {
 		return artifact, nil

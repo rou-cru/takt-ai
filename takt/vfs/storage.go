@@ -40,9 +40,11 @@ const (
 const MaxJournalPageSize = 500
 
 type storedDelta struct {
-	Files    map[string][]byte
-	Bases    map[string]baseFile
-	Verdict  *VerificationVerdict
+	Files map[string][]byte
+	Bases map[string]baseFile
+	// Verdict is the single verdict older stores kept; it loads under its verifier.
+	Verdict  *VerificationVerdict `json:",omitempty"`
+	Verdicts map[AgentID]*VerificationVerdict
 	Revision uint64
 }
 
@@ -221,7 +223,14 @@ func (f *FS) loadState() error {
 	}
 	f.staged = make(map[AgentID]*agentDelta)
 	for key, d := range s.Deltas {
-		f.staged[key] = &agentDelta{files: d.Files, bases: d.Bases, verdict: d.Verdict, revision: d.Revision}
+		verdicts := d.Verdicts
+		if d.Verdict != nil {
+			if verdicts == nil {
+				verdicts = make(map[AgentID]*VerificationVerdict)
+			}
+			verdicts[d.Verdict.VerifierID] = d.Verdict
+		}
+		f.staged[key] = &agentDelta{files: d.Files, bases: d.Bases, verdicts: verdicts, revision: d.Revision}
 	}
 	f.owners = s.Owners
 	// Saved collisions are observations, not pending work or notifications.
@@ -274,7 +283,7 @@ func (f *FS) replayJournal(count int) (err error) {
 func (f *FS) persistLocked() (err error) {
 	s := storedState{JournalCount: len(f.journal), Version: 1, Workspace: f.rootDir, Deltas: make(map[AgentID]storedDelta), Owners: f.owners, Collisions: f.collisions, Bindings: f.bindings, Calls: f.calls, Recovery: f.recovery, Cycles: f.cycles}
 	for key, d := range f.staged {
-		s.Deltas[key] = storedDelta{Files: d.files, Bases: d.bases, Verdict: d.verdict, Revision: d.revision}
+		s.Deltas[key] = storedDelta{Files: d.files, Bases: d.bases, Verdicts: d.verdicts, Revision: d.revision}
 	}
 	data, err := json.Marshal(s)
 	if err != nil {

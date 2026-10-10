@@ -192,7 +192,7 @@ type Artifact = shared.Artifact
 func OpenCodePluginPackageArtifact() Artifact
 ```
 
-OpenCodePluginPackageArtifact returns the package manifest for the shared OpenCode plugin directory. OpenCode resolves bare imports from this package root, so SDK dependencies must be declared here rather than left as transitive or manually\-installed node\_modules.
+OpenCodePluginPackageArtifact returns the shared plugin directory's package manifest. OpenCode resolves bare imports from this root, so SDK dependencies must be declared here.
 
 <a name="RenderConfig"></a>
 ### func RenderConfig

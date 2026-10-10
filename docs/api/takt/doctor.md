@@ -67,12 +67,18 @@ CheckStatus is the outcome of a single doctor check.
 type CheckStatus string
 ```
 
-<a name="CheckStatusPass"></a>Check outcomes: pass, warn \(works but needs attention\), fail \(broken or missing\).
+<a name="CheckStatusPass"></a>Check outcomes.
 
 ```go
 const (
+    // CheckStatusPass describes a check that holds, including benign states
+    // such as a workspace with no event store yet.
     CheckStatusPass CheckStatus = "pass"
+    // CheckStatusWarn describes something functional but needing attention,
+    // for example a store readable by other users.
     CheckStatusWarn CheckStatus = "warn"
+    // CheckStatusFail describes a broken or missing capability. The report
+    // may include a Remedy hint.
     CheckStatusFail CheckStatus = "fail"
 )
 ```
