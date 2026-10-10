@@ -39,8 +39,6 @@ const (
 	noGrantInstance = "pm"
 	// unsupportedAction is an operation type the dispatcher does not implement.
 	unsupportedAction vfs.OperationType = "bogus"
-	// outsideAttempt is an attempt identity no assignment was issued for.
-	outsideAttempt = "9"
 	// reassignCall and authorKeyInput are what a refused repeat claim tells the
 	// agent to continue with.
 	reassignCall   = "claim_assign"
