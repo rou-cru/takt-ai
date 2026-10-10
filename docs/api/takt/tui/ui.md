@@ -229,7 +229,7 @@ const (
     TextEngramRemove           = "Remove"
     TextEngramLeaveDesc        = "Keeps the database where it is."
     TextEngramRetainDesc       = "Copies it to the retained directory; the original stays."
-    TextEngramRemoveDesc       = "Asks to discard it at review."
+    TextEngramRemoveDesc       = "Removes it when you confirm Uninstall."
     TextUninstallRemoveFmt     = "Remove: %s installed by Takt"
     TextUninstallMemoryLine    = "  Memory server (Engram) entries in each harness configuration"
     TextUninstallRestoreTitle  = "Restore to their content from before Takt was installed:"
