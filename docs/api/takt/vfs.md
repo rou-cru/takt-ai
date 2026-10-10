@@ -398,7 +398,7 @@ CompleteCycle releases cycleID's discard state after it closed without regressin
 func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error)
 ```
 
-ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes. Verdicts inform: a current failing one refuses unless acceptFailing carries the user's explicit acceptance, and a stale one is ignored. A maintenance cycle's verdict stays a gate bound to its evidence. An empty checkpoint label defaults to the author key and revision.
+ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes. Verdicts inform: a current failing one refuses unless acceptFailing carries the user's explicit acceptance, and a stale one is ignored. A maintenance cycle's current verdicts stay a gate that must pass. An empty checkpoint label defaults to the author key and revision.
 
 <a name="FS.ConsolidatedBy"></a>
 ### func \(\*FS\) ConsolidatedBy
@@ -595,6 +595,9 @@ type Identity struct {
     // Prelaunch marks an orchestrator-assigned binding that the target has not
     // adopted yet. It is persisted with the binding, not inferred from age.
     Prelaunch bool
+    // Superseded marks a verifier gate that a later assignment of the same
+    // judge over the same author replaced: it no longer attaches verdicts.
+    Superseded bool
 }
 ```
 
@@ -799,6 +802,7 @@ VerdictSummary is one judge's current verdict as the orchestrator reads it.
 
 ```go
 type VerdictSummary struct {
+    // VerifierKey names the judge: its agent instance, not one of its gates.
     VerifierKey AgentID `json:"verifier_key"`
     Pass        bool    `json:"pass"`
     Finding     string  `json:"finding,omitempty"`
