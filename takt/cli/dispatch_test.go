@@ -280,7 +280,10 @@ func (s *session) entries() []history.Entry {
 
 func (s *session) projection() history.Projection { s.t.Helper(); return history.Project(s.entries()) }
 
-func (s *session) unit(id string) history.Unit { s.t.Helper(); return s.projection().Units[id] }
+func (s *session) unit(id string) history.Unit {
+	s.t.Helper()
+	return s.projection().Units[history.UnitKey(rootSession, id)]
+}
 
 func (s *session) recovery(objective string) history.Recovery {
 	s.t.Helper()
@@ -407,6 +410,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"an exception on the ceiling raises it by its allowance", ceilingException},
 		{"admission recovers from an orphaned barrier hold", orphanedBarrierHold},
 		{"launches collapse and an uncertain one is reconciled before repeating", launchAndReconciliation},
+		{"a delegation a later attempt replaced is never marked uncertain or reconciled", staleDispatchIgnored},
 		{"cancellation keeps its slot while the controls stay available", cancellationRetainsCapacity},
 		{"delegation without plan coverage is bounded", unplannedBound},
 		{"contests need a recorded failure and are bounded", contestAllowance},
@@ -500,7 +504,7 @@ func admissionCeiling(t *testing.T, bin string) {
 	if before.InFlight() != p.Concurrency.Specialists {
 		t.Fatalf("in flight %d; want %d", before.InFlight(), p.Concurrency.Specialists)
 	}
-	if _, ok := before.Units["contender-b"]; ok {
+	if _, ok := before.Units[history.UnitKey(rootSession, "contender-b")]; ok {
 		t.Fatal("denied request created a work unit")
 	}
 	last := s.entries()[len(s.entries())-1]
@@ -636,7 +640,7 @@ func orphanedBarrierHold(t *testing.T, bin string) {
 			if last.code != 0 {
 				t.Fatalf("admission still blocked after %d attempts: %s", p.Cadence.MaxDeferrals+1, last.stderr)
 			}
-			if u := s.unit("new-unit"); u.State != history.StateInFlight {
+			if u, _ := s.projection().Unit("session-2", "new-unit"); u.State != history.StateInFlight {
 				t.Fatalf("admission did not actually proceed: %+v", u)
 			}
 		})
@@ -694,7 +698,7 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 	if before.InFlight() != p.Concurrency.Specialists {
 		t.Fatalf("cancellation or suspension released capacity: in flight %d", before.InFlight())
 	}
-	if u := before.Units["unit-0"]; u.Flight != history.FlightCancelling {
+	if u := before.Units[history.UnitKey(rootSession, "unit-0")]; u.Flight != history.FlightCancelling {
 		t.Fatalf("cancellation pending lost: %+v", u)
 	}
 	// Termination and resolution controls stay available with the ceiling full
@@ -705,7 +709,7 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 	s.must(exception)
 	s.must(call("finish", "unit-0"))
 	after := s.projection()
-	if u := after.Units["unit-0"]; u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+	if u := after.Units[history.UnitKey(rootSession, "unit-0")]; u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
 		t.Fatalf("cancelled unit settled as: %+v", u)
 	}
 	if after.InFlight() != p.Concurrency.Specialists-1 {
@@ -1351,5 +1355,37 @@ func admissionYieldsCycle(t *testing.T, bin string) {
 	}
 	if a := s.projection().Activities["cycle-1"]; a.State != history.StateSettled || a.Outcome != history.OutcomeInterrupted {
 		t.Fatalf("the cycle's activity was not settled as interrupted: %+v", a)
+	}
+}
+
+// staleDispatchIgnored: a host delegation recorded before a restart names its
+// dispatch; once a retry admitted the unit under another dispatch, marking it
+// uncertain or reconciling it must leave the live attempt alone.
+func staleDispatchIgnored(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	first := call("admit", "unit")
+	first.Dispatch = "root:call-1"
+	s.must(first)
+	finish := call("finish", "unit")
+	finish.Dispatch = "root:call-1"
+	s.must(finish)
+	second := call("admit", "unit")
+	second.Dispatch = "root:call-2"
+	s.must(second)
+	stale := call("uncertain", "unit")
+	stale.Dispatch = "root:call-1"
+	s.must(stale)
+	reconcile := call("reconcile", "unit")
+	reconcile.Dispatch = "root:call-1"
+	s.must(reconcile)
+	if u := s.unit("unit"); u.State != history.StateInFlight || u.Flight == history.FlightUncertain || u.Dispatch != "root:call-2" || u.AttemptID != "2" {
+		t.Fatalf("a stale delegation reached the live attempt: %+v", u)
+	}
+	// The live delegation itself is still reconciled.
+	live := call("uncertain", "unit")
+	live.Dispatch = "root:call-2"
+	s.must(live)
+	if u := s.unit("unit"); u.Flight != history.FlightUncertain {
+		t.Fatalf("the live delegation's uncertainty was not recorded: %+v", u)
 	}
 }

@@ -109,7 +109,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if activity, ok := started.Activities[cycleID]; !ok || activity.NodeKind != history.NodeKindMaintenance || activity.State != history.StateInFlight {
 				t.Fatalf("GC cycle activity did not start with its real CycleID %q: %+v", cycleID, started.Activities)
 			}
-			if _, unit := started.Units[cycleID]; unit {
+			if _, unit := started.Units[history.UnitKey("root", cycleID)]; unit {
 				t.Fatalf("GC CycleID %q was fabricated as a work unit", cycleID)
 			}
 			invoke := func(r coordinationRequest) gc.Coordinator {
@@ -197,7 +197,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				if e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(req)}, &out, &errout); e == nil || !strings.Contains(e.Error(), "could not be unwound") {
 					t.Fatalf("admission over a blocked cycle: %v", e)
 				}
-				if _, admitted := gcProjection(t, state).Units["after-divergence"]; admitted {
+				if _, admitted := gcProjection(t, state).Units[history.UnitKey("root", "after-divergence")]; admitted {
 					t.Fatal("delegation admitted while the cycle's delta is live")
 				}
 				if held, e := gc.LoadCoordinator(state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {

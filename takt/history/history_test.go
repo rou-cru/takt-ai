@@ -76,10 +76,10 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 		t.Fatalf("in flight %d; want 3", p.InFlight())
 	}
 	want := map[string]history.Unit{
-		"a": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightCancelling, Launched: true, Committed: true},
-		"b": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Committed: true},
-		"c": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightPendingLaunch},
-		"e": {SessionID: "root", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightUncertain},
+		history.UnitKey("root", "a"): {SessionID: "root", WorkUnitID: "a", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightCancelling, Launched: true, Committed: true},
+		history.UnitKey("root", "b"): {SessionID: "root", WorkUnitID: "b", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Committed: true},
+		history.UnitKey("root", "c"): {SessionID: "root", WorkUnitID: "c", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightPendingLaunch},
+		history.UnitKey("root", "e"): {SessionID: "root", WorkUnitID: "e", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightUncertain},
 	}
 	if !reflect.DeepEqual(p.Units, want) {
 		t.Fatalf("projection %+v; want %+v", p.Units, want)
@@ -88,14 +88,14 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 	if err := h.Append(observed(t, "c", history.KindTerminated, history.OutcomeInterrupted)); err != nil {
 		t.Fatal(err)
 	}
-	if u := h.Project().Units["c"]; u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted || u.Launched {
+	if u := h.Project().Units[history.UnitKey("root", "c")]; u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted || u.Launched {
 		t.Fatalf("settled without launch: %+v", u)
 	}
 	// A later entry never rewrites a settled unit.
 	if err := h.Append(observed(t, "c", history.KindLaunched, "")); err != nil {
 		t.Fatal(err)
 	}
-	if u := h.Project().Units["c"]; u.State != history.StateSettled || u.Launched {
+	if u := h.Project().Units[history.UnitKey("root", "c")]; u.State != history.StateSettled || u.Launched {
 		t.Fatalf("settled unit rewritten: %+v", u)
 	}
 	// A second consumer replaying the same prefix derives the same projection.

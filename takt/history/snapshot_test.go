@@ -347,10 +347,10 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if len(p.Units) != 3 {
 		t.Fatalf("units=%v; want only base, dependent and later", p.Units)
 	}
-	if _, found := p.Units[directID]; found {
+	if _, found := p.Units[history.UnitKey("root", directID)]; found {
 		t.Fatalf("direct activity was folded into work units: %v", p.Units)
 	}
-	if _, found := p.Units[cycleID]; found {
+	if _, found := p.Units[history.UnitKey("root", cycleID)]; found {
 		t.Fatalf("GC CycleID was folded into work units: %v", p.Units)
 	}
 	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != history.NodeKindOrchestrator || p.Activities[cycleID].NodeKind != history.NodeKindMaintenance {
@@ -484,5 +484,32 @@ func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
 	}
 	if got := agentOf(); got != "dev" {
 		t.Fatalf("retried agent = %q, want dev", got)
+	}
+}
+
+// Uncovered work follows only what its own root session settled: another
+// root's units, even one of the same name, are never its inferred prerequisites.
+func TestInferredPrerequisitesStayInTheirRoot(t *testing.T) {
+	in := func(session string, e history.Entry) history.Entry {
+		e.SessionID = session
+		return e
+	}
+	entries := []history.Entry{
+		in("other", observed(t, "pm", history.KindAdmitted, "")),
+		in("other", observed(t, "pm", history.KindTerminated, history.OutcomeCompleted)),
+		in("root", observed(t, "pm", history.KindAdmitted, "")),
+		in("root", observed(t, "arch", history.KindAdmitted, "")),
+	}
+	p := history.Project(entries)
+	if other, _ := p.Unit("other", "pm"); other.State != history.StateSettled {
+		t.Fatalf("other root's pm = %+v; want its own settled unit", other)
+	}
+	if mine, _ := p.Unit("root", "pm"); mine.State != history.StateInFlight || mine.AttemptID != history.FirstAttempt {
+		t.Fatalf("root's pm = %+v; want its own first attempt in flight", mine)
+	}
+	for _, n := range history.BuildSnapshot(entries).Nodes {
+		if n.SessionID == "root" && len(n.Prerequisites) != 0 {
+			t.Fatalf("root's %s inferred %v from another root", n.ID, n.Prerequisites)
+		}
 	}
 }

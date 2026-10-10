@@ -221,13 +221,14 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 // plan has work left. It lets a stalled barrier say which units block it.
 func unfinishedUnitIDs(p history.Projection) []string {
 	var out []string
-	for id, u := range p.Units {
+	for _, u := range p.Units {
 		if u.State == history.StateInFlight || u.State == history.StatePlanned {
-			out = append(out, id)
+			out = append(out, u.WorkUnitID)
 		}
 	}
+	// Two roots may name a unit alike; the barrier names each once.
 	slices.Sort(out)
-	return out
+	return slices.Compact(out)
 }
 func (c *Coordinator) reset() {
 	c.Units = 0

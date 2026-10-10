@@ -161,19 +161,20 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	// vary run to run even though the projection itself is deterministic. IDs
 	// are sorted so two Snapshot calls over the same prefix agree byte for
 	// byte (PRD_DAG_TUI.md §8's "same prefix yields same snapshot").
-	ids := make([]string, 0, len(p.Units))
-	for id := range p.Units {
-		ids = append(ids, id)
+	keys := make([]string, 0, len(p.Units))
+	for key := range p.Units {
+		keys = append(keys, key)
 	}
-	slices.Sort(ids)
-	for _, id := range ids {
-		u := p.Units[id]
+	slices.Sort(keys)
+	for _, key := range keys {
+		u := p.Units[key]
+		id := u.WorkUnitID
 		if u.Flight == FlightUncertain {
 			s.Capture = CaptureUncertain
 		}
 		prerequisites := u.Prerequisites
 		if !u.Committed {
-			prerequisites = inferred[id]
+			prerequisites = inferred[key]
 		}
 		s.Nodes = append(s.Nodes, Node{
 			ID: id, NodeKind: NodeKindDelegated, SessionID: u.SessionID, AttemptID: u.AttemptID,
@@ -204,46 +205,47 @@ func BuildSnapshot(entries []Entry) Snapshot {
 // declared prerequisites, so it follows the units settled at its admission
 // (reduced to the frontier) and units admitted together stay side by side.
 // Activities are folded separately and get no edges. Committed units keep
-// exactly their declared prerequisites. The result is a pure fold of the
-// recorded prefix.
+// exactly their declared prerequisites. Units only follow units of their own
+// root session. The inferred map is keyed by UnitKey and names prerequisites
+// by unit name. The result is a pure fold of the recorded prefix.
 func projectWithExecutionOrder(entries []Entry) (Projection, map[string][]string) {
 	p := newProjection()
 	inferred := map[string][]string{}
 	for _, e := range entries {
-		_, known := p.Units[e.WorkUnitID]
+		_, known := p.Unit(e.SessionID, e.WorkUnitID)
 		var settled []string
 		if e.Kind == KindAdmitted && !known {
-			settled = settledUnitIDs(&p)
+			settled = settledUnitIDs(&p, e.SessionID)
 		}
 		p.fold(e)
-		if _, now := p.Units[e.WorkUnitID]; e.Kind == KindAdmitted && !known && now {
-			inferred[e.WorkUnitID] = frontier(settled, prerequisitesOf(&p, inferred))
+		if _, now := p.Unit(e.SessionID, e.WorkUnitID); e.Kind == KindAdmitted && !known && now {
+			inferred[UnitKey(e.SessionID, e.WorkUnitID)] = frontier(settled, prerequisitesOf(&p, e.SessionID, inferred))
 		}
 	}
 	return p, inferred
 }
 
-// settledUnitIDs lists the units already settled in p, the candidates an
-// admitted-but-uncovered unit's inferred prerequisites are drawn from.
-func settledUnitIDs(p *Projection) []string {
+// settledUnitIDs lists the names of session's units already settled in p, the
+// candidates an admitted-but-uncovered unit's inferred prerequisites are drawn from.
+func settledUnitIDs(p *Projection, session string) []string {
 	var settled []string
-	for id, u := range p.Units {
-		if u.State == StateSettled {
-			settled = append(settled, id)
+	for _, u := range p.Units {
+		if u.SessionID == session && u.State == StateSettled {
+			settled = append(settled, u.WorkUnitID)
 		}
 	}
 	return settled
 }
 
-// prerequisitesOf resolves a unit's prerequisites for frontier reduction: a
-// committed unit's declared prerequisites, or an inferred unit's already
-// computed ones.
-func prerequisitesOf(p *Projection, inferred map[string][]string) func(string) []string {
+// prerequisitesOf resolves a unit of session's prerequisites for frontier
+// reduction: a committed unit's declared prerequisites, or an inferred unit's
+// already computed ones.
+func prerequisitesOf(p *Projection, session string, inferred map[string][]string) func(string) []string {
 	return func(id string) []string {
-		if u := p.Units[id]; u.Committed {
+		if u, _ := p.Unit(session, id); u.Committed {
 			return u.Prerequisites
 		}
-		return inferred[id]
+		return inferred[UnitKey(session, id)]
 	}
 }
 

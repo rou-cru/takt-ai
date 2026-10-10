@@ -238,7 +238,7 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if command == "bind" {
 		// The attempt is issued once, by the delegation's admission: a bind
 		// joins it instead of numbering attempts on its own (PR-DAG-MUT-8).
-		if identity.AttemptID, err = admittedAttempt(*state, req.WorkUnitID); err != nil {
+		if identity.AttemptID, err = admittedAttempt(*state, req.SessionID, req.WorkUnitID); err != nil {
 			return err
 		}
 	}
@@ -262,16 +262,16 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	return json.NewEncoder(stdout).Encode(out)
 }
 
-// admittedAttempt is the attempt the execution history admitted for unit,
-// or empty when no delegation of it is in flight (maintenance work, whose
+// admittedAttempt is the attempt the execution history admitted for session's
+// unit, or empty when no delegation of it is in flight (maintenance work, whose
 // attempts the store numbers itself).
-func admittedAttempt(state, unit string) (attempt string, err error) {
+func admittedAttempt(state, session, unit string) (attempt string, err error) {
 	h, err := history.Open(state)
 	if err != nil {
 		return "", err
 	}
 	defer func() { err = errors.Join(err, h.Close()) }()
-	if u := h.Project().Units[unit]; u.State == history.StateInFlight {
+	if u, _ := h.Project().Unit(session, unit); u.State == history.StateInFlight {
 		return u.AttemptID, nil
 	}
 	return "", nil
@@ -316,7 +316,7 @@ func claimIdentity(state string, req request) (vfs.Identity, error) {
 		AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist, Invariants: req.Invariants,
 		CycleID: req.CycleID, MandateClass: req.MandateClass}
 	var err error
-	identity.AttemptID, err = admittedAttempt(state, req.WorkUnitID)
+	identity.AttemptID, err = admittedAttempt(state, req.SessionID, req.WorkUnitID)
 	return identity, err
 }
 

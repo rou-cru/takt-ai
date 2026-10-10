@@ -125,11 +125,11 @@ func nextAttempt(u history.Unit, known bool) string {
 	return strconv.Itoa(n + 1)
 }
 
-// CurrentAttempt is the attempt a lifecycle fact belongs to: the one the unit's
-// latest admission opened.
-func CurrentAttempt(p history.Projection, event string) string {
-	if a := p.Units[event].AttemptID; a != "" {
-		return a
+// CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's
+// unit's latest admission opened.
+func CurrentAttempt(p history.Projection, session, event string) string {
+	if u, _ := p.Unit(session, event); u.AttemptID != "" {
+		return u.AttemptID
 	}
 	return history.FirstAttempt
 }
@@ -170,7 +170,7 @@ func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) err
 // decide is the admission decision over one projection: the entry to record
 // and, for a denial, why.
 func decide(projection history.Projection, p AdmissionPolicy, req AdmissionRequest) (history.Entry, error) {
-	unit, known := projection.Units[req.Event]
+	unit, known := projection.Unit(req.Session, req.Event)
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
 		WorkUnitID: req.Event, NodeKind: history.NodeKindDelegated, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
@@ -224,7 +224,8 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 func Finish(h *history.History, journalRef, event, session string) error {
 	outcome := history.OutcomeCompleted
 	projection := h.Project()
-	switch projection.Units[event].Flight {
+	unit, _ := projection.Unit(session, event)
+	switch unit.Flight {
 	case history.FlightCancelling, history.FlightUncertain:
 		outcome = history.OutcomeInterrupted
 	}
@@ -237,7 +238,7 @@ func Finish(h *history.History, journalRef, event, session string) error {
 	}
 	return h.Append(history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindTerminated, SessionID: session,
-		WorkUnitID: event, AttemptID: CurrentAttempt(projection, event), Cause: history.CauseUncaptured,
+		WorkUnitID: event, AttemptID: CurrentAttempt(projection, session, event), Cause: history.CauseUncaptured,
 		JournalRef: journalRef, Outcome: outcome, Objective: objective,
 	})
 }
@@ -312,7 +313,7 @@ func activityRecordKind(nodeKind history.NodeKind, start bool) (history.Kind, er
 func Record(h *history.History, journalRef, event, session string, kind history.Kind) error {
 	return h.Append(history.Entry{
 		Author: history.AuthorOf(kind), Kind: kind, SessionID: session, WorkUnitID: event,
-		AttemptID: CurrentAttempt(h.Project(), event), Cause: history.CauseUncaptured, JournalRef: journalRef,
+		AttemptID: CurrentAttempt(h.Project(), session, event), Cause: history.CauseUncaptured, JournalRef: journalRef,
 	})
 }
 
@@ -321,7 +322,7 @@ func Record(h *history.History, journalRef, event, session string, kind history.
 // communication failure must be reconciled before any repeat that could
 // duplicate execution (PR-HAR-17).
 func Launch(h *history.History, journalRef, event, session string) error {
-	u := h.Project().Units[event]
+	u, _ := h.Project().Unit(session, event)
 	switch {
 	case u.State != history.StateInFlight:
 		return errors.New("dispatch: launch requires an admitted unit in flight")
@@ -337,12 +338,12 @@ func Launch(h *history.History, journalRef, event, session string) error {
 // running, or non-start, which is the effective termination that finally
 // releases the reservation. Uncertainty alone never releases it (PR-HAR-18).
 func Reconcile(h *history.History, journalRef, event, session string, running bool) error {
-	u := h.Project().Units[event]
+	u, _ := h.Project().Unit(session, event)
 	// A restarted host can retain a delegation record for a unit that is no longer
 	// in flight (settled, or never admitted): there is nothing left to reconcile,
-	// and it must not block new dispatches. Another session's unit is not ours to
-	// reconcile.
-	if !running && u.State != history.StateInFlight && (u.SessionID == "" || u.SessionID == session) {
+	// and it must not block new dispatches. Only session's own unit is looked at:
+	// another root's unit of the same name is never touched.
+	if !running && u.State != history.StateInFlight {
 		return nil
 	}
 	if u.Flight != history.FlightUncertain {
@@ -357,7 +358,7 @@ func Reconcile(h *history.History, journalRef, event, session string, running bo
 // Withdraw revokes still-planned work. Admitted work's contract and
 // prerequisites are frozen, so it can no longer be withdrawn (PR-DAG-TMP-3).
 func Withdraw(h *history.History, journalRef, event, session string) error {
-	if h.Project().Units[event].State != history.StatePlanned {
+	if u, _ := h.Project().Unit(session, event); u.State != history.StatePlanned {
 		return errors.New("dispatch: only still-planned work may be withdrawn")
 	}
 	return Record(h, journalRef, event, session, history.KindWithdrawn)
@@ -378,7 +379,7 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 	if session == "" || version == "" || len(units) == 0 {
 		return errors.New("dispatch: a commitment records an identified baseline version and its work")
 	}
-	if e := validPlan(h.Project(), units); e != nil {
+	if e := validPlan(h.Project(), session, units); e != nil {
 		return e
 	}
 	for _, u := range units {
@@ -414,8 +415,8 @@ func Declare(h *history.History, journalRef, session, version, baseVersion strin
 
 // validPlan rejects the declarations PR-DAG-MUT-6 calls invalid: duplicate or
 // unknown identities and cycles. An invalid commitment covers nothing.
-func validPlan(p history.Projection, units []PlanUnit) error {
-	pending, dependents, err := planGraph(p, units)
+func validPlan(p history.Projection, session string, units []PlanUnit) error {
+	pending, dependents, err := planGraph(p, session, units)
 	if err != nil {
 		return err
 	}
@@ -428,12 +429,12 @@ func validPlan(p history.Projection, units []PlanUnit) error {
 // planGraph indexes the committed units, rejecting missing or duplicate
 // identities and unknown prerequisites. pending counts each unit's in-plan
 // prerequisites; dependents maps a unit to the units waiting on it.
-func planGraph(p history.Projection, units []PlanUnit) (map[string]int, map[string][]string, error) {
+func planGraph(p history.Projection, session string, units []PlanUnit) (map[string]int, map[string][]string, error) {
 	pending, err := indexPendingUnits(units)
 	if err != nil {
 		return nil, nil, err
 	}
-	dependents, err := linkPrerequisites(p, units, pending)
+	dependents, err := linkPrerequisites(p, session, units, pending)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -458,14 +459,14 @@ func indexPendingUnits(units []PlanUnit) (map[string]int, error) {
 }
 
 // linkPrerequisites rejects a prerequisite that names neither an in-plan nor
-// an already-executed unit, and otherwise counts it against pending and
-// records the in-plan reverse edge in dependents.
-func linkPrerequisites(p history.Projection, units []PlanUnit, pending map[string]int) (map[string][]string, error) {
+// an already-executed unit of session, and otherwise counts it against pending
+// and records the in-plan reverse edge in dependents.
+func linkPrerequisites(p history.Projection, session string, units []PlanUnit, pending map[string]int) (map[string][]string, error) {
 	dependents := map[string][]string{}
 	for _, u := range units {
 		for _, need := range u.Prerequisites {
 			if _, inPlan := pending[need]; !inPlan {
-				if _, executed := p.Units[need]; !executed {
+				if _, executed := p.Unit(session, need); !executed {
 					return nil, fmt.Errorf("dispatch: unknown prerequisite identity: %s", need)
 				}
 				continue
@@ -515,15 +516,15 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion,
 			"dispatch: revision declares a stale base version")
 	}
-	current := currentPlan(projection)
+	current := currentPlan(projection, session)
 	resulting := reviseUnits(current, adds, withdrawals)
-	if e := validPlan(projection, resulting); e != nil {
+	if e := validPlan(projection, session, resulting); e != nil {
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
-	if e := checkWithdrawalsPlanned(projection, withdrawals); e != nil {
+	if e := checkWithdrawalsPlanned(projection, session, withdrawals); e != nil {
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
-	if e := checkAdmittedUnchanged(projection, adds); e != nil {
+	if e := checkAdmittedUnchanged(projection, session, adds); e != nil {
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
 	classification := classify(current, resulting)
@@ -568,22 +569,17 @@ func invalidRevision(h *history.History, journalRef, session, baseVersion, newVe
 	return errors.Join(h.Append(entry), errors.New(reason))
 }
 
-// currentPlan reconstructs the plan the last valid commitment or revision
-// left standing: every unit a commitment declared that is still planned or
-// admitted, in deterministic order.
-func currentPlan(p history.Projection) []PlanUnit {
-	ids := make([]string, 0, len(p.Units))
-	for id, u := range p.Units {
-		if u.Contract != "" && (u.State == history.StatePlanned || u.State == history.StateInFlight) {
-			ids = append(ids, id)
+// currentPlan reconstructs the plan session's last valid commitment or
+// revision left standing: every unit a commitment declared that is still
+// planned or admitted, in deterministic order.
+func currentPlan(p history.Projection, session string) []PlanUnit {
+	var units []PlanUnit
+	for _, u := range p.Units {
+		if u.SessionID == session && u.Contract != "" && (u.State == history.StatePlanned || u.State == history.StateInFlight) {
+			units = append(units, PlanUnit{Unit: u.WorkUnitID, Contract: u.Contract, Prerequisites: u.Prerequisites})
 		}
 	}
-	slices.Sort(ids)
-	units := make([]PlanUnit, len(ids))
-	for i, id := range ids {
-		u := p.Units[id]
-		units[i] = PlanUnit{Unit: id, Contract: u.Contract, Prerequisites: u.Prerequisites}
-	}
+	slices.SortFunc(units, func(a, b PlanUnit) int { return strings.Compare(a.Unit, b.Unit) })
 	return units
 }
 
@@ -619,9 +615,9 @@ func reviseUnits(current, adds []PlanUnit, withdrawals []string) []PlanUnit {
 // checkWithdrawalsPlanned rejects withdrawing work that is no longer planned:
 // a revision may only revoke still-planned work, same as Withdraw
 // (PR-DAG-MUT-6, PR-DAG-TMP-3).
-func checkWithdrawalsPlanned(p history.Projection, withdrawals []string) error {
+func checkWithdrawalsPlanned(p history.Projection, session string, withdrawals []string) error {
 	for _, w := range withdrawals {
-		if p.Units[w].State != history.StatePlanned {
+		if u, _ := p.Unit(session, w); u.State != history.StatePlanned {
 			return fmt.Errorf("dispatch: %s is not planned; only still-planned work may be withdrawn", w)
 		}
 	}
@@ -632,9 +628,9 @@ func checkWithdrawalsPlanned(p history.Projection, withdrawals []string) error {
 // prerequisites of a unit no longer planned: a genuinely unchanged
 // redeclaration of already-admitted work is tolerated, a change is not
 // (PR-DAG-MUT-6).
-func checkAdmittedUnchanged(p history.Projection, adds []PlanUnit) error {
+func checkAdmittedUnchanged(p history.Projection, session string, adds []PlanUnit) error {
 	for _, u := range adds {
-		existing, known := p.Units[u.Unit]
+		existing, known := p.Unit(session, u.Unit)
 		if !known || existing.State == history.StatePlanned {
 			continue
 		}
@@ -681,7 +677,7 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 	}
 	var e error
 	switch {
-	case !terminalFailure(h.Entries(), event, attempt):
+	case !terminalFailure(h.Entries(), session, event, attempt):
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, CauseNoFailure
 		e = fmt.Errorf("harness: work unit %q has no recorded terminal failure to contest; to correct its delivery, claim_assign its author_key and delegate the unit again, or delegate a Verify of that author_key to judge it", event)
 	case len(budgets.Contests) >= p.Budgets.Contests+budgets.Allowance[history.BoundContests]:
@@ -691,11 +687,12 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 	return errors.Join(h.Append(entry), e)
 }
 
-// terminalFailure reports whether the unit's attempt ended without a result:
-// failed, backtracked or interrupted. A completed attempt has nothing to contest.
-func terminalFailure(entries []history.Entry, event, attempt string) bool {
+// terminalFailure reports whether session's unit's attempt ended without a
+// result: failed, backtracked or interrupted. A completed attempt has nothing
+// to contest.
+func terminalFailure(entries []history.Entry, session, event, attempt string) bool {
 	return slices.ContainsFunc(entries, func(e history.Entry) bool {
-		return e.Kind == history.KindTerminated && e.WorkUnitID == event && e.AttemptID == attempt &&
+		return e.Kind == history.KindTerminated && e.SessionID == session && e.WorkUnitID == event && e.AttemptID == attempt &&
 			e.Outcome != history.OutcomeCompleted
 	})
 }
@@ -839,7 +836,7 @@ func accountRecovery(h *history.History, entries []vfs.JournalEntry, scope recov
 		// The bus no longer accounts for consumption already observed.
 		return recordActions(h, scope.Session, scope.Objective, scope.Recovery, history.KindActionsUncertain, 0, head)
 	}
-	if n := scopeActions(entries, scope.Recovery); n > 0 {
+	if n := scopeActions(entries, scope.Session, scope.Recovery); n > 0 {
 		scope.Recovery.Used += n
 		if e := recordActions(h, scope.Session, scope.Objective, scope.Recovery, history.KindActions, n, head); e != nil {
 			return e
@@ -848,12 +845,13 @@ func accountRecovery(h *history.History, entries []vfs.JournalEntry, scope recov
 	return forceBacktrackIfExhausted(h, scope.Session, scope.Objective, scope.Recovery, scope.Budgets, scope.Projection, head)
 }
 
-// scopeActions counts the tool executions recorded past the established cursor
-// whose work unit the recovery scope declares, whichever attempt performed them.
-func scopeActions(entries []vfs.JournalEntry, recovery history.Recovery) int {
+// scopeActions counts the tool executions of session recorded past the
+// established cursor whose work unit the recovery scope declares, whichever
+// attempt performed them.
+func scopeActions(entries []vfs.JournalEntry, session string, recovery history.Recovery) int {
 	calls := map[string]bool{}
 	for _, entry := range entries {
-		if entry.Seq > recovery.Cursor && entry.CallID != "" && slices.Contains(recovery.Scope, entry.WorkUnitID) {
+		if entry.Seq > recovery.Cursor && entry.CallID != "" && entry.SessionID == session && slices.Contains(recovery.Scope, entry.WorkUnitID) {
 			calls[entry.SessionID+"/"+entry.CallID] = true
 		}
 	}
@@ -868,7 +866,8 @@ func forceBacktrackIfExhausted(h *history.History, session, objective string, re
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
 	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
 	inFlight := slices.ContainsFunc(recovery.Scope, func(unit string) bool {
-		return projection.Units[unit].State == history.StateInFlight
+		u, _ := projection.Unit(session, unit)
+		return u.State == history.StateInFlight
 	})
 	cause := history.BoundRecoveryActions
 	switch {
@@ -941,7 +940,8 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 	case !recovery.Backtracked:
 		return fmt.Errorf("dispatch: no abandoned recovery %q exists; check the objective identity", objective)
 	case slices.ContainsFunc(recovery.Scope, func(unit string) bool {
-		return projection.Units[unit].State == history.StateInFlight
+		u, _ := projection.Unit(session, unit)
+		return u.State == history.StateInFlight
 	}):
 		return fmt.Errorf("harness: restoration waits until the affected executions can no longer act; call dispatch_restore for %q again once the delegations of %s have returned", objective, strings.Join(recovery.Scope, ", "))
 	}

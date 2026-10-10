@@ -106,6 +106,8 @@ func AllowanceKey(bound, objective string) string {
 // Unit is a work unit as the replay derives it.
 type Unit struct {
 	SessionID string `json:"session_id"`
+	// WorkUnitID is the unit's name within its root session.
+	WorkUnitID string `json:"work_unit_id"`
 	// NodeKind is the classification recorded on the unit's first entry.
 	NodeKind NodeKind `json:"node_kind,omitempty"`
 	// AttemptID identifies the attempt; FirstAttempt for the first one.
@@ -241,6 +243,8 @@ type Budgets struct {
 // Projection is the derived execution DAG state. It is never edited in place:
 // it is recomputed from the record.
 type Projection struct {
+	// Units is keyed by UnitKey: a unit name belongs to the root session that
+	// declared or admitted it, and another root may reuse it.
 	Units map[string]Unit `json:"units"`
 	// Activities contains direct orchestrator and maintenance activity, outside
 	// the work-unit map and its dispatch budgets.
@@ -248,6 +252,17 @@ type Projection struct {
 	// Sessions holds each session's consumed budgets; the session-scoped bounds
 	// are per session, never global.
 	Sessions map[string]*Budgets `json:"sessions"`
+}
+
+// UnitKey names session's work unit unit in Projection.Units.
+func UnitKey(session, unit string) string {
+	return session + "\x00" + unit
+}
+
+// Unit returns session's work unit named unit, and whether it is known.
+func (p Projection) Unit(session, unit string) (Unit, bool) {
+	u, known := p.Units[UnitKey(session, unit)]
+	return u, known
 }
 
 // Budgets returns a session's consumption; a session with nothing recorded has
@@ -314,7 +329,7 @@ func (p *Projection) fold(e Entry) {
 	if budgeted(b, e) {
 		return
 	}
-	u, known := p.Units[e.WorkUnitID]
+	u, known := p.Unit(e.SessionID, e.WorkUnitID)
 	if !accepts(u, known, e.Kind) {
 		return
 	}
@@ -335,7 +350,7 @@ func (p *Projection) fold(e Entry) {
 			r.Attempted[e.WorkUnitID+"/"+e.AttemptID] = true
 		}
 	}
-	u.SessionID, u.AttemptID = e.SessionID, e.AttemptID
+	u.SessionID, u.WorkUnitID, u.AttemptID = e.SessionID, e.WorkUnitID, e.AttemptID
 	switch e.Kind {
 	case KindAdmitted:
 		// Each attempt starts unlaunched and without an outcome; the unit's
@@ -353,7 +368,7 @@ func (p *Projection) fold(e Entry) {
 		u.State, u.Flight = StateInFlight, flightOf[e.Kind]
 		u.Launched = u.Launched || e.Kind == KindLaunched
 	}
-	p.Units[e.WorkUnitID] = u
+	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
 }
 
 func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
