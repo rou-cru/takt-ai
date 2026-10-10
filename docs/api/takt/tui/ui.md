@@ -31,6 +31,7 @@ Package ui contains reusable terminal UI primitives.
 - [func PanelWidth\(width int\) int](<#PanelWidth>)
 - [func Scroll\(scroll, height int, key string\) \(int, bool\)](<#Scroll>)
 - [func Selector\(options \[\]string, cursor, chosen int, focused bool\) string](<#Selector>)
+- [func SelectorDescribed\(items \[\]Item, cursor, chosen int\) string](<#SelectorDescribed>)
 - [func Shell\(frame Frame\) string](<#Shell>)
 - [func Status\(state State, message string\) string](<#Status>)
 - [func Toggle\[T comparable\]\(items \[\]T, item T\) \[\]T](<#Toggle>)
@@ -226,7 +227,9 @@ const (
     TextEngramLeave            = "Leave"
     TextEngramRetain           = "Retain"
     TextEngramRemove           = "Remove"
-    TextEngramNever            = "Leave keeps it where it is. Retain also copies it to the retained directory. Only Remove asks to discard it."
+    TextEngramLeaveDesc        = "Keeps the database where it is."
+    TextEngramRetainDesc       = "Copies it to the retained directory; the original stays."
+    TextEngramRemoveDesc       = "Asks to discard it at review."
     TextUninstallRemoveFmt     = "Remove: %s installed by Takt"
     TextUninstallMemoryLine    = "  Memory server (Engram) entries in each harness configuration"
     TextUninstallRestoreTitle  = "Restore to their content from before Takt was installed:"
@@ -541,6 +544,15 @@ func Selector(options []string, cursor, chosen int, focused bool) string
 ```
 
 Selector renders one single\-choice field on a screen that holds several: each field's chosen value stays visible \(selection pair and • marker\) while the cursor \> moves elsewhere, so no decision is hidden by focus.
+
+<a name="SelectorDescribed"></a>
+## func SelectorDescribed
+
+```go
+func SelectorDescribed(items []Item, cursor, chosen int) string
+```
+
+SelectorDescribed is Selector for a screen that holds one field: the chosen value and the cursor stay visible, and the only description shown is the focused option's, in one fixed slot below the list. The block is as wide as its widest label or description, so moving the cursor never shifts it.
 
 <a name="Shell"></a>
 ## func Shell
