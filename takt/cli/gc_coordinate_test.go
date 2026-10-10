@@ -147,7 +147,21 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				t.Fatal("absence of refutation authorized mutation")
 			}
 			invoke(coordinationRequest{Action: "investigate", Session: "collect-child", Finding: c.Cycle.Report.Findings[0].ID, Outcome: "confirmed", Evidence: "No callbacks, reflection, config entry, framework entry or public contract; production consumers absent."})
+			// An authorization whose coordinator save was lost is retried: the
+			// collector's binding and the verifier's gate it reserved are found
+			// again rather than refused as duplicates.
+			saved, e := os.ReadFile(filepath.Join(state, "gc-coordinator.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			first := invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
+			if e = os.WriteFile(filepath.Join(state, "gc-coordinator.json"), saved, 0o600); e != nil {
+				t.Fatal(e)
+			}
 			c = invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
+			if c.Cycle.AuthorKey != first.Cycle.AuthorKey || c.Cycle.VerifierKey != first.Cycle.VerifierKey {
+				t.Fatalf("retried authorization = %s/%s; want the reserved %s/%s", c.Cycle.AuthorKey, c.Cycle.VerifierKey, first.Cycle.AuthorKey, first.Cycle.VerifierKey)
+			}
 			fs, e = vfs.Open(root, state)
 			if e != nil {
 				t.Fatal(e)

@@ -206,3 +206,43 @@ func TestRunVFSMutateRejectsUnknownCommand(t *testing.T) {
 		t.Fatalf("verifyIdentity() error = %v, want ErrIdentity", err)
 	}
 }
+
+// A key reassigned to a later attempt no longer answers the run that held it:
+// before the new run adopts it the key awaits adoption, which no request
+// matches; once adopted it answers the new run only through its own session,
+// which the plugin enforces.
+func TestAReassignedKeyRefusesTheRunThatHeldIt(t *testing.T) {
+	fs, err := vfs.Open(t.TempDir(), filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := fs.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	identity := vfs.Identity{SessionID: "root", WorkUnitID: "impl", AttemptID: "1", AgentID: "dev", Specialist: "dev"}
+	key, err := fs.Bind(identity, []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := identity
+	request.AttemptID = "" // requests never declare the attempt
+	if err := verifyIdentity(fs, key, request, "author_key"); err != nil {
+		t.Fatalf("verifyIdentity() for the bound run = %v", err)
+	}
+	next := identity
+	next.AttemptID = "2"
+	if err := fs.ReassignScope(next, key, []string{"a.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyIdentity(fs, key, request, "author_key"); !errors.Is(err, vfs.ErrIdentity) {
+		t.Fatalf("verifyIdentity() for a key awaiting its next attempt = %v, want ErrIdentity", err)
+	}
+	if adopted, err := fs.Bind(next, []string{"a.go"}); err != nil || adopted != key {
+		t.Fatalf("adopt = %q, %v; want %q", adopted, err, key)
+	}
+	if bound, _ := fs.BindingIdentity(key); bound.AttemptID != "2" {
+		t.Fatalf("adopted binding = %+v; want attempt 2", bound)
+	}
+}

@@ -198,8 +198,10 @@ func coordinateAuthorization(fs *vfs.FS, c *gc.Coordinator, r coordinationReques
 	// against the collector's author key before the verifier is prompted.
 	verifier := cycleIdentity(c.Cycle, gc.VerifierSpecialistID)
 	verifier.WorkUnitID += "/verify"
-	c.Cycle.VerifierKey, e = fs.AssignVerifier(verifier, c.Cycle.AuthorKey)
-	if e != nil {
+	// A retried authorization finds the gate its earlier try reserved.
+	if pending, ok := fs.PendingGate(verifier, c.Cycle.AuthorKey); ok {
+		c.Cycle.VerifierKey = pending
+	} else if c.Cycle.VerifierKey, e = fs.AssignVerifier(verifier, c.Cycle.AuthorKey); e != nil {
 		return nil, e
 	}
 	c.Cycle.Phase = "collect"

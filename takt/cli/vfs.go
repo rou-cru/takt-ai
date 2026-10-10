@@ -419,7 +419,8 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, identity vfs.I
 // identity bound to key. Role, attempt, invariants, cycle and mandate class are
 // harness-derived at bind time, so both sides are cleared of them before the
 // comparison; because Identity also carries WorkUnitID, a mismatched work unit
-// is rejected by the same check.
+// is rejected by the same check. A key reassigned to a later attempt awaits
+// adoption (Prelaunch), so the run that held it no longer matches it.
 func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field string) error {
 	bound, ok := fs.BindingIdentity(key)
 	if field == "verifier_key" && (!ok || bound.GateAuthorKey != identity.GateAuthorKey || identity.GateAuthorKey == "") {
