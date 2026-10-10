@@ -67,7 +67,11 @@ const (
 )
 
 var modifiedChoices = []string{ui.TextKeepMine, ui.TextUninstallRemoveOpt}
-var engramChoices = []string{ui.TextEngramLeave, ui.TextEngramRetain, ui.TextEngramRemove}
+var engramChoices = []ui.Item{
+	{Label: ui.TextEngramLeave, Description: ui.TextEngramLeaveDesc},
+	{Label: ui.TextEngramRetain, Description: ui.TextEngramRetainDesc},
+	{Label: ui.TextEngramRemove, Description: ui.TextEngramRemoveDesc},
+}
 var reviewActions = []ui.FooterAction{{Label: ui.TextActionUninstall, Danger: true}, {Label: ui.TextActionBack}}
 
 // resultActions lists the result screen's footer actions in order.
@@ -502,8 +506,7 @@ func (model Model) retainedHint() string {
 func (model Model) engramBody() string {
 	var view strings.Builder
 	view.WriteString(theme.Caption.Render(ui.TextEngramQuestion))
-	view.WriteString("\n" + ui.Selector(engramChoices, model.cursor, model.engram, true))
-	view.WriteString("\n" + theme.Caption.Render(ui.TextEngramNever))
+	view.WriteString("\n" + ui.SelectorDescribed(engramChoices, model.cursor, model.engram))
 	return view.String()
 }
 

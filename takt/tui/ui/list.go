@@ -69,6 +69,30 @@ func Selector(options []string, cursor, chosen int, focused bool) string {
 	return out.String()
 }
 
+// SelectorDescribed is Selector for a screen that holds one field: the chosen
+// value and the cursor stay visible, and the only description shown is the
+// focused option's, in one fixed slot below the list. The block is as wide as
+// its widest label or description, so moving the cursor never shifts it.
+func SelectorDescribed(items []Item, cursor, chosen int) string {
+	indent := strings.Repeat(" ", lipgloss.Width(theme.Icon.Cursor))
+	width := 0
+	var out strings.Builder
+	for index, item := range items {
+		marker, style := theme.Icon.Unchosen, theme.Label
+		if index == chosen {
+			marker, style = theme.Icon.Chosen, theme.Selected
+		}
+		out.WriteString(markedRow(theme.CheckMarker.Render(marker), item.Label, index == cursor, style))
+		width = max(width, len(indent)+lipgloss.Width(theme.CheckMarker.Render(marker))+lipgloss.Width(item.Label), len(indent)+lipgloss.Width(item.Description))
+	}
+	description := ""
+	if cursor >= 0 && cursor < len(items) {
+		description = items[cursor].Description
+	}
+	out.WriteString("\n" + indent + theme.Caption.Render(description))
+	return lipgloss.NewStyle().Width(width).Render(out.String())
+}
+
 // CheckList renders independently checked rows so multi-select stays visible.
 func CheckList(items []Item, cursor int, focused bool) string {
 	if !focused {
