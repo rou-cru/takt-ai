@@ -105,8 +105,8 @@ func TestReviseTacticalAddsUnconnectedUnit(t *testing.T) {
 	if last.Kind != history.KindRevised || last.Classification != history.ClassificationTactical {
 		t.Fatalf("expected a tactical KindRevised entry, got %+v", last)
 	}
-	if p := h.Project(); p.Units["d"].State != history.StatePlanned {
-		t.Fatalf("expected d to be planned, got %+v", p.Units["d"])
+	if p := h.Project(); p.Units[history.UnitKey("session-1", "d")].State != history.StatePlanned {
+		t.Fatalf("expected d to be planned, got %+v", p.Units[history.UnitKey("session-1", "d")])
 	}
 }
 
@@ -128,8 +128,8 @@ func TestReviseStrategicReconnectsRetainedUnit(t *testing.T) {
 	if revised.Kind != history.KindRevised || revised.Classification != history.ClassificationStrategic {
 		t.Fatalf("expected a strategic KindRevised entry, got %+v", revised)
 	}
-	if p := h.Project(); !reflect.DeepEqual(p.Units["b"].Prerequisites, []string{"c"}) {
-		t.Fatalf("expected b's prerequisites reconnected to c, got %+v", p.Units["b"])
+	if p := h.Project(); !reflect.DeepEqual(p.Units[history.UnitKey("session-1", "b")].Prerequisites, []string{"c"}) {
+		t.Fatalf("expected b's prerequisites reconnected to c, got %+v", p.Units[history.UnitKey("session-1", "b")])
 	}
 }
 
@@ -147,11 +147,11 @@ func TestReviseRejectsStaleBaseVersion(t *testing.T) {
 		t.Fatalf("expected a recorded KindInvalidRevision with a reason, got %+v", last)
 	}
 	p := h.Project()
-	if _, known := p.Units["d"]; known {
+	if _, known := p.Units[history.UnitKey("session-1", "d")]; known {
 		t.Fatal("stale revision must not add the declared unit")
 	}
-	if p.Units["a"].State != history.StatePlanned {
-		t.Fatalf("expected the last valid plan unchanged, got %+v", p.Units["a"])
+	if p.Units[history.UnitKey("session-1", "a")].State != history.StatePlanned {
+		t.Fatalf("expected the last valid plan unchanged, got %+v", p.Units[history.UnitKey("session-1", "a")])
 	}
 }
 
@@ -173,7 +173,7 @@ func TestReviseRejectsCycle(t *testing.T) {
 		t.Fatalf("expected a recorded KindInvalidRevision, got %+v", last)
 	}
 	p := h.Project()
-	if _, known := p.Units["x"]; known {
+	if _, known := p.Units[history.UnitKey("session-1", "x")]; known {
 		t.Fatal("cyclic revision must not add its declared units")
 	}
 	if got := p.Budgets("session-1").PlanVersion; got != "v1" {
@@ -198,7 +198,7 @@ func TestReviseRejectsAlteringAnAdmittedUnit(t *testing.T) {
 	if last.Kind != history.KindInvalidRevision {
 		t.Fatalf("expected a recorded KindInvalidRevision, got %+v", last)
 	}
-	if got := h.Project().Units["a"].Contract; got != "c" {
+	if got := h.Project().Units[history.UnitKey("session-1", "a")].Contract; got != "c" {
 		t.Fatalf("admitted unit's contract changed to %q; want unchanged c", got)
 	}
 }
@@ -216,14 +216,14 @@ func TestReviseWithdrawalWithoutReconnectionPreservesReference(t *testing.T) {
 		t.Fatalf("expected withdrawal without reconnection to succeed, got %v", e)
 	}
 	p := h.Project()
-	if p.Units["a"].State != history.StateWithdrawn {
-		t.Fatalf("expected a withdrawn, got %+v", p.Units["a"])
+	if p.Units[history.UnitKey("session-1", "a")].State != history.StateWithdrawn {
+		t.Fatalf("expected a withdrawn, got %+v", p.Units[history.UnitKey("session-1", "a")])
 	}
-	if !reflect.DeepEqual(p.Units["b"].Prerequisites, []string{"a"}) {
-		t.Fatalf("expected b's unresolved reference to a preserved, got %+v", p.Units["b"])
+	if !reflect.DeepEqual(p.Units[history.UnitKey("session-1", "b")].Prerequisites, []string{"a"}) {
+		t.Fatalf("expected b's unresolved reference to a preserved, got %+v", p.Units[history.UnitKey("session-1", "b")])
 	}
-	if p.Units["b"].State != history.StatePlanned {
-		t.Fatalf("expected b to remain planned, got %+v", p.Units["b"])
+	if p.Units[history.UnitKey("session-1", "b")].State != history.StatePlanned {
+		t.Fatalf("expected b to remain planned, got %+v", p.Units[history.UnitKey("session-1", "b")])
 	}
 }
 
@@ -347,7 +347,7 @@ func TestAdmitRetriesSettledUnitAsNextAttempt(t *testing.T) {
 		t.Fatalf("retry admit: %v", e)
 	}
 	projection := h.Project()
-	u := projection.Units["impl"]
+	u := projection.Units[history.UnitKey("session-1", "impl")]
 	if u.State != history.StateInFlight || u.AttemptID != "2" || u.Dispatch != "d-2" || u.Launched {
 		t.Fatalf("retry projection = %+v, want attempt 2 in flight from d-2", u)
 	}
@@ -377,7 +377,7 @@ func TestAdmitDeniesUnitAlreadyInFlight(t *testing.T) {
 	if last.Kind != history.KindDenied || last.Cause != dispatch.CauseRepetition {
 		t.Fatalf("expected a recorded repetition denial, got %+v", last)
 	}
-	if u := h.Project().Units["impl"]; u.Dispatch != "d-1" || u.AttemptID != history.FirstAttempt {
+	if u := h.Project().Units[history.UnitKey("session-1", "impl")]; u.Dispatch != "d-1" || u.AttemptID != history.FirstAttempt {
 		t.Fatalf("the running attempt changed: %+v", u)
 	}
 }
@@ -407,7 +407,7 @@ func TestDeclareCommitsFirstThenOnlyRevisesAgainstTheStandingVersion(t *testing.
 		t.Fatalf("a revision against the standing version must apply: %v", e)
 	}
 	p := h.Project()
-	if p.Budgets("session-1").PlanVersion != "v2" || p.Units["d"].State != history.StatePlanned {
-		t.Fatalf("revision not applied: version %q, d %+v", p.Budgets("session-1").PlanVersion, p.Units["d"])
+	if p.Budgets("session-1").PlanVersion != "v2" || p.Units[history.UnitKey("session-1", "d")].State != history.StatePlanned {
+		t.Fatalf("revision not applied: version %q, d %+v", p.Budgets("session-1").PlanVersion, p.Units[history.UnitKey("session-1", "d")])
 	}
 }

@@ -109,7 +109,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if activity, ok := started.Activities[cycleID]; !ok || activity.NodeKind != history.NodeKindMaintenance || activity.State != history.StateInFlight {
 				t.Fatalf("GC cycle activity did not start with its real CycleID %q: %+v", cycleID, started.Activities)
 			}
-			if _, unit := started.Units[cycleID]; unit {
+			if _, unit := started.Units[history.UnitKey("root", cycleID)]; unit {
 				t.Fatalf("GC CycleID %q was fabricated as a work unit", cycleID)
 			}
 			invoke := func(r coordinationRequest) gc.Coordinator {
@@ -147,7 +147,21 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				t.Fatal("absence of refutation authorized mutation")
 			}
 			invoke(coordinationRequest{Action: "investigate", Session: "collect-child", Finding: c.Cycle.Report.Findings[0].ID, Outcome: "confirmed", Evidence: "No callbacks, reflection, config entry, framework entry or public contract; production consumers absent."})
+			// An authorization whose coordinator save was lost is retried: the
+			// collector's binding and the verifier's gate it reserved are found
+			// again rather than refused as duplicates.
+			saved, e := os.ReadFile(filepath.Join(state, "gc-coordinator.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			first := invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
+			if e = os.WriteFile(filepath.Join(state, "gc-coordinator.json"), saved, 0o600); e != nil {
+				t.Fatal(e)
+			}
 			c = invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
+			if c.Cycle.AuthorKey != first.Cycle.AuthorKey || c.Cycle.VerifierKey != first.Cycle.VerifierKey {
+				t.Fatalf("retried authorization = %s/%s; want the reserved %s/%s", c.Cycle.AuthorKey, c.Cycle.VerifierKey, first.Cycle.AuthorKey, first.Cycle.VerifierKey)
+			}
 			fs, e = vfs.Open(root, state)
 			if e != nil {
 				t.Fatal(e)
@@ -197,7 +211,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				if e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(req)}, &out, &errout); e == nil || !strings.Contains(e.Error(), "could not be unwound") {
 					t.Fatalf("admission over a blocked cycle: %v", e)
 				}
-				if _, admitted := gcProjection(t, state).Units["after-divergence"]; admitted {
+				if _, admitted := gcProjection(t, state).Units[history.UnitKey("root", "after-divergence")]; admitted {
 					t.Fatal("delegation admitted while the cycle's delta is live")
 				}
 				if held, e := gc.LoadCoordinator(state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {

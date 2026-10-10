@@ -378,6 +378,25 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	return key, nil
 }
 
+// PendingGate returns the unadopted, current gate identity's judge already
+// holds over authorKey in the same unit and attempt; an empty attempt matches
+// the open one, as the store numbers maintenance attempts itself. A
+// coordinator that retries its own step reuses that gate instead of asking
+// AssignVerifier, which refuses a second gate for one judge and author.
+func (f *FS) PendingGate(identity Identity, authorKey AgentID) (AgentID, bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	identity.GateAuthorKey = authorKey
+	for key, gate := range f.bindings {
+		if gate.Prelaunch && !gate.Superseded && gate.sameUnit(identity) && gate.AgentID == identity.AgentID &&
+			gate.Specialist == identity.Specialist && gate.GateAuthorKey == identity.GateAuthorKey &&
+			(identity.AttemptID == "" || gate.AttemptID == identity.AttemptID) {
+			return key, true
+		}
+	}
+	return "", false
+}
+
 // validateVerifierAuthorLocked requires authorKey to name a binding of another
 // specialist in the verifier's session that may write and was issued the same
 // invariant set the verifier is judged against.
@@ -770,7 +789,11 @@ func (f *FS) checkScope(identity Identity, scope []string) error {
 		}
 		for claimed, owner := range f.owners {
 			if strings.EqualFold(p, claimed) {
-				f.recordCollision(identity, p, owner)
+				// An agent meeting its own earlier claim on its unit is no
+				// conflict between agents: it continues that work by its key.
+				if held := f.bindings[owner]; held.AgentID != identity.AgentID || !held.sameUnit(identity) {
+					f.recordCollision(identity, p, owner)
+				}
 				return f.collisionError(identity, p, owner)
 			}
 		}
@@ -997,7 +1020,8 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 		if err != nil && len(f.journal) == start {
 			f.appendJournalLocked(JournalEntry{Agent: verifier, Operation: OperationType("verdict"), Outcome: "denied"})
 		}
-		f.correlateLocked(start, verifier, verifier, callID)
+		// The verdict is about the author's staged work: it carries that revision.
+		f.correlateLocked(start, verifier, author, callID)
 		f.finishLocked(&err)
 	}()
 	v, a, err := f.admitVerifierLocked(verifier, author, callID)

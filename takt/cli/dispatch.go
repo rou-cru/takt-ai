@@ -116,7 +116,7 @@ func abortWithArtifactReport(h *history.History, ref, workspace string, r coordi
 // either: an admission ends a cycle in flight first (PR-MNT-3). Whether a cycle
 // is due is decided only when the session is idle, by `gc coordinate`'s tick.
 func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
-	unit := h.Project().Units[r.Event]
+	unit, _ := h.Project().Unit(r.Session, r.Event)
 	switch r.Action {
 	case "admit":
 		// A repeated host call yields its recorded disposition; a new dispatch
@@ -216,7 +216,8 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 	if e != nil {
 		return e
 	}
-	from := h.Project().Units[req.Event].State
+	before, _ := h.Project().Unit(req.Session, req.Event)
+	from := before.State
 	response, e := coordinate(context.Background(), fs, h, *workspace, *state, c, req)
 	// Persist admission/lifecycle state even if the effect failed, exactly as
 	// `gc coordinate` does: the barrier and the recorded disposition stay held.
@@ -230,9 +231,21 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 	// held, which only the history knows, so the plugin's telemetry invents neither.
 	if lifecycleActions[req.Action] && response == c {
 		after := h.Project()
-		response = lifecycleResponse{c, after.InFlight(), from, after.Units[req.Event].State}
+		now, _ := after.Unit(req.Session, req.Event)
+		response = lifecycleResponse{c, after.InFlight(), from, now.State}
 	}
 	return json.NewEncoder(stdout).Encode(response)
+}
+
+// staleDispatch reports whether r names a host delegation that no longer holds
+// its unit: a later attempt admitted under another dispatch is not that
+// delegation's to mark uncertain or reconcile.
+func staleDispatch(h *history.History, r coordinationRequest) bool {
+	if r.Dispatch == "" {
+		return false
+	}
+	u, _ := h.Project().Unit(r.Session, r.Event)
+	return u.State != history.StateInFlight || u.Dispatch != r.Dispatch
 }
 
 // lifecycleActions are the dispatch actions that move a work unit between states.
@@ -246,6 +259,8 @@ type lifecycleResponse struct {
 	ToState   history.State `json:"to_state"`
 }
 
+// coordinate runs one dispatch action against the history, the VFS and the
+// coordinator, after observing what the journal recorded since the last call.
 func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	entries, e := observeCoordination(fs, h, c, r.Session)
 	if e != nil {
@@ -259,18 +274,28 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 	}
 	attempt := r.Attempt
 	if attempt == "" {
-		attempt = protocol.CurrentAttempt(h.Project(), r.Event)
+		attempt = protocol.CurrentAttempt(h.Project(), r.Session, r.Event)
 	}
 	handlers := map[string]func() (any, error){
 		"admit": routine, "finish": routine, "tick": routine,
-		"launch":    func() (any, error) { return c, protocol.Launch(h, ref, r.Event, r.Session) },
-		"uncertain": record(history.KindUncertain),
-		"reconcile": func() (any, error) { return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass) },
-		"suspend":   record(history.KindSuspended),
-		"cancel":    record(history.KindCancelRequested),
-		"stop":      record(history.KindStopped),
-		"escalate":  record(history.KindEscalated),
-		"withdraw":  func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
+		"launch": func() (any, error) { return c, protocol.Launch(h, ref, r.Event, r.Session) },
+		"uncertain": func() (any, error) {
+			if staleDispatch(h, r) {
+				return c, nil
+			}
+			return record(history.KindUncertain)()
+		},
+		"reconcile": func() (any, error) {
+			if staleDispatch(h, r) {
+				return c, nil
+			}
+			return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass)
+		},
+		"suspend":  record(history.KindSuspended),
+		"cancel":   record(history.KindCancelRequested),
+		"stop":     record(history.KindStopped),
+		"escalate": record(history.KindEscalated),
+		"withdraw": func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
 		"commit": func() (any, error) {
 			return c, protocol.Declare(h, ref, r.Session, r.Version, r.BaseVersion, r.Plan, r.Withdrawals)
 		},

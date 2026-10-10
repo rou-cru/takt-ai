@@ -40,6 +40,9 @@ type cycleSnapshot struct {
 	Items map[string]recoveryItem
 	// Dirs are the directories the cycle's flushes created, shallowest first.
 	Dirs []string
+	// Last is the journal position of the cycle's latest consolidation of each
+	// path, so the cycle that last re-edited a path is the one it is traced to.
+	Last map[string]int `json:",omitempty"`
 	// Completed marks a cycle CompleteCycle has closed: it can no longer be
 	// discarded, but ConsolidatedBy still attributes its paths so a later
 	// re-edit traces back to this cycle and mandate class (PR-MNT-31).
@@ -58,7 +61,11 @@ func (f *FS) retainCycleLocked(agent AgentID, m *recoveryManifest) {
 		f.cycles[id.CycleID] = snap
 	}
 	snap.Agent = agent
+	if snap.Last == nil {
+		snap.Last = make(map[string]int)
+	}
 	for _, item := range m.Items {
+		snap.Last[item.Path] = len(f.journal)
 		// A path this cycle already consolidated keeps its pre-cycle state:
 		// the target is where the workspace stood before the cycle, not before
 		// its latest delta.
@@ -106,12 +113,20 @@ func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool)
 // (locked for read or write) — appendJournalLocked runs under the write lock
 // and must not re-enter it via the exported, self-locking method.
 func (f *FS) consolidatedByLocked(path string) (cycleID, mandateClass string, ok bool) {
-	for id, snap := range f.cycles {
-		if _, present := snap.Items[path]; present {
-			return id, snap.MandateClass, true
+	latest := -1
+	for _, id := range slices.Sorted(maps.Keys(f.cycles)) {
+		snap := f.cycles[id]
+		if _, present := snap.Items[path]; !present {
+			continue
+		}
+		// Several cycles may have consolidated the path: the latest one is its
+		// author. A store written before positions were kept ties at zero and
+		// falls back to the cycle identities' order, never to map order.
+		if at := snap.Last[path]; at >= latest {
+			latest, cycleID, mandateClass, ok = at, id, snap.MandateClass, true
 		}
 	}
-	return "", "", false
+	return cycleID, mandateClass, ok
 }
 
 // DiscardCycle restores the workspace to the state before cycleID's

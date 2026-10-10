@@ -235,3 +235,37 @@ func TestWorkOutsideACycleRetainsNothing(t *testing.T) {
 		t.Errorf("discard = %v, want ErrUnknownCycle", err)
 	}
 }
+
+// A path two cycles consolidated is traced to the latest one, every time.
+func TestConsolidatedByNamesTheLatestCycle(t *testing.T) {
+	g := newGCRig(t)
+	consolidatedCycle(g, "collector")
+	author := vfs.Identity{SessionID: "s", WorkUnitID: "u2", AttemptID: "1", AgentID: "collector-2", Specialist: gcSpecialist, CycleID: "cycle-2", MandateClass: "complexity"}
+	key, err := g.f.Bind(author, []string{"a.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.f.Apply(vfs.Operation{Key: key, CallID: "second", Action: vfs.OpPatch, Path: "a.txt", Content: []byte("newer-a")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	judge := vfs.Identity{SessionID: "s", WorkUnitID: "u2/verify", AttemptID: "1", AgentID: "judge-2", Specialist: "verify", CycleID: "cycle-2", MandateClass: "complexity"}
+	gate, err := g.f.AssignVerifier(judge, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.f.Verify(gate, key, "verdict-2", r.Revision, r.DeltaHash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.f.ConsolidateCheckpoint(key, "cp-2", r.Revision, false); err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		if id, class, ok := g.f.ConsolidatedBy("a.txt"); !ok || id != "cycle-2" || class != "complexity" {
+			t.Fatalf("ConsolidatedBy(a.txt) = %q %q %v; want the latest cycle-2", id, class, ok)
+		}
+		if id, _, _ := g.f.ConsolidatedBy("b.txt"); id != "cycle-1" {
+			t.Fatalf("ConsolidatedBy(b.txt) = %q; want cycle-1, the only one that touched it", id)
+		}
+	}
+}

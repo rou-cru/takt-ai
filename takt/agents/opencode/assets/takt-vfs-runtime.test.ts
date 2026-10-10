@@ -26,7 +26,7 @@ type Call = { kind: string; command: string; request: Record<string, unknown> }
 type HookEvent = Record<string, unknown>
 type Hooks = Map<string, Array<(event: HookEvent) => Promise<void>>>
 type Ctx = { sessionID: string; agent: string }
-type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown> }
+type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown>; time?: { created: number } }
 type Options = {
   nativeInput?: unknown
   respond?: (call: Call) => Reply | undefined
@@ -36,6 +36,10 @@ type Options = {
   permissions?: Record<string, unknown[]>
   promptError?: string
   home?: boolean
+  // wait resolves when the host would report the session's turn ended.
+  wait?: (sessionID: string) => Promise<void>
+  // missing names sessions the host no longer has.
+  missing?: string[]
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -141,7 +145,10 @@ async function startVfs(options: Options = {}) {
       location: { directory: options.home ? homedir() : WORKSPACE },
       storage: { async get(key: string) { return storage.get(key) }, async set(key: string, value: unknown) { storage.set(key, value) } },
       session: {
-        async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } },
+        async get({ sessionID }: { sessionID: string }) {
+          if (options.missing?.includes(sessionID)) throw new Error(`session ${sessionID} not found`)
+          return { id: sessionID, ...options.sessions?.[sessionID] }
+        },
         hook: register(sessionHooks),
         async create(request: unknown) { log.created.push(request); return { id: "child" } },
         async prompt(request: { sessionID: string; text: string }) {
@@ -150,7 +157,7 @@ async function startVfs(options: Options = {}) {
         },
         async interrupt({ sessionID }: { sessionID: string }) { log.interrupts.push(sessionID) },
         async synthetic(request: { sessionID: string; text: string }) { log.synthetics.push(request) },
-        async wait({ sessionID }: { sessionID: string }) { log.waits.push(sessionID) },
+        async wait({ sessionID }: { sessionID: string }) { log.waits.push(sessionID); await options.wait?.(sessionID) },
       },
       agent: { async get({ agentID }: { agentID: string }) {
         if (agentID === BROKEN_AGENT) throw new Error("agent lookup failed")
@@ -294,6 +301,7 @@ describe("takt-ai answers", () => {
 describe("delegation lifecycle", () => {
   const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-1", input })
   const declareNone = (vfs: Awaited<ReturnType<typeof startVfs>>, unit: string) => vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+  // acceptInputs lets the harness validate every declared input and result.
   const acceptInputs = (call: Call) => call.kind === "dispatch" && (call.command === "validate_inputs" || call.command === "validate_results") ? { out: "{}" } : undefined
 
   test("a delegation is refused until its consumed invariants are declared", async () => {
@@ -348,7 +356,7 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-v", agent: VFS_AGENT }))
       expect(vfs.actions("dispatch")).toEqual(["admit", "launch"])
       expect(vfs.requests("dispatch", "admit")[0]).toMatchObject({ event: "unit-v", dispatch: "root:call-1", session: "root", agent: VFS_AGENT })
-      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "root:call-1": { unit: "unit-v", root: "root", agent: VFS_AGENT, caller: "root" } })
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({ "root:call-1": { unit: "unit-v", root: "root", agent: VFS_AGENT, caller: "root", admittedAt: expect.any(Number) } })
     } finally { await vfs.stop() }
   })
 
@@ -371,6 +379,7 @@ describe("delegation lifecycle", () => {
     expect(context.tools).toEqual({})
     return context.system as Array<{ text: string }>
   }
+  // finished is the host's report that the producer's delegation completed.
   const finished = () => ({ tool: "subagent", sessionID: "root", id: "call-r", status: "completed", result: { content: "Breakdown recorded." } })
 
   test("the specialist receives the invariants declared for its unit, or their declared absence", async () => {
@@ -465,7 +474,7 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", finished())
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r2", input: { description: "unit-r", agent: RESULT_AGENT } })
       await vfs.fire(vfs.session, "context", { tools: {}, ...old, system: [] })
-      await vfs.run("deliver_result", { result_ids: [9] }, old)
+      await expect(vfs.run("deliver_result", { result_ids: [9] }, old)).rejects.toThrow("nothing was credited")
       await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r2", agent: RESULT_AGENT, system: [] })
       await expect(vfs.fire(vfs.tool, "execute.after", { ...finished(), id: "call-r2" })).rejects.toThrow("ended without delivering")
       expect(vfs.log.prompts.map((prompt) => prompt.sessionID)).toEqual(["child-r2"])
@@ -484,6 +493,128 @@ describe("delegation lifecycle", () => {
       const event = { ...finished(), id: "call-r2" }
       await vfs.fire(vfs.tool, "execute.after", event)
       expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #5")
+    } finally { await vfs.stop() }
+  })
+
+  test("a child is learned when the host creates it, so one that dies before its first turn still ends its delegation", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
+      await vfs.fire(vfs.tool, "execute.after", finished())
+      vfs.publish({ id: "evt-new", created: 1, type: "session.created", data: { sessionID: "child-r", agent: RESULT_AGENT, parentID: "root", title: "unit-r" } } as unknown as OpenCodeEvent)
+      await until(() => (vfs.storage.get(DELEGATIONS_KEY) as Record<string, { child?: string }>)["root:call-r"]?.child === "child-r")
+      vfs.publish({ id: "evt-gone", created: 2, type: "session.deleted", data: { sessionID: "child-r" } } as OpenCodeEvent)
+      await until(() => vfs.requests("dispatch", "finish").length > 0)
+      expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", session: "root" }])
+      expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
+    } finally { await vfs.stop() }
+  })
+
+  // After a restart nothing in memory remembers which sessions already ran a
+  // delegation; a session created before the delegation was admitted is an
+  // earlier one's all the same.
+  test("a session created before the delegation was admitted is never its child", async () => {
+    const sessions = {
+      "child-old": { parentID: "root", title: "unit-r", time: { created: Date.now() - 60_000 } },
+      "child-new": { parentID: "root", title: "unit-r", time: { created: Date.now() + 1 } },
+    }
+    const vfs = await startVfs({ sessions, respond: acceptInputs })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-old", agent: RESULT_AGENT, system: [] })
+      await expect(vfs.run("deliver_result", { result_ids: [9] }, { sessionID: "child-old", agent: RESULT_AGENT })).rejects.toThrow("nothing was credited")
+      await vfs.run("deliver_result", { result_ids: [4] }, { sessionID: "child-new", agent: RESULT_AGENT })
+      const event = finished()
+      await vfs.fire(vfs.tool, "execute.after", event)
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #4")
+    } finally { await vfs.stop() }
+  })
+
+  test("a background child still running after a restart keeps its slot until its turn ends", async () => {
+    let release = () => {}
+    const turn = new Promise<void>((resolve) => { release = resolve })
+    const vfs = await startVfs({
+      sessions: { ...producerSessions, "child-gone-r": { parentID: "root", title: "unit-g" } },
+      missing: ["child-gone-r"],
+      wait: async (sessionID) => { if (sessionID === "child-r") await turn },
+      storage: { [DELEGATIONS_KEY]: {
+        "old:1": { unit: "unit-r", root: "root", agent: RESULT_AGENT, background: true, child: "child-r" },
+        "old:2": { unit: "unit-g", root: "root", agent: RESULT_AGENT, background: true, child: "child-gone-r" },
+      } },
+    })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-n", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-n", input: { description: "unit-n", agent: RESULT_AGENT } })
+      // The child the host no longer has is reconciled; the running one is not.
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "unit-g", dispatch: "old:2", session: "root" }])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object).sort()).toEqual(["old:1", "root:call-n"])
+      expect(vfs.requests("dispatch", "finish")).toEqual([])
+      release()
+      await until(() => vfs.requests("dispatch", "finish").length > 0)
+      expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "old:1", session: "root" }])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object)).toEqual(["root:call-n"])
+    } finally { await vfs.stop() }
+  })
+
+  test("a background watch that fails is taken up again by the next reconciliation", async () => {
+    const missing: string[] = []
+    const vfs = await startVfs({
+      sessions: producerSessions, missing,
+      wait: async () => { throw new Error("host unreachable") },
+      storage: { [DELEGATIONS_KEY]: { "old:1": { unit: "unit-r", root: "root", agent: RESULT_AGENT, background: true, child: "child-r" } } },
+    })
+    const delegate = async (unit: string) => {
+      await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
+    }
+    try {
+      await delegate("unit-a")
+      await until(() => vfs.errors.some(([label]) => label === "Takt background watch"))
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
+      // By the next pass the host no longer has the child: it is reconciled.
+      missing.push("child-r")
+      await delegate("unit-b")
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "unit-r", dispatch: "old:1", session: "root" }])
+      expect(Object.keys(vfs.storage.get(DELEGATIONS_KEY) as object).sort()).toEqual(["root:call-unit-a", "root:call-unit-b"])
+    } finally { await vfs.stop() }
+  })
+
+  test("a resumed session runs the unit its new delegation names", async () => {
+    const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
+    try {
+      await admitProducer(vfs)
+      await vfs.fire(vfs.tool, "execute.after", { ...finished(), status: "error" })
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r-fix", none: true }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-fix", input: { description: "unit-r-fix", agent: RESULT_AGENT, sessionID: "child-r" } })
+      const context = { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
+      await vfs.fire(vfs.session, "context", context)
+      expect(context.system.map((part) => part.text)).toContain("Work unit unit-r-fix consumes no recorded invariant yet; author it from the brief.")
+    } finally { await vfs.stop() }
+  })
+
+  test("a top-level session's deliver_result has no delegation to credit and says so", async () => {
+    const vfs = await startVfs({ respond: acceptInputs })
+    try {
+      const reply = await vfs.run("deliver_result", { result_ids: [3] }, { sessionID: "lent", agent: RESULT_AGENT })
+      expect(reply.content).toBe("Validated 1 result id(s); no delegation to credit them to")
+    } finally { await vfs.stop() }
+  })
+
+  test("model usage is attributed to who ran in that session", async () => {
+    const vfs = await startVfs({ sessions: producerSessions, respond: acceptInputs })
+    // usage is a host usage event for sessionID; usageOf finds what was recorded for it.
+    const usage = (id: string, sessionID: string) => ({ id, created: 1, type: "session.usage.updated",
+      data: { sessionID, cost: 0.01, tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } } }) as unknown as OpenCodeEvent
+    const usageOf = (sessionID: string) => vfs.requests("obs", "ingest").find((r) => r.event_class === "model_usage" && r.session_id === sessionID)
+    try {
+      await admitProducer(vfs)
+      vfs.publish(usage("u-child", "child-r"))
+      vfs.publish(usage("u-root", "root"))
+      await until(() => usageOf("child-r") !== undefined && usageOf("root") !== undefined)
+      expect(usageOf("child-r")).toMatchObject({ agent: RESULT_AGENT, work_unit_id: "unit-r" })
+      expect(usageOf("root")).toMatchObject({ agent: "harness", work_unit_id: "" })
     } finally { await vfs.stop() }
   })
 
@@ -583,8 +714,8 @@ describe("maintenance cycle", () => {
         vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-1", input: { description: "new-1", agent: RESULT_AGENT } }),
         vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-2", input: { description: "new-2", agent: RESULT_AGENT } }),
       ].map(async (hook) => { try { await hook } catch { /* the new units have no declared inputs */ } }))
-      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "u-old", session: "root" }])
-      expect(vfs.requests("dispatch", "reconcile")).toEqual([{ action: "reconcile", event: "u-old", session: "root", pass: false }])
+      expect(vfs.requests("dispatch", "uncertain")).toEqual([{ action: "uncertain", event: "u-old", dispatch: "old:1", session: "root" }])
+      expect(vfs.requests("dispatch", "reconcile")).toEqual([{ action: "reconcile", event: "u-old", dispatch: "old:1", session: "root", pass: false }])
       expect(vfs.storage.get(DELEGATIONS_KEY)).toEqual({})
     } finally { await vfs.stop() }
   })
@@ -674,7 +805,7 @@ describe("maintenance cycle", () => {
 
       authorization = gcCycle("investigate", { collector: "gcc" }, { author_key: "author-gc" })
       await vfs.run("gc_authorize", {}, collector)
-      expect(vfs.storage.get("takt/vfs/bindings")).toMatchObject([{ key: "author-gc", agent: "simplify", session: "root", dispatch: "gcc", unit: "cycle-1" }])
+      expect(vfs.storage.get("takt/vfs/bindings")).toMatchObject([{ key: "author-gc", agent: "simplify", session: "root", dispatch: "gcc", unit: "cycle-1", cycle: "cycle-1" }])
 
       await vfs.run("vfs_write", { path: "a.go", content: "package a" }, collector)
       expect(vfs.requests("vfs", "op")[0]).toMatchObject({ session_id: "root", work_unit_id: "cycle-1", cycle_id: "cycle-1", author_key: "author-gc", action: "create" })
@@ -692,6 +823,17 @@ describe("maintenance cycle", () => {
       expect(vfs.requests("gc", "abort")[0]).toMatchObject({ action: "abort", evidence: "prompt refused" })
       expect(vfs.log.interrupts.filter((id) => id === "gcv").length).toBeGreaterThanOrEqual(2)
       expect(vfs.errors.some(([label]) => label === "Takt GC")).toBe(true)
+    } finally { await vfs.stop() }
+  })
+
+  test("a lane's binding names its cycle and is forgotten once that cycle is over", async () => {
+    const lane = { key: "author-gc", agent: "simplify", session: "root", dispatch: "gcc", unit: "cycle-0", revision: 1, deltaHash: "d1", cycle: "cycle-0" }
+    const ordinary = { key: "author-1", agent: "dev", session: "root", dispatch: "dispatch", unit: "unit-a", revision: 1, deltaHash: "d1" }
+    const vfs = await startVfs({ storage: { "takt/vfs/bindings": [lane, ordinary] } })
+    try {
+      await vfs.run("gc_request", {}, orchestrator)
+      await until(() => (vfs.storage.get("takt/vfs/bindings") as unknown[]).length === 1)
+      expect(vfs.storage.get("takt/vfs/bindings")).toEqual([ordinary])
     } finally { await vfs.stop() }
   })
 

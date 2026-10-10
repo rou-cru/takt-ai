@@ -82,4 +82,8 @@ export const Plugin = { define: definition => definition }
 	// tpm was hardcoded out of the producer list before; it must now be
 	// enforced like analyst/pm/architect/product-designer/spec.
 	t.Run("tpm_enforced_as_producer", func(t *testing.T) { run(t, "tpm") })
+
+	// verify is both a verifier and a result producer: its gate is delivered
+	// bound and judges, and its delegation still owes and hands back a result.
+	t.Run("verifier_is_also_a_producer", func(t *testing.T) { run(t, "dual_role") })
 }

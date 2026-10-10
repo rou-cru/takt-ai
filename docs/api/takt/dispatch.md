@@ -20,7 +20,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
 - [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit\) error](<#Commit>)
 - [func Contest\(h \*history.History, p AdmissionPolicy, journalRef, event, session, attempt string\) error](<#Contest>)
-- [func CurrentAttempt\(p history.Projection, event string\) string](<#CurrentAttempt>)
+- [func CurrentAttempt\(p history.Projection, session, event string\) string](<#CurrentAttempt>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string\) error](<#Declare>)
 - [func DeclareRecovery\(h \*history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration\) error](<#DeclareRecovery>)
 - [func Except\(h \*history.History, journalRef, event, session, bound, objective string, allowance int\) error](<#Except>)
@@ -156,10 +156,10 @@ Contest records the contest of a unit attempt that ended without a result, admit
 ## func CurrentAttempt
 
 ```go
-func CurrentAttempt(p history.Projection, event string) string
+func CurrentAttempt(p history.Projection, session, event string) string
 ```
 
-CurrentAttempt is the attempt a lifecycle fact belongs to: the one the unit's latest admission opened.
+CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's unit's latest admission opened.
 
 <a name="Declare"></a>
 ## func Declare

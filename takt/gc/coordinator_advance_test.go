@@ -178,9 +178,10 @@ func TestAdvanceCountsDeclarationFailureTowardAbort(t *testing.T) {
 
 func TestUnfinishedUnitIDsAreSorted(t *testing.T) {
 	proj := history.Projection{Units: map[string]history.Unit{
-		"b": {State: history.StateInFlight},
-		"a": {State: history.StatePlanned},
-		"c": {State: history.State("done")},
+		history.UnitKey("s", "b"):     {WorkUnitID: "b", State: history.StateInFlight},
+		history.UnitKey("s", "a"):     {WorkUnitID: "a", State: history.StatePlanned},
+		history.UnitKey("other", "a"): {WorkUnitID: "a", State: history.StateInFlight},
+		history.UnitKey("s", "c"):     {WorkUnitID: "c", State: history.State("done")},
 	}}
 	if got := unfinishedUnitIDs(proj); !slices.Equal(got, []string{"a", "b"}) {
 		t.Errorf("unfinishedUnitIDs() = %v, want [a b]", got)

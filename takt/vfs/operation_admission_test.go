@@ -1250,3 +1250,68 @@ func TestARefusedVerdictCanBeAttachedAgainUnderItsCall(t *testing.T) {
 		t.Fatalf("Verify() replay = %v; want ErrDuplicateCall", err)
 	}
 }
+
+// A verdict's journal entry carries the revision of the author's work it
+// judged, not the empty gate's own.
+func TestAVerdictIsJournaledAtTheAuthorsRevision(t *testing.T) {
+	r := newVerdictRig(t)
+	next := apply(t, r.f, applyCase{r.author, "edit", r.staged.Revision, vfs.OpPatch, "a.go", "v2"})
+	if err := r.f.Verify(r.verifier, r.author, "judged", next.Revision, next.DeltaHash, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range r.f.JournalPage("", "", -1, vfs.MaxJournalPageSize) {
+		if e.Operation == "verdict" && e.Revision != next.Revision {
+			t.Fatalf("verdict journaled at revision %d; want the author's %d", e.Revision, next.Revision)
+		}
+	}
+}
+
+// A coordinator retrying its own step finds the gate it already reserved and
+// nobody adopted yet; a second AssignVerifier for that judge stays refused.
+func TestAPendingGateIsFoundAgain(t *testing.T) {
+	f, _, _ := newStore(t)
+	author := bind(t, f, "dev", "writer", "dev", "a.go")
+	identity := vfs.Identity{SessionID: testSession, WorkUnitID: "writer/verify", AgentID: "verify", Specialist: "verify"}
+	if _, found := f.PendingGate(identity, author); found {
+		t.Fatal("a gate was found before any was reserved")
+	}
+	first, err := f.AssignVerifier(identity, author)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, found := f.PendingGate(identity, author); !found || again != first {
+		t.Fatalf("PendingGate() = %q, %v; want the reserved gate %q", again, found, first)
+	}
+	adopted := identity
+	adopted.GateAuthorKey = author
+	if _, err := f.Bind(adopted, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := f.PendingGate(identity, author); found {
+		t.Fatal("an adopted gate is still offered as pending")
+	}
+}
+
+// An agent meeting its own earlier claim on its unit is told to continue that
+// work, and no collision between agents is recorded.
+func TestOwnEarlierClaimIsNoCollision(t *testing.T) {
+	f, _, _ := newStore(t)
+	first := vfs.Identity{SessionID: testSession, WorkUnitID: "u", AttemptID: "1", AgentID: "dev", Specialist: "dev"}
+	if _, err := f.Bind(first, []string{"a.go"}); err != nil {
+		t.Fatal(err)
+	}
+	collisions := 0
+	f.OnCollision(func(vfs.CollisionEvent) { collisions++ })
+	retry := first
+	retry.AttemptID = "2"
+	if _, err := f.Bind(retry, []string{"a.go"}); !errors.Is(err, vfs.ErrCollision) || !strings.Contains(err.Error(), "author_key") {
+		t.Fatalf("Bind() over its own earlier claim = %v; want ErrCollision naming the author_key remedy", err)
+	}
+	other := vfs.Identity{SessionID: testSession, WorkUnitID: "other", AttemptID: "1", AgentID: "fix", Specialist: "fix"}
+	if _, err := f.Bind(other, []string{"a.go"}); !errors.Is(err, vfs.ErrCollision) {
+		t.Fatalf("Bind() by another agent = %v; want ErrCollision", err)
+	}
+	if collisions != 1 {
+		t.Fatalf("collisions recorded = %d; want only the one between agents", collisions)
+	}
+}

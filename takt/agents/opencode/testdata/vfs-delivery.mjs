@@ -30,12 +30,18 @@ function defaultAnswer(call) {
   if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
   return { ok: true }
 }
+// requestOf is the coordination request a dispatch or gc call carried.
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
   return JSON.parse(call.argv[idx + 1])
 }
 
-const store = new Map()
+const scenario = process.env.TAKT_VFS_TEST_SCENARIO
+// A verifier that is also a result producer judges an author bound earlier.
+const author = { key: "author-1", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "h1" }
+const store = new Map(scenario === "dual_role" ? [["takt/vfs/bindings", [author]]] : [])
+const titles = { "review-2": "review" }
+const verifierGrants = ["vfs_bind", "vfs_read", "vfs_verify"].map(name => ({ action: name, resource: name, effect: "allow" }))
 const tools = {}
 const hooks = {}
 const sessionHooks = {}
@@ -47,7 +53,8 @@ await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
-    async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
+    // The host titles a child after its delegation's description.
+    async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: titles[sessionID] ?? sessionID } },
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
     prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
@@ -56,7 +63,7 @@ await plugin.setup({
     interrupt: async () => {},
   },
   permission: { hook: async () => () => {} },
-  agent: { get: async () => ({ data: { permissions: [] } }) },
+  agent: { get: async ({ agentID }) => ({ data: { permissions: agentID === "verify" ? verifierGrants : [] } }) },
   shell: { hook: async () => () => {} },
   tool: {
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
@@ -68,16 +75,17 @@ await plugin.setup({
   event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
 })
 
-const delegate = async (phase, description, id, agent, status = "completed") => {
+// delegate runs the subagent hooks of one phase for a delegation; extra adds
+// fields to its input, and result is the host's reply the after hooks amend.
+const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result = {}) => {
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), none: true }, { sessionID: "root", agent: "takt" })
-  for (const hook of hooks[phase]) {
-    await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
-      input: { agent, description, prompt: "p" }, status, result: {} })
-  }
+  const event = { tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
+    input: { agent, description, prompt: "p", ...extra }, status, result }
+  for (const hook of hooks[phase]) await hook(event) // NOSONAR: hooks run in registration order
+  return event
 }
+// dispatched lists the coordination requests sent so far.
 const dispatched = () => calls.filter(c => c.verb === "dispatch").map(requestOf)
-
-const scenario = process.env.TAKT_VFS_TEST_SCENARIO
 
 if (scenario === "wait_error" || scenario === "prompt_error") {
   const unit = "failed-resume"
@@ -292,6 +300,46 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
     /the specialist ended without delivering its result/)
   assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch", "finish"])
+} else if (scenario === "dual_role") {
+  // verify is a verifier and a result producer at once: it adopts its gate,
+  // attaches its verdict, and its delegation still owes its delivered result.
+  const claims = [
+    { key: "author-1", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", active: true, scope: ["a.go"] },
+  ]
+  respond = (call) => {
+    // reply is takt-ai's successful answer carrying value.
+    const reply = (value) => ({ stdout: JSON.stringify(value), stderr: "", code: 0 })
+    if (call.argv[2] === "claims") return reply({ ok: true, claims })
+    if (call.argv[2] === "assign-verifier") {
+      claims.push({ key: "gate-1", root_session_id: "root", work_unit_id: "review", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: call.stdin.author_key })
+      return reply({ ok: true, key: "gate-1" })
+    }
+    if (call.argv[2] === "bind") {
+      claims[1].pending = false
+      claims[1].active = true
+      return reply({ ok: true, key: "gate-1", attempt_id: "1", revision: 0, delta_hash: "" })
+    }
+    return undefined
+  }
+  const gates = { author_keys: ["author-1"] }
+  await delegate("execute.before", "review", "call-review", "verify", "completed", gates)
+  const context = { agent: "verify", sessionID: "review", tools: {}, system: [] }
+  for (const callback of sessionHooks.context) await callback(context) // NOSONAR: hooks run in registration order
+  assert.ok(context.system.some(part => part.text.includes("You judge the staged work")), "the gate was not delivered bound")
+  await tools.vfs_verify.execute({ author_key: "author-1", pass: true, finding: "reviewed" }, { sessionID: "review", agent: "verify" })
+  const verdict = calls.find(c => c.argv[2] === "verify")
+  assert.ok(verdict, "the verdict never reached the core")
+  assert.equal(verdict.stdin.verifier_key, "gate-1")
+  // Without its delivery the verifier's delegation fails like any producer's.
+  await assert.rejects(() => delegate("execute.after", "review", "call-review", "verify", "completed", gates), /the specialist ended without delivering its result/)
+  assert.deepEqual(promptedSessions, ["review"], "the verifier was not nudged once to deliver")
+  // A second review that delivers ends cleanly with the result handed back.
+  claims.splice(1)
+  await delegate("execute.before", "review", "call-review-2", "verify", "completed", gates)
+  for (const callback of sessionHooks.context) await callback({ ...context, sessionID: "review-2", system: [] }) // NOSONAR: hooks run in registration order
+  await tools.deliver_result.execute({ result_ids: [55] }, { sessionID: "review-2", agent: "verify" })
+  const event = await delegate("execute.after", "review", "call-review-2", "verify", "completed", {}, { content: "Verdict attached." })
+  assert.match(String(event.result.content), /Delivered results: Engram #55/)
 } else {
   throw new Error(`unknown scenario ${JSON.stringify(scenario)}`)
 }

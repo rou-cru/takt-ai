@@ -12,6 +12,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/history"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -347,10 +348,10 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if len(p.Units) != 3 {
 		t.Fatalf("units=%v; want only base, dependent and later", p.Units)
 	}
-	if _, found := p.Units[directID]; found {
+	if _, found := p.Units[history.UnitKey("root", directID)]; found {
 		t.Fatalf("direct activity was folded into work units: %v", p.Units)
 	}
-	if _, found := p.Units[cycleID]; found {
+	if _, found := p.Units[history.UnitKey("root", cycleID)]; found {
 		t.Fatalf("GC CycleID was folded into work units: %v", p.Units)
 	}
 	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != history.NodeKindOrchestrator || p.Activities[cycleID].NodeKind != history.NodeKindMaintenance {
@@ -484,5 +485,56 @@ func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
 	}
 	if got := agentOf(); got != "dev" {
 		t.Fatalf("retried agent = %q, want dev", got)
+	}
+}
+
+// Uncovered work follows only what its own root session settled: another
+// root's units, even one of the same name, are never its inferred prerequisites.
+func TestInferredPrerequisitesStayInTheirRoot(t *testing.T) {
+	in := func(session string, e history.Entry) history.Entry {
+		e.SessionID = session
+		return e
+	}
+	entries := []history.Entry{
+		in("other", observed(t, "pm", history.KindAdmitted, "")),
+		in("other", observed(t, "pm", history.KindTerminated, history.OutcomeCompleted)),
+		in("root", observed(t, "pm", history.KindAdmitted, "")),
+		in("root", observed(t, "arch", history.KindAdmitted, "")),
+	}
+	p := history.Project(entries)
+	if other, _ := p.Unit("other", "pm"); other.State != history.StateSettled {
+		t.Fatalf("other root's pm = %+v; want its own settled unit", other)
+	}
+	if mine, _ := p.Unit("root", "pm"); mine.State != history.StateInFlight || mine.AttemptID != history.FirstAttempt {
+		t.Fatalf("root's pm = %+v; want its own first attempt in flight", mine)
+	}
+	// Like `dag --session root`: the snapshot is drawn from root's own entries.
+	mine := slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != "root" })
+	for _, n := range history.BuildSnapshot(mine).Nodes {
+		if len(n.Prerequisites) != 0 {
+			t.Fatalf("root's %s inferred %v from another root", n.ID, n.Prerequisites)
+		}
+	}
+}
+
+// A history mixing two roots that name a unit alike draws only the earliest
+// root's unit: node identities never collide.
+func TestBuildSnapshotDrawsOnlyItsOwnRoot(t *testing.T) {
+	in := func(session string, e history.Entry) history.Entry {
+		e.SessionID = session
+		return e
+	}
+	entries := []history.Entry{
+		in("root", observed(t, "impl", history.KindAdmitted, "")),
+		in("other", observed(t, "impl", history.KindAdmitted, "")),
+		in("other", observed(t, "impl", history.KindTerminated, history.OutcomeCompleted)),
+		in("other", observed(t, "only-other", history.KindAdmitted, "")),
+	}
+	s := history.BuildSnapshot(entries)
+	if s.SessionID != "root" || len(s.Nodes) != 1 {
+		t.Fatalf("snapshot of %q drew %+v; want root's impl alone", s.SessionID, s.Nodes)
+	}
+	if n := s.Nodes[0]; n.ID != "impl" || n.SessionID != "root" || n.State != history.StateInFlight {
+		t.Fatalf("node = %+v; want root's impl, still in flight", n)
 	}
 }

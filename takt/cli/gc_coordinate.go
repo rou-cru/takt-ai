@@ -172,6 +172,9 @@ func coordinateInvestigation(c *gc.Coordinator, r coordinationRequest) (any, err
 	return c.Cycle, nil
 }
 
+// coordinateAuthorization turns a cycle's investigated findings into the
+// collector's scoped binding and the verifier's gate over it; a retry reuses
+// what an earlier try reserved.
 func coordinateAuthorization(fs *vfs.FS, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	if e := c.Require(r.Session, "collector"); e != nil {
 		return nil, e
@@ -198,8 +201,10 @@ func coordinateAuthorization(fs *vfs.FS, c *gc.Coordinator, r coordinationReques
 	// against the collector's author key before the verifier is prompted.
 	verifier := cycleIdentity(c.Cycle, gc.VerifierSpecialistID)
 	verifier.WorkUnitID += "/verify"
-	c.Cycle.VerifierKey, e = fs.AssignVerifier(verifier, c.Cycle.AuthorKey)
-	if e != nil {
+	// A retried authorization finds the gate its earlier try reserved.
+	if pending, ok := fs.PendingGate(verifier, c.Cycle.AuthorKey); ok {
+		c.Cycle.VerifierKey = pending
+	} else if c.Cycle.VerifierKey, e = fs.AssignVerifier(verifier, c.Cycle.AuthorKey); e != nil {
 		return nil, e
 	}
 	c.Cycle.Phase = "collect"
