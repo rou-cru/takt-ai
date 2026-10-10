@@ -2,7 +2,7 @@
   <img src="docs/assets/brand/takt-ai-banner.png" alt="Takt AI" width="100%" />
 
   [![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=rou-cru_takt-ai)](https://sonarcloud.io/summary/new_code?id=rou-cru_takt-ai)
-  [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rou-cru/takt-ai)
+  [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue.svg)](https://deepwiki.com/rou-cru/takt-ai)
   [![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/rou-cru/takt-ai?utm_source=oss&utm_medium=github&utm_campaign=rou-cru%2Ftakt-ai&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
   [![Go](https://img.shields.io/badge/Go-1.27.1+-00ADD8?logo=go&logoColor=white)](https://go.dev)
   [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
