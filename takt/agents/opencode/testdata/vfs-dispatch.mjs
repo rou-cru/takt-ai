@@ -166,8 +166,8 @@ await assert.rejects(() => delegate("execute.before", "   ", "call-2"), /work un
 // liveness is declared uncertain and reconciled as not running.
 const restart = dispatched().slice(mark)
 assert.deepEqual(restart.slice(0, 2), [
-  { action: "uncertain", event: "orphan", session: "old-root" },
-  { action: "reconcile", event: "orphan", session: "old-root", pass: false },
+  { action: "uncertain", event: "orphan", dispatch: "old:call-0", session: "old-root" },
+  { action: "reconcile", event: "orphan", dispatch: "old:call-0", session: "old-root", pass: false },
 ])
 assert.equal(restart[2].action, "admit")
 assert.deepEqual(store.get("takt/vfs/delegations"), {})

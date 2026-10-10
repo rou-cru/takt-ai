@@ -208,6 +208,9 @@ const EXCEPTION_BOUNDS = [
 const DELEGATIONS_KEY = "takt/vfs/delegations"
 // INPUTS_KEY holds the invariants each root/unit was declared to consume.
 const INPUTS_KEY = "takt/vfs/inputs"
+// CLOCK_MARGIN_MS bounds how far the host's session timestamps may trail this
+// process's clock; an earlier attempt's session is older by far more.
+const CLOCK_MARGIN_MS = 1000
 // FAILING_VERDICT is how the core words a refusal to consolidate over a current
 // failing verdict: only the user's acceptance lets the work through.
 const FAILING_VERDICT = "a current verification verdict failed"
@@ -299,8 +302,9 @@ export default Plugin.define({
     // dispatch that authored the delta, which a verifier joins through the
     // author's key. Keyed by core key.
     // `judges` is the author key a verifier's binding judges; it reads that
-    // author's staged view.
-    type Binding = { key: string; agent: string; session: string; dispatch: string; unit: string; revision: number; deltaHash: string; judges?: string; judgedRevision?: number; judgedHash?: string; judgedPaths?: string[] }
+    // author's staged view. `cycle` names the maintenance cycle a GC lane's
+    // binding belongs to; it outlives a restart, unlike the lane registry.
+    type Binding = { key: string; agent: string; session: string; dispatch: string; unit: string; revision: number; deltaHash: string; cycle?: string; judges?: string; judgedRevision?: number; judgedHash?: string; judgedPaths?: string[] }
     const bindings = new Map<string, Binding>()
     // OpenCode restarts the plugin's process freely, and a binding outlives that:
     // the map is reloaded here and written back on every change, so a rehydrated
@@ -314,8 +318,9 @@ export default Plugin.define({
     // `caller` is the session that ran the subagent call; `child` is the session
     // the delegation runs in, named by a resume or learned from the child's own
     // first context. A background delegation outlives its tool call: it settles
-    // when that child goes idle or is deleted.
-    type Delegation = { unit: string; root: string; agent?: string; caller?: string; background?: boolean; child?: string }
+    // when that child goes idle or is deleted. `admittedAt` is when it was
+    // admitted: its child is created after that, never before.
+    type Delegation = { unit: string; root: string; agent?: string; caller?: string; background?: boolean; child?: string; admittedAt?: number }
     const delegations = new Map<string, Delegation>(
       Object.entries(((await ctx.storage.get(DELEGATIONS_KEY)) as Record<string, Delegation> | undefined) ?? {}))
     const persistDelegations = () => ctx.storage.set(DELEGATIONS_KEY, Object.fromEntries(delegations))
@@ -334,9 +339,15 @@ export default Plugin.define({
     let reconciling: Promise<void> | undefined
     const reconcileStoredDelegations = () => reconciling ??= (async () => {
       for (const [delegation, d] of inherited) {
+        // A background child runs in the host, not in this process: it outlives
+        // a plugin restart. It ends its delegation when its turn ends, and only
+        // a child the host no longer has is reconciled as not running.
+        if (d.background && d.child && await watchBackground(delegation, d.child)) continue
         try {
-          await dispatchAction({ action: "uncertain", event: d.unit, session: d.root })
-          await dispatchAction({ action: "reconcile", event: d.unit, session: d.root, pass: false })
+          // The dispatch names this very delegation: a later attempt of the unit
+          // admitted under another one is never marked uncertain or ended here.
+          await dispatchAction({ action: "uncertain", event: d.unit, dispatch: delegation, session: d.root })
+          await dispatchAction({ action: "reconcile", event: d.unit, dispatch: delegation, session: d.root, pass: false })
           inherited.delete(delegation)
           delegations.delete(delegation)
           await persistDelegations()
@@ -375,6 +386,10 @@ export default Plugin.define({
     // is the unit identity; maintenance and root sessions stand for themselves.
     async function delegatedUnit(sessionID: string): Promise<string> {
       if (gcChildren.has(sessionID)) return sessionID
+      // A resumed session keeps its first title; the delegation it now runs
+      // names the unit.
+      const running = [...delegations.values()].find(d => d.child === sessionID)
+      if (running) return running.unit
       const info = await ctx.session.get({ sessionID })
       if (!info.parentID) return sessionID
       const unit = (info.title ?? "").trim()
@@ -559,12 +574,13 @@ export default Plugin.define({
     // them at bind time and resolves them from the binding key afterwards, so no
     // later request restates them.
     function identity(b: Binding) {
+      const cycle = b.cycle ?? (gcChildren.has(b.dispatch) ? b.unit : undefined)
       return {
         session_id: b.session,
         work_unit_id: b.unit,
         agent_id: b.agent,
         specialist: b.agent,
-        ...(gcChildren.has(b.dispatch) ? { cycle_id: b.unit } : {}),
+        ...(cycle ? { cycle_id: cycle } : {}),
       }
     }
 
@@ -922,10 +938,23 @@ export default Plugin.define({
         console.error("Takt GC", error)
       }
     }
+    // releaseCycleBindings forgets the GC lane bindings of every cycle but the
+    // one in flight: an ended or recovered cycle's binding speaks for nothing.
+    async function releaseCycleBindings(current: string | undefined) {
+      let released = false
+      for (const [key, b] of bindings) {
+        if (b.cycle !== undefined && b.cycle !== current) {
+          bindings.delete(key)
+          released = true
+        }
+      }
+      if (released) await persist()
+    }
     async function pumpGC() {
       await restoreGCCycle()
       const state = await coordinate({ action: "status" })
       const cycle = isCoordinatorResponse(state) ? state.cycle : undefined
+      await releaseCycleBindings(cycle?.plan?.cycle_id)
       if (!cycle?.plan) return
       let role: "verifier" | "collector" | undefined
       if (cycle.phase === "baseline" || cycle.phase === "verify" || cycle.phase === "acceptance") role = "verifier"
@@ -972,7 +1001,7 @@ export default Plugin.define({
         const authorKey = result.author_key
         const plan = result.plan
         const b: Binding = { key: authorKey, agent: c.agent, session: plan.session_id,
-          dispatch: c.sessionID, unit: plan.cycle_id, revision: 0, deltaHash: "" }
+          dispatch: c.sessionID, unit: plan.cycle_id, revision: 0, deltaHash: "", cycle: plan.cycle_id }
         bindings.set(b.key, b)
         await persist()
       }
@@ -1055,7 +1084,7 @@ export default Plugin.define({
       const resumed = typeof input.sessionID === "string" && input.sessionID ? input.sessionID : undefined
       if (resumed) boundChildren.add(resumed)
       delegations.set(delegation, {
-        unit, root, agent: specialist, caller: event.sessionID,
+        unit, root, agent: specialist, caller: event.sessionID, admittedAt: Date.now(),
         ...(input.background === true ? { background: true } : {}), ...(resumed ? { child: resumed } : {}),
       })
       await persistDelegations()
@@ -1137,13 +1166,34 @@ export default Plugin.define({
       const info = await ctx.session.get({ sessionID: session })
       if (!info.parentID) return undefined
       const [root, unit] = await Promise.all([rootSession(session), delegatedUnit(session)])
+      // Created before the delegation was admitted, a session is an earlier
+      // one's; the margin absorbs the host's and this process's clocks.
+      const created = info.time?.created
       const launched = [...delegations].find(([, d]) => d.child === undefined && d.root === root && d.unit === unit &&
-        d.agent === agent && (d.caller === undefined || d.caller === info.parentID))
+        d.agent === agent && (d.caller === undefined || d.caller === info.parentID) &&
+        (d.admittedAt === undefined || typeof created !== "number" || created >= d.admittedAt - CLOCK_MARGIN_MS))
       if (!launched) return undefined
       launched[1].child = session
       boundChildren.add(session)
       await persistDelegations()
       return launched[0]
+    }
+
+    // watchBackground keeps an inherited background delegation whose child the
+    // host still has: it ends when that child's turn does, here or through the
+    // idle event. It reports false when the host no longer has the child.
+    async function watchBackground(delegation: string, child: string): Promise<boolean> {
+      try {
+        await ctx.session.get({ sessionID: child })
+      } catch {
+        return false
+      }
+      inherited.delete(delegation)
+      boundChildren.add(child)
+      void ctx.session.wait({ sessionID: child })
+        .then(() => settleBackground(child))
+        .catch(error => console.error("Takt background watch", child, error))
+      return true
     }
 
     // endDelegation records the end before forgetting the delegation: a restart
@@ -1225,15 +1275,18 @@ export default Plugin.define({
       if (event.type !== "session.usage.updated") return
       if (observedUsageEvents.has(event.id)) return
       const { sessionID, cost, tokens } = event.data
-      const binding = [...bindings.values()].find((candidate) => candidate.session === sessionID || candidate.dispatch === sessionID)
+      // Usage belongs to who ran in that session: its latest binding, else the
+      // delegation it runs; a root session's own usage is the harness's.
+      const binding = [...bindings.values()].filter((candidate) => candidate.dispatch === sessionID).at(-1)
+      const delegation = [...delegations.values()].find((d) => d.child === sessionID)
       const attributes = {
         usage_event_id: event.id,
         input_tokens: tokens.input, output_tokens: tokens.output,
         reasoning_tokens: tokens.reasoning, cache_read_tokens: tokens.cache.read,
         cache_write_tokens: tokens.cache.write, cost_usd: cost,
       }
-      observe("model_usage", "takt.platform", binding?.agent ?? "harness", sessionID,
-        attributes, binding?.unit ?? "")
+      observe("model_usage", "takt.platform", binding?.agent ?? delegation?.agent ?? "harness", sessionID,
+        attributes, binding?.unit ?? delegation?.unit ?? "")
       observedUsageEvents.add(event.id)
     }
 
@@ -1266,6 +1319,13 @@ export default Plugin.define({
         observeModelUsage(event)
         if (event.type === "permission.replied") {
           pendingReplies.get(event.data.requestID)?.(event.data.reply)
+          continue
+        }
+        // A child is learned as soon as the host creates it, so one that ends
+        // before its first turn still ends its delegation.
+        if (event.type === "session.created") {
+          const { sessionID, agent } = event.data
+          if (agent) await adoptChild(sessionID, agent).catch(error => console.error("Takt child adoption", sessionID, error))
           continue
         }
         if (event.type === "session.idle") {
@@ -1793,8 +1853,16 @@ export default Plugin.define({
           // Only the session a running delegation runs in delivers for it: an
           // earlier attempt's session of the same unit never credits this one.
           const running = await adoptChild(c.sessionID, c.agent)
-          if (running) deliveries.set(running, [...(deliveries.get(running) ?? []), ...args.result_ids])
           const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
+          if (!running) {
+            // A delegated session that runs no delegation has nobody to deliver
+            // to; a top-level session (an interlocutor) hands off its results itself.
+            if ((await ctx.session.get({ sessionID: c.sessionID })).parentID) {
+              throw new Error("deliver_result belongs to a running delegation, and this session runs none: nothing was credited; return the result IDs in your reply instead")
+            }
+            return { content: `Validated ${count} result id(s); no delegation to credit them to` }
+          }
+          deliveries.set(running, [...(deliveries.get(running) ?? []), ...args.result_ids])
           return { content: `Delivered ${count} result id(s)` }
         },
       })
