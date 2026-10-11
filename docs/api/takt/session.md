@@ -16,7 +16,7 @@ Package session is the composition root of one crew execution session: it owns t
 
 
 <a name="Session"></a>
-## type Session
+## type [Session](<https://github.com/rou-cru/takt-ai/blob/main/takt/session/session.go#L36-L45>)
 
 Session correlates one crew execution: a clock, a control bus, and the VFS whose journal and collisions feed that bus.
 
@@ -34,7 +34,7 @@ type Session struct {
 ```
 
 <a name="NewDurable"></a>
-### func NewDurable
+### func [NewDurable](<https://github.com/rou-cru/takt-ai/blob/main/takt/session/session.go#L51>)
 
 ```go
 func NewDurable(rootDir, stateDir, sessionID string) (*Session, error)
@@ -43,7 +43,7 @@ func NewDurable(rootDir, stateDir, sessionID string) (*Session, error)
 NewDurable composes the durable workspace VFS with this session's bus.
 
 <a name="Session.Close"></a>
-### func \(\*Session\) Close
+### func \(\*Session\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/session/session.go#L48>)
 
 ```go
 func (s *Session) Close() error

@@ -24,7 +24,7 @@ Package install provides the focused install selection flow.
 
 
 <a name="Model"></a>
-## type Model
+## type [Model](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L90-L108>)
 
 Model is a standalone Bubble Tea install flow.
 
@@ -35,7 +35,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func New
+### func [New](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L116>)
 
 ```go
 func New(rootDir string) Model
@@ -44,7 +44,7 @@ func New(rootDir string) Model
 New creates an install flow for rootDir.
 
 <a name="Model.Dirty"></a>
-### func \(Model\) Dirty
+### func \(Model\) [Dirty](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L149>)
 
 ```go
 func (m Model) Dirty() bool
@@ -53,7 +53,7 @@ func (m Model) Dirty() bool
 Dirty reports unapplied selections that differ from the flow's baseline.
 
 <a name="Model.Init"></a>
-### func \(Model\) Init
+### func \(Model\) [Init](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L140>)
 
 ```go
 func (Model) Init() tea.Cmd
@@ -62,7 +62,7 @@ func (Model) Init() tea.Cmd
 Init has no startup work.
 
 <a name="Model.Run"></a>
-### func \(Model\) Run
+### func \(Model\) [Run](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L143>)
 
 ```go
 func (m Model) Run() runtime.Run
@@ -71,7 +71,7 @@ func (m Model) Run() runtime.Run
 Run exposes the flow's action state so the shell gates quit and cancel.
 
 <a name="Model.Step"></a>
-### func \(Model\) Step
+### func \(Model\) [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L146>)
 
 ```go
 func (m Model) Step() Step
@@ -80,7 +80,7 @@ func (m Model) Step() Step
 Step returns the visible screen.
 
 <a name="Model.Title"></a>
-### func \(Model\) Title
+### func \(Model\) [Title](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L542>)
 
 ```go
 func (m Model) Title() string
@@ -89,7 +89,7 @@ func (m Model) Title() string
 Title identifies the task and current step for the stable header region.
 
 <a name="Model.Update"></a>
-### func \(Model\) Update
+### func \(Model\) [Update](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L170>)
 
 ```go
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
@@ -98,7 +98,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd)
 Update advances the flow or emits an install action from the review.
 
 <a name="Model.View"></a>
-### func \(Model\) View
+### func \(Model\) [View](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L555>)
 
 ```go
 func (m Model) View() tea.View
@@ -107,7 +107,7 @@ func (m Model) View() tea.View
 View renders the current screen with a visible step and keyboard guidance.
 
 <a name="OpenModelsMsg"></a>
-## type OpenModelsMsg
+## type [OpenModelsMsg](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L50>)
 
 OpenModelsMsg signals the user chose "Assign models" from the post\-install result screen and wants the standalone model\-assignment flow.
 
@@ -116,7 +116,7 @@ type OpenModelsMsg struct{}
 ```
 
 <a name="Step"></a>
-## type Step
+## type [Step](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/install/install.go#L25>)
 
 Step identifies the currently visible install screen.
 

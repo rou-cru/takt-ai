@@ -132,7 +132,7 @@ var Icon = struct {
 ```
 
 <a name="Animation"></a>
-## func Animation
+## func [Animation](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L68>)
 
 ```go
 func Animation() bool
@@ -141,7 +141,7 @@ func Animation() bool
 Animation reports whether animated indicators may run. Set TAKT\_NO\_ANIMATION to any non\-empty value for the documented animation\-free mode; the ASCII baseline renders either way.
 
 <a name="Mono"></a>
-## func Mono
+## func [Mono](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L63>)
 
 ```go
 func Mono() bool
@@ -150,7 +150,7 @@ func Mono() bool
 Mono reports whether the surface renders without color.
 
 <a name="SetMode"></a>
-## func SetMode
+## func [SetMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L34>)
 
 ```go
 func SetMode(m Mode)
@@ -159,7 +159,7 @@ func SetMode(m Mode)
 SetMode switches the capability and rebuilds every style.
 
 <a name="Mode"></a>
-## type Mode
+## type [Mode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L16>)
 
 Mode names the rendering capability the surface targets.
 
@@ -183,7 +183,7 @@ const (
 ```
 
 <a name="DetectMode"></a>
-### func DetectMode
+### func [DetectMode](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L40>)
 
 ```go
 func DetectMode() Mode
@@ -192,7 +192,7 @@ func DetectMode() Mode
 DetectMode reads the environment for the documented no\-color fallback. It seeds the first frame and stays authoritative afterwards: the program's reported color profile \(ModeFor\) picks the palette, but NO\_COLOR and TERM=dumb always win over it.
 
 <a name="ModeFor"></a>
-### func ModeFor
+### func [ModeFor](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L51>)
 
 ```go
 func ModeFor(profile colorprofile.Profile) Mode
@@ -201,7 +201,7 @@ func ModeFor(profile colorprofile.Profile) Mode
 ModeFor maps the terminal's color profile onto a declared mode. Only true color and the verified 256\-color table are colored: an unverified nearest\-color downsample is not contrast evidence, so anything below 256 colors renders monochrome.
 
 <a name="Palette"></a>
-## type Palette
+## type [Palette](<https://github.com/rou-cru/takt-ai/blob/main/takt/tui/theme/theme.go#L71-L76>)
 
 Palette holds one theme's tokens so renderers ask for roles, never hex values.
 

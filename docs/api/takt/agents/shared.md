@@ -35,7 +35,7 @@ var OrchestratorID = orchestratorDefinition.ID
 ```
 
 <a name="NewManagedPaths"></a>
-## func NewManagedPaths
+## func [NewManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L36>)
 
 ```go
 func NewManagedPaths(generated []string) ([]string, error)
@@ -44,7 +44,7 @@ func NewManagedPaths(generated []string) ([]string, error)
 NewManagedPaths returns OpenCode's owned paths, normalized and sorted for stable manifests, so uninstalls never touch user files.
 
 <a name="ResolveBinary"></a>
-## func ResolveBinary
+## func [ResolveBinary](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L58>)
 
 ```go
 func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool)
@@ -53,7 +53,7 @@ func ResolveBinary(candidates []string, isCompatible func(absolute string) bool)
 ResolveBinary scans candidates in order and returns the absolute path of the first that exists, is a regular file, and satisfies isCompatible — the scan loop shared by every managed\-binary resolver \(engram, codegraph\).
 
 <a name="VersionAtLeast"></a>
-## func VersionAtLeast
+## func [VersionAtLeast](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/shared.go#L76>)
 
 ```go
 func VersionAtLeast(have, want string) bool
@@ -62,7 +62,7 @@ func VersionAtLeast(have, want string) bool
 VersionAtLeast reports whether the numeric MAJOR.MINOR.PATCH prefix of have is not older than want.
 
 <a name="Artifact"></a>
-## type Artifact
+## type [Artifact](<https://github.com/rou-cru/takt-ai/blob/main/takt/agents/shared/types.go#L19-L22>)
 
 Artifact is a file ready to deploy, with its home\-relative path and content.
 

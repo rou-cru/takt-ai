@@ -14,7 +14,7 @@ Package testutil provides shared test helpers for skills\-related test suites.
 
 
 <a name="FirstSkill"></a>
-## func FirstSkill
+## func [FirstSkill](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/testutil/testutil.go#L13>)
 
 ```go
 func FirstSkill(t *testing.T) (string, []byte)

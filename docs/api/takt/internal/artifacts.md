@@ -14,7 +14,7 @@ Package artifacts normalizes relative paths shared by agent\-file renderers and 
 
 
 <a name="NormalizeRelPath"></a>
-## func NormalizeRelPath
+## func [NormalizeRelPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/internal/artifacts/artifacts.go#L29>)
 
 ```go
 func NormalizeRelPath(candidate string) (string, error)
