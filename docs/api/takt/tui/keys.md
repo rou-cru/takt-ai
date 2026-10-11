@@ -43,7 +43,7 @@ KeyMap is the full interaction grammar.
 
 ```go
 type KeyMap struct {
-    Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back Binding
+    Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back, Reset Binding
 }
 ```
 

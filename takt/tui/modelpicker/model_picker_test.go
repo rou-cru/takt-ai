@@ -109,7 +109,7 @@ func TestSearchFieldTypesShortcutKeys(t *testing.T) {
 	}
 	p.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if body := body(p); !strings.Contains(body, "> a/one") {
+	if body := body(p); !strings.Contains(body, "> a/two") {
 		t.Fatalf("arrows did not move the list:\n%s", body)
 	}
 }
@@ -121,22 +121,20 @@ func TestOrchestratorCanBeAssignedAModel(t *testing.T) {
 		t.Fatalf("orchestrator %q missing from assignment targets", shared.OrchestratorID)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	p.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // skip inherit; choose the discovered model
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := p.SparseOverrides()[shared.OrchestratorID]; got.Model != "provider/orchestrator-model" {
 		t.Fatalf("orchestrator assignment = %#v, want provider/orchestrator-model", got)
 	}
-	if !rowShows(body(p), shared.OrchestratorID, "provider/orchestrator-model") {
+	if !rowShows(body(p), ui.TextPickerOrchestrator, "provider/orchestrator-model") {
 		t.Fatalf("assignment list does not show orchestrator model:\n%s", body(p))
 	}
 }
 
-func TestLoadFailureKeepsInheritChoice(t *testing.T) {
+func TestLoadFailureListsNothingToChoose(t *testing.T) {
 	p := modelpicker.New()
 	p.LoadErr = errors.New("opencode not found")
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	view := body(p)
-	if !strings.Contains(view, "> inherits OpenCode default") {
+	if view := body(p); !strings.Contains(view, "OpenCode models are unavailable") || strings.Contains(view, theme.Icon.Cursor) || strings.Contains(view, "No models match") {
 		t.Fatal(view)
 	}
 	p.LoadErr = fmt.Errorf("opencode models: %w: opencode GET /api/model: signal: killed", opencodeapi.ErrUnavailable)
@@ -156,7 +154,7 @@ func TestLongModelCatalogKeepsCursorVisible(t *testing.T) {
 		p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	view := body(p)
-	if !strings.Contains(view, theme.Icon.Cursor+"provider/model-079") || !strings.Contains(view, "81 / 101") {
+	if !strings.Contains(view, theme.Icon.Cursor+"provider/model-080") || !strings.Contains(view, "81 / 100") {
 		t.Fatal(view)
 	}
 	if strings.Contains(view, "model-000") {
@@ -212,21 +210,34 @@ func TestInstalledVariantsSurvivePickerVisitsAndUnrelatedChanges(t *testing.T) {
 	}
 }
 
-func TestInheritRemovesInstalledModelAndVariant(t *testing.T) {
+// Backspace on a specialist clears its model and variant, back to the
+// OpenCode default; the hint shows only while there is something to reset.
+func TestResetRemovesInstalledModelAndVariant(t *testing.T) {
 	p := modelpicker.New()
 	p.Available = []string{"provider/current"}
-	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "provider/current", Effort: "high"}})
+	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "provider/current", Effort: "high"}, "dev": {Model: "provider/current"}})
 	if !focusAgent(t, &p, "analyst") {
 		t.Fatal("analyst missing from assignment targets")
 	}
-	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	p.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if p.Changes() != 1 || p.SparseOverrides() != nil {
-		t.Fatalf("inherit did not clear the override: %v", p.SparseOverrides())
+	if !strings.Contains(body(p), "reset to OpenCode default") {
+		t.Fatalf("reset hint missing on an assigned row:\n%s", body(p))
 	}
-	if !rowShows(body(p), "analyst", "inherits OpenCode default") {
-		t.Fatal(body(p))
+	p.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if p.Changes() != 1 || p.SparseOverrides()["analyst"] != (model.ModelAssignment{}) {
+		t.Fatalf("reset did not clear the override: %v", p.SparseOverrides())
+	}
+	if view := body(p); !rowShows(view, "analyst", "OpenCode default") || strings.Contains(view, "reset to") {
+		t.Fatal(view)
+	}
+}
+
+// Delete on All agents clears every specialist at once.
+func TestResetOnAllAgentsClearsEveryone(t *testing.T) {
+	p := modelpicker.New()
+	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "a/x"}, "dev": {Model: "a/y"}})
+	p.Update(tea.KeyPressMsg{Code: tea.KeyDelete})
+	if p.SparseOverrides() != nil || p.Changes() != 2 {
+		t.Fatalf("All agents reset left overrides: %v", p.SparseOverrides())
 	}
 }
 
@@ -236,7 +247,6 @@ func TestAllAgentsAssignsEveryAgentAtOnce(t *testing.T) {
 	p := modelpicker.New()
 	p.Available = []string{"provider/shared"}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	p.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // skip inherit
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if p.Changes() != len(agentNames(t)) {
 		t.Fatalf("Changes() = %d, want every agent (%d)", p.Changes(), len(agentNames(t)))
@@ -254,91 +264,106 @@ func TestAllAgentsAssignsEveryAgentAtOnce(t *testing.T) {
 	}
 }
 
-// Models read by their display name, and search finds them by it. Where one
-// name can repeat across providers (the All tab) the provider labels the row.
+// Models read by their display name alone, and search finds them by it.
 func TestModelListShowsNamesAndSearchesThem(t *testing.T) {
 	p := modelpicker.New()
-	p.Available = []string{"openai/gpt-6-luna-fast", "opencode/fledge"}
-	p.Names = map[string]string{"openai/gpt-6-luna-fast": "GPT-6 Luna Fast", "opencode/fledge": "Fledge"}
-	p.Providers = map[string]string{"openai": "OpenAI", "opencode": "OpenCode"}
+	p.Available = []string{"openai/gpt-6-luna-fast", "openai/fledge"}
+	p.Names = map[string]string{"openai/gpt-6-luna-fast": "GPT-6 Luna Fast", "openai/fledge": "Fledge"}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !rowShows(body(p), "GPT-6 Luna Fast", "OpenAI") {
-		t.Fatalf("model row lacks its display name and provider:\n%s", body(p))
+	if view := body(p); !strings.Contains(view, "> GPT-6 Luna Fast\n") {
+		t.Fatalf("model row is not just its display name:\n%s", view)
 	}
-	typeText(&p, "luna fast")
-	if view := body(p); !strings.Contains(view, "GPT-6 Luna Fast") || strings.Contains(view, "Fledge") {
+	typeText(&p, "fledge")
+	if view := body(p); !strings.Contains(view, "Fledge") || strings.Contains(view, "Luna") {
 		t.Fatalf("search by display name failed:\n%s", view)
 	}
 }
 
-// Provider tabs come from the models' providers, named by OpenCode, and the
-// left and right arrows narrow the list to one provider.
+// Provider tabs come from the models' providers, named by OpenCode without
+// the account prefix, and count what the list holds under the search.
 func TestProviderTabsNarrowTheList(t *testing.T) {
 	p := modelpicker.New()
 	p.Available = []string{"openai/a", "openai/b", "opencode/c"}
 	p.Names = map[string]string{"openai/a": "Alpha", "openai/b": "Beta", "opencode/c": "Gamma"}
-	p.Providers = map[string]string{"openai": "OpenAI", "opencode": "OpenCode"}
+	p.Providers = map[string]string{"openai": "OpenAI", "opencode": "Default / OpenCode"}
+	p.Height = 6
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if view := body(p); !strings.Contains(view, "All 3") || !strings.Contains(view, "OpenAI 2") || !strings.Contains(view, "OpenCode 1") || !strings.Contains(view, "Gamma") {
-		t.Fatalf("tabs missing or All tab incomplete:\n%s", view)
+	if view := body(p); !strings.Contains(view, "OpenAI 2") || !strings.Contains(view, "OpenCode 1") || strings.Contains(view, "Default") || strings.Contains(view, "Gamma") {
+		t.Fatalf("tabs wrong or list not narrowed:\n%s", view)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	if view := body(p); !strings.Contains(view, "Alpha") || strings.Contains(view, "Gamma") {
-		t.Fatalf("provider tab did not narrow the list:\n%s", view)
+	if view := body(p); !strings.Contains(view, "Gamma") || strings.Contains(view, "Alpha") {
+		t.Fatalf("right did not switch provider:\n%s", view)
 	}
-	p.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	if view := body(p); !strings.Contains(view, "Gamma") {
-		t.Fatalf("left did not return to All:\n%s", view)
+	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	typeText(&p, "beta")
+	if view := body(p); !strings.Contains(view, "OpenAI 1") || !strings.Contains(view, "OpenCode 0") {
+		t.Fatalf("tab counts ignore the search:\n%s", view)
 	}
 }
 
-// The picker shows only what OpenCode states: a model without pricing gets no
-// price or Cost line, and the detail pane needs room beside the list.
+// Switching tabs never moves the divider: the list is as wide as the longest
+// name of any provider.
+func TestDividerStaysPutAcrossTabs(t *testing.T) {
+	p := modelpicker.New()
+	p.Width = 160
+	p.Available = []string{"a/short", "b/a-much-longer-model-name"}
+	p.Info = map[string]opencodeapi.Model{"a/short": {ContextLimit: 1000, OutputLimit: 1000}, "b/a-much-longer-model-name": {ContextLimit: 1000, OutputLimit: 1000}}
+	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	column := func() int {
+		for _, line := range strings.Split(body(p), "\n") {
+			if index := strings.Index(line, "│"); index >= 0 {
+				return index
+			}
+		}
+		return -1
+	}
+	before := column()
+	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if after := column(); before < 0 || before != after {
+		t.Fatalf("divider moved from %d to %d", before, after)
+	}
+}
+
+// The picker shows only what OpenCode states, prices as one table per 1M
+// tokens at a shared precision; a model without pricing gets no price block.
 func TestDetailShowsOnlyStatedFacts(t *testing.T) {
 	priced := opencodeapi.Model{
 		Name: "Haiku", ContextLimit: 1_000_000, OutputLimit: 128_000,
 		Cost: []opencodeapi.CostTier{
 			{Input: 0.1, Output: 0.5, CacheRead: 0.01, CacheWrite: 0.125},
-			{AboveContext: 100_000, Input: 0.5, Output: 2.5},
+			{AboveContext: 100_000, Input: 0.5, Output: 2.5, CacheRead: 0.05, CacheWrite: 0.625},
 		},
 		Input: []string{"text", "image"}, Variants: []string{"low", "high"},
 		Released: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 	}
+	readOnly := opencodeapi.Model{Name: "Mini", ContextLimit: 1000, OutputLimit: 1000, Cost: []opencodeapi.CostTier{{Input: 1, Output: 2, CacheRead: 0.5}}}
 	unpriced := opencodeapi.Model{Name: "Luna", ContextLimit: 400_000, OutputLimit: 128_000}
 	build := func(width int) modelpicker.Model {
 		p := modelpicker.New()
 		p.Width = width
-		p.Available = []string{"go/haiku", "plan/luna"}
-		p.Names = map[string]string{"go/haiku": "Haiku", "plan/luna": "Luna"}
-		p.Info = map[string]opencodeapi.Model{"go/haiku": priced, "plan/luna": unpriced}
+		p.Available = []string{"go/haiku", "go/mini", "plan/luna"}
+		p.Names = map[string]string{"go/haiku": "Haiku", "go/mini": "Mini", "plan/luna": "Luna"}
+		p.Info = map[string]opencodeapi.Model{"go/haiku": priced, "go/mini": readOnly, "plan/luna": unpriced}
 		p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-		p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		return p
 	}
 	view := body(build(160))
-	for _, want := range []string{"$0.10 in · $0.50 out", ">100k ctx: $0.50 / $2.50", "read $0.01 · write $0.125", "1M context · 128k output", "text  image", "low  high", "2026-10-01"} {
+	for _, want := range []string{"Price per 1M tokens", "Cache write", "≤100k ctx", ">100k ctx", "$0.100", "$2.500", "$0.125", "1M context · 128k output", "text  image", "low  high", "2026-10-01"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("detail lacks %q:\n%s", want, view)
 		}
 	}
 	p := build(160)
-	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if view := body(p); !strings.Contains(view, "400k context") || strings.Contains(view, "Cost") || strings.Contains(view, "$") {
+	if view := body(p); !strings.Contains(view, "Cache read") || strings.Contains(view, "Cache write") || strings.Contains(view, "ctx") || !strings.Contains(view, "$1.00") {
+		t.Fatalf("single tier or zero cache column shown wrong:\n%s", view)
+	}
+	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if view := body(p); !strings.Contains(view, "400k context") || strings.Contains(view, "$") {
 		t.Fatalf("unpriced model shows pricing:\n%s", view)
 	}
 	if view := body(build(60)); strings.Contains(view, "Limits") {
 		t.Fatalf("detail pane drawn without room:\n%s", view)
-	}
-}
-
-func TestInheritRowStartsInNameColumn(t *testing.T) {
-	p := modelpicker.New()
-	p.Available = []string{"provider/model-a"}
-	p.Names = map[string]string{"provider/model-a": "Model A"}
-	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if view := body(p); !strings.Contains(view, "> inherits OpenCode default") {
-		t.Fatalf("inherit row is not in the name column:\n%s", view)
 	}
 }
