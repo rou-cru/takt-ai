@@ -76,9 +76,10 @@ func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
 type Identity struct {
 	SessionID  string
 	WorkUnitID string
-	// AttemptID is issued by the harness, never chosen by the caller: a bind
-	// joins the attempt a live binding of the same unit holds open, or opens the
-	// next one (PR-DAG-REP-3).
+	// AttemptID is never chosen by the caller. A delegated binding carries none
+	// while prelaunch and the attempt the execution history admitted once
+	// adopted; a maintenance binding joins the attempt a live binding of its
+	// unit holds open, or opens the next one (PR-DAG-REP-3).
 	AttemptID  string
 	AgentID    AgentID
 	Specialist string
@@ -103,6 +104,37 @@ type Identity struct {
 	// Superseded marks a verifier gate that a later assignment of the same
 	// judge over the same author replaced: it no longer attaches verdicts.
 	Superseded bool
+	// HostSession is the host session holding the binding. Adoption stamps it;
+	// a reassignment, a supersession or a release clears it. Empty in stores
+	// written before it existed.
+	HostSession string `json:",omitempty"`
+	// JudgedRevision, JudgedHash and JudgedPaths record a gate's last read of
+	// its author's staged view: the author's revision and delta hash at that
+	// read, and the paths read under that same state.
+	JudgedRevision uint64   `json:",omitempty"`
+	JudgedHash     string   `json:",omitempty"`
+	JudgedPaths    []string `json:",omitempty"`
+}
+
+// Caller is the harness-delivered identity of the process running one VFS
+// command. No field is ever model-supplied.
+type Caller struct {
+	Dispatch string
+	// SessionID is the root session.
+	SessionID string
+	// HostSession is the host session running the tool: the delegated child,
+	// or the root for the orchestrator.
+	HostSession string
+	// Agent is the host-delivered agent name.
+	Agent AgentID
+	// WorkUnitID is the unit the caller executes.
+	WorkUnitID string
+	AttemptID  string
+}
+
+// holds reports whether c holds b: same root, host session and agent.
+func (c Caller) holds(b Identity) bool {
+	return c.HostSession != "" && b.HostSession == c.HostSession && b.SessionID == c.SessionID && b.AgentID == c.Agent && b.WorkUnitID == c.WorkUnitID && b.AttemptID == c.AttemptID && !b.Prelaunch
 }
 
 // sameUnit reports whether both identities belong to one work unit.
@@ -149,6 +181,12 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error) {
 		return "", err
 	}
 	defer f.finishLocked(&err)
+	return f.bindLocked(identity, scope)
+}
+
+// bindLocked adopts identity's prelaunch assignment, answers the binding its
+// attempt already holds, or claims scope under a fresh key.
+func (f *FS) bindLocked(identity Identity, scope []string) (AgentID, error) {
 	// Adopt a prelaunch assignment without letting the target replace its scope.
 	if key, adopted, err := f.adoptPrelaunchLocked(identity, scope); adopted || err != nil {
 		return key, err
@@ -164,7 +202,8 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error) {
 	if declared && slices.Contains(grants, model.VFSCapabilityVerify) {
 		return "", fmt.Errorf("%w: verifier %q must adopt an orchestrator preassignment linked to author_key", ErrScopeDenied, identity.Specialist)
 	}
-	if identity, err = f.bindableIdentity(identity, scope); err != nil {
+	identity, err := f.bindableIdentity(identity, scope)
+	if err != nil {
 		return "", err
 	}
 	if err = f.checkScope(identity, scope); err != nil {
@@ -188,6 +227,8 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 	if !completeIdentity(identity) {
 		return "", errIncompleteIdentity
 	}
+	// A claim carries no attempt and no holder until its target adopts it.
+	identity.AttemptID, identity.HostSession = "", ""
 	if key, held, err := f.heldBindingLocked(identity, scope); held || err != nil {
 		return key, err
 	}
@@ -243,20 +284,22 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 }
 
 // adoptPrelaunchLocked adopts the prelaunch assignment matching identity, if
-// any. It reports adopted=false when no assignment matches.
+// any, for identity.HostSession. It reports adopted=false when no assignment
+// matches. A delegated assignment carries no attempt: adoption stamps the one
+// identity brings, which the execution history issued.
 func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, bool, error) {
 	for assignedKey, assigned := range f.bindings {
 		if !assigned.Prelaunch || assigned.SessionID != identity.SessionID || assigned.WorkUnitID != identity.WorkUnitID || assigned.AgentID != identity.AgentID {
 			continue
 		}
 		// A verifier unit holds one gate per author it judges; a gate preassigned
-		// to another author is not this bind's assignment.
-		if assigned.GateAuthorKey != "" && identity.GateAuthorKey != "" && assigned.GateAuthorKey != identity.GateAuthorKey {
+		// to another author, or a bind that names no author, is not this gate's
+		// adoption.
+		if assigned.GateAuthorKey != "" && assigned.GateAuthorKey != identity.GateAuthorKey {
 			continue
 		}
-		retried := f.retriedAssignmentLocked(assigned, identity)
 		if assigned.Specialist != identity.Specialist || assigned.GateAuthorKey != identity.GateAuthorKey ||
-			(identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID && !retried) ||
+			(assigned.CycleID != "" && identity.AttemptID != "" && assigned.AttemptID != identity.AttemptID) ||
 			(len(identity.Invariants) > 0 && !slices.Equal(assigned.Invariants, identity.Invariants)) ||
 			(len(scope) > 0 && !sameScope(f.ownedScopeLocked(assignedKey), scope)) {
 			return "", true, ErrScopeDenied
@@ -264,32 +307,17 @@ func (f *FS) adoptPrelaunchLocked(identity Identity, scope []string) (AgentID, b
 		if err := f.requireAdoptionGrantsLocked(assigned); err != nil {
 			return "", true, err
 		}
-		if retried {
+		if assigned.CycleID == "" {
 			assigned.AttemptID = identity.AttemptID
+			if f.duplicateIdentity(assigned, assignedKey) {
+				return "", true, fmt.Errorf("%w: agent %q already holds a binding for attempt %q of unit %q", ErrIdentity, identity.AgentID, identity.AttemptID, identity.WorkUnitID)
+			}
 		}
-		assigned.Prelaunch = false
+		assigned.Prelaunch, assigned.HostSession = false, identity.HostSession
 		f.bindings[assignedKey] = assigned
 		return assignedKey, true, nil
 	}
 	return "", false, nil
-}
-
-// retriedAssignmentLocked reports whether identity is a later admitted attempt
-// of the unit taking over an author assignment an earlier attempt never adopted
-// (its specialist ended before binding). The assignment, its key and anything
-// staged under it continue under the admitted attempt, as a reassignment would.
-func (f *FS) retriedAssignmentLocked(assigned, identity Identity) bool {
-	if assigned.GateAuthorKey != "" || identity.AttemptID == "" {
-		return false
-	}
-	was, errWas := strconv.Atoi(assigned.AttemptID)
-	now, errNow := strconv.Atoi(identity.AttemptID)
-	if errWas != nil || errNow != nil || now <= was {
-		return false
-	}
-	renumbered := assigned
-	renumbered.AttemptID = identity.AttemptID
-	return !f.duplicateIdentity(renumbered)
 }
 
 // requireAdoptionGrantsLocked checks the catalog grants an adopted assignment
@@ -340,6 +368,10 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 		return "", err
 	}
 	defer f.finishLocked(&err)
+	return f.assignVerifierLocked(identity, authorKey)
+}
+
+func (f *FS) assignVerifierLocked(identity Identity, authorKey AgentID) (key AgentID, err error) {
 	if !completeIdentity(identity) || identity.Specialist == "" || authorKey == "" {
 		return "", fmt.Errorf("%w: a verifier gate names its session, unit, agent and specialist, and the author_key it judges", ErrIdentity)
 	}
@@ -349,7 +381,13 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 		}
 	}
 	identity.GateAuthorKey = authorKey
-	identity.Prelaunch = true
+	identity.Prelaunch, identity.HostSession = true, ""
+
+	if identity.AttemptID != "" {
+		if pending, ok := f.pendingGateLocked(identity, authorKey); ok {
+			return pending, nil
+		}
+	}
 	// The gate is judged against the invariants its author was issued; a caller
 	// that declares none takes them from the author binding.
 	if author, ok := f.bindings[authorKey]; ok && len(identity.Invariants) == 0 {
@@ -361,6 +399,16 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	if err = f.validateVerifierAuthorLocked(identity, authorKey); err != nil {
 		return "", err
 	}
+	return f.issueVerifierLocked(identity, authorKey), nil
+}
+
+func (f *FS) issueVerifierLocked(identity Identity, authorKey AgentID) AgentID {
+	if identity.AttemptID != "" {
+		if key, ok := f.pendingGateLocked(identity, authorKey); ok {
+			return key
+		}
+	}
+
 	// A new assignment of this judge over this author supersedes every earlier
 	// gate of it, adopted or not and under any unit: the judge speaks through
 	// its latest delegation only, so a run it replaced cannot overwrite its
@@ -368,29 +416,19 @@ func (f *FS) AssignVerifier(identity Identity, authorKey AgentID) (key AgentID, 
 	for previousKey, previous := range f.bindings {
 		if previous.SessionID == identity.SessionID && previous.AgentID == identity.AgentID &&
 			previous.GateAuthorKey == authorKey && !previous.Superseded {
-			previous.Prelaunch, previous.Superseded = false, true
+			previous.Prelaunch, previous.Superseded, previous.HostSession = false, true, ""
 			f.bindings[previousKey] = previous
 		}
 	}
-	key = AgentID(fmt.Sprintf("%x", randomID()))
+	key := AgentID(fmt.Sprintf("%x", randomID()))
 	f.bindings[key] = identity
 	f.ensureDelta(key)
-	return key, nil
+	return key
 }
 
-// PendingGate returns the unadopted, current gate identity's judge already
-// holds over authorKey in the same unit and attempt; an empty attempt matches
-// the open one, as the store numbers maintenance attempts itself. A
-// coordinator that retries its own step reuses that gate instead of asking
-// AssignVerifier, which refuses a second gate for one judge and author.
-func (f *FS) PendingGate(identity Identity, authorKey AgentID) (AgentID, bool) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	identity.GateAuthorKey = authorKey
+func (f *FS) pendingGateLocked(identity Identity, authorKey AgentID) (AgentID, bool) {
 	for key, gate := range f.bindings {
-		if gate.Prelaunch && !gate.Superseded && gate.sameUnit(identity) && gate.AgentID == identity.AgentID &&
-			gate.Specialist == identity.Specialist && gate.GateAuthorKey == identity.GateAuthorKey &&
-			(identity.AttemptID == "" || gate.AttemptID == identity.AttemptID) {
+		if gate.Prelaunch && !gate.Superseded && gate.sameUnit(identity) && gate.AgentID == identity.AgentID && gate.Specialist == identity.Specialist && gate.GateAuthorKey == authorKey && (identity.AttemptID == "" || gate.AttemptID == identity.AttemptID) {
 			return key, true
 		}
 	}
@@ -472,21 +510,25 @@ func (f *FS) RevokeOwnership(key AgentID) (err error) {
 		return err
 	}
 	defer f.finishLocked(&err)
+	return f.revokeLocked(key)
+}
+
+func (f *FS) revokeLocked(key AgentID) error {
 	identity, ok := f.bindings[key]
 	if !ok {
 		return fmt.Errorf("%w: %q is not a known binding key", ErrIdentity, key)
 	}
 	if f.stagedLocked(key) {
-		return ErrStagedWork
+		return fmt.Errorf("%w (claim_key %s, staged paths [%s]); claim_assign with author_key %s continues it", ErrStagedWork, key, strings.Join(f.stagedPathsLocked(key), ", "), key)
 	}
-	identity.Prelaunch = false
+	identity.Prelaunch, identity.HostSession = false, ""
 	f.bindings[key] = identity
 	f.releaseOwnershipLocked(key)
 	return nil
 }
 
 // ReassignScope gives the work of an existing author key a new exact scope for
-// its next attempt, keeping the staged delta, and hands it to the unit, agent and
+// the target's next adoption, keeping the staged delta, and hands it to the unit, agent and
 // specialist the request names. The delta's own paths must stay in
 // the scope; only the added paths are checked for collisions, and the paths that
 // leave it were never written. The verdict, bound to the old revision, is cleared.
@@ -529,17 +571,15 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 	if err = f.checkClaimScope(identity, added); err != nil {
 		return err
 	}
-	if identity.AttemptID == "" {
-		highest, _ := f.highestOpenAttempt(identity)
-		identity.AttemptID = strconv.Itoa(highest + 1)
-	}
 	hash, err := f.invariantsVersionLocked(identity.Invariants)
 	if err != nil {
 		return err
 	}
 	d := f.ensureDelta(key)
 	held.SessionID, held.WorkUnitID, held.AgentID, held.Specialist, held.Role = identity.SessionID, identity.WorkUnitID, identity.AgentID, identity.Specialist, role
-	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch = identity.AttemptID, identity.Invariants, hash, true
+	// The work awaits adoption again: no attempt until the history admits the
+	// unit and its target binds, and no holder until then.
+	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch, held.HostSession = "", identity.Invariants, hash, true, ""
 	f.bindings[key] = held
 	f.releaseOwnershipLocked(key)
 	for _, path := range scope {
@@ -650,37 +690,25 @@ func (f *FS) bindableIdentity(identity Identity, scope []string) (Identity, erro
 			return identity, err
 		}
 	}
-	identity.AttemptID, identity.Invariants = f.attemptLocked(identity)
+	identity.Invariants = f.attemptInvariantsLocked(identity)
 	if identity.InvariantsHash, err = f.invariantsVersionLocked(identity.Invariants); err != nil {
 		return identity, err
 	}
-	if f.duplicateIdentity(identity) {
+	if f.duplicateIdentity(identity, "") {
 		return identity, fmt.Errorf("%w: agent %q already holds a binding for this attempt of unit %q", ErrIdentity, identity.AgentID, identity.WorkUnitID)
 	}
 	return identity, nil
 }
 
-// attemptLocked returns the attempt this dispatch belongs to and the invariant
-// set governing it. Delegated work carries the attempt its admission issued;
-// otherwise, as for maintenance cycles, the store counts attempts itself. An
-// attempt stays open while a binding of its unit holds file ownership, so a
-// maintenance verifier joins the author it judges, while a retry after
-// consolidation or discard opens the next attempt. Bindings and ownership are
-// durable, so a restart neither restarts the count nor reuses an identity.
-func (f *FS) attemptLocked(identity Identity) (string, InvariantSet) {
-	// An attempt the delegation's admission already issued is authoritative:
-	// the bind joins it, inheriting the invariant set it was opened with.
+// attemptInvariantsLocked inherits invariant references from the same issued
+// attempt. The attempt itself is always supplied by execution history.
+func (f *FS) attemptInvariantsLocked(identity Identity) InvariantSet {
 	if identity.AttemptID != "" {
 		if existing, ok := f.joinedAttempt(identity); ok {
-			return existing.AttemptID, existing.Invariants
+			return existing.Invariants
 		}
-		return identity.AttemptID, identity.Invariants
 	}
-	highest, open := f.highestOpenAttempt(identity)
-	if open.AttemptID != "" {
-		return open.AttemptID, open.Invariants
-	}
-	return strconv.Itoa(highest + 1), identity.Invariants
+	return identity.Invariants
 }
 
 // joinedAttempt finds an existing binding sharing identity's declared
@@ -692,32 +720,6 @@ func (f *FS) joinedAttempt(identity Identity) (Identity, bool) {
 		}
 	}
 	return Identity{}, false
-}
-
-// highestOpenAttempt scans identity's unit's bindings for the highest
-// attempt number seen, and, among bindings at that number, the one that
-// still holds file ownership or awaits launch (an attempt stays open while its
-// binding does, so every gate preassigned under one verifier unit shares it).
-// A highest attempt with no owning or pending binding is not open: it settled.
-func (f *FS) highestOpenAttempt(identity Identity) (int, Identity) {
-	owning := make(map[AgentID]bool, len(f.owners))
-	for _, owner := range f.owners {
-		owning[owner] = true
-	}
-	highest, open := 0, Identity{}
-	for key, existing := range f.bindings {
-		n, err := strconv.Atoi(existing.AttemptID)
-		if err != nil || !existing.sameUnit(identity) {
-			continue
-		}
-		if n > highest {
-			highest, open = n, Identity{}
-		}
-		if n == highest && (owning[key] || existing.Prelaunch) {
-			open = existing
-		}
-	}
-	return highest, open
 }
 
 // errNoBinding refuses a key no binding holds.
@@ -735,9 +737,8 @@ func (f *FS) heldBindingLocked(identity Identity, scope []string) (AgentID, bool
 	if !completeIdentity(identity) {
 		return "", false, nil
 	}
-	identity.AttemptID, _ = f.attemptLocked(identity)
 	for key, existing := range f.bindings {
-		if !existing.sameAttempt(identity) || existing.AgentID != identity.AgentID || existing.GateAuthorKey != identity.GateAuthorKey {
+		if !f.sameLiveIdentityLocked(key, existing, identity) {
 			continue
 		}
 		if existing.Specialist != identity.Specialist {
@@ -762,13 +763,33 @@ func (f *FS) heldBindingLocked(identity Identity, scope []string) (AgentID, bool
 func completeIdentity(identity Identity) bool {
 	return identity.SessionID != "" && identity.WorkUnitID != "" && identity.AgentID != ""
 }
-func (f *FS) duplicateIdentity(identity Identity) bool {
-	for _, existing := range f.bindings {
-		if existing.sameAttempt(identity) && existing.AgentID == identity.AgentID && existing.GateAuthorKey == identity.GateAuthorKey {
+
+// duplicateIdentity reports whether a binding other than self already holds
+// identity's attempt for the same agent and author link.
+func (f *FS) duplicateIdentity(identity Identity, self AgentID) bool {
+	for key, existing := range f.bindings {
+		if key != self && f.sameLiveIdentityLocked(key, existing, identity) {
 			return true
 		}
 	}
 	return false
+}
+
+// sameLiveIdentityLocked reports whether existing (under key) holds identity's
+// attempt for the same agent and author link. A delegated binding's attempt is
+// empty while prelaunch, or the one the history issued; an empty attempt that
+// is neither prelaunch nor owning paths was released before adoption and
+// holds nothing. A superseded gate holds nothing either, and a delegated gate
+// assignment supersedes the judge's earlier gate over its author instead of
+// colliding with it.
+func (f *FS) sameLiveIdentityLocked(key AgentID, existing, identity Identity) bool {
+	if !existing.sameAttempt(identity) || existing.AgentID != identity.AgentID || existing.GateAuthorKey != identity.GateAuthorKey || existing.Superseded {
+		return false
+	}
+	if identity.Prelaunch && identity.CycleID == "" && identity.GateAuthorKey != "" {
+		return false
+	}
+	return existing.AttemptID != "" || existing.Prelaunch || len(f.ownedScopeLocked(key)) > 0
 }
 
 // BindingIdentity returns the identity a binding key was issued for, so a
@@ -835,6 +856,9 @@ type OperationResult struct {
 	Content   []byte
 	Revision  uint64
 	DeltaHash string
+	// OutdatedPaths lists, for a gate read, the paths the gate read under an
+	// earlier state of its author's staged work.
+	OutdatedPaths []string
 }
 
 func (f *FS) deltaHashLocked(key AgentID) string {
@@ -848,14 +872,6 @@ func (f *FS) deltaHashLocked(key AgentID) string {
 }
 
 // revisionOf is the staged revision of key, zero when it has no delta.
-// StagedState reports the revision and delta hash of the work staged under key,
-// and whether any exists, so a binding that adopts existing work starts from it.
-func (f *FS) StagedState(key AgentID) (revision uint64, deltaHash string, staged bool) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.revisionOf(key), f.deltaHashLocked(key), f.stagedLocked(key)
-}
-
 func (f *FS) revisionOf(key AgentID) uint64 {
 	if d := f.staged[key]; d != nil {
 		return d.revision
@@ -893,22 +909,19 @@ func (f *FS) consumeCallLocked(session, call string) error {
 // Apply validates identity, revision and replay, then persists the result.
 func (f *FS) Apply(op Operation) (OperationResult, error) { return f.apply(op, op.Key) }
 
-// ReadAs reads through the staged view of the author a verifier judges, so the
-// gate assesses exactly the delta its verdict will cover. op.ExpectedRevision
-// is the author's revision; any other caller or action is refused.
-func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error) {
-	if op.Action != OpRead {
-		return OperationResult{}, fmt.Errorf("%w: another author's staged view is read-only", ErrIdentity)
-	}
-	return f.apply(op, author)
-}
-
 func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
 		return result, err
 	}
+	return f.applyLocked(op, view, true)
+}
+
+// applyLocked admits and performs op through view's staged state. A trusted
+// in-process caller states the revision it expects; a resolved caller's
+// operation applies at the current revision, which the lock serializes.
+func (f *FS) applyLocked(op Operation, view AgentID, checkRevision bool) (result OperationResult, err error) {
 	start := len(f.journal)
 	defer func() {
 		if err != nil && len(f.journal) == start {
@@ -920,7 +933,7 @@ func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err erro
 			result.Content = nil
 		}
 	}()
-	identity, err := f.admitLocked(op, view)
+	identity, err := f.admitLocked(op, view, checkRevision)
 	if err != nil {
 		return result, err
 	}
@@ -932,7 +945,7 @@ func (f *FS) apply(op Operation, view AgentID) (result OperationResult, err erro
 
 // admitLocked runs the checks that precede any effect: a bound identity, a
 // legitimate view, a fresh call and the caller's revision. The call is consumed even when a later check rejects it.
-func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
+func (f *FS) admitLocked(op Operation, view AgentID, checkRevision bool) (Identity, error) {
 	identity, ok := f.bindings[op.Key]
 	if !ok {
 		return identity, errNoBinding(op.Key)
@@ -958,7 +971,7 @@ func (f *FS) admitLocked(op Operation, view AgentID) (Identity, error) {
 	if err := f.consumeCallLocked(identity.SessionID, op.CallID); err != nil {
 		return identity, err
 	}
-	if current := f.revisionOf(view); current != op.ExpectedRevision {
+	if current := f.revisionOf(view); checkRevision && current != op.ExpectedRevision {
 		return identity, fmt.Errorf("%w: current revision %d; re-read and issue a fresh call, or bind again to learn the current revision", ErrStaleRevision, current)
 	}
 	return identity, nil
@@ -1015,6 +1028,12 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 	if err = f.readyLocked(); err != nil {
 		return err
 	}
+	return f.verifyLocked(verifier, author, callID, expected, deltaHash, pass, finding)
+}
+
+// verifyLocked attaches the verdict of gate verifier over author at the stated
+// revision and delta hash.
+func (f *FS) verifyLocked(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string) (err error) {
 	start := len(f.journal)
 	defer func() {
 		if err != nil && len(f.journal) == start {
@@ -1150,6 +1169,12 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 	if err = f.readyLocked(); err != nil {
 		return err
 	}
+	return f.consolidateCheckpointLocked(key, checkpoint, expected, acceptFailing)
+}
+
+// consolidateCheckpointLocked consolidates key's staged work at the expected
+// revision under checkpoint.
+func (f *FS) consolidateCheckpointLocked(key AgentID, checkpoint string, expected uint64, acceptFailing bool) (err error) {
 	if strings.TrimSpace(checkpoint) == "" {
 		checkpoint = fmt.Sprintf("%s@%d", key, expected)
 	}

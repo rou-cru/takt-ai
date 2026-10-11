@@ -39,6 +39,10 @@ type StagedView struct {
 func (f *FS) InspectDelta(key AgentID) StagedView {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return f.viewLocked(key)
+}
+
+func (f *FS) viewLocked(key AgentID) StagedView {
 	out := StagedView{Revision: f.revisionOf(key), Hash: f.deltaHashLocked(key), Files: map[string]*string{}}
 	if d := f.staged[key]; d != nil {
 		for p, b := range d.files {
@@ -51,6 +55,24 @@ func (f *FS) InspectDelta(key AgentID) StagedView {
 		}
 	}
 	return out
+}
+
+// CycleKeys returns the collector's author key and the verifier's current
+// gate over it for cycle; the core bindings are their only record.
+func (f *FS) CycleKeys(cycle string) (author, verifier AgentID) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	for key, b := range f.bindings {
+		if b.CycleID == cycle && b.GateAuthorKey == "" {
+			author = key
+		}
+	}
+	for key, b := range f.bindings {
+		if author != "" && b.CycleID == cycle && b.GateAuthorKey == author && !b.Superseded {
+			verifier = key
+		}
+	}
+	return author, verifier
 }
 
 // DropCycleStaging discards only bindings owned by the specified cycle.
@@ -75,4 +97,28 @@ func (f *FS) DropCycleStaging(cycle string) (err error) {
 		delete(f.staged, k)
 	}
 	return nil
+}
+
+// JudgeDelta delivers and records the exact candidate under the same core
+// mutex. GC verdicts cannot authorize a newer delta merely by inspecting it.
+func (f *FS) JudgeDelta(gate, author AgentID) (view StagedView, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.bindings[gate]
+	if !ok || b.GateAuthorKey != author || b.Superseded {
+		return view, errNoBinding(gate)
+	}
+	view = f.viewLocked(author)
+	f.recordJudgedLocked(gate, view.Revision, view.Hash, "")
+	f.finishLocked(&err)
+	return view, err
+}
+func (f *FS) VerifyJudgedDelta(gate, author AgentID, callID string, pass bool, evidence string) (err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.bindings[gate]
+	if !ok || b.GateAuthorKey != author {
+		return errNoBinding(gate)
+	}
+	return f.verifyJudgedLocked(gate, author, callID, pass, evidence)
 }

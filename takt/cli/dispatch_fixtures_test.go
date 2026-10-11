@@ -45,7 +45,7 @@ func dispatchHarness(t *testing.T) (string, string, func(coordinationRequest) (g
 			t.Fatalf("marshal request: %v", err)
 		}
 		e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(b)}, &out, &errout)
-		c, load := gc.LoadCoordinator(state)
+		c, load := loadCoordinator(t, root, state)
 		if load != nil {
 			return gc.Coordinator{}, load
 		}

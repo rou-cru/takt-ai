@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,7 +26,16 @@ func gcHarness(t *testing.T) (string, string, func(coordinationRequest) (gc.Coor
 			t.Fatalf("marshal request: %v", err)
 		}
 		e := runGC([]string{"coordinate", "--workspace", root, "--state", state, "--request", string(b)}, &out, &errout)
-		c, load := gc.LoadCoordinator(state)
+		if e == nil {
+			var refusal struct {
+				OK    *bool  `json:"ok"`
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(out.Bytes(), &refusal) == nil && refusal.OK != nil && !*refusal.OK {
+				e = errors.New(refusal.Error)
+			}
+		}
+		c, load := loadCoordinator(t, root, state)
 		if load != nil {
 			return gc.Coordinator{}, load
 		}
@@ -61,7 +71,7 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				t.Fatal(e)
 			}
 			write(".takt/gc.json", string(b))
-			if _, e := call(coordinationRequest{Action: "prepare", Session: "root"}); e != nil {
+			if _, e := call(coordinationRequest{Action: "prepare", Owner: testOwner, Session: "root"}); e != nil {
 				t.Fatal(e)
 			}
 			// Ordinary mutation is staged and independently verified through the real VFS.
@@ -120,11 +130,11 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				}
 				return c
 			}
-			invoke(coordinationRequest{Action: "attach", Role: "verifier", Child: "verify-child"})
-			if _, e = call(coordinationRequest{Action: "attach", Role: "collector", Child: "verify-child"}); e == nil {
+			invoke(coordinationRequest{Action: "attach", Owner: testOwner, Role: "verifier", Child: "verify-child"})
+			if _, e = call(coordinationRequest{Action: "attach", Owner: testOwner, Role: "collector", Child: "verify-child"}); e == nil {
 				t.Fatal("same child allowed to author and verify")
 			}
-			invoke(coordinationRequest{Action: "attach", Role: "collector", Child: "collect-child"})
+			invoke(coordinationRequest{Action: "attach", Owner: testOwner, Role: "collector", Child: "collect-child"})
 			c = invoke(coordinationRequest{Action: "baseline", Session: "verify-child"})
 			if !gc.ChecksPass(c.Cycle.Baseline) || len(c.Cycle.Report.Findings) != 1 {
 				t.Fatalf("baseline %+v", c.Cycle)
@@ -150,14 +160,12 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			// An authorization whose coordinator save was lost is retried: the
 			// collector's binding and the verifier's gate it reserved are found
 			// again rather than refused as duplicates.
-			saved, e := os.ReadFile(filepath.Join(state, "gc-coordinator.json"))
+			saved, e := loadCoordinator(t, root, state)
 			if e != nil {
 				t.Fatal(e)
 			}
 			first := invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
-			if e = os.WriteFile(filepath.Join(state, "gc-coordinator.json"), saved, 0o600); e != nil {
-				t.Fatal(e)
-			}
+			saveCoordinator(t, root, state, saved)
 			c = invoke(coordinationRequest{Action: "authorize", Session: "collect-child"})
 			if c.Cycle.AuthorKey != first.Cycle.AuthorKey || c.Cycle.VerifierKey != first.Cycle.VerifierKey {
 				t.Fatalf("retried authorization = %s/%s; want the reserved %s/%s", c.Cycle.AuthorKey, c.Cycle.VerifierKey, first.Cycle.AuthorKey, first.Cycle.VerifierKey)
@@ -192,15 +200,32 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if _, e = call(coordinationRequest{Action: "verdict", Session: "collect-child", Pass: true, Evidence: "self"}); e == nil {
 				t.Fatal("self verification passed")
 			}
-			c = invoke(coordinationRequest{Action: "verdict", Session: "verify-child", Pass: outcome != "reject", Evidence: "Inspected exact candidate; behavior checked independently."})
+			stops := []laneStop{{Dispatch: cycleID + "/collector", Attempt: "1", Child: "collect-child"}, {Dispatch: cycleID + "/verifier", Attempt: "1", Child: "verify-child"}}
+			verdict := coordinationRequest{Action: "verdict", Session: "verify-child", Pass: outcome != "reject", Evidence: "Inspected exact candidate; behavior checked independently."}
+			if outcome == "reject" {
+				c, e = call(verdict)
+				if e == nil || c.Cycle == nil || c.Cycle.Phase != "aborting" {
+					t.Fatalf("rejection released live lanes: %+v %v", c, e)
+				}
+				c = invoke(coordinationRequest{Action: "abort", Event: cycleID, Stopped: stops, Evidence: "independent rejection"})
+			} else {
+				c = invoke(verdict)
+			}
+
 			switch outcome {
-			case "pass", "regress":
+			case "pass":
 				c = invoke(coordinationRequest{Action: "acceptance", Session: "verify-child"})
+			case "regress":
+				c, e = call(coordinationRequest{Action: "acceptance", Session: "verify-child"})
+				if e == nil || c.Cycle == nil {
+					t.Fatal("acceptance regression released running lanes")
+				}
+				c = invoke(coordinationRequest{Action: "abort", Event: cycleID, Stopped: stops, Evidence: "acceptance regression"})
 			case "restart":
-				c = invoke(coordinationRequest{Action: "recover", Evidence: "process restarted"})
+				c = invoke(coordinationRequest{Action: "recover", Event: cycleID, Stopped: stops, Evidence: "process restarted"})
 			case "diverge":
 				write("a.go", "external user content\n")
-				c, e = call(coordinationRequest{Action: "recover", Evidence: "restart"})
+				c, e = call(coordinationRequest{Action: "recover", Event: cycleID, Stopped: stops, Evidence: "restart"})
 				if e == nil || c.Cycle == nil || c.Cycle.Phase != "blocked" {
 					t.Fatalf("divergence failed open: %+v %v", c, e)
 				}
@@ -208,15 +233,45 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				// discarded: the admission waits, and nothing is admitted.
 				req, _ := json.Marshal(coordinationRequest{Action: "admit", Event: "after-divergence", Session: "root", Agent: "dev"})
 				var out, errout bytes.Buffer
-				if e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(req)}, &out, &errout); e == nil || !strings.Contains(e.Error(), "could not be unwound") {
-					t.Fatalf("admission over a blocked cycle: %v", e)
+				if e := runDispatch([]string{"--workspace", root, "--state", state, "--request", string(req)}, &out, &errout); e != nil {
+					t.Fatal(e)
+				}
+				var refusal response
+				if err := json.Unmarshal(out.Bytes(), &refusal); err != nil || refusal.OK || refusal.Repair == nil || refusal.Repair.ID != cycleID {
+					t.Fatalf("missing cycle continuation: %s %v", out.String(), err)
 				}
 				if _, admitted := gcProjection(t, state).Units[history.UnitKey("root", "after-divergence")]; admitted {
 					t.Fatal("delegation admitted while the cycle's delta is live")
 				}
-				if held, e := gc.LoadCoordinator(state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {
+				if held, e := loadCoordinator(t, root, state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {
 					t.Fatalf("blocked cycle lost: %+v %v", held, e)
 				}
+				approval := &vfs.RepairApproval{Kind: "cycle", ID: refusal.Repair.ID, State: refusal.Repair.State, Preserve: true}
+				stale := *approval
+				stale.State = "stale"
+				if _, err := call(coordinationRequest{Action: "abort", Event: cycleID, Repair: &stale}); err == nil {
+					t.Fatal("stale approval accepted")
+				}
+				c = invoke(coordinationRequest{Action: "abort", Event: cycleID, Repair: approval})
+				if c.Cycle != nil || !strings.Contains(c.History[0].Reason, "interrupted") {
+					t.Fatal("divergent cycle not closed as interrupted")
+				}
+				fs, err := vfs.Open(root, state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !fs.CycleInterrupted(cycleID) {
+					t.Fatal("cycle evidence lost")
+				}
+				for _, claim := range fs.OwnershipClaims("root") {
+					if binding, ok := fs.BindingIdentity(vfs.AgentID(claim.Key)); ok && binding.CycleID == cycleID {
+						t.Fatal("cycle ownership remains active")
+					}
+				}
+				if err := fs.Close(); err != nil {
+					t.Fatal(err)
+				}
+
 			}
 			got, e := os.ReadFile(filepath.Join(root, "a.go"))
 			if e != nil {
@@ -240,8 +295,8 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			}
 			activity := gcProjection(t, state).Activities[cycleID]
 			if outcome == "diverge" {
-				if activity.State != history.StateInFlight {
-					t.Fatalf("blocked cycle activity should remain active: %+v", activity)
+				if activity.State != history.StateSettled || activity.Outcome != history.OutcomeInterrupted {
+					t.Fatalf("preserved cycle was not interrupted: %+v", activity)
 				}
 			} else {
 				wantOutcome := history.OutcomeInterrupted

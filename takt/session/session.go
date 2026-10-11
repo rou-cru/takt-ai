@@ -26,6 +26,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 
 	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -45,7 +46,12 @@ type Session struct {
 }
 
 // Close releases the event store; the FS is closed separately by whoever opened the session's workspace.
-func (s *Session) Close() error { return s.Store.Close() }
+func (s *Session) Close() error {
+	if s.Store != nil {
+		s.report(s.Store.Close())
+	}
+	return nil
+}
 
 // NewDurable composes the durable workspace VFS with this session's bus.
 func NewDurable(rootDir, stateDir, sessionID string) (*Session, error) {
@@ -58,11 +64,9 @@ func NewDurable(rootDir, stateDir, sessionID string) (*Session, error) {
 	}
 	// The store lives in the workspace, not the private state dir, so every invocation for one workspace shares it.
 	store, err := obs.OpenStore(rootDir)
-	if err != nil {
-		_ = fs.Close()
-		return nil, err
-	}
-	return compose(fs, sessionID, store), nil
+	s := compose(fs, sessionID, store)
+	s.report(err)
+	return s, nil
 }
 
 func compose(fs *vfs.FS, sessionID string, store *obs.Store) *Session {
@@ -110,6 +114,8 @@ func hashPath(path string) string {
 // signal is itself observable, never silent.
 func (s *Session) report(err error) {
 	if err != nil {
-		s.Bus.Degrade(fmt.Sprintf("session: telemetry rejected: %v", err))
+		reason := fmt.Sprintf("session: telemetry unavailable: %v; governed operations and the durable VFS journal remain active", err)
+		s.Bus.Degrade(reason)
+		fmt.Fprintln(os.Stderr, reason)
 	}
 }

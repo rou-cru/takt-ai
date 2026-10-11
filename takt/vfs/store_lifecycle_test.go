@@ -13,12 +13,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package vfs
+package vfs_test
 
 import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,7 +71,7 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 // assertOpenSucceeds proves a failed Open left the workspace lock released.
 func assertOpenSucceeds(t *testing.T, root string) {
 	t.Helper()
-	f, err := Open(root, filepath.Join(t.TempDir(), "fresh"))
+	f, err := vfs.Open(root, filepath.Join(t.TempDir(), "fresh"))
 	if err != nil {
 		t.Fatalf("workspace stayed locked after a failed Open: %v", err)
 	}
@@ -82,14 +83,14 @@ func assertOpenSucceeds(t *testing.T, root string) {
 func TestOpenRejectsUnusableWorkspaceRoot(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	missing := filepath.Join(t.TempDir(), "absent")
-	if _, err := Open(missing, state); err == nil || !strings.Contains(err.Error(), "workspace root does not exist") {
+	if _, err := vfs.Open(missing, state); err == nil || !strings.Contains(err.Error(), "workspace root does not exist") {
 		t.Fatalf("Open(missing root) = %v", err)
 	}
 	file := filepath.Join(t.TempDir(), "file")
-	if err := os.WriteFile(file, nil, stateFileMode); err != nil {
+	if err := os.WriteFile(file, nil, vfs.StateFileMode); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(file, state); err == nil {
+	if _, err := vfs.Open(file, state); err == nil {
 		t.Fatal("Open accepted a regular file as the workspace root")
 	}
 }
@@ -102,17 +103,17 @@ func TestOpenRejectsUnusableStateLocation(t *testing.T) {
 	}{
 		"a regular file": {
 			prepare: func(t *testing.T, state string) {
-				if err := os.WriteFile(state, nil, stateFileMode); err != nil {
+				if err := os.WriteFile(state, nil, vfs.StateFileMode); err != nil {
 					t.Fatal(err)
 				}
 			},
 		},
 		"directory readable by others": {
 			prepare: func(t *testing.T, state string) {
-				if err := os.Mkdir(state, stateDirectoryMode); err != nil {
+				if err := os.Mkdir(state, vfs.StateDirectoryMode); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Chmod(state, recoveryDirectoryMode); err != nil {
+				if err := os.Chmod(state, vfs.RecoveryDirectoryMode); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -129,16 +130,16 @@ func TestOpenRejectsUnusableStateLocation(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantErr: ErrInvalidPath,
+			wantErr: vfs.ErrInvalidPath,
 		},
 		"database is a directory": {
 			prepare: func(t *testing.T, state string) {
 				mustMkdirPrivate(t, state)
-				if err := os.Mkdir(filepath.Join(state, "vfs.sqlite"), stateDirectoryMode); err != nil {
+				if err := os.Mkdir(filepath.Join(state, "vfs.sqlite"), vfs.StateDirectoryMode); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantErr: ErrInvalidPath,
+			wantErr: vfs.ErrInvalidPath,
 		},
 		"database is a symlink": {
 			prepare: func(t *testing.T, state string) {
@@ -147,13 +148,13 @@ func TestOpenRejectsUnusableStateLocation(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantErr: ErrInvalidPath,
+			wantErr: vfs.ErrInvalidPath,
 		},
 		"database is not sqlite": {
 			prepare: func(t *testing.T, state string) {
 				mustMkdirPrivate(t, state)
 				body := strings.Repeat(foreignFileBody, foreignFileReps)
-				if err := os.WriteFile(filepath.Join(state, "vfs.sqlite"), []byte(body), stateFileMode); err != nil {
+				if err := os.WriteFile(filepath.Join(state, "vfs.sqlite"), []byte(body), vfs.StateFileMode); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -163,7 +164,7 @@ func TestOpenRejectsUnusableStateLocation(t *testing.T) {
 			root := t.TempDir()
 			state := filepath.Join(t.TempDir(), "state")
 			tc.prepare(t, state)
-			f, err := Open(root, state)
+			f, err := vfs.Open(root, state)
 			if err == nil {
 				_ = f.Close()
 				t.Fatal("Open accepted an unusable state location")
@@ -181,7 +182,7 @@ func TestOpenRejectsUnusableStateLocation(t *testing.T) {
 
 func mustMkdirPrivate(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(dir, stateDirectoryMode); err != nil {
+	if err := os.MkdirAll(dir, vfs.StateDirectoryMode); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -199,45 +200,45 @@ func TestOpenRefusesCorruptStore(t *testing.T) {
 		},
 		"unsupported version": {
 			edit: func(t *testing.T, db *sql.DB, workspace string) {
-				setState(t, db, storedState{Version: unsupportedStoreVersion, Workspace: workspace})
+				setState(t, db, vfs.StoredState{Version: unsupportedStoreVersion, Workspace: workspace})
 			},
 			want: "incompatible store or workspace",
 		},
 		"another workspace": {
 			edit: func(t *testing.T, db *sql.DB, _ string) {
-				setState(t, db, storedState{Version: currentStoreVersion, Workspace: foreignWorkspace})
+				setState(t, db, vfs.StoredState{Version: currentStoreVersion, Workspace: foreignWorkspace})
 			},
 			want: "incompatible store or workspace",
 		},
 		"journal shorter than recorded": {
 			edit: func(t *testing.T, db *sql.DB, workspace string) {
-				setState(t, db, storedState{Version: currentStoreVersion, Workspace: workspace, JournalCount: recordedJournalCount})
+				setState(t, db, vfs.StoredState{Version: currentStoreVersion, Workspace: workspace, JournalCount: recordedJournalCount})
 			},
 			want: "journal incomplete",
 		},
 		"journal sequence gap": {
 			edit: func(t *testing.T, db *sql.DB, workspace string) {
-				setState(t, db, storedState{Version: currentStoreVersion, Workspace: workspace, JournalCount: 1})
+				setState(t, db, vfs.StoredState{Version: currentStoreVersion, Workspace: workspace, JournalCount: 1})
 				mustExec(t, db, "INSERT INTO journal(seq,data) VALUES(0,?)", []byte(gappedJournalEntry))
 			},
 			want: "journal sequence corrupt",
 		},
 		"undecodable journal entry": {
 			edit: func(t *testing.T, db *sql.DB, workspace string) {
-				setState(t, db, storedState{Version: currentStoreVersion, Workspace: workspace, JournalCount: 1})
+				setState(t, db, vfs.StoredState{Version: currentStoreVersion, Workspace: workspace, JournalCount: 1})
 				mustExec(t, db, "INSERT INTO journal(seq,data) VALUES(0,?)", []byte(undecodableJSON))
 			},
 			want: "invalid character",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f, root, state := durable(t)
-			workspace := f.rootDir
+			f, root, state := newStore(t)
+			workspace := f.RootDir()
 			if err := f.Close(); err != nil {
 				t.Fatal(err)
 			}
 			withRawStore(t, state, func(db *sql.DB) { tc.edit(t, db, workspace) })
-			g, err := Open(root, state)
+			g, err := vfs.Open(root, state)
 			if err == nil {
 				_ = g.Close()
 				t.Fatal("Open adopted a corrupt store instead of failing")
@@ -249,7 +250,7 @@ func TestOpenRefusesCorruptStore(t *testing.T) {
 	}
 }
 
-func setState(t *testing.T, db *sql.DB, s storedState) {
+func setState(t *testing.T, db *sql.DB, s vfs.StoredState) {
 	t.Helper()
 	data, err := json.Marshal(s)
 	if err != nil {
@@ -259,13 +260,13 @@ func setState(t *testing.T, db *sql.DB, s storedState) {
 }
 
 func TestMutatorsRefuseOnceClosed(t *testing.T) {
-	f, _, _ := durable(t)
+	f, _, _ := newStore(t)
 	key := bind(t, f, "author", "unit", "dev", "a.go")
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	identity := Identity{SessionID: "s", WorkUnitID: "other", AgentID: "late", Specialist: "dev"}
-	read := Operation{Key: key, CallID: "late-read", Action: OpRead, Path: "a.go"}
+	identity := vfs.Identity{SessionID: "s", WorkUnitID: "other", AgentID: "late", Specialist: "dev"}
+	read := vfs.Operation{Key: key, CallID: "late-read", Action: vfs.OpRead, Path: "a.go"}
 	for name, call := range map[string]func() error{
 		"Bind":         func() error { _, err := f.Bind(identity, []string{"b.go"}); return err },
 		"AssignScope":  func() error { _, err := f.AssignScope(identity, []string{"b.go"}); return err },
@@ -277,61 +278,57 @@ func TestMutatorsRefuseOnceClosed(t *testing.T) {
 		"Consolidate":  func() error { return f.ConsolidateCheckpoint(key, "late", 0, false) },
 		"Recover":      func() error { return f.Recover() },
 	} {
-		if err := call(); !errors.Is(err, ErrStoreFailed) {
+		if err := call(); !errors.Is(err, vfs.ErrStoreFailed) {
 			t.Errorf("%s on a closed store = %v; want ErrStoreFailed", name, err)
 		}
 	}
 }
 
 func TestRecoverWithoutPendingFlushChangesNothing(t *testing.T) {
-	f, _, _ := durable(t)
+	f, _, _ := newStore(t)
 	if err := f.Recover(); err != nil {
 		t.Fatalf("Recover() = %v", err)
 	}
-	if page := f.JournalPage("", "", -1, MaxJournalPageSize); len(page) != 0 {
+	if page := f.JournalPage("", "", -1, vfs.MaxJournalPageSize); len(page) != 0 {
 		t.Fatalf("Recover with nothing pending journaled %+v", page)
 	}
 }
 
 func TestJournalPageIsBoundedAndFiltered(t *testing.T) {
-	f, _, _ := durable(t)
+	f, _, _ := newStore(t)
 	for _, unit := range []string{"u1", "u2", "u3"} {
 		key := bind(t, f, "agent-"+unit, unit, "dev", unit+".go")
-		apply(t, f, applyCase{key, "write-" + unit, 0, OpCreate, unit + ".go", unit})
+		apply(t, f, applyCase{key, "write-" + unit, 0, vfs.OpCreate, unit + ".go", unit})
 	}
-	all := f.JournalPage("", "", -1, MaxJournalPageSize)
+	all := f.JournalPage("", "", -1, vfs.MaxJournalPageSize)
 	if len(all) != 3 {
 		t.Fatalf("journal has %d entries; want one per staged write", len(all))
 	}
 	if got := f.JournalPage("", "", -1, 0); len(got) != 1 {
 		t.Fatalf("a zero limit returned %d entries; want the minimum page of 1", len(got))
 	}
-	if got := f.JournalPage("", "", all[0].Seq, MaxJournalPageSize); len(got) != 2 || got[0].Seq != all[1].Seq {
+	if got := f.JournalPage("", "", all[0].Seq, vfs.MaxJournalPageSize); len(got) != 2 || got[0].Seq != all[1].Seq {
 		t.Fatalf("page after seq %d = %+v", all[0].Seq, got)
 	}
-	if got := f.JournalPage("s", "u2", -1, MaxJournalPageSize); len(got) != 1 || got[0].WorkUnitID != "u2" {
+	if got := f.JournalPage("s", "u2", -1, vfs.MaxJournalPageSize); len(got) != 1 || got[0].WorkUnitID != "u2" {
 		t.Fatalf("unit filter = %+v", got)
 	}
-	if got := f.JournalPage("other-session", "", -1, MaxJournalPageSize); len(got) != 0 {
+	if got := f.JournalPage("other-session", "", -1, vfs.MaxJournalPageSize); len(got) != 0 {
 		t.Fatalf("session filter leaked %+v", got)
 	}
 }
 
 func TestReopenDiscardsSavedCollisions(t *testing.T) {
-	f, root, state := durable(t)
+	f, root, state := newStore(t)
 	bind(t, f, "owner", "u1", "dev", "a.go")
 	intruder := bind(t, f, "intruder", "u2", "dev", "b.go")
-	if _, err := f.Apply(Operation{Key: intruder, CallID: "before", Action: OpRead, Path: "a.go"}); !errors.Is(err, ErrCollision) {
+	if _, err := f.Apply(vfs.Operation{Key: intruder, CallID: "before", Action: vfs.OpRead, Path: "a.go"}); !errors.Is(err, vfs.ErrCollision) {
 		t.Fatalf("foreign read = %v; want ErrCollision", err)
 	}
 	// finishLocked persists before notifying, so this also covers stores
 	// written by versions that retained collision history.
-	var data []byte
-	if err := f.db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&data); err != nil {
-		t.Fatal(err)
-	}
-	var saved storedState
-	if err := json.Unmarshal(data, &saved); err != nil {
+	saved, err := f.SavedState()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.Collisions) != 1 {
@@ -340,21 +337,21 @@ func TestReopenDiscardsSavedCollisions(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := Open(root, state)
+	reopened, err := vfs.Open(root, state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	if len(reopened.collisions) != 0 || reopened.notifiedCollisions != 0 {
-		t.Fatalf("reopen retained collision notifications: %+v, %d", reopened.collisions, reopened.notifiedCollisions)
+	if reopened.UnresolvedCollisions() != 0 || reopened.NotifiedCollisions() != 0 {
+		t.Fatalf("reopen retained collision notifications: %d, %d", reopened.UnresolvedCollisions(), reopened.NotifiedCollisions())
 	}
-	var seen []CollisionEvent
-	reopened.OnCollision(func(e CollisionEvent) { seen = append(seen, e) })
-	apply(t, reopened, applyCase{intruder, "own", 0, OpCreate, "b.go", "ok"})
+	var seen []vfs.CollisionEvent
+	reopened.OnCollision(func(e vfs.CollisionEvent) { seen = append(seen, e) })
+	apply(t, reopened, applyCase{intruder, "own", 0, vfs.OpCreate, "b.go", "ok"})
 	if len(seen) != 0 {
 		t.Fatalf("replayed saved collisions: %+v", seen)
 	}
-	if _, err := reopened.Apply(Operation{Key: intruder, CallID: "after", ExpectedRevision: 1, Action: OpRead, Path: "a.go"}); !errors.Is(err, ErrCollision) {
+	if _, err := reopened.Apply(vfs.Operation{Key: intruder, CallID: "after", ExpectedRevision: 1, Action: vfs.OpRead, Path: "a.go"}); !errors.Is(err, vfs.ErrCollision) {
 		t.Fatalf("foreign read after reopen = %v; want ErrCollision", err)
 	}
 	if len(seen) != 1 || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" || seen[0].Path != "a.go" {

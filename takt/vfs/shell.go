@@ -107,32 +107,74 @@ func shellRoot(stateDir, callID string) string {
 	return filepath.Join(filepath.Dir(stateDir), "shell-"+digest[:shellRootHashLen])
 }
 
-// PrepareShell classifies one command and prepares its sandbox files.
-// key may be empty: an unbound caller may inspect but cannot mutate the
-// workspace, and expected then does not apply. Quoted spans are not treated as
+// shellCall is what a prepared command was planned against: the binding it
+// captures into and that binding's staged state at preparation.
+type shellCall struct {
+	Key       AgentID
+	Revision  uint64
+	DeltaHash string
+	Caller    Caller
+	Command   string
+	Plan      ShellPlan
+	Started   bool
+	Evaluated bool
+}
+
+// errShellMoved refuses an import over staged work that changed after the
+// command was prepared: importing would overwrite that change.
+var errShellMoved = fmt.Errorf("%w: the staged work changed while the command ran; run the command again", ErrStaleRevision)
+
+// PrepareShell classifies one command for the author binding c holds and
+// prepares its sandbox files. A caller holding none gets an unbound plan: it
+// may inspect but cannot mutate the workspace. Quoted spans are not treated as
 // mutations for callers without file scope, but the sandbox still enforces the
 // returned restrictions. Non-denied plans create scratch; only allowed workspace
 // mutations create a projection. Preparation does not execute the command;
-// a policy denial returns a ShellDeny plan with a nil error.
-// Identity and revision problems, and store or filesystem errors, propagate.
-func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error) {
+// a policy denial returns a ShellDeny plan with a nil error. A capturing plan
+// records, under callID, the binding and its staged state, which the import
+// requires unchanged. Identity problems, and store or filesystem errors,
+// propagate.
+func (f *FS) PrepareShell(c Caller, callID, command, stateDir string) (plan ShellPlan, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.readyLocked(); err != nil {
+	if err = f.readyLocked(); err != nil {
 		return ShellPlan{}, err
 	}
+	defer f.finishLocked(&err)
 	if callID == "" || strings.TrimSpace(command) == "" || stateDir == "" {
 		return ShellPlan{}, fmt.Errorf("%w: a shell command names its call, its command text and the state directory", ErrIdentity)
 	}
-	scope := f.scopeLocked(key)
-	if key != "" {
-		if _, ok := f.bindings[key]; !ok {
-			return ShellPlan{}, errNoBinding(key)
-		}
-		if current := f.revisionOf(key); current != expected {
-			return ShellPlan{}, fmt.Errorf("%w: current revision %d; repeat the command", ErrStaleRevision, current)
-		}
+	c, err = f.currentCallerLocked(c, false)
+	if err != nil {
+		return ShellPlan{}, err
 	}
+	key, err := f.heldAuthorLocked(c, "")
+	if errors.Is(err, errNoHeldBinding) {
+		key, err = "", nil
+	}
+	if err != nil {
+		return ShellPlan{}, err
+	}
+	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", key); err != nil {
+		return ShellPlan{}, err
+	}
+	if _, exists := f.shellCalls[shellCallKey(c.SessionID, callID)]; exists {
+		return ShellPlan{}, fmt.Errorf("%w: shell call already prepared; issue a new tool call", ErrDuplicateCall)
+	}
+	plan, err = f.prepareShellLocked(key, callID, command, stateDir)
+	if err == nil && plan.Decision != ShellDeny {
+		index := shellCallKey(c.SessionID, callID)
+		f.shellCalls[index] = shellCall{Key: key, Revision: f.revisionOf(key), DeltaHash: f.deltaHashLocked(key), Caller: c, Command: command, Plan: plan}
+	}
+	return plan, err
+}
+
+func shellCallKey(session, callID string) string { return session + "\x00" + callID }
+
+// prepareShellLocked classifies command for key (empty when unbound) and
+// prepares its sandbox files.
+func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (ShellPlan, error) {
+	scope := f.scopeLocked(key)
 	// A caller with no scope can only inspect, so quoted text (a pattern, an
 	// inline script) is data, not a write; a write hidden in quotes, such as
 	// `sh -c '… > f'`, runs as an inspection and fails on the sandbox instead.
@@ -207,15 +249,41 @@ func (f *FS) projectLocked(key AgentID, root string, scope []string, plan ShellP
 	return plan, nil
 }
 
-// ImportShell admits the command's result as one VFS transaction: the captured
-// projection becomes staged content through the same path the file tools use.
-// A failing command keeps its delta, retained and unverified (PR-VFS-CSL-5).
-func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) (result OperationResult, err error) {
+// CompleteShell consumes a host completion of the command prepared under
+// callID. Only the core's recorded plan decides whether it imports a captured
+// delta or just releases an inspection. A capture is admitted as one VFS
+// transaction into the binding recorded at preparation, which c must still
+// hold: the captured projection becomes staged content through the same path
+// the file tools use. Staged work that changed since preparation is refused,
+// never overwritten. A failing command keeps its delta, retained and
+// unverified (PR-VFS-CSL-5).
+func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationResult, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
 		return result, err
 	}
+	c, err = f.currentCallerLocked(c, false)
+	if err != nil {
+		return result, err
+	}
+	recorded, ok := f.shellCalls[shellCallKey(c.SessionID, callID)]
+	if !ok || callID == "" {
+		return result, fmt.Errorf("%w: no command was prepared under this call; run the command again", ErrIdentity)
+	}
+	if c != recorded.Caller {
+		return result, fmt.Errorf("%w: shell %s belongs to an earlier execution; issue the command again as a new tool call", ErrIdentity, callID)
+	}
+	if !recorded.Plan.Capture {
+		delete(f.shellCalls, shellCallKey(c.SessionID, callID))
+		result.Revision, result.DeltaHash = f.revisionOf(recorded.Key), f.deltaHashLocked(recorded.Key)
+		f.finishLocked(&err)
+		return result, err
+	}
+	if !c.holds(f.bindings[recorded.Key]) {
+		return result, errNoHeldBinding
+	}
+	key, expected := recorded.Key, recorded.Revision
 	root := shellRoot(stateDir, callID)
 	status, err := os.ReadFile(filepath.Join(root, "confirm"))
 	if err != nil {
@@ -229,7 +297,11 @@ func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) 
 		f.correlateLocked(start, key, key, callID)
 		f.finishLocked(&err)
 	}()
-	if _, err = f.admitLocked(Operation{Key: key, CallID: callID, ExpectedRevision: expected, Action: OpShell}, key); err != nil {
+	delete(f.shellCalls, shellCallKey(c.SessionID, callID))
+	if f.revisionOf(key) != expected || f.deltaHashLocked(key) != recorded.DeltaHash {
+		return result, errShellMoved
+	}
+	if _, err = f.admitLocked(Operation{Key: key, CallID: callID, Action: OpShell}, key, false); err != nil {
 		return result, err
 	}
 	before := f.deltaHashLocked(key)
@@ -645,4 +717,74 @@ func shellWords(command string) []string {
 
 func containsAny(words, wanted []string) bool {
 	return slices.ContainsFunc(words, func(word string) bool { return slices.Contains(wanted, word) })
+}
+
+// ContinueShell consumes the next native hook against the current caller,
+// binding, staged revision and maintenance barrier. A preparation response is
+// never authority for a later create or permission callback.
+func (f *FS) ContinueShell(c Caller, callID, phase string) (plan ShellPlan, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err = f.readyLocked(); err != nil {
+		return plan, err
+	}
+	c, err = f.currentCallerLocked(c, false)
+	if err != nil {
+		return plan, err
+	}
+	index := shellCallKey(c.SessionID, callID)
+	call, ok := f.shellCalls[index]
+	if !ok || c != call.Caller {
+		return plan, fmt.Errorf("%w: shell call %s no longer belongs to this execution; issue the command again as a new tool call", ErrIdentity, callID)
+	}
+	if call.Key != "" {
+		if !c.holds(f.bindings[call.Key]) {
+			return plan, errNoHeldBinding
+		}
+		if f.revisionOf(call.Key) != call.Revision || f.deltaHashLocked(call.Key) != call.DeltaHash {
+			return plan, errShellMoved
+		}
+	} else if key, e := f.heldAuthorLocked(c, ""); e == nil && key != "" {
+		return plan, errShellMoved
+	}
+	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", call.Key); err != nil {
+		return plan, err
+	}
+	switch phase {
+	case "start":
+		if call.Started {
+			return plan, fmt.Errorf("%w: shell already started; issue a new tool call", ErrDuplicateCall)
+		}
+		call.Started = true
+	case "evaluate":
+		if !call.Started || call.Evaluated {
+			return plan, fmt.Errorf("%w: shell was not armed or was already evaluated; issue a new tool call", ErrIdentity)
+		}
+		call.Evaluated = true
+	default:
+		return plan, fmt.Errorf("%w: unknown shell continuation", ErrIdentity)
+	}
+	f.shellCalls[index] = call
+	f.finishLocked(&err)
+	return call.Plan, err
+}
+
+// ReleaseShell forgets transport preparation without importing a running shell.
+func (f *FS) ReleaseShell(c Caller, callID string) (err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err = f.readyLocked(); err != nil {
+		return err
+	}
+	index := shellCallKey(c.SessionID, callID)
+	call, ok := f.shellCalls[index]
+	if !ok {
+		return nil
+	}
+	if call.Caller.HostSession != c.HostSession || call.Caller.Agent != c.Agent {
+		return ErrIdentity
+	}
+	delete(f.shellCalls, index)
+	f.finishLocked(&err)
+	return err
 }

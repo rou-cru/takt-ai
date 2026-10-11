@@ -37,7 +37,7 @@ func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
 	for _, command := range []string{"cat data.txt", "git diff", "ls"} {
 		t.Run(command, func(t *testing.T) {
 			prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
-				"call_id": "inspect", "command": command,
+				"call_id": "inspect-" + command, "command": command,
 			}))
 			if err != nil {
 				t.Fatal(err)
@@ -59,40 +59,35 @@ func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
 	}
 }
 
-func TestVFSShellSuppliedAuthorKeyStillRequiresIdentity(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	bound, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"data.txt"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
+// TestVFSShellPlansOnlyForTheHeldBinding: shell-prepare captures into the
+// author binding the calling host session holds; any other caller gets an
+// unbound plan, whatever key it names.
+func TestVFSShellPlansOnlyForTheHeldBinding(t *testing.T) {
+	fx := newVFSFixture(t)
+	bound := fx.delegate(rootA, "u1", "dev", "data.txt")
 	for _, tc := range []struct {
-		name, field, value string
+		name string
+		req  map[string]any
 	}{
-		{"unknown key", "author_key", "not-a-binding"},
-		{"whitespace key", "author_key", " "},
-		{"other session", "session_id", "s2"},
-		{"other unit", "work_unit_id", "u2"},
-		{"other agent", "agent_id", "analyst"},
-		{"other specialist", "specialist", "analyst"},
+		{"other root", vfsReqIn(rootB, "u1", "dev", nil)},
+		{"other unit", vfsReq("u2", "dev", nil)},
+		{"other agent", vfsReq("u1", "analyst", nil)},
+		{"other host session", vfsReq("u1", "dev", map[string]any{"caller_session": "elsewhere"})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := vfsReq("u1", "dev", map[string]any{
-				"author_key": bound.Key, "call_id": "inspect", "command": "cat data.txt",
-			})
-			req[tc.field] = tc.value
-			if _, err := mutate("shell-prepare", req); !errors.Is(err, vfs.ErrIdentity) {
-				t.Fatalf("shell-prepare error = %v, want identity rejection", err)
+			tc.req["author_key"], tc.req["call_id"], tc.req["command"] = bound, "inspect-"+tc.name, "cat data.txt"
+			prepared, err := fx.mutate("shell-prepare", tc.req)
+			if err != nil {
+				return
+			} // malformed caller identities are refused, never captured
+			if prepared.Shell == nil || prepared.Shell.Capture {
+				t.Fatalf("plan for a caller not holding the key = %+v; want an unbound plan", prepared.Shell)
 			}
 		})
 	}
-	// A valid key must continue to work after the rejected requests.
-	prepared, err := mutate("shell-prepare", vfsReq("u1", "dev", map[string]any{
-		"author_key": bound.Key, "call_id": "inspect-owner", "command": "cat data.txt",
-	}))
-	if err != nil || prepared.Shell == nil || prepared.Shell.Decision != vfs.ShellAllow || !prepared.Shell.Capture {
-		t.Fatalf("bound owner's inspection = %+v, error = %v", prepared, err)
+	prepared := fx.must("shell-prepare", vfsReq("u1", "dev", map[string]any{"call_id": "inspect-owner", "command": "cat data.txt"}))
+	if prepared.Shell == nil || prepared.Shell.Decision != vfs.ShellAllow || !prepared.Shell.Capture {
+		t.Fatalf("holder's inspection = %+v", prepared.Shell)
 	}
 }
 
@@ -114,111 +109,90 @@ func TestVFSShellUnboundStillValidatesRequest(t *testing.T) {
 	}
 }
 
-// TestVFSShellIPC drives the shell capture path the plugin uses: the coordinator
-// resolves the sandbox plan from the binding's scope, the command's projection
-// comes back as a staged delta, and the workspace stays untouched until the
-// ordinary verdict and consolidation.
+// TestVFSShellIPC drives the shell capture path the plugin uses: the core
+// resolves the sandbox plan from the held binding's scope, the command's
+// projection comes back as a staged delta, and the workspace stays untouched
+// until the ordinary verdict and consolidation.
 func TestVFSShellIPC(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	if err := os.WriteFile(filepath.Join(root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
+	fx := newVFSFixture(t)
+	if err := os.WriteFile(filepath.Join(fx.root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	bound, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"data.txt"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := mutate("shell-prepare", vfsReq("u1", "dev", map[string]any{
-		"author_key": bound.Key, "call_id": "shell-1", "expected_revision": 0,
-		"command": "sed 's/line1/changed/' data.txt > out && cat out > data.txt",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan := prepared.Shell
-	if plan == nil || plan.Decision != vfs.ShellAllow || !plan.Capture || plan.Cwd == "" {
-		t.Fatalf("shell plan = %+v; want an allowed captured mutation with a projection", plan)
-	}
-	// The model never supplies these: the coordinator resolved every path from
-	// the binding's own scope and from its private state directory.
+	bound := fx.delegate(rootA, "u1", "dev", "data.txt")
+	plan := prepareShell(t, fx, "shell-1", "sed 's/line1/changed/' data.txt > out && cat out > data.txt")
+	// The model never supplies these: the core resolved every path from the
+	// binding's own scope and from its private state directory.
 	if len(plan.Writable) != 1 || plan.Writable[0] != filepath.Join(plan.Cwd, "data.txt") {
 		t.Fatalf("writable = %v; want only the projected scope path", plan.Writable)
 	}
-	if !strings.HasPrefix(plan.Scratch, filepath.Dir(state)) || plan.Cwd == root {
+	if !strings.HasPrefix(plan.Scratch, filepath.Dir(fx.state)) || plan.Cwd == fx.root {
 		t.Fatalf("plan runs in the workspace itself: %+v", plan)
 	}
+	runSandboxed(t, plan, "changed\n")
+	imported := fx.must("shell-complete", vfsReq("u1", "dev", map[string]any{"call_id": "shell-1"}))
+	if imported.Revision == nil || *imported.Revision == 0 || imported.DeltaHash == "" {
+		t.Fatalf("import = %+v; want a staged revision and delta hash", imported)
+	}
+	if got := fx.disk("data.txt"); got != "line1\n" {
+		t.Fatalf("workspace = %q; want it untouched before consolidation", got)
+	}
+	// The staged shell delta consolidates through the ordinary gate, unchanged.
+	fx.judge(rootA, "review", "verify", bound)
+	fx.read(rootA, "review", "verify", "r1", "data.txt", "")
+	if err := fx.verify(rootA, "review", "verify", "gate", bound, true); err != nil {
+		t.Fatal(err)
+	}
+	fx.must("consolidate", orchReq(rootA, map[string]any{"author_key": bound, "checkpoint": "shell"}))
+	if got := fx.disk("data.txt"); got != "changed\n" {
+		t.Fatalf("workspace = %q after consolidation; want the shell delta materialized", got)
+	}
+}
 
-	// Stand in for the sandboxed command and its supervisor.
-	if err := os.WriteFile(filepath.Join(plan.Cwd, "data.txt"), []byte("changed\n"), 0o600); err != nil {
+// TestVFSShellImportRefusesAConcurrentWrite: a write staged while the command
+// ran is never overwritten by its import.
+func TestVFSShellImportRefusesAConcurrentWrite(t *testing.T) {
+	fx := newVFSFixture(t)
+	fx.delegate(rootA, "u1", "dev", "data.txt")
+	plan := prepareShell(t, fx, "shell-race", "printf shell > data.txt")
+	fx.write(rootA, "u1", "dev", "w1", "data.txt", "concurrent")
+	runSandboxed(t, plan, "shell")
+	_, err := fx.mutate("shell-complete", vfsReq("u1", "dev", map[string]any{"call_id": "shell-race"}))
+	refusedWith(t, "an import over staged work that moved", err, "run the command again")
+	if read := fx.read(rootA, "u1", "dev", "r1", "data.txt", ""); read.Content != "concurrent" {
+		t.Fatalf("staged data.txt = %q; want the concurrent write kept", read.Content)
+	}
+}
+
+// prepareShell prepares command for dev's delegation on u1 and requires a
+// captured plan.
+func prepareShell(t *testing.T, fx *vfsFixture, call, command string) *vfs.ShellPlan {
+	t.Helper()
+	plan := fx.must("shell-prepare", vfsReq("u1", "dev", map[string]any{"call_id": call, "command": command})).Shell
+	if plan == nil || plan.Decision != vfs.ShellAllow || !plan.Capture || plan.Cwd == "" {
+		t.Fatalf("shell plan = %+v; want an allowed captured mutation with a projection", plan)
+	}
+	return plan
+}
+
+// runSandboxed stands in for the sandboxed command and its supervisor: it
+// leaves content in the projected data.txt and confirms a clean exit.
+func runSandboxed(t *testing.T, plan *vfs.ShellPlan, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(plan.Cwd, "data.txt"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(plan.Confirm, []byte("0"), 0o600); err != nil {
 		t.Fatal(err)
-	}
-
-	imported, err := mutate("shell-import", vfsReq("u1", "dev", map[string]any{
-		"author_key": bound.Key, "call_id": "shell-1", "expected_revision": 0,
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *imported.Revision == 0 || imported.DeltaHash == "" {
-		t.Fatalf("import = %+v; want a staged revision and delta hash", imported)
-	}
-	if content, _ := os.ReadFile(filepath.Join(root, "data.txt")); string(content) != "line1\n" {
-		t.Fatalf("workspace = %q; want it untouched before consolidation", content)
-	}
-
-	// The staged shell delta consolidates through the ordinary gate, unchanged.
-	verifier, err := mutate("assign-verifier", vfsReq("u1", "verify", map[string]any{"author_key": bound.Key}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = mutate("bind", vfsReq("u1", "verify", map[string]any{"author_key": bound.Key})); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = mutate("verify", vfsReq("u1", "verify", map[string]any{
-		"verifier_key": verifier.Key, "author_key": bound.Key, "call_id": "gate",
-		"expected_revision": *imported.Revision, "delta_hash": imported.DeltaHash, "pass": true,
-	})); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = mutate("consolidate", vfsReq("u1", "dev", map[string]any{
-		"author_key": bound.Key, "checkpoint": "shell", "expected_revision": *imported.Revision,
-	})); err != nil {
-		t.Fatal(err)
-	}
-	if content, _ := os.ReadFile(filepath.Join(root, "data.txt")); string(content) != "changed\n" {
-		t.Fatalf("workspace = %q after consolidation; want the shell delta materialized", content)
 	}
 }
 
 // A command whose mutations cannot be captured is denied, and the denial carries
 // no sandbox layout to run with.
 func TestVFSShellUncapturableDenied(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	author, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"data.txt"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	verifier, err := mutate("assign-verifier", vfsReq("u1", "verify", map[string]any{"author_key": author.Key}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = mutate("bind", vfsReq("u1", "verify", map[string]any{"author_key": author.Key})); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := mutate("shell-prepare", vfsReq("u1", "verify", map[string]any{
-		"author_key": verifier.Key, "call_id": "shell-deny", "expected_revision": 0,
-		"command": "printf x > data.txt",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fx := newVFSFixture(t)
+	author := fx.delegate(rootA, "u1", "dev", "data.txt")
+	fx.judge(rootA, "review", "verify", author)
+	prepared := fx.must("shell-prepare", vfsReq("review", "verify", map[string]any{"call_id": "shell-deny", "command": "printf x > data.txt"}))
 	if prepared.Shell.Decision != vfs.ShellDeny || prepared.Shell.Cwd != "" || prepared.Shell.Writable != nil {
 		t.Fatalf("shell plan = %+v; want a denial with no sandbox layout", prepared.Shell)
 	}
@@ -237,7 +211,7 @@ func TestVFSShellUnboundCallerInspectAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
-		"call_id": "shell-unbound", "expected_revision": 0, "command": "cat data.txt",
+		"call_id": "shell-unbound", "command": "cat data.txt",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +228,7 @@ func TestVFSShellUnboundCallerMutationDenied(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
 	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
-		"call_id": "shell-unbound-mutate", "expected_revision": 0, "command": "printf x > data.txt",
+		"call_id": "shell-unbound-mutate", "command": "printf x > data.txt",
 	}))
 	if err != nil {
 		t.Fatal(err)

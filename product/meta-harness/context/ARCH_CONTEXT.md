@@ -1,6 +1,6 @@
 # Context Architecture: Principles and SSOT
 
-**Actual implementation progress: 67%** — 24 own requirements: 11 complete, 10 partial, 3 not integrated. Gaps: the tool-call ceiling, one-paragraph cap, explicit emptiness and always-present client context for a convened specialist, conflict resolution between instructions, skill load-failure reporting and context-reduction quality rest on prompt judgment; ephemeral noise is not pruned, no adoption-justification process exists for retrieval mechanisms, and no check validates that a context reduction preserved fluency or precision.
+**Actual implementation progress: 70%** — 23 own requirements: 11 complete, 10 partial, 2 not integrated. Gaps: the tool-call ceiling, one-paragraph cap, explicit emptiness and always-present client context for a convened specialist, conflict resolution between instructions, skill load-failure reporting and context-reduction quality rest on prompt judgment; ephemeral noise is not pruned, and no check validates that a context reduction preserved fluency or precision.
 
 This document is Takt's context architecture standard. A design, projection, or harness configuration is correct if it satisfies these requirements and incorrect if it violates them.
 
@@ -47,7 +47,6 @@ Specialized content is loaded dynamically when the task requires it, avoiding ma
 | RET-1 | All capabilities are discoverable via lightweight descriptors in the base context; their full specification is retrieved only when their use is activated. |
 | RET-2 | The context architecture allows modulating capability visibility based on the agent's role, task state, or environment policies. |
 | RET-4 | Skills are loaded on demand from their canonical path and retain their provenance; a load failure is explicitly reported and not ignored. |
-| RET-5 | Adopting complex retrieval mechanisms (such as RAG or vector indexing) requires explicit quantitative and qualitative justification of return versus maintenance cost. Technical inertia is not a justification. |
 
 ## 6. Single Source of Truth (SSOT)
 

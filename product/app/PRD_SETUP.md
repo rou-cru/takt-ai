@@ -1,6 +1,6 @@
 # PRD: Setup Experience and Stack Selection
 
-**Actual implementation progress: 95%** — 31 own requirements: 28 complete, 3 partial, 0 not integrated. Gaps: the menu has no Upgrade entry; only one capability is omittable and the manifest does not declare supporting managed assets.
+**Actual implementation progress: 91%** — 32 own requirements: 27 complete, 4 partial, 1 not integrated. Gaps: the menu has no Upgrade entry; only one capability is omittable and the manifest does not declare supporting managed assets; the base local inference assets of dreaming are not installed, and no capability declares or is gated by a hardware requirement.
 
 ## 1. Problem
 
@@ -46,13 +46,14 @@ Terms such as *capability*, *managed asset*, *platform*, *Takt default stack*, a
 
 | ID | Requirement |
 | --- | --- |
-| PR-SET-12 | The mandatory core is a strict subset of the Takt default stack: the default stack is the mandatory core plus every curated optional capability, and both modes select over the same catalog. Custom setup MUST retain that mandatory core, which includes the complete Takt crew (every specialist of the canonical definition, so that every role class of `PRD_CREW` is present), Engram memory, CodeGraph codebase navigation, and core workflow skills. Core workflow skills MUST depend only on capabilities included in the mandatory core. |
+| PR-SET-12 | The mandatory core is a strict subset of the Takt default stack: the default stack is the mandatory core plus every curated optional capability, and both modes select over the same catalog. Custom setup MUST retain that mandatory core, which includes the complete Takt crew (every specialist of the canonical definition, so that every role class of `PRD_CREW` is present), Engram memory, the base local inference assets of dreaming (`PR-DRM-20`), CodeGraph codebase navigation, and core workflow skills. Core workflow skills MUST depend only on capabilities included in the mandatory core. |
 | PR-SET-13 | Custom setup MUST allow the user to omit optional capabilities, including non-core skills and workflows. The crew is never omittable. Omitting optional capabilities MUST NOT leave the mandatory core dependent on absent tools or skills. |
 | PR-SET-14 | Optional capabilities MUST be presented by their user-facing purpose, allowing the user to quickly read what each one does and adjust selections without manually assembling technical dependencies. |
 | PR-SET-15 | For each selected capability, setup MUST compose the minimum supporting managed assets required for a functional result. A selection MUST NOT be considered a valid functional composition if it leaves a capability requiring an absent tool or another unresolved dependency. Required supporting assets MUST be reflected in the reviewable installation plan. |
 | PR-SET-16 | Each installable capability MUST have a defined responsibility and support reuse and composition. Each MUST be self-sufficient or adapt to the available capabilities while fulfilling its offered function; customization MUST NOT silently produce a broken version of that function. |
 | PR-SET-17 | Setup MUST resolve capability composition internally wherever possible, so dependency conflicts are exceptional rather than a routine task for the user. If a selection change would nevertheless break other selected optional capabilities, setup MUST reconcile the selection, removing capabilities that cannot remain functional, and briefly explain the affected capabilities and reason. It MUST NOT silently restore a dependency the user explicitly deselected. |
 | PR-SET-31 | The curated catalog MUST be declared in a versioned manifest that, for each capability, states its user-facing purpose, whether it belongs to the mandatory core or is optional, and its dependencies on other capabilities and on supporting managed assets. Setup MUST resolve composition against that manifest. This document defines the rules the manifest must satisfy; it does not enumerate its content. |
+| PR-SET-34 | A capability MAY declare a hardware requirement in the manifest. Such a capability is always optional: the default stack includes it only when the host meets the requirement, and custom setup MAY omit it. When the host does not meet it, setup does not install it and shows it as unavailable with its reason in one line. Its absence MUST NOT break any other capability (`PR-SET-16`). |
 | PR-SET-18 | Dependency reconciliation during selection MUST update the proposed configuration, not mutate the installed environment. The resulting selection and its consequences MUST remain visible for review before installation authorization. |
 
 ### 2.6 Returning to an Existing Installation

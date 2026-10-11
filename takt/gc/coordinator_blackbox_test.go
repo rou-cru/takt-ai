@@ -13,7 +13,7 @@ import (
 )
 
 func TestLoadCoordinatorMissingFileIsFresh(t *testing.T) {
-	c, err := gc.LoadCoordinator(t.TempDir())
+	c, err := gc.LoadCoordinator(coordinatorFS(t))
 	if err != nil {
 		t.Fatalf("LoadCoordinator() error = %v", err)
 	}
@@ -26,7 +26,7 @@ func TestLoadCoordinatorMissingFileIsFresh(t *testing.T) {
 }
 
 func TestSaveLoadCoordinatorRoundTrip(t *testing.T) {
-	state := t.TempDir()
+	state := coordinatorFS(t)
 	c, err := gc.LoadCoordinator(state)
 	if err != nil {
 		t.Fatalf("LoadCoordinator() error = %v", err)
@@ -42,14 +42,14 @@ func TestSaveLoadCoordinatorRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCoordinator() reload error = %v", err)
 	}
-	if reloaded.Units != 3 || reloaded.Mutations != 5 || !reloaded.Requested {
-		t.Errorf("reloaded coordinator = %+v, want Units=3 Mutations=5 Requested=true", reloaded)
+	if reloaded.Units != 0 || reloaded.Mutations != 0 || !reloaded.Requested {
+		t.Errorf("reloaded coordinator = %+v, want derived counters absent from persisted authority and Requested=true", reloaded)
 	}
 }
 
 func TestLoadCoordinatorRejectsCorruptState(t *testing.T) {
-	state := t.TempDir()
-	c := &gc.Coordinator{Version: 1, Cursor: -1, NextMandate: 99}
+	state := coordinatorFS(t)
+	c := &gc.Coordinator{Version: 2, Cursor: -1}
 	if err := gc.SaveCoordinator(state, c); err != nil {
 		t.Fatalf("SaveCoordinator() error = %v", err)
 	}
@@ -67,8 +67,8 @@ func TestCoordinatorObserveCountsEffectiveMutations(t *testing.T) {
 		{Seq: 3, Operation: vfs.OpPatch, BeforeHash: "b", AfterHash: "c", CycleID: "maintenance-cycle"}, // GC's own cycle work is excluded
 	}
 	c.Observe(entries)
-	if c.Cursor != 3 {
-		t.Errorf("Observe() Cursor = %d, want 3 (the highest seq observed)", c.Cursor)
+	if c.Cursor != -1 {
+		t.Errorf("Observe() Cursor = %d, want -1 (cadence reset watermark, not an observation cursor)", c.Cursor)
 	}
 	if c.Mutations != 2 {
 		t.Errorf("Observe() Mutations = %d, want 2 (create+patch effective changes, no-op and cycle-owned excluded)", c.Mutations)
@@ -113,8 +113,25 @@ func TestCoordinatorCloseWithoutCycleIsNoop(t *testing.T) {
 
 func TestCoordinatorAttachAndRequire(t *testing.T) {
 	c := &gc.Coordinator{Version: 1, Cursor: -1, Cycle: &gc.Cycle{Sessions: map[string]string{}}}
+	h, err := history.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := h.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	attach := func(role, child string) error {
+		err := h.AttachMaintenance("root", "cycle", role, child, "")
+		c.Cycle.Sessions = map[string]string{}
+		c.Cycle.Plan.SessionID = "root"
+		c.Cycle.Plan.CycleID = "cycle"
+		c.ObserveExecutions(h)
+		return err
+	}
 
-	if err := c.Attach("collector", "session-a"); err != nil {
+	if err := attach("collector", "session-a"); err != nil {
 		t.Fatalf("Attach(collector) error = %v", err)
 	}
 	if err := c.Require("session-a", "collector"); err != nil {
@@ -124,20 +141,28 @@ func TestCoordinatorAttachAndRequire(t *testing.T) {
 		t.Error("Require(session-b, collector) error = nil, want an error for a different session")
 	}
 
-	if err := c.Attach("invalid-role", "session-c"); err == nil {
+	if err := attach("invalid-role", "session-c"); err == nil {
 		t.Error("Attach(invalid-role) error = nil, want an error")
 	}
-	if err := c.Attach("verifier", "session-a"); err == nil {
+	if err := attach("verifier", "session-a"); err == nil {
 		t.Error("Attach(verifier, session-a) error = nil, want an error: session-a is already the collector")
 	}
-	if err := c.Attach("collector", "session-x"); err == nil {
+	if err := attach("collector", "session-x"); err == nil {
 		t.Error("Attach(collector, session-x) error = nil, want an error: collector is already attached to session-a")
 	}
 }
 
 func TestCoordinatorAttachRequiresActiveCycle(t *testing.T) {
-	c := &gc.Coordinator{Version: 1, Cursor: -1}
-	if err := c.Attach("collector", "session-a"); err == nil {
+	h, err := history.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := h.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if err := h.AttachMaintenance("root", "", "collector", "session-a", ""); err == nil {
 		t.Error("Attach() with no active cycle error = nil, want an error")
 	}
 }
@@ -201,8 +226,8 @@ func TestCoordinatorBindStartsPaceOverForAnotherSession(t *testing.T) {
 		t.Fatalf("Bind(same session) = %+v, want counters kept", c)
 	}
 	c.Bind("new")
-	if c.Units != 0 || c.Mutations != 0 || c.Session != "new" || c.Cursor != 100 {
-		t.Fatalf("Bind(new session) = %+v, want counters reset and cursor kept", c)
+	if c.Units != 0 || c.Mutations != 0 || c.Session != "new" || c.Cursor != -1 {
+		t.Fatalf("Bind(new session) = %+v, want counters and cursor reset", c)
 	}
 }
 
@@ -243,7 +268,7 @@ func TestCoordinatorObserveCountsOnlyTheBoundSession(t *testing.T) {
 		{Seq: 0, SessionID: "old", Operation: vfs.OpCreate, AfterHash: "a"},
 		{Seq: 1, SessionID: "root", Operation: vfs.OpCreate, AfterHash: "b"},
 	})
-	if c.Cursor != 1 || c.Mutations != 1 {
+	if c.Cursor != -1 || c.Mutations != 1 {
 		t.Errorf("Observe() = Cursor:%d Mutations:%d, want 1 and only the bound session's mutation", c.Cursor, c.Mutations)
 	}
 }
@@ -259,5 +284,37 @@ func TestDeclareWithoutSessionDeltaSerializesAnEmptyArray(t *testing.T) {
 	}
 	if !strings.Contains(string(b), `"delta":[]`) {
 		t.Errorf("plan = %s, want delta as an empty array", b)
+	}
+}
+
+func coordinatorFS(t *testing.T) *vfs.FS {
+	t.Helper()
+	fs, err := vfs.Open(t.TempDir(), filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fs.Close() })
+	return fs
+}
+
+// TestCoordinatorCycleKeysAndScopeAreNeverPersisted: a cycle's keys and scope
+// are read back from the core bindings, so a value the core never granted
+// cannot survive a save.
+func TestCoordinatorCycleKeysAndScopeAreNeverPersisted(t *testing.T) {
+	fs, err := vfs.Open(t.TempDir(), filepath.Join(t.TempDir(), "vfs-state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fs.Close() })
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Cycle: &gc.Cycle{Plan: gc.Plan{Request: gc.Request{CycleID: "c1"}}, Phase: "investigate", Scope: []string{"never-granted.go"}, AuthorKey: "stale", VerifierKey: "stale"}}
+	if err := gc.SaveCoordinator(fs, c); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := gc.LoadCoordinator(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Cycle.AuthorKey != "" || loaded.Cycle.VerifierKey != "" || len(loaded.Cycle.Scope) != 0 || loaded.Cycle.Scope == nil {
+		t.Fatalf("loaded cycle = %q/%q scope %v; want an empty scope and no keys the core did not grant", loaded.Cycle.AuthorKey, loaded.Cycle.VerifierKey, loaded.Cycle.Scope)
 	}
 }

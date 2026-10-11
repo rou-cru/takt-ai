@@ -74,6 +74,9 @@ type request struct {
 	Artifact   string           `json:"artifact,omitempty"`
 	ResultIDs  []int64          `json:"result_ids,omitempty"`
 	Origin     string           `json:"origin,omitempty"`
+	Caller     string           `json:"caller,omitempty"`
+	Owner      string           `json:"owner,omitempty"`
+	None       bool             `json:"none,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -304,7 +307,7 @@ func (s *session) count(kind history.Kind) int {
 
 func (s *session) coordinator() *gc.Coordinator {
 	s.t.Helper()
-	c, err := gc.LoadCoordinator(s.state)
+	c, err := loadCoordinator(s.t, s.root, s.state)
 	if err != nil {
 		s.t.Fatalf("load coordinator: %v", err)
 	}
@@ -412,6 +415,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"launches collapse and an uncertain one is reconciled before repeating", launchAndReconciliation},
 		{"a delegation a later attempt replaced is never marked uncertain or reconciled", staleDispatchIgnored},
 		{"cancellation keeps its slot while the controls stay available", cancellationRetainsCapacity},
+		{"a delegation that never returns is abandoned and its unit delegated again", abandonUnreturnedDelegation},
 		{"delegation without plan coverage is bounded", unplannedBound},
 		{"contests need a recorded failure and are bounded", contestAllowance},
 		{"consecutive failed recoveries close autonomous recovery", recoveryFailureStreak},
@@ -423,6 +427,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"a restart or redeclaration grants no fresh allowance", consumptionSurvivesRestart},
 		{"a handoff needs the results the holder recorded", handoffNeedsRecordedResults},
 		{"the user ends a holder's turn", userAbortsSwitch},
+		{"a deleted holder session is aborted", deletedSessionAbortsHolder},
 		{"an optional filesystem copy never gates a nonstandard handoff", handoffOptionalCopy},
 		{"validate_results against a real engram", validateResultsAgainstRealEngram},
 		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
@@ -715,6 +720,30 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 	if after.InFlight() != p.Concurrency.Specialists-1 {
 		t.Fatalf("effective termination did not release: in flight %d", after.InFlight())
 	}
+}
+
+func abandonUnreturnedDelegation(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", None: true})
+	prepare := func(dispatch string) request {
+		return request{Action: "prepare", Session: rootSession, Event: "brief", Dispatch: dispatch, Caller: rootSession, Agent: "pm", Owner: "instance"}
+	}
+	s.must(prepare("lost-call"))
+	s.refused(prepare("retry-call"))
+	s.must(request{Action: "abandon", Session: rootSession, Dispatch: "lost-call"})
+	p := s.projection()
+	if u := s.unit("brief"); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("abandoned unit settled as %+v", u)
+	}
+	if !p.Executions["lost-call"].Settled || p.InFlight() != 0 {
+		t.Fatalf("abandon left the delegation holding its slot: %+v", p.Executions["lost-call"])
+	}
+	s.must(request{Action: "abandon", Session: rootSession, Dispatch: "lost-call"})
+	s.must(prepare("retry-call"))
+	if u := s.unit("brief"); u.State != history.StateInFlight || u.Dispatch != "retry-call" {
+		t.Fatalf("unit was not delegated again: %+v", u)
+	}
+	s.refused(request{Action: "abandon", Session: rootSession, Dispatch: "unknown"})
 }
 
 func unplannedBound(t *testing.T, bin string) {
@@ -1077,11 +1106,7 @@ func consumptionSurvivesRestart(t *testing.T, bin string) {
 	if r := s.recovery("goal"); r.Used != budget/2 {
 		t.Fatalf("consumption before the restart: %+v", r)
 	}
-	// The runtime restarts: transient coordinator state is gone, the recorded
-	// history is not.
-	if err := os.Remove(filepath.Join(s.state, "gc-coordinator.json")); err != nil {
-		t.Fatal(err)
-	}
+	// Each request opens a fresh native process; restart does not remove core or history state.
 	s.must(tick())
 	// Redeclaring the same objective mid-recovery yields the recorded
 	// disposition; it is not a fresh budget.
@@ -1165,6 +1190,12 @@ func userAbortsSwitch(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	s.seedMemory(rootSession, map[int64]string{41: "pm", 42: "takt"})
 	s.must(request{Action: "switch", Session: rootSession, Child: "child-2", Agent: "pm", Artifact: "PRD.md"})
+	var holder map[string]any
+	s.must(request{Action: "interlocutor", Session: rootSession}).decode(t, &holder)
+	if holder["holder"] != "child-2" {
+		t.Fatalf("interlocutor read does not return the holder: %+v", holder)
+	}
+	s.refused(request{Action: "abort_switch", Session: rootSession, Child: "other", Evidence: "x", Origin: "user"})
 	var resp map[string]any
 	s.must(request{Action: "abort_switch", Session: rootSession, Child: "child-2", Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
 	if resp["result"] != "Aborted" {
@@ -1181,6 +1212,47 @@ func userAbortsSwitch(t *testing.T, bin string) {
 	}
 	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" {
 		t.Fatalf("the abort left the holder in place: %q", holder)
+	}
+	if resp["child"] != "child-2" {
+		t.Fatalf("abort_switch does not name the aborted child: %+v", resp)
+	}
+	s.refused(request{Action: "abort_switch", Session: rootSession, Child: "child-2", Evidence: "x", Origin: "user"})
+	// An empty child aborts whoever holds the root, decided in the same call.
+	s.must(request{Action: "switch", Session: rootSession, Child: "child-3", Agent: "pm", Artifact: "PRD.md"})
+	s.must(request{Action: "abort_switch", Session: rootSession, Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
+	if resp["child"] != "child-3" || s.projection().Budgets(rootSession).InterlocutorHolder != "" {
+		t.Fatalf("abort_switch with no child did not abort the holder: %+v", resp)
+	}
+	s.refused(request{Action: "abort_switch", Session: rootSession, Evidence: "x", Origin: "user"})
+}
+
+// deletedSessionAbortsHolder covers session_deleted: only the session that
+// holds a root is aborted, and any other deletion writes nothing.
+func deletedSessionAbortsHolder(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const otherRoot = "root-2"
+	s.must(request{Action: "switch", Session: rootSession, Child: "child-a", Agent: "pm", Artifact: "PRD.md"})
+	s.must(request{Action: "switch", Session: otherRoot, Child: "child-b", Agent: "pm", Artifact: "PRD.md"})
+	before := len(s.entries())
+	var resp map[string]any
+	s.must(request{Action: "session_deleted", Child: "stranger"}).decode(t, &resp)
+	if resp["aborted"] != false || len(s.entries()) != before {
+		t.Fatalf("a non-holder deletion must be a no-op: %+v", resp)
+	}
+	s.must(request{Action: "session_deleted", Child: "child-b"}).decode(t, &resp)
+	if resp["aborted"] != true || resp["root"] != otherRoot || resp["child"] != "child-b" {
+		t.Fatalf("session_deleted reply: %+v", resp)
+	}
+	p := s.projection()
+	if p.Budgets(otherRoot).InterlocutorHolder != "" || p.Budgets(rootSession).InterlocutorHolder != "child-a" {
+		t.Fatalf("only the matching root's holder may be aborted: %+v", p.Sessions)
+	}
+	if s.count(history.KindInterlocutorAborted) != 1 {
+		t.Fatal("the abort was not recorded exactly once")
+	}
+	s.must(request{Action: "session_deleted", Child: "child-b"}).decode(t, &resp)
+	if resp["aborted"] != false {
+		t.Fatalf("a repeated deletion must be a no-op: %+v", resp)
 	}
 }
 
@@ -1334,7 +1406,7 @@ func admissionYieldsCycle(t *testing.T, bin string) {
 	}
 	c := s.coordinator()
 	c.Cycle = &gc.Cycle{Plan: gc.Plan{Request: gc.Request{CycleID: "cycle-1", SessionID: rootSession, Mandate: gc.MandateDeadCode}}, Phase: "collect"}
-	if err := gc.SaveCoordinator(s.state, c); err != nil {
+	if err := saveCoordinator(s.t, s.root, s.state, c); err != nil {
 		t.Fatal(err)
 	}
 	// A denied delegation leaves the cycle running.
@@ -1388,4 +1460,31 @@ func staleDispatchIgnored(t *testing.T, bin string) {
 	if u := s.unit("unit"); u.Flight != history.FlightUncertain {
 		t.Fatalf("the live delegation's uncertainty was not recorded: %+v", u)
 	}
+}
+
+func loadCoordinator(t *testing.T, root, state string) (*gc.Coordinator, error) {
+	t.Helper()
+	fs, err := vfs.Open(root, state)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := fs.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	return gc.LoadCoordinator(fs)
+}
+func saveCoordinator(t *testing.T, root, state string, c *gc.Coordinator) error {
+	t.Helper()
+	fs, err := vfs.Open(root, state)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := fs.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	return gc.SaveCoordinator(fs, c)
 }

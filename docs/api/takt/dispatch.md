@@ -21,6 +21,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit\) error](<#Commit>)
 - [func Contest\(h \*history.History, p AdmissionPolicy, journalRef, event, session, attempt string\) error](<#Contest>)
 - [func CurrentAttempt\(p history.Projection, session, event string\) string](<#CurrentAttempt>)
+- [func CurrentHolder\(h \*history.History, root string\) string](<#CurrentHolder>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string\) error](<#Declare>)
 - [func DeclareRecovery\(h \*history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration\) error](<#DeclareRecovery>)
 - [func Except\(h \*history.History, journalRef, event, session, bound, objective string, allowance int\) error](<#Except>)
@@ -78,7 +79,7 @@ const CauseWithdrawn = "control/unit-withdrawn"
 func Abort(h *history.History, journalRef, root, childSession, reason, origin string) error
 ```
 
-Abort ends the temporary holder's turn for childSession without negotiation. origin must be exactly "user" or "harness" \(IR\-24: never the convening agent nor the temporary holder itself\).
+Abort ends the temporary holder's turn for childSession without negotiation. origin must be exactly "user" or "harness" \(IR\-24: never the convening agent nor the temporary holder itself\). An empty childSession aborts whoever currently holds root, resolved here under the caller's lock.
 
 <a name="Account"></a>
 ## func Account
@@ -160,6 +161,15 @@ func CurrentAttempt(p history.Projection, session, event string) string
 ```
 
 CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's unit's latest admission opened.
+
+<a name="CurrentHolder"></a>
+## func CurrentHolder
+
+```go
+func CurrentHolder(h *history.History, root string) string
+```
+
+CurrentHolder returns the session holding root's interlocutor role, read from its owner; empty when no switch is active.
 
 <a name="Declare"></a>
 ## func Declare

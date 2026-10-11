@@ -12,6 +12,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 
 - [Constants](<#constants>)
 - [func AllowanceKey\(bound, objective string\) string](<#AllowanceKey>)
+- [func LaneUnit\(cycle, role string\) \(unit, agent string\)](<#LaneUnit>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
 - [type Activity](<#Activity>)
@@ -22,13 +23,18 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(b Budgets\) Scope\(unit string\) \(string, Recovery\)](<#Budgets.Scope>)
 - [type Edge](<#Edge>)
 - [type Entry](<#Entry>)
+  - [func ReadEntries\(stateDir string\) \(\_ \[\]Entry, err error\)](<#ReadEntries>)
+- [type Execution](<#Execution>)
 - [type Flight](<#Flight>)
   - [func \(f Flight\) MarshalJSON\(\) \(\[\]byte, error\)](<#Flight.MarshalJSON>)
 - [type History](<#History>)
   - [func Open\(stateDir string\) \(\*History, error\)](<#Open>)
   - [func \(h \*History\) Append\(e Entry\) error](<#History.Append>)
+  - [func \(h \*History\) AttachChild\(dispatch, child, agent string\) \(Execution, error\)](<#History.AttachChild>)
+  - [func \(h \*History\) AttachMaintenance\(root, cycle, role, child, owner string\) error](<#History.AttachMaintenance>)
   - [func \(h \*History\) Close\(\) error](<#History.Close>)
   - [func \(h \*History\) Entries\(\) \[\]Entry](<#History.Entries>)
+  - [func \(h \*History\) ExecutionFact\(d Execution, kind Kind, child, phase string, ids \[\]int64\) error](<#History.ExecutionFact>)
   - [func \(h \*History\) Project\(\) Projection](<#History.Project>)
 - [type Kind](<#Kind>)
 - [type Node](<#Node>)
@@ -36,9 +42,13 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [type Outcome](<#Outcome>)
 - [type Projection](<#Projection>)
   - [func Project\(entries \[\]Entry\) Projection](<#Project>)
-  - [func ReadProjection\(stateDir string\) \(\_ Projection, err error\)](<#ReadProjection>)
+  - [func ReadProjection\(stateDir string\) \(Projection, error\)](<#ReadProjection>)
   - [func \(p Projection\) Budgets\(session string\) Budgets](<#Projection.Budgets>)
+  - [func \(p Projection\) ExecutionForChild\(child, agent string\) \(Execution, bool\)](<#Projection.ExecutionForChild>)
+  - [func \(p Projection\) HeldRoot\(session string\) \(root string, ok bool\)](<#Projection.HeldRoot>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
+  - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
+  - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
 - [type Recovery](<#Recovery>)
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
@@ -135,6 +145,12 @@ const (
 )
 ```
 
+<a name="LeaseTTL"></a>LeaseTTL is how long a harness instance's last lease renewal keeps its executions owned: three renewal intervals of the plugin \(30 s each\), so one missed renewal never hands live work to another instance.
+
+```go
+const LeaseTTL = 90 * time.Second
+```
+
 <a name="SnapshotSchemaVersion"></a>SnapshotSchemaVersion is the wire shape version every snapshot reports, so a future breaking change to the contract is visible to a caller instead of silently changing shape under it.
 
 ```go
@@ -149,6 +165,15 @@ func AllowanceKey(bound, objective string) string
 ```
 
 AllowanceKey names the scope an exception's allowance applies to: a bound, narrowed by objective where the exception is objective\-scoped, so an exception never authorizes unrelated work \(PR\-HAR\-22\).
+
+<a name="LaneUnit"></a>
+## func LaneUnit
+
+```go
+func LaneUnit(cycle, role string) (unit, agent string)
+```
+
+LaneUnit is the work unit and catalog agent of a maintenance cycle's lane for role: the collector runs as the cycle itself, the verifier as its own unit.
 
 <a name="StateDir"></a>
 ## func StateDir
@@ -372,6 +397,57 @@ type Entry struct {
     // declaration stays legible without needing the last valid plan changed
     // to explain it (PR-DAG-MUT-6).
     Reason string `json:"reason,omitempty"`
+    // Execution facts are internal harness observations and declarations.
+    Caller     string  `json:"caller,omitempty"`
+    Child      string  `json:"child,omitempty"`
+    Background bool    `json:"background,omitempty"`
+    CreatedAt  int64   `json:"created_at,omitempty"`
+    ResultIDs  []int64 `json:"result_ids,omitempty"`
+    None       bool    `json:"none,omitempty"`
+    CycleID    string  `json:"cycle_id,omitempty"`
+    Role       string  `json:"role,omitempty"`
+    Phase      string  `json:"phase,omitempty"`
+    // Owner is the harness instance an execution or lease belongs to.
+    Owner string `json:"owner,omitempty"`
+}
+```
+
+<a name="ReadEntries"></a>
+### func ReadEntries
+
+```go
+func ReadEntries(stateDir string) (_ []Entry, err error)
+```
+
+ReadEntries reads the recorded order read\-only, without creating a store or schema, so a reader outside the workspace lock never writes. An absent history has no entries.
+
+<a name="Execution"></a>
+## type Execution
+
+Execution is the current linkage of one exact host dispatch. A unit retry creates a new record; no callback may move its predecessor to that attempt.
+
+```go
+type Execution struct {
+    Dispatch   string  `json:"dispatch"`
+    Root       string  `json:"root"`
+    Unit       string  `json:"unit"`
+    Attempt    string  `json:"attempt"`
+    Agent      string  `json:"agent"`
+    Caller     string  `json:"caller"`
+    Child      string  `json:"child,omitempty"`
+    Background bool    `json:"background,omitempty"`
+    AdmittedAt int64   `json:"admitted_at"`
+    Inputs     []int64 `json:"inputs"`
+    Delivery   []int64 `json:"delivery,omitempty"`
+    Cycle      string  `json:"cycle,omitempty"`
+    Role       string  `json:"role,omitempty"`
+    Prompted   string  `json:"prompted,omitempty"`
+    Ready      bool    `json:"ready,omitempty"`
+    Terminated bool    `json:"terminated,omitempty"`
+    Settled    bool    `json:"settled,omitempty"`
+    // Owner is the harness instance that prepared or attached this execution;
+    // empty for one recorded before owners were.
+    Owner string `json:"owner,omitempty"`
 }
 ```
 
@@ -439,6 +515,24 @@ func (h *History) Append(e Entry) error
 
 Append assigns the next position and durably records the entry. A rejected entry is not recorded: an invalid state never becomes representable here.
 
+<a name="History.AttachChild"></a>
+### func \(\*History\) AttachChild
+
+```go
+func (h *History) AttachChild(dispatch, child, agent string) (Execution, error)
+```
+
+
+
+<a name="History.AttachMaintenance"></a>
+### func \(\*History\) AttachMaintenance
+
+```go
+func (h *History) AttachMaintenance(root, cycle, role, child, owner string) error
+```
+
+AttachMaintenance records a native lane under the cycle the core authorized.
+
 <a name="History.Close"></a>
 ### func \(\*History\) Close
 
@@ -457,6 +551,15 @@ func (h *History) Entries() []Entry
 
 Entries returns the recorded prefix in its total order.
 
+<a name="History.ExecutionFact"></a>
+### func \(\*History\) ExecutionFact
+
+```go
+func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids []int64) error
+```
+
+
+
 <a name="History.Project"></a>
 ### func \(\*History\) Project
 
@@ -473,6 +576,24 @@ Kind is the recorded act. Kinds carry no authority: they describe lifecycle fact
 
 ```go
 type Kind string
+```
+
+<a name="KindInputs"></a>
+
+```go
+const (
+    KindInputs         Kind = "inputs-declared"
+    KindExecution      Kind = "execution-prepared"
+    KindChild          Kind = "execution-child"
+    KindDelivery       Kind = "execution-delivery"
+    KindLaneStopped    Kind = "maintenance-lane-stopped"
+    KindLane           Kind = "maintenance-lane"
+    KindPrompt         Kind = "maintenance-prompt"
+    KindPrepared       Kind = "execution-ready"
+    KindExecutionEnded Kind = "execution-ended"
+    // KindLease renews a harness instance's claim to the executions it owns.
+    KindLease Kind = "harness-lease"
+)
 ```
 
 <a name="KindPlanned"></a>Kinds are the closed set of recorded acts.
@@ -634,6 +755,10 @@ Projection is the derived execution DAG state. It is never edited in place: it i
 
 ```go
 type Projection struct {
+    Inputs     map[string][]int64   `json:"inputs"`
+    Executions map[string]Execution `json:"executions"`
+    // Leases maps each harness instance to its last renewal, in Unix ms.
+    Leases map[string]int64 `json:"leases"`
     // Units is keyed by UnitKey: a unit name belongs to the root session that
     // declared or admitted it, and another root may reuse it.
     Units map[string]Unit `json:"units"`
@@ -659,7 +784,7 @@ Project derives the projection from a recorded prefix. It reads no external stat
 ### func ReadProjection
 
 ```go
-func ReadProjection(stateDir string) (_ Projection, err error)
+func ReadProjection(stateDir string) (Projection, error)
 ```
 
 ReadProjection reads the existing history without creating a store or schema. An absent history is the empty projection; malformed existing history fails.
@@ -673,6 +798,24 @@ func (p Projection) Budgets(session string) Budgets
 
 Budgets returns a session's consumption; a session with nothing recorded has consumed nothing.
 
+<a name="Projection.ExecutionForChild"></a>
+### func \(Projection\) ExecutionForChild
+
+```go
+func (p Projection) ExecutionForChild(child, agent string) (Execution, bool)
+```
+
+ExecutionForChild never uses a host title as authority. Titles only propose the initial association, recorded by AttachChild under the workspace lock.
+
+<a name="Projection.HeldRoot"></a>
+### func \(Projection\) HeldRoot
+
+```go
+func (p Projection) HeldRoot(session string) (root string, ok bool)
+```
+
+HeldRoot returns the root whose interlocutor holder is session; ok is false when session holds no root.
+
 <a name="Projection.InFlight"></a>
 ### func \(Projection\) InFlight
 
@@ -681,6 +824,24 @@ func (p Projection) InFlight() int
 ```
 
 InFlight counts the units holding a concurrency slot: admitted pending launch, running, suspended, cancellation\-pending and uncertain alike \(PR\-HAR\-16, PR\-HAR\-18\).
+
+<a name="Projection.NextAttempt"></a>
+### func \(Projection\) NextAttempt
+
+```go
+func (p Projection) NextAttempt(root, unit string) string
+```
+
+NextAttempt is issued from execution history for ordinary and maintenance work alike. A denied ordinary admission does not spend an attempt.
+
+<a name="Projection.Orphaned"></a>
+### func \(Projection\) Orphaned
+
+```go
+func (p Projection) Orphaned(d Execution, now time.Time) bool
+```
+
+Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it. An execution recorded without an owner has none to wait for.
 
 <a name="Projection.Unit"></a>
 ### func \(Projection\) Unit

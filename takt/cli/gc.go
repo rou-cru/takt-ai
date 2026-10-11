@@ -182,7 +182,7 @@ func runGCRefute(opts gcOptions, plan gc.Plan, report gc.Report, refs []gc.Refut
 }
 
 func runGCAcceptanceCommand(fs *vfs.FS, opts gcOptions, stdout io.Writer, entries []vfs.JournalEntry) error {
-	coordinated, err := gc.LoadCoordinator(opts.state)
+	coordinated, err := gc.LoadCoordinator(fs)
 	if err != nil {
 		return err
 	}

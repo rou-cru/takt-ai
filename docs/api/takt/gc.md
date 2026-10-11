@@ -15,9 +15,8 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
 - [func AuthorizedFinding\(f Finding, rs \[\]Investigation\) bool](<#AuthorizedFinding>)
 - [func AuthorizedScope\(plan Plan, findings \[\]Finding, investigations \[\]Investigation\) \(\[\]string, error\)](<#AuthorizedScope>)
 - [func ChecksPass\(checks \[\]CheckEvidence\) bool](<#ChecksPass>)
-- [func GuardVFS\(state, command string, identity vfs.Identity, action, path string, authorKey vfs.AgentID, fs \*vfs.FS\) error](<#GuardVFS>)
 - [func IsTest\(p string\) bool](<#IsTest>)
-- [func SaveCoordinator\(state string, c \*Coordinator\) error](<#SaveCoordinator>)
+- [func SaveCoordinator\(fs \*vfs.FS, c \*Coordinator\) error](<#SaveCoordinator>)
 - [func SaveRefutations\(state, cycleID string, refs \[\]Refutation\) error](<#SaveRefutations>)
 - [type AcceptanceResult](<#AcceptanceResult>)
   - [func ParseAcceptanceResult\(value string\) \(AcceptanceResult, error\)](<#ParseAcceptanceResult>)
@@ -39,14 +38,14 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func NewCodegraph\(run Runner\) \*Codegraph](<#NewCodegraph>)
   - [func \(c \*Codegraph\) Dependents\(ctx context.Context, path string\) \(\[\]string, error\)](<#Codegraph.Dependents>)
 - [type Coordinator](<#Coordinator>)
-  - [func LoadCoordinator\(state string\) \(\*Coordinator, error\)](<#LoadCoordinator>)
+  - [func LoadCoordinator\(fs \*vfs.FS\) \(\*Coordinator, error\)](<#LoadCoordinator>)
   - [func \(c \*Coordinator\) Admit\(h \*history.History, journalRef, event, session, agent, delegation string\) error](<#Coordinator.Admit>)
   - [func \(c \*Coordinator\) Advance\(ctx context.Context, fs \*vfs.FS, h \*history.History, entries \[\]vfs.JournalEntry, session string, reach Reach\) \(Decision, BarrierVerdict, error\)](<#Coordinator.Advance>)
-  - [func \(c \*Coordinator\) Attach\(role, session string\) error](<#Coordinator.Attach>)
   - [func \(c \*Coordinator\) Bind\(session string\)](<#Coordinator.Bind>)
   - [func \(c \*Coordinator\) Close\(reason string\)](<#Coordinator.Close>)
   - [func \(c \*Coordinator\) Held\(\) bool](<#Coordinator.Held>)
   - [func \(c \*Coordinator\) Observe\(entries \[\]vfs.JournalEntry\)](<#Coordinator.Observe>)
+  - [func \(c \*Coordinator\) ObserveExecutions\(h \*history.History\)](<#Coordinator.ObserveExecutions>)
   - [func \(c \*Coordinator\) Require\(session, role string\) error](<#Coordinator.Require>)
 - [type Coverage](<#Coverage>)
 - [type Cycle](<#Cycle>)
@@ -247,15 +246,6 @@ func ChecksPass(checks []CheckEvidence) bool
 
 ChecksPass reports whether every check ran to completion and exited zero. Empty evidence fails closed.
 
-<a name="GuardVFS"></a>
-## func GuardVFS
-
-```go
-func GuardVFS(state, command string, identity vfs.Identity, action, path string, authorKey vfs.AgentID, fs *vfs.FS) error
-```
-
-GuardVFS applies persisted harness authority at every transport boundary.
-
 <a name="IsTest"></a>
 ## func IsTest
 
@@ -269,10 +259,10 @@ IsTest reports whether p looks like test code, so liveness analysis can exclude 
 ## func SaveCoordinator
 
 ```go
-func SaveCoordinator(state string, c *Coordinator) error
+func SaveCoordinator(fs *vfs.FS, c *Coordinator) error
 ```
 
-SaveCoordinator atomically persists the coordinator under state.
+SaveCoordinator persists only the facts the coordinator owns; every projection LoadCoordinator rebuilds is blanked.
 
 <a name="SaveRefutations"></a>
 ## func SaveRefutations
@@ -539,6 +529,10 @@ Coordinator is private workspace state, all access serialized by vfs.Open. In\-f
 
 ```go
 type Coordinator struct {
+    // Since is the history position after which admissions count toward the
+    // next cycle.
+    Since int `json:"dispatch_after"`
+
     Version     int  `json:"version"`
     Units       int  `json:"units"`
     Mutations   int  `json:"mutations"`
@@ -551,6 +545,7 @@ type Coordinator struct {
     Session string  `json:"session,omitempty"`
     Cycle   *Cycle  `json:"cycle,omitempty"`
     History []Cycle `json:"history,omitempty"`
+    // contains filtered or unexported fields
 }
 ```
 
@@ -558,10 +553,10 @@ type Coordinator struct {
 ### func LoadCoordinator
 
 ```go
-func LoadCoordinator(state string) (*Coordinator, error)
+func LoadCoordinator(fs *vfs.FS) (*Coordinator, error)
 ```
 
-LoadCoordinator reads the coordinator state, accepting a missing file as a fresh coordinator. A corrupt or future\-version file is an error, never silently reset.
+LoadCoordinator reads the core state under its workspace lock. Pace counts, lane sessions, the cycle's keys and its authorized scope are projections of history and the core bindings, never persisted mirrors.
 
 <a name="Coordinator.Admit"></a>
 ### func \(\*Coordinator\) Admit
@@ -580,15 +575,6 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 ```
 
 Advance starts at most one cycle per trigger; the whole causal closure remains context.
-
-<a name="Coordinator.Attach"></a>
-### func \(\*Coordinator\) Attach
-
-```go
-func (c *Coordinator) Attach(role, session string) error
-```
-
-Attach records the API\-created child before prompting it. Identities are never model arguments.
 
 <a name="Coordinator.Bind"></a>
 ### func \(\*Coordinator\) Bind
@@ -625,6 +611,15 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry)
 ```
 
 Observe consumes each effective ordinary journal mutation exactly once. Only the bound session's mutations count; other sessions' entries are consumed without counting.
+
+<a name="Coordinator.ObserveExecutions"></a>
+### func \(\*Coordinator\) ObserveExecutions
+
+```go
+func (c *Coordinator) ObserveExecutions(h *history.History)
+```
+
+Execution sessions come exclusively from history, including GC lanes.
 
 <a name="Coordinator.Require"></a>
 ### func \(\*Coordinator\) Require

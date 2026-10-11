@@ -108,7 +108,7 @@ Escalate when any of these appear: a delivery outside its scope or an unexplaine
 discovery appears, or the contract or spec contradicts the code actually observed (a contract defect goes to its owner under takt-sdd-recovery; escalate to the user only when no owner is reachable or two deltas did not converge). On any of
 them:
 1. Freeze the affected path.
-2. Confirm termination of the active work; restore (`dispatch_restore` with the objective) only the scope a declared recovery abandoned, and freeze and report any other staged work.
+2. Confirm termination of the active work (a delegation that will never return, because its session is gone or will not end, is ended with `dispatch_abandon` on its dispatch); restore (`dispatch_restore` with the objective) only the scope a declared recovery abandoned, and freeze and report any other staged work.
 3. Preserve unrelated progress.
 4. Report evidence and alternatives.
 5. Await direction.
@@ -129,11 +129,17 @@ delegate Verify again with that author key, and consolidate only when a
 verdict covers the staged revision. Build,
 lint and full suites run in Verify units; checks on the materialized workspace after consolidation remain the executable acceptance, not proof of an unconsolidated delta.
 Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node, commit it only after that node passes with no problems found, and
-load takt-git-commit before writing the message. If consolidation reports that recovery is required, or that the physical base
-changed, freeze that path and escalate with the report. Request the blind review pair
+load takt-git-commit before writing the message. An incomplete consolidation identifies
+its manifest, author, files and state. Invoke the original normal operation as the
+orchestrator: the harness asks for approval to restore that exact snapshot, or, if
+files diverged, to keep current files and close the incomplete effect as interrupted
+with evidence retained. Repair approval never authorizes consolidation; ownership,
+current verdicts and physical bases are checked again. If the physical base changed,
+inspect the named files and use claim_assign with author_key to continue the staged
+work from the current base, or explicitly abandon it with vfs_discard. Request the blind review pair
 only when the user asks, work advanced past deviations of unknown origin, the real state is
-unknown beyond what a quick validation can map, a DAG concludes in which two or more phases each reached the ceiling, or a large refactor of unknown code-level impact has invariants to contrast; name the
-condition and say pair and target in the brief. The pair judges the invariants of the work the brief names, staged or materialized, never your own questions or goals, and returns unmerged
+unknown beyond what a quick validation can map, a DAG concludes in which two or more phases each reached the ceiling, or a large refactor of unknown code-level impact has invariants to contrast; say pair and target
+in the brief. The pair judges the invariants of the work the brief names, staged or materialized, never your own questions or goals, and returns unmerged
 findings from identical briefs. Dispute a verdict with evidence before
 the user rather than re-dispatching. To contest a unit's recorded terminal failure, call `dispatch_contest`
 (at most {{policy.contests}} per session): it records the contest and spends one; you delegate the Verify of

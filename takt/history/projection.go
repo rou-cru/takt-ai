@@ -243,6 +243,10 @@ type Budgets struct {
 // Projection is the derived execution DAG state. It is never edited in place:
 // it is recomputed from the record.
 type Projection struct {
+	Inputs     map[string][]int64   `json:"inputs"`
+	Executions map[string]Execution `json:"executions"`
+	// Leases maps each harness instance to its last renewal, in Unix ms.
+	Leases map[string]int64 `json:"leases"`
 	// Units is keyed by UnitKey: a unit name belongs to the root session that
 	// declared or admitted it, and another root may reuse it.
 	Units map[string]Unit `json:"units"`
@@ -308,12 +312,24 @@ func Project(entries []Entry) Projection {
 }
 
 func newProjection() Projection {
-	return Projection{Units: map[string]Unit{}, Activities: map[string]Activity{}, Sessions: map[string]*Budgets{}}
+	return Projection{Inputs: map[string][]int64{}, Executions: map[string]Execution{}, Leases: map[string]int64{}, Units: map[string]Unit{}, Activities: map[string]Activity{}, Sessions: map[string]*Budgets{}}
 }
 
 // fold applies one recorded entry. Project is the fold of every entry in
 // order; a caller that needs the state between entries folds them itself.
 func (p *Projection) fold(e Entry) {
+	if executionKind(e.Kind) {
+		p.foldExecution(e)
+		return
+	}
+	if e.Kind == KindTerminated {
+		for id, d := range p.Executions {
+			if d.Root == e.SessionID && d.Unit == e.WorkUnitID && d.Attempt == e.AttemptID {
+				d.Settled = true
+				p.Executions[id] = d
+			}
+		}
+	}
 	if nodeKind, activity := activityKindOf(e.Kind); activity {
 		p.foldActivity(e, nodeKind)
 		return
@@ -498,4 +514,18 @@ func accepts(u Unit, known bool, k Kind) bool {
 	default:
 		return u.State == StateInFlight
 	}
+}
+
+// HeldRoot returns the root whose interlocutor holder is session; ok is false
+// when session holds no root.
+func (p Projection) HeldRoot(session string) (root string, ok bool) {
+	if session == "" {
+		return "", false
+	}
+	for root, b := range p.Sessions {
+		if b != nil && b.InterlocutorHolder == session {
+			return root, true
+		}
+	}
+	return "", false
 }

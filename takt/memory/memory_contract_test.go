@@ -255,6 +255,9 @@ func writeIndex(t *testing.T, root, session, content string) {
 	}
 	if err := os.WriteFile(sessionIndexPath(root, session), []byte(content), PrivateStateFileMode); err != nil {
 		t.Fatal(err)
+	} // Every real writer creates the lock before the index.
+	if err := os.WriteFile(sessionIndexPath(root, session)+".lock", nil, PrivateStateFileMode); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -682,8 +685,8 @@ func TestSessionIndexLockFailsWhenDirectoryCannotBeCreated(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lockSession(blocker, "ses_1"); err == nil || !strings.Contains(err.Error(), "create memory session dir") {
-		t.Errorf("lockSession() error = %v, want the directory failure", err)
+	if _, err := lockSession(context.Background(), blocker, "ses_1"); err == nil || !strings.Contains(err.Error(), "create memory session dir") {
+		t.Errorf("lockSession(context.Background(), ) error = %v, want the directory failure", err)
 	}
 	if err := saveSessionIndex(blocker, &sessionIndex{Session: "ses_1"}); err == nil {
 		t.Error("saveSessionIndex() into an unusable root error = nil")

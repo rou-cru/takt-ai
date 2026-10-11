@@ -25,8 +25,10 @@ import (
 	"os"
 
 	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 const invalidRequestExitStatus = 2
@@ -68,27 +70,59 @@ func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return memory.Capabilities(req), nil
+		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Capabilities(req), nil })
 	case "record":
 		req, err := decodeMemory[memory.RecordRequest](stdin)
 		if err != nil {
 			return nil, err
 		}
-		return memory.Record(ctx, cfg, req)
+		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Record(ctx, cfg, req) })
 	case "continue":
 		req, err := decodeMemory[memory.ContinueRequest](stdin)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, memory.Continue(ctx, cfg, req)
+		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return struct{}{}, memory.Continue(ctx, cfg, req) })
 	case "close":
 		req, err := decodeMemory[memory.CloseRequest](stdin)
 		if err != nil {
 			return nil, err
 		}
-		return memory.Close(ctx, cfg, req)
+		if req.Fallback {
+			return memory.Close(ctx, cfg, req)
+		}
+		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Close(ctx, cfg, req) })
 	}
 	return nil, fmt.Errorf("unknown memory command %q (valid: record, continue, close, capabilities)", args[0])
+}
+
+// underWorkspace runs a memory command under the workspace lock that
+// serializes the execution history, so the interlocutor holder a command
+// decides on cannot change before it acts. A caller session resolves the root
+// session from that history: the root of the delegation it runs, the root it
+// holds as interlocutor, or itself. A directory that does not exist has no
+// harness and nothing to lock.
+func underWorkspace(directory, caller string, session *string, run func() (any, error)) (_ any, err error) {
+	if _, statErr := os.Stat(directory); statErr == nil {
+		held, err := vfs.LockWorkspace(directory)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { err = errors.Join(err, held.Close()) }()
+	}
+	if caller != "" {
+		p, err := history.ReadProjection(history.StateDir(directory))
+		if err != nil {
+			return nil, err
+		}
+		*session = caller
+		if d, ok := p.ExecutionForChild(caller, ""); ok {
+			*session = d.Root
+		} else if root, ok := p.HeldRoot(caller); ok {
+			*session = root
+		}
+	}
+	return run()
 }
 
 // decodeMemory treats a malformed request as a contract rejection so the caller sees why (exit 2).

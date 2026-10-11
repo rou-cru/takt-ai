@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
@@ -52,6 +53,19 @@ type coordinationRequest struct {
 	ExtraArtifacts    []string         `json:"extra_artifacts"`
 	ResultIDs         []int64          `json:"result_ids"`
 	Origin            string           `json:"origin"`
+	Caller            string           `json:"caller,omitempty"`
+	Background        bool             `json:"background,omitempty"`
+	CreatedAt         int64            `json:"created_at,omitempty"`
+	// AuthorKeys distinguishes an absent list (no gates) from an empty one,
+	// which a verifier preparation refuses.
+	AuthorKeys []vfs.AgentID `json:"author_keys,omitempty"`
+	None       bool          `json:"none,omitempty"`
+	Phase      string        `json:"phase,omitempty"`
+	// Owner is the harness instance issuing the request, for execution
+	// ownership and lease renewal.
+	Owner   string              `json:"owner,omitempty"`
+	Stopped []laneStop          `json:"stopped,omitempty"`
+	Repair  *vfs.RepairApproval `json:"repair,omitempty"`
 }
 
 // memoryRoot is where `takt-ai memory` keeps its session index: the user's
@@ -112,6 +126,28 @@ func abortWithArtifactReport(h *history.History, ref, workspace string, r coordi
 	return envelope, nil
 }
 
+// sessionDeletedEvidence is the abort evidence recorded when a holder session
+// is deleted by the host.
+const sessionDeletedEvidence = "session ended"
+
+// abortDeletedHolder aborts the root the deleted session currently holds, as a
+// harness-origin abort_switch would, and reports whether it held one.
+func abortDeletedHolder(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
+	root, held := h.Project().HeldRoot(r.Child)
+	if !held {
+		return map[string]any{"aborted": false}, nil
+	}
+	abort := r
+	abort.Session, abort.Evidence, abort.Origin = root, sessionDeletedEvidence, "harness"
+	out, e := abortWithArtifactReport(h, ref, workspace, abort)
+	if e != nil {
+		return nil, e
+	}
+	envelope := out.(map[string]any)
+	envelope["aborted"], envelope["root"] = true, root
+	return envelope, nil
+}
+
 // coordinateRoutine admits and finishes ordinary work. Maintenance never gates
 // either: an admission ends a cycle in flight first (PR-MNT-3). Whether a cycle
 // is due is decided only when the session is idle, by `gc coordinate`'s tick.
@@ -131,12 +167,41 @@ func coordinateRoutine(fs *vfs.FS, h *history.History, workspace string, c *gc.C
 		}
 		return c, c.Admit(h, journalRef(entries), r.Event, r.Session, r.Agent, r.Dispatch)
 	case "finish":
-		if unit.State != history.StateInFlight || (r.Dispatch != "" && unit.Dispatch != r.Dispatch) {
+		if unit.State != history.StateInFlight || (r.Dispatch != "" && unit.Dispatch != r.Dispatch) || (r.Attempt != "" && unit.AttemptID != r.Attempt) {
 			return c, nil
+		}
+		// Settling follows an exact host observation of this dispatch and
+		// attempt, whichever harness instance relays it; a repeat is a no-op.
+		if err := fs.CancelPreparedDelegation(r.Session, r.Event, unit.AttemptID); err != nil {
+			return nil, err
 		}
 		return c, protocol.Finish(h, journalRef(entries), r.Event, r.Session)
 	}
 	return c, nil
+}
+
+// abandonExecution ends an ordinary delegation the host can no longer prove
+// terminated, on the user's decision or once its caller session is gone: its
+// unit's attempt ends interrupted and its slot is released; staged work stays.
+// A repeat is a no-op.
+func abandonExecution(fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
+	d, ok := h.Project().Executions[r.Dispatch]
+	if !ok || d.Cycle != "" {
+		return nil, fmt.Errorf("dispatch: %q names no ordinary delegation; use a dispatch from the unsettled list a refusal reported", r.Dispatch)
+	}
+	if d.Settled {
+		return c, nil
+	}
+	u, _ := h.Project().Unit(d.Root, d.Unit)
+	if u.State != history.StateInFlight || u.Dispatch != d.Dispatch || u.AttemptID != d.Attempt {
+		return c, h.ExecutionFact(d, history.KindExecutionEnded, "", "", nil)
+	}
+	if e := protocol.Record(h, journalRef(entries), d.Unit, d.Root, history.KindCancelRequested); e != nil {
+		return nil, e
+	}
+	finish := r
+	finish.Action, finish.Event, finish.Session, finish.Dispatch, finish.Attempt = "finish", d.Unit, d.Root, d.Dispatch, d.Attempt
+	return coordinateRoutine(fs, h, workspace, c, entries, finish)
 }
 
 // yieldGCCycle ends a maintenance cycle in flight for a delegation that will be
@@ -158,8 +223,11 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 		return nil
 	}
 	cycle := c.Cycle.Plan.CycleID
-	if e := abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed"); e != nil {
-		return fmt.Errorf("dispatch: maintenance cycle %s could not be unwound, so its changes may still be live; admission waits until it is: %w", cycle, e)
+	if e := recordLaneStops(h, c, r.Stopped); e != nil {
+		return e
+	}
+	if e := abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed", r.Repair); e != nil {
+		return fmt.Errorf("dispatch: maintenance cycle %s could not be unwound, so its changes may still be live; admission waits until it is; retry the same subagent call, which unwinds it again; if the same failure repeats, ask the user to run: takt-ai gc coordinate --workspace %s --state %s --request '{\"action\":\"abort\",\"event\":\"%s\",\"evidence\":\"user unwind\"}': %w", cycle, workspace, fs.StateDirectory(), cycle, e)
 	}
 	return nil
 }
@@ -171,13 +239,14 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 // activity_id and never enters the work-unit path. GC's own cycle phases and
 // trigger bookkeeping stay under `takt-ai gc coordinate`.
 var ordinaryDispatchActions = map[string]bool{
+	"prepare": true, "inputs": true, "execution": true, "executions": true, "lease": true, "attach_child": true, "deliver": true, "resolve": true,
 	"admit": true, "finish": true, "tick": true,
 	"activity_start": true, "activity_finish": true,
 	"launch": true, "uncertain": true, "reconcile": true, "suspend": true,
 	"cancel": true, "stop": true, "escalate": true, "withdraw": true,
 	"commit": true, "contest": true, "recovery": true, "recovered": true,
-	"restore": true, "exception": true,
-	"switch": true, "handoff": true, "abort_switch": true, "validate_results": true, "validate_inputs": true,
+	"restore": true, "exception": true, "abandon": true,
+	"switch": true, "handoff": true, "abort_switch": true, "session_deleted": true, "interlocutor": true, "validate_results": true,
 }
 
 // runDispatch admits and drives ordinary crew work through the execution
@@ -212,29 +281,48 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 		return e
 	}
 	defer func() { err = errors.Join(err, h.Close()) }()
-	c, e := gc.LoadCoordinator(*state)
+	if !queryActions[req.Action] {
+		if handled, err := admitRepair(stdout, fs, &req.Repair, true); handled {
+			return err
+		}
+	}
+	if out, query, queryErr := executionQuery(h, req); query {
+		if queryErr != nil {
+			return queryErr
+		}
+		return json.NewEncoder(stdout).Encode(out)
+	}
+	c, e := gc.LoadCoordinator(fs)
 	if e != nil {
 		return e
 	}
 	before, _ := h.Project().Unit(req.Session, req.Event)
 	from := before.State
-	response, e := coordinate(context.Background(), fs, h, *workspace, *state, c, req)
+	result, e := coordinate(context.Background(), fs, h, *workspace, *state, c, req)
+	if e != nil {
+		if handled, err := refuseForRecovery(stdout, fs); handled {
+			return err
+		}
+	}
 	// Persist admission/lifecycle state even if the effect failed, exactly as
 	// `gc coordinate` does: the barrier and the recorded disposition stay held.
-	if save := gc.SaveCoordinator(*state, c); save != nil {
+	if save := gc.SaveCoordinator(fs, c); save != nil {
 		return errors.Join(e, save)
 	}
 	if e != nil {
+		if out := repairRefusal(e); out != nil {
+			return json.NewEncoder(stdout).Encode(out)
+		}
 		return e
 	}
 	// A unit transition reports the states it moved between and the slots now
 	// held, which only the history knows, so the plugin's telemetry invents neither.
-	if lifecycleActions[req.Action] && response == c {
+	if lifecycleActions[req.Action] && result == c {
 		after := h.Project()
 		now, _ := after.Unit(req.Session, req.Event)
-		response = lifecycleResponse{c, after.InFlight(), from, now.State}
+		result = lifecycleResponse{c, after.InFlight(), from, now.State}
 	}
-	return json.NewEncoder(stdout).Encode(response)
+	return json.NewEncoder(stdout).Encode(result)
 }
 
 // staleDispatch reports whether r names a host delegation that no longer holds
@@ -259,8 +347,33 @@ type lifecycleResponse struct {
 	ToState   history.State `json:"to_state"`
 }
 
+// queryActions only read the history, so no pending repair stands before them.
+var queryActions = map[string]bool{"resolve": true, "execution": true, "executions": true, "interlocutor": true}
+
+// Execution queries observe history only; a model question must not rebind GC.
+func executionQuery(h *history.History, r coordinationRequest) (any, bool, error) {
+	switch r.Action {
+	case "resolve":
+		out, err := resolveExecution(h, r.Child, r.Agent)
+		return out, true, err
+	case "execution":
+		d, ok := h.Project().Executions[r.Dispatch]
+		if !ok {
+			return nil, true, nil
+		}
+		return d, true, nil
+	case "executions":
+		return listExecutions(h, time.Now()), true, nil
+	case "interlocutor":
+		// The holder fact for the root session, from its owner.
+		return map[string]string{"holder": protocol.CurrentHolder(h, r.Session)}, true, nil
+	}
+	return nil, false, nil
+}
+
 // coordinate runs one dispatch action against the history, the VFS and the
 // coordinator, after observing what the journal recorded since the last call.
+// Execution queries are answered before it is called.
 func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	entries, e := observeCoordination(fs, h, c, r.Session)
 	if e != nil {
@@ -278,7 +391,17 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 	}
 	handlers := map[string]func() (any, error){
 		"admit": routine, "finish": routine, "tick": routine,
-		"launch": func() (any, error) { return c, protocol.Launch(h, ref, r.Event, r.Session) },
+		"prepare":      func() (any, error) { return prepareExecution(ctx, fs, h, workspace, c, entries, r) },
+		"inputs":       func() (any, error) { return declareInputs(ctx, h, r) },
+		"lease":        func() (any, error) { return nil, renewLease(h, r.Owner, time.Now()) },
+		"attach_child": func() (any, error) { return attachExecutionChild(h, r) },
+		"deliver":      func() (any, error) { return deliverExecution(ctx, h, r) },
+		"launch": func() (any, error) {
+			if staleDispatch(h, r) {
+				return c, nil
+			}
+			return c, protocol.Launch(h, ref, r.Event, r.Session)
+		},
 		"uncertain": func() (any, error) {
 			if staleDispatch(h, r) {
 				return c, nil
@@ -296,6 +419,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"stop":     record(history.KindStopped),
 		"escalate": record(history.KindEscalated),
 		"withdraw": func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
+		"abandon":  func() (any, error) { return abandonExecution(fs, h, workspace, c, entries, r) },
 		"commit": func() (any, error) {
 			return c, protocol.Declare(h, ref, r.Session, r.Version, r.BaseVersion, r.Plan, r.Withdrawals)
 		},
@@ -303,13 +427,11 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"validate_results": func() (any, error) {
 			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
 		},
-		// A delegation's consumed invariants must name existing entries; who
-		// recorded them is irrelevant to the consumer.
-		"validate_inputs": func() (any, error) {
-			return nil, memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs)
-		},
 		"handoff":      func() (any, error) { return handoffWithCopyReport(h, ref, workspace, r) },
 		"abort_switch": func() (any, error) { return abortWithArtifactReport(h, ref, workspace, r) },
+		// A deleted session that holds a root is aborted in this same locked
+		// unit; one that holds nothing writes nothing.
+		"session_deleted": func() (any, error) { return abortDeletedHolder(h, ref, workspace, r) },
 		"contest": func() (any, error) {
 			p, e := protocol.LoadAdmissionPolicy()
 			if e != nil {
@@ -356,11 +478,16 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 }
 
 // observeCoordination is the common journal observation and budget accounting
-// before either entry performs its own actions.
+// before either entry performs its own actions. While a cycle is held, its
+// lanes call with their own sessions but act for the root the cycle covers.
 func observeCoordination(fs *vfs.FS, h *history.History, c *gc.Coordinator, session string) ([]vfs.JournalEntry, error) {
+	if c.Cycle != nil {
+		session = c.Cycle.Plan.SessionID
+	}
 	c.Bind(session)
 	entries := journalEntries(fs, "")
 	c.Observe(entries)
+	c.ObserveExecutions(h)
 	if e := protocol.Account(h, entries); e != nil {
 		return nil, e
 	}

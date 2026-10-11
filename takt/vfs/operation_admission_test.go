@@ -301,7 +301,6 @@ func TestAdoptionRefusesMismatchedAssignment(t *testing.T) {
 		scope  []string
 	}{
 		"another specialist":  {func(i *vfs.Identity) { i.Specialist = "fix" }, nil},
-		"an earlier attempt":  {func(i *vfs.Identity) { i.AttemptID = "0" }, nil},
 		"another invariants":  {func(i *vfs.Identity) { i.Invariants = vfs.InvariantSet{"spec.md"} }, nil},
 		"another gate author": {func(i *vfs.Identity) { i.GateAuthorKey = "someone" }, nil},
 		"another scope":       {func(*vfs.Identity) {}, []string{"other.go"}},
@@ -417,14 +416,21 @@ func TestAssignVerifierRefusals(t *testing.T) {
 			refused(t, "AssignVerifier()", err, tc.want)
 		})
 	}
+	// A delegated gate carries no attempt while pending, so assigning the same
+	// judge again over the same author supersedes the earlier gate.
 	t.Run("same verifier twice", func(t *testing.T) {
 		f, _, _ := newStore(t)
 		author := bind(t, f, "author", "u", "dev", "a.go")
+		first, err := f.AssignVerifier(ident("v", "u", "verify"), author)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := f.AssignVerifier(ident("v", "u", "verify"), author); err != nil {
 			t.Fatal(err)
 		}
-		_, err := f.AssignVerifier(ident("v", "u", "verify"), author)
-		refused(t, "duplicate verifier", err, vfs.ErrIdentity)
+		if earlier, _ := f.BindingIdentity(first); !earlier.Superseded || earlier.Prelaunch {
+			t.Fatalf("earlier gate = %+v; want it superseded", earlier)
+		}
 	})
 }
 
@@ -498,8 +504,9 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 		t.Fatal("a refused reassignment changed ownership")
 	}
 	reassign(t, f, retry, key, "a.go", "b.go")
-	if held, _ := f.BindingIdentity(key); !held.Prelaunch || held.AttemptID != "2" {
-		t.Fatalf("binding = %+v; want a prelaunch claim on attempt 2", held)
+	// The claim awaits adoption with no attempt: the history issues the next one.
+	if held, _ := f.BindingIdentity(key); !held.Prelaunch || held.AttemptID != "" || held.HostSession != "" {
+		t.Fatalf("binding = %+v; want a prelaunch claim with no attempt and no holder", held)
 	}
 	if got := scopeOf(f, key); !slices.Equal(got, []string{"a.go", "b.go"}) {
 		t.Fatalf("scope = %v; want the new scope owned and the unused spare.go released", got)

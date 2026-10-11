@@ -16,6 +16,7 @@
 package memory
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,9 +24,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
+	"time"
 
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
+	"github.com/rou-cru/takt-ai/takt/internal/flock"
 )
 
 // Privacy modes keep memory session state owner-only.
@@ -68,15 +70,39 @@ func sessionIndexPath(root, session string) string {
 }
 
 // lockSession takes an exclusive flock on <Session>.json.lock; closing the returned file releases it.
-func lockSession(root, session string) (*os.File, error) {
+func lockSession(ctx context.Context, root, session string) (*os.File, error) {
 	if err := os.MkdirAll(sessionsDir(root), PrivateStateDirectoryMode); err != nil {
 		return nil, fmt.Errorf("create memory session dir: %w", err)
 	}
-	f, err := os.OpenFile(sessionIndexPath(root, session)+".lock", os.O_CREATE|os.O_RDWR, PrivateStateFileMode)
+	return flockSession(ctx, root, session, os.O_CREATE|os.O_RDWR)
+}
+
+// lockExistingSession is lockSession without creating anything: it returns
+// (nil, nil) when no lock file exists. Every writer creates the lock file
+// before touching the index, so absence at open time is an atomic "nothing
+// has ever been recorded" and a concurrent writer is ordered after it.
+func lockExistingSession(ctx context.Context, root, session string) (*os.File, error) {
+	f, err := flockSession(ctx, root, session, os.O_RDWR)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return f, err
+}
+
+// sessionLockWait bounds how long a memory call waits for another holding the
+// same session's lock.
+const sessionLockWait = 30 * time.Second
+
+func flockSession(ctx context.Context, root, session string, flags int) (*os.File, error) {
+	f, err := os.OpenFile(sessionIndexPath(root, session)+".lock", flags, PrivateStateFileMode)
 	if err != nil {
 		return nil, fmt.Errorf("open session index lock: %w", err)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	err = flock.Exclusive(ctx, f, sessionLockWait)
+	if errors.Is(err, flock.ErrTimeout) {
+		return nil, fmt.Errorf("memory session %s lock wait ended; another memory call may still hold it; let that call finish or stop it before recording again: %w", session, errors.Join(err, f.Close()))
+	}
+	if err != nil {
 		return nil, fmt.Errorf("lock session index: %w", errors.Join(err, f.Close()))
 	}
 	return f, nil

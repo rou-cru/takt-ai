@@ -13,10 +13,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package vfs
+package vfs_test
 
 import (
 	"database/sql"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,21 +28,21 @@ import (
 // stamp and correlation), leaves other dispatches unattributed, and keeps both
 // across close and reopen.
 func TestCycleAttributionSealedAndDurable(t *testing.T) {
-	f, root, state := durable(t)
-	key, e := f.Bind(Identity{SessionID: "s", WorkUnitID: "unit", AttemptID: "1", AgentID: "maint", Specialist: "dev", InvariantsHash: "frozen-invariants", CycleID: "cycle-7", MandateClass: "dead-code"}, []string{"a.txt"})
+	f, root, state := newStore(t)
+	key, e := f.Bind(vfs.Identity{SessionID: "s", WorkUnitID: "unit", AttemptID: "1", AgentID: "maint", Specialist: "dev", InvariantsHash: "frozen-invariants", CycleID: "cycle-7", MandateClass: "dead-code"}, []string{"a.txt"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	r := apply(t, f, applyCase{key, "create", 0, OpCreate, "a.txt", "x"})
-	r = apply(t, f, applyCase{key, "patch", r.Revision, OpPatch, "a.txt", "y"})
-	if _, e = f.Apply(Operation{key, "denied", 0, OpCreate, "not-owned", nil}); e == nil {
+	r := apply(t, f, applyCase{key, "create", 0, vfs.OpCreate, "a.txt", "x"})
+	r = apply(t, f, applyCase{key, "patch", r.Revision, vfs.OpPatch, "a.txt", "y"})
+	if _, e = f.Apply(vfs.Operation{key, "denied", 0, vfs.OpCreate, "not-owned", nil}); e == nil {
 		t.Fatal("out-of-scope create allowed")
 	}
 	gate(t, f, key, r)
 	if e = f.ConsolidateCheckpoint(key, "cp", r.Revision, false); e != nil {
 		t.Fatal(e)
 	}
-	check := func(f *FS) {
+	check := func(f *vfs.FS) {
 		t.Helper()
 		var flushed, other int
 		for _, en := range f.JournalPage("s", "unit", -1, 500) {
@@ -49,7 +50,7 @@ func TestCycleAttributionSealedAndDurable(t *testing.T) {
 				if en.CycleID != "cycle-7" || en.MandateClass != "dead-code" {
 					t.Errorf("entry %s %s not attributed: %+v", en.Ref(), en.Operation, en)
 				}
-				if en.Operation == OpFlush {
+				if en.Operation == vfs.OpFlush {
 					flushed++
 				}
 			} else {
@@ -67,7 +68,7 @@ func TestCycleAttributionSealedAndDurable(t *testing.T) {
 	if e = f.Close(); e != nil {
 		t.Fatal(e)
 	}
-	f, e = Open(root, state)
+	f, e = vfs.Open(root, state)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -106,7 +107,7 @@ func TestStoreWrittenBeforeCycleFieldsStillOpens(t *testing.T) {
 	legacyState := `{"JournalCount":1,"Version":1,"Workspace":` + quote(canonical) + `,"Deltas":{},"Owners":{},"Collisions":null,"Bindings":{"old":{"SessionID":"s","WorkUnitID":"u","AttemptID":"1","AgentID":"a","Specialist":"dev","Role":"execution","InvariantsHash":"h"}},"Calls":{},"Recovery":null}`
 	legacyEntry := `{"role":"execution","session_id":"s","work_unit_id":"u","attempt_id":"1","seq":0,"timestamp":"2026-01-01T00:00:00Z","agent":"a","path":"p","operation":"flush"}`
 	for _, stmt := range []struct{ q, data string }{
-		{stateSchema, ""},
+		{vfs.StateSchema, ""},
 		{"INSERT INTO state(id,data) VALUES(1,?)", legacyState},
 		{"INSERT INTO journal(seq,data) VALUES(0,?)", legacyEntry},
 	} {
@@ -122,7 +123,7 @@ func TestStoreWrittenBeforeCycleFieldsStillOpens(t *testing.T) {
 	if e = db.Close(); e != nil {
 		t.Fatal(e)
 	}
-	f, e := Open(root, state)
+	f, e := vfs.Open(root, state)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -132,14 +133,14 @@ func TestStoreWrittenBeforeCycleFieldsStillOpens(t *testing.T) {
 		}
 	})
 	page := f.JournalPage("s", "u", -1, 10)
-	if len(page) != 1 || page[0].Operation != OpFlush || page[0].CycleID != "" || page[0].MandateClass != "" {
+	if len(page) != 1 || page[0].Operation != vfs.OpFlush || page[0].CycleID != "" || page[0].MandateClass != "" {
 		t.Fatalf("legacy journal = %+v", page)
 	}
 	if id, ok := f.BindingIdentity("old"); !ok || id.AgentID != "a" || id.CycleID != "" || id.MandateClass != "" {
 		t.Fatalf("legacy binding = %+v %v", id, ok)
 	}
 	key := bind(t, f, "new", "u2", "dev", "n.txt")
-	apply(t, f, applyCase{key, "create", 0, OpCreate, "n.txt", "x"})
+	apply(t, f, applyCase{key, "create", 0, vfs.OpCreate, "n.txt", "x"})
 	if page = f.JournalPage("s", "u2", -1, 10); len(page) != 1 || page[0].Seq != 1 {
 		t.Fatalf("new entry after legacy journal = %+v", page)
 	}

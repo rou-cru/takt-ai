@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
 import plugin from "./takt-vfs.ts"
+import {historyFixture} from "./history-fixture.mjs"
+const owner=historyFixture({executions:Object.fromEntries(["a","b"].map(n=>[n,{dispatch:n,root:"root",unit:`author-${n}`,attempt:"1",agent:"dev",caller:"root",child:`author-${n}`,inputs:[],admitted_at:0}]))})
 
 // The rendered plugin is executed as it ships: only the coordinator IPC and the
 // sandbox adapter are doubles. Shell capture must never be reproduced here.
@@ -9,13 +11,15 @@ let plan
 globalThis.Bun = {
   spawn(argv) {
     const command = argv[2]
+    if(argv[1]==="dispatch") {const r=JSON.parse(argv[argv.indexOf("--request")+1]);const a=owner.answer("dispatch",r.action,r);return {stdout:a?.out??JSON.stringify({version:1,units:0,mutations:0,cursor:0,deferrals:0,next_mandate:0,requested:false}),stderr:a?.err??"",exited:Promise.resolve(a?.code??0)}}
     const body = { bind: { ok: true, key: "author-key", attempt_id: "1", invariants_version: "inv1:test" },
       "shell-prepare": { ok: true, shell: plan },
-      "shell-import": { ok: true, revision: 9, delta_hash: "imported-delta" } }[command] ?? { ok: true }
+      "shell-continue": {ok:true,shell:plan},
+      "shell-complete": { ok: true, revision: 9, delta_hash: "imported-delta" } }[command] ?? { ok: true }
     return {
       stdin: { write(json) { messages.push({ command, request: JSON.parse(json) }) }, end() {} },
       stdout: JSON.stringify(body),
-      exited: Promise.resolve(0),
+      stderr:"", exited: Promise.resolve(0),
     }
   },
 }
@@ -31,8 +35,9 @@ await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get() {}, async set() {} },
   session: {
+    context: async () => [],
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
-    hook: async () => ({ dispose() {} }),
+    wait:async()=>new Promise(()=>{}), hook: async () => ({ dispose() {} }),
   },
   permission: { hook: register(hooks.permission) },
   shell: { hook: register(hooks.shell) },
@@ -66,18 +71,21 @@ await tools.vfs_bind.execute({ scope: ["data.txt"] }, author)
 // OpenCode 2.x runs a shell call in this order: tool execute.before (knows the
 // session and agent), shell create.before (knows only the command), then the
 // permission check over the command create.before left behind.
+const tokens=new Map()
 const before = async (command, ctx = author) => {
+  const event={ tool: "shell", sessionID: ctx.sessionID, agent: ctx.agent, messageID: "m", id: "c", input: { command } }
   for (const hook of hooks.tool["execute.before"]) {
-    await hook({ tool: "shell", sessionID: ctx.sessionID, agent: ctx.agent, messageID: "m", id: "c", input: { command } })
+    await hook(event)
   }
+  tokens.set(`${ctx.sessionID}:${command}`,event.input.command)
 }
-const create = async (command) => {
-  const input = { command, cwd: "/workspace", env: { HOME: "/home/real" }, timeout: 1000, shell: "/bin/sh" }
+const create = async (command,ctx=author) => {
+  const input = { command:tokens.get(`${ctx.sessionID}:${command}`)??command, cwd: "/workspace", env: { HOME: "/home/real" }, timeout: 1000, shell: "/bin/sh" }
   for (const hook of hooks.shell["create.before"]) await hook(input)
   return input
 }
 const evaluate = async (resource, ctx = author, effect = "allow") => {
-  const event = { sessionID: ctx.sessionID, agent: ctx.agent, action: "shell", resources: [resource], effect }
+  const event = { sessionID: ctx.sessionID, agent: ctx.agent, action: "shell", resources: [resource], source:{type:"tool",messageID:"m",id:"c"}, effect }
   for (const hook of hooks.permission.evaluate) await hook(event)
   return event
 }
@@ -102,9 +110,9 @@ plan = capturing
 await before("printf staged > data.txt")
 const prepared = messages.at(-1)
 assert.equal(prepared.command, "shell-prepare")
-assert.equal(prepared.request.ipc_version, 4)
+assert.equal(prepared.request.ipc_version, 5)
 assert.equal(prepared.request.command, "printf staged > data.txt")
-assert.equal(prepared.request.author_key, "author-key")
+assert.equal(prepared.request.caller_session, "author-a")
 const wrapped = await create("printf staged > data.txt")
 assert.equal(wrapped.command, "printf staged > data.txt", "the command text must stay as admitted")
 assert.equal(wrapped.cwd, "/workspace", "OpenCode keeps authorizing the real working directory")
@@ -120,9 +128,9 @@ assert.deepEqual(globalThis.__taktWrap.at(-1).options.privatePaths, ["/private",
 assert.equal(globalThis.__taktWrap.at(-1).options.callID, prepared.request.call_id)
 await finish()
 const imported = messages.at(-1)
-assert.equal(imported.command, "shell-import")
+assert.equal(imported.command, "shell-complete")
 assert.equal(imported.request.call_id, prepared.request.call_id)
-assert.equal(imported.request.author_key, "author-key")
+assert.equal(imported.request.caller_session, "author-a")
 assert.equal(existsSync(wrapped.shell), false, "the sandboxed shell is removed once the call ended")
 
 // 2. Read-only inspection runs without approval and without a projection.
@@ -174,37 +182,42 @@ plan = undefined
 await assert.rejects(() => before("ls"))
 assert.match((await create("ls")).command, /exit 122$/)
 
-// 8. An identical command already pending for another session is refused: the
-//    shell hook could not tell whose sandbox it belongs to.
+// 8. Identical commands have different native call tokens and independent
+// plans, even across sessions. Neither can consume the other's preparation.
 plan = capturing
 await before("printf staged > data.txt")
-await assert.rejects(() => before("printf staged > data.txt", { sessionID: "author-b", agent: "dev" }), /another session/)
-await assert.rejects(() => before("printf staged > data.txt", { sessionID: "root", agent: "takt" }), /pending/)
-await create("printf staged > data.txt")
+const other={sessionID:"author-b",agent:"dev"}
+await before("printf staged > data.txt",other)
+const first=await create("printf staged > data.txt")
+const second=await create("printf staged > data.txt",other)
+assert.notEqual(first.shell,second.shell)
 await evaluate("printf staged > data.txt")
+await evaluate("printf staged > data.txt",other)
 await finish()
+await finish("shell",other)
 
 // 9. The orchestrator keeps OpenCode's native shell permissions. It does not
 //    need a VFS binding, shell plan, sandbox wrapper, or delta import.
 const orchestrator = { sessionID: "root", agent: "takt" }
 const callsBeforeOrchestrator = messages.length
-const importsBeforeOrchestrator = messages.filter((message) => message.command === "shell-import").length
+const importsBeforeOrchestrator = messages.filter((message) => message.command === "shell-complete").length
 const wrapsBeforeOrchestrator = globalThis.__taktWrap.length
 await before("npm create vite@latest", orchestrator)
-const directInput = await create("npm create vite@latest")
+const directInput = await create("npm create vite@latest",orchestrator)
 assert.equal((await evaluate("npm create vite@latest", orchestrator)).effect, "allow")
-assert.equal(messages.length, callsBeforeOrchestrator, "orchestrator shell must not invoke VFS IPC")
+assert.equal(messages.slice(callsBeforeOrchestrator).filter(m=>m.command!=="shell-guard").length,0,"orchestrator shell must not invoke VFS state IPC")
 assert.equal(directInput.command, "npm create vite@latest", "orchestrator command runs without VFS replacement")
 assert.equal(directInput.shell, "/bin/sh")
 assert.equal(directInput.env.HOME, "/home/real")
 assert.equal(globalThis.__taktWrap.length, wrapsBeforeOrchestrator, "orchestrator shell must not be sandbox-wrapped")
 await finish("shell", orchestrator)
-assert.equal(messages.filter((message) => message.command === "shell-import").length, importsBeforeOrchestrator,
+assert.equal(messages.filter((message) => message.command === "shell-complete").length, importsBeforeOrchestrator,
   "orchestrator shell must not import a VFS delta")
 // A specialist cannot ride the orchestrator's pending direct path.
 await before("npm test", orchestrator)
-await assert.rejects(() => before("npm test"), /another session/)
-await create("npm test")
+await before("npm test")
+await create("npm test",orchestrator)
+assert.equal((await evaluate("npm test")).effect,"deny","a specialist cannot consume the direct admission before its own wrapper starts")
 
 // The VFS bypass never weakens a native permission denial for the orchestrator.
 assert.equal((await evaluate("npm create vite@latest", orchestrator, "deny")).effect, "deny")

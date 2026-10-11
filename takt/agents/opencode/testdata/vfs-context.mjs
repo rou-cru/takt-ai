@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
+import {historyFixture} from "./history-fixture.mjs"
+const owner=historyFixture({executions:Object.fromEntries(["dev","dev-none"].map((agent,i)=>[agent,{dispatch:agent,root:"root",unit:"unit-1",attempt:"1",agent,caller:"root",child:i?"child-none":"child",inputs:[],admitted_at:0}]))})
 
 let claimResponse = []
 const storage = new Map()
@@ -14,6 +16,8 @@ globalThis.Bun = {
     return {
       stdin: { write(json) { call.request = JSON.parse(json) }, end() {} },
       get stdout() {
+        if(argv[1]==="dispatch") {const r=JSON.parse(argv[argv.indexOf("--request")+1]);const a=owner.answer("dispatch",r.action,r);if(a)return a.out}
+        if(argv[2]==="adopt-gates")return JSON.stringify({ok:true,gates:claimResponse.filter(c=>c.author_key).map(c=>({key:c.key,author_key:c.author_key,scope:["src/one.go"]}))})
         if (argv[2] === "claims") {
           claimsCalls.push(call.request)
           return JSON.stringify({ ok: true, claims: claimResponse })
@@ -30,9 +34,10 @@ await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return storage.get(key) }, async set(key, value) { storage.set(key, value) } },
   session: {
+    context: async () => [],
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: "unit-1" } },
     hook: async (name, callback) => { hooks[name] ??= []; hooks[name].push(callback); return { dispose() {} } },
-    create: async () => ({ id: "created" }), prompt: async () => {}, interrupt: async () => {},
+    create: async () => ({ id: "created" }), wait: async()=>new Promise(()=>{}), prompt: async () => {}, interrupt: async () => {},
   },
   agent: { async get({ agentID }) { return { data: { id: agentID, permissions: agentID === "dev-none" ? [] : [
     { action: "vfs_read", resource: "*", effect: "allow" },
@@ -70,20 +75,22 @@ async function context(agent, claims) {
 const byName = (a, b) => a.localeCompare(b)
 const exact = await context("dev", [matching])
 assert.deepEqual(Object.keys(exact.tools).sort(byName), ["vfs_read", "vfs_write"].sort(byName))
-assert.equal(exact.system.length, 1)
-assert.match(exact.system[0].text, /Work unit unit-1/)
-assert.match(exact.system[0].text, /src\/one\.go/)
-assert.doesNotMatch(exact.system[0].text, /verdict/)
+assert.equal(exact.system.length, 2)
+assert.match(exact.system[0].text,/consumes no recorded invariant/)
+assert.match(exact.system[1].text, /Work unit unit-1/)
+assert.match(exact.system[1].text, /src\/one\.go/)
+assert.doesNotMatch(exact.system[1].text, /verdict/)
 
 // A verifier's gate claim carries the author key it judges and no scope.
 const gate = await context("dev", [{ ...matching, scope: [], author_key: "author-1" }])
-assert.equal(gate.system.length, 1)
-assert.match(gate.system[0].text, /author_key author-1/)
-assert.match(gate.system[0].text, /already bound/)
+assert.equal(gate.system.length, 2)
+assert.match(gate.system[1].text, /author_key author-1/)
+assert.match(gate.system[1].text, /already bound/)
 
 const noClaim = await context("dev", [])
 assert.deepEqual(Object.keys(noClaim.tools), [])
-assert.deepEqual(noClaim.system, [])
+assert.equal(noClaim.system.length, 1)
+assert.match(noClaim.system[0].text, /consumes no recorded invariant/)
 
 for (const mismatch of [
   { ...matching, target_instance: "other" },
@@ -91,12 +98,14 @@ for (const mismatch of [
 ]) {
   const rejected = await context("dev", [mismatch])
   assert.deepEqual(Object.keys(rejected.tools), [])
-  assert.deepEqual(rejected.system, [])
+  assert.equal(rejected.system.length, 1)
+assert.match(rejected.system[0].text, /consumes no recorded invariant/)
 }
 
 const noPermission = await context("dev-none", [{ ...matching, agent_id: "dev-none", target_instance: "dev-none" }])
 assert.deepEqual(Object.keys(noPermission.tools), [])
-assert.deepEqual(noPermission.system, [])
+assert.equal(noPermission.system.length, 1)
+assert.match(noPermission.system[0].text, /consumes no recorded invariant/)
 assert.ok(claimsCalls.length >= 4, "child contexts with permissions consult root claims")
 
 claimResponse = [{ ...matching, root_session_id: "previous", key: "old-key", staged: true, scope: ["index.html"] }]

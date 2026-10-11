@@ -174,6 +174,10 @@ const (
 // authorOf names the single semantic author of each kind (PR-DAG-REP-5) and
 // enumerates every valid kind for validation.
 var authorOf = map[Kind]Author{
+	KindInputs:    AuthorOrchestrator,
+	KindExecution: AuthorHarness, KindPrepared: AuthorHarness, KindChild: AuthorHarness,
+	KindDelivery: AuthorHarness, KindLane: AuthorHarness, KindPrompt: AuthorHarness, KindExecutionEnded: AuthorHarness,
+	KindLease:                AuthorHarness,
 	KindPlanned:              AuthorOrchestrator,
 	KindWithdrawn:            AuthorOrchestrator,
 	KindCancelRequested:      AuthorOrchestrator,
@@ -308,6 +312,18 @@ type Entry struct {
 	// declaration stays legible without needing the last valid plan changed
 	// to explain it (PR-DAG-MUT-6).
 	Reason string `json:"reason,omitempty"`
+	// Execution facts are internal harness observations and declarations.
+	Caller     string  `json:"caller,omitempty"`
+	Child      string  `json:"child,omitempty"`
+	Background bool    `json:"background,omitempty"`
+	CreatedAt  int64   `json:"created_at,omitempty"`
+	ResultIDs  []int64 `json:"result_ids,omitempty"`
+	None       bool    `json:"none,omitempty"`
+	CycleID    string  `json:"cycle_id,omitempty"`
+	Role       string  `json:"role,omitempty"`
+	Phase      string  `json:"phase,omitempty"`
+	// Owner is the harness instance an execution or lease belongs to.
+	Owner string `json:"owner,omitempty"`
 }
 
 // History is the append-only store. All access is serialized by the workspace
@@ -356,28 +372,39 @@ func StateDir(workspace string) string {
 
 // ReadProjection reads the existing history without creating a store or schema.
 // An absent history is the empty projection; malformed existing history fails.
-func ReadProjection(stateDir string) (_ Projection, err error) {
-	path, err := filepath.Abs(filepath.Join(stateDir, historyFile))
+func ReadProjection(stateDir string) (Projection, error) {
+	entries, err := ReadEntries(stateDir)
 	if err != nil {
 		return Projection{}, err
 	}
+	return Project(entries), nil
+}
+
+// ReadEntries reads the recorded order read-only, without creating a store or
+// schema, so a reader outside the workspace lock never writes. An absent
+// history has no entries.
+func ReadEntries(stateDir string) (_ []Entry, err error) {
+	path, err := filepath.Abs(filepath.Join(stateDir, historyFile))
+	if err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return Project(nil), nil
+		return nil, nil
 	} else if err != nil {
-		return Projection{}, err
+		return nil, err
 	}
 	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
-		return Projection{}, err
+		return nil, err
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
 	db.SetMaxOpenConns(1)
 	h := &History{db: db}
 	if err := h.replay(); err != nil {
-		return Projection{}, err
+		return nil, err
 	}
-	return h.Project(), nil
+	return h.entries, nil
 }
 
 // Close releases the store handle.
@@ -432,6 +459,9 @@ func (h *History) Append(e Entry) error {
 }
 
 func (e Entry) validate() error {
+	if executionKind(e.Kind) {
+		return e.validateExecution()
+	}
 	isActivity, err := e.validateIdentity()
 	if err != nil {
 		return err

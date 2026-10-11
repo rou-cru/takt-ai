@@ -15,43 +15,73 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [func EngramInvariant\(id int64\) string](<#EngramInvariant>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
 - [func GuardShellGit\(command string\) error](<#GuardShellGit>)
+- [func LockWorkspace\(rootDir string\) \(\*os.File, error\)](<#LockWorkspace>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
 - [func SpecialistRole\(instance string\) \(model.RoleClass, error\)](<#SpecialistRole>)
+- [func StateHash\(value any\) string](<#StateHash>)
+- [type AdoptedGate](<#AdoptedGate>)
 - [type AgentID](<#AgentID>)
+- [type BindResult](<#BindResult>)
+- [type Caller](<#Caller>)
+- [type CallerOperation](<#CallerOperation>)
 - [type CollisionError](<#CollisionError>)
   - [func \(e \*CollisionError\) Error\(\) string](<#CollisionError.Error>)
   - [func \(e \*CollisionError\) Unwrap\(\) error](<#CollisionError.Unwrap>)
 - [type CollisionEvent](<#CollisionEvent>)
 - [type FS](<#FS>)
   - [func Open\(rootDir, stateDir string\) \(\_ \*FS, err error\)](<#Open>)
+  - [func \(f \*FS\) AdoptGates\(c Caller\) \(gates \[\]AdoptedGate, err error\)](<#FS.AdoptGates>)
   - [func \(f \*FS\) Apply\(op Operation\) \(OperationResult, error\)](<#FS.Apply>)
   - [func \(f \*FS\) AssignScope\(identity Identity, scope \[\]string\) \(key AgentID, err error\)](<#FS.AssignScope>)
   - [func \(f \*FS\) AssignVerifier\(identity Identity, authorKey AgentID\) \(key AgentID, err error\)](<#FS.AssignVerifier>)
   - [func \(f \*FS\) Bind\(identity Identity, scope \[\]string\) \(key AgentID, err error\)](<#FS.Bind>)
+  - [func \(f \*FS\) BindAs\(c Caller, scope \[\]string, invariants InvariantSet\) \(result BindResult, err error\)](<#FS.BindAs>)
   - [func \(f \*FS\) BindingIdentity\(key AgentID\) \(Identity, bool\)](<#FS.BindingIdentity>)
+  - [func \(f \*FS\) CancelPreparedDelegation\(root, unit, attempt string\) \(err error\)](<#FS.CancelPreparedDelegation>)
   - [func \(f \*FS\) Close\(\) error](<#FS.Close>)
   - [func \(f \*FS\) CompleteCycle\(cycleID string\) \(err error\)](<#FS.CompleteCycle>)
+  - [func \(f \*FS\) CompleteShell\(c Caller, callID, stateDir string\) \(result OperationResult, err error\)](<#FS.CompleteShell>)
+  - [func \(f \*FS\) ConsolidateAs\(c Caller, author AgentID, checkpoint string, accepted \*StagedState\) \(seq int, err error\)](<#FS.ConsolidateAs>)
   - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64, acceptFailing bool\) \(err error\)](<#FS.ConsolidateCheckpoint>)
   - [func \(f \*FS\) ConsolidatedBy\(path string\) \(cycleID, mandateClass string, ok bool\)](<#FS.ConsolidatedBy>)
+  - [func \(f \*FS\) ContinueShell\(c Caller, callID, phase string\) \(plan ShellPlan, err error\)](<#FS.ContinueShell>)
+  - [func \(f \*FS\) CycleInterrupted\(cycle string\) bool](<#FS.CycleInterrupted>)
+  - [func \(f \*FS\) CycleKeys\(cycle string\) \(author, verifier AgentID\)](<#FS.CycleKeys>)
+  - [func \(f \*FS\) CycleRepair\(cycle, state string\) \(\*Repair, error\)](<#FS.CycleRepair>)
+  - [func \(f \*FS\) DiscardAs\(c Caller, author AgentID\) \(err error\)](<#FS.DiscardAs>)
   - [func \(f \*FS\) DiscardCycle\(cycleID string\) \(restored \[\]string, err error\)](<#FS.DiscardCycle>)
   - [func \(f \*FS\) DropCycleStaging\(cycle string\) \(err error\)](<#FS.DropCycleStaging>)
-  - [func \(f \*FS\) ImportShell\(key AgentID, callID, stateDir string, expected uint64\) \(result OperationResult, err error\)](<#FS.ImportShell>)
+  - [func \(f \*FS\) GuardNativeEdit\(session string, resources \[\]string\) error](<#FS.GuardNativeEdit>)
   - [func \(f \*FS\) InspectDelta\(key AgentID\) StagedView](<#FS.InspectDelta>)
   - [func \(f \*FS\) JournalPage\(sessionID, unitID string, after, limit int\) \[\]JournalEntry](<#FS.JournalPage>)
+  - [func \(f \*FS\) JudgeDelta\(gate, author AgentID\) \(view StagedView, err error\)](<#FS.JudgeDelta>)
+  - [func \(f \*FS\) Maintenance\(\) json.RawMessage](<#FS.Maintenance>)
   - [func \(f \*FS\) OnCollision\(fn func\(CollisionEvent\)\)](<#FS.OnCollision>)
   - [func \(f \*FS\) OnJournal\(fn func\(JournalEntry\)\)](<#FS.OnJournal>)
+  - [func \(f \*FS\) Operate\(c Caller, op CallerOperation\) \(result OperationResult, err error\)](<#FS.Operate>)
   - [func \(f \*FS\) OwnershipClaims\(currentSessionID string\) \[\]OwnershipClaim](<#FS.OwnershipClaims>)
-  - [func \(f \*FS\) PendingGate\(identity Identity, authorKey AgentID\) \(AgentID, bool\)](<#FS.PendingGate>)
   - [func \(f \*FS\) PendingOrdinaryDeltaIdentities\(\) \[\]string](<#FS.PendingOrdinaryDeltaIdentities>)
   - [func \(f \*FS\) PendingOrdinaryDeltas\(\) int](<#FS.PendingOrdinaryDeltas>)
-  - [func \(f \*FS\) PrepareShell\(key AgentID, callID, command, stateDir string, expected uint64\) \(ShellPlan, error\)](<#FS.PrepareShell>)
-  - [func \(f \*FS\) ReadAs\(op Operation, author AgentID\) \(OperationResult, error\)](<#FS.ReadAs>)
+  - [func \(f \*FS\) PrepareDelegation\(identity Identity, authors \[\]AgentID, needsClaim bool, admit func\(\) \(string, error\)\) \(err error\)](<#FS.PrepareDelegation>)
+  - [func \(f \*FS\) PrepareMaintenance\(author, verifier Identity, scope \[\]string\) \(authorKey, verifierKey AgentID, err error\)](<#FS.PrepareMaintenance>)
+  - [func \(f \*FS\) PrepareShell\(c Caller, callID, command, stateDir string\) \(plan ShellPlan, err error\)](<#FS.PrepareShell>)
+  - [func \(f \*FS\) PreserveInterruptedCycle\(cycle, state string, a RepairApproval\) \(err error\)](<#FS.PreserveInterruptedCycle>)
   - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
+  - [func \(f \*FS\) RecoveryRepair\(\) \(\*Repair, error\)](<#FS.RecoveryRepair>)
+  - [func \(f \*FS\) ReleaseClaim\(session string, key AgentID, confirmed bool\) \(err error\)](<#FS.ReleaseClaim>)
+  - [func \(f \*FS\) ReleaseShell\(c Caller, callID string\) \(err error\)](<#FS.ReleaseShell>)
+  - [func \(f \*FS\) RepairRecovery\(a RepairApproval\) \(err error\)](<#FS.RepairRecovery>)
   - [func \(f \*FS\) RevokeOwnership\(key AgentID\) \(err error\)](<#FS.RevokeOwnership>)
-  - [func \(f \*FS\) StagedState\(key AgentID\) \(revision uint64, deltaHash string, staged bool\)](<#FS.StagedState>)
+  - [func \(f \*FS\) SetMaintenance\(raw json.RawMessage\) \(err error\)](<#FS.SetMaintenance>)
+  - [func \(f \*FS\) StateDirectory\(\) string](<#FS.StateDirectory>)
   - [func \(f \*FS\) Verify\(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string\) \(err error\)](<#FS.Verify>)
+  - [func \(f \*FS\) VerifyAs\(c Caller, callID string, author AgentID, pass bool, finding string\) \(err error\)](<#FS.VerifyAs>)
+  - [func \(f \*FS\) VerifyJudgedDelta\(gate, author AgentID, callID string, pass bool, evidence string\) \(err error\)](<#FS.VerifyJudgedDelta>)
+- [type FailingVerdictError](<#FailingVerdictError>)
+  - [func \(e \*FailingVerdictError\) Error\(\) string](<#FailingVerdictError.Error>)
+  - [func \(e \*FailingVerdictError\) Unwrap\(\) error](<#FailingVerdictError.Unwrap>)
 - [type Identity](<#Identity>)
 - [type InvariantSet](<#InvariantSet>)
 - [type JournalEntry](<#JournalEntry>)
@@ -60,7 +90,10 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type OperationResult](<#OperationResult>)
 - [type OperationType](<#OperationType>)
 - [type OwnershipClaim](<#OwnershipClaim>)
+- [type Repair](<#Repair>)
+- [type RepairApproval](<#RepairApproval>)
 - [type ShellPlan](<#ShellPlan>)
+- [type StagedState](<#StagedState>)
 - [type StagedView](<#StagedView>)
 - [type VerdictSummary](<#VerdictSummary>)
 - [type VerificationVerdict](<#VerificationVerdict>)
@@ -189,6 +222,23 @@ var (
 )
 ```
 
+<a name="ErrNoAdmission"></a>
+
+```go
+var (
+
+    // ErrNoAdmission is returned when a delegated unit binds or is given a gate
+    // without an admitted delegation in the execution history.
+    ErrNoAdmission = errors.New("vfs: no admitted delegation")
+)
+```
+
+<a name="ErrWorkspaceBusy"></a>ErrWorkspaceBusy is returned when another process held the workspace lock for longer than the bounded wait.
+
+```go
+var ErrWorkspaceBusy = errors.New("workspace busy")
+```
+
 <a name="EngramInvariant"></a>
 ## func EngramInvariant
 
@@ -215,6 +265,15 @@ func GuardShellGit(command string) error
 ```
 
 GuardShellGit refuses a command that executes a Git mutation, for a caller that is not the orchestrator and whose shell runs natively, outside any shell plan.
+
+<a name="LockWorkspace"></a>
+## func LockWorkspace
+
+```go
+func LockWorkspace(rootDir string) (*os.File, error)
+```
+
+LockWorkspace takes the workspace lock Open takes, without opening the store, for a harness command that decides from the execution history under the same serialization point. Closing the returned file releases it.
 
 <a name="ReadOnlyGitSubcommands"></a>
 ## func ReadOnlyGitSubcommands
@@ -243,6 +302,29 @@ func SpecialistRole(instance string) (model.RoleClass, error)
 
 SpecialistRole resolves the role a catalog instance declares.
 
+<a name="StateHash"></a>
+## func StateHash
+
+```go
+func StateHash(value any) string
+```
+
+StateHash is the hex sha256 of value's JSON encoding: the exact state a repair approval names.
+
+<a name="AdoptedGate"></a>
+## type AdoptedGate
+
+AdoptedGate is one gate a judge holds: its key, the author it judges, the author's scope, and why it could not be adopted when it was not.
+
+```go
+type AdoptedGate struct {
+    Key       AgentID  `json:"key"`
+    AuthorKey AgentID  `json:"author_key"`
+    Scope     []string `json:"scope"`
+    Error     string   `json:"error,omitempty"`
+}
+```
+
 <a name="AgentID"></a>
 ## type AgentID
 
@@ -250,6 +332,58 @@ AgentID identifies the actor behind a VFS operation.
 
 ```go
 type AgentID string
+```
+
+<a name="BindResult"></a>
+## type BindResult
+
+BindResult is what a bind issued: the key, the attempt and invariant\-set version it belongs to, and the staged state it continues when it holds any.
+
+```go
+type BindResult struct {
+    Key               AgentID
+    AttemptID         string
+    InvariantsVersion string
+    Staged            bool
+    Revision          uint64
+    DeltaHash         string
+}
+```
+
+<a name="Caller"></a>
+## type Caller
+
+Caller is the harness\-delivered identity of the process running one VFS command. No field is ever model\-supplied.
+
+```go
+type Caller struct {
+    Dispatch string
+    // SessionID is the root session.
+    SessionID string
+    // HostSession is the host session running the tool: the delegated child,
+    // or the root for the orchestrator.
+    HostSession string
+    // Agent is the host-delivered agent name.
+    Agent AgentID
+    // WorkUnitID is the unit the caller executes.
+    WorkUnitID string
+    AttemptID  string
+}
+```
+
+<a name="CallerOperation"></a>
+## type CallerOperation
+
+CallerOperation is one read, write or deletion; AuthorKey optionally names the binding or, for a judge, the author it reads.
+
+```go
+type CallerOperation struct {
+    CallID    string
+    Action    OperationType
+    Path      string
+    Content   []byte
+    AuthorKey AgentID
+}
 ```
 
 <a name="CollisionError"></a>
@@ -327,7 +461,16 @@ type FS struct {
 func Open(rootDir, stateDir string) (_ *FS, err error)
 ```
 
-Open opens durable staging under an advisory lock on the workspace directory.
+Open opens durable staging under an advisory lock on the workspace directory, waiting a bounded time for another process holding it.
+
+<a name="FS.AdoptGates"></a>
+### func \(\*FS\) AdoptGates
+
+```go
+func (f *FS) AdoptGates(c Caller) (gates []AdoptedGate, err error)
+```
+
+AdoptGates adopts every pending gate of c's root, unit and agent into c's host session and lists them with the gates that session already holds. A delegated gate takes the attempt the execution history admitted.
 
 <a name="FS.Apply"></a>
 ### func \(\*FS\) Apply
@@ -365,6 +508,15 @@ func (f *FS) Bind(identity Identity, scope []string) (key AgentID, err error)
 
 Bind registers a dispatch identity and acquires its explicit file scope. Role metadata comes from canonical content; VFS access comes only from the instance's explicit catalog capabilities.
 
+<a name="FS.BindAs"></a>
+### func \(\*FS\) BindAs
+
+```go
+func (f *FS) BindAs(c Caller, scope []string, invariants InvariantSet) (result BindResult, err error)
+```
+
+BindAs binds c's delegated unit. It adopts the unit's prelaunch claim for c's host session, stamping the attempt the execution history admitted; otherwise it answers the binding c already holds, takes over the unit's binding of that attempt no host session holds, or claims scope afresh. A unit without an in\-flight admission is refused.
+
 <a name="FS.BindingIdentity"></a>
 ### func \(\*FS\) BindingIdentity
 
@@ -373,6 +525,15 @@ func (f *FS) BindingIdentity(key AgentID) (Identity, bool)
 ```
 
 BindingIdentity returns the identity a binding key was issued for, so a transport can check that a caller is the actor the key belongs to.
+
+<a name="FS.CancelPreparedDelegation"></a>
+### func \(\*FS\) CancelPreparedDelegation
+
+```go
+func (f *FS) CancelPreparedDelegation(root, unit, attempt string) (err error)
+```
+
+CancelPreparedDelegation releases only reservations and shell preparations issued for this attempt. Clean implementation claims remain reusable; no staged work is discarded.
 
 <a name="FS.Close"></a>
 ### func \(\*FS\) Close
@@ -392,6 +553,24 @@ func (f *FS) CompleteCycle(cycleID string) (err error)
 
 CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
 
+<a name="FS.CompleteShell"></a>
+### func \(\*FS\) CompleteShell
+
+```go
+func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationResult, err error)
+```
+
+CompleteShell consumes a host completion of the command prepared under callID. Only the core's recorded plan decides whether it imports a captured delta or just releases an inspection. A capture is admitted as one VFS transaction into the binding recorded at preparation, which c must still hold: the captured projection becomes staged content through the same path the file tools use. Staged work that changed since preparation is refused, never overwritten. A failing command keeps its delta, retained and unverified \(PR\-VFS\-CSL\-5\).
+
+<a name="FS.ConsolidateAs"></a>
+### func \(\*FS\) ConsolidateAs
+
+```go
+func (f *FS) ConsolidateAs(c Caller, author AgentID, checkpoint string, accepted *StagedState) (seq int, err error)
+```
+
+ConsolidateAs consolidates author's staged work at its current revision for the orchestrator of its root and returns the journal position of the last entry it wrote. accepted carries the user's acceptance of a failing verdict, valid only for the staged state the refusal named.
+
 <a name="FS.ConsolidateCheckpoint"></a>
 ### func \(\*FS\) ConsolidateCheckpoint
 
@@ -409,6 +588,51 @@ func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool)
 ```
 
 ConsolidatedBy reports the cycle and mandate class that last consolidated path across every retained cycle \(open or completed\), so a caller staging a write can attribute a later re\-edit back to it \(PR\-MNT\-31\). path must match the slash\-relative form JournalEntry.Path and recoveryItem.Path use. It scans every retained cycle per call; index by path if that ever grows.
+
+<a name="FS.ContinueShell"></a>
+### func \(\*FS\) ContinueShell
+
+```go
+func (f *FS) ContinueShell(c Caller, callID, phase string) (plan ShellPlan, err error)
+```
+
+ContinueShell consumes the next native hook against the current caller, binding, staged revision and maintenance barrier. A preparation response is never authority for a later create or permission callback.
+
+<a name="FS.CycleInterrupted"></a>
+### func \(\*FS\) CycleInterrupted
+
+```go
+func (f *FS) CycleInterrupted(cycle string) bool
+```
+
+CycleInterrupted distinguishes approved interrupted closure from acceptance.
+
+<a name="FS.CycleKeys"></a>
+### func \(\*FS\) CycleKeys
+
+```go
+func (f *FS) CycleKeys(cycle string) (author, verifier AgentID)
+```
+
+CycleKeys returns the collector's author key and the verifier's current gate over it for cycle; the core bindings are their only record.
+
+<a name="FS.CycleRepair"></a>
+### func \(\*FS\) CycleRepair
+
+```go
+func (f *FS) CycleRepair(cycle, state string) (*Repair, error)
+```
+
+CycleRepair describes only the divergent cycle encountered by normal abort.
+
+<a name="FS.DiscardAs"></a>
+### func \(\*FS\) DiscardAs
+
+```go
+func (f *FS) DiscardAs(c Caller, author AgentID) (err error)
+```
+
+DiscardAs discards author's staged work for the orchestrator of its root, releasing the paths it owns.
 
 <a name="FS.DiscardCycle"></a>
 ### func \(\*FS\) DiscardCycle
@@ -428,14 +652,14 @@ func (f *FS) DropCycleStaging(cycle string) (err error)
 
 DropCycleStaging discards only bindings owned by the specified cycle. Consolidated content must separately pass DiscardCycle's divergence checks.
 
-<a name="FS.ImportShell"></a>
-### func \(\*FS\) ImportShell
+<a name="FS.GuardNativeEdit"></a>
+### func \(\*FS\) GuardNativeEdit
 
 ```go
-func (f *FS) ImportShell(key AgentID, callID, stateDir string, expected uint64) (result OperationResult, err error)
+func (f *FS) GuardNativeEdit(session string, resources []string) error
 ```
 
-ImportShell admits the command's result as one VFS transaction: the captured projection becomes staged content through the same path the file tools use. A failing command keeps its delta, retained and unverified \(PR\-VFS\-CSL\-5\).
+GuardNativeEdit decides against current ownership, including prior roots. The plugin transports this decision; it never reconstructs it from claims.
 
 <a name="FS.InspectDelta"></a>
 ### func \(\*FS\) InspectDelta
@@ -455,6 +679,24 @@ func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEn
 
 JournalPage returns bounded, content\-free journal entries.
 
+<a name="FS.JudgeDelta"></a>
+### func \(\*FS\) JudgeDelta
+
+```go
+func (f *FS) JudgeDelta(gate, author AgentID) (view StagedView, err error)
+```
+
+JudgeDelta delivers and records the exact candidate under the same core mutex. GC verdicts cannot authorize a newer delta merely by inspecting it.
+
+<a name="FS.Maintenance"></a>
+### func \(\*FS\) Maintenance
+
+```go
+func (f *FS) Maintenance() json.RawMessage
+```
+
+Maintenance is stored with bindings, shell calls and retained rollback state, not in a second coordinator file. The GC algorithm owns no durable copy.
+
 <a name="FS.OnCollision"></a>
 ### func \(\*FS\) OnCollision
 
@@ -473,6 +715,15 @@ func (f *FS) OnJournal(fn func(JournalEntry))
 
 OnJournal registers a handler called for every journal entry appended, in order and under the same lock and re\-entrancy rules as OnCollision.
 
+<a name="FS.Operate"></a>
+### func \(\*FS\) Operate
+
+```go
+func (f *FS) Operate(c Caller, op CallerOperation) (result OperationResult, err error)
+```
+
+Operate applies op through the binding c holds, at the current revision. A gate read records the author's state it read and reports the paths the gate read under an earlier one.
+
 <a name="FS.OwnershipClaims"></a>
 ### func \(\*FS\) OwnershipClaims
 
@@ -481,15 +732,6 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim
 ```
 
 OwnershipClaims lists current claims in deterministic path order. A claim is Active only when adopted in currentSessionID; pending and prior\-session ownership remain visible and are never expired automatically.
-
-<a name="FS.PendingGate"></a>
-### func \(\*FS\) PendingGate
-
-```go
-func (f *FS) PendingGate(identity Identity, authorKey AgentID) (AgentID, bool)
-```
-
-PendingGate returns the unadopted, current gate identity's judge already holds over authorKey in the same unit and attempt; an empty attempt matches the open one, as the store numbers maintenance attempts itself. A coordinator that retries its own step reuses that gate instead of asking AssignVerifier, which refuses a second gate for one judge and author.
 
 <a name="FS.PendingOrdinaryDeltaIdentities"></a>
 ### func \(\*FS\) PendingOrdinaryDeltaIdentities
@@ -509,23 +751,41 @@ func (f *FS) PendingOrdinaryDeltas() int
 
 PendingOrdinaryDeltas counts unresolved ordinary deltas across the workspace, not just the requesting session or the proposed maintenance scope.
 
+<a name="FS.PrepareDelegation"></a>
+### func \(\*FS\) PrepareDelegation
+
+```go
+func (f *FS) PrepareDelegation(identity Identity, authors []AgentID, needsClaim bool, admit func() (string, error)) (err error)
+```
+
+PrepareDelegation validates live claims/authors and issues all gates as one core mutation. Failure restores every binding, including superseded gates. The caller holds the same workspace lock as the admission/history writer.
+
+<a name="FS.PrepareMaintenance"></a>
+### func \(\*FS\) PrepareMaintenance
+
+```go
+func (f *FS) PrepareMaintenance(author, verifier Identity, scope []string) (authorKey, verifierKey AgentID, err error)
+```
+
+PrepareMaintenance reserves the collector scope and independent verifier together. A failure cannot leave just one lane's reservation behind. Each lane carries the attempt the execution history issued when it attached.
+
 <a name="FS.PrepareShell"></a>
 ### func \(\*FS\) PrepareShell
 
 ```go
-func (f *FS) PrepareShell(key AgentID, callID, command, stateDir string, expected uint64) (ShellPlan, error)
+func (f *FS) PrepareShell(c Caller, callID, command, stateDir string) (plan ShellPlan, err error)
 ```
 
-PrepareShell classifies one command and prepares its sandbox files. key may be empty: an unbound caller may inspect but cannot mutate the workspace, and expected then does not apply. Quoted spans are not treated as mutations for callers without file scope, but the sandbox still enforces the returned restrictions. Non\-denied plans create scratch; only allowed workspace mutations create a projection. Preparation does not execute the command; a policy denial returns a ShellDeny plan with a nil error. Identity and revision problems, and store or filesystem errors, propagate.
+PrepareShell classifies one command for the author binding c holds and prepares its sandbox files. A caller holding none gets an unbound plan: it may inspect but cannot mutate the workspace. Quoted spans are not treated as mutations for callers without file scope, but the sandbox still enforces the returned restrictions. Non\-denied plans create scratch; only allowed workspace mutations create a projection. Preparation does not execute the command; a policy denial returns a ShellDeny plan with a nil error. A capturing plan records, under callID, the binding and its staged state, which the import requires unchanged. Identity problems, and store or filesystem errors, propagate.
 
-<a name="FS.ReadAs"></a>
-### func \(\*FS\) ReadAs
+<a name="FS.PreserveInterruptedCycle"></a>
+### func \(\*FS\) PreserveInterruptedCycle
 
 ```go
-func (f *FS) ReadAs(op Operation, author AgentID) (OperationResult, error)
+func (f *FS) PreserveInterruptedCycle(cycle, state string, a RepairApproval) (err error)
 ```
 
-ReadAs reads through the staged view of the author a verifier judges, so the gate assesses exactly the delta its verdict will cover. op.ExpectedRevision is the author's revision; any other caller or action is refused.
+PreserveInterruptedCycle records the approved closure before releasing any ownership. If closure is interrupted, the archive makes it resumable.
 
 <a name="FS.ReassignScope"></a>
 ### func \(\*FS\) ReassignScope
@@ -534,7 +794,7 @@ ReadAs reads through the staged view of the author a verifier judges, so the gat
 func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error)
 ```
 
-ReassignScope gives the work of an existing author key a new exact scope for its next attempt, keeping the staged delta, and hands it to the unit, agent and specialist the request names. The delta's own paths must stay in the scope; only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
+ReassignScope gives the work of an existing author key a new exact scope for the target's next adoption, keeping the staged delta, and hands it to the unit, agent and specialist the request names. The delta's own paths must stay in the scope; only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
 
 <a name="FS.Recover"></a>
 ### func \(\*FS\) Recover
@@ -545,6 +805,42 @@ func (f *FS) Recover() (err error)
 
 Recover restores the pre\-flush snapshot after checking for incompatible writes.
 
+<a name="FS.RecoveryRepair"></a>
+### func \(\*FS\) RecoveryRepair
+
+```go
+func (f *FS) RecoveryRepair() (*Repair, error)
+```
+
+RecoveryRepair can diagnose an incomplete manifest while ordinary mutations remain blocked by readyLocked. It never clears that barrier.
+
+<a name="FS.ReleaseClaim"></a>
+### func \(\*FS\) ReleaseClaim
+
+```go
+func (f *FS) ReleaseClaim(session string, key AgentID, confirmed bool) (err error)
+```
+
+ReleaseClaim frees the paths claim key holds for session's orchestrator. A claim holding staged work, and an adopted claim of this root the user has not confirmed releasing are refused.
+
+<a name="FS.ReleaseShell"></a>
+### func \(\*FS\) ReleaseShell
+
+```go
+func (f *FS) ReleaseShell(c Caller, callID string) (err error)
+```
+
+ReleaseShell forgets transport preparation without importing a running shell.
+
+<a name="FS.RepairRecovery"></a>
+### func \(\*FS\) RepairRecovery
+
+```go
+func (f *FS) RepairRecovery(a RepairApproval) (err error)
+```
+
+RepairRecovery revalidates the exact consent under the existing workspace lock. Safe restoration reuses Recover; divergent closure retains evidence.
+
 <a name="FS.RevokeOwnership"></a>
 ### func \(\*FS\) RevokeOwnership
 
@@ -554,14 +850,23 @@ func (f *FS) RevokeOwnership(key AgentID) (err error)
 
 RevokeOwnership frees the paths a claim holds. The binding is kept so the unit's attempt count survives. A claim that holds staged work is refused rather than left as a delta nobody owns, which could never be consolidated.
 
-<a name="FS.StagedState"></a>
-### func \(\*FS\) StagedState
+<a name="FS.SetMaintenance"></a>
+### func \(\*FS\) SetMaintenance
 
 ```go
-func (f *FS) StagedState(key AgentID) (revision uint64, deltaHash string, staged bool)
+func (f *FS) SetMaintenance(raw json.RawMessage) (err error)
 ```
 
-revisionOf is the staged revision of key, zero when it has no delta. StagedState reports the revision and delta hash of the work staged under key, and whether any exists, so a binding that adopts existing work starts from it.
+
+
+<a name="FS.StateDirectory"></a>
+### func \(\*FS\) StateDirectory
+
+```go
+func (f *FS) StateDirectory() string
+```
+
+StateDirectory locates the shared execution history for the locked handle.
 
 <a name="FS.Verify"></a>
 ### func \(\*FS\) Verify
@@ -572,6 +877,54 @@ func (f *FS) Verify(verifier, author AgentID, callID string, expected uint64, de
 
 Verify attaches a verification gate to an exact revision and delta hash.
 
+<a name="FS.VerifyAs"></a>
+### func \(\*FS\) VerifyAs
+
+```go
+func (f *FS) VerifyAs(c Caller, callID string, author AgentID, pass bool, finding string) (err error)
+```
+
+VerifyAs attaches c's verdict over author through the gate c holds over it, at the author state that gate last read. A gate that never read, or whose author changed since, is refused.
+
+<a name="FS.VerifyJudgedDelta"></a>
+### func \(\*FS\) VerifyJudgedDelta
+
+```go
+func (f *FS) VerifyJudgedDelta(gate, author AgentID, callID string, pass bool, evidence string) (err error)
+```
+
+
+
+<a name="FailingVerdictError"></a>
+## type FailingVerdictError
+
+FailingVerdictError refuses a consolidation over a current failing verdict, naming the staged state it refused so the user's acceptance can cover exactly that state.
+
+```go
+type FailingVerdictError struct {
+    StagedState
+    // contains filtered or unexported fields
+}
+```
+
+<a name="FailingVerdictError.Error"></a>
+### func \(\*FailingVerdictError\) Error
+
+```go
+func (e *FailingVerdictError) Error() string
+```
+
+
+
+<a name="FailingVerdictError.Unwrap"></a>
+### func \(\*FailingVerdictError\) Unwrap
+
+```go
+func (e *FailingVerdictError) Unwrap() error
+```
+
+
+
 <a name="Identity"></a>
 ## type Identity
 
@@ -581,9 +934,10 @@ Identity is supplied by the trusted coordinator's dispatch.
 type Identity struct {
     SessionID  string
     WorkUnitID string
-    // AttemptID is issued by the harness, never chosen by the caller: a bind
-    // joins the attempt a live binding of the same unit holds open, or opens the
-    // next one (PR-DAG-REP-3).
+    // AttemptID is never chosen by the caller. A delegated binding carries none
+    // while prelaunch and the attempt the execution history admitted once
+    // adopted; a maintenance binding joins the attempt a live binding of its
+    // unit holds open, or opens the next one (PR-DAG-REP-3).
     AttemptID  string
     AgentID    AgentID
     Specialist string
@@ -608,6 +962,16 @@ type Identity struct {
     // Superseded marks a verifier gate that a later assignment of the same
     // judge over the same author replaced: it no longer attaches verdicts.
     Superseded bool
+    // HostSession is the host session holding the binding. Adoption stamps it;
+    // a reassignment, a supersession or a release clears it. Empty in stores
+    // written before it existed.
+    HostSession string `json:",omitempty"`
+    // JudgedRevision, JudgedHash and JudgedPaths record a gate's last read of
+    // its author's staged view: the author's revision and delta hash at that
+    // read, and the paths read under that same state.
+    JudgedRevision uint64   `json:",omitempty"`
+    JudgedHash     string   `json:",omitempty"`
+    JudgedPaths    []string `json:",omitempty"`
 }
 ```
 
@@ -702,6 +1066,9 @@ type OperationResult struct {
     Content   []byte
     Revision  uint64
     DeltaHash string
+    // OutdatedPaths lists, for a gate read, the paths the gate read under an
+    // earlier state of its author's staged work.
+    OutdatedPaths []string
 }
 ```
 
@@ -763,6 +1130,37 @@ type OwnershipClaim struct {
 }
 ```
 
+<a name="Repair"></a>
+## type Repair
+
+Repair describes one incomplete effect, not permission to bypass an operation. State binds consent to the manifest/snapshot, staged evidence and physical files.
+
+```go
+type Repair struct {
+    Kind     string   `json:"kind"`
+    ID       string   `json:"id"`
+    Author   AgentID  `json:"author"`
+    Paths    []string `json:"paths"`
+    State    string   `json:"state"`
+    Preserve bool     `json:"preserve"`
+    Reason   string   `json:"reason"`
+}
+```
+
+<a name="RepairApproval"></a>
+## type RepairApproval
+
+RepairApproval is private harness IPC from a concrete native confirmation. It cannot authorize the operation that is evaluated again after the repair.
+
+```go
+type RepairApproval struct {
+    Kind     string `json:"kind"`
+    ID       string `json:"id"`
+    State    string `json:"state"`
+    Preserve bool   `json:"preserve"`
+}
+```
+
 <a name="ShellPlan"></a>
 ## type ShellPlan
 
@@ -789,6 +1187,18 @@ type ShellPlan struct {
     // Capture reports that the command's result must be imported as a VFS
     // transaction once it ends.
     Capture bool `json:"capture"`
+}
+```
+
+<a name="StagedState"></a>
+## type StagedState
+
+StagedState names one exact staged state of an author key.
+
+```go
+type StagedState struct {
+    Revision  uint64
+    DeltaHash string
 }
 ```
 

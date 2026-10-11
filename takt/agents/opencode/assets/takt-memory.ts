@@ -1,8 +1,26 @@
 // Takt memory — managed by takt-ai; edits are overwritten on sync.
-// The harness, not the model, supplies author, session, directory and every user confirmation.
+// The harness, not the model, supplies author, caller session, directory and every user confirmation.
+import { randomUUID } from "node:crypto"
 import { Plugin } from "@opencode/plugin"
 import { OpenCode } from "@opencode/client"
 import { Service } from "@opencode/client/service"
+
+// Short IPC has a transport deadline, never a deadline on a human decision.
+// Drain both pipes together and terminate only the process this call created.
+export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: string, timeout = 60_000): Promise<[string, string, number]> {
+ let timer: ReturnType<typeof setTimeout> | undefined
+ const output = Promise.all([new Response(proc.stdout as BodyInit).text(), new Response(proc.stderr as BodyInit).text(), proc.exited])
+ if (!timeout) return output
+ try {
+  return await Promise.race([output, new Promise<never>((_, reject) => {
+   timer = setTimeout(() => {
+    try { process.kill(-proc.pid, "SIGKILL") }
+    catch { try { proc.kill("SIGKILL") } catch { /* Already exited. */ } }
+    reject(new Error(`${label} exceeded ${timeout / 1000}s; the owned IPC process was cancelled; inspect its recorded disposition before repeating the operation`))
+   }, timeout)
+  })])
+ } finally { if (timer !== undefined) clearTimeout(timer) }
+}
 
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const CONTRACT = "Follow the Takt memory contract skill (takt-memory-contract)."
@@ -33,10 +51,10 @@ export function closeResult(value: unknown): CloseResult {
 }
 
 async function takt(command: string, request: Record<string, unknown>): Promise<MemoryResponse> {
-  const proc = Bun.spawn([TAKT_AI, "memory", command], { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
+  const proc = Bun.spawn([TAKT_AI, "memory", command], { detached:true, stdin: "pipe", stdout: "pipe", stderr: "pipe" })
   proc.stdin.write(JSON.stringify(request))
   proc.stdin.end()
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  const [out, err, code] = await ipcOutput(proc, `memory ${command}`)
   try {
     const parsed: unknown = JSON.parse(out)
     const response = isObject(parsed) ? parsed : undefined
@@ -46,19 +64,20 @@ async function takt(command: string, request: Record<string, unknown>): Promise<
     const { error, result } = response
     return { code, ok: response.ok, ...(result === undefined ? {} : { result }), ...(error === undefined ? {} : { error }) }
   } catch {
-    return { code, ok: false, error: `takt-ai memory ${command} exited ${code}: ${out || await new Response(proc.stderr).text()}` }
+    return { code, ok: false, error: `takt-ai memory ${command} exited ${code}: ${out || err}` }
   }
 }
 
-async function fallbackClose(session: string, directory: string) {
-  await takt("close", { author: "takt", session, directory, fallback: true }).catch(() => undefined)
+// The memory CLI decides from its own store whether the session has entries and is unclosed.
+async function fallbackClose(session: string) {
+  const result = await takt("close", { author: "takt", session, fallback: true })
+  if (!result.ok) throw new Error(result.error ?? `memory fallback close failed for session ${session}`)
 }
 
 export default Plugin.define({
   id: "takt.memory",
   async setup(ctx) {
     const pluginDirectory = ctx.location.directory
-    const touched = new Map<string, string>() // root session -> directory
 
     // The plugin context exposes permission hooks and replies but not
     // permission.create, so confirmations go through the local service's own
@@ -75,63 +94,62 @@ export default Plugin.define({
 
     // Replies arrive as events, so a pending confirmation parks here until its
     // request id comes back.
-    const pending = new Map<string, (reply: string) => void>()
+    const pending = new Map<string, { session: string; controller: AbortController; resolve: (reply: string) => void; reject: (error: Error) => void }>()
     const abort = new AbortController()
-    void (async () => {
-      for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
-        if (event.type === "permission.replied") {
-          pending.get(event.data.requestID)?.(event.data.reply)
-          continue
-        }
-        if (event.type !== "session.deleted") continue
-        // Only root sessions are recorded, and a deleted session can no longer
-        // be read back, so the map is the only source for its directory.
-        const directory = touched.get(event.data.sessionID)
-        if (!directory) continue
-        await fallbackClose(event.data.sessionID, directory)
-        touched.delete(event.data.sessionID)
+    let eventsRunning = false
+    let disposed = false
+    function endApprovals(reason: string, session?: string) {
+      for (const [id, waiter] of pending) {
+        if (session && waiter.session !== session) continue
+        pending.delete(id)
+        waiter.controller.abort()
+        waiter.reject(new Error(`${reason}; no approval was granted; request approval again through the original operation`))
       }
-    })().catch(() => undefined) // an aborted subscription is an ordinary shutdown
-
+    }
     // confirm blocks until the user answers. A denial throws, which fails the
     // tool call: nothing is recorded without an explicit approval.
     async function confirm(action: string, title: string, metadata: { [key: string]: JsonValue }, c: { sessionID: string; agent: string; messageID: string; id: string }) {
+      startEvents()
+      if (disposed) throw new Error("memory plugin stopped; no approval was granted")
       const api = await confirmations()
-      const request = await api.permission.create({
-        sessionID: c.sessionID,
-        action,
-        resources: [title],
-        metadata,
-        agent: c.agent,
-        source: { type: "tool", messageID: c.messageID, id: c.id },
-      })
-      if (request.effect === "allow") return
-      if (request.effect === "deny") throw new Error(`Permission denied: ${action}`)
-      const reply = await new Promise<string>((resolve) => pending.set(request.id, resolve))
-      pending.delete(request.id)
-      if (reply === "reject") throw new Error(`Permission denied: ${action}`)
+      const id = randomUUID()
+      const controller = new AbortController()
+      const reply = new Promise<string>((resolve, reject) => pending.set(id, { session: c.sessionID, controller, resolve, reject }))
+      void reply.catch(() => undefined)
+      try {
+        const request = await Promise.race([api.permission.create({ id, sessionID: c.sessionID, action, resources: [title], metadata, agent: c.agent,
+          source: { type: "tool", messageID: c.messageID, id: c.id } }, { signal: AbortSignal.any([abort.signal, controller.signal, AbortSignal.timeout(60_000)]) }), reply.then(() => new Promise<never>(() => {}))])
+        if (disposed || !eventsRunning || !pending.has(id)) throw new Error("confirmation channel ended; no approval granted; request approval again")
+        if (request.id !== id) throw new Error("permission service changed the confirmation correlation")
+        if (request.effect === "deny") throw new Error(`Permission denied: ${action}`)
+        if (request.effect !== "allow" && await reply === "reject") throw new Error(`Permission denied: ${action}`)
+      } finally { controller.abort(); pending.delete(id) }
     }
 
-    async function rootSession(id: string): Promise<string> {
-      const seen = new Set<string>()
-      let current = id
-      while (!seen.has(current)) {
-        seen.add(current)
-        const info = await ctx.session.get({ sessionID: current })
-        // A switch-created session has no parentID; its root is found through
-        // the takt_switch metadata the switch itself recorded instead.
-        const metadataParent = info.metadata?.takt_switch
-        const next = info.parentID ?? (typeof metadataParent === "string" ? metadataParent : undefined)
-        if (!next) return current
-        current = next
-      }
-      throw new Error(`session ${id} has a parent cycle`)
+    function startEvents() {
+      if (eventsRunning || disposed) return
+      eventsRunning = true
+      void (async () => {
+        for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
+          if (event.type === "permission.replied") {
+            pending.get(event.data.requestID)?.resolve(event.data.reply)
+            continue
+          }
+          if (event.type === "session.deleted") {
+            endApprovals("session deleted", event.data.sessionID)
+            void fallbackClose(event.data.sessionID).catch(error => console.error("Takt memory fallback close", error))
+          }
+        }
+      })().catch(error => console.error("Takt memory event stream disconnected", error)).finally(() => {
+        eventsRunning = false; client = undefined
+        endApprovals("confirmation event stream ended")
+      })
     }
+    startEvents()
 
     async function call(command: string, c: { sessionID: string; agent: string }, fields: Record<string, unknown>) {
-      const session = await rootSession(c.sessionID)
-      touched.set(session, pluginDirectory)
-      const res = await takt(command, { author: c.agent, session, directory: pluginDirectory, ...fields })
+      // The core resolves the root session from the execution history.
+      const res = await takt(command, { author: c.agent, caller_session: c.sessionID, directory: pluginDirectory, ...fields })
       if (!res.ok) throw new Error(res.error ?? `takt-ai memory ${command} failed`)
       return res.result
     }
@@ -141,10 +159,10 @@ export default Plugin.define({
     await ctx.session.hook("context", async (event) => {
       let authorized: string[] = []
       try {
-        const session = await rootSession(event.sessionID)
-        const response = await takt("capabilities", { author: event.agent, session, directory: pluginDirectory })
+        const response = await takt("capabilities", { author: event.agent, caller_session: event.sessionID, directory: pluginDirectory })
         if (response.ok && Array.isArray(response.result) && response.result.every(value => typeof value === "string")) authorized = response.result
-      } catch { /* Ownership unavailable: recording remains available. */ }
+        else console.error("Takt memory ownership context unavailable",response.error ?? "invalid capabilities response")
+      } catch (error) { console.error("Takt memory ownership context unavailable",error) }
       for (const name of ["memory_continue_session", "memory_close_session"]) {
         if (!authorized.includes(name)) delete event.tools?.[name]
       }
@@ -270,13 +288,12 @@ export default Plugin.define({
           const state = args.state as string
           const value = await call("close", c, { objective, state })
           const result = closeResult(value)
-          touched.delete(await rootSession(c.sessionID))
           return { content: `Closed session as #${result.end_anchor_id} with ${result.entries} entries` }
         },
       })
     })
 
     // Exiting OpenCode is not a session end: a resumed session (--continue) must keep recording.
-    return () => abort.abort()
+    return () => { disposed = true; endApprovals("memory plugin stopped"); abort.abort() }
   },
 })
