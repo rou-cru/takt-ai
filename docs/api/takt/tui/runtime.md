@@ -29,6 +29,7 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
   - [func \(adapter Adapter\) ExecuteContext\(ctx context.Context, request ActionRequest\) \(ActionResult, error\)](<#Adapter.ExecuteContext>)
   - [func \(adapter Adapter\) ExecuteContextProgress\(ctx context.Context, request ActionRequest, progress func\(setup.DeploymentProgress\)\) \(ActionResult, error\)](<#Adapter.ExecuteContextProgress>)
   - [func \(adapter Adapter\) OpenCodeModels\(\) \(\[\]opencodeapi.Model, error\)](<#Adapter.OpenCodeModels>)
+  - [func \(adapter Adapter\) OpenCodeProviderNames\(\) \(map\[string\]string, error\)](<#Adapter.OpenCodeProviderNames>)
   - [func \(adapter Adapter\) PreviewPlan\(request PreviewRequest\) \(InstallPlan, error\)](<#Adapter.PreviewPlan>)
   - [func \(adapter Adapter\) PreviewUninstall\(rootDir string\) \(setup.UninstallResult, error\)](<#Adapter.PreviewUninstall>)
   - [func \(adapter Adapter\) ScanDrift\(rootDir string\) \(\[\]setup.ConflictEntry, error\)](<#Adapter.ScanDrift>)
@@ -293,6 +294,15 @@ func (adapter Adapter) OpenCodeModels() ([]opencodeapi.Model, error)
 ```
 
 OpenCodeModels reports the models the local OpenCode installation offers; asking the binary is execution, so it stays at the runtime boundary.
+
+<a name="Adapter.OpenCodeProviderNames"></a>
+### func \(Adapter\) OpenCodeProviderNames
+
+```go
+func (adapter Adapter) OpenCodeProviderNames() (map[string]string, error)
+```
+
+OpenCodeProviderNames reports the display name of each OpenCode provider.
 
 <a name="Adapter.PreviewPlan"></a>
 ### func \(Adapter\) PreviewPlan

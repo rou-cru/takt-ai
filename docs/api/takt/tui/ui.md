@@ -18,6 +18,7 @@ Package ui contains reusable terminal UI primitives.
 - [func BusyFooter\(cancelRequested bool\) string](<#BusyFooter>)
 - [func CheckList\(items \[\]Item, cursor int, focused bool\) string](<#CheckList>)
 - [func ContentRows\(height, footerLines int\) int](<#ContentRows>)
+- [func ContentWidth\(width int\) int](<#ContentWidth>)
 - [func Fields\(fields \[\]Field\) string](<#Fields>)
 - [func FooterActions\(actions \[\]FooterAction, cursor int, focused bool\) string](<#FooterActions>)
 - [func Group\(title string, rows \[\]Row\) string](<#Group>)
@@ -332,6 +333,16 @@ const (
     TextPickerSearchIntro  = "Search: "
     TextPickerNoMatchFmt   = "No models match %q. Ctrl+U clears the search."
     TextPickerPosFmt       = "%d / %d"
+    // TextPickerAllTab labels the tab listing every provider's models; the
+    // provider tabs and the detail pane carry only what OpenCode reports.
+    TextPickerAllTab       = "All"
+    TextPickerTabFmt       = "%s %d"
+    TextPickerCostLabel    = "Cost"
+    TextPickerCacheLabel   = "Cache"
+    TextPickerLimitsLabel  = "Limits"
+    TextPickerInputLabel   = "Input"
+    TextPickerVariantLabel = "Variants"
+    TextPickerReleaseLabel = "Released"
     TextScrollPosFmt       = "%d–%d / %d"
 
     // Diagnostics.
@@ -427,6 +438,15 @@ func ContentRows(height, footerLines int) int
 ```
 
 ContentRows returns the visible rows inside a panel above an action row of footerLines lines \(0 for none\); Shell uses the same arithmetic.
+
+<a name="ContentWidth"></a>
+## func ContentWidth
+
+```go
+func ContentWidth(width int) int
+```
+
+ContentWidth returns the columns a panel's body really has: the panel width less its border and padding. Anything wider is wrapped by the shell.
 
 <a name="Fields"></a>
 ## func Fields
