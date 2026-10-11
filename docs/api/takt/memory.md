@@ -115,9 +115,13 @@ CapabilitiesRequest identifies a harness\-resolved caller without model input.
 
 ```go
 type CapabilitiesRequest struct {
-    Author    string `json:"author"`
-    Session   string `json:"session"`
-    Directory string `json:"directory"`
+    // CallerSession is the harness-delivered host session running the tool.
+    // When present, the root Session is resolved from the execution history
+    // under the workspace lock instead of being accepted from the caller.
+    CallerSession string `json:"caller_session,omitempty"`
+    Author        string `json:"author"`
+    Session       string `json:"session"`
+    Directory     string `json:"directory"`
 }
 ```
 
@@ -128,12 +132,16 @@ CloseRequest ends a session and optionally records its outcome.
 
 ```go
 type CloseRequest struct {
-    Author    string `json:"author"`
-    Session   string `json:"session"`
-    Directory string `json:"directory"`
-    Objective string `json:"objective,omitempty"`
-    State     string `json:"state,omitempty"`
-    Fallback  bool   `json:"fallback"`
+    // CallerSession is the harness-delivered host session running the tool.
+    // When present, the root Session is resolved from the execution history
+    // under the workspace lock instead of being accepted from the caller.
+    CallerSession string `json:"caller_session,omitempty"`
+    Author        string `json:"author"`
+    Session       string `json:"session"`
+    Directory     string `json:"directory"`
+    Objective     string `json:"objective,omitempty"`
+    State         string `json:"state,omitempty"`
+    Fallback      bool   `json:"fallback"`
 }
 ```
 
@@ -156,7 +164,7 @@ type CloseResult struct {
 func Close(ctx context.Context, cfg Config, req CloseRequest) (result CloseResult, err error)
 ```
 
-Close ends a session: only the session holder may close one unless it is a fallback.
+Close ends a session: only the session holder may close one unless it is a fallback. A fallback close is idempotent and reads its facts from the session index alone: it needs no directory, and a session that is unknown, empty or already closed is a no\-op.
 
 <a name="Config"></a>
 ## type Config
@@ -180,6 +188,10 @@ ContinueRequest declares the earlier session this one continues; an empty Previo
 
 ```go
 type ContinueRequest struct {
+    // CallerSession is the harness-delivered host session running the tool.
+    // When present, the root Session is resolved from the execution history
+    // under the workspace lock instead of being accepted from the caller.
+    CallerSession   string `json:"caller_session,omitempty"`
     Author          string `json:"author"`
     Session         string `json:"session"`
     Directory       string `json:"directory"`
@@ -194,17 +206,21 @@ RecordRequest is one validated memory entry written by a Takt crew member.
 
 ```go
 type RecordRequest struct {
-    Author    string     `json:"author"`
-    Session   string     `json:"session"`
-    Directory string     `json:"directory"`
-    Confirmed bool       `json:"confirmed"`
-    UserOrder bool       `json:"user_order"`
-    Nature    string     `json:"nature"`
-    Scope     string     `json:"scope"`
-    Title     string     `json:"title"`
-    Content   string     `json:"content"`
-    Evidence  string     `json:"evidence,omitempty"`
-    RelatesTo *RelatesTo `json:"relates_to,omitempty"`
+    // CallerSession is the harness-delivered host session running the tool.
+    // When present, the root Session is resolved from the execution history
+    // under the workspace lock instead of being accepted from the caller.
+    CallerSession string     `json:"caller_session,omitempty"`
+    Author        string     `json:"author"`
+    Session       string     `json:"session"`
+    Directory     string     `json:"directory"`
+    Confirmed     bool       `json:"confirmed"`
+    UserOrder     bool       `json:"user_order"`
+    Nature        string     `json:"nature"`
+    Scope         string     `json:"scope"`
+    Title         string     `json:"title"`
+    Content       string     `json:"content"`
+    Evidence      string     `json:"evidence,omitempty"`
+    RelatesTo     *RelatesTo `json:"relates_to,omitempty"`
 }
 ```
 

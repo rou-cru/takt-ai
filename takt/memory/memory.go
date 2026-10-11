@@ -53,17 +53,21 @@ type RelatesTo struct {
 
 // RecordRequest is one validated memory entry written by a Takt crew member.
 type RecordRequest struct {
-	Author    string     `json:"author"`
-	Session   string     `json:"session"`
-	Directory string     `json:"directory"`
-	Confirmed bool       `json:"confirmed"`
-	UserOrder bool       `json:"user_order"`
-	Nature    string     `json:"nature"`
-	Scope     string     `json:"scope"`
-	Title     string     `json:"title"`
-	Content   string     `json:"content"`
-	Evidence  string     `json:"evidence,omitempty"`
-	RelatesTo *RelatesTo `json:"relates_to,omitempty"`
+	// CallerSession is the harness-delivered host session running the tool.
+	// When present, the root Session is resolved from the execution history
+	// under the workspace lock instead of being accepted from the caller.
+	CallerSession string     `json:"caller_session,omitempty"`
+	Author        string     `json:"author"`
+	Session       string     `json:"session"`
+	Directory     string     `json:"directory"`
+	Confirmed     bool       `json:"confirmed"`
+	UserOrder     bool       `json:"user_order"`
+	Nature        string     `json:"nature"`
+	Scope         string     `json:"scope"`
+	Title         string     `json:"title"`
+	Content       string     `json:"content"`
+	Evidence      string     `json:"evidence,omitempty"`
+	RelatesTo     *RelatesTo `json:"relates_to,omitempty"`
 }
 
 // RecordResult reports the stored entry ID and whether deduplication absorbed the write.
@@ -75,6 +79,10 @@ type RecordResult struct {
 // ContinueRequest declares the earlier session this one continues; an empty
 // PreviousSession withdraws the declaration.
 type ContinueRequest struct {
+	// CallerSession is the harness-delivered host session running the tool.
+	// When present, the root Session is resolved from the execution history
+	// under the workspace lock instead of being accepted from the caller.
+	CallerSession   string `json:"caller_session,omitempty"`
 	Author          string `json:"author"`
 	Session         string `json:"session"`
 	Directory       string `json:"directory"`
@@ -83,12 +91,16 @@ type ContinueRequest struct {
 
 // CloseRequest ends a session and optionally records its outcome.
 type CloseRequest struct {
-	Author    string `json:"author"`
-	Session   string `json:"session"`
-	Directory string `json:"directory"`
-	Objective string `json:"objective,omitempty"`
-	State     string `json:"state,omitempty"`
-	Fallback  bool   `json:"fallback"`
+	// CallerSession is the harness-delivered host session running the tool.
+	// When present, the root Session is resolved from the execution history
+	// under the workspace lock instead of being accepted from the caller.
+	CallerSession string `json:"caller_session,omitempty"`
+	Author        string `json:"author"`
+	Session       string `json:"session"`
+	Directory     string `json:"directory"`
+	Objective     string `json:"objective,omitempty"`
+	State         string `json:"state,omitempty"`
+	Fallback      bool   `json:"fallback"`
 }
 
 // CloseResult reports the end anchor and how many entries the session recorded.
@@ -227,9 +239,14 @@ type openSession struct {
 }
 
 // lock takes the session index lock and loads the index (nil when new); the caller must Close s.lock.
-func lock(cfg Config, session string) (*openSession, error) {
-	f, err := lockSession(cfg.Root, session)
-	if err != nil {
+func lock(ctx context.Context, cfg Config, session string) (*openSession, error) {
+	return openLocked(ctx, cfg, session, lockSession)
+}
+
+// openLocked returns (nil, nil) when take finds no lock to take.
+func openLocked(ctx context.Context, cfg Config, session string, take func(context.Context, string, string) (*os.File, error)) (*openSession, error) {
+	f, err := take(ctx, cfg.Root, session)
+	if err != nil || f == nil {
 		return nil, err
 	}
 	l, err := loadSessionIndex(cfg.Root, session)
@@ -297,11 +314,11 @@ func (s *openSession) fixContinuity(ctx context.Context, cfg Config) error {
 	if l.PendingContinues == "" {
 		return nil
 	}
-	prev, err := loadPreviousSessionIndex(cfg, l.PendingContinues)
+	prevEnd, err := closedPreviousEnd(ctx, cfg, l.PendingContinues)
 	if err != nil {
 		return err
 	}
-	if err := s.client.link(ctx, l.StartAnchor, prev.EndAnchor, "related", "takt:continues", harnessTool); err != nil {
+	if err := s.client.link(ctx, l.StartAnchor, prevEnd, "related", "takt:continues", harnessTool); err != nil {
 		return err
 	}
 	l.Continues, l.PendingContinues = l.PendingContinues, ""
@@ -315,7 +332,7 @@ func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordRe
 	if err := validateRecord(req); err != nil {
 		return RecordResult{}, err
 	}
-	s, err := lock(cfg, req.Session)
+	s, err := lock(ctx, cfg, req.Session)
 	if err != nil {
 		return RecordResult{}, err
 	}
@@ -578,12 +595,13 @@ func Continue(ctx context.Context, cfg Config, req ContinueRequest) (err error) 
 	if err := validateContinueRequest(req); err != nil {
 		return err
 	}
+	// The previous session is locked and released before this session's lock is taken: never two held at once.
 	if req.PreviousSession != "" {
-		if _, err := loadPreviousSessionIndex(cfg, req.PreviousSession); err != nil {
+		if _, err := closedPreviousEnd(ctx, cfg, req.PreviousSession); err != nil {
 			return err
 		}
 	}
-	s, err := lock(cfg, req.Session)
+	s, err := lock(ctx, cfg, req.Session)
 	if err != nil {
 		return err
 	}
@@ -609,6 +627,9 @@ func validateContinueRequest(req ContinueRequest) error {
 	if err := holdsSession(req.Author, req.Session, req.Directory); err != nil {
 		return err
 	}
+	if err := callerHolds(req.CallerSession, req.Session, req.Directory); err != nil {
+		return err
+	}
 	if err := requireSession(req.Session, req.Directory); err != nil {
 		return err
 	}
@@ -624,29 +645,41 @@ func validateContinueRequest(req ContinueRequest) error {
 	return nil
 }
 
-func loadPreviousSessionIndex(cfg Config, previous string) (*sessionIndex, error) {
-	prev, err := loadSessionIndex(cfg.Root, previous)
+// closedPreviousEnd returns the end anchor of a closed previous session, read
+// under its lock without creating it. A closed session holds no pending
+// continuity, so taking this lock under the caller's own never waits in a cycle.
+func closedPreviousEnd(ctx context.Context, cfg Config, previous string) (end int64, err error) {
+	s, err := openLocked(ctx, cfg, previous, lockExistingSession)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if prev == nil || prev.EndAnchor == 0 {
-		return nil, reject("previous session %q has no closed record to continue from", previous)
+	if s == nil {
+		return 0, reject("previous session %q has no closed record to continue from", previous)
 	}
-	return prev, nil
+	defer func() { err = errors.Join(err, s.lock.Close()) }()
+	if s.index == nil || s.index.EndAnchor == 0 {
+		return 0, reject("previous session %q has no closed record to continue from", previous)
+	}
+	return s.index.EndAnchor, nil
 }
 
 // CapabilitiesRequest identifies a harness-resolved caller without model input.
 type CapabilitiesRequest struct {
-	Author    string `json:"author"`
-	Session   string `json:"session"`
-	Directory string `json:"directory"`
+	// CallerSession is the harness-delivered host session running the tool.
+	// When present, the root Session is resolved from the execution history
+	// under the workspace lock instead of being accepted from the caller.
+	CallerSession string `json:"caller_session,omitempty"`
+	Author        string `json:"author"`
+	Session       string `json:"session"`
+	Directory     string `json:"directory"`
 }
 
 // Capabilities projects session ownership without writing memory. An unavailable
 // ownership authority hides lifecycle operations, but never prevents recording.
 func Capabilities(req CapabilitiesRequest) []string {
 	tools := []string{"memory_record"}
-	if requireSession(req.Session, req.Directory) == nil && holdsSession(req.Author, req.Session, req.Directory) == nil {
+	if requireSession(req.Session, req.Directory) == nil && holdsSession(req.Author, req.Session, req.Directory) == nil &&
+		callerHolds(req.CallerSession, req.Session, req.Directory) == nil {
 		tools = append(tools, "memory_continue_session", "memory_close_session")
 	}
 	return tools
@@ -685,17 +718,42 @@ func holdsSession(author, session, directory string) (err error) {
 	return reject("only the agent holding the user conversation links or closes a session")
 }
 
+// callerHolds refuses a caller session other than the root itself or the
+// session the history records as the root's interlocutor holder: another
+// session of the holder's agent does not hold the conversation. An empty
+// caller names no session to check.
+func callerHolds(caller, session, directory string) error {
+	if caller == "" || caller == session {
+		return nil
+	}
+	projection, err := history.ReadProjection(history.StateDir(directory))
+	if err != nil {
+		return err
+	}
+	if holder := projection.Budgets(session).InterlocutorHolder; holder != caller {
+		return reject("only the agent holding the user conversation links or closes a session")
+	}
+	return nil
+}
+
 // Close ends a session: only the session holder may close one unless it is a fallback.
+// A fallback close is idempotent and reads its facts from the session index alone:
+// it needs no directory, and a session that is unknown, empty or already closed is a no-op.
 func Close(ctx context.Context, cfg Config, req CloseRequest) (result CloseResult, err error) {
+	if req.Fallback {
+		return fallbackClose(ctx, cfg, req)
+	}
 	if err := requireSession(req.Session, req.Directory); err != nil {
 		return CloseResult{}, err
 	}
-	if !req.Fallback {
-		if err := holdsSession(req.Author, req.Session, req.Directory); err != nil {
-			return CloseResult{}, err
-		}
+	if err := holdsSession(req.Author, req.Session, req.Directory); err != nil {
+		return CloseResult{}, err
 	}
-	s, err := lock(cfg, req.Session)
+	if err := callerHolds(req.CallerSession, req.Session, req.Directory); err != nil {
+		return CloseResult{}, err
+	}
+	// An explicit close of a never-recorded session still records it: start and end anchors (MEM-OPS-4/5).
+	s, err := lock(ctx, cfg, req.Session)
 	if err != nil {
 		return CloseResult{}, err
 	}
@@ -703,9 +761,23 @@ func Close(ctx context.Context, cfg Config, req CloseRequest) (result CloseResul
 	if s.index != nil && s.index.EndAnchor != 0 {
 		return CloseResult{}, reject("session %q is already closed", req.Session)
 	}
-	if req.Fallback && emptyIndex(s.index) {
+	return finishClose(ctx, cfg, req, s)
+}
+
+func fallbackClose(ctx context.Context, cfg Config, req CloseRequest) (result CloseResult, err error) {
+	if err := requireSession(req.Session, "-"); err != nil {
+		return CloseResult{}, err
+	}
+	// A session with no lock file never recorded anything: leave no file behind.
+	s, err := openLocked(ctx, cfg, req.Session, lockExistingSession)
+	if err != nil || s == nil {
+		return CloseResult{}, err
+	}
+	defer func() { err = errors.Join(err, s.lock.Close()) }()
+	if emptyIndex(s.index) || s.index.EndAnchor != 0 {
 		return CloseResult{}, nil
 	}
+	req.Directory = s.index.Directory
 	return finishClose(ctx, cfg, req, s)
 }
 

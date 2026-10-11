@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -251,11 +252,19 @@ type FS struct {
 	bindings           map[AgentID]Identity
 	calls              map[string]bool
 	recovery           *recoveryManifest
+	interrupted        map[string]interruptedEvidence
 	// cycles maps a maintenance cycle id to what its consolidations overwrote,
 	// so the cycle stays discardable until it closes.
 	cycles map[string]*cycleSnapshot
 	// failpoint is test-only fault injection at durable flush boundaries.
 	failpoint func(string) error
+	// stateDir is the private state directory, shared with the execution
+	// history, which is read only through this handle while it holds the
+	// workspace lock.
+	stateDir    string
+	maintenance json.RawMessage
+	// shellCalls maps a prepared shell call to what it was planned against.
+	shellCalls map[string]shellCall
 
 	// staged maps agentID → agentDelta.
 	staged map[AgentID]*agentDelta
@@ -291,13 +300,15 @@ func newFS(rootDir string) (*FS, error) {
 		return nil, fmt.Errorf("vfs: workspace root does not exist: %w", err)
 	}
 	return &FS{
-		rootDir:  abs,
-		root:     root,
-		bindings: make(map[AgentID]Identity),
-		calls:    make(map[string]bool),
-		staged:   make(map[AgentID]*agentDelta),
-		owners:   make(map[string]AgentID),
-		cycles:   make(map[string]*cycleSnapshot),
+		rootDir:     abs,
+		root:        root,
+		bindings:    make(map[AgentID]Identity),
+		calls:       make(map[string]bool),
+		staged:      make(map[AgentID]*agentDelta),
+		owners:      make(map[string]AgentID),
+		cycles:      make(map[string]*cycleSnapshot),
+		interrupted: make(map[string]interruptedEvidence),
+		shellCalls:  make(map[string]shellCall),
 	}, nil
 }
 

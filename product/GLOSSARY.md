@@ -31,6 +31,7 @@ requirements live in the documents listed in `INDEX.md`.
 | **user-managed configuration** | Configuration of OpenCode v2 owned by the user that Takt never installed. It lies outside Takt's managed assets and is never Takt's to replace. |
 | **Takt default stack** | The complete, strongly opinionated set of capabilities that the default setup mode installs: the mandatory core plus every curated optional capability. |
 | **mandatory core** | The set of capabilities that custom setup cannot omit. A strict subset of the Takt default stack (`PR-SET-12`). |
+| **hardware-conditional capability** | An optional capability that is installed only when the host meets its declared hardware requirement (`PR-SET-34`). |
 
 ## 3. Installation State
 
@@ -68,9 +69,10 @@ requirements live in the documents listed in `INDEX.md`.
 | **workspace analyzer** | The static analysis layer over the code the crew builds, from which the collector's findings originate (`PR-MNT-24`). Distinct from the declarative detectors of the control bus (`PR-OBS-DET-1`..`4`), which observe crew execution rather than the code it produces. |
 | **masked dead code** | Code whose only callers are tests: the test establishes no use, it hides the code's death from analysis (`PR-MNT-25`). Not to be confused with code the session introduced whose consumer has not arrived yet (`PR-MNT-26`). |
 | **dreaming** | The long-term memory consolidation lifecycle: Periodic Simple Mode, user-present Deep Dream, and macro consolidation over closed sessions (`ARCH_MEMORY` §6, `PRD_DREAMING`). Distinct from workspace GC. |
+| **dreaming operation** | A typed change the dreaming specialist proposes and the harness validates before applying: group, link, relocate, propose removal, or attach a derived label (`PR-DRM-16`). Distinct from VFS consolidation. |
+| **candidate set** | The reproducible set of groups, pairs, relinks, and signals the harness prepares for the dreaming specialist to judge (`PR-DRM-17`). |
 | **action** | One tool execution recorded by the control plane within the scope being measured; the unit in which bounded budgets and enforcement windows are counted (`PR-OBS-PRG-2` in `PRD_OBSERVABILITY`). Not a unit of elapsed time and not an agent's own count of its steps. |
 | **problem rate** | The rate of problems appearing during a session — checks that start failing, files re-edited after consolidation, discarded or redone work, recurring collisions — derived by the harness from deterministic signals, never from an agent's own account, over a denominator of recorded work rather than elapsed time (`PR-MNT-9` in `PRD_OBSERVABILITY`). Its stability, not its level, is what the system regulates. |
-| **user-instructed change** | A mutation an agent performs because the user asked for it. Attributed to the user, whatever its target. A target that happens to be Takt's installed configuration does not make it a Takt operation (`PR-CFG-3`). |
 | **abortion** | The interface transition that ends a temporary holder's layer without handoff, negotiation, or artifact; it originates only from the user or the harness (`IR-19`, `IR-24`). |
 | **Action Journal** | The immutable, append-only record of every operation performed against the VFS (`PR-VFS-JRN-1`). |
 | **claim** | The VFS record that grants one agent instance exclusive ownership of a file scope, pending or active, until released or revoked (`PR-VFS-COL-4`). |

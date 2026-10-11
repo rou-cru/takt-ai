@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
+import { historyFixture } from "./history-fixture.mjs"
+const owner = historyFixture()
+const claims = []
 
 // Same mocking style as vfs-dispatch.mjs: only Bun.spawn is a double, the
 // rendered artifact runs for real.
@@ -11,7 +14,14 @@ globalThis.Bun = {
     assert.equal(argv[0], "/test/takt-ai")
     const call = { verb: argv[1], argv, options }
     calls.push(call)
-    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
+    let cached
+    const answer = () => {
+      if (cached) return cached
+      const custom = respond(call)
+      if (custom?.code) return cached = custom
+      const fact = call.verb === "dispatch" ? owner.answer("dispatch",requestOf(call).action,requestOf(call),claims) : undefined
+      return cached = custom ?? (fact ? {stdout:fact.out??"",stderr:fact.err??"",code:fact.code} : {stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+    }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
       get stdout() { return answer().stdout },
@@ -53,6 +63,7 @@ await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
+    context: async () => [],
     // The host titles a child after its delegation's description.
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: titles[sessionID] ?? sessionID } },
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
@@ -108,7 +119,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   assert.deepEqual(promptedSessions, [unit])
   assert.deepEqual(waitedSessions, scenario === "wait_error" ? [unit] : [])
   const finishes = dispatched().filter(r => r.action === "finish")
-  assert.deepEqual(finishes, [{ action: "finish", event: unit, dispatch: "root:call-failed", session: "root" }])
+  assert.deepEqual(finishes, [{ action: "finish", event: unit, dispatch: "root:call-failed", attempt: "1", session: "root" }])
 
   // A repeated host notification must not settle the same delegation twice.
   await delegate("execute.after", unit, "call-failed", "pm")
@@ -185,7 +196,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   // same delegation, must finish exactly as the clean case above did.
   mark = dispatched().length
   await delegate("execute.before", "retry-ok", "call-retry", "pm")
-  respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results"
+  respond = (call) => call.verb === "dispatch" && requestOf(call).action === "deliver"
     ? { stdout: "", stderr: "handoff requires an Engram ID", code: 1 } : undefined
   await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "retry-ok", agent: "pm" }), /Engram ID/)
   respond = (_call) => undefined
@@ -198,8 +209,8 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   // earlier failed attempt: identical shape to a clean first try.
   const byName = (a, b) => a.localeCompare(b)
   assert.deepEqual(Object.keys(retryFinish).sort(byName), Object.keys(cleanFinish).sort(byName))
-  assert.deepEqual(Object.keys(retryFinish).sort(byName), ["action", "dispatch", "event", "session"])
-  const validateCalls = dispatched().slice(mark).filter(r => r.action === "validate_results")
+  assert.deepEqual(Object.keys(retryFinish).sort(byName), ["action", "attempt", "dispatch", "event", "session"])
+  const validateCalls = dispatched().slice(mark).filter(r => r.action === "deliver")
   assert.equal(validateCalls.length, 2, "expected one failed and one corrected validate_results call")
 } else if (scenario === "async_delivery") {
   await delegate("execute.before", "async-result", "call-async", "pm")
@@ -224,7 +235,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   await completion
   assert.deepEqual(waitedSessions, ["async-result"])
   assert.deepEqual(promptedSessions, ["async-result"])
-  assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "validate_results", "finish"])
+  assert.deepEqual(dispatched().filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "deliver", "finish"])
 } else if (scenario === "async_missing") {
   await delegate("execute.before", "async-missing", "call-async-missing", "pm")
   const nudgeEvent = { agent: "pm", sessionID: "async-missing", tools: {}, system: [] }
@@ -246,7 +257,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   assert.deepEqual(waitedSessions, ["async-missing"])
   assert.deepEqual(promptedSessions, ["async-missing"])
   assert.match(error.message, /the specialist ended without delivering its result/)
-  assert.deepEqual(dispatched().map(r => r.action), ["admit", "launch", "finish"])
+  assert.deepEqual(dispatched().filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
 } else if (scenario === "fallback") {
   // A validate_results transport/network failure must read nothing like a
   // never-delivered fallback failure.
@@ -284,7 +295,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   let mark = dispatched().length
   await delegate("execute.before", "tpm-brief", "call-tpm-ok", "tpm")
   await tools.deliver_result.execute({ result_ids: [777, 778] }, { sessionID: "tpm-brief", agent: "tpm" })
-  const validateCall = dispatched().slice(mark).find(r => r.action === "validate_results")
+  const validateCall = dispatched().slice(mark).find(r => r.action === "deliver")
   assert.ok(validateCall, "tpm's deliver_result never reached validate_results")
   assert.deepEqual(validateCall.result_ids, [777, 778])
   await delegate("execute.after", "tpm-brief", "call-tpm-ok", "tpm")
@@ -299,25 +310,21 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   await delegate("execute.before", "tpm-missing", "call-tpm-missing", "tpm")
   await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
     /the specialist ended without delivering its result/)
-  assert.deepEqual(dispatched().slice(mark).map(r => r.action), ["admit", "launch", "finish"])
+  assert.deepEqual(dispatched().slice(mark).filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
 } else if (scenario === "dual_role") {
   // verify is a verifier and a result producer at once: it adopts its gate,
   // attaches its verdict, and its delegation still owes its delivered result.
-  const claims = [
+  claims.push(
     { key: "author-1", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", active: true, scope: ["a.go"] },
-  ]
+  )
   respond = (call) => {
     // reply is takt-ai's successful answer carrying value.
     const reply = (value) => ({ stdout: JSON.stringify(value), stderr: "", code: 0 })
     if (call.argv[2] === "claims") return reply({ ok: true, claims })
-    if (call.argv[2] === "assign-verifier") {
-      claims.push({ key: "gate-1", root_session_id: "root", work_unit_id: "review", agent_id: "verify", target_instance: "verify", pending: true, scope: [], author_key: call.stdin.author_key })
-      return reply({ ok: true, key: "gate-1" })
-    }
-    if (call.argv[2] === "bind") {
-      claims[1].pending = false
-      claims[1].active = true
-      return reply({ ok: true, key: "gate-1", attempt_id: "1", revision: 0, delta_hash: "" })
+    if (call.argv[2] === "adopt-gates") {
+      const gate=claims.find(c=>c.agent_id==="verify" && c.pending)
+      gate.pending=false;gate.active=true;gate.scope=["a.go"]
+      return reply({ok:true,gates:[{key:gate.key,author_key:"author-1",scope:gate.scope}]})
     }
     return undefined
   }
@@ -329,7 +336,10 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   await tools.vfs_verify.execute({ author_key: "author-1", pass: true, finding: "reviewed" }, { sessionID: "review", agent: "verify" })
   const verdict = calls.find(c => c.argv[2] === "verify")
   assert.ok(verdict, "the verdict never reached the core")
-  assert.equal(verdict.stdin.verifier_key, "gate-1")
+  assert.equal(verdict.stdin.caller_session, "review")
+  assert.equal(verdict.stdin.caller_agent, "verify")
+  assert.equal(verdict.stdin.author_key, "author-1")
+  assert.equal(verdict.stdin.verifier_key, undefined)
   // Without its delivery the verifier's delegation fails like any producer's.
   await assert.rejects(() => delegate("execute.after", "review", "call-review", "verify", "completed", gates), /the specialist ended without delivering its result/)
   assert.deepEqual(promptedSessions, ["review"], "the verifier was not nudged once to deliver")

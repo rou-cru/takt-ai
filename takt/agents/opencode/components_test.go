@@ -340,7 +340,7 @@ func TestTaktMemoryPluginArtifact(t *testing.T) {
 		`name: "memory_record"`, `name: "memory_continue_session"`, `name: "memory_close_session"`,
 		"previous_session_id: str(", "objective: str(", "state: str(",
 		`user_order: { type: "boolean"`, "author: c.agent", "directory: pluginDirectory",
-		`"session.deleted"`, "fallback: true", "ctx.session.get",
+		`"session.deleted"`, "fallback: true", "caller_session: c.sessionID",
 		// The two confirmations survive the V2 plugin API: ctx has no
 		// permission.create, so they ride the local service endpoint.
 		`confirm("memory_personal"`, `confirm("memory_user_order"`, "api.permission.create(",

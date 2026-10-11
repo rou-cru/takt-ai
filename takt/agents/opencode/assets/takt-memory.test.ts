@@ -14,6 +14,7 @@ describe("plugin setup", () => {
     const tools = new Map<string, { execute: (input: unknown, context: never) => Promise<{ content: string }> }>()
     const requests: Array<{ command: string; request: Record<string, unknown> }> = []
     runtime.Bun.spawn = ((argv: string[]) => {
+      if (argv[1]==="dispatch") return {stdout:"null",stderr:"",exited:Promise.resolve(0)}
       let request: Record<string, unknown> = {}
       const command = argv[2]
       return {
@@ -44,7 +45,7 @@ describe("plugin setup", () => {
       expect((await tools.get("memory_continue_session")!.execute({ previous_session_id: "prior" }, context)).content).toBe("Will continue prior from the first new entry")
       expect((await tools.get("memory_close_session")!.execute({ objective: "objective", state: "done" }, context)).content).toBe("Closed session as #43 with 1 entries")
       expect(requests.map(({ command }) => command)).toEqual(["record", "continue", "close"])
-      expect(requests[0].request).toMatchObject({ author: "takt", session: "root", directory: "/workspace", title: "title" })
+      expect(requests[0].request).toMatchObject({ author: "takt", caller_session: "root", directory: "/workspace", title: "title" })
     } finally {
       runtime.Bun.spawn = originalSpawn
     }
@@ -87,7 +88,7 @@ describe("closeResult", () => {
 
 // The confirmation channel is the local OpenCode service; these tests replace
 // its discovery and client so no network or real service is ever touched.
-type PermissionRequest = { sessionID: string; action: string; resources: string[]; metadata: Record<string, unknown>; agent: string; source: unknown }
+type PermissionRequest = { id: string; sessionID: string; action: string; resources: string[]; metadata: Record<string, unknown>; agent: string; source: unknown }
 type Effect = "allow" | "deny" | "ask"
 type Reply = { out?: string; err?: string; code?: number }
 type MemoryEvent = { type: string; data: Record<string, string> }
@@ -107,6 +108,7 @@ async function startMemory(options: {
   respond?: (command: string, request: Record<string, unknown>) => Reply
   sessions?: Record<string, { parentID?: string; metadata?: Record<string, unknown> }>
   effects?: Effect[]
+  immediateReply?: string
   endpoint?: { url: string } | undefined
 } = {}) {
   const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
@@ -118,6 +120,7 @@ async function startMemory(options: {
   const effects = [...(options.effects ?? [])]
   let wake: (() => void) | undefined
   let closed = false
+  let disconnected = false
   let discoveries = 0
   const endpoint = "endpoint" in options ? options.endpoint : { url: "http://service.invalid" }
   mock.module("@opencode/client/service", () => ({
@@ -126,7 +129,11 @@ async function startMemory(options: {
   mock.module("@opencode/client", () => ({
     OpenCode: { make: () => ({ permission: { create: async (request: PermissionRequest) => {
       created.push(request)
-      return { effect: effects.shift() ?? "allow", id: `request-${created.length}` }
+      if (options.immediateReply) {
+        events.push({type:"permission.replied",data:{requestID:request.id,reply:options.immediateReply}});wake?.()
+        await sleep(3)
+      }
+      return { effect: effects.shift() ?? "allow", id: request.id }
     } } }) },
   }))
   runtime.Bun.spawn = ((argv: string[]) => {
@@ -145,8 +152,8 @@ async function startMemory(options: {
     }
   }) as typeof originalSpawn
   async function* stream(): AsyncGenerator<MemoryEvent> {
-    while (!closed) {
-      while (events.length === 0 && !closed) await new Promise<void>((resolve) => { wake = resolve })
+    while (!closed && !disconnected) {
+      while (events.length === 0 && !closed && !disconnected) await new Promise<void>((resolve) => { wake = resolve })
       const event = events.shift()
       if (event) yield event
     }
@@ -160,6 +167,7 @@ async function startMemory(options: {
       return { dispose() {} }
     } },
     event: { subscribe({ signal }: { signal: AbortSignal }) {
+      disconnected = false
       signal.addEventListener("abort", () => { closed = true; wake?.() }, { once: true })
       return { [Symbol.asyncIterator]: stream }
     } },
@@ -171,6 +179,7 @@ async function startMemory(options: {
       return event
     },
     requests, created, discoveries: () => discoveries,
+    disconnect() {disconnected=true;wake?.()},
     run: (name: string, input: unknown, ctx = context) => tools.get(name)!.execute(input, ctx as never),
     publish(event: MemoryEvent) { events.push(event); wake?.() },
     stop() { if (typeof cleanup === "function") cleanup(); runtime.Bun.spawn = originalSpawn },
@@ -185,7 +194,7 @@ describe("confirmation flow", () => {
     try {
       expect((await memory.run("memory_record", personalRecord)).content).toBe("Recorded #7")
       expect(memory.created).toEqual([{
-        sessionID: "root", action: "memory_personal", resources: ["prefers tabs"],
+        id:expect.any(String), sessionID: "root", action: "memory_personal", resources: ["prefers tabs"],
         metadata: { title: "prefers tabs", content: "always tabs" }, agent: "takt",
         source: { type: "tool", messageID: "message", id: "tool-call" },
       }])
@@ -234,33 +243,57 @@ describe("confirmation flow", () => {
       const approved = memory.run("memory_record", personalRecord)
       await until(() => memory.created.length === 1)
       await sleep(1)
-      memory.publish({ type: "permission.replied", data: { requestID: "request-1", reply: "once" } })
+      memory.publish({ type: "permission.replied", data: { requestID: memory.created[0].id, reply: "once" } })
       expect((await approved).content).toBe("Recorded #7")
 
       const rejected = memory.run("memory_record", personalRecord)
       const outcome = rejected.then(() => "recorded", (error: Error) => error.message)
       await until(() => memory.created.length === 2)
       await sleep(1)
-      memory.publish({ type: "permission.replied", data: { requestID: "request-2", reply: "reject" } })
+      memory.publish({ type: "permission.replied", data: { requestID: memory.created[1].id, reply: "reject" } })
       expect(await outcome).toBe("Permission denied: memory_personal")
     } finally { memory.stop() }
   })
 })
 
+describe("approval channel liveness", () => {
+  test("an immediate reply before create returns is not lost", async () => {
+    const memory=await startMemory({effects:["ask"],immediateReply:"once"})
+    try {expect((await memory.run("memory_record",personalRecord)).content).toBe("Recorded #7")}finally{memory.stop()}
+  })
+  test("disconnect rejects a waiter without recording and a new approval can be requested", async () => {
+    const memory=await startMemory({effects:["ask","ask"]})
+    try {
+      const old=memory.run("memory_record",personalRecord).then(()=>"recorded",(e:Error)=>e.message)
+      await until(()=>memory.created.length===1)
+      memory.disconnect()
+      expect(await old).toContain("request approval again")
+      expect(memory.requests).toEqual([])
+      const next=memory.run("memory_record",personalRecord)
+      await until(()=>memory.created.length===2)
+      memory.publish({type:"permission.replied",data:{requestID:memory.created[0].id,reply:"once"}})
+      await sleep(3);expect(memory.requests).toEqual([])
+      memory.publish({type:"permission.replied",data:{requestID:memory.created[1].id,reply:"once"}})
+      expect((await next).content).toBe("Recorded #7")
+      expect(memory.discoveries()).toBe(2)
+    } finally {memory.stop()}
+  })
+  test("plugin cancellation explicitly rejects pending human decisions", async () => {
+    const memory=await startMemory({effects:["ask"]})
+    const waiting=memory.run("memory_record",personalRecord).then(()=>"recorded",(e:Error)=>e.message)
+    await until(()=>memory.created.length===1);memory.stop()
+    expect(await waiting).toContain("memory plugin stopped")
+    expect(memory.requests).toEqual([])
+  })
+})
+
 describe("root session resolution", () => {
-  test("follows parents and the takt_switch metadata up to the root", async () => {
-    const memory = await startMemory({ sessions: { leaf: { parentID: "middle" }, middle: { metadata: { takt_switch: "origin" } } } })
+  test("sends the calling host session and never a root of its own", async () => {
+    const memory = await startMemory({ sessions: { leaf: { parentID: "middle" } } })
     try {
       await memory.run("memory_continue_session", { previous_session_id: "prior" }, { ...context, sessionID: "leaf" })
-      expect(memory.requests[0].request).toMatchObject({ session: "origin", previous_session: "prior" })
-    } finally { memory.stop() }
-  })
-
-  test("a parent cycle is refused", async () => {
-    const memory = await startMemory({ sessions: { a: { parentID: "b" }, b: { parentID: "a" } } })
-    try {
-      await expect(memory.run("memory_continue_session", { previous_session_id: "prior" }, { ...context, sessionID: "a" })).rejects.toThrow("session a has a parent cycle")
-      expect(memory.requests).toEqual([])
+      expect(memory.requests[0].request).toMatchObject({ caller_session: "leaf", previous_session: "prior" })
+      expect(memory.requests[0].request).not.toHaveProperty("session")
     } finally { memory.stop() }
   })
 })
@@ -312,30 +345,31 @@ describe("harness errors", () => {
 })
 
 describe("session deletion", () => {
-  test("a deleted root session that recorded is closed with the fallback, once", async () => {
+  test("a deleted session always asks the memory CLI for the fallback close, without a directory", async () => {
     const memory = await startMemory()
     try {
-      await memory.run("memory_continue_session", { previous_session_id: "prior" })
-      memory.publish({ type: "session.deleted", data: { sessionID: "root" } })
+      // A fresh plugin instance has recorded nothing: the CLI decides from its own store.
       memory.publish({ type: "session.deleted", data: { sessionID: "root" } })
       await until(() => memory.requests.some(({ command }) => command === "close"))
-      await sleep(5)
       const closes = memory.requests.filter(({ command }) => command === "close")
       expect(closes).toHaveLength(1)
-      expect(closes[0].request).toEqual({ author: "takt", session: "root", directory: "/workspace", fallback: true })
+      expect(closes[0].request).toEqual({ author: "takt", session: "root", fallback: true })
     } finally { memory.stop() }
   })
-
-  test("a session that was closed explicitly or never recorded triggers no fallback", async () => {
-    const memory = await startMemory()
+  test("a failed fallback close diagnoses without blocking another session's approval",async()=>{
+    const originalError=console.error
+    const errors:unknown[][]=[]
+    console.error=(...args:unknown[])=>{errors.push(args)}
+    const memory=await startMemory({effects:["ask"],respond:command=>command==="close"?{out:JSON.stringify({ok:false,error:"held memory lock"}),code:1}:{out:JSON.stringify({ok:true,result:{id:7,deduplicated:false}})}})
     try {
-      await memory.run("memory_close_session", { objective: "o", state: "s" })
-      memory.publish({ type: "session.deleted", data: { sessionID: "root" } })
-      memory.publish({ type: "session.deleted", data: { sessionID: "stranger" } })
-      memory.publish({ type: "session.created", data: { sessionID: "root" } })
-      await sleep(10)
-      expect(memory.requests.filter(({ command }) => command === "close")).toHaveLength(1)
-    } finally { memory.stop() }
+      const record=memory.run("memory_record",personalRecord)
+      await until(()=>memory.created.length===1)
+      memory.publish({type:"session.deleted",data:{sessionID:"another-session"}})
+      await until(()=>errors.some(e=>e[0]==="Takt memory fallback close"))
+      memory.publish({type:"permission.replied",data:{requestID:memory.created[0].id,reply:"once"}})
+      expect((await record).content).toBe("Recorded #7")
+      expect(errors.some(e=>e[0]==="Takt memory fallback close")).toBe(true)
+    }finally{memory.stop();console.error=originalError}
   })
 })
 
@@ -348,7 +382,7 @@ describe("effective memory catalog", () => {
       expect(Object.keys(event.tools)).toEqual(["memory_record"])
       expect(JSON.stringify(event)).not.toContain("memory_continue_session")
       expect(JSON.stringify(event)).not.toContain("memory_close_session")
-      expect(memory.requests[0].request).toEqual({ author: "spec", session: "root", directory: "/workspace" })
+      expect(memory.requests[0].request).toEqual({ author: "spec", caller_session: "root", directory: "/workspace" })
     } finally { memory.stop() }
   })
   test("both GC lanes retain recording without lifecycle names", async () => {
@@ -361,14 +395,14 @@ describe("effective memory catalog", () => {
       }
     } finally { memory.stop() }
   })
-  test("ownership grants and revokes lifecycle on each turn through the switch root", async () => {
+  test("ownership grants and revokes lifecycle on each turn for the calling session", async () => {
     let holder = "architect"
-    const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "root" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
+    const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "not-authority" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
     try {
       const granted = await memory.context("architect", "child")
       expect(Object.keys(granted.tools)).toHaveLength(3)
       expect(JSON.stringify(granted.system)).toContain("memory_continue_session")
-      expect(memory.requests[0].request.session).toBe("root")
+      expect(memory.requests[0].request.caller_session).toBe("child")
       holder = "pm"
       const revoked = await memory.context("architect", "child")
       expect(Object.keys(revoked.tools)).toEqual(["memory_record"])

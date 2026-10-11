@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
@@ -129,4 +131,55 @@ func TestMemoryCapabilitiesReadOnly(t *testing.T) {
 	if code != invalidRequestExitStatus {
 		t.Fatalf("unknown identity fields accepted: %d", code)
 	}
+}
+
+// TestMemoryRootComesFromTheExecutionHistory: a delegated session records into
+// the root its delegation runs under, whatever root the request names, and an
+// unlinked session records only into itself.
+func TestMemoryRootComesFromTheExecutionHistory(t *testing.T) {
+	fakeEngramServer(t)
+	home := os.Getenv("HOME")
+	workspace := t.TempDir()
+	h, err := history.Open(history.StateDir(workspace))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []history.Entry{
+		{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: "root-r", WorkUnitID: "u1", AttemptID: "1", Dispatch: "call", Agent: "dev", Caller: "root-r", Cause: history.CauseNone},
+		{Author: history.AuthorHarness, Kind: history.KindChild, SessionID: "root-r", WorkUnitID: "u1", AttemptID: "1", Dispatch: "call", Child: "child-c", Cause: history.CauseNone},
+	} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for caller, want := range map[string]string{"child-c": "root-r", "loose": "loose"} {
+		input, err := json.Marshal(map[string]string{"author": "dev", "session": "forged", "caller_session": caller, "directory": workspace, "nature": "proposal", "scope": "project", "title": "T " + caller, "content": "C"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line, code := runMemoryCLI(t, "record", string(input)); code != 0 {
+			t.Fatalf("record from %s: %d %v", caller, code, line)
+		}
+		if !findFile(t, home, want+".json") {
+			t.Fatalf("record from %s did not land in %s", caller, want)
+		}
+	}
+	if findFile(t, home, "forged.json") {
+		t.Fatal("a request-named root was accepted over the execution history")
+	}
+}
+
+func findFile(t *testing.T, dir, name string) bool {
+	t.Helper()
+	found := false
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && d.Name() == name {
+			found = true
+		}
+		return nil
+	})
+	return found
 }

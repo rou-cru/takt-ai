@@ -60,8 +60,9 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorRole
 		e = fmt.Errorf("harness: %q does not resolve to the direct-interlocutor role", targetAgent)
 	case h.Project().Budgets(root).InterlocutorHolder != "":
+		held := h.Project().Budgets(root)
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorHeld
-		e = errors.New("harness: the interlocutor interface is already held; no chaining")
+		e = fmt.Errorf("harness: the interlocutor interface is already held by %s (session %s); no chaining; to replace it, ask the user, call dispatch_abort_switch, then dispatch_switch again", held.InterlocutorAgent, held.InterlocutorHolder)
 	}
 	return errors.Join(h.Append(entry), e)
 }
@@ -86,7 +87,8 @@ func Handoff(h *history.History, journalRef, root, callerSession, result string)
 
 // Abort ends the temporary holder's turn for childSession without
 // negotiation. origin must be exactly "user" or "harness" (IR-24: never the
-// convening agent nor the temporary holder itself).
+// convening agent nor the temporary holder itself). An empty childSession
+// aborts whoever currently holds root, resolved here under the caller's lock.
 func Abort(h *history.History, journalRef, root, childSession, reason, origin string) error {
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindInterlocutorAborted,
@@ -94,9 +96,21 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 		Result: "Aborted", Cause: history.CauseUncaptured, JournalRef: journalRef,
 	}
 	var e error
-	if origin != "user" && origin != "harness" {
+	holder := h.Project().Budgets(root).InterlocutorHolder
+	if childSession == "" {
+		childSession = holder
+		entry.WorkUnitID = holder
+	}
+	switch {
+	case origin != "user" && origin != "harness":
 		entry.Kind, entry.Cause = history.KindDenied, history.CauseInterlocutorOrigin
 		e = fmt.Errorf("harness: an abortion may only originate from the user or the harness, not %q", origin)
+	case holder == "":
+		entry.Kind, entry.Cause = history.KindDenied, history.CauseInterlocutorHolder
+		e = errors.New("harness: no interlocutor switch is active for this session; nothing to abort")
+	case holder != childSession:
+		entry.Kind, entry.Cause = history.KindDenied, history.CauseInterlocutorHolder
+		e = fmt.Errorf("harness: session %s is not the current interlocutor holder; abort the holder session instead", childSession)
 	}
 	return errors.Join(h.Append(entry), e)
 }
@@ -105,6 +119,12 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 // active switch for root, or "" if there is none.
 func ExpectedArtifact(h *history.History, root string) string {
 	return h.Project().Budgets(root).InterlocutorArtifact
+}
+
+// CurrentHolder returns the session holding root's interlocutor role, read
+// from its owner; empty when no switch is active.
+func CurrentHolder(h *history.History, root string) string {
+	return h.Project().Budgets(root).InterlocutorHolder
 }
 
 // HandoffOutcome is the negotiated result a handoff envelope carries: the
@@ -149,7 +169,11 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 // evidence as additional context, and the memory entries the holder recorded.
 // Those are read from memoryRoot by author before the abort clears the holder.
 func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error) {
-	holder := h.Project().Budgets(root).InterlocutorAgent
+	b := h.Project().Budgets(root)
+	holder, aborted := b.InterlocutorAgent, b.InterlocutorHolder
+	if childSession != "" {
+		aborted = childSession
+	}
 	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
 		return nil, e
 	}
@@ -158,7 +182,7 @@ func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childS
 		return nil, e
 	}
 	return map[string]any{
-		"result": "Aborted", "additional_context": reason,
+		"result": "Aborted", "child": aborted, "additional_context": reason,
 		"extra_artifacts": []string{}, "memory": ids,
 	}, nil
 }

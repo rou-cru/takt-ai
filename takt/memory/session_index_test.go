@@ -1,13 +1,14 @@
 package memory
 
 import (
+	"context"
 	"os"
 	"testing"
 )
 
 func TestSessionIndexStagingPermissionsAndRenameFailure(t *testing.T) {
 	root := t.TempDir()
-	lock, err := lockSession(root, "session")
+	lock, err := lockSession(context.Background(), root, "session")
 	if err != nil {
 		t.Fatal(err)
 	}

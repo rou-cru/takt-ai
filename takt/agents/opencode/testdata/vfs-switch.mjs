@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
+import {historyFixture} from "./history-fixture.mjs"
+const owner=historyFixture()
 
 // order records the true call sequence across session lifecycle and Go IPC,
 // so identity threading can be checked by position, not just by presence.
@@ -27,8 +29,14 @@ globalThis.Bun = {
     if (argv[1] === "codegraph") return { stdout: "", stderr: "", exited: Promise.resolve(0) }
     const call = { verb: argv[1], sub: argv[2], argv, options }
     calls.push(call)
-    if (argv[1] === "dispatch") order.push(`dispatch:${requestOf(call).action}`)
-    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
+    if (argv[1] === "dispatch" && !["resolve","execution","executions"].includes(requestOf(call).action)) order.push(`dispatch:${requestOf(call).action}`)
+    let cached
+    const answer=()=>{
+      if(cached)return cached
+      const custom=respond(call);if(custom?.code)return cached=custom
+      const fact=call.verb==="dispatch"?owner.answer("dispatch",requestOf(call).action,requestOf(call)):undefined
+      return cached=custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+    }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
       get stdout() { return answer().stdout },
@@ -43,12 +51,14 @@ let nextChild = 0
 const hooks = {}
 const tools = {}
 const prompted = []
+let onPrompt=async()=>{}
 const interrupted = []
 const synthetic = []
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get() { return undefined }, async set() {} },
   session: {
+    context: async () => [],
     async get({ sessionID }) {
       const info = sessions.get(sessionID)
       if (!info) throw new Error(`unknown session ${sessionID}`)
@@ -61,7 +71,8 @@ await plugin.setup({
       order.push(`create:${id}`)
       return { id }
     },
-    prompt: async ({ sessionID }) => { order.push(`prompt:${sessionID}`); prompted.push(sessionID) },
+    prompt: async ({ sessionID }) => { order.push(`prompt:${sessionID}`); prompted.push(sessionID);await onPrompt(sessionID) },
+    wait: async ({sessionID}) => {if(sessionID==="winner-gc")await new Promise(()=>{})},
     interrupt: async ({ sessionID }) => { order.push(`interrupt:${sessionID}`); interrupted.push(sessionID) },
     synthetic: async (message) => { synthetic.push(message) },
   },
@@ -87,7 +98,7 @@ await tools.dispatch_switch.execute({ target_agent: "pm", objective: "obj" }, ro
 let segment = order.slice(mark)
 const createdChild = segment.find(e => e.startsWith("create:")).split(":")[1]
 assert.deepEqual(segment, [`create:${createdChild}`, "dispatch:switch", `prompt:${createdChild}`])
-assert.equal(requestOf(calls.findLast(c => c.verb === "dispatch")).child, createdChild)
+assert.equal(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c).action === "switch")).child, createdChild)
 
 // 1b. A registration failure stops the never-prompted child instead of
 // leaving it dangling.
@@ -103,9 +114,10 @@ assert.equal(interrupted.includes(failedChild), true)
 respond = () => undefined
 
 // 2. rootSession() resolves a switch-created session (no parentID) through
-// its metadata.takt_switch fallback: only the root orchestrator going idle asks
+// its persisted history link: only the root orchestrator going idle asks
 // whether maintenance is due, so the switch-created child's idle never does.
-sessions.set("switch-root-child", { metadata: { takt_switch: "root" } })
+sessions.set("switch-root-child", { metadata: { takt_switch: "not-authority" } })
+owner.holders["switch-root-child"]="root"
 const gcCoordinateCalls = () => calls.filter(c => c.verb === "gc" && c.sub === "coordinate")
 const ticks = () => gcCoordinateCalls().filter(c => requestOf(c).action === "tick")
 sessionIdle("switch-root-child")
@@ -128,9 +140,33 @@ respond = (call) => call.verb === "dispatch" && requestOf(call).action === "hand
   ? { stdout: JSON.stringify(envelope), stderr: "", code: 0 } : undefined
 mark = calls.filter(c => c.verb === "dispatch").length
 await tools.dispatch_handoff.execute({ result: "Standard", additional_context: "ctx", extra_artifacts: [], result_ids: [1] }, holder)
-const handoff = requestOf(calls.filter(c => c.verb === "dispatch").at(mark))
+const handoff = requestOf(calls.filter(c => c.verb === "dispatch").slice(mark).find(c=>requestOf(c).action==="handoff"))
 assert.equal(handoff.action, "handoff")
 assert.equal(handoff.session, "root", "dispatch_handoff sent the child's raw session, not its resolved root")
 assert.equal(handoff.child, "switch-root-child")
 assert.equal(synthetic.at(-1).sessionID, "root")
 respond = () => undefined
+
+// Two plugin instances may create native lanes before either can attach. The
+// losing child is stopped, not promoted through a previous status response.
+await until(()=>interrupted.includes("switch-root-child"),100)
+let winner=false
+sessions.set("winner-gc",{})
+const cycle=(id,child)=>({...coordinator(),cycle:{plan:{session_id:"root",cycle_id:id,mandate_class:"dead-code",delta:[],closure:[],reachability:"codegraph"},phase:"baseline",scope:[],sessions:child?{verifier:child}:{},report:{},started:"2026-01-01T00:00:00Z"}})
+respond=call=>{
+ if(call.verb!=="gc")return undefined
+ const r=requestOf(call)
+ if(r.action==="status")return {stdout:JSON.stringify(cycle("race",winner?"winner-gc":undefined)),stderr:"",code:0}
+ if(r.action==="attach"){winner=true;return {stdout:"",stderr:"gc: child already attached; resume the existing session",code:1}}
+ if(r.action==="prompt")return {stdout:JSON.stringify({allowed:true}),stderr:"",code:0}
+}
+const createdBefore=nextChild, interruptedBefore=interrupted.length,promptedBefore=prompted.length, gcBefore=calls.length
+await tools.gc_request.execute({},root)
+await until(()=>prompted.length>promptedBefore,100)
+assert.equal(nextChild,createdBefore+1)
+assert.deepEqual(interrupted.slice(interruptedBefore),[`child-${nextChild}`])
+assert.deepEqual(prompted.slice(promptedBefore),["winner-gc"])
+assert.equal(calls.slice(gcBefore).some(c=>c.verb==="gc"&&requestOf(c).action==="abort"),false)
+const attach=calls.slice(gcBefore).find(c=>c.verb==="gc"&&requestOf(c).action==="attach")
+assert.equal(requestOf(attach).event,"race")
+respond=()=>undefined

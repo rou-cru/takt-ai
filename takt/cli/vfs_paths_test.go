@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,12 +24,12 @@ func TestRunVFSRoutesAndRejectsUsage(t *testing.T) {
 
 // TestValidVFSCommand verifies every wire command is accepted and anything else is not.
 func TestValidVFSCommand(t *testing.T) {
-	for _, c := range []string{"claims", "assign", "assign-verifier", "release", "bind", "op", "verify", "consolidate", "shell-prepare", "shell-import"} {
+	for _, c := range []string{"claims", "assign", "release", "bind", "adopt-gates", "op", "verify", "consolidate", "discard", "shell-prepare", "shell-complete", "shell-guard"} {
 		if !validVFSCommand(c) {
 			t.Errorf("validVFSCommand(%q) = false", c)
 		}
 	}
-	for _, c := range []string{"", "journal", "recover", "resolve", "OP"} {
+	for _, c := range []string{"", "journal", "recover", "resolve", "OP", "assign-verifier"} {
 		if validVFSCommand(c) {
 			t.Errorf("validVFSCommand(%q) = true", c)
 		}
@@ -40,14 +39,17 @@ func TestValidVFSCommand(t *testing.T) {
 // TestParseAction verifies each wire action maps to its VFS operation and unknown ones are refused.
 func TestParseAction(t *testing.T) {
 	for action, want := range map[string]vfs.OperationType{
-		"read": vfs.OpRead, "create": vfs.OpCreate, "patch": vfs.OpPatch, "delete": vfs.OpDelete, "rollback": vfs.OpRollback,
+		"read": vfs.OpRead, "create": vfs.OpCreate, "patch": vfs.OpPatch, "delete": vfs.OpDelete,
 	} {
 		if got, err := parseAction(action); err != nil || got != want {
 			t.Errorf("parseAction(%q) = %v, %v; want %v", action, got, err, want)
 		}
 	}
-	if _, err := parseAction("truncate"); err == nil || !strings.Contains(err.Error(), `unsupported action "truncate"`) {
-		t.Fatalf("parseAction(truncate) error = %v", err)
+	// Discarding staged work is the orchestrator's discard command, never an op.
+	for _, action := range []string{"truncate", "rollback"} {
+		if _, err := parseAction(action); err == nil || !strings.Contains(err.Error(), `unsupported action "`+action+`"`) {
+			t.Fatalf("parseAction(%s) error = %v", action, err)
+		}
 	}
 }
 
@@ -113,7 +115,8 @@ func TestVFSRecoverRestoreCompletes(t *testing.T) {
 // TestVFSOperationRequestValidation verifies flag and request errors are reported before any store is opened.
 func TestVFSOperationRequestValidation(t *testing.T) {
 	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
-	valid := `{"ipc_version":4,"session_id":"s1"}`
+	caller := `"ipc_version":` + strconv.Itoa(IPCVersion) + `,"session_id":"s1","caller_session":"s1","caller_agent":"takt"`
+	valid := "{" + caller + "}"
 	cases := map[string]struct {
 		args    []string
 		payload string
@@ -123,8 +126,8 @@ func TestVFSOperationRequestValidation(t *testing.T) {
 		"positional":        {[]string{"op", "--workspace", root, "--state", state, "x"}, valid, "no positional arguments"},
 		"unknown flag":      {[]string{"op", "--nope"}, valid, "flag provided but not defined"},
 		"malformed json":    {[]string{"op", "--workspace", root, "--state", state}, "{", "invalid request"},
-		"no session":        {[]string{"op", "--workspace", root, "--state", state}, `{"ipc_version":4}`, "session_id is required"},
-		"claim with cycle":  {[]string{"claims", "--workspace", root, "--state", state}, `{"ipc_version":4,"session_id":"s1","cycle_id":"c"}`, "cannot declare a maintenance cycle"},
+		"no caller block":   {[]string{"op", "--workspace", root, "--state", state}, `{"ipc_version":` + strconv.Itoa(IPCVersion) + `,"session_id":"s1"}`, "caller_session and caller_agent are required"},
+		"claim with cycle":  {[]string{"claims", "--workspace", root, "--state", state}, "{" + caller + `,"cycle_id":"c"}`, "cannot declare a maintenance cycle"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -136,55 +139,32 @@ func TestVFSOperationRequestValidation(t *testing.T) {
 	}
 }
 
-// TestVFSMutationsRejectForeignIdentity verifies every mutation refuses a key that is not the caller's binding.
-func TestVFSMutationsRejectForeignIdentity(t *testing.T) {
-	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	bound, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}}))
-	if err != nil || !bound.OK {
-		t.Fatalf("bind = %+v, %v", bound, err)
-	}
+// TestVFSMutationsRejectKeysTheCallerDoesNotHold verifies every command acts
+// only through a binding the calling host session holds.
+func TestVFSMutationsRejectKeysTheCallerDoesNotHold(t *testing.T) {
+	fx := newVFSFixture(t)
+	bound := fx.delegate(rootA, "u1", "dev", "a.go")
 	const foreignKey = "not-a-binding-key"
-	for _, command := range []string{"op", "shell-import", "consolidate"} {
-		t.Run(command, func(t *testing.T) {
-			_, err := mutate(command, vfsReq("u1", "dev", map[string]any{"author_key": foreignKey, "action": "read", "path": "a.go"}))
-			if err == nil || !strings.Contains(err.Error(), "not the identity bound to author_key") {
-				t.Fatalf("%s error = %v", command, err)
-			}
-		})
-	}
-	t.Run("shell-prepare", func(t *testing.T) {
-		_, err := mutate("shell-prepare", vfsReq("u1", "dev", map[string]any{"author_key": foreignKey, "command": "true"}))
-		if err == nil || !strings.Contains(err.Error(), "not the identity bound to author_key") {
-			t.Fatalf("shell-prepare error = %v", err)
-		}
-	})
-	t.Run("verify", func(t *testing.T) {
-		_, err := mutate("verify", vfsReq("u1", "dev", map[string]any{"verifier_key": foreignKey, "author_key": bound.Key}))
-		if err == nil || !strings.Contains(err.Error(), "not the identity bound to verifier_key") {
-			t.Fatalf("verify error = %v", err)
-		}
-	})
-	t.Run("unsupported action after valid identity", func(t *testing.T) {
-		_, err := mutate("op", vfsReq("u1", "dev", map[string]any{"author_key": bound.Key, "action": "truncate", "path": "a.go"}))
-		if err == nil || !strings.Contains(err.Error(), `unsupported action "truncate"`) {
-			t.Fatalf("op error = %v", err)
-		}
-	})
+	_, err := fx.mutate("op", vfsReq("u1", "dev", map[string]any{"call_id": "c1", "author_key": foreignKey, "action": "read", "path": "a.go"}))
+	refusedWith(t, "op naming a foreign key", err, "is not held by this delegation")
+	_, err = fx.mutate("op", vfsReq("u2", "dev", map[string]any{"call_id": "c2", "author_key": bound, "action": "create", "path": "a.go", "content": "x"}))
+	refusedWith(t, "op from another unit naming the key", err, "is not held by this delegation")
+	_, err = fx.mutate("shell-complete", vfsReq("u1", "dev", map[string]any{"call_id": "never-prepared"}))
+	refusedWith(t, "shell-complete of an unprepared call", err, "run the command again")
+	_, err = fx.mutate("consolidate", orchReq(rootA, map[string]any{"author_key": foreignKey}))
+	refusedWith(t, "consolidate of a foreign key", err, "claim_list")
+	_, err = fx.mutate("verify", vfsReq("u1", "dev", map[string]any{"call_id": "v1", "author_key": bound, "pass": true}))
+	refusedWith(t, "verify without a gate", err, "is not one of your gates")
+	_, err = fx.mutate("op", vfsReq("u1", "dev", map[string]any{"call_id": "c3", "action": "truncate", "path": "a.go"}))
+	refusedWith(t, "an unsupported action", err, `unsupported action "truncate"`)
 }
 
 // TestVFSClaimErrors verifies claim commands validate their input.
 func TestVFSClaimErrors(t *testing.T) {
 	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
 	mutate := newVFSMutator(t, root, state)
-	if _, err := mutate("release", map[string]any{"ipc_version": IPCVersion, "session_id": "s1", "key": "unknown"}); err == nil || !strings.Contains(err.Error(), "not a known binding key") {
+	if _, err := mutate("release", orchReq(rootA, map[string]any{"key": "unknown"})); err == nil || !strings.Contains(err.Error(), "claim_list") {
 		t.Fatalf("release unknown error = %v", err)
-	}
-	if _, err := mutate("assign-verifier", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}})); err == nil || !strings.Contains(err.Error(), "does not accept scope") {
-		t.Fatalf("assign-verifier with scope error = %v", err)
-	}
-	if _, err := mutate("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}})); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -199,50 +179,7 @@ func TestRunVFSMutateRejectsUnknownCommand(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if _, err := runVFSMutate(fs, "journal", "", request{}, vfs.Identity{}); err == nil || !strings.Contains(err.Error(), `unsupported command "journal"`) {
+	if _, err := runVFSMutate(fs, "journal", "", request{}, vfs.Caller{}); err == nil || !strings.Contains(err.Error(), `unsupported command "journal"`) {
 		t.Fatalf("runVFSMutate() error = %v", err)
-	}
-	if err := verifyIdentity(fs, "missing", vfs.Identity{}, "author_key"); !errors.Is(err, vfs.ErrIdentity) {
-		t.Fatalf("verifyIdentity() error = %v, want ErrIdentity", err)
-	}
-}
-
-// A key reassigned to a later attempt no longer answers the run that held it:
-// before the new run adopts it the key awaits adoption, which no request
-// matches; once adopted it answers the new run only through its own session,
-// which the plugin enforces.
-func TestAReassignedKeyRefusesTheRunThatHeldIt(t *testing.T) {
-	fs, err := vfs.Open(t.TempDir(), filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := fs.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	identity := vfs.Identity{SessionID: "root", WorkUnitID: "impl", AttemptID: "1", AgentID: "dev", Specialist: "dev"}
-	key, err := fs.Bind(identity, []string{"a.go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := identity
-	request.AttemptID = "" // requests never declare the attempt
-	if err := verifyIdentity(fs, key, request, "author_key"); err != nil {
-		t.Fatalf("verifyIdentity() for the bound run = %v", err)
-	}
-	next := identity
-	next.AttemptID = "2"
-	if err := fs.ReassignScope(next, key, []string{"a.go"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := verifyIdentity(fs, key, request, "author_key"); !errors.Is(err, vfs.ErrIdentity) {
-		t.Fatalf("verifyIdentity() for a key awaiting its next attempt = %v, want ErrIdentity", err)
-	}
-	if adopted, err := fs.Bind(next, []string{"a.go"}); err != nil || adopted != key {
-		t.Fatalf("adopt = %q, %v; want %q", adopted, err, key)
-	}
-	if bound, _ := fs.BindingIdentity(key); bound.AttemptID != "2" {
-		t.Fatalf("adopted binding = %+v; want attempt 2", bound)
 	}
 }

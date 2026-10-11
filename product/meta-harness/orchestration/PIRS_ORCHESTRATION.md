@@ -27,7 +27,7 @@ This document specifies the interaction between the user and the agent crew: who
 
 ## 3. Role Classification in Interaction
 
-Each instance's interaction is determined by its assigned responsibility, not by its specialty (`PR-CRW-1`, `PR-CRW-3`). Simplification uses these ordinary rules for planning, implementation, and verification. Only its GC participation is internal maintenance: no user conversation, interlocutor-stack entry, or waiting for human decisions (`PR-MNT-8`, `PR-CRW-17`). Dreaming independently retains user participation through the interface holder (`MEM-DRM-6`).
+Each instance's interaction is determined by its assigned responsibility, not by its specialty (`PR-CRW-1`, `PR-CRW-3`). Simplification uses these ordinary rules for planning, implementation, and verification. Only its GC participation is internal maintenance: no user conversation, interlocutor-stack entry, or waiting for human decisions (`PR-MNT-8`, `PR-CRW-17`). Dreaming independently retains user participation through the interface holder (`PR-MNT-2`).
 
 | Class | Relationship with the User | Reference Case |
 | --- | --- | --- |

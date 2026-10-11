@@ -16,15 +16,18 @@
 package vfs
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/rou-cru/takt-ai/takt/history"
-	"golang.org/x/sys/unix"
+	"github.com/rou-cru/takt-ai/takt/internal/flock"
 	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
 	_ "modernc.org/sqlite"
 )
@@ -49,6 +52,7 @@ type storedDelta struct {
 }
 
 type storedState struct {
+	Maintenance  json.RawMessage `json:",omitempty"`
 	JournalCount int
 	Version      int
 	Workspace    string
@@ -58,12 +62,26 @@ type storedState struct {
 	Bindings     map[AgentID]Identity
 	Calls        map[string]bool
 	Recovery     *recoveryManifest
+	Interrupted  map[string]interruptedEvidence `json:",omitempty"`
 	// Cycles is absent in stores written before maintenance cycles retained
 	// what they overwrote; such a store simply has nothing to discard.
 	Cycles map[string]*cycleSnapshot
+	// ShellCalls is absent in stores written before shell preparation recorded
+	// its binding; such a store has no command awaiting import.
+	ShellCalls map[string]shellCall `json:",omitempty"`
 }
 
-// Open opens durable staging under an advisory lock on the workspace directory.
+// workspaceLockWait bounds how long Open waits for another process holding the
+// workspace lock: long enough to queue behind any single harness command,
+// short enough that a stuck holder surfaces as a retryable refusal.
+var workspaceLockWait = 30 * time.Second
+
+// ErrWorkspaceBusy is returned when another process held the workspace lock
+// for longer than the bounded wait.
+var ErrWorkspaceBusy = errors.New("workspace busy")
+
+// Open opens durable staging under an advisory lock on the workspace directory,
+// waiting a bounded time for another process holding it.
 func Open(rootDir, stateDir string) (_ *FS, err error) {
 	f, err := newFS(rootDir)
 	if err != nil {
@@ -80,6 +98,7 @@ func Open(rootDir, stateDir string) (_ *FS, err error) {
 	if stateDir, err = resolveStateDir(stateDir, f.rootDir); err != nil {
 		return nil, err
 	}
+	f.stateDir = stateDir
 	if err = f.openStateDB(stateDir); err != nil {
 		return nil, err
 	}
@@ -89,7 +108,8 @@ func Open(rootDir, stateDir string) (_ *FS, err error) {
 	return f, nil
 }
 
-// lockWorkspace canonicalizes the workspace root and takes the exclusive advisory lock.
+// lockWorkspace canonicalizes the workspace root and takes the exclusive
+// advisory lock, waiting workspaceLockWait for another holder to release it.
 func (f *FS) lockWorkspace() (err error) {
 	canonical, err := filepath.EvalSymlinks(f.rootDir)
 	if err != nil {
@@ -99,10 +119,36 @@ func (f *FS) lockWorkspace() (err error) {
 	if f.workspaceLock, err = f.root.Open("."); err != nil {
 		return err
 	}
-	if err = unix.Flock(int(f.workspaceLock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return fmt.Errorf("vfs: workspace already governed: %w", err)
+	return lockWithin(f.workspaceLock)
+}
+
+// lockWithin takes the exclusive advisory lock on held, waiting
+// workspaceLockWait for another holder to release it.
+func lockWithin(held *os.File) error {
+	err := flock.Exclusive(context.Background(), held, workspaceLockWait)
+	if errors.Is(err, flock.ErrTimeout) {
+		seconds := strconv.FormatFloat(workspaceLockWait.Seconds(), 'f', -1, 64)
+		return fmt.Errorf("%w: another harness command held the lock for longer than %s s; retry the same call", ErrWorkspaceBusy, seconds)
 	}
-	return nil
+	return err
+}
+
+// LockWorkspace takes the workspace lock Open takes, without opening the
+// store, for a harness command that decides from the execution history under
+// the same serialization point. Closing the returned file releases it.
+func LockWorkspace(rootDir string) (*os.File, error) {
+	canonical, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	held, err := os.Open(canonical)
+	if err != nil {
+		return nil, err
+	}
+	if err = lockWithin(held); err != nil {
+		return nil, errors.Join(err, held.Close())
+	}
+	return held, nil
 }
 
 // resolveStateDir returns the private state directory with symlinks resolved.
@@ -236,8 +282,17 @@ func (f *FS) loadState() error {
 	// Saved collisions are observations, not pending work or notifications.
 	f.collisions = nil
 	f.bindings = s.Bindings
+	f.maintenance = s.Maintenance
+	f.shellCalls = s.ShellCalls
+	if f.shellCalls == nil {
+		f.shellCalls = make(map[string]shellCall)
+	}
 	f.calls = s.Calls
 	f.recovery = s.Recovery
+	f.interrupted = s.Interrupted
+	if f.interrupted == nil {
+		f.interrupted = make(map[string]interruptedEvidence)
+	}
 	f.cycles = s.Cycles
 	if f.cycles == nil {
 		f.cycles = make(map[string]*cycleSnapshot)
@@ -281,7 +336,7 @@ func (f *FS) replayJournal(count int) (err error) {
 }
 
 func (f *FS) persistLocked() (err error) {
-	s := storedState{JournalCount: len(f.journal), Version: 1, Workspace: f.rootDir, Deltas: make(map[AgentID]storedDelta), Owners: f.owners, Collisions: f.collisions, Bindings: f.bindings, Calls: f.calls, Recovery: f.recovery, Cycles: f.cycles}
+	s := storedState{JournalCount: len(f.journal), Version: 1, Workspace: f.rootDir, Deltas: make(map[AgentID]storedDelta), Owners: f.owners, Collisions: f.collisions, Bindings: f.bindings, Calls: f.calls, Recovery: f.recovery, Interrupted: f.interrupted, Cycles: f.cycles, ShellCalls: f.shellCalls, Maintenance: f.maintenance}
 	for key, d := range f.staged {
 		s.Deltas[key] = storedDelta{Files: d.files, Bases: d.bases, Verdicts: d.verdicts, Revision: d.revision}
 	}

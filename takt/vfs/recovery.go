@@ -289,6 +289,10 @@ func writeLocked(fd int, rel, temp string, value baseFile, parent *os.File) (err
 func (f *FS) Recover() (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.recoverLocked()
+}
+
+func (f *FS) recoverLocked() (err error) {
 	if f.fault != nil {
 		return errors.Join(ErrStoreFailed, f.fault)
 	}

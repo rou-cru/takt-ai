@@ -3,12 +3,12 @@ package gc
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
@@ -37,12 +37,22 @@ func advanceEnv(t *testing.T) (*history.History, *vfs.FS) {
 }
 
 func sessionDelta() []vfs.JournalEntry {
-	return []vfs.JournalEntry{{Seq: 0, SessionID: advanceSession, Path: "a.go", Operation: vfs.OpCreate, AfterHash: "h"}}
+	var entries []vfs.JournalEntry
+	for seq := range dueMutations {
+		entries = append(entries, vfs.JournalEntry{Seq: seq, SessionID: advanceSession, Path: "a.go", Operation: vfs.OpCreate, BeforeHash: "before", AfterHash: "after"})
+	}
+	return entries
 }
 
 func TestAdvanceIdleLeavesCountersAlone(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Units: 1}
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
+	if err := c.Admit(h, "", "unit", advanceSession, "dev", "dispatch"); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Finish(h, "", "unit", advanceSession); err != nil {
+		t.Fatal(err)
+	}
 	d, b, err := c.Advance(context.Background(), fs, h, nil, advanceSession, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -62,12 +72,17 @@ func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 		coordinator *Coordinator
 		want        Outcome
 	}{
-		"user request with no delta is skipped": {&Coordinator{Version: 1, Cursor: -1, Requested: true, Units: 5}, OutcomeSkip},
-		"starved cycle is aborted":              {&Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals}, OutcomeAbort},
+		"user request with no delta is skipped": {&Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Requested: true, Units: 5}, OutcomeSkip},
+		"starved cycle is aborted":              {&Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals}, OutcomeAbort},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			d, _, err := tc.coordinator.Advance(context.Background(), fs, h, nil, advanceSession, nil)
+			d, _, err := tc.coordinator.Advance(context.Background(), fs, h, func() []vfs.JournalEntry {
+				if tc.coordinator.Mutations > 0 {
+					return sessionDelta()
+				}
+				return nil
+			}(), advanceSession, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,8 +100,8 @@ func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 func TestAdvanceLeavesARunningCycleAlone(t *testing.T) {
 	h, fs := advanceEnv(t)
 	running := &Cycle{Phase: "collect"}
-	c := &Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Cycle: running}
-	d, b, err := c.Advance(context.Background(), fs, h, nil, advanceSession, nil)
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Cycle: running}
+	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,13 +115,13 @@ func TestAdvanceLeavesARunningCycleAlone(t *testing.T) {
 
 func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1}
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
 	if err := c.Admit(h, "", "unit-1", advanceSession, "dev", "d1"); err != nil {
 		t.Fatal(err)
 	}
 	c.Mutations = dueMutations
 
-	d, b, err := c.Advance(context.Background(), fs, h, nil, advanceSession, nil)
+	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +138,7 @@ func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 
 func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Deferrals: 2, NextMandate: 2}
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 2, NextMandate: 2}
 	reach := func(_ context.Context, path string) ([]string, error) { return []string{"dep-of-" + path}, nil }
 
 	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, reach)
@@ -143,8 +158,8 @@ func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 	if plan.Reachability != ReachCodegraph || !slices.Equal(plan.Closure, []string{"a.go", "dep-of-a.go"}) {
 		t.Errorf("plan closure = %v (%s), want the delta plus its dependents", plan.Closure, plan.Reachability)
 	}
-	if c.Cursor != 0 {
-		t.Errorf("Cursor = %d, want the observed journal position", c.Cursor)
+	if c.Cursor != -1 {
+		t.Errorf("Cursor = %d, want the cadence watermark unchanged until closure", c.Cursor)
 	}
 	if !c.Held() {
 		t.Error("Held() = false while a cycle is in flight")
@@ -153,7 +168,7 @@ func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 
 func TestAdvanceFallsBackToJournalOnlyWhenGraphFails(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations}
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations}
 	broken := func(context.Context, string) ([]string, error) { return nil, errors.New("index stale") }
 	if _, _, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, broken); err != nil {
 		t.Fatal(err)
@@ -165,9 +180,9 @@ func TestAdvanceFallsBackToJournalOnlyWhenGraphFails(t *testing.T) {
 
 func TestAdvanceCountsDeclarationFailureTowardAbort(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Mutations: dueMutations, Deferrals: 1}
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 1}
 	// An empty session id makes the declaration invalid.
-	_, _, err := c.Advance(context.Background(), fs, h, nil, "", nil)
+	_, _, err := c.Advance(context.Background(), fs, h, sessionDelta(), "", nil)
 	if err == nil {
 		t.Fatal("Advance() error = nil, want the declaration failure")
 	}
@@ -191,37 +206,21 @@ func TestUnfinishedUnitIDsAreSorted(t *testing.T) {
 	}
 }
 
-func TestLoadCoordinatorRejectsBadStateFiles(t *testing.T) {
-	for name, content := range map[string]string{
-		"not json":          "{ nope",
-		"future version":    `{"version":2}`,
-		"mandate negative":  `{"version":1,"next_mandate":-1}`,
-		"mandate too large": `{"version":1,"next_mandate":5}`,
-	} {
+func TestLoadCoordinatorRejectsBadCoreState(t *testing.T) {
+	for name, content := range map[string]string{"not json": "{ nope", "future version": `{"version":2}`} {
 		t.Run(name, func(t *testing.T) {
-			state := t.TempDir()
-			putFile(t, state, coordinatorFile, content, 0o600)
-			if _, err := LoadCoordinator(state); err == nil {
-				t.Fatal("LoadCoordinator() error = nil, want a rejection instead of a silent reset")
+			_, fs := advanceEnv(t)
+			if err := fs.SetMaintenance([]byte(content)); err != nil {
+				if name == "not json" {
+					return
+				}
+				t.Fatal(err)
+			}
+			if _, err := LoadCoordinator(fs); err == nil {
+				t.Fatal("corrupt core state accepted")
 			}
 		})
 	}
-	t.Run("unreadable", func(t *testing.T) {
-		state := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(state, coordinatorFile), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := LoadCoordinator(state); err == nil {
-			t.Fatal("LoadCoordinator() error = nil")
-		}
-	})
-	t.Run("save where the state path is a file", func(t *testing.T) {
-		blocker := filepath.Join(t.TempDir(), "state-is-a-file")
-		putFile(t, filepath.Dir(blocker), filepath.Base(blocker), "x", 0o600)
-		if err := SaveCoordinator(blocker, &Coordinator{Version: 1}); err == nil {
-			t.Fatal("SaveCoordinator() error = nil")
-		}
-	})
 }
 
 func TestAuthorizedScopeCapsFindingsAndFiles(t *testing.T) {
@@ -261,77 +260,5 @@ func TestAuthorizedScopeCapsFindingsAndFiles(t *testing.T) {
 	}
 	if scope, err := AuthorizedScope(Plan{}, nil, nil); err != nil || scope == nil || len(scope) != 0 {
 		t.Errorf("AuthorizedScope(nothing) = %v, %v; want an empty non-nil scope", scope, err)
-	}
-}
-
-func TestGuardVFSRejectsBadCoordinatorState(t *testing.T) {
-	state := t.TempDir()
-	putFile(t, state, coordinatorFile, "{ nope", 0o600)
-	_, fs := advanceEnv(t)
-	if err := GuardVFS(state, "op", vfs.Identity{}, "read", "a.go", "agent", fs); err == nil {
-		t.Fatal("GuardVFS() with corrupt coordinator state error = nil, want fail-closed")
-	}
-}
-
-func TestGuardVFSCycleAndCommandRules(t *testing.T) {
-	c := &Coordinator{Cycle: &Cycle{Plan: Plan{Request: Request{CycleID: "c1"}}, Phase: "collect", Scope: []string{"in.go"}}}
-
-	if err := guardVFSCycle(c, "c1"); err != nil {
-		t.Errorf("guardVFSCycle(active cycle) error = %v", err)
-	}
-	if err := guardVFSCycle(c, "other"); err == nil {
-		t.Error("guardVFSCycle(other id) error = nil")
-	}
-	if err := guardVFSCycle(&Coordinator{}, "c1"); err == nil {
-		t.Error("guardVFSCycle(no cycle) error = nil")
-	}
-
-	for _, command := range []string{"verify", "consolidate"} {
-		if err := guardVFSCommand(c, command, "", ""); err == nil {
-			t.Errorf("guardVFSCommand(%s) error = nil, want it reserved for the coordinator", command)
-		}
-	}
-	cases := []struct {
-		name          string
-		phase, action string
-		path          string
-		ok            bool
-	}{
-		{"read anywhere", "collect", "read", "elsewhere.go", true},
-		{"rollback anywhere", "collect", "rollback", "elsewhere.go", true},
-		{"patch inside scope", "collect", "patch", "in.go", true},
-		{"patch outside scope", "collect", "patch", "out.go", false},
-		{"any op outside collect phase", "baseline", "read", "in.go", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			cycle := *c.Cycle
-			cycle.Phase = tc.phase
-			err := guardVFSCommand(&Coordinator{Cycle: &cycle}, "op", tc.action, tc.path)
-			if (err == nil) != tc.ok {
-				t.Errorf("guardVFSCommand() error = %v, want ok=%v", err, tc.ok)
-			}
-		})
-	}
-	if err := guardVFSCommand(c, "status", "", ""); err != nil {
-		t.Errorf("guardVFSCommand(status) error = %v, want other commands unrestricted", err)
-	}
-}
-
-func TestGuardVFSOrdinaryWorkCannotClaimACycle(t *testing.T) {
-	state := t.TempDir()
-	_, fs := advanceEnv(t)
-	identity := vfs.Identity{SessionID: "s", WorkUnitID: "wu", AttemptID: "1", AgentID: "a", Specialist: "dev", InvariantsHash: "h"}
-	key, err := fs.Bind(identity, []string{"a.go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	claiming := identity
-	claiming.MandateClass = string(MandateDeadCode)
-	if err := GuardVFS(state, "op", claiming, "read", "a.go", key, fs); err == nil {
-		t.Fatal("GuardVFS() for ordinary work claiming a mandate error = nil")
-	}
-	if err := GuardVFS(state, "op", identity, "read", "a.go", key, fs); err != nil {
-		t.Fatalf("GuardVFS() for ordinary work error = %v", err)
 	}
 }

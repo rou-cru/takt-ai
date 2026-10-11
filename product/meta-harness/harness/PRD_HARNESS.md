@@ -1,6 +1,6 @@
 # PRD: Harness, Security, and Customization
 
-**Actual implementation progress: 78%** — 29 own requirements: 18 complete, 9 partial, 2 not integrated. Gaps: configuration custody is granted by static role rather than following the interlocutor-stack holder, and no mechanism attributes a user-instructed mutation to the user. Interlocutor transitions have no idempotency key, an agent-invoked abort is stamped as user-originated, envelope validation covers shape only, a failed activation can leave a partial transition, and an Outraged result has no isolated durable record.
+**Actual implementation progress: 80%** — 28 own requirements: 18 complete, 9 partial, 1 not integrated. Gaps: configuration custody is granted by static role rather than following the interlocutor-stack holder. Interlocutor transitions have no idempotency key, an agent-invoked abort is stamped as user-originated, envelope validation covers shape only, a failed activation can leave a partial transition, and an Outraged result has no isolated durable record.
 
 ## 1. Problem
 
@@ -33,7 +33,6 @@ Relying exclusively on semantic instructions in natural language leaves the syst
 | ID | Requirement |
 | --- | --- |
 | PR-CFG-2 | When a Takt update conflicts with an existing customization, the harness deterministically detects the incompatibility and suspends unilateral application. |
-| PR-CFG-3 | A mutation an agent performs on the user's explicit instruction is attributed to the user, not to Takt. Only the product's own deterministic operations — installation, update, projection, and harness enforcement — are Takt operations. A user-instructed change whose target happens to be Takt's installed configuration remains a user change: the target does not convert it into a Takt operation, and it is treated under the same rules as any other user modification. |
 
 ### 2.4 Recovery Budgets, Admission, and Continuity
 

@@ -23,9 +23,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
+	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/session"
@@ -43,8 +43,13 @@ func runVFS(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	return runVFSOperation(args, stdin, stdout, stderr)
 }
 
+// vfsCommands lists every request-driven vfs command.
+var vfsCommands = []string{"claims", "assign", "release", "bind", "adopt-gates", "op", "verify", "consolidate", "discard",
+	"shell-prepare", "shell-complete", "shell-guard", "shell-continue", "shell-release", "edit-guard"}
+
 // usageVFS lists valid vfs commands so callers can recover after a mistake.
-const usageVFS = "usage: takt-ai vfs journal|recover --workspace <dir> --state <private-dir> [--restore] | claims|assign|release|bind|op|verify|consolidate --workspace <dir> --state <private-dir> < request.json"
+var usageVFS = "usage: takt-ai vfs journal|recover --workspace <dir> --state <private-dir> [--restore] | " +
+	strings.Join(vfsCommands, "|") + " --workspace <dir> --state <private-dir> < request.json"
 
 const defaultVFSPageSize = 100
 
@@ -118,66 +123,86 @@ func runVFSOffline(args []string, stdout, stderr io.Writer) (err error) {
 }
 
 // IPCVersion is the wire contract version every mutation request must carry.
-const IPCVersion = 4
+const IPCVersion = 5
 
 // request wraps every mutation IPC call.
 type request struct {
 	// IPCVersion the caller was built against; must match IPCVersion.
-	IPCVersion int `json:"ipc_version"`
-	// Identity. The attempt and the invariant set's version are the harness's to
-	// issue, so no request declares them.
-	SessionID  string `json:"session_id"`
-	WorkUnitID string `json:"work_unit_id"`
+	IPCVersion int                 `json:"ipc_version"`
+	Repair     *vfs.RepairApproval `json:"repair,omitempty"`
+	// Caller block, delivered by the harness on every command, never by a
+	// model: the root session, the host session running the tool, the
+	// host-delivered agent and the unit that session executes. A claim command
+	// names its target unit in WorkUnitID instead.
+	SessionID      string `json:"session_id"`
+	CallerSession  string `json:"caller_session"`
+	CallerAgent    string `json:"caller_agent"`
+	CallerDispatch string `json:"caller_dispatch,omitempty"`
+	CallerAttempt  string `json:"caller_attempt,omitempty"`
+	WorkUnitID     string `json:"work_unit_id"`
+	// AgentID and Specialist name a claim command's target.
 	AgentID    string `json:"agent_id"`
 	Specialist string `json:"specialist"`
-	// Invariants declares the governing invariants on a bind, in precedence
-	// order: Engram references (vfs.EngramInvariant) and workspace paths. A bind
-	// that joins an open attempt inherits that attempt's set.
+	// Invariants declares the governing invariants on a bind or an assignment,
+	// in precedence order: Engram references (vfs.EngramInvariant) and
+	// workspace paths. A bind that joins an open attempt inherits that
+	// attempt's set.
 	Invariants vfs.InvariantSet `json:"invariants,omitempty"`
 	// Optional maintenance attribution; absent outside maintenance dispatches.
-	CycleID      string `json:"cycle_id,omitempty"`
-	MandateClass string `json:"mandate_class,omitempty"`
-	// bind / orchestrator assign: these identity fields are injected by the
-	// harness, never copied from model-provided target metadata.
-	Scope []string `json:"scope,omitempty"`
-	// op
-	CallID           string `json:"call_id,omitempty"`
-	ExpectedRevision uint64 `json:"expected_revision,omitempty"`
-	Action           string `json:"action,omitempty"`
-	Path             string `json:"path,omitempty"`
-	Content          string `json:"content,omitempty"`
-	// verify
-	AuthorKey   string `json:"author_key,omitempty"`
-	VerifierKey string `json:"verifier_key,omitempty"`
-	// ViewKey is the author whose staged view a verifier reads through.
-	ViewKey   string `json:"view_key,omitempty"`
-	DeltaHash string `json:"delta_hash,omitempty"`
+	CycleID      string   `json:"cycle_id,omitempty"`
+	MandateClass string   `json:"mandate_class,omitempty"`
+	Scope        []string `json:"scope,omitempty"`
+	// op, verify, shell-prepare, shell-complete
+	CallID    string   `json:"call_id,omitempty"`
+	Resources []string `json:"resources,omitempty"`
+	Phase     string   `json:"phase,omitempty"`
+	Action    string   `json:"action,omitempty"`
+	Path      string   `json:"path,omitempty"`
+	Content   string   `json:"content,omitempty"`
+	// AuthorKey names the binding an op acts through, the author a judge reads
+	// or verifies, the work consolidate or discard acts on, or the work an
+	// assignment continues.
+	AuthorKey string `json:"author_key,omitempty"`
 	// AcceptFailing carries the user's explicit acceptance to consolidate work
-	// a current verdict failed; only the plugin sets it, after asking the user.
-	AcceptFailing bool   `json:"accept_failing,omitempty"`
-	Pass          bool   `json:"pass,omitempty"`
-	Finding       string `json:"finding,omitempty"`
+	// a current verdict failed, for exactly the staged state AcceptedRevision
+	// and AcceptedHash name: the one the failing-verdict refusal returned.
+	AcceptFailing    bool   `json:"accept_failing,omitempty"`
+	AcceptedRevision uint64 `json:"accepted_revision,omitempty"`
+	AcceptedHash     string `json:"accepted_hash,omitempty"`
+	Pass             bool   `json:"pass,omitempty"`
+	Finding          string `json:"finding,omitempty"`
 	// shell-prepare: the exact command the plan and any approval identify.
-	Command string `json:"command,omitempty"`
-	// consolidate
+	Command    string `json:"command,omitempty"`
 	Checkpoint string `json:"checkpoint,omitempty"`
-	ClaimKey   string `json:"key,omitempty"`
+	// release: the claim and the user's confirmation for an active one.
+	ClaimKey  string `json:"key,omitempty"`
+	Confirmed bool   `json:"confirmed,omitempty"`
 }
 
-// response is the single JSON shape every mutation subcommand returns.
+// response is the JSON shape every mutation subcommand but adopt-gates returns.
+type laneTermination struct {
+	Cycle string     `json:"cycle"`
+	Lanes []laneStop `json:"lanes"`
+}
+
 type response struct {
-	OK      bool   `json:"ok"`
-	Key     string `json:"key,omitempty"`
-	Content string `json:"content,omitempty"`
+	StopCycle *laneTermination `json:"stop_cycle,omitempty"`
+	Repair    *vfs.Repair      `json:"repair,omitempty"`
+	OK        bool             `json:"ok"`
+	Key       string           `json:"key,omitempty"`
+	Content   string           `json:"content,omitempty"`
 	// Revision is set only by operations on a staged view, where 0 is a real
-	// revision; every other answer omits it.
+	// revision, and by a failing-verdict refusal; every other answer omits it.
 	Revision  *uint64 `json:"revision,omitempty"`
 	DeltaHash string  `json:"delta_hash,omitempty"`
-	Seq       int     `json:"seq,omitempty"`
-	Error     string  `json:"error,omitempty"`
-	// AttemptID and InvariantsVersion report what the harness issued for a bind:
-	// the attempt this dispatch belongs to and the version of the invariant set
-	// that governs it.
+	// OutdatedPaths lists, on a gate read, the paths read under an earlier
+	// state of the author's staged work.
+	OutdatedPaths []string `json:"outdated_paths,omitempty"`
+	Seq           int      `json:"seq,omitempty"`
+	Error         string   `json:"error,omitempty"`
+	// AttemptID and InvariantsVersion report what a bind belongs to: the
+	// attempt the execution history admitted and the version of the invariant
+	// set that governs it.
 	AttemptID         string `json:"attempt_id,omitempty"`
 	InvariantsVersion string `json:"invariants_version,omitempty"`
 	// Shell carries the sandbox plan for one shell command: its decision and the
@@ -187,7 +212,14 @@ type response struct {
 	Collision *vfs.CollisionError  `json:"collision,omitempty"`
 }
 
-// runVFSOperation serves bind/op/verify/consolidate.
+// gatesResponse answers adopt-gates; gates is always present.
+type gatesResponse struct {
+	OK    bool              `json:"ok"`
+	Gates []vfs.AdoptedGate `json:"gates"`
+}
+
+// runVFSOperation serves every mutation command. Every decision is taken after
+// the store, and with it the workspace lock, is open.
 func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (err error) {
 	command := args[0]
 	if !validVFSCommand(command) {
@@ -210,6 +242,9 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if err := validateVFSRequest(req); err != nil {
 		return err
 	}
+	if req.CycleID != "" || req.MandateClass != "" {
+		return errors.New("gc: ordinary transport cannot declare a maintenance cycle; use gc_authorize or gc_verdict")
+	}
 	if _, claim := claimCommandCapability[command]; claim {
 		return runVFSClaimControl(*workspace, *state, command, req, stdout)
 	}
@@ -225,23 +260,6 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if err := validateBindRequest(command, req); err != nil {
 		return err
 	}
-	identity := vfs.Identity{
-		SessionID:     req.SessionID,
-		WorkUnitID:    req.WorkUnitID,
-		AgentID:       vfs.AgentID(req.AgentID),
-		Specialist:    req.Specialist,
-		GateAuthorKey: vfs.AgentID(req.AuthorKey),
-		Invariants:    req.Invariants,
-		CycleID:       req.CycleID,
-		MandateClass:  req.MandateClass,
-	}
-	if command == "bind" {
-		// The attempt is issued once, by the delegation's admission: a bind
-		// joins it instead of numbering attempts on its own (PR-DAG-MUT-8).
-		if identity.AttemptID, err = admittedAttempt(*state, req.SessionID, req.WorkUnitID); err != nil {
-			return err
-		}
-	}
 	// The store lock serializes concurrent plugin invocations; NewDurable either
 	// resumes persisted state or initializes a new private store, wired to this
 	// session's bus so every mutation the plugin drives lands on the journal in
@@ -252,44 +270,43 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	}
 	// Session.Close releases only the event store; the FS is closed here.
 	defer func() { err = errors.Join(err, sess.Close(), sess.FS.Close()) }()
-	if err := gc.GuardVFS(*state, command, identity, req.Action, req.Path, vfs.AgentID(req.AuthorKey), sess.FS); err != nil {
+	if req.Repair != nil {
+		req.AcceptFailing = false
+		req.AcceptedRevision = 0
+		req.AcceptedHash = ""
+	}
+	if handled, err := admitRepair(stdout, sess.FS, &req.Repair, req.CallerAgent == vfs.OrchestratorInstance && req.CallerSession == req.SessionID); handled {
 		return err
 	}
-	out, err := runVFSMutate(sess.FS, command, *state, req, identity)
+	caller := callerOf(req)
+	out, err := runVFSMutate(sess.FS, command, *state, req, caller)
 	if err != nil {
+		if handled, encodeErr := refuseForRecovery(stdout, sess.FS); handled {
+			return encodeErr
+		}
 		return err
 	}
 	return json.NewEncoder(stdout).Encode(out)
 }
 
-// admittedAttempt is the attempt the execution history admitted for session's
-// unit, or empty when no delegation of it is in flight (maintenance work, whose
-// attempts the store numbers itself).
-func admittedAttempt(state, session, unit string) (attempt string, err error) {
-	h, err := history.Open(state)
-	if err != nil {
-		return "", err
-	}
-	defer func() { err = errors.Join(err, h.Close()) }()
-	if u, _ := h.Project().Unit(session, unit); u.State == history.StateInFlight {
-		return u.AttemptID, nil
-	}
-	return "", nil
+// callerOf is the caller block of req.
+func callerOf(req request) vfs.Caller {
+	return vfs.Caller{Dispatch: req.CallerDispatch, AttemptID: req.CallerAttempt, SessionID: req.SessionID, HostSession: req.CallerSession, Agent: vfs.AgentID(req.CallerAgent), WorkUnitID: req.WorkUnitID}
 }
 
 func validateBindRequest(command string, req request) error {
 	if command != "bind" {
 		return nil
 	}
-	_, err := vfs.SpecialistRole(req.Specialist)
+	_, err := vfs.SpecialistRole(req.CallerAgent)
 	if err != nil {
 		return err
 	}
-	if err := vfs.RequireVFSCapability(req.Specialist, model.VFSCapabilityBind); err != nil {
+	if err := vfs.RequireVFSCapability(req.CallerAgent, model.VFSCapabilityBind); err != nil {
 		return err
 	}
 	if len(req.Scope) > 0 {
-		return vfs.RequireVFSCapability(req.Specialist, model.VFSCapabilityWrite)
+		return vfs.RequireVFSCapability(req.CallerAgent, model.VFSCapabilityWrite)
 	}
 	return nil
 }
@@ -297,32 +314,16 @@ func validateBindRequest(command string, req request) error {
 // claimCommandCapability maps each orchestrator claim command to the catalog
 // grant that authorizes it.
 var claimCommandCapability = map[string]model.VFSCapability{
-	"claims":          model.VFSCapabilityClaimList,
-	"assign":          model.VFSCapabilityClaimAssign,
-	"assign-verifier": model.VFSCapabilityClaimAssign,
-	"release":         model.VFSCapabilityClaimRelease,
+	"claims":  model.VFSCapabilityClaimList,
+	"assign":  model.VFSCapabilityClaimAssign,
+	"release": model.VFSCapabilityClaimRelease,
 }
 
-func validVFSCommand(command string) bool {
-	_, claim := claimCommandCapability[command]
-	return claim || command == "bind" || command == "op" || command == "verify" || command == "consolidate" ||
-		command == "shell-prepare" || command == "shell-import" || command == "shell-guard"
-}
-
-// claimIdentity is the harness-owned identity of an assignment target, with the
-// attempt taken from its admitted work unit.
-func claimIdentity(state string, req request) (vfs.Identity, error) {
-	identity := vfs.Identity{SessionID: req.SessionID, WorkUnitID: req.WorkUnitID,
-		AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist, Invariants: req.Invariants,
-		CycleID: req.CycleID, MandateClass: req.MandateClass}
-	var err error
-	identity.AttemptID, err = admittedAttempt(state, req.SessionID, req.WorkUnitID)
-	return identity, err
-}
+func validVFSCommand(command string) bool { return slices.Contains(vfsCommands, command) }
 
 func runVFSClaimControl(workspace, state, command string, req request, stdout io.Writer) (err error) {
-	if req.CycleID != "" || req.MandateClass != "" {
-		return errors.New("gc: ordinary claims cannot declare a maintenance cycle")
+	if command != "claims" && (req.CallerAgent != vfs.OrchestratorInstance || req.CallerSession != req.SessionID) {
+		return errors.New("VFS claim mutation belongs to the root orchestrator; return to it for claim_assign or claim_release")
 	}
 	if err := vfs.RequireVFSCapability(vfs.OrchestratorInstance, claimCommandCapability[command]); err != nil {
 		return err
@@ -332,51 +333,54 @@ func runVFSClaimControl(workspace, state, command string, req request, stdout io
 		return err
 	}
 	defer func() { err = errors.Join(err, fs.Close()) }()
+	if handled, err := admitRepair(stdout, fs, &req.Repair, req.CallerAgent == vfs.OrchestratorInstance && req.CallerSession == req.SessionID); handled {
+		return err
+	}
 	switch command {
 	case "claims":
 		return json.NewEncoder(stdout).Encode(response{OK: true, Claims: fs.OwnershipClaims(req.SessionID)})
 	case "assign":
-		identity, err := claimIdentity(state, req)
-		if err != nil {
-			return err
-		}
-		// An author key names existing work: the unit's next attempt takes a new
-		// scope and keeps the staged delta instead of starting empty.
-		var key vfs.AgentID
-		var assignErr error
-		if req.AuthorKey != "" {
-			key = vfs.AgentID(req.AuthorKey)
-			assignErr = fs.ReassignScope(identity, key, req.Scope)
-		} else {
-			key, assignErr = fs.AssignScope(identity, req.Scope)
-		}
-		if assignErr != nil {
-			var collision *vfs.CollisionError
-			if errors.As(assignErr, &collision) {
-				return json.NewEncoder(stdout).Encode(response{OK: false, Error: assignErr.Error(), Collision: collision})
-			}
-			return assignErr
-		}
-		return json.NewEncoder(stdout).Encode(response{OK: true, Key: string(key)})
-	case "assign-verifier":
-		if len(req.Scope) != 0 {
-			return fmt.Errorf("vfs: assign-verifier does not accept scope")
-		}
-		identity, err := claimIdentity(state, req)
-		if err != nil {
-			return err
-		}
-		key, assignErr := fs.AssignVerifier(identity, vfs.AgentID(req.AuthorKey))
-		if assignErr != nil {
-			return assignErr
-		}
-		return json.NewEncoder(stdout).Encode(response{OK: true, Key: string(key)})
+		return assignClaim(fs, req, stdout)
 	default: // release
-		if err := fs.RevokeOwnership(vfs.AgentID(req.ClaimKey)); err != nil {
+		if err := fs.ReleaseClaim(req.SessionID, vfs.AgentID(req.ClaimKey), req.Confirmed); err != nil {
 			return err
 		}
 		return json.NewEncoder(stdout).Encode(response{OK: true})
 	}
+}
+
+// assignClaim reserves a scope for its target, or, given an author key,
+// hands that existing work to the target with a new scope.
+func assignClaim(fs *vfs.FS, req request, stdout io.Writer) error {
+	p, err := history.ReadProjection(fs.StateDirectory())
+	if err != nil {
+		return err
+	}
+	consumed, declared := p.Inputs[history.UnitKey(req.SessionID, req.WorkUnitID)]
+	if !declared {
+		return fmt.Errorf("claim assignment refused: inputs absent for root %s unit %s; call dispatch_inputs before claim_assign", req.SessionID, req.WorkUnitID)
+	}
+	// The target's identity is the harness's; it carries no attempt until the
+	// execution history issues one when the target binds.
+	identity := vfs.Identity{SessionID: req.SessionID, WorkUnitID: req.WorkUnitID, AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist}
+	for _, id := range consumed {
+		identity.Invariants = append(identity.Invariants, vfs.EngramInvariant(id))
+	}
+	key := vfs.AgentID(req.AuthorKey)
+	var assignErr error
+	if key != "" {
+		assignErr = fs.ReassignScope(identity, key, req.Scope)
+	} else {
+		key, assignErr = fs.AssignScope(identity, req.Scope)
+	}
+	if assignErr != nil {
+		var collision *vfs.CollisionError
+		if errors.As(assignErr, &collision) {
+			return json.NewEncoder(stdout).Encode(response{OK: false, Error: assignErr.Error(), Collision: collision})
+		}
+		return assignErr
+	}
+	return json.NewEncoder(stdout).Encode(response{OK: true, Key: string(key)})
 }
 
 func validateVFSFlags(positional int, workspace, state string) error {
@@ -390,166 +394,97 @@ func validateVFSRequest(req request) error {
 	if req.IPCVersion != IPCVersion {
 		return fmt.Errorf("vfs: ipc_version %d unsupported (want %d); run takt-ai setup sync to re-deploy the plugin", req.IPCVersion, IPCVersion)
 	}
-	if req.SessionID == "" {
-		return errors.New("vfs: session_id is required")
+	if req.SessionID == "" || req.CallerSession == "" || req.CallerAgent == "" {
+		return errors.New("vfs: session_id, caller_session and caller_agent are required; run takt-ai setup sync to re-deploy the plugin")
 	}
 	return nil
 }
 
-// runVFSMutate dispatches one verified mutation.
-func runVFSMutate(fs *vfs.FS, command, state string, req request, identity vfs.Identity) (response, error) {
+// runVFSMutate dispatches one mutation for caller.
+func runVFSMutate(fs *vfs.FS, command, state string, req request, caller vfs.Caller) (any, error) {
 	switch command {
 	case "bind":
-		return mutateBind(fs, req, identity)
+		return mutateBind(fs, req, caller)
+	case "adopt-gates":
+		gates, err := fs.AdoptGates(caller)
+		return gatesResponse{OK: err == nil, Gates: gates}, err
 	case "op":
-		return mutateOperation(fs, req, identity)
+		return mutateOperation(fs, req, caller)
 	case "verify":
-		return mutateVerify(fs, req, identity)
+		return response{OK: true}, fs.VerifyAs(caller, req.CallID, vfs.AgentID(req.AuthorKey), req.Pass, req.Finding)
 	case "consolidate":
-		return mutateConsolidate(fs, req, identity)
+		return mutateConsolidate(fs, req, caller)
+	case "discard":
+		return response{OK: true}, fs.DiscardAs(caller, vfs.AgentID(req.AuthorKey))
+	case "edit-guard":
+		return response{OK: true}, fs.GuardNativeEdit(req.SessionID, req.Resources)
+	case "shell-continue":
+		plan, err := fs.ContinueShell(caller, req.CallID, req.Phase)
+		return response{OK: true, Shell: &plan}, err
+	case "shell-release":
+		return response{OK: true}, fs.ReleaseShell(caller, req.CallID)
 	case "shell-prepare":
-		return prepareShell(fs, state, req, identity)
-	case "shell-import":
-		return importShell(fs, state, req, identity)
+		// A policy denial returns OK true with Shell.Decision deny.
+		plan, err := fs.PrepareShell(caller, req.CallID, req.Command, state)
+		return response{OK: true, Shell: &plan}, err
+	case "shell-complete":
+		// Success reports the resulting revision and delta hash even when the
+		// command exited unsuccessfully.
+		result, err := fs.CompleteShell(caller, req.CallID, state)
+		return response{OK: true, Revision: &result.Revision, DeltaHash: result.DeltaHash}, err
 	}
-	return response{}, fmt.Errorf("vfs: unsupported command %q", command)
+	return nil, fmt.Errorf("vfs: unsupported command %q", command)
 }
 
-// verifyIdentity rejects a request whose declared identity does not match the
-// identity bound to key. Role, attempt, invariants, cycle and mandate class are
-// harness-derived at bind time, so both sides are cleared of them before the
-// comparison; because Identity also carries WorkUnitID, a mismatched work unit
-// is rejected by the same check. A key reassigned to a later attempt awaits
-// adoption (Prelaunch), so the run that held it no longer matches it.
-func verifyIdentity(fs *vfs.FS, key vfs.AgentID, identity vfs.Identity, field string) error {
-	bound, ok := fs.BindingIdentity(key)
-	if field == "verifier_key" && (!ok || bound.GateAuthorKey != identity.GateAuthorKey || identity.GateAuthorKey == "") {
-		return fmt.Errorf("%w: caller is not the identity bound to %s; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", vfs.ErrIdentity, field)
-	}
-	bound.Role, bound.AttemptID, bound.InvariantsHash, bound.Invariants = "", "", "", nil
-	bound.CycleID, bound.MandateClass = "", ""
-	bound.GateAuthorKey = ""
-	identity.Invariants = nil
-	identity.CycleID, identity.MandateClass = "", ""
-	identity.GateAuthorKey = ""
-	if !ok || !reflect.DeepEqual(bound, identity) {
-		return fmt.Errorf("%w: caller is not the identity bound to %s; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", vfs.ErrIdentity, field)
-	}
-	return nil
-}
-
-// prepareShell resolves the sandbox plan for one command from the binding's
-// scope, workspace, state directory and call ID; preparation may create scratch
-// and projection files but does not execute the command. An empty AuthorKey
-// skips identity verification and uses an unbound, write-protected plan; a
-// supplied key must match identity, and ExpectedRevision the binding's
-// revision. Identity and preparation errors propagate; a policy denial returns
-// OK true with Shell.Decision deny.
-func prepareShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
-	key := vfs.AgentID(req.AuthorKey)
-	if key != "" {
-		if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
-			return response{}, err
-		}
-	}
-	plan, err := fs.PrepareShell(key, req.CallID, req.Command, state, req.ExpectedRevision)
-	if err != nil {
-		return response{}, err
-	}
-	return response{OK: true, Shell: &plan}, nil
-}
-
-// importShell admits the command's captured result as one VFS transaction.
-// AuthorKey must match identity and ExpectedRevision the binding's revision.
-// Success returns the resulting revision (including zero) and delta hash even
-// when the command exited unsuccessfully; identity and import errors
-// (unconfirmed descendants, stale revisions, persistence or cleanup failures)
-// propagate.
-func importShell(fs *vfs.FS, state string, req request, identity vfs.Identity) (response, error) {
-	key := vfs.AgentID(req.AuthorKey)
-	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
-		return response{}, err
-	}
-	result, err := fs.ImportShell(key, req.CallID, state, req.ExpectedRevision)
-	if err != nil {
-		return response{}, err
-	}
-	return response{OK: true, Revision: &result.Revision, DeltaHash: result.DeltaHash}, nil
-}
-
-func mutateBind(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
-	key, err := fs.Bind(identity, req.Scope)
+func mutateBind(fs *vfs.FS, req request, caller vfs.Caller) (response, error) {
+	bound, err := fs.BindAs(caller, req.Scope, req.Invariants)
 	if err != nil {
 		return response{}, err
 	}
 	// The caller learns its attempt and the pinned invariant set from the result,
 	// which is the only place either is issued.
-	bound, _ := fs.BindingIdentity(key)
-	out := response{OK: true, Key: string(key), AttemptID: bound.AttemptID, InvariantsVersion: bound.InvariantsHash}
+	out := response{OK: true, Key: string(bound.Key), AttemptID: bound.AttemptID, InvariantsVersion: bound.InvariantsVersion}
 	// A bind that adopts work already staged under the key continues from its
 	// revision; a fresh bind keeps the fixed contract without one.
-	if revision, hash, staged := fs.StagedState(key); staged {
-		out.Revision, out.DeltaHash = &revision, hash
+	if bound.Staged {
+		out.Revision, out.DeltaHash = &bound.Revision, bound.DeltaHash
 	}
 	return out, nil
 }
 
-// mutateOperation reads or changes staged work after verifying the caller's
-// identity; an empty AuthorKey defaults to identity.AgentID. ViewKey selects
-// the staged view a verifier reads, and ExpectedRevision refers to that view.
-// Success returns any read content, the resulting revision (including zero) and
-// delta hash; identity, action and VFS errors propagate.
-func mutateOperation(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
-	key := vfs.AgentID(req.AuthorKey)
-	if key == "" {
-		key = identity.AgentID
-	}
-	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
-		return response{}, err
-	}
+// mutateOperation reads or changes staged work through the binding the caller
+// holds. Success returns any read content, the resulting revision (including
+// zero), the delta hash and, for a gate read, the outdated paths.
+func mutateOperation(fs *vfs.FS, req request, caller vfs.Caller) (response, error) {
 	action, err := parseAction(req.Action)
 	if err != nil {
 		return response{}, err
 	}
-	op := vfs.Operation{Key: key, CallID: req.CallID, ExpectedRevision: req.ExpectedRevision, Action: action, Path: req.Path, Content: []byte(req.Content)}
-	var result vfs.OperationResult
-	if req.ViewKey != "" {
-		result, err = fs.ReadAs(op, vfs.AgentID(req.ViewKey))
-	} else {
-		result, err = fs.Apply(op)
+	result, err := fs.Operate(caller, vfs.CallerOperation{CallID: req.CallID, Action: action, Path: req.Path,
+		Content: []byte(req.Content), AuthorKey: vfs.AgentID(req.AuthorKey)})
+	if err != nil {
+		return response{}, err
+	}
+	return response{OK: true, Content: string(result.Content), Revision: &result.Revision, DeltaHash: result.DeltaHash, OutdatedPaths: result.OutdatedPaths}, nil
+}
+
+// mutateConsolidate consolidates for the orchestrator. A failing-verdict
+// refusal answers with the staged state it refused, which a retry's
+// acceptance must name.
+func mutateConsolidate(fs *vfs.FS, req request, caller vfs.Caller) (response, error) {
+	var accepted *vfs.StagedState
+	if req.AcceptFailing {
+		accepted = &vfs.StagedState{Revision: req.AcceptedRevision, DeltaHash: req.AcceptedHash}
+	}
+	seq, err := fs.ConsolidateAs(caller, vfs.AgentID(req.AuthorKey), req.Checkpoint, accepted)
+	var failing *vfs.FailingVerdictError
+	if errors.As(err, &failing) {
+		return response{OK: false, Error: err.Error(), Revision: &failing.Revision, DeltaHash: failing.DeltaHash}, nil
 	}
 	if err != nil {
 		return response{}, err
 	}
-	return response{OK: true, Content: string(result.Content), Revision: &result.Revision, DeltaHash: result.DeltaHash}, nil
-}
-
-func mutateVerify(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
-	// Verifier bindings are preassigned against one author. The verify request
-	// names that author, so include the harness-issued relationship when checking
-	// the caller against the binding; all other identity fields remain exact.
-	identity.GateAuthorKey = vfs.AgentID(req.AuthorKey)
-	if err := verifyIdentity(fs, vfs.AgentID(req.VerifierKey), identity, "verifier_key"); err != nil {
-		return response{}, err
-	}
-	if err := fs.Verify(vfs.AgentID(req.VerifierKey), vfs.AgentID(req.AuthorKey), req.CallID, req.ExpectedRevision, req.DeltaHash, req.Pass, req.Finding); err != nil {
-		return response{}, err
-	}
-	return response{OK: true}, nil
-}
-
-func mutateConsolidate(fs *vfs.FS, req request, identity vfs.Identity) (response, error) {
-	key := vfs.AgentID(req.AuthorKey)
-	if err := verifyIdentity(fs, key, identity, "author_key"); err != nil {
-		return response{}, err
-	}
-	if err := vfs.RequireVFSCapability(vfs.OrchestratorInstance, model.VFSCapabilityConsolidate); err != nil {
-		return response{}, err
-	}
-	if err := fs.ConsolidateCheckpoint(key, req.Checkpoint, req.ExpectedRevision, req.AcceptFailing); err != nil {
-		return response{}, err
-	}
-	return response{OK: true}, nil
+	return response{OK: true, Seq: seq}, nil
 }
 
 // parseAction converts the wire action name to its VFS operation type.
@@ -563,8 +498,50 @@ func parseAction(action string) (vfs.OperationType, error) {
 		return vfs.OpPatch, nil
 	case "delete":
 		return vfs.OpDelete, nil
-	case "rollback":
-		return vfs.OpRollback, nil
 	}
 	return "", fmt.Errorf("vfs: unsupported action %q", action)
+}
+
+// admitRepair runs before a normal operation: it applies the manifest repair
+// *approval names, clearing that consumed approval, or answers the repair still
+// pending as the operation's refusal. handled reports that the command ends here.
+// Specialist callers receive the same diagnostic, but cannot consume consent.
+func admitRepair(stdout io.Writer, fs *vfs.FS, approval **vfs.RepairApproval, orchestrator bool) (handled bool, err error) {
+	pending, err := fs.RecoveryRepair()
+	if err != nil {
+		return true, err
+	}
+	a := *approval
+	if a == nil || a.Kind != "manifest" {
+		return refuseForRepair(stdout, pending)
+	}
+	if pending == nil {
+		return true, errors.New("manifest repair approval is obsolete; evaluate the normal operation again without it")
+	}
+	if !orchestrator {
+		return true, errors.New("incomplete consolidation requires the root orchestrator to request approval for its exact repair; return the manifest diagnostic to it")
+	}
+	if err := fs.RepairRecovery(*a); err != nil {
+		return true, err
+	}
+	*approval = nil
+	return false, nil
+}
+
+// refuseForRecovery answers a failed operation with the repair it left
+// pending, if any; handled reports that it did.
+func refuseForRecovery(stdout io.Writer, fs *vfs.FS) (handled bool, err error) {
+	pending, diagnose := fs.RecoveryRepair()
+	if diagnose != nil {
+		return false, nil
+	}
+	return refuseForRepair(stdout, pending)
+}
+
+// refuseForRepair answers pending, when there is one, as the refusal.
+func refuseForRepair(stdout io.Writer, pending *vfs.Repair) (handled bool, err error) {
+	if pending == nil {
+		return false, nil
+	}
+	return true, json.NewEncoder(stdout).Encode(response{OK: false, Error: pending.Reason, Repair: pending})
 }

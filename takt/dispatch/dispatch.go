@@ -112,19 +112,6 @@ func scopeExit(objective, bound string) string {
 	return fmt.Sprintf("ask the user: to continue, dispatch_exception on %s for objective %q with a finite allowance; to drop the scope, dispatch_restore for objective %q", bound, objective, objective)
 }
 
-// nextAttempt is the attempt an admission opens: the first for work never
-// admitted, the following one when a settled unit is retried (PR-DAG-MUT-8).
-func nextAttempt(u history.Unit, known bool) string {
-	if !known || u.State != history.StateSettled {
-		return history.FirstAttempt
-	}
-	n, err := strconv.Atoi(u.AttemptID)
-	if err != nil {
-		return history.FirstAttempt
-	}
-	return strconv.Itoa(n + 1)
-}
-
 // CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's
 // unit's latest admission opened.
 func CurrentAttempt(p history.Projection, session, event string) string {
@@ -173,7 +160,7 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	unit, known := projection.Unit(req.Session, req.Event)
 	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: req.Session,
-		WorkUnitID: req.Event, NodeKind: history.NodeKindDelegated, AttemptID: nextAttempt(unit, known), Dispatch: req.Dispatch, Agent: req.Agent,
+		WorkUnitID: req.Event, NodeKind: history.NodeKindDelegated, AttemptID: projection.NextAttempt(req.Session, req.Event), Dispatch: req.Dispatch, Agent: req.Agent,
 		Cause: history.CauseUncaptured, PolicyRef: AdmissionPolicyRef,
 	}
 	budgets := projection.Budgets(req.Session)
@@ -192,10 +179,10 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	switch {
 	case projection.InFlight() >= ceiling:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundConcurrency
-		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s); delegate again once a delegation returns, or ask the user to raise the ceiling with dispatch_exception on %s", ceiling, history.BoundConcurrency, history.BoundConcurrency)
+		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s); delegate again once a delegation returns; a delegation that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch; or ask the user to raise the ceiling with dispatch_exception on %s", ceiling, history.BoundConcurrency, history.BoundConcurrency)
 	case known && unit.State == history.StateInFlight:
 		entry.Kind, entry.Cause = history.KindDenied, CauseRepetition
-		e = fmt.Errorf("harness: work unit %q is already in flight; a retry starts only once its current attempt settles", req.Event)
+		e = fmt.Errorf("harness: work unit %q is already in flight under dispatch %s; a retry starts once that delegation returns; if it will never return, ask the user and call dispatch_abandon with dispatch %s", req.Event, unit.Dispatch, unit.Dispatch)
 	case known && unit.State == history.StateWithdrawn:
 		entry.Kind, entry.Cause = history.KindDenied, CauseWithdrawn
 		e = fmt.Errorf("harness: work unit %q was withdrawn from the plan; delegate the work under a new unit name", req.Event)
@@ -943,7 +930,7 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 		u, _ := projection.Unit(session, unit)
 		return u.State == history.StateInFlight
 	}):
-		return fmt.Errorf("harness: restoration waits until the affected executions can no longer act; call dispatch_restore for %q again once the delegations of %s have returned", objective, strings.Join(recovery.Scope, ", "))
+		return fmt.Errorf("harness: restoration waits until the affected executions can no longer act; call dispatch_restore for %q again once the delegations of %s have returned (in flight: %s); one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch", objective, strings.Join(recovery.Scope, ", "), strings.Join(inFlightDispatches(projection, session, recovery.Scope), ", "))
 	}
 	var restored []string
 	for _, claim := range fs.OwnershipClaims(session) {
@@ -976,6 +963,17 @@ func Restore(h *history.History, fs *vfs.FS, journalRef, session, objective stri
 		Point: recovery.Point, Scope: recovery.Scope,
 		Evidence: "restored/" + strings.Join(restored, ","),
 	})
+}
+
+// inFlightDispatches names the dispatch of each unit among units still in flight.
+func inFlightDispatches(projection history.Projection, session string, units []string) []string {
+	var dispatches []string
+	for _, unit := range units {
+		if u, _ := projection.Unit(session, unit); u.State == history.StateInFlight {
+			dispatches = append(dispatches, unit+" "+u.Dispatch)
+		}
+	}
+	return dispatches
 }
 
 // Except records a scoped user exception before it enables further work: the

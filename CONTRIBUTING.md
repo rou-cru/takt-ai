@@ -45,6 +45,11 @@ not prescribe a universal planning or delivery workflow.
 - **Single owner**: extend the existing adapter, injector, asset, resolver, or
   update owner. Do not add parallel paths for the same agent configuration or
   installation concern.
+- **Single authority for state (strict, no exceptions)**: every fact a
+  decision can rest on has one owner, read under the serialization point that
+  guards the action. A mirror, cache, or second writer is a defect, removed
+  rather than reconciled. Defined by `STR-15` and `STR-16` in
+  [`product/governance/DOCTRINE.md`](product/governance/DOCTRINE.md).
 - **Managed configuration**: preserve user-owned content. Use the established
   managed block or merge strategy, keep writes idempotent, and never write one
   agent's format or directory from another agent's integration.

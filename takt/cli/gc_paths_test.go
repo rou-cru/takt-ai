@@ -117,7 +117,7 @@ func TestGCCoordinateWithoutCycle(t *testing.T) {
 		}
 	})
 	t.Run("attach needs a cycle", func(t *testing.T) {
-		if _, err := call(coordinationRequest{Action: "attach", Session: "root", Role: "collector", Child: "c1"}); err == nil || !strings.Contains(err.Error(), "no cycle") {
+		if _, err := call(coordinationRequest{Action: "attach", Owner: testOwner, Session: "root", Role: "collector", Child: "c1"}); err == nil || !strings.Contains(err.Error(), "no active cycle") {
 			t.Fatalf("attach error = %v", err)
 		}
 	})
@@ -127,7 +127,7 @@ func TestGCCoordinateWithoutCycle(t *testing.T) {
 		}
 	})
 	t.Run("prepare without project config fails", func(t *testing.T) {
-		if _, err := call(coordinationRequest{Action: "prepare", Session: "root"}); err == nil {
+		if _, err := call(coordinationRequest{Action: "prepare", Owner: testOwner, Session: "root"}); err == nil {
 			t.Fatal("prepare without .takt/gc.json succeeded")
 		}
 	})

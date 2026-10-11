@@ -16,9 +16,11 @@
 package dispatch_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/history"
 )
 
 // interlocutorAgent is a real catalog agent whose role resolves to
@@ -129,5 +131,93 @@ func TestExpectedArtifactReflectsActiveSwitch(t *testing.T) {
 	}
 	if got := dispatch.ExpectedArtifact(h, "root-1"); got != "artifact.md" {
 		t.Fatalf("expected artifact.md, got %q", got)
+	}
+}
+
+func TestAbortWithoutHolderIsRefusedAndRecorded(t *testing.T) {
+	h := newHistory(t)
+	e := dispatch.Abort(h, "", "root-1", "child-1", "drift", "harness")
+	if e == nil || !strings.Contains(e.Error(), "no interlocutor switch is active") {
+		t.Fatalf("expected a no-holder refusal, got %v", e)
+	}
+	entries := h.Entries()
+	last := entries[len(entries)-1]
+	if last.Kind != history.KindDenied || last.Cause != history.CauseInterlocutorHolder {
+		t.Fatalf("expected a recorded holder denial, got %+v", last)
+	}
+}
+
+func TestAbortOfNonHolderChildIsRefused(t *testing.T) {
+	h := newHistory(t)
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+		t.Fatalf("expected switch to succeed, got %v", e)
+	}
+	e := dispatch.Abort(h, "", "root-1", "other", "drift", "harness")
+	if e == nil || !strings.Contains(e.Error(), "not the current interlocutor holder") {
+		t.Fatalf("expected a mismatch refusal, got %v", e)
+	}
+	if holder := h.Project().Budgets("root-1").InterlocutorHolder; holder != "child-1" {
+		t.Fatalf("expected the holder to remain child-1, got %q", holder)
+	}
+}
+
+func TestAbortWithEmptyChildAbortsTheCurrentHolder(t *testing.T) {
+	h := newHistory(t)
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+		t.Fatalf("expected switch to succeed, got %v", e)
+	}
+	if e := dispatch.Abort(h, "", "root-1", "", "drift", "harness"); e != nil {
+		t.Fatalf("expected the empty-child abort to succeed, got %v", e)
+	}
+	if holder := h.Project().Budgets("root-1").InterlocutorHolder; holder != "" {
+		t.Fatalf("expected holder to be cleared, got %q", holder)
+	}
+}
+
+func TestAbortWithEmptyChildAndNoHolderIsRefused(t *testing.T) {
+	h := newHistory(t)
+	e := dispatch.Abort(h, "", "root-1", "", "drift", "harness")
+	if e == nil || !strings.Contains(e.Error(), "no interlocutor switch is active") {
+		t.Fatalf("expected a no-holder refusal, got %v", e)
+	}
+}
+
+func TestCurrentHolderReadsTheHolderSession(t *testing.T) {
+	h := newHistory(t)
+	if got := dispatch.CurrentHolder(h, "root-1"); got != "" {
+		t.Fatalf("expected no holder before any switch, got %q", got)
+	}
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+		t.Fatalf("expected switch to succeed, got %v", e)
+	}
+	if got := dispatch.CurrentHolder(h, "root-1"); got != "child-1" {
+		t.Fatalf("expected holder child-1, got %q", got)
+	}
+}
+
+func TestHeldRootFindsOnlyTheMatchingRoot(t *testing.T) {
+	h := newHistory(t)
+	for _, pair := range [][2]string{{"root-1", "child-1"}, {"root-2", "child-2"}} {
+		if e := dispatch.Switch(h, "", pair[0], pair[1], interlocutorAgent, "artifact.md"); e != nil {
+			t.Fatalf("switch: %v", e)
+		}
+	}
+	if root, ok := h.Project().HeldRoot("child-2"); !ok || root != "root-2" {
+		t.Fatalf("expected root-2, got %q %v", root, ok)
+	}
+	if _, ok := h.Project().HeldRoot("stranger"); ok {
+		t.Fatal("a non-holder must hold no root")
+	}
+	if _, ok := h.Project().HeldRoot(""); ok {
+		t.Fatal("an empty session must hold no root")
+	}
+	if e := dispatch.Abort(h, "", "root-2", "child-2", "gone", "harness"); e != nil {
+		t.Fatalf("abort: %v", e)
+	}
+	if _, ok := h.Project().HeldRoot("child-2"); ok {
+		t.Fatal("an aborted holder must hold no root")
+	}
+	if root, ok := h.Project().HeldRoot("child-1"); !ok || root != "root-1" {
+		t.Fatalf("the other root's holder must remain, got %q %v", root, ok)
 	}
 }

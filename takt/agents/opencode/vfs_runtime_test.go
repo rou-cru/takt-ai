@@ -37,6 +37,7 @@ func TestTaktVFSPluginIdentityIPC(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeHistoryFixture(t, write)
 	write("package.json", []byte(`{"type":"module"}`))
 	write("takt-vfs.ts", opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
 	write("node_modules/@opencode/plugin/package.json", []byte(`{"type":"module","exports":"./index.js"}`))
@@ -80,6 +81,7 @@ func TestTaktVFSPluginSkipsCodegraphForHomeWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeHistoryFixture(t, write)
 	write("package.json", []byte(`{"type":"module"}`))
 	write("takt-vfs.ts", opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
 	write("node_modules/@opencode/plugin/package.json", []byte(`{"type":"module","exports":"./index.js"}`))

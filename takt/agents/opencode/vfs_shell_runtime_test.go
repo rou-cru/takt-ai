@@ -57,6 +57,7 @@ func runShellHarness(t *testing.T, node string, enforced bool) {
 			t.Fatal(err)
 		}
 	}
+	writeHistoryFixture(t, func(name string, content []byte) { write(name, string(content)) })
 	write("package.json", `{"type":"module"}`)
 	write("takt-vfs.ts", string(opencode.TaktVFSPluginArtifact("/test/takt-ai", enforced).Content))
 	write("takt-sandbox.mjs", taktSandboxStub)

@@ -7,18 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/history"
-	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
-
-const coordinatorFile = "gc-coordinator.json"
 
 // PlanUnit is one unit of a plan commitment; aliased from package dispatch.
 type PlanUnit = dispatch.PlanUnit
@@ -56,13 +51,18 @@ type Cycle struct {
 // package dispatch (PR-DAG-AUT-1); Units and Mutations are GC's own pace
 // counters for deciding when to trigger the next cycle (PR-MNT-9/11).
 type Coordinator struct {
-	Version     int  `json:"version"`
-	Units       int  `json:"units"`
-	Mutations   int  `json:"mutations"`
-	Cursor      int  `json:"cursor"`
-	Deferrals   int  `json:"deferrals"`
-	NextMandate int  `json:"next_mandate"`
-	Requested   bool `json:"requested"`
+	// Since is the history position after which admissions count toward the
+	// next cycle.
+	Since           int `json:"dispatch_after"`
+	observedJournal int
+	observedHistory int
+	Version         int  `json:"version"`
+	Units           int  `json:"units"`
+	Mutations       int  `json:"mutations"`
+	Cursor          int  `json:"cursor"`
+	Deferrals       int  `json:"deferrals"`
+	NextMandate     int  `json:"next_mandate"`
+	Requested       bool `json:"requested"`
 	// Session is the root session the pace counters belong to; another root
 	// session starts them over (see Bind).
 	Session string  `json:"session,omitempty"`
@@ -75,8 +75,6 @@ type Coordinator struct {
 const (
 	CollectorSpecialistID = "simplify"
 	VerifierSpecialistID  = "verify"
-	// coordinatorFileMode keeps transient coordinator state private.
-	coordinatorFileMode os.FileMode = 0o600
 	// cycleIDBytes is the random byte length used for cycle identifiers.
 	cycleIDBytes = 16
 	// ProjectConfigPath is the reviewed project configuration a maintenance cycle
@@ -84,35 +82,78 @@ const (
 	ProjectConfigPath = ".takt/gc.json"
 )
 
-// LoadCoordinator reads the coordinator state, accepting a missing file as a
-// fresh coordinator. A corrupt or future-version file is an error, never
-// silently reset.
-func LoadCoordinator(state string) (*Coordinator, error) {
-	c := &Coordinator{Version: 1, Cursor: -1}
-	b, e := os.ReadFile(filepath.Join(state, coordinatorFile))
-	if errors.Is(e, os.ErrNotExist) {
-		return c, nil
+// LoadCoordinator reads the core state under its workspace lock. Pace counts,
+// lane sessions, the cycle's keys and its authorized scope are projections of
+// history and the core bindings, never persisted mirrors.
+func LoadCoordinator(fs *vfs.FS) (*Coordinator, error) {
+	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, observedJournal: -1, observedHistory: -1}
+	if raw := fs.Maintenance(); len(raw) > 0 {
+		if err := json.Unmarshal(raw, c); err != nil {
+			return nil, err
+		}
 	}
-	if e != nil {
-		return nil, e
-	}
-	if e = json.Unmarshal(b, c); e != nil {
-		return nil, e
-	}
-	if c.Version != 1 || c.NextMandate < 0 || c.NextMandate >= 5 {
+	if c.Version != 1 {
 		return nil, errors.New("gc: invalid coordinator state")
+	}
+	c.NextMandate = len(c.History) % len(mandateRotation)
+	if c.Cycle != nil {
+		c.Cycle.Sessions = map[string]string{}
+		c.Cycle.AuthorKey, c.Cycle.VerifierKey = fs.CycleKeys(c.Cycle.Plan.CycleID)
+		c.Cycle.Scope = []string{}
+		for _, claim := range fs.OwnershipClaims(c.Cycle.Plan.SessionID) {
+			if c.Cycle.AuthorKey != "" && claim.Key == c.Cycle.AuthorKey {
+				c.Cycle.Scope = claim.Scope
+			}
+		}
 	}
 	return c, nil
 }
 
-// SaveCoordinator atomically persists the coordinator under state.
-func SaveCoordinator(state string, c *Coordinator) error {
-	b, e := json.Marshal(c)
-	if e != nil {
-		return e
+// SaveCoordinator persists only the facts the coordinator owns; every
+// projection LoadCoordinator rebuilds is blanked.
+func SaveCoordinator(fs *vfs.FS, c *Coordinator) error {
+	stored := *c
+	stored.Units, stored.Mutations, stored.NextMandate = 0, 0, 0
+	if c.Cycle != nil {
+		cycle := withoutProjections(*c.Cycle)
+		stored.Cycle = &cycle
 	}
-	_, e = filemerge.WriteFileAtomic(filepath.Join(state, coordinatorFile), b, coordinatorFileMode)
-	return e
+	stored.History = make([]Cycle, len(c.History))
+	for i, closed := range c.History {
+		stored.History[i] = withoutProjections(closed)
+	}
+	raw, err := json.Marshal(&stored)
+	if err != nil {
+		return err
+	}
+	return fs.SetMaintenance(raw)
+}
+
+// withoutProjections blanks what a cycle record only mirrors from history and
+// the core bindings: its lane sessions, keys and scope.
+func withoutProjections(cycle Cycle) Cycle {
+	cycle.Sessions, cycle.Scope, cycle.AuthorKey, cycle.VerifierKey = map[string]string{}, []string{}, "", ""
+	return cycle
+}
+
+// Execution sessions come exclusively from history, including GC lanes.
+func (c *Coordinator) ObserveExecutions(h *history.History) {
+	c.Units = 0
+	c.observedHistory = len(h.Entries()) - 1
+	for _, e := range h.Entries() {
+		if e.Seq > c.Since && e.Kind == history.KindAdmitted && e.SessionID == c.Session {
+			c.Units++
+		}
+	}
+	if c.Cycle == nil {
+		return
+	}
+	c.Cycle.Sessions = map[string]string{}
+	for _, d := range h.Project().Executions {
+		if !d.Settled && d.Cycle == c.Cycle.Plan.CycleID {
+			c.Cycle.Sessions[d.Role] = d.Child
+		}
+	}
 }
 
 // Bind makes session the one the pace counters measure. A cycle is declared
@@ -123,6 +164,7 @@ func (c *Coordinator) Bind(session string) {
 		return
 	}
 	c.reset()
+	c.Cursor, c.Since = -1, -1
 	c.Session = session
 }
 
@@ -130,12 +172,11 @@ func (c *Coordinator) Bind(session string) {
 // the bound session's mutations count; other sessions' entries are consumed
 // without counting.
 func (c *Coordinator) Observe(entries []vfs.JournalEntry) {
+	c.Mutations = 0
+	c.observedJournal = c.Cursor
 	for _, e := range entries {
-		if e.Seq <= c.Cursor {
-			continue
-		}
-		c.Cursor = e.Seq
-		if e.CycleID != "" || e.Outcome != "" || e.BeforeHash == e.AfterHash || e.SessionID != "" && e.SessionID != c.Session {
+		c.observedJournal = max(c.observedJournal, e.Seq)
+		if e.Seq <= c.Cursor || e.CycleID != "" || e.Outcome != "" || e.BeforeHash == e.AfterHash || e.SessionID != "" && e.SessionID != c.Session {
 			continue
 		}
 		if e.Operation == vfs.OpCreate || e.Operation == vfs.OpPatch || e.Operation == vfs.OpDelete {
@@ -153,6 +194,7 @@ func (c *Coordinator) Held() bool { return c.Cycle != nil }
 // first. Concurrency, plan coverage and recovery budgets belong to package
 // dispatch, not GC.
 func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error {
+	c.Bind(session)
 	p, e := dispatch.LoadAdmissionPolicy()
 	if e != nil {
 		return e
@@ -161,7 +203,7 @@ func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agen
 	if e := dispatch.Admit(h, p, journalRef, req); e != nil {
 		return e
 	}
-	c.Units++
+	c.ObserveExecutions(h)
 	return nil
 }
 
@@ -170,6 +212,7 @@ var mandateRotation = []MandateClass{MandateDeadCode, MandateComplexity, Mandate
 // Advance starts at most one cycle per trigger; the whole causal closure remains context.
 func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, session string, reach Reach) (Decision, BarrierVerdict, error) {
 	c.Observe(entries)
+	c.ObserveExecutions(h)
 	p, e := LoadTriggerPolicy()
 	if e != nil {
 		return Decision{}, BarrierVerdict{}, e
@@ -179,6 +222,7 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 		return d, BarrierVerdict{}, nil
 	}
 	if d.Outcome == OutcomeSkip || d.Outcome == OutcomeAbort {
+		c.Cursor, c.Since = c.observedJournal, c.observedHistory
 		c.reset()
 		return d, BarrierVerdict{}, nil
 	}
@@ -246,28 +290,9 @@ func (c *Coordinator) Close(reason string) {
 	c.Cycle.Reason = reason
 	c.History = append(c.History, *c.Cycle)
 	c.Cycle = nil
-	c.NextMandate = (c.NextMandate + 1) % len(mandateRotation)
+	c.NextMandate = len(c.History) % len(mandateRotation)
+	c.Cursor, c.Since = c.observedJournal, c.observedHistory
 	c.reset()
-}
-
-// Attach records the API-created child before prompting it. Identities are never model arguments.
-func (c *Coordinator) Attach(role, session string) error {
-	if c.Cycle == nil || session == "" {
-		return errors.New("gc: no cycle or child session")
-	}
-	if role != "collector" && role != "verifier" {
-		return errors.New("gc: invalid child role")
-	}
-	for r, s := range c.Cycle.Sessions {
-		if s == session && r != role {
-			return errors.New("gc: independent child sessions required")
-		}
-	}
-	if old := c.Cycle.Sessions[role]; old != "" && old != session {
-		return errors.New("gc: child already attached; reconcile instead of redispatch")
-	}
-	c.Cycle.Sessions[role] = session
-	return nil
 }
 
 // Require errors unless session is the persisted participant for role in the

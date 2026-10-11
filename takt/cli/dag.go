@@ -76,11 +76,9 @@ func runDag(args []string, stdout, stderr io.Writer) error {
 	return json.NewEncoder(stdout).Encode(snap)
 }
 
-// readSnapshot opens the workspace's execution history the same way
-// dispatch/vfs/gc do and derives its DAG snapshot. It never initializes a store
-// for a mistyped path (mirroring gc.go's and vfs.go's "existing store
-// required" guard): an absent history is a read failure, not an empty plan, and
-// is checked before history.Open, which would create one.
+// readSnapshot reads the workspace's execution history read-only and derives
+// its DAG snapshot. It runs outside the workspace lock, so it never opens the
+// store for writing. An absent history is a read failure, not an empty plan.
 func readSnapshot(workspace, state, session string) (snap history.Snapshot, err error) {
 	if info, statErr := os.Stat(workspace); statErr != nil || !info.IsDir() {
 		return history.Snapshot{}, fmt.Errorf("dag: workspace %q is not an existing directory", workspace)
@@ -88,12 +86,10 @@ func readSnapshot(workspace, state, session string) (snap history.Snapshot, err 
 	if _, statErr := os.Stat(filepath.Join(state, "history.sqlite")); statErr != nil {
 		return history.Snapshot{}, fmt.Errorf("dag: existing execution history required: %w", statErr)
 	}
-	h, err := history.Open(state)
+	entries, err := history.ReadEntries(state)
 	if err != nil {
 		return history.Snapshot{}, err
 	}
-	defer func() { err = errors.Join(err, h.Close()) }()
-	entries := h.Entries()
 	if session != "" {
 		entries = slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != session })
 	}

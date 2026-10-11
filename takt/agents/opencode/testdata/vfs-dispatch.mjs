@@ -1,5 +1,10 @@
 import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
+import {historyFixture} from "./history-fixture.mjs"
+const orphan={dispatch:"old:call-0",root:"old-root",unit:"orphan",attempt:"1",agent:"dev",caller:"old-root",inputs:[],admitted_at:0}
+const owner=historyFixture({executions:{"old:call-0":orphan}})
+let coreClaims=[]
+const released=[]
 
 // The orchestrator's dispatch tools must reach `takt-ai dispatch`, never
 // `takt-ai gc coordinate`: that CLI split is the whole point of the change
@@ -13,7 +18,15 @@ globalThis.Bun = {
     assert.equal(argv[0], "/test/takt-ai")
     const call = { verb: argv[1], argv, options }
     calls.push(call)
-    const answer = () => respond(call) ?? { stdout: JSON.stringify(defaultAnswer(call)), stderr: "", code: 0 }
+    let cached
+    const answer = () => {
+      if(cached)return cached
+      const custom=respond(call)
+      if(custom?.code || (custom?.stdout && JSON.parse(custom.stdout).ok===false))return cached=custom
+      if(call.argv[2]==="release" && (!custom || JSON.parse(custom.stdout).ok!==false))released.push(call.stdin.key)
+      const fact=call.verb==="dispatch"?owner.answer("dispatch",requestOf(call).action,requestOf(call),coreClaims):undefined
+      return cached=custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+    }
     return {
       // VFS commands take their request on stdin; coordination takes --request.
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
@@ -26,7 +39,7 @@ globalThis.Bun = {
 const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
-  if (call.argv[1] === "dispatch") return ["switch", "validate_results", "validate_inputs"].includes(requestOf(call).action) ? null : coordinator()
+  if (call.argv[1] === "dispatch") return ["switch", "validate_results"].includes(requestOf(call).action) ? null : coordinator()
   if (call.argv[1] === "gc" && call.argv[2] === "coordinate") return coordinator()
   if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
   return { ok: true }
@@ -51,6 +64,7 @@ await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
+    context: async () => [],
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
@@ -79,11 +93,11 @@ const root = { sessionID: "root", agent: "takt" }
 
 // Claim control is explicit and bound to the same root/unit/specialist tuple
 // the dispatch admission will consume.
-const claim = { key: "claim-current", root_session_id: "root", work_unit_id: "u1", agent_id: "dev", target_instance: "dev", pending: true, active: false, scope: ["a.txt"] }
+const claim = { key: "claim-current", root_session_id: "root", caller_session: "root", caller_agent: "takt", work_unit_id: "u1", agent_id: "dev", target_instance: "dev", pending: true, active: false, scope: ["a.txt"] }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim] }), stderr: "", code: 0 } : undefined
 await tools.dispatch_inputs.execute({ work_unit_id: "u1", result_ids: [7] }, root)
 await tools.claim_assign.execute({ work_unit_id: "u1", agent: "dev", scope: ["a.txt"] }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", work_unit_id: "u1", agent_id: "dev", specialist: "dev", invariants: ["engram:7"], scope: ["a.txt"] })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", work_unit_id: "u1", agent_id: "dev", specialist: "dev", scope: ["a.txt"] })
 
 // Release selects only an exact key listed by claim_list. Claims nobody works
 // under (prior-root, or a current-root reservation not yet launched) need no
@@ -93,20 +107,20 @@ const priorClaim = { ...claim, key: "claim-prior", root_session_id: "prior-root"
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, priorClaim] }), stderr: "", code: 0 } : undefined
 let releaseAt = calls.length
 await tools.claim_release.execute({ claim_key: "claim-prior" }, root)
-assert.deepEqual(calls.slice(releaseAt).map(c => [c.argv[2], c.stdin]), [
-  ["claims", { ipc_version: 4, session_id: "root" }],
-  ["release", { ipc_version: 4, session_id: "root", key: "claim-prior" }],
+assert.deepEqual(calls.slice(releaseAt).filter(c=>c.verb==="vfs").map(c => [c.argv[2], c.stdin]), [
+  ["release", { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-prior", confirmed:false }],
 ])
 releaseAt = calls.length
 await tools.claim_release.execute({ claim_key: "claim-current" }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", key: "claim-current" })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current", confirmed:false })
 const activeClaim = { ...claim, active: true }
-respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [activeClaim, priorClaim] }), stderr: "", code: 0 } : undefined
+coreClaims=[claim,{...claim,work_unit_id:"u2"}]
+respond = (call) => call.argv[2] === "release" && !call.stdin.confirmed ? {stdout:JSON.stringify({ok:false,error:"WARNING: agent dev (instance dev, active) owns [a.txt]"}),stderr:"",code:0}:undefined
 releaseAt = calls.length
 await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current", confirmed: false }, root), /WARNING: agent dev \(instance dev, active\) owns \[a\.txt\]/)
-assert.equal(calls.slice(releaseAt).filter(c => c.argv[2] === "release").length, 0, "denied active claim was released")
+assert.deepEqual(released,["claim-prior","claim-current"],"denied active claim was released")
 await tools.claim_release.execute({ claim_key: "claim-current", confirmed: true }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 4, session_id: "root", key: "claim-current" })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current", confirmed:true })
 
 await tools.dispatch_commit.execute({ version: "v1", plan: [{ unit: "u1", contract: "c1" }] }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
@@ -139,7 +153,7 @@ assert.deepEqual(requestOf(calls.at(-1)), { action: "contest", session: "root", 
 // A non-root caller never reaches the harness for these: rejected before any IPC.
 const before = calls.length
 await assert.rejects(tools.dispatch_commit.execute({ version: "v1", plan: [] }, { sessionID: "child", agent: "dev" }), /root orchestrator/)
-assert.equal(calls.length, before, "non-root caller sent IPC")
+assert.equal(calls.slice(before).filter(c=>c.verb==="dispatch" && requestOf(c).action==="commit").length,0,"non-root caller committed")
 
 // A delegation executes the work unit its description names: admission,
 // launch and the end of the call all speak for that unit, and the host call
@@ -156,40 +170,35 @@ const mark = dispatched().length
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, { ...claim, work_unit_id: "u2" }] }), stderr: "", code: 0 } : undefined
 await delegate("execute.before", "  u1  ")
 await delegate("execute.after", "  u1  ")
-const lifecycle = dispatched().slice(mark).filter(r => ["admit", "launch", "finish"].includes(r.action))
-assert.deepEqual(lifecycle.map(r => [r.action, r.event]), [["admit", "u1"], ["launch", "u1"], ["finish", "u1"]])
+const lifecycle = dispatched().slice(mark).filter(r => ["prepare", "finish"].includes(r.action))
+assert.deepEqual(lifecycle.map(r => [r.action, r.event]), [["prepare", "u1"], ["finish", "u1"]])
 assert.equal(lifecycle[0].dispatch, "root:call-1")
-assert.equal(lifecycle[2].dispatch, "root:call-1")
+assert.equal(lifecycle[1].dispatch, "root:call-1")
 await assert.rejects(() => delegate("execute.before", "   ", "call-2"), /work unit/)
 
-// The orphan left by the dead process is ended before any new admission: its
-// liveness is declared uncertain and reconciled as not running.
-const restart = dispatched().slice(mark)
-assert.deepEqual(restart.slice(0, 2), [
-  { action: "uncertain", event: "orphan", dispatch: "old:call-0", session: "old-root" },
-  { action: "reconcile", event: "orphan", dispatch: "old:call-0", session: "old-root", pass: false },
-])
-assert.equal(restart[2].action, "admit")
-assert.deepEqual(store.get("takt/vfs/delegations"), {})
+// A restart is not host evidence of termination. The unobserved exact
+// dispatch stays in history; independent units remain usable.
+assert.equal(owner.executions[orphan.dispatch].settled,undefined)
+assert.equal(dispatched().slice(mark).some(r=>["uncertain","reconcile"].includes(r.action)),false)
 
 // A denied admission never ran, so nothing is remembered for it.
 respond = (call) => {
   if (call.argv[2] === "claims") {
     return { stdout: JSON.stringify({ ok: true, claims: [claim, { ...claim, work_unit_id: "u2" }] }), stderr: "", code: 0 }
   }
-  if (call.verb === "dispatch" && requestOf(call).action === "admit") {
+  if (call.verb === "dispatch" && requestOf(call).action === "prepare") {
     return { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 }
   }
   return undefined
 }
 await assert.rejects(() => delegate("execute.before", "u2", "call-3"), /ceiling/)
 respond = () => undefined
-assert.deepEqual(store.get("takt/vfs/delegations"), {})
+assert.equal(owner.executions["root:call-3"],undefined)
 
 // A delegation ends a running cleanup cycle only once it is admitted: a denied
 // one leaves the cycle's lanes running, an admitted one stops them, and a lane
-// that cannot be interrupted never refuses the admitted delegation.
-const runningCycle = { ...coordinator(), cycle: { plan: { session_id: "root", cycle_id: "yield-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" },
+// that cannot be proved stopped refuses admission without releasing resources.
+const runningCycle = { ...coordinator(), cycle: { plan: { session_id: "root", caller_session: "root", caller_agent: "takt", cycle_id: "yield-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" },
   phase: "collect", scope: [], sessions: { collector: "lane-c", verifier: "lane-v" }, report: {}, started: "2026-01-01T00:00:00Z" } }
 let admission
 respond = (call) => {
@@ -197,17 +206,27 @@ respond = (call) => {
   if (!call.argv.includes("--request")) return undefined
   const action = requestOf(call).action
   if (action === "status") return { stdout: JSON.stringify(runningCycle), stderr: "", code: 0 }
-  return action === "admit" ? admission : undefined
+  if(action==="prepare") {
+    if(admission)return admission
+    if(!requestOf(call).stopped?.length)return {stdout:JSON.stringify({ok:false,error:"GC lanes must terminate",stop_cycle:{cycle:"yield-cycle",lanes:[{dispatch:"yield-cycle/collector",attempt:"1",child:"lane-c"},{dispatch:"yield-cycle/verifier",attempt:"1",child:"lane-v"}]}}),stderr:"",code:0}
+  }
+  return undefined
 }
 admission = { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 }
 await assert.rejects(() => delegate("execute.before", "yield-denied", "call-y1", "pm"), /ceiling/)
 assert.deepEqual(interrupted, [], "a denied delegation stopped the cycle's lanes")
 admission = undefined
+owner.executions["yield-cycle/collector"]={dispatch:"yield-cycle/collector",root:"root",unit:"gc-cycle",attempt:"1",agent:"simplify",caller:"root",child:"lane-c",inputs:[],cycle:"yield-cycle",role:"collector"}
+owner.executions["yield-cycle/verifier"]={dispatch:"yield-cycle/verifier",root:"root",unit:"gc-cycle/verify",attempt:"1",agent:"verify",caller:"root",child:"lane-v",inputs:[],cycle:"yield-cycle",role:"verifier"}
 unreachable.add("lane-c")
-await delegate("execute.before", "yield-admitted", "call-y2", "pm")
-assert.deepEqual(interrupted, ["lane-v"], "an admitted delegation left the cycle's lanes running")
-assert.ok(store.get("takt/vfs/delegations")["root:call-y2"], "a failed lane interruption refused the admitted delegation")
+await assert.rejects(delegate("execute.before", "yield-admitted", "call-y2", "pm"),/lane interruption failed/)
+assert.deepEqual(interrupted, ["lane-v"], "failed lane must not keep the others running")
+assert.equal(owner.executions["root:call-y2"],undefined,"failed interruption admitted ordinary work")
 unreachable.clear()
+await delegate("execute.before", "yield-admitted", "call-y2", "pm")
+assert.ok(owner.executions["root:call-y2"])
+owner.executions["yield-cycle/collector"].settled=true
+owner.executions["yield-cycle/verifier"].settled=true
 interrupted.length = 0
 respond = () => undefined
 await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "yield-admitted", agent: "pm" })
@@ -221,8 +240,8 @@ let planningAt = dispatched().length
 await delegate("execute.before", "brief", "call-4", "pm")
 await tools.deliver_result.execute({ result_ids: [123, 456] }, { sessionID: "brief", agent: "pm" })
 await delegate("execute.after", "brief", "call-4", "pm")
-assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
-assert.deepEqual(dispatched().slice(planningAt)[2].result_ids, [123, 456])
+assert.deepEqual(dispatched().slice(planningAt).filter(r=>["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "deliver", "finish"])
+assert.deepEqual(dispatched().slice(planningAt).find(r=>r.action==="deliver").result_ids, [123, 456])
 
 // deliver_result's own failure is an ordinary failed tool call: no special
 // casing, the caller sees it and can retry in the same turn.
@@ -237,7 +256,7 @@ respond = () => undefined
 planningAt = dispatched().length
 await delegate("execute.before", "missing-result", "call-6", "pm")
 await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /the specialist ended without delivering its result/)
-assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "finish"])
+assert.deepEqual(dispatched().slice(planningAt).filter(r=>["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
 
 // The context hook records a producer's own session as its unit's child. A
 // delegation that ends without a delivery re-prompts that exact child once;
@@ -250,15 +269,19 @@ onPrompt = async (sessionID) => { await tools.deliver_result.execute({ result_id
 await delegate("execute.after", "nudge", "call-7", "pm")
 onPrompt = async () => {}
 assert.deepEqual(promptedSessions.slice(-1), ["nudge"])
-assert.deepEqual(dispatched().slice(planningAt).map(r => r.action), ["admit", "launch", "validate_results", "finish"])
+assert.deepEqual(dispatched().slice(planningAt).filter(r=>["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "deliver", "finish"])
 
+coreClaims=[]
 planningAt = dispatched().length
 await assert.rejects(() => delegate("execute.before", "u3", "call-5"), /no matching pending clean claim/)
-assert.equal(dispatched().slice(planningAt).filter(r => r.action === "admit").length, 0, "unclaimed VFS lane was admitted")
+assert.equal(dispatched().slice(planningAt).filter(r => r.action === "prepare" && owner.executions[r.dispatch]).length, 0, "unclaimed VFS lane was admitted")
 respond = () => undefined
 
 // The author binds under its delegation's unit; consolidation is the
 // orchestrator's alone.
+coreClaims=[claim]
+await delegate("execute.before","u1","call-bind","dev")
+owner.executions["root:call-bind"].child="u1"
 const dev = { sessionID: "u1", agent: "dev" }
 await tools.vfs_bind.execute({ scope: ["a.txt"] }, dev)
 assert.equal(calls.findLast(c => c.verb === "vfs").stdin.work_unit_id, "u1")
@@ -272,8 +295,8 @@ await assert.rejects(tools.vfs_consolidate.execute({ author_key: "k1", checkpoin
 // is due or running, one closing notice after it, and nothing otherwise.
 const contextFor = async (agent, status) => {
   const state = { version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false, ...status }
-  if (status.cycle) state.cycle = { plan: { session_id: "root", cycle_id: "context-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" }, phase: status.cycle.phase, scope: [], sessions: {}, report: {}, started: "2026-01-01T00:00:00Z" }
-  respond = (call) => requestOf(call).action === "status" ? { stdout: JSON.stringify(state), stderr: "", code: 0 } : undefined
+  if (status.cycle) state.cycle = { plan: { session_id: "root", caller_session: "root", caller_agent: "takt", cycle_id: "context-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" }, phase: status.cycle.phase, scope: [], sessions: {}, report: {}, started: "2026-01-01T00:00:00Z" }
+  respond = (call) => call.argv.includes("--request") && requestOf(call).action === "status" ? { stdout: JSON.stringify(state), stderr: "", code: 0 } : undefined
   const event = { agent, sessionID: "root", system: [] }
   for (const callback of sessionHooks.context) await callback(event)
   return event.system.map(part => part.text)
@@ -292,7 +315,7 @@ respond = (call) => call.verb === "dispatch" && requestOf(call).action === "swit
   ? { stdout: "", stderr: "harness: the interlocutor interface is already held; no chaining", code: 1 } : undefined
 const switchAt = calls.length
 await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "o" }, root), /no chaining/)
-assert.deepEqual(requestOf(calls.slice(switchAt).find(c => c.verb === "dispatch")), { action: "switch", session: "root", child: "lent", agent: "pm" })
+assert.deepEqual(requestOf(calls.slice(switchAt).find(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm" })
 assert.equal(promptedSessions.includes("lent"), false, "a never-registered switch child was prompted")
 assert.deepEqual(interrupted, ["lent"])
 interrupted.length = 0
@@ -302,7 +325,7 @@ respond = () => undefined
 // the envelope into the root session and gives the holder nothing, then ends
 // its turn; a refused one tells only the holder why.
 await tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", expected_artifact: "brief.md" }, root)
-assert.deepEqual(requestOf(calls.findLast(c => c.verb === "dispatch")), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
+assert.deepEqual(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
 const holder = { sessionID: "lent", agent: "pm" }
 const handoff = { result: "Standard", additional_context: "ctx", extra_artifacts: [] }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
@@ -333,6 +356,7 @@ const editEvaluate = async (resource, effect = "allow", agent = "takt") => {
   return event
 }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, { ...priorClaim, active: false }] }), stderr: "", code: 0 } : undefined
+respond=(call)=>call.argv[2]==="edit-guard" && call.stdin.resources.some(r=>r.replace(/^\/workspace\/|^\.\//,"")==="a.txt")?{stdout:JSON.stringify({ok:false,error:"a.txt is held by work unit u1 (agent dev)"}),stderr:"",code:0}:undefined
 const heldEdit = await editEvaluate("/workspace/a.txt")
 assert.equal(heldEdit.effect, "deny")
 assert.match(heldEdit.message, /a\.txt is held by work unit u1 \(agent dev\)/)
@@ -343,7 +367,7 @@ assert.equal((await editEvaluate("docs/brief.md", "ask")).effect, "ask")
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [{ ...claim, pending: false }] }), stderr: "", code: 0 } : undefined
 assert.equal((await editEvaluate("a.txt")).effect, "allow")
 // Ownership that cannot be read is not free to take.
-respond = (call) => call.argv[2] === "claims" ? { stdout: "", stderr: "store locked", code: 1 } : undefined
+respond = (call) => call.argv[2] === "edit-guard" ? { stdout: "", stderr: "store locked", code: 1 } : undefined
 assert.equal((await editEvaluate("docs/brief.md")).effect, "deny")
 respond = () => undefined
 // Shell decisions are not this hook's.
@@ -355,20 +379,20 @@ assert.equal(shellEvent.effect, "allow")
 // the operation shows where conduct and controls disagree.
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [] }), stderr: "", code: 0 } : undefined
 await assert.rejects(() => delegate("execute.before", "u9", "call-9"), /no matching pending clean claim/)
-respond = (call) => call.verb === "dispatch" && requestOf(call).action === "admit"
+respond = (call) => call.verb === "dispatch" && requestOf(call).action === "prepare"
   ? { stdout: "", stderr: "harness: concurrent specialist ceiling of 4 reached", code: 1 } : undefined
 await assert.rejects(() => delegate("execute.before", "brief-2", "call-10", "pm"), /ceiling/)
 respond = () => undefined
 await new Promise(resolve => setTimeout(resolve, 10))
 const refusals = calls.filter(c => c.verb === "obs" && c.stdin?.attributes?.decision === "refused")
   .map(c => [c.stdin.attributes.reason_code, c.stdin.attributes.specialist, c.stdin.work_unit_id])
-for (const want of [["claimed_path", "takt", "u1"], ["missing_unit", "dev", ""], ["missing_claim", "dev", "u9"], ["admission_denied", "pm", "brief-2"]]) {
+for (const want of [["claimed_path", "takt", ""], ["missing_unit", "dev", ""], ["missing_claim", "dev", "u9"], ["admission_denied", "pm", "brief-2"]]) {
   assert.ok(refusals.some(r => JSON.stringify(r) === JSON.stringify(want)), `refusal ${want} not observed; saw ${JSON.stringify(refusals)}`)
 }
 
 // GC prepare returns a Plan directly, not a Coordinator wrapper. Its full
 // producer payload must survive the process boundary and reach the tool.
-const plan = { session_id: "root", cycle_id: "cycle-1", mandate_class: "dead-code", delta: [], closure: ["a.go"], reachability: "codegraph", analyzer_metadata: { source: "fixture" } }
+const plan = { session_id: "root", caller_session: "root", caller_agent: "takt", cycle_id: "cycle-1", mandate_class: "dead-code", delta: [], closure: ["a.go"], reachability: "codegraph", analyzer_metadata: { source: "fixture" } }
 respond = call => call.verb === "gc" && requestOf(call).action === "prepare"
   ? { stdout: JSON.stringify(plan), stderr: "", code: 0 } : undefined
 const prepared = JSON.parse((await tools.gc_prepare.execute({}, root)).content)
@@ -377,6 +401,7 @@ assert.deepEqual(prepared, plan)
 // The remaining GC operations deliberately return three other Go producer
 // shapes: a full Cycle, a StagedView, and Coordinator. Verify routing and that
 // reports/baselines/history survive unchanged across the JSON boundary.
+for(const [role,agent,child] of [["collector","simplify","gc-collector"],["verifier","verify","gc-verifier"]])owner.executions[child]={dispatch:child,root:"root",unit:`cycle-1/${role}`,attempt:"1",agent,caller:"root",child,inputs:[],cycle:"cycle-1",role,admitted_at:0}
 let gcRequested = false
 let gcPhase = "investigate"
 const fullCycle = (phase = gcPhase, extra = {}) => ({ plan, phase, scope: ["a.go"], sessions: { collector: "gc-collector", verifier: "gc-verifier" }, author_key: "author-key", verifier_key: "verifier-key", baseline: [{ name: "baseline", passed: true }], acceptance: [], report: { findings: [{ id: "finding-1" }] }, investigations: [{ finding: "finding-1", outcome: "confirmed", evidence: "test" }], reason: "", started: "2026-01-01T00:00:00Z", ...extra })
