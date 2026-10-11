@@ -12,6 +12,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 
 - [Constants](<#constants>)
 - [func AllowanceKey\(bound, objective string\) string](<#AllowanceKey>)
+- [func LaneUnit\(cycle, role string\) \(unit, agent string\)](<#LaneUnit>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
 - [type Activity](<#Activity>)
@@ -164,6 +165,15 @@ func AllowanceKey(bound, objective string) string
 ```
 
 AllowanceKey names the scope an exception's allowance applies to: a bound, narrowed by objective where the exception is objective\-scoped, so an exception never authorizes unrelated work \(PR\-HAR\-22\).
+
+<a name="LaneUnit"></a>
+## func LaneUnit
+
+```go
+func LaneUnit(cycle, role string) (unit, agent string)
+```
+
+LaneUnit is the work unit and catalog agent of a maintenance cycle's lane for role: the collector runs as the cycle itself, the verifier as its own unit.
 
 <a name="StateDir"></a>
 ## func StateDir
@@ -433,6 +443,7 @@ type Execution struct {
     Role       string  `json:"role,omitempty"`
     Prompted   string  `json:"prompted,omitempty"`
     Ready      bool    `json:"ready,omitempty"`
+    Terminated bool    `json:"terminated,omitempty"`
     Settled    bool    `json:"settled,omitempty"`
     // Owner is the harness instance that prepared or attached this execution;
     // empty for one recorded before owners were.
@@ -575,6 +586,7 @@ const (
     KindExecution      Kind = "execution-prepared"
     KindChild          Kind = "execution-child"
     KindDelivery       Kind = "execution-delivery"
+    KindLaneStopped    Kind = "maintenance-lane-stopped"
     KindLane           Kind = "maintenance-lane"
     KindPrompt         Kind = "maintenance-prompt"
     KindPrepared       Kind = "execution-ready"
