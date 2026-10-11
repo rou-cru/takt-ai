@@ -1,7 +1,8 @@
-package vfs
+package vfs_test
 
 import (
 	"errors"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,24 +12,24 @@ import (
 func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 	for _, diverged := range []bool{false, true} {
 		t.Run(map[bool]string{false: "restore", true: "preserve divergent files"}[diverged], func(t *testing.T) {
-			f, root, state := durable(t)
+			f, root, state := newStore(t)
 			path := filepath.Join(root, "a")
 			if err := os.WriteFile(path, []byte("base"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			key := bind(t, f, "author", "unit", "dev", "a")
-			delta := apply(t, f, applyCase{key, "write", 0, OpPatch, "a", "candidate"})
+			delta := apply(t, f, applyCase{key, "write", 0, vfs.OpPatch, "a", "candidate"})
 			gate(t, f, key, delta)
-			f.failpoint = func(point string) error {
+			f.SetFailpoint(func(point string) error {
 				if point == "after/a" {
 					return errors.New("power loss")
 				}
 				return nil
-			}
+			})
 			if err := f.ConsolidateCheckpoint(key, "partial", delta.Revision, false); err == nil {
 				t.Fatal("flush unexpectedly completed")
 			}
-			f.failpoint = nil
+			f.SetFailpoint(nil)
 			if diverged {
 				if err := os.WriteFile(path, []byte("external"), 0600); err != nil {
 					t.Fatal(err)
@@ -38,7 +39,7 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 			if err != nil || repair == nil || repair.Preserve != diverged {
 				t.Fatalf("repair %+v %v", repair, err)
 			}
-			approval := RepairApproval{Kind: repair.Kind, ID: repair.ID, State: repair.State, Preserve: repair.Preserve}
+			approval := vfs.RepairApproval{Kind: repair.Kind, ID: repair.ID, State: repair.State, Preserve: repair.Preserve}
 			if err := os.WriteFile(path, []byte("changed again"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +56,7 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 			if err := f.Close(); err != nil {
 				t.Fatal(err)
 			}
-			f, err = Open(root, state)
+			f, err = vfs.Open(root, state)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,14 +83,14 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 				t.Fatal("obsolete approval reused")
 			}
 			if diverged {
-				if len(f.interrupted) != 1 {
+				if len(f.Interrupted()) != 1 {
 					t.Fatal("manifest evidence not retained")
 				}
-				if err := f.ConsolidateCheckpoint(key, "retry", delta.Revision, false); !errors.Is(err, ErrBaseChanged) {
+				if err := f.ConsolidateCheckpoint(key, "retry", delta.Revision, false); !errors.Is(err, vfs.ErrBaseChanged) {
 					t.Fatalf("base guard bypassed: %v", err)
 				}
-				apply(t, f, applyCase{key, "later-write", delta.Revision, OpPatch, "a", "later staged work"})
-				for _, evidence := range f.interrupted {
+				apply(t, f, applyCase{key, "later-write", delta.Revision, vfs.OpPatch, "a", "later staged work"})
+				for _, evidence := range f.Interrupted() {
 					if string(evidence.Deltas[key].Files["a"]) != "candidate" {
 						t.Fatal("later staged work rewrote archived manifest evidence")
 					}
@@ -97,7 +98,7 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 				if err := f.Close(); err != nil {
 					t.Fatal(err)
 				}
-				reopened, err := Open(root, state)
+				reopened, err := vfs.Open(root, state)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -106,7 +107,7 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 						t.Error(err)
 					}
 				}()
-				if len(reopened.interrupted) != 1 {
+				if len(reopened.Interrupted()) != 1 {
 					t.Fatal("evidence lost on restart")
 				}
 			} else if err := f.ConsolidateCheckpoint(key, "retry", delta.Revision, false); err != nil {
@@ -117,22 +118,19 @@ func TestManifestRepairRevalidatesAndRetainsEvidence(t *testing.T) {
 }
 
 func TestCyclePreservationRetainsDeltaWithoutOwnershipOrAcceptance(t *testing.T) {
-	f, root, state := durable(t)
+	f, root, state := newStore(t)
 	path := filepath.Join(root, "a")
 	if err := os.WriteFile(path, []byte("external"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	key := bind(t, f, "author", "unit", "dev", "a")
-	delta := apply(t, f, applyCase{key, "write", 0, OpPatch, "a", "staged"})
-	identity := f.bindings[key]
-	identity.CycleID = "cycle"
-	f.bindings[key] = identity
-	f.cycles["cycle"] = &cycleSnapshot{Agent: key, Items: map[string]recoveryItem{"a": {Path: "a", Before: baseFile{Present: true, Content: []byte("base"), Mode: 0600}, After: baseFile{Present: true, Content: []byte("candidate"), Mode: 0600}}}}
+	delta := apply(t, f, applyCase{key, "write", 0, vfs.OpPatch, "a", "staged"})
+	f.SeedConsolidatedCycle("cycle", key, "a", []byte("base"), []byte("candidate"), 0600)
 	repair, err := f.CycleRepair("cycle", "blocked-state")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := RepairApproval{Kind: "cycle", ID: repair.ID, State: repair.State, Preserve: true}
+	a := vfs.RepairApproval{Kind: "cycle", ID: repair.ID, State: repair.State, Preserve: true}
 	if err := f.PreserveInterruptedCycle("cycle", "new-state", a); err == nil {
 		t.Fatal("cycle state changed but approval accepted")
 	}
@@ -142,17 +140,17 @@ func TestCyclePreservationRetainsDeltaWithoutOwnershipOrAcceptance(t *testing.T)
 	if err := f.DropCycleStaging("cycle"); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.owners) != 0 || len(f.bindings) != 0 {
+	if owners, bindings := f.Held(); owners != 0 || bindings != 0 {
 		t.Fatal("active ownership retained")
 	}
-	e := f.interrupted["cycle/cycle"]
+	e := f.Interrupted()["cycle/cycle"]
 	if e.Cycle == nil || e.Cycle.Completed || e.Deltas[key].Revision != delta.Revision || string(e.Deltas[key].Files["a"]) != "staged" {
 		t.Fatalf("evidence lost or accepted: %+v", e)
 	}
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f, err = Open(root, state)
+	f, err = vfs.Open(root, state)
 	if err != nil {
 		t.Fatal(err)
 	}

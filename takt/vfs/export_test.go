@@ -16,7 +16,11 @@
 package vfs
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
+	"os"
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -81,4 +85,125 @@ func (f *FS) GuardMaintenance(command, attempt, action, path string, key AgentID
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.guardMaintenanceLocked(command, attempt, action, path, key)
+}
+
+// SetFailpoint installs fault injection at the store's durable flush
+// boundaries; nil removes it.
+func (f *FS) SetFailpoint(fn func(string) error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failpoint = fn
+}
+
+// HasVerdict reports whether key's staged work carries any verdict.
+func (f *FS) HasVerdict(key AgentID) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	d, ok := f.staged[key]
+	return ok && len(d.verdicts) > 0
+}
+
+// ReadUnderGate reads path as agent through the same locked gate
+// Apply(OpRead) passes, without the binding bookkeeping: the readiness check
+// before and the store-failure check after.
+func (f *FS) ReadUnderGate(agent AgentID, path string) (data []byte, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err = f.readyLocked(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		f.finishLocked(&err)
+		if err != nil {
+			data = nil
+		}
+	}()
+	return f.readLockedAs(agent, path, false)
+}
+
+// UnresolvedCollisions counts the collisions recorded as unresolved work.
+func (f *FS) UnresolvedCollisions() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return len(f.collisions)
+}
+
+// RecoveryPending reports whether an incomplete consolidation's manifest is
+// still retained.
+func (f *FS) RecoveryPending() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.recovery != nil
+}
+
+// ExecState runs statement against the store's own database.
+func (f *FS) ExecState(statement string) error {
+	_, err := f.db.Exec(statement)
+	return err
+}
+
+// ValidatePath applies the store's canonical workspace-path check.
+func (f *FS) ValidatePath(path string) error { return f.validatePath(path) }
+
+// ValidatePathIn applies the canonical workspace-path check over root without
+// opening a store.
+func ValidatePathIn(root, path string) (err error) {
+	f, err := newFS(root)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, f.Close()) }()
+	return f.validatePath(path)
+}
+
+// InterruptedEvidence is what an approved interrupted closure retained.
+type InterruptedEvidence = interruptedEvidence
+
+// StoredState is the store's persisted state record.
+type StoredState = storedState
+
+// Interrupted lists the retained interrupted-closure evidence by its id.
+func (f *FS) Interrupted() map[string]InterruptedEvidence {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return maps.Clone(f.interrupted)
+}
+
+// SeedConsolidatedCycle marks key's binding as cycle's collector and records
+// that cycle's consolidation of path from before to after, both with mode.
+func (f *FS) SeedConsolidatedCycle(cycle string, key AgentID, path string, before, after []byte, mode os.FileMode) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	identity := f.bindings[key]
+	identity.CycleID = cycle
+	f.bindings[key] = identity
+	f.cycles[cycle] = &cycleSnapshot{Agent: key, Items: map[string]recoveryItem{path: {Path: path,
+		Before: baseFile{Present: true, Content: before, Mode: mode}, After: baseFile{Present: true, Content: after, Mode: mode}}}}
+}
+
+// Held counts the owned paths and the bindings the store holds.
+func (f *FS) Held() (owners, bindings int) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return len(f.owners), len(f.bindings)
+}
+
+// RootDir is the canonical workspace root the store governs.
+func (f *FS) RootDir() string { return f.rootDir }
+
+// SavedState reads the state record as the store last persisted it.
+func (f *FS) SavedState() (saved StoredState, err error) {
+	var data []byte
+	if err = f.db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&data); err != nil {
+		return saved, err
+	}
+	err = json.Unmarshal(data, &saved)
+	return saved, err
+}
+
+// NotifiedCollisions counts the collision events already delivered.
+func (f *FS) NotifiedCollisions() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.notifiedCollisions
 }
