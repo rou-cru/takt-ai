@@ -63,9 +63,6 @@ func TestRenderedNormalFlowRepairsUseRealCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("rendered plugin and real CLI fault scenarios")
 	}
-	if _, err := exec.LookPath("sqlite3"); err != nil {
-		t.Skip("sqlite3 required for interrupted-state fixture")
-	}
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Fatal(err)

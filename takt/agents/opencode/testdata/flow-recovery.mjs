@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {spawn,execFileSync} from 'node:child_process'
+import {DatabaseSync} from 'node:sqlite'
 import {Readable} from 'node:stream'
 import {mkdir,writeFile,readFile,rm} from 'node:fs/promises'
 import {resolve} from 'node:path'
@@ -9,12 +10,14 @@ await mkdir(workspace,{recursive:true});await mkdir(process.env.HOME,{recursive:
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const call=(verb,request)=>JSON.parse(execFileSync(bin,[...verb,'--workspace',workspace,'--state',state,'--request',JSON.stringify(request)],{env:process.env,encoding:'utf8'}))
 const db=resolve(state,'vfs.sqlite')
-const readState=()=>JSON.parse(execFileSync('sqlite3',['-cmd','.timeout 10000',db,'SELECT data FROM state WHERE id=1'],{encoding:'utf8'}))
-const writeState=s=>execFileSync('sqlite3',['-cmd','.timeout 10000',db,`UPDATE state SET data='${JSON.stringify(s).replaceAll("'","''")}' WHERE id=1`])
+// One short-lived handle per access: the CLI under test writes the same file.
+const withDB=f=>{const d=new DatabaseSync(db,{timeout:10000});try{return f(d)}finally{d.close()}}
+const readState=()=>withDB(d=>JSON.parse(d.prepare('SELECT CAST(data AS TEXT) AS data FROM state WHERE id=1').get().data))
+const writeState=s=>withDB(d=>d.prepare('UPDATE state SET data=? WHERE id=1').run(JSON.stringify(s)))
 const events=[],hooks={},contexts=[],tools={},sessions=new Map([['root',{}],['other-root',{}]]),messages=new Map()
-let wake,finished=false,interruptFails=false,beforeApproval=()=>{},approvalCount=0,promptCount=0
+let wake,finished=false,interruptFails=false,beforeApproval=async()=>{},approvalCount=0,promptCount=0
 const interrupted=[]
-async function* stream(){while(!finished){while(!events.length&&!finished)await new Promise(r=>wake=r);if(events.length)yield events.shift()}}
+async function* stream(){for(;;){if(events.length){yield events.shift();continue}if(finished)return;await new Promise(r=>wake=r)}}
 const publish=e=>{events.push(e);wake?.()}
 globalThis.createPermission=async r=>{
  approvalCount++;await beforeApproval(r)
@@ -67,7 +70,7 @@ try {
  beforeApproval=async()=>writeFile(resolve(workspace,'a.txt'),'external')
  await assert.rejects(tools.claim_list.execute({},root),/approval is stale/)
  assert.equal(await readFile(resolve(workspace,'a.txt'),'utf8'),'external');assert.ok(readState().Recovery)
- beforeApproval=()=>{}
+ beforeApproval=async()=>{}
  await tools.claim_list.execute({},root)
  assert.equal(readState().Recovery,null)
  assert.ok(Object.keys(readState().Interrupted).some(id=>id.startsWith('manifest/')))
@@ -169,7 +172,7 @@ try {
  assert.ok(readState().Recovery)
  execFileSync('/bin/sh',['-c',command],{env:process.env})
  assert.equal(readState().Recovery,null)
- beforeApproval=()=>{}
+ beforeApproval=async()=>{}
  await inject('candidate')
  const asked=approvalCount
  await tools.dispatch_commit.execute({version:'v-repair',plan:[{unit:'planned',contract:'c'},{unit:'probe',contract:'c'},{unit:'stuck',contract:'c'}]},root)
