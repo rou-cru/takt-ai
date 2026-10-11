@@ -28,6 +28,19 @@ func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error) {
 	return models, nil
 }
 
+// ProviderNames maps each provider id to the display name OpenCode reports.
+func ProviderNames(ctx context.Context) (map[string]string, error) {
+	providers, err := opencodeapi.New().Providers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("opencode providers: %w", err)
+	}
+	names := make(map[string]string, len(providers))
+	for _, provider := range providers {
+		names[provider.ID] = provider.Name
+	}
+	return names, nil
+}
+
 // Handshake proves that the local OpenCode installation is functional for
 // Takt before setup mutates anything (PR-ART-2).
 func Handshake(ctx context.Context) (opencodeapi.Handshake, error) {

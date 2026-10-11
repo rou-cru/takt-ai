@@ -3,7 +3,10 @@
 
 package opencodeapi
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // This file holds the wire types of the OpenCode v2 API responses and their
 // conversion to the public types. json tags follow the server's schemas
@@ -28,6 +31,9 @@ type wireModel struct {
 		Input   *int  `json:"input"`
 		Output  int64 `json:"output"`
 	} `json:"limit"`
+	Variants []struct {
+		ID string `json:"id"`
+	} `json:"variants"`
 	Time struct {
 		Released float64 `json:"released"`
 	} `json:"time"`
@@ -45,9 +51,9 @@ type wireModel struct {
 	} `json:"cost"`
 }
 
-// toModel converts and validates. Only Ref and Name are carried into Model;
-// the rest of the payload is still validated here so a malformed entry is
-// rejected even though its value is never stored.
+// toModel converts and validates, carrying the stated metadata into Model.
+// A price tier of a type other than "context" is skipped: its meaning is not
+// known, so it is never shown.
 func (w wireModel) toModel() (Model, error) {
 	if w.ProviderID == "" || w.ID == "" {
 		return Model{}, fmt.Errorf("model %q is missing providerID or id", w.ID)
@@ -60,7 +66,45 @@ func (w wireModel) toModel() (Model, error) {
 	// the upstream API name: variants such as "gpt-6-luna-fast" share
 	// modelID with their base and are only distinguishable, and selectable,
 	// by id.
-	return Model{Ref: ModelRef{ProviderID: w.ProviderID, ModelID: w.ID}, Name: w.Name}, nil
+	model := Model{
+		Ref:          ModelRef{ProviderID: w.ProviderID, ModelID: w.ID},
+		Name:         w.Name,
+		ContextLimit: w.Limit.Context,
+		OutputLimit:  int(w.Limit.Output),
+		Input:        w.Capabilities.Input,
+	}
+	if w.Limit.Input != nil {
+		model.InputLimit = *w.Limit.Input
+	}
+	for _, variant := range w.Variants {
+		model.Variants = append(model.Variants, variant.ID)
+	}
+	if w.Time.Released > 0 {
+		model.Released = time.UnixMilli(int64(w.Time.Released)).UTC()
+	}
+	for _, cost := range w.Cost {
+		tier := CostTier{Input: cost.Input, Output: cost.Output, CacheRead: cost.Cache.Read, CacheWrite: cost.Cache.Write}
+		if cost.Tier != nil {
+			if cost.Tier.Type != "context" {
+				continue
+			}
+			tier.AboveContext = cost.Tier.Size
+		}
+		model.Cost = append(model.Cost, tier)
+	}
+	return model, nil
+}
+
+type wireProvider struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (w wireProvider) toProvider() (Provider, error) {
+	if w.ID == "" {
+		return Provider{}, fmt.Errorf("provider is missing id")
+	}
+	return Provider{ID: w.ID, Name: w.Name}, nil
 }
 
 type wireMCPServer struct {
