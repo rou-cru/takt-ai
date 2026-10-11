@@ -20,7 +20,7 @@ Package verify collects functional evidence without invoking agent tools or auth
 
 
 <a name="CheckResult"></a>
-## type [CheckResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L30-L34>)
+## type CheckResult
 
 CheckResult identifies a capability and explains the evidence obtained.
 
@@ -33,7 +33,7 @@ type CheckResult struct {
 ```
 
 <a name="ReloadStatus"></a>
-## type [ReloadStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L45-L48>)
+## type ReloadStatus
 
 ReloadStatus carries the OpenCode handoff result into functional verification. Deployment can succeed while reload evidence is negative.
 
@@ -45,7 +45,7 @@ type ReloadStatus struct {
 ```
 
 <a name="Report"></a>
-## type [Report](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L37-L41>)
+## type Report
 
 Report describes functional availability, independently of installation success.
 
@@ -58,7 +58,7 @@ type Report struct {
 ```
 
 <a name="Collect"></a>
-### func [Collect](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L53>)
+### func Collect
 
 ```go
 func Collect(ctx context.Context, rootDir string) Report
@@ -67,7 +67,7 @@ func Collect(ctx context.Context, rootDir string) Report
 Collect checks managed integrations from their installed configuration and OpenCode's native orchestrator inventory. It installs nothing and requires no LLM credentials.
 
 <a name="CollectWithReload"></a>
-### func [CollectWithReload](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L59>)
+### func CollectWithReload
 
 ```go
 func CollectWithReload(ctx context.Context, rootDir string, reload ReloadStatus) Report
@@ -76,7 +76,7 @@ func CollectWithReload(ctx context.Context, rootDir string, reload ReloadStatus)
 CollectWithReload extends Collect with the result of the post\-deployment OpenCode reload. It keeps the existing no\-reload API for diagnostics.
 
 <a name="Report.Failed"></a>
-### func \(Report\) [Failed](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L185>)
+### func \(Report\) Failed
 
 ```go
 func (r Report) Failed() bool
@@ -85,7 +85,7 @@ func (r Report) Failed() bool
 Failed reports whether any capability failed its check. A check that could not run \(NotVerifiable\) leaves its capability unconfirmed, not failed.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/verify/verify.go#L18>)
+## type State
 
 State distinguishes evidence from an inability to obtain evidence.
 

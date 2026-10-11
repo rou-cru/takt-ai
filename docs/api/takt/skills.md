@@ -27,7 +27,7 @@ const TargetSkills = "skills"
 ```
 
 <a name="BuildSkillArtifacts"></a>
-## func [BuildSkillArtifacts](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L78>)
+## func BuildSkillArtifacts
 
 ```go
 func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
@@ -36,7 +36,7 @@ func BuildSkillArtifacts(definitions []SkillDefinition) []setup.Artifact
 BuildSkillArtifacts converts skill definitions into setup.Artifact values ready for deployment.
 
 <a name="BuildSkillManagedPaths"></a>
-## func [BuildSkillManagedPaths](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L90>)
+## func BuildSkillManagedPaths
 
 ```go
 func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
@@ -45,7 +45,7 @@ func BuildSkillManagedPaths(artifacts []setup.Artifact) []string
 BuildSkillManagedPaths returns the sorted list of managed paths for skill artifacts.
 
 <a name="BuildSkillPlan"></a>
-## func [BuildSkillPlan](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L101>)
+## func BuildSkillPlan
 
 ```go
 func BuildSkillPlan() (setup.TargetPlan, error)
@@ -54,7 +54,7 @@ func BuildSkillPlan() (setup.TargetPlan, error)
 BuildSkillPlan creates a TargetPlan for deploying skills to the .opencode/skills/ directory. The plan targets the "skills" ownership target and includes all embedded skill files.
 
 <a name="SkillDefinition"></a>
-## type [SkillDefinition](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L33-L37>)
+## type SkillDefinition
 
 SkillDefinition holds the raw content of a skill loaded from the catalog.
 
@@ -67,7 +67,7 @@ type SkillDefinition struct {
 ```
 
 <a name="LoadSkills"></a>
-### func [LoadSkills](<https://github.com/rou-cru/takt-ai/blob/main/takt/skills/skills.go#L43>)
+### func LoadSkills
 
 ```go
 func LoadSkills() ([]SkillDefinition, error)
