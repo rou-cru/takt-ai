@@ -104,7 +104,7 @@ func (w wireProvider) toProvider() (Provider, error) {
 	if w.ID == "" {
 		return Provider{}, fmt.Errorf("provider is missing id")
 	}
-	return Provider{ID: w.ID, Name: w.Name}, nil
+	return Provider(w), nil
 }
 
 type wireMCPServer struct {
