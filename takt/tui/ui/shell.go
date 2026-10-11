@@ -312,6 +312,12 @@ func PanelWidth(width int) int {
 	return min(max(1, InnerWidth(width)), panelMaxWidth)
 }
 
+// ContentWidth returns the columns a panel's body really has: the panel width
+// less its border and padding. Anything wider is wrapped by the shell.
+func ContentWidth(width int) int {
+	return max(1, PanelWidth(width)-panelBorder-panelPadding)
+}
+
 // InnerWidth returns width inside margins.
 func InnerWidth(width int) int {
 	if width <= 0 {

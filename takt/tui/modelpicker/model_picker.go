@@ -4,6 +4,7 @@ package modelpicker
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -33,6 +34,8 @@ const (
 	assignmentListOverhead = 1
 	// modelListOverhead reserves headings, search, and status rows above models.
 	modelListOverhead = 6
+	// tabsOverhead reserves the provider tabs row and its blank line.
+	tabsOverhead = 2
 )
 
 const (
@@ -56,19 +59,25 @@ type Model struct {
 	selected    string
 	modelCursor int
 	search      string
+	// tab is the provider id whose models are listed; "" lists every provider.
+	tab string
 
 	// Available holds the discovered model references (provider/id); the
 	// caller runs discovery itself and fills these in, with Names mapping a
-	// reference to the display name OpenCode reports.
+	// reference to the display name OpenCode reports, Info to the metadata it
+	// states, and Providers a provider id to its display name.
 	Available []string
 	Names     map[string]string
+	Info      map[string]opencodeapi.Model
+	Providers map[string]string
 	// LoadErr reports a failed model discovery.
 	LoadErr error
 	// Loading marks model discovery still running.
 	Loading bool
 	// Height is the terminal height; the list window derives from it through
-	// the shell's own layout so the two never disagree.
-	Height int
+	// the shell's own layout so the two never disagree. Width decides whether
+	// the detail pane fits beside the list.
+	Height, Width int
 }
 
 // openCodeInstances lists the deployed OpenCode specialist instances once; the
@@ -153,6 +162,11 @@ func transitions() ui.Table[phase, Model] {
 				p.search = ""
 			}
 			p.selected = name
+			// Open on the provider of the model already in use.
+			p.tab = ""
+			if current := p.current().Model; slices.Contains(p.Available, current) {
+				p.tab = providerOf(current)
+			}
 			p.modelCursor = max(0, p.currentModelIndex(p.models()))
 			return phaseModels, nil
 		},
@@ -190,6 +204,10 @@ func (p *Model) updateModels(key tea.KeyPressMsg) {
 	}
 	models := p.models()
 	switch {
+	case p.keymap.Left.Matches(key):
+		p.moveTab(-1)
+	case p.keymap.Right.Matches(key):
+		p.moveTab(1)
 	case p.keymap.Up.Matches(key):
 		p.modelCursor = ui.MoveCursor(p.modelCursor, len(models), -1)
 	case p.keymap.Down.Matches(key):
@@ -338,7 +356,11 @@ func (p Model) inheritLabel() string {
 // models lists the filtered choices, keeping the harness default as a
 // choice when discovery fails.
 func (p Model) models() []string {
-	return filterModels(append([]string{p.inheritLabel()}, p.Available...), p.search, p.Names)
+	refs := p.Available
+	if p.tab != "" {
+		refs = slices.DeleteFunc(slices.Clone(refs), func(ref string) bool { return providerOf(ref) != p.tab })
+	}
+	return filterModels(append([]string{p.inheritLabel()}, refs...), p.search, p.Names)
 }
 
 // filterModels keeps the choices matching query, case-insensitively; an empty
@@ -467,7 +489,7 @@ func loadFailReason(err error) string {
 // modelsView renders the model list with search, loading, and failure states.
 func (p Model) modelsView() string {
 	var b strings.Builder
-	b.WriteString(theme.Label.Render(ui.TextPickerCurrent + p.assignmentLabel(p.current())))
+	b.WriteString(theme.Label.Render(p.Detail() + " · " + ui.TextPickerCurrent + p.assignmentLabel(p.current())))
 	b.WriteString("\n\n")
 	if p.Loading {
 		b.WriteString(ui.Status(ui.StatePending, fmt.Sprintf(ui.TextPickerLoadingFmt, ui.OpenCodeLabel)))
@@ -476,6 +498,11 @@ func (p Model) modelsView() string {
 	if p.LoadErr != nil {
 		b.WriteString(ui.Status(ui.StateWarning, fmt.Sprintf(ui.TextPickerLoadFailFmt, ui.OpenCodeLabel, loadFailReason(p.LoadErr))))
 		b.WriteString("\n\n")
+	}
+	overhead := modelListOverhead
+	if tabs := p.tabsView(ui.ContentWidth(p.width())); tabs != "" {
+		b.WriteString(tabs + "\n\n")
+		overhead += tabsOverhead
 	}
 	if p.Searching() {
 		b.WriteString(theme.Focus.Render(theme.Icon.FieldBar) + theme.Label.Render(ui.TextPickerSearchIntro+p.search) + searchCursor())
@@ -486,13 +513,38 @@ func (p Model) modelsView() string {
 		b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextPickerNoMatchFmt, p.search)))
 		return b.String()
 	}
-	b.WriteString(p.options(p.modelRows(models), p.modelCursor, true, modelListOverhead))
+	list := p.options(p.modelRows(models), p.modelCursor, true, overhead)
+	b.WriteString(p.withDetail(list, models[min(p.modelCursor, len(models)-1)]))
 	return b.String()
 }
 
-// modelRows shows each model's display name beside its reference, names in
-// one aligned column, so a list of provider/id strings reads as models.
+// width is the terminal width, defaulting like the shell does.
+func (p Model) width() int {
+	if p.Width <= 0 {
+		return ui.DefaultWidth
+	}
+	return p.Width
+}
+
+// withDetail sets the focused model's detail pane beside the list when the
+// terminal is wide enough for both; otherwise the list stands alone.
+func (p Model) withDetail(list, ref string) string {
+	listWidth := lipgloss.Width(list)
+	paneWidth := ui.ContentWidth(p.width()) - listWidth - 2*paneGap - lipgloss.Width(paneDivider)
+	detail := p.detailView(ref, paneWidth)
+	if detail == "" || paneWidth < detailMinWidth {
+		return list
+	}
+	gap := strings.Repeat(" ", paneGap)
+	divider := strings.TrimSuffix(strings.Repeat(theme.Caption.Render(paneDivider)+"\n", lipgloss.Height(list)), "\n")
+	return lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.NewStyle().Width(listWidth).Render(list), gap, divider, gap, lipgloss.NewStyle().Width(paneWidth).Render(detail))
+}
+
+// modelRows shows each model's name, with its provider on the All tab where
+// one name can repeat across providers. Everything else about a model lives
+// in the detail pane, never in the row.
 func (p Model) modelRows(models []string) []string {
+	showProvider := p.tab == "" && len(p.providerIDs()) > 1
 	width := 0
 	for _, ref := range models {
 		width = max(width, lipgloss.Width(p.Names[ref]))
@@ -500,13 +552,15 @@ func (p Model) modelRows(models []string) []string {
 	rows := make([]string, len(models))
 	for index, ref := range models {
 		name := p.Names[ref]
-		// Unnamed choices (inheriting the default) read on their own from the
-		// first column instead of floating in the reference column.
+		// Unnamed choices (inheriting the default) read on their own.
 		if name == "" {
 			rows[index] = ref
 			continue
 		}
-		rows[index] = name + strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + ref
+		rows[index] = name
+		if showProvider {
+			rows[index] += strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + p.providerLabel(providerOf(ref))
+		}
 	}
 	return rows
 }

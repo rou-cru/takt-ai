@@ -255,6 +255,16 @@ const (
 	TextPickerSearchIntro  = "Search: "
 	TextPickerNoMatchFmt   = "No models match %q. Ctrl+U clears the search."
 	TextPickerPosFmt       = "%d / %d"
+	// TextPickerAllTab labels the tab listing every provider's models; the
+	// provider tabs and the detail pane carry only what OpenCode reports.
+	TextPickerAllTab       = "All"
+	TextPickerTabFmt       = "%s %d"
+	TextPickerCostLabel    = "Cost"
+	TextPickerCacheLabel   = "Cache"
+	TextPickerLimitsLabel  = "Limits"
+	TextPickerInputLabel   = "Input"
+	TextPickerVariantLabel = "Variants"
+	TextPickerReleaseLabel = "Released"
 	TextScrollPosFmt       = "%d–%d / %d"
 
 	// Diagnostics.
