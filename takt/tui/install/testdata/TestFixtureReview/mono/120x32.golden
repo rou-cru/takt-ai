@@ -5,7 +5,7 @@
                                                                                                                         
                                                                                                                         
             ┌──────────────────────────────────────────────────────────────────────────────────────────────┐            
-            │ Warning: OpenCode was not found on PATH — Takt installs its configuration anyway.            │            
+            │ Warning: OpenCode was not found on PATH — Takt AI installs its configuration anyway.         │            
             │                                                                                              │            
             │ Install into ~/.config/opencode                                                              │            
             │ for every project                                                                            │            

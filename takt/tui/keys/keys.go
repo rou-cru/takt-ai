@@ -23,7 +23,7 @@ func (b Binding) Matches(msg tea.Msg) bool {
 
 // KeyMap is the full interaction grammar.
 type KeyMap struct {
-	Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back Binding
+	Up, Down, Left, Right, Confirm, Toggle, NextSection, PrevSection, Back, Reset Binding
 }
 
 // Default returns the shared navigation bindings.
@@ -38,5 +38,6 @@ func Default() KeyMap {
 		NextSection: Binding{Keys: []string{"tab"}},
 		PrevSection: Binding{Keys: []string{"shift+tab"}},
 		Back:        Binding{Keys: []string{"esc"}},
+		Reset:       Binding{Keys: []string{"backspace", "delete"}},
 	}
 }

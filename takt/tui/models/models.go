@@ -260,9 +260,8 @@ func (m Model) Title() string {
 		return ui.TextModelsTitle
 	case m.state == StateResult:
 		return ui.TextModelsResultTitle
-	case m.state == StatePicker && m.picker.Detail() != "" && !m.run.Busy():
-		return fmt.Sprintf(ui.TextModelsTitleFmt, m.picker.Detail())
 	}
+	// The specialist being edited is named inside the panel, not here.
 	return fmt.Sprintf(ui.TextModelsTitleFmt, ui.TextModelsAgentsStep)
 }
 

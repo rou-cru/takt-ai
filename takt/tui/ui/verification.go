@@ -13,7 +13,7 @@ var capabilityNames = map[string]string{
 	"mcp:engram":    "Memory",
 	"mcp:codegraph": "Code navigation",
 	"mcp:context7":  "Library docs",
-	"orchestrator":  "Takt orchestrator",
+	"orchestrator":  "Takt AI orchestrator",
 	"model":         "Default model",
 	"skills":        "Skills",
 	"plugins":       "Plugins",
