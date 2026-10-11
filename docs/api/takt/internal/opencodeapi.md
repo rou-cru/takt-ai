@@ -27,8 +27,10 @@ Errors are typed so consumers fail visibly and differently \(PR\-ART\-2: never m
   - [func \(c \*Client\) MCPStatus\(ctx context.Context\) \(\[\]MCPServer, error\)](<#Client.MCPStatus>)
   - [func \(c \*Client\) Models\(ctx context.Context\) \(\[\]Model, error\)](<#Client.Models>)
   - [func \(c \*Client\) Plugins\(ctx context.Context\) \(\[\]Plugin, error\)](<#Client.Plugins>)
+  - [func \(c \*Client\) Providers\(ctx context.Context\) \(\[\]Provider, error\)](<#Client.Providers>)
   - [func \(c \*Client\) Reload\(ctx context.Context\) error](<#Client.Reload>)
   - [func \(c \*Client\) Skills\(ctx context.Context\) \(\[\]Skill, error\)](<#Client.Skills>)
+- [type CostTier](<#CostTier>)
 - [type Handshake](<#Handshake>)
 - [type Info](<#Info>)
 - [type MCPServer](<#MCPServer>)
@@ -41,6 +43,7 @@ Errors are typed so consumers fail visibly and differently \(PR\-ART\-2: never m
   - [func WithEnv\(env \[\]string\) Option](<#WithEnv>)
   - [func WithRunner\(r runner\) Option](<#WithRunner>)
 - [type Plugin](<#Plugin>)
+- [type Provider](<#Provider>)
 - [type Skill](<#Skill>)
 
 
@@ -195,6 +198,17 @@ Plugins returns the enabled server plugins and whether each one loaded.
 
 Route: GET /api/plugin \(plugin.list\).
 
+<a name="Client.Providers"></a>
+### func \(\*Client\) Providers
+
+```go
+func (c *Client) Providers(ctx context.Context) ([]Provider, error)
+```
+
+Providers returns the model providers the server registered, in API order.
+
+Route: GET /api/provider.
+
 <a name="Client.Reload"></a>
 ### func \(\*Client\) Reload
 
@@ -214,6 +228,18 @@ func (c *Client) Skills(ctx context.Context) ([]Skill, error)
 Skills returns the skills the server discovered and can load on demand.
 
 Route: GET /api/skill \(skill.list\).
+
+<a name="CostTier"></a>
+## type CostTier
+
+CostTier is one price tier in dollars per million tokens. AboveContext is zero for the base tier and the context size the tier starts at otherwise.
+
+```go
+type CostTier struct {
+    AboveContext                         int
+    Input, Output, CacheRead, CacheWrite float64
+}
+```
 
 <a name="Handshake"></a>
 ## type Handshake
@@ -280,13 +306,25 @@ const (
 <a name="Model"></a>
 ## type Model
 
-Model is the structured replacement for parsing "opencode models" text. Only Ref is read anywhere; the rest of the wire payload \(name, status, capabilities, limits, cost\) is validated on decode but not carried.
+Model is the structured replacement for parsing "opencode models" text: the identity plus the metadata the API states about the model. Anything the API leaves out stays zero or empty; nothing here is derived.
 
 ```go
 type Model struct {
     Ref ModelRef
     // Name is the human label OpenCode shows ("GPT-6 Luna Fast").
     Name string
+    // Cost lists the price tiers per million tokens; empty when the API
+    // reports no pricing for the model.
+    Cost []CostTier
+    // ContextLimit and OutputLimit are the token limits; InputLimit is zero
+    // when the API gives no separate input cap.
+    ContextLimit, InputLimit, OutputLimit int
+    // Input names the modalities the model accepts ("text", "image", ...).
+    Input []string
+    // Variants names the reasoning variants the model offers, in API order.
+    Variants []string
+    // Released is the model's release date; zero when the API omits it.
+    Released time.Time
 }
 ```
 
@@ -359,6 +397,17 @@ type Plugin struct {
     Type   string // "builtin", "package", "local" or "sdk"
     Status string // "active" or "failed"
     Error  string // why the plugin failed; empty when active
+}
+```
+
+<a name="Provider"></a>
+## type Provider
+
+Provider is a model provider the server registered; Name is its display label.
+
+```go
+type Provider struct {
+    ID, Name string
 }
 ```
 

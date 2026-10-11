@@ -24,6 +24,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [func Handshake\(ctx context.Context\) \(opencodeapi.Handshake, error\)](<#Handshake>)
 - [func InstallSandboxDependency\(ctx context.Context, rootDir string\) error](<#InstallSandboxDependency>)
 - [func MemoryClause\(authorID string\) string](<#MemoryClause>)
+- [func ProviderNames\(ctx context.Context\) \(map\[string\]string, error\)](<#ProviderNames>)
 - [func Reload\(ctx context.Context\) error](<#Reload>)
 - [type AgentSpec](<#AgentSpec>)
 - [type Artifact](<#Artifact>)
@@ -141,6 +142,15 @@ func MemoryClause(authorID string) string
 ```
 
 MemoryClause names installed skill paths without injecting their content.
+
+<a name="ProviderNames"></a>
+## func ProviderNames
+
+```go
+func ProviderNames(ctx context.Context) (map[string]string, error)
+```
+
+ProviderNames maps each provider id to the display name OpenCode reports.
 
 <a name="Reload"></a>
 ## func Reload

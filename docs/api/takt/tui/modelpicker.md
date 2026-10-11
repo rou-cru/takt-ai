@@ -45,16 +45,20 @@ type Model struct {
 
     // Available holds the discovered model references (provider/id); the
     // caller runs discovery itself and fills these in, with Names mapping a
-    // reference to the display name OpenCode reports.
+    // reference to the display name OpenCode reports, Info to the metadata it
+    // states, and Providers a provider id to its display name.
     Available []string
     Names     map[string]string
+    Info      map[string]opencodeapi.Model
+    Providers map[string]string
     // LoadErr reports a failed model discovery.
     LoadErr error
     // Loading marks model discovery still running.
     Loading bool
     // Height is the terminal height; the list window derives from it through
-    // the shell's own layout so the two never disagree.
-    Height int
+    // the shell's own layout so the two never disagree. Width decides whether
+    // the detail pane fits beside the list.
+    Height, Width int
     // contains filtered or unexported fields
 }
 ```
