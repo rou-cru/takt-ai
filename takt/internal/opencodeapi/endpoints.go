@@ -44,6 +44,13 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	return list(ctx, c, "/api/model", wireModel.toModel)
 }
 
+// Providers returns the model providers the server registered, in API order.
+//
+// Route: GET /api/provider.
+func (c *Client) Providers(ctx context.Context) ([]Provider, error) {
+	return list(ctx, c, "/api/provider", wireProvider.toProvider)
+}
+
 // DefaultModel returns the model used when a session has no explicit model
 // selection, or nil when the server has no default configured. The nil is a
 // meaningful answer, not an error.

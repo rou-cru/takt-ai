@@ -20,14 +20,17 @@ import (
 
 // modelsLoaded carries the discovered OpenCode models into Update.
 type modelsLoaded struct {
-	models []opencodeapi.Model
-	err    error
+	models    []opencodeapi.Model
+	providers map[string]string
+	err       error
 }
 
 // discoverModels lists the OpenCode models at the runtime boundary.
 func discoverModels() tea.Msg {
 	models, err := (runtime.Adapter{}).OpenCodeModels()
-	return modelsLoaded{models, err}
+	// Provider names are cosmetic: without them tabs fall back to provider ids.
+	providers, _ := (runtime.Adapter{}).OpenCodeProviderNames()
+	return modelsLoaded{models, providers, err}
 }
 
 // State identifies the visible reassignment step.
@@ -184,18 +187,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) resize(msg tea.WindowSizeMsg) Model {
 	m.width, m.height = msg.Width, msg.Height
-	m.picker.Height = m.height
+	m.picker.Height, m.picker.Width = m.height, m.width
 	return m
 }
 func (m Model) modelsLoaded(msg modelsLoaded) Model {
 	// Sorted by provider/model so each provider's models read together.
-	refs, names := make([]string, 0, len(msg.models)), make(map[string]string, len(msg.models))
+	refs, names, info := make([]string, 0, len(msg.models)), make(map[string]string, len(msg.models)), make(map[string]opencodeapi.Model, len(msg.models))
 	for _, model := range msg.models {
 		ref := model.Ref.String()
-		refs, names[ref] = append(refs, ref), model.Name
+		refs, names[ref], info[ref] = append(refs, ref), model.Name, model
 	}
 	slices.Sort(refs)
 	m.picker.Available, m.picker.Names, m.picker.LoadErr, m.picker.Loading = refs, names, msg.err, false
+	m.picker.Info, m.picker.Providers = info, msg.providers
 	return m
 }
 func (m Model) actionResult(msg runtime.ActionResultMsg) (tea.Model, tea.Cmd) {
