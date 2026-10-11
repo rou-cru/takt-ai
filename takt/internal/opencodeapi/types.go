@@ -3,6 +3,8 @@
 
 package opencodeapi
 
+import "time"
+
 // Info is the identity of the running OpenCode server; only the fields the
 // handshake needs are surfaced from the API payload.
 type Info struct {
@@ -27,13 +29,37 @@ func (r ModelRef) String() string {
 	return r.ProviderID + "/" + r.ModelID + "#" + r.Variant
 }
 
-// Model is the structured replacement for parsing "opencode models" text.
-// Only Ref is read anywhere; the rest of the wire payload (name, status,
-// capabilities, limits, cost) is validated on decode but not carried.
+// Model is the structured replacement for parsing "opencode models" text:
+// the identity plus the metadata the API states about the model. Anything the
+// API leaves out stays zero or empty; nothing here is derived.
 type Model struct {
 	Ref ModelRef
 	// Name is the human label OpenCode shows ("GPT-6 Luna Fast").
 	Name string
+	// Cost lists the price tiers per million tokens; empty when the API
+	// reports no pricing for the model.
+	Cost []CostTier
+	// ContextLimit and OutputLimit are the token limits; InputLimit is zero
+	// when the API gives no separate input cap.
+	ContextLimit, InputLimit, OutputLimit int
+	// Input names the modalities the model accepts ("text", "image", ...).
+	Input []string
+	// Variants names the reasoning variants the model offers, in API order.
+	Variants []string
+	// Released is the model's release date; zero when the API omits it.
+	Released time.Time
+}
+
+// CostTier is one price tier in dollars per million tokens. AboveContext is
+// zero for the base tier and the context size the tier starts at otherwise.
+type CostTier struct {
+	AboveContext                         int
+	Input, Output, CacheRead, CacheWrite float64
+}
+
+// Provider is a model provider the server registered; Name is its display label.
+type Provider struct {
+	ID, Name string
 }
 
 // MCPState is the connection state OpenCode reports for an MCP server. An

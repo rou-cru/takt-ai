@@ -483,6 +483,11 @@ func (adapter Adapter) OpenCodeModels() ([]opencodeapi.Model, error) {
 	return opencode.AvailableModels(context.Background())
 }
 
+// OpenCodeProviderNames reports the display name of each OpenCode provider.
+func (adapter Adapter) OpenCodeProviderNames() (map[string]string, error) {
+	return opencode.ProviderNames(context.Background())
+}
+
 // preserveModelChoices keeps preview and execution on the same installed baseline.
 func preserveModelChoices(root string, built *setup.PlanRequest) {
 	if installed, err := setup.LoadInstalledConfig(root); err == nil {
