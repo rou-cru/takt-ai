@@ -17,7 +17,13 @@ const writeState=s=>withDB(d=>d.prepare('UPDATE state SET data=? WHERE id=1').ru
 const events=[],hooks={},contexts=[],tools={},sessions=new Map([['root',{}],['other-root',{}]]),messages=new Map()
 let wake,finished=false,interruptFails=false,beforeApproval=async()=>{},approvalCount=0,promptCount=0
 const interrupted=[]
-async function* stream(){for(;;){if(events.length){yield events.shift();continue}if(finished)return;await new Promise(r=>wake=r)}}
+async function* stream(){
+ for(;;){
+  if(events.length){yield events.shift();continue}
+  if(finished){return}
+  await new Promise(r=>wake=r)
+ }
+}
 const publish=e=>{events.push(e);wake?.()}
 globalThis.createPermission=async r=>{
  approvalCount++;await beforeApproval(r)
