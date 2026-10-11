@@ -150,8 +150,11 @@ try {
   if(scenario==='lost-prompt')sessions.set(child,{})
   const before=promptCount
   await tools.gc_request.execute({},root)
-  for(let i=0;i<200 && readState().Maintenance.cycle;i++)await sleep(10)
-  assert.equal(readState().Maintenance.cycle,undefined,`${scenario} never closed`)
+  // Poll through the CLI: it holds the workspace lock, so this read never
+  // contends with the plugin's background abort the way a raw read would.
+  const cycleOpen=()=>call(['gc','coordinate'],{action:'status'}).cycle
+  for(let i=0;i<200 && cycleOpen();i++)await sleep(10)
+  assert.equal(cycleOpen(),undefined,`${scenario} never closed`)
   assert.equal(promptCount,before,'uncertain prompt was resent')
   const lane=call(['dispatch'],{action:'execution',dispatch:`${cycle}/verifier`})
   assert.equal(lane.terminated,true);assert.equal(lane.settled,true)
