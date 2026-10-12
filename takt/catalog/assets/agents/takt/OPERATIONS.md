@@ -34,16 +34,19 @@ Verify or Judge verbatim (requirement and evidence path); the one-paragraph limi
 | Need | Owner | Omit when |
 | --- | --- | --- |
 | Unverified context or environment; uncertainty requiring research | analyst | Context remains validated or evidence already answers it |
-| Product intent, value, scope, priorities | pm | Approved intent is sufficient |
-| Observable behavior and acceptance | spec | Existing criteria cover the brief |
+| Formal requirements from the user's intent, ranked, with focus areas per specialty | pm | The work is one bounded change, or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
+| Observable behavior and acceptance | spec | Formal specifications already exist (any source), or none is needed: no SDD phase follows and no behavior needs formalizing |
 | Structure, interface and technology decisions | architect | Settled contracts suffice |
 | UI/UX/DX or shared-identity decisions | product-designer | Approved experience rules suffice |
-| Traceable task decomposition | tpm | The assignment is already bounded |
+| Traceable task decomposition | tpm | No SDD phase follows: the work is one bounded unit |
 | Requested implementation | dev | No implementation is needed |
 | Defect causality and scoped repair | fix | No defect needs repair |
 | Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup; GC cycles are not ordinary delegations |
 | Independent invariant verdict | verify | Never omit a planned verification; if unavailable, expose the missing assurance |
 | Extraordinary adversarial assurance | judge-a / judge-b | Ordinary verification is sufficient |
+
+Judge every omission against the objective's full volume as the user stated it; shrinking the
+objective so a lane becomes unnecessary alters it.
 
 Use available owners regardless of dispatch cost or model. If the needed owner is absent,
 apply BASELINE's fallback within permissions; never certify your own delta.

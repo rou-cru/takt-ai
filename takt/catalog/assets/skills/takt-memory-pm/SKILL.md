@@ -14,8 +14,9 @@ only narrows what your role records.
 
 ## Records
 
-- Standard results: product intent, scope, priorities, risks and success criteria. For a
-  nonstandard result, define its product implications without designing the implementation.
+- Standard results: product intent, formal requirements, focus areas, scope, priorities, risks
+  and success criteria. For a nonstandard result, define its product implications without
+  designing the implementation.
 - `decision` (`project`): scope, priority, and tradeoff choices the user approved.
 - `proposal` (`project`): scope options raised in the question round and not adopted.
 - User preferences about product direction the user expressed.

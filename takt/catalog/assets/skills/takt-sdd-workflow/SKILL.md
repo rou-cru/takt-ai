@@ -30,11 +30,12 @@ from serializing out of habit. It is never the thing being delivered. Where proc
 completeness conflicts with what the user asked for, the objective wins: name the trade-off,
 record it, and keep moving within the permissions and approvals you were given.
 
-**Input premise.** Start from the approved objective or sufficient brief and the artifacts
-that exist. Resolve material gaps through the needed owners; do not require a PRD or a
-ceremonial document chain. Before implementation dispatch, the relevant acceptance and
-consumed interfaces must be settled. Takt compiles the execution DAG from these inputs;
-planning specialists do not own it.
+**Input premise.** Start from formal, broken-down specifications with their acceptance, held
+in Engram or in a repository artifact of equivalent rigor, and the contracts that exist.
+Without them this route does not fit: return control to Takt with that reason. Resolve other
+material gaps through the needed owners; do not require a PRD or a ceremonial document chain.
+Before implementation dispatch, the relevant acceptance and consumed interfaces must be
+settled. Takt compiles the execution DAG from these inputs; planning specialists do not own it.
 
 **How to read this skill.** Every rule states its own applicability test. Where a decision is genuine judgment, the section says so and
 supplies the deciding criterion. Judgment applies this skill to the case at hand; it never
@@ -197,9 +198,9 @@ construction and no serialization matrix will save it.
 - **Never cut horizontally, by layer.** "All the types", "the whole API layer", "all the
   storage" forces every downstream task to wait on the layer beneath it.
 
-**Orchestrator action:** a decomposition that admits no concurrency is rejected back to the
-specialist with the re-cut axis named. Validating contract completeness is not enough when
-the cut itself makes parallelism impossible.
+**Orchestrator action:** a decomposition that admits no concurrency is rejected back to
+TPM, which owns the vertical cut, with the re-cut axis named. Validating contract
+completeness is not enough when the cut itself makes parallelism impossible.
 
 ---
 
@@ -299,25 +300,24 @@ absent, deliver permitted fallback work and name the missing assurance.
 The following is an available route, not a procession required of every change:
 
 ```
-[approved objective / brief + existing artifacts]
+[formal specs + contracts (invariant planning or existing)]
                   │
-       [needed contracts: Spec / Architect / Designer]
-                  │       (concurrent where inputs permit)
-       [TPM: scoped tasks, if needed]
+       [TPM: WBS, first node]
                   │
        [Takt: compile + validate execution DAG]
                   │
        [ready work] ──▶ [integration] ──▶ [acceptance]
 ```
 
-1. **Planning:** use approved intent. Dispatch needed contract owners concurrently only
-   where their inputs are settled and scopes independent. Compare their results and return
+1. **Planning:** consume the specifications and contracts the route starts from. For gaps the
+   DAG exposes, dispatch contract owners concurrently only where their inputs are settled and
+   scopes independent. Compare their results and return
    conflicts to the owners before consuming them; escalate changes to intent or authority.
 2. **Validation:** Takt runs the wave-width self-check before `dispatch_commit`, without manufacturing work just to
    fill concurrency slots.
-3. **Compilation:** TPM supplies tasks and justified dependencies when needed. Takt compiles
-   the DAG, commits it with `dispatch_commit` (each node a unit with its contract and
-   prerequisites), and assigns each node's contract; no specialist silently changes another's
+3. **Compilation:** TPM is the first node: it turns the specifications into vertical tasks
+   with their hard dependencies. Takt compiles the DAG from its WBS, commits it with
+   `dispatch_commit` (each node a unit with its contract and prerequisites), and assigns each node's contract; no specialist silently changes another's
    judgment.
 4. **Execution:** dispatch READY nodes as dependencies clear, each delegation named with its
    node's committed unit identity. A returned delivery is complete in VFS and nothing more:

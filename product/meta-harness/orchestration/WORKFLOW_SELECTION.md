@@ -10,8 +10,8 @@ does not fit. When one appears, control returns to the tree with that evidence.
 | Step | Question | Answer → outcome |
 | --- | --- | --- |
 | 1 | Did the user directly and explicitly request direct work for this phase? | Planning without specialists → `takt-bounded-planning`. Implementation without delegation → `takt-bounded-workflow`. No → step 2. |
-| 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. No → step 3. |
-| 3 | Is development still needed? | Yes, as one bounded unit → delegate it to its specialist within the unplanned-delegation limit. Yes, as several lanes or concurrent implementation → `takt-sdd-workflow`. No → return the settled result. |
+| 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. Invariant planning stands on its own; when SDD follows it, its plan ends with Spec, whose specifications feed TPM, SDD's first node. No → step 3. |
+| 3 | Is development still needed? | Yes, as one bounded unit → delegate it to its specialist within the unplanned-delegation limit. Yes, as several lanes or concurrent implementation → `takt-sdd-workflow` once formal, broken-down specifications exist (from Engram or a repository artifact of equivalent rigor); without them → step 2. No → return the settled result. |
 
 An instruction for one phase does not constrain the other. Settled invariants are consumed,
 never regenerated. Bounded is never chosen by elimination, convenience, cost, or absence of
@@ -39,7 +39,8 @@ flowchart TD
     Gaps -->|Yes| IP["Invariant planning"]
     Gaps -->|No| Dev{"3. Development remains?"}
     Dev -->|One bounded unit| Unit["Delegate to its specialist"]
-    Dev -->|Several lanes or concurrent| SDD["SDD"]
+    Dev -->|Several lanes or concurrent, formal specs exist| SDD["SDD"]
+    Dev -->|Several lanes or concurrent, no formal specs| IP
     Dev -->|No| Complete["Return settled result"]
 
     IP -->|Invariants delivered| Start

@@ -15,7 +15,7 @@
 
 ```
                   ┌─────────────────────┐
-                  │ C  contracts+owners │   ← Relevant owners: Spec, Architect, Designer; TPM scopes; Takt binds
+                  │ C  TPM WBS+contract │   ← TPM WBS over settled specs and contracts; Takt binds
                   └──────────┬──────────┘
         ┌─────────────┬──────┼──────┬─────────────┐
         ▼             ▼             ▼             ▼
