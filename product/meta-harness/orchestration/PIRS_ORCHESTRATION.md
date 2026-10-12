@@ -33,7 +33,7 @@ Each instance's interaction is determined by its assigned responsibility, not by
 | --- | --- | --- |
 | Direct Interlocutor | Direct communication with the user to align intent, architecture, and scope | PM / Architect / Product Designer |
 | Internal Crew | Crew-oriented communication; reports to the orchestrator | Technical implementation / Code |
-| Exclusively Internal | Not user-invocable; internal evaluation or validation support | Internal judges / Validators |
+| Exclusively Internal | Not user-invocable; internal evaluation or validation support | Internal judges / Validators / QA analysts |
 
 ## 4. Interlocutor Stack
 

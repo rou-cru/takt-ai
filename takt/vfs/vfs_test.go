@@ -50,6 +50,7 @@ func TestGuardGitMutation_AllNonOrchestratorRolesDenied(t *testing.T) {
 		model.RolePlanningAuthor,
 		model.RoleExecution,
 		model.RoleVerification,
+		model.RoleQualityAssurance,
 		model.RoleMaintenance,
 	}
 	for _, role := range denied {

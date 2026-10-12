@@ -35,6 +35,8 @@ const (
 	RoleExecution RoleClass = "execution"
 	// RoleVerification names the evidence judge, internal so verdicts stay independent of user chat.
 	RoleVerification RoleClass = "verification"
+	// RoleQualityAssurance names the product critic (mutation, exploration, non-functional analysis), internal and read-only over the project so its findings stay independent of the code it critiques.
+	RoleQualityAssurance RoleClass = "quality_assurance"
 	// RoleMaintenance names the harness-controlled cycle runner (GC, dreaming), never invocable as an interlocutor.
 	RoleMaintenance RoleClass = "maintenance"
 )
@@ -46,6 +48,7 @@ var roleClasses = []RoleClass{
 	RolePlanningAuthor,
 	RoleExecution,
 	RoleVerification,
+	RoleQualityAssurance,
 	RoleMaintenance,
 }
 

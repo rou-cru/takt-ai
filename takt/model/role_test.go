@@ -13,6 +13,7 @@ func TestValidateRoleClassAcceptsEveryClass(t *testing.T) {
 		model.RolePlanningAuthor,
 		model.RoleExecution,
 		model.RoleVerification,
+		model.RoleQualityAssurance,
 		model.RoleMaintenance,
 	}
 	for _, class := range classes {
@@ -36,5 +37,11 @@ func TestValidateRoleClassRejectsUnknownAndEmpty(t *testing.T) {
 func TestMaintenanceHoldsNoInterface(t *testing.T) {
 	if model.RoleMaintenance.HoldsInterface() {
 		t.Error("maintenance HoldsInterface = true; want false")
+	}
+}
+
+func TestQualityAssuranceHoldsNoInterface(t *testing.T) {
+	if model.RoleQualityAssurance.HoldsInterface() {
+		t.Error("quality_assurance HoldsInterface = true; want false")
 	}
 }
