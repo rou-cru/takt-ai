@@ -24,14 +24,17 @@ reason and evidence, in view.
 2. **Are required invariants missing or in need of refinement?**
    - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
-     updated evidence: invariant planning and SDD are complementary stages.
+     updated evidence. Invariant planning stands on its own; when SDD follows it, its plan
+     ends with Spec, whose specifications feed TPM, SDD's first node.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
      Engram entry holds it and agrees with the repository; it is missing when no such entry
-     exists, and to refine when the objective changes what the entry holds.
+     exists, and to refine when the objective changes what the entry holds. A specification is
+     also settled when a repository artifact of equivalent rigor holds it.
 3. **Is development still needed?**
    - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
      to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.
-   - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow`.
+   - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow` once formal,
+     broken-down specifications exist; without them they are required invariants: go to 2.
    - No → deliver the settled result; no implementation route is needed.
 
 Bounded is never chosen by elimination, convenience, dispatch cost, or absence of

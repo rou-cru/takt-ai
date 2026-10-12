@@ -136,3 +136,40 @@ interfaces do not expose.
 
 - D stands because the user approved its flow; only R rewrites. Spec waits until no
   contradiction remains open.
+
+## 7. Expanded designer lane
+
+Assessment: raw intent for a game with art and music; pm's requirements name three design
+focus areas (visual, music, experience) too broad for one designer brief at the required
+detail. Structure to generate; behavior to generate.
+
+```
+                ┌──────────────┐
+                │ P  pm        │                                    Round 1 · width 1
+                └──────┬───────┘
+        ┌──────────────┼──────────────┬─────────────────┐
+        ▼              ▼              ▼                 │
+ ┌────────────┐ ┌────────────┐ ┌────────────┐           │
+ │ Dv visual  │ │ Dm music   │ │ Dx exper.  │           │           Round 2 · width 3
+ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘           │
+       └──────────────┼──────────────┘                  │
+                      ▼                                 ▼
+                ┌────────────┐                    ┌────────────┐
+                │ D  merge   │                    │ R architect│    Round 3 · width 2
+                └─────┬──────┘                    └─────┬──────┘
+                      └────────────────┬────────────────┘
+                                       ▼
+                                 ┌────────────┐
+                                 │ S  spec    │                     Round 4 · width 1
+                                 └────────────┘
+```
+
+- `P → Dv, Dm, Dx`: each designer instance owns one focus area pm named, so their briefs are
+  disjoint and none guesses another's scope.
+- `Dv, Dm, Dx → D`: the consolidating designer consumes the three partial results and removes
+  contradictions, aligns details and fills gaps; the final experience invariant is its result.
+- `P → R`: the architect consumes only pm's requirements; it runs in round 3 because the
+  ceiling is full in round 2, not because of an edge.
+- `D → S`, `R → S`: behavior is specified against the consolidated experience and the structure.
+- Without a consolidator, the partial results go straight to their consumers (`Dv, Dx → R`)
+  when those consumers can reconcile them within their own lane.

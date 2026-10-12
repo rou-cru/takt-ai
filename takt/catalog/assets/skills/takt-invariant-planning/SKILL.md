@@ -20,23 +20,34 @@ For each invariant the objective needs (intent, facts, experience, structure, be
 classify it from the evidence at hand: **settled** (existing, approved, validated — no lane),
 **to refine** (a lane consumes the existing entry and revises it), or **to generate** (a lane
 authors it). Ends when every needed invariant is classified; "probably settled" is not a class.
+The user's statement of intent is what pm formalizes, never a settled pm invariant; pm's
+requirements are settled only when an artifact of equivalent rigor holds them.
 
 ## 2. Select
 
-One lane per invariant to generate or refine: pm for intent, analyst for objective facts that
-are unknown and recoverable, product-designer for experience rules, architect for structure
-and technology, spec for observable behavior. Ends when the lane set is fixed. A single lane
-is bounded specialist work and leaves this skill: return control to Takt with that reason
-for reevaluation. This does not authorize direct execution or replacing the specialist's
+Each invariant to generate or refine has its owner: pm for requirements formalization, analyst
+for objective facts that are unknown and recoverable, product-designer for experience rules,
+architect for structure and technology, spec for observable behavior when the objective needs
+it formalized. Ends when the lane set is fixed. A single unit is bounded specialist work and
+leaves this skill: return control to Takt with that reason for reevaluation. This does not authorize direct execution or replacing the specialist's
 judgment with Takt's. Whenever the evidence shows this route does not fit, likewise return
 control with the reason, evidence, and constraints preserved.
+
+**Expanded lane.** When one owner's invariant spans focus areas or document types that one
+brief cannot cover at the required detail (pm's focus areas name them), expand that lane into
+a sub-DAG of instances of the same owner, one per focus area or document type, each a planned
+unit under every rule of this skill. A consolidating instance of that owner, consuming the
+partial results to remove contradictions, align details and fill gaps, is recommended; omit it
+when consumers can take the partial results directly (one architect consuming two designer
+results). After consolidation, you decide which partial invariants stop serving.
 
 ## 3. Plan
 
 Connect lanes by consumption: an edge exists only where one lane's decisions depend on
 another's result. A lane started before its input exists guesses it.
 
-- pm roots the plan while intent is unsettled: every other lane decides against it.
+- pm roots the plan whenever it is a lane: every other lane decides against its requirements;
+  spec follows pm directly only when no experience or structure lane stands between them.
 - analyst runs on a concrete question derived from an invariant already in hand — a fact that
   intent, experience, or structure depends on — never first by default with nothing to
   investigate.

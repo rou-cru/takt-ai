@@ -13,6 +13,7 @@ import {
   headerLine,
   nodeText,
   ordinal,
+  packActivities,
   sidebarDetail,
   sidebarRows,
   SidebarGraph,
@@ -128,10 +129,43 @@ describe("graph layout", () => {
     expect(rows.every((row) => row.length === layout.width)).toBe(true)
   })
 
-  test("falls back to one band when the bands do not fit the height", () => {
-    const layout = computeLayout(chain(6), undefined, { width: 60, height: 5 })
-    expect(layout.bands).toBe(1)
-    expect(layout.width).toBe(computeLayout(chain(6)).width)
+  test("cuts identities instead of overflowing the width when the bands do not fit the height", () => {
+    const named = { ...base, nodes: ["overhaul-defect-evidence", "overhaul-integration", "overhaul-acceptance"].map((id) => node({ id })),
+      edges: [{ from: "overhaul-defect-evidence", to: "overhaul-integration" }, { from: "overhaul-integration", to: "overhaul-acceptance" }] } as never
+    const natural = computeLayout(named)
+    const viewport = { width: 60, height: 5 }
+    const layout = computeLayout(named, undefined, viewport)
+    expect(layout.width).toBeLessThanOrEqual(viewport.width)
+    expect(layout.labelCap).toBeLessThan(natural.labelCap)
+    expect(layout.height).toBeLessThan(computeLayout(named, undefined, { width: 60, height: 100 }).height)
+  })
+
+  test("never draws wider than the viewport, however narrow", () => {
+    const graph = chain(6)
+    for (const width of [12, 16, 20, 30, 45, 60, 90, 400]) {
+      for (const height of [3, 10, 100]) {
+        const layout = computeLayout(graph, undefined, { width, height })
+        expect(layout.width).toBeLessThanOrEqual(width)
+        expect(edgeRows(layout).every((row) => row.length === layout.width)).toBe(true)
+      }
+    }
+  })
+
+  test("a windowed terminal a few rows short still shows the whole graph within its width", () => {
+    const ids = ["overhaul-defect-evidence", "overhaul-experience-direction", "overhaul-integration-contracts", "overhaul-playable-acceptance",
+      "overhaul-implementation-tasks", "evocative-scene-soundtrack", "expressive-urban-cartoon-art", "playable-city-route-and-shell",
+      "responsive-fair-platforming", "overhaul-staged-play-verification", "overhaul-materialized-release"]
+    const tasks = ids.slice(5, 9)
+    const graph = { ...base, nodes: ids.map((id) => node({ id })), edges: [
+      { from: ids[0], to: ids[2] }, { from: ids[1], to: ids[2] }, { from: ids[2], to: ids[3] }, { from: ids[3], to: ids[4] },
+      ...tasks.flatMap((task) => [{ from: ids[4], to: task }, { from: task, to: ids[9] }]), { from: ids[9], to: ids[10] },
+    ] } as never
+    for (const height of [22, 26, 32]) {
+      const viewport = { width: 130, height }
+      const layout = computeLayout(graph, undefined, viewport)
+      expect(layout.width).toBeLessThanOrEqual(viewport.width)
+      expect(layout.nodes.size).toBe(ids.length)
+    }
   })
 
   test("reuses the layout for a state-only update and relayouts when the viewport changes", () => {
@@ -185,6 +219,11 @@ describe("node presentation", () => {
     expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("✓ unit-7")
   })
 
+  test("nodeText cuts the id to the layout's label cap with an ellipsis", () => {
+    expect(nodeText(node({ id: "overhaul-defect-evidence", state: "settled" }), 8)).toBe("✓ overhau…")
+    expect(nodeText(node({ id: "unit-7", state: "settled" }), 8)).toBe("✓ unit-7")
+  })
+
   test("renders activity-only and layered graph views in both layouts", async () => {
     const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "s", capture: "current", activities: [] } as const
     const activity = { activity_id: "review-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" }
@@ -213,6 +252,15 @@ describe("activity presentation", () => {
     expect(activityText({ activity_id: "a1", node_kind: "orchestrator", state: "in_flight" } as never)).toBe("◆ direct activity a1 · running")
     expect(activityText({ activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" } as never)).toBe("◇ GC activity a2 · completed")
     expect(activityText({ activity_id: "a3", node_kind: "maintenance", state: "settled" } as never)).toBe("◇ GC activity a3 · settled")
+  })
+  test("packActivities wraps the lane into rows within the width and cuts a box wider than it", () => {
+    const lane = ["a1", "a2", "a3"].map((id) => ({ activity_id: id, node_kind: "orchestrator", state: "in_flight" })) as never[]
+    const wide = packActivities(lane, 400)
+    expect(wide.every((slot) => slot.row === 0)).toBe(true)
+    const narrow = packActivities(lane, 40)
+    expect(narrow.some((slot) => slot.row > 0)).toBe(true)
+    expect(narrow.every((slot) => slot.left + slot.width <= 40)).toBe(true)
+    expect(packActivities(lane, 10).every((slot) => slot.left === 0 && slot.width === 10)).toBe(true)
   })
   test("activityBoxWidth is the text width plus two border columns", () => {
     const activity = { activity_id: "a1", node_kind: "orchestrator", state: "in_flight" } as never

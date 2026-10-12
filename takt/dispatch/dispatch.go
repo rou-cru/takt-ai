@@ -109,7 +109,7 @@ const CauseNoFailure = "control/no-terminal-failure"
 // each decision is one call (PR-ORQ-13, PR-HAR-22). bound is the allowance the
 // abandonment spent.
 func scopeExit(objective, bound string) string {
-	return fmt.Sprintf("ask the user: to continue, dispatch_exception on %s for objective %q with a finite allowance; to drop the scope, dispatch_restore for objective %q", bound, objective, objective)
+	return fmt.Sprintf("ask the user: to map the real state first, the blind review pair over objective %[1]q; to continue, dispatch_exception on %[2]s for objective %[1]q with a finite allowance; to drop the scope, dispatch_restore for objective %[1]q", objective, bound)
 }
 
 // CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's
