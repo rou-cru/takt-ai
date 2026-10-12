@@ -6,11 +6,10 @@ label: quality
 instances:
 - quality
 vfs_capabilities:
-  quality: [bind, read, verify]
-role: verification
+  quality: []
+role: quality_assurance
 skills:
 - takt-memory-contract
 - takt-memory-quality
+- takt-qa-conduct
 - takt-result-handoff
-- takt-verification-conduct
-- takt-vfs-verification

@@ -6,11 +6,10 @@ label: explorer
 instances:
 - explorer
 vfs_capabilities:
-  explorer: [bind, read, verify]
-role: verification
+  explorer: []
+role: quality_assurance
 skills:
 - takt-memory-contract
 - takt-memory-explorer
+- takt-qa-conduct
 - takt-result-handoff
-- takt-verification-conduct
-- takt-vfs-verification

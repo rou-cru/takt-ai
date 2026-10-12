@@ -54,9 +54,6 @@ Three topological readings that matter more than the labels:
 - **`T5` has no edge to `T2`.** The test author writes its own test files from the frozen
   contracts and the traceability matrix, never reading `api/*` while `T2` writes it, so it
   shares the wave with the code it tests.
-- **The tail grows only by the plan.** Mutation runs once the Q2 suite passes on the
-  materialized workspace; explorer and quality nodes join the tail the same way when the test
-  plan selects them. When any runs, `VC` closes the objective; otherwise `V` does. `VC` gathers
-  reports, not implementation nodes, so it is no second integration fan-in. Surviving mutants
-  loop through the test author, a gate Verify and consolidation before mutation re-runs only
-  the affected rows.
+- **The tail is `takt-qa-workflow`'s.** `V`, `M`, `X`, `Q` and `VC` are its Accept, Critique
+  and Close states drawn as nodes; only what the test plan selects appears. `VC` gathers
+  reports, not implementation nodes, so it is no second integration fan-in.

@@ -190,6 +190,7 @@ must-not-fail item and acceptance spans several units; no test policy in the wor
 ```
 
 - `S → Q`: the test plan and traceability matrix are drawn from the specification's
-  acceptance; Q also consumes pm's must-not-fail items and generates the test policy.
+  acceptance; Q also consumes the frozen contracts and the PRD's must-not-fail priorities,
+  and generates the test policy.
 - Planning ends with S and Q; both feed TPM.
 - With the specification already settled and no test plan, Q is the only lane.

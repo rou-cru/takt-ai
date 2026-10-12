@@ -99,9 +99,28 @@ func TestAuthorRefusalsNameTheContinuation(t *testing.T) {
 	c, _ := delegate(t, f, state, testSession, "dev", "u", "a.go")
 	_, foreign := delegate(t, f, state, testSession, "fix", "v", "b.go")
 	_, err := f.Operate(c, vfs.CallerOperation{CallID: "x", Action: vfs.OpCreate, Path: "b.go", AuthorKey: foreign})
-	refusedNaming(t, "op naming a key the delegation does not hold", err, vfs.ErrIdentity, "vfs_bind")
+	refusedNaming(t, "op naming another unit's key", err, vfs.ErrIdentity, "not an input", "orchestrator")
+	_, err = f.Operate(c, vfs.CallerOperation{CallID: "z", Action: vfs.OpRead, Path: "a.go", AuthorKey: "unknown"})
+	refusedNaming(t, "op naming a key no binding holds", err, vfs.ErrIdentity, "vfs_bind")
 	_, err = f.Operate(callerOf(testSession, "dev", "unbound"), vfs.CallerOperation{CallID: "y", Action: vfs.OpRead, Path: "a.go"})
 	refusedNaming(t, "op without a binding", err, vfs.ErrIdentity, "vfs_bind")
+}
+
+// An author reading another unit's staged work is pointed at its own inputs,
+// by ID, and at the blocker that replaces guessing.
+func TestForeignAuthorReadNamesTheUnitsInputs(t *testing.T) {
+	f, _, state := newStore(t)
+	_, implementer := delegate(t, f, state, testSession, "dev", "impl", "a.go")
+	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "tests", AgentID: "test", Specialist: "test", Invariants: vfs.InvariantSet{vfs.EngramInvariant(7), vfs.EngramInvariant(9)}}, []string{"b.go"}); err != nil {
+		t.Fatal(err)
+	}
+	ensureAdmitted(t, f, state, testSession, "tests", "test")
+	c := callerOf(testSession, "test", "tests")
+	if _, err := f.BindAs(c, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.Operate(c, vfs.CallerOperation{CallID: "r", Action: vfs.OpRead, Path: "a.go", AuthorKey: implementer})
+	refusedNaming(t, "test author reading the implementer's staged work", err, vfs.ErrIdentity, "#7, #9", "mem_get_observation", "blocker")
 }
 
 func TestAReleasedKeyNoLongerWorks(t *testing.T) {

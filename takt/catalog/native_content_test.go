@@ -149,16 +149,15 @@ func TestQAInstancesHoldExistingClassProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifier := []model.VFSCapability{model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify}
 	for id, want := range map[string]struct {
 		role model.RoleClass
 		vfs  []model.VFSCapability
 	}{
 		"qa":       {model.RolePlanningAuthor, []model.VFSCapability{}},
 		"test":     {model.RoleExecution, []model.VFSCapability{model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete}},
-		"mutation": {model.RoleVerification, verifier},
-		"explorer": {model.RoleVerification, verifier},
-		"quality":  {model.RoleVerification, verifier},
+		"mutation": {model.RoleQualityAssurance, []model.VFSCapability{}},
+		"explorer": {model.RoleQualityAssurance, []model.VFSCapability{}},
+		"quality":  {model.RoleQualityAssurance, []model.VFSCapability{}},
 	} {
 		if got := content[id].Role; got != want.role {
 			t.Errorf("%s role = %q, want %q", id, got, want.role)
@@ -301,6 +300,30 @@ func assertAgentsDeclareSkill(t *testing.T, cat catalog.Catalog, skillID string,
 	for id, found := range wantAgents {
 		if !found {
 			t.Errorf("%s does not declare the %s skill", id, skillID)
+		}
+	}
+}
+
+// TestQualityAssuranceSquadCarriesItsOwnConduct checks that the QA analysts
+// follow their class's conduct, never the gate verifier's, and that the
+// orchestrator carries the QA workflow that routes them.
+func TestQualityAssuranceSquadCarriesItsOwnConduct(t *testing.T) {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysts := []string{"takt-mutation", "takt-explorer", "takt-quality"}
+	assertAgentsDeclareSkill(t, pack, "takt-qa-conduct", analysts...)
+	assertAgentsDeclareSkill(t, pack, "takt-qa-workflow", "takt")
+	assertAgentsDeclareSkill(t, pack, "takt-test-strategy", "takt-qa")
+	for _, agent := range pack.Agents {
+		if !slices.Contains(analysts, agent.ID) {
+			continue
+		}
+		for _, verifierSkill := range []string{"takt-verification-conduct", "takt-vfs-verification"} {
+			if slices.Contains(agent.Skills, verifierSkill) {
+				t.Errorf("%s declares the verifier skill %s", agent.ID, verifierSkill)
+			}
 		}
 	}
 }

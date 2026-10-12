@@ -6,11 +6,10 @@ label: mutation
 instances:
 - mutation
 vfs_capabilities:
-  mutation: [bind, read, verify]
-role: verification
+  mutation: []
+role: quality_assurance
 skills:
 - takt-memory-contract
 - takt-memory-mutation
+- takt-qa-conduct
 - takt-result-handoff
-- takt-verification-conduct
-- takt-vfs-verification

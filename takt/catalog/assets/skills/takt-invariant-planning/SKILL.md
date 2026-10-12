@@ -56,7 +56,9 @@ another's result. A lane started before its input exists guesses it.
   investigate.
 - designer and architect are independent unless one's decisions constrain the other; both
   feed spec as strict invariants.
-- qa follows spec, consuming it and pm's must-not-fail items; the plan then ends `S → Q`.
+- qa follows spec, and architect when it is a lane, consuming the specification, the frozen
+  contracts and pm's PRD, whose must-not-fail priorities it plans against; the plan then ends
+  `S → Q`.
 - Lanes whose inputs are all available form one concurrent round within the
   {{policy.concurrent_specialists}}-specialist ceiling.
 

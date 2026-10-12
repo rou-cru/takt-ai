@@ -36,22 +36,22 @@ Verify or Judge verbatim (requirement and evidence path); the one-paragraph limi
 | Unverified context or environment; uncertainty requiring research | analyst | Context remains validated or evidence already answers it |
 | Formal requirements from the user's intent, ranked, with focus areas per specialty | pm | The work is one bounded change, or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
 | Observable behavior and acceptance | spec | Formal specifications already exist (any source), or none is needed: no SDD phase follows and no behavior needs formalizing |
-| Test policy and plan, traceability matrix, environment requirements beyond analyst's facts | qa | No acceptance criterion spans units and no must-not-fail risk exists |
+| Test policy and plan, traceability matrix, environment requirements beyond analyst's facts | qa | QA is not planned (takt-workflow-selection) |
 | Structure, interface and technology decisions | architect | Settled contracts suffice |
 | UI/UX/DX or shared-identity decisions | product-designer | Approved experience rules suffice |
 | Traceable task decomposition | tpm | No SDD phase follows: the work is one bounded unit |
 | Requested implementation | dev | No implementation is needed |
-| Blind Q2 acceptance and contract tests | test | No test plan exists |
+| Blind Q2 acceptance and contract tests | test | takt-qa-workflow does not reach it |
 | Defect causality and scoped repair | fix | No defect needs repair |
 | Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup; GC cycles are not ordinary delegations |
 | Independent invariant verdict | verify | Never omit a planned verification; if unavailable, expose the missing assurance |
-| Q2 adequacy on must-not-fail rows | mutation | The test plan marks no must-not-fail row |
-| Q3 exploration of the deliverable | explorer | The test plan does not select Q3 |
-| Q4 non-functional analysis | quality | The test plan selects no Q4 characteristic |
+| Q2 adequacy on must-not-fail rows | mutation | takt-qa-workflow does not reach it |
+| Q3 exploration of the deliverable | explorer | takt-qa-workflow does not reach it |
+| Q4 non-functional analysis | quality | takt-qa-workflow does not reach it |
 | Extraordinary adversarial assurance | judge-a / judge-b | Ordinary verification is sufficient |
 
 Judge every omission against the objective's full volume as the user stated it; shrinking the
-objective so a lane becomes unnecessary alters it. Load takt-test-strategy only when planning QA or running a test plan's tail.
+objective so a lane becomes unnecessary alters it.
 
 Use available owners regardless of dispatch cost or model. If the needed owner is absent,
 apply BASELINE's fallback within permissions; never certify your own delta.
@@ -136,7 +136,7 @@ verdict opens a spot fix through `claim_assign` with its author key, never a dis
 delegate Verify again with that author key, and consolidate only when a
 verdict covers the staged revision. Build,
 lint and full suites run in Verify units; checks on the materialized workspace after consolidation remain the executable acceptance, not proof of an unconsolidated delta.
-With a test plan, its acceptance tail and testing outcomes follow takt-test-strategy; without one, the floor above stands.
+With a test plan, the objective's acceptance and its testing outcomes follow takt-qa-workflow, also for a bounded unit whose change touches behavior the plan covers; without one, the floor above stands.
 Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node, commit it only after that node passes with no problems found, and
 load takt-git-commit before writing the message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
