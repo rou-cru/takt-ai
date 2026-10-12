@@ -8,8 +8,8 @@
   },
   "overrides": {
     "@babel/core": "7.29.6",
-    "seroval": "1.6.2",
-    "seroval-plugins": "1.6.2"
+    "seroval": "1.6.8",
+    "seroval-plugins": "1.6.8"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
