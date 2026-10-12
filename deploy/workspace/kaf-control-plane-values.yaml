@@ -1,0 +1,70 @@
+# Release/namespace: kaf; context: eks-data-control-plane (use its ARN in kubeconfig).
+# Chart: oci://ghcr.io/rou-cru/charts/takt-ai --version 0.0.26
+# Upgrade with --reset-values --wait --timeout 10m after deleting the old PVC.
+nameOverride: takt-workspace
+replicaCount: 1
+
+image:
+  repository: docker.io/roucru/takt-ai
+  tag: "0.0.26"
+  digest: sha256:4f3b1c2cb54069eda3aab39b3fcd475ceff5e0e3b45b750da06789fc24db5276
+  pullPolicy: IfNotPresent
+
+persistence:
+  storageClassName: gp3
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+  retain: false
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+    ephemeral-storage: 512Mi
+  limits:
+    memory: 4Gi
+    ephemeral-storage: 2Gi
+
+nodeSelector:
+  karpenter.sh/nodepool: internal-it
+  kubernetes.io/arch: arm64
+  storage.kapital.com/ebs-enabled: "true"
+tolerations:
+  - effect: NoSchedule
+    key: internal-it
+    operator: Equal
+    value: "true"
+priorityClassName: idp-general
+
+server:
+  passwordSecret:
+    name: opencode-auth
+    key: password
+
+serviceAccount:
+  create: false
+  name: default
+  automountServiceAccountToken: false
+
+networkPolicy:
+  enabled: false
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - kaf.data.ctl.kapital.com
+  parentRefs:
+    - name: private
+      namespace: platform
+      sectionName: https-wildcard
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+vpa:
+  enabled: true
+  updatePolicy:
+    updateMode: InPlaceOrRecreate
