@@ -93,10 +93,8 @@ type Model struct {
 	rootDir     string
 	configuring bool
 	// upgrading adopts this build's definitions; upgradeFrom is the version it replaces.
-	upgrading   bool
-	upgradeFrom string
-	// pending is the upgrade request started on open, returned once by Init.
-	pending       tea.Cmd
+	upgrading     bool
+	upgradeFrom   string
 	scroll        int
 	width, height int
 	step          Step
@@ -143,19 +141,17 @@ func New(rootDir string) Model {
 	return m
 }
 
-// NewUpgrade creates the upgrade flow: the request is the authorization, so
-// it executes at once unless a file first needs the user's decision.
+// NewUpgrade creates the upgrade flow: the configuration flow over the
+// recorded choices, reviewed and committed as one upgrade.
 func NewUpgrade(rootDir string) Model {
 	m := New(rootDir)
 	m.upgrading, m.upgradeFrom = true, setup.InstalledVersion(rootDir)
-	if m.step == StepReview && m.previewErr == nil {
-		m.pending = m.start()
-	}
+	m.cursor = m.cursorFor(m.step)
 	return m
 }
 
-// Init starts the upgrade an open requested; other flows have no startup work.
-func (m Model) Init() tea.Cmd { return m.pending }
+// Init has no startup work.
+func (Model) Init() tea.Cmd { return nil }
 
 // Run exposes the flow's action state so the shell gates quit and cancel.
 func (m Model) Run() runtime.Run { return m.run }
@@ -408,18 +404,13 @@ func installConflictsConfirm(m *Model) (Step, tea.Cmd) {
 	if _, blocked := m.blocked(); blocked {
 		return StepConflicts, nil
 	}
-	if m.upgrading {
-		// The decisions were the only input the upgrade needed.
-		return StepReview, m.start()
-	}
 	return StepReview, nil
 }
 func installReviewConfirm(m *Model) (Step, tea.Cmd) {
-	if m.previewErr != nil && m.upgrading {
-		// An unresolved plan is resolved again before anything runs.
+	switch m.reviewActions()[m.cursor] {
+	case actionRetry:
 		return m.preparePlan(), nil
-	}
-	if m.reviewActions()[m.cursor] == actionPersonalize {
+	case actionPersonalize:
 		m.setupCustom = true
 		return StepComponents, nil
 	}
@@ -506,9 +497,6 @@ func (m *Model) start() tea.Cmd {
 		RootDir:    m.rootDir,
 		Components: m.componentNames(),
 	}
-	if m.upgrading {
-		request.Action = runtime.ActionUpgrade
-	}
 	for _, conflict := range m.keptConflicts() {
 		request.PreservePaths = append(request.PreservePaths, conflict.Path)
 	}
@@ -523,6 +511,9 @@ func (m *Model) start() tea.Cmd {
 func (m Model) reviewActions() []string {
 	if m.upgrading {
 		// Choices are the recorded ones: an upgrade never personalizes.
+		if m.previewErr != nil {
+			return []string{actionRetry}
+		}
 		return []string{actionUpgrade}
 	}
 	if m.previewErr != nil {

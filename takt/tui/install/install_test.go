@@ -290,30 +290,39 @@ func TestCancelledResultsOfferNoRollback(t *testing.T) {
 	}
 }
 
-// An upgrade is its own authorization: with no file to decide it runs on
-// open, on the recorded choices, and reports the versions it moved between.
-func TestUpgradeRunsOnOpenWithRecordedChoices(t *testing.T) {
+// An upgrade opens on the review of the recorded choices, offers only the
+// upgrade itself, installs those choices on confirm and reports the versions
+// it moved between.
+func TestUpgradeReviewsThenInstallsRecordedChoices(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{}}); err != nil {
 		t.Fatal(err)
 	}
 	m := install.NewUpgrade(root)
-	request := testutil.ActionRequest(t, m.Init())
-	if request.Action != runtime.ActionUpgrade || len(request.Components) != 0 {
-		t.Fatalf("request = %+v, want an upgrade of the recorded choices", request)
+	if m.Step() != install.StepReview || m.Init() != nil || m.Run().Busy() {
+		t.Fatalf("step = %v busy = %v, want the review before anything runs", m.Step(), m.Run().Busy())
 	}
-	if !m.Run().Busy() || !strings.HasPrefix(m.Title(), ui.TextTitleUpgrade) {
-		t.Fatalf("busy = %v title = %q, want the running upgrade", m.Run().Busy(), m.Title())
+	if !strings.HasPrefix(m.Title(), ui.TextTitleUpgrade) || testutil.Shows(view(m), ui.TextActionPersonalize) {
+		t.Fatalf("title = %q, want the upgrade review without Personalize:\n%s", m.Title(), view(m))
 	}
-	m = update(t, m, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionUpgrade}})
+	next, command := m.Update(key("enter"))
+	request := testutil.ActionRequest(t, command)
+	if request.Action != runtime.ActionInstall || len(request.Components) != 0 {
+		t.Fatalf("request = %+v, want the install of the recorded choices", request)
+	}
+	m = next.(install.Model)
+	if !m.Run().Busy() {
+		t.Fatal("confirming the review did not start the upgrade")
+	}
+	m = update(t, m, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionInstall}})
 	if want := fmt.Sprintf(ui.TextUpgradedFmt, ui.TextVersionUnrecorded, setup.BuildVersion); !testutil.Shows(view(m), want) {
 		t.Errorf("result missing %q:\n%s", want, view(m))
 	}
 }
 
-// A file needing a decision comes first; the decision then starts the
-// upgrade without a further confirmation.
-func TestUpgradeAsksAboutConflictsThenRuns(t *testing.T) {
+// A file needing a decision comes first; restoring Takt's version keeps it out
+// of the preserved paths of the upgrade the review then starts.
+func TestUpgradeAsksAboutConflictsThenReviews(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{}}); err != nil {
 		t.Fatal(err)
@@ -331,12 +340,13 @@ func TestUpgradeAsksAboutConflictsThenRuns(t *testing.T) {
 		t.Fatalf("step = %v, want the file decision before anything runs", m.Step())
 	}
 	m = press(t, m, "down") // restore Takt's version
-	next, command := m.Update(key("enter"))
-	request := testutil.ActionRequest(t, command)
-	if request.Action != runtime.ActionUpgrade || slices.Contains(request.PreservePaths, conflict) {
-		t.Fatalf("request = %+v, want an upgrade restoring %q", request, conflict)
+	m = press(t, m, "enter")
+	if m.Step() != install.StepReview || m.Run().Busy() {
+		t.Fatalf("step = %v busy = %v, want the review after the decision", m.Step(), m.Run().Busy())
 	}
-	if !next.(install.Model).Run().Busy() {
-		t.Error("the decision did not start the upgrade")
+	_, command := m.Update(key("enter"))
+	request := testutil.ActionRequest(t, command)
+	if request.Action != runtime.ActionInstall || slices.Contains(request.PreservePaths, conflict) {
+		t.Fatalf("request = %+v, want an upgrade restoring %q", request, conflict)
 	}
 }

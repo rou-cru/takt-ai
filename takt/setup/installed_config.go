@@ -87,7 +87,8 @@ func IsCurrentVersion(installed string) bool {
 
 // UpgradeAvailable reports whether this build is newer than installed, so an
 // upgrade never downgrades. An unrecorded installed version predates version
-// tracking and is always older; a non-release build is never an upgrade.
+// tracking, and one that is not semver (a dev build) cannot be ordered: both
+// count as older. A non-release build is never an upgrade.
 func UpgradeAvailable(installed string) bool {
 	build := "v" + BuildVersion
 	if !semver.IsValid(build) {

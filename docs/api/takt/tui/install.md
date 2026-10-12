@@ -14,7 +14,7 @@ Package install provides the focused install selection flow.
   - [func New\(rootDir string\) Model](<#New>)
   - [func NewUpgrade\(rootDir string\) Model](<#NewUpgrade>)
   - [func \(m Model\) Dirty\(\) bool](<#Model.Dirty>)
-  - [func \(m Model\) Init\(\) tea.Cmd](<#Model.Init>)
+  - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
   - [func \(m Model\) Run\(\) runtime.Run](<#Model.Run>)
   - [func \(m Model\) Step\(\) Step](<#Model.Step>)
   - [func \(m Model\) Title\(\) string](<#Model.Title>)
@@ -51,7 +51,7 @@ New creates an install flow for rootDir.
 func NewUpgrade(rootDir string) Model
 ```
 
-NewUpgrade creates the upgrade flow: the request is the authorization, so it executes at once unless a file first needs the user's decision.
+NewUpgrade creates the upgrade flow: the configuration flow over the recorded choices, reviewed and committed as one upgrade.
 
 <a name="Model.Dirty"></a>
 ### func \(Model\) Dirty
@@ -66,10 +66,10 @@ Dirty reports unapplied selections that differ from the flow's baseline.
 ### func \(Model\) Init
 
 ```go
-func (m Model) Init() tea.Cmd
+func (Model) Init() tea.Cmd
 ```
 
-Init starts the upgrade an open requested; other flows have no startup work.
+Init has no startup work.
 
 <a name="Model.Run"></a>
 ### func \(Model\) Run
