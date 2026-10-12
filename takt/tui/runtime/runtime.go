@@ -37,6 +37,8 @@ const (
 	ActionCorrectDrift Action = "correct-drift"
 	// ActionReassignModels updates one target's overrides so unchanged agents stay untouched.
 	ActionReassignModels Action = "reassign-models"
+	// ActionUpgrade adopts this build's definitions with the recorded choices, distinct from drift correction.
+	ActionUpgrade Action = "upgrade"
 )
 
 // ActionRequest carries a screen's operation to the runtime.
@@ -179,9 +181,9 @@ func (adapter Adapter) execute(ctx context.Context, request ActionRequest, progr
 	// stays shared with the CLI, whose zero value is Leave.
 	adapter.lifecycle.EngramChoice = request.EngramChoice
 	adapter.lifecycle.Progress = progress
-	result, err := adapter.lifecycle.Run(ctx, string(request.Action), request.RootDir, planRequest, request.PreservePaths...)
+	result, err := adapter.lifecycle.Run(ctx, lifecycleAction(request.Action), request.RootDir, planRequest, request.PreservePaths...)
 	out := actionResult(request.Action, result)
-	if err == nil && out.Outcome == lifecycle.OutcomeCompleted && progress != nil && (request.Action == ActionInstall || request.Action == ActionSync) {
+	if err == nil && out.Outcome == lifecycle.OutcomeCompleted && progress != nil && deploys(request.Action) {
 		progress(setup.DeploymentProgress{Stage: "preparing", Message: "Verifying installation"})
 	}
 	return adapter.finishExecution(ctx, request, result, out, err)
@@ -226,8 +228,8 @@ func (adapter Adapter) finishExecution(ctx context.Context, request ActionReques
 		return out, err
 	}
 
-	// Run post-deployment verification for install and sync.
-	if request.Action == ActionInstall || request.Action == ActionSync {
+	// Run post-deployment verification for every deployment.
+	if deploys(request.Action) {
 		// A failed record only means the same question is asked again; it must not turn a completed operation into a failure.
 		_ = setup.RecordRiskAcceptances(request.RootDir, request.AcceptedRisks)
 		report := verify.CollectWithReload(ctx, request.RootDir, verify.ReloadStatus{
@@ -240,8 +242,22 @@ func (adapter Adapter) finishExecution(ctx context.Context, request ActionReques
 	return out, nil
 }
 
+// deploys reports the actions that write this build's definitions.
+func deploys(action Action) bool {
+	return action == ActionInstall || action == ActionSync || action == ActionUpgrade
+}
+
+// lifecycleAction maps an action to the lifecycle operation that performs it:
+// an upgrade is a sync of the recorded choices onto this build.
+func lifecycleAction(action Action) string {
+	if action == ActionUpgrade {
+		return string(ActionSync)
+	}
+	return string(action)
+}
+
 func (adapter Adapter) planRequest(request ActionRequest) (setup.PlanRequest, error) {
-	if request.Action != ActionInstall && request.Action != ActionSync {
+	if !deploys(request.Action) {
 		return setup.PlanRequest{}, nil
 	}
 	built, err := buildPlanRequest(request.Components, request.OpenCodeModelOverrides)

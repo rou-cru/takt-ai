@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -43,6 +44,8 @@ const (
 	RouteUninstall Route = "uninstall"
 	// RouteModels is the model-reassignment flow screen.
 	RouteModels Route = "models"
+	// RouteUpgrade adopts this build's definitions with the recorded choices.
+	RouteUpgrade Route = "upgrade"
 )
 
 // menuItem is one main-menu entry and the route it opens.
@@ -56,6 +59,7 @@ var menuItems = []menuItem{
 	{RouteInstall, ui.TextMenuInstall, ui.TextMenuInstallDesc},
 	{RouteModels, ui.TextMenuAssignModels, ui.TextMenuAssignModelsDesc},
 	{RouteDrift, ui.TextMenuCheckDrift, ui.TextMenuCheckDriftDesc},
+	{RouteUpgrade, ui.TextMenuUpgrade, ui.TextMenuUpgradeDesc},
 	{RouteUninstall, ui.TextMenuUninstall, ui.TextMenuUninstallDesc},
 	{RouteDiagnostics, ui.TextMenuDiagnostics, ui.TextMenuDiagnosticsDesc},
 }
@@ -66,7 +70,10 @@ func (m Model) visibleMenu() []menuItem {
 	if !installed {
 		return menuItems[:1]
 	}
-	items := append([]menuItem(nil), menuItems...)
+	upgradable := setup.UpgradeAvailable(setup.InstalledVersion(m.root))
+	items := slices.DeleteFunc(slices.Clone(menuItems), func(item menuItem) bool {
+		return item.route == RouteUpgrade && !upgradable
+	})
 	items[0].label, items[0].description = ui.TextMenuConfigure, ui.TextMenuConfigureDesc
 	return items
 }
@@ -123,6 +130,7 @@ const (
 	eventClose         = "close"
 	eventReplaceModels = "replace-models"
 	eventRepair        = "repair"
+	eventUpgrade       = "upgrade"
 	eventGuardBack     = "guard-back"
 	eventGuardQuit     = "guard-quit"
 	eventGuardKeep     = "guard-keep"
@@ -170,27 +178,30 @@ func routeTransitions() ui.Table[Route, Model] {
 		}
 	}
 	closeScreen := func(m *Model) (Route, tea.Cmd) { return m.pop(), nil }
+	// replace hands off to another flow, which becomes the only one on the stack.
+	replace := func(route Route, screen func(string) tea.Model) func(*Model) (Route, tea.Cmd) {
+		return func(m *Model) (Route, tea.Cmd) {
+			m.stack, m.routes = nil, nil
+			return open(route, screen)(m)
+		}
+	}
 	return ui.Table[Route, Model]{
 		{From: RouteMenu, Event: openEvent(RouteInstall)}:     open(RouteInstall, func(root string) tea.Model { return install.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteDiagnostics)}: open(RouteDiagnostics, func(root string) tea.Model { return diagnostics.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteDrift)}:       open(RouteDrift, func(root string) tea.Model { return drift.New(root) }),
+		{From: RouteMenu, Event: openEvent(RouteUpgrade)}:     open(RouteUpgrade, func(root string) tea.Model { return install.NewUpgrade(root) }),
 		{From: RouteMenu, Event: openEvent(RouteUninstall)}:   open(RouteUninstall, func(root string) tea.Model { return uninstall.New(root) }),
 		{From: RouteMenu, Event: openEvent(RouteModels)}:      open(RouteModels, func(root string) tea.Model { return models.New(root) }),
 		{From: RouteInstall, Event: eventClose}:               closeScreen,
 		{From: RouteDiagnostics, Event: eventClose}:           closeScreen,
 		{From: RouteDrift, Event: eventClose}:                 closeScreen,
+		{From: RouteUpgrade, Event: eventClose}:               closeScreen,
 		{From: RouteUninstall, Event: eventClose}:             closeScreen,
 		{From: RouteModels, Event: eventClose}:                closeScreen,
-		{From: RouteDiagnostics, Event: eventRepair}: func(m *Model) (Route, tea.Cmd) {
-			m.stack, m.routes = nil, nil
-			m.push(RouteInstall, install.New(m.root))
-			return RouteInstall, m.active().Init()
-		},
-		{From: RouteInstall, Event: eventReplaceModels}: func(m *Model) (Route, tea.Cmd) {
-			m.stack, m.routes = nil, nil
-			m.push(RouteModels, models.New(m.root))
-			return RouteModels, m.active().Init()
-		},
+		{From: RouteDiagnostics, Event: eventRepair}:          replace(RouteInstall, func(root string) tea.Model { return install.New(root) }),
+		{From: RouteDrift, Event: eventUpgrade}:               replace(RouteUpgrade, func(root string) tea.Model { return install.NewUpgrade(root) }),
+		{From: RouteInstall, Event: eventReplaceModels}:       replace(RouteModels, func(root string) tea.Model { return models.New(root) }),
+		{From: RouteUpgrade, Event: eventReplaceModels}:       replace(RouteModels, func(root string) tea.Model { return models.New(root) }),
 	}
 }
 
@@ -384,6 +395,8 @@ func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.applyRoute(eventReplaceModels)
 	case diagnostics.OpenRepairMsg:
 		return m, m.applyRoute(eventRepair)
+	case drift.OpenUpgradeMsg:
+		return m, m.applyRoute(eventUpgrade)
 	case tea.WindowSizeMsg:
 		return m.resize(message)
 	case tea.ColorProfileMsg:

@@ -37,6 +37,29 @@ func TestAdapterLifecycleActions(t *testing.T) {
 	}
 }
 
+func TestAdapterUpgradeAdoptsThisBuild(t *testing.T) {
+	root := t.TempDir()
+	adapter := testAdapter(nil)
+	previous := setup.BuildVersion
+	t.Cleanup(func() { setup.BuildVersion = previous })
+
+	setup.BuildVersion = "0.0.25"
+	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
+		t.Fatalf("install error = %v", err)
+	}
+	setup.BuildVersion = "0.0.27"
+	upgrade, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUpgrade, RootDir: root})
+	if err != nil {
+		t.Fatalf("upgrade error = %v", err)
+	}
+	if upgrade.Action != runtime.ActionUpgrade || upgrade.Verify == nil {
+		t.Errorf("upgrade = %+v, want an upgrade result with verification", upgrade)
+	}
+	if got := setup.InstalledVersion(root); got != "0.0.27" {
+		t.Errorf("InstalledVersion() = %q, want the upgraded build", got)
+	}
+}
+
 func TestAdapterInstallDeploysSkills(t *testing.T) {
 	root := t.TempDir()
 	result, err := testAdapter(nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})

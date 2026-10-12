@@ -2,6 +2,9 @@ package install_test
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -284,5 +287,56 @@ func TestCancelledResultsOfferNoRollback(t *testing.T) {
 	}})
 	if next := press(t, partial, "enter"); next.Step() != install.StepReview {
 		t.Fatalf("Review again step = %v, want review", next.Step())
+	}
+}
+
+// An upgrade is its own authorization: with no file to decide it runs on
+// open, on the recorded choices, and reports the versions it moved between.
+func TestUpgradeRunsOnOpenWithRecordedChoices(t *testing.T) {
+	root := t.TempDir()
+	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	m := install.NewUpgrade(root)
+	request := testutil.ActionRequest(t, m.Init())
+	if request.Action != runtime.ActionUpgrade || len(request.Components) != 0 {
+		t.Fatalf("request = %+v, want an upgrade of the recorded choices", request)
+	}
+	if !m.Run().Busy() || !strings.HasPrefix(m.Title(), ui.TextTitleUpgrade) {
+		t.Fatalf("busy = %v title = %q, want the running upgrade", m.Run().Busy(), m.Title())
+	}
+	m = update(t, m, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Action: runtime.ActionUpgrade}})
+	if want := fmt.Sprintf(ui.TextUpgradedFmt, ui.TextVersionUnrecorded, setup.BuildVersion); !testutil.Shows(view(m), want) {
+		t.Errorf("result missing %q:\n%s", want, view(m))
+	}
+}
+
+// A file needing a decision comes first; the decision then starts the
+// upgrade without a further confirmation.
+func TestUpgradeAsksAboutConflictsThenRuns(t *testing.T) {
+	root := t.TempDir()
+	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{Components: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	conflict := nonJSONManagedPath(t)
+	full := filepath.Join(root, filepath.FromSlash(conflict))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("user content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := install.NewUpgrade(root)
+	if m.Step() != install.StepConflicts || m.Init() != nil {
+		t.Fatalf("step = %v, want the file decision before anything runs", m.Step())
+	}
+	m = press(t, m, "down") // restore Takt's version
+	next, command := m.Update(key("enter"))
+	request := testutil.ActionRequest(t, command)
+	if request.Action != runtime.ActionUpgrade || slices.Contains(request.PreservePaths, conflict) {
+		t.Fatalf("request = %+v, want an upgrade restoring %q", request, conflict)
+	}
+	if !next.(install.Model).Run().Busy() {
+		t.Error("the decision did not start the upgrade")
 	}
 }

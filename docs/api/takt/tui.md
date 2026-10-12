@@ -110,6 +110,8 @@ const (
     RouteUninstall Route = "uninstall"
     // RouteModels is the model-reassignment flow screen.
     RouteModels Route = "models"
+    // RouteUpgrade adopts this build's definitions with the recorded choices.
+    RouteUpgrade Route = "upgrade"
 )
 ```
 

@@ -3,6 +3,7 @@
 package drift
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -48,7 +49,13 @@ const (
 	actionRescan = ui.TextActionRescan
 	// actionKeep leaves the current state after a partial correction.
 	actionKeep = ui.TextActionKeepCurrent
+	// actionUpgrade opens the upgrade that resolves version drift.
+	actionUpgrade = ui.TextActionUpgrade
 )
+
+// OpenUpgradeMsg asks the controller to open the upgrade flow, the operation
+// that resolves version drift; drift correction never crosses versions.
+type OpenUpgradeMsg struct{}
 
 // resultMsg carries the drift scan outcome into Update.
 type resultMsg struct {
@@ -148,6 +155,8 @@ const (
 	eventBack = "back"
 	// eventResult shows the correction outcome.
 	eventResult = "result"
+	// eventUpgrade hands version drift to the upgrade flow.
+	eventUpgrade = "upgrade"
 )
 
 // transitions is the drift flow's declarative screen-transition table: every
@@ -157,8 +166,12 @@ func transitions() ui.Table[State, Model] {
 	return ui.Table[State, Model]{
 		{From: StateNotInstalled, Event: eventBack}: back,
 		{From: StateReport, Event: eventBack}:       back,
+		{From: StateReport, Event: eventUpgrade}: func(m *Model) (State, tea.Cmd) {
+			return StateReport, func() tea.Msg { return OpenUpgradeMsg{} }
+		},
 		{From: StateReport, Event: eventSelect}: func(m *Model) (State, tea.Cmd) {
-			if !m.hasDrift() {
+			// Correction cannot restore another version's definitions.
+			if !m.hasDrift() || m.versionDrift() {
 				return StateReport, nil
 			}
 			m.focus = ui.SectionBody
@@ -177,9 +190,6 @@ func transitions() ui.Table[State, Model] {
 			return StateSelect, nil
 		},
 		{From: StateReview, Event: eventRestore}: func(m *Model) (State, tea.Cmd) {
-			if !m.sameVersion() {
-				return StateReview, nil
-			}
 			request := runtime.ActionRequest{
 				ID:                 runtime.NextID(),
 				Action:             runtime.ActionCorrectDrift,
@@ -281,6 +291,8 @@ func eventFor(action string) string {
 		return eventRestore
 	case actionRescan:
 		return eventRescan
+	case actionUpgrade:
+		return eventUpgrade
 	default:
 		return eventBack
 	}
@@ -292,7 +304,13 @@ func (m Model) actions() []string {
 	case StateNotInstalled:
 		return []string{actionMenu}
 	case StateReport:
-		if m.hasDrift() {
+		switch {
+		case m.versionDrift() && setup.UpgradeAvailable(m.result.installedVersion):
+			// The upgrade resolves the version drift and decides each edited file.
+			return []string{actionUpgrade, actionMenu}
+		case m.versionDrift():
+			return []string{actionMenu}
+		case m.hasDrift():
 			return []string{actionSelect, actionMenu}
 		}
 		return []string{actionMenu}
@@ -309,10 +327,16 @@ func (m Model) actions() []string {
 	return nil
 }
 
-// sameVersion reports whether the installed reference matches this build,
-// so correction never restores another version's files.
+// sameVersion reports whether the installed reference matches this build;
+// correction only restores definitions of the same version.
 func (m Model) sameVersion() bool {
 	return setup.IsCurrentVersion(m.result.installedVersion)
+}
+
+// versionDrift reports a completed scan of an installation recorded with
+// another version than this build.
+func (m Model) versionDrift() bool {
+	return m.scanned && m.result.err == nil && !m.sameVersion()
 }
 
 // hasDrift reports a completed scan that found restorable files.
@@ -371,9 +395,6 @@ func (m Model) actionView(body string) string {
 		}
 		// Destructive commitment: the restore action renders as danger.
 		footer[index].Danger = true
-		if !m.sameVersion() {
-			footer[index].Unavailable = versionUnavailable
-		}
 	}
 	return ui.Shell(ui.Frame{
 		Header: m.Title(),
@@ -392,6 +413,8 @@ func (m Model) report() string {
 		return theme.Label.Render(ui.TextDriftChecking)
 	case m.result.err != nil:
 		return ui.Status(ui.StateFailed, ui.TextDriftCannotCheck+m.result.err.Error())
+	case m.versionDrift():
+		return m.versionReport()
 	case len(m.result.conflicts) == 0:
 		return ui.Status(ui.StateSuccess, ui.TextDriftClean) +
 			"\n\n" + theme.Caption.Render(ui.TextDriftNoVerify)
@@ -401,6 +424,33 @@ func (m Model) report() string {
 	b.WriteString("\n")
 	for _, conflict := range m.result.conflicts {
 		b.WriteString("\n" + row(conflict))
+	}
+	return b.String()
+}
+
+// versionReport states the version drift first, then any edited files, and
+// what resolves both.
+func (m Model) versionReport() string {
+	installed := cmp.Or(m.result.installedVersion, ui.TextVersionUnrecorded)
+	var b strings.Builder
+	b.WriteString(ui.Status(ui.StateWarning, fmt.Sprintf(ui.TextDriftVersionFmt, installed, setup.BuildVersion)))
+	b.WriteString("\n\n")
+	if len(m.result.conflicts) == 0 {
+		b.WriteString(theme.Label.Render(ui.TextDriftFilesMatch))
+	} else {
+		b.WriteString(theme.Label.Render(count(len(m.result.conflicts)) + ui.TextDriftDifferOutro))
+		for _, conflict := range m.result.conflicts {
+			b.WriteString("\n" + row(conflict))
+		}
+	}
+	b.WriteString("\n\n")
+	switch {
+	case !setup.UpgradeAvailable(m.result.installedVersion):
+		b.WriteString(theme.Label.Render(ui.TextDriftNoUpgrade))
+	case len(m.result.conflicts) == 0:
+		b.WriteString(theme.Label.Render(ui.TextDriftUpgradeNext))
+	default:
+		b.WriteString(theme.Label.Render(ui.TextDriftUpgradeAsks))
 	}
 	return b.String()
 }
@@ -435,18 +485,9 @@ func (m Model) review() string {
 	return b.String()
 }
 
-// reference names the version-specific definitions a correction restores,
-// or states which versions differ.
+// reference names the version-specific definitions a correction restores.
 func (m Model) reference() string {
-	installed := m.result.installedVersion
-	switch {
-	case m.sameVersion():
-		return fmt.Sprintf(ui.TextDriftRefFmt, installed)
-	case installed == "":
-		return ui.TextDriftRefUnknown + setup.BuildVersion + "."
-	default:
-		return ui.TextDriftRefMismatch + installed + "; this build is " + setup.BuildVersion + "."
-	}
+	return fmt.Sprintf(ui.TextDriftRefFmt, m.result.installedVersion)
 }
 
 // resultBody reports what the correction changed and what still differs.
@@ -565,10 +606,6 @@ func row(conflict setup.ConflictEntry) string {
 	}
 	return style.Render("["+label+"]") + " " + theme.Label.Render(conflict.Path+" - "+explanation)
 }
-
-// versionUnavailable is why restoring is blocked when the installed version
-// differs from this build or is unknown.
-const versionUnavailable = ui.TextDriftVersionBlock
 
 // count phrases a file count for scope lines.
 func count(n int) string {

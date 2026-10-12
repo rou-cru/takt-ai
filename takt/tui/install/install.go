@@ -72,6 +72,8 @@ const (
 	actionInstall = ui.TextActionInstall
 	// actionApply commits configuration changes.
 	actionApply = ui.TextActionApplyChanges
+	// actionUpgrade adopts this build's definitions with the recorded choices.
+	actionUpgrade = ui.TextActionUpgrade
 	// actionRetry re-reviews the same choices after a failure.
 	actionRetry = ui.TextActionRetry
 	// actionReview re-reviews the actual files after a stop.
@@ -88,8 +90,13 @@ const (
 
 // Model is a standalone Bubble Tea install flow.
 type Model struct {
-	rootDir       string
-	configuring   bool
+	rootDir     string
+	configuring bool
+	// upgrading adopts this build's definitions; upgradeFrom is the version it replaces.
+	upgrading   bool
+	upgradeFrom string
+	// pending is the upgrade request started on open, returned once by Init.
+	pending       tea.Cmd
 	scroll        int
 	width, height int
 	step          Step
@@ -136,8 +143,19 @@ func New(rootDir string) Model {
 	return m
 }
 
-// Init has no startup work.
-func (Model) Init() tea.Cmd { return nil }
+// NewUpgrade creates the upgrade flow: the request is the authorization, so
+// it executes at once unless a file first needs the user's decision.
+func NewUpgrade(rootDir string) Model {
+	m := New(rootDir)
+	m.upgrading, m.upgradeFrom = true, setup.InstalledVersion(rootDir)
+	if m.step == StepReview && m.previewErr == nil {
+		m.pending = m.start()
+	}
+	return m
+}
+
+// Init starts the upgrade an open requested; other flows have no startup work.
+func (m Model) Init() tea.Cmd { return m.pending }
 
 // Run exposes the flow's action state so the shell gates quit and cancel.
 func (m Model) Run() runtime.Run { return m.run }
@@ -390,9 +408,17 @@ func installConflictsConfirm(m *Model) (Step, tea.Cmd) {
 	if _, blocked := m.blocked(); blocked {
 		return StepConflicts, nil
 	}
+	if m.upgrading {
+		// The decisions were the only input the upgrade needed.
+		return StepReview, m.start()
+	}
 	return StepReview, nil
 }
 func installReviewConfirm(m *Model) (Step, tea.Cmd) {
+	if m.previewErr != nil && m.upgrading {
+		// An unresolved plan is resolved again before anything runs.
+		return m.preparePlan(), nil
+	}
 	if m.reviewActions()[m.cursor] == actionPersonalize {
 		m.setupCustom = true
 		return StepComponents, nil
@@ -422,7 +448,7 @@ func installReviewBack(m *Model) (Step, tea.Cmd) {
 // installConflictsBack returns to the checklist when Personalize led here,
 // otherwise leaves the flow: conflicts are then its first step.
 func installConflictsBack(m *Model) (Step, tea.Cmd) {
-	if m.setupCustom && !m.configuring {
+	if m.setupCustom && !m.configuring && !m.upgrading {
 		return StepComponents, nil
 	}
 	return StepConflicts, func() tea.Msg { return ui.BackMsg{} }
@@ -480,6 +506,9 @@ func (m *Model) start() tea.Cmd {
 		RootDir:    m.rootDir,
 		Components: m.componentNames(),
 	}
+	if m.upgrading {
+		request.Action = runtime.ActionUpgrade
+	}
 	for _, conflict := range m.keptConflicts() {
 		request.PreservePaths = append(request.PreservePaths, conflict.Path)
 	}
@@ -492,6 +521,10 @@ func (m *Model) start() tea.Cmd {
 
 // reviewActions lists the review screen's commit actions in order.
 func (m Model) reviewActions() []string {
+	if m.upgrading {
+		// Choices are the recorded ones: an upgrade never personalizes.
+		return []string{actionUpgrade}
+	}
 	if m.previewErr != nil {
 		return []string{actionPersonalize}
 	}
@@ -541,7 +574,10 @@ func (m Model) customChoiceRows() int {
 // Title identifies the task and current step for the stable header region.
 func (m Model) Title() string {
 	task := ui.TextTitleInstall
-	if m.configuring {
+	switch {
+	case m.upgrading:
+		task = ui.TextTitleUpgrade
+	case m.configuring:
 		task = ui.TextTitleConfigure
 	}
 	step := map[Step]string{StepComponents: ui.TextStepComponents, StepConflicts: ui.TextStepExisting, StepReview: ui.TextStepReview, StepResult: ui.TextStepResult}[m.step]
@@ -557,6 +593,9 @@ func (m Model) View() tea.View {
 	switch {
 	case m.run.Busy():
 		operation := map[bool]string{false: ui.TextBusyInstallation, true: ui.TextBusyConfiguration}[m.configuring]
+		if m.upgrading {
+			operation = ui.TextBusyUpgrade
+		}
 		frame.Body, frame.Footer = ui.Busy(operation, m.run.SpinView(), m.run.ProgressView()), ui.BusyFooter(m.run.CancelRequested)
 	case m.step == StepConflicts:
 		frame.Body = m.conflictsBody()
@@ -864,7 +903,10 @@ func (m Model) resultBody() string {
 
 func (m Model) resultError(err error) string {
 	retry := ui.TextRetryInstall
-	if m.configuring {
+	switch {
+	case m.upgrading:
+		retry = ui.TextRetryUpgrade
+	case m.configuring:
 		retry = ui.TextRetryApply
 	}
 	return ui.Status(ui.StateFailed, err.Error()) + "\n\n" + theme.Label.Render(retry)
@@ -873,7 +915,10 @@ func (m Model) resultSuccess() string {
 	harness := ui.OpenCodeLabel
 	var b strings.Builder
 	message := fmt.Sprintf(ui.TextInstalledForFmt, harness)
-	if m.configuring {
+	switch {
+	case m.upgrading:
+		message = fmt.Sprintf(ui.TextUpgradedFmt, cmp.Or(m.upgradeFrom, ui.TextVersionUnrecorded), setup.BuildVersion)
+	case m.configuring:
 		message = fmt.Sprintf(ui.TextUpdatedForFmt, harness)
 	}
 	b.WriteString(ui.Status(ui.StateSuccess, message) + "\n")

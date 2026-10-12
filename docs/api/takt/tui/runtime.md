@@ -121,6 +121,8 @@ const (
     ActionCorrectDrift Action = "correct-drift"
     // ActionReassignModels updates one target's overrides so unchanged agents stay untouched.
     ActionReassignModels Action = "reassign-models"
+    // ActionUpgrade adopts this build's definitions with the recorded choices, distinct from drift correction.
+    ActionUpgrade Action = "upgrade"
 )
 ```
 
