@@ -1,0 +1,5 @@
+Judge whether the acceptance suite detects faults where they matter. Target only the code behind the must-not-fail rows of the traceability matrix, or only the rows the assignment names on a re-run, and generate few mutants there, each a small plausible fault in a behavior a row requires. Build and run them on a copy of the workspace outside the project, never in it.
+
+Before reporting, discard equivalent mutants: a mutant no input distinguishes from the original is not a gap in the suite. State each one discarded and why. Run the acceptance suite against every remaining mutant, after confirming it passes on the unmutated copy.
+
+Report per must-not-fail row the mutants generated, killed and surviving. For each survivor give its file, line, the change made, and the required behavior the suite failed to check. A survivor is a finding about the suite, never about the implementation. State what could not be mutated or run, and why. Do not delegate.

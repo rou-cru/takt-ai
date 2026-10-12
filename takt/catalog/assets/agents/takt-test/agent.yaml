@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+description: Write acceptance and contract tests blind, from specifications and frozen
+  contracts.
+id: takt-test
+label: test
+instances:
+- test
+vfs_capabilities:
+  test: [bind, write, read, delete]
+role: execution
+skills:
+- takt-memory-contract
+- takt-memory-test
+- takt-vfs-mutation

@@ -216,7 +216,9 @@ Five properties. Each is checkable by looking at the graph.
    between siblings means the cut was by layer; return to Decomposition and re-cut it.
 3. **Every edge is justified against a named node, never against "what came before".** In
    the moment waves are treated as phases, implicit barriers appear and cost whole lanes for
-   nothing. A test task depends on the one node whose files it reads, not on the wave. The
+   nothing. A test task depends on the one node whose files it reads, not on the wave; a blind
+   test-author node consumes only frozen contracts and the traceability matrix, never in-flight
+   implementation, so it shares the wave of the code it tests. The
    tail fan-in is the sole exception: by Rule 5 it depends on all implementation nodes by
    definition. No other node may.
 4. **Exactly one fan-in per validated milestone, at its tail.** Global serialization is paid once
@@ -328,8 +330,10 @@ The following is an available route, not a procession required of every change:
    to each author key of the phase, and Takt consolidates a passing author's work with
    `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
    left dead; it runs no checks. Executable acceptance runs in a Verify unit on the
-   materialized workspace after writers finish. Check the integrated outcome, not merely
-   completed nodes.
+   materialized workspace after writers finish; with a test plan, the tail continues as
+   `takt-test-strategy` states: the mutation, explorer and quality nodes the plan selects, then
+   a closing Verify node that consumes their reports and records the test completion report.
+   Check the integrated outcome, not merely completed nodes.
 
 ---
 

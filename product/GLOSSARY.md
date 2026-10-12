@@ -43,6 +43,7 @@ requirements live in the documents listed in `INDEX.md`.
 | **canonical version** | The reference definition distributed by Takt for an identified version. |
 | **restore / sync** | Recover canonical content in an explicit scope; not necessarily undoing the last operation or resetting the full installation. `sync` is conceptual vocabulary here, not a declaration of CLI syntax. |
 | **drift** | Divergence between an installed managed asset and the definition expected for its installed version and the user's selected configuration. Drift is a factual observation: it carries no judgment about whether the change was intentional, valid, or wanted. |
+| **version drift** | Drift of a whole installation: its installed version differs from the running build, so every managed asset's expected definition may have changed even where its content matches what was installed. Detected by the drift check alongside asset drift; resolved by upgrade, never by drift correction. |
 | **drift correction** | Restoring affected managed assets to the definition expected for their installed version. Distinct from upgrade. |
 | **upgrade** | Adopting a newer version of installed capabilities. Distinct from drift correction (`PRD_INSTALLATION`). |
 | **operation completion** | Whether the approved changes were applied. Reported separately from functional readiness. |
@@ -97,7 +98,23 @@ requirements live in the documents listed in `INDEX.md`.
 | **VFS** | The virtual file system that stages agents' file mutations, enforces exclusive ownership, and consolidates onto disk, leaving the physical filesystem untouched until consolidation (`PR-VFS-STG-1`, `PR-VFS-STG-2`). |
 | **work unit** | The unit of work the orchestrator dispatches to an agent under a contract, and the unit the DAG and the execution history record (`PR-CRW-5`, `PR-DAG-REP-3`). |
 
-## 5. Release Scope Vocabulary
+## 5. Quality and Testing
+
+| Term | Definition |
+| :--- | :--- |
+| **blind test authorship** | Writing acceptance and contract tests (Q2) from the specification, frozen contracts, and traceability matrix, never from the implementation; the implementer's in-flight files stay outside the test author's reach through file ownership (`PR-QA-12`). |
+| **Definition of Done (DoD)** | The conditions an objective must meet to count as complete. The strategy sets the baseline, the test policy carries the workspace default, and a test plan may only tighten it (`PR-QA-5`, `PR-QA-6`). |
+| **environment requirements** | The services, data, configuration, and platforms a test plan needs beyond what the repository already runs; authored only when that environment is non-trivial (`PR-QA-8`). |
+| **mutant** | A deliberate small fault introduced into a copy of the code to check whether the tests detect it. A **surviving mutant** is one no test detects; an **equivalent mutant** behaves identically to the original and is discarded (`PR-QA-15`). |
+| **organizational test strategy** | The test strategy Takt AI governs for every workspace, in place of an organization's universal one; defined once in `takt-test-strategy` (`PR-QA-1`). |
+| **requirements traceability matrix (RTM)** | The per-objective table linking each requirement to its test condition, must-not-fail marking, owning DAG node, and evidence, each column with one author, extended only by supplementing entries (`PR-QA-9`, `PR-QA-10`). |
+| **test completion report** | The record of testing performed, deviations, completion evaluation, residual risk, reusable assets, and lessons, made by the Verify node that closes the objective's acceptance; distinct from the orchestrator's user-facing completion report (`PR-QA-19`). |
+| **test oracle** | What decides whether a test's outcome is correct. A Q2 test is an immutable oracle for the implementer (`PR-QA-13`). |
+| **test plan** | The per-objective statement of chosen quadrants, test levels, entry and exit criteria, must-not-fail risks, and effective Definition of Done (`PR-QA-7`). |
+| **test policy** | The single per-workspace adaptation of the organizational test strategy to the project, held in the Workspace Tier and carrying its default Definition of Done (`PR-QA-6`). |
+| **testing quadrant** | One of four classes of testing by orientation (technology- or business-facing) and purpose (supporting the team or critiquing the product), Q1 to Q4, each with one owning specialty (`PR-QA-2`). |
+
+## 6. Release Scope Vocabulary
 
 | Term | Definition |
 | :--- | :--- |

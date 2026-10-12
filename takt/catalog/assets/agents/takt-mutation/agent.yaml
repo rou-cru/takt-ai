@@ -1,0 +1,16 @@
+context:
+  operations: OPERATIONS.md
+description: Judge whether acceptance tests detect targeted faults behind must-not-fail requirements.
+id: takt-mutation
+label: mutation
+instances:
+- mutation
+vfs_capabilities:
+  mutation: [bind, read, verify]
+role: verification
+skills:
+- takt-memory-contract
+- takt-memory-mutation
+- takt-result-handoff
+- takt-verification-conduct
+- takt-vfs-verification

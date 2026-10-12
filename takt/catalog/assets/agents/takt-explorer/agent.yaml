@@ -1,0 +1,16 @@
+context:
+  operations: OPERATIONS.md
+description: Explore the delivered product as its user would, in chartered sessions.
+id: takt-explorer
+label: explorer
+instances:
+- explorer
+vfs_capabilities:
+  explorer: [bind, read, verify]
+role: verification
+skills:
+- takt-memory-contract
+- takt-memory-explorer
+- takt-result-handoff
+- takt-verification-conduct
+- takt-vfs-verification

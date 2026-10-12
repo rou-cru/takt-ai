@@ -9,14 +9,15 @@ metadata:
 
 # Takt Invariant Planning
 
-Orders the planning lanes (analyst, pm, product-designer, architect, spec) that generate the
+Orders the planning lanes (analyst, pm, product-designer, architect, spec, qa) that generate the
 invariants before implementation. It governs only these lanes, never implementation nodes.
 Work through the states in order; each names the condition that ends it, and a state is left
 only once that condition holds.
 
 ## 1. Assess
 
-For each invariant the objective needs (intent, facts, experience, structure, behavior),
+For each invariant the objective needs (intent, facts, experience, structure, behavior, and,
+when QA is planned, the workspace test policy, the test plan and the traceability matrix),
 classify it from the evidence at hand: **settled** (existing, approved, validated — no lane),
 **to refine** (a lane consumes the existing entry and revises it), or **to generate** (a lane
 authors it). Ends when every needed invariant is classified; "probably settled" is not a class.
@@ -28,7 +29,9 @@ requirements are settled only when an artifact of equivalent rigor holds them.
 Each invariant to generate or refine has its owner: pm for requirements formalization, analyst
 for objective facts that are unknown and recoverable, product-designer for experience rules,
 architect for structure and technology, spec for observable behavior when the objective needs
-it formalized. Ends when the lane set is fixed. A single unit is bounded specialist work and
+it formalized, qa for the test policy, test plan, traceability matrix and environment
+requirements when QA is planned. Ends when the lane set is fixed. Apart from qa as the only lane over a settled
+specification, a single unit is bounded specialist work and
 leaves this skill: return control to Takt with that reason for reevaluation. This does not authorize direct execution or replacing the specialist's
 judgment with Takt's. Whenever the evidence shows this route does not fit, likewise return
 control with the reason, evidence, and constraints preserved.
@@ -53,6 +56,7 @@ another's result. A lane started before its input exists guesses it.
   investigate.
 - designer and architect are independent unless one's decisions constrain the other; both
   feed spec as strict invariants.
+- qa follows spec, consuming it and pm's must-not-fail items; the plan then ends `S → Q`.
 - Lanes whose inputs are all available form one concurrent round within the
   {{policy.concurrent_specialists}}-specialist ceiling.
 
@@ -73,7 +77,7 @@ every lane of a round in the same response. Ends when every lane has delivered.
 When a round returns, compare its documents with each other. On a contradiction, decide which
 stands (the one backed by the user's directive or verified facts) and re-dispatch only the other
 lane with its original document, its first result, the standing document and the contradiction.
-When neither is backed, the conflict stays disputed: how many lanes consume a document is not
+Between qa and spec, spec stands for behavior. When neither is backed, the conflict stays disputed: how many lanes consume a document is not
 evidence, so ask the user or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
 of one conflict: escalate. Ends when no contradiction remains open; planning is then complete. Return the delivered invariants to Takt to evaluate development
 against the updated evidence, not to regenerate them.

@@ -95,7 +95,7 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 			if !slices.Contains(spec.Skills, "takt-memory-contract") || effectOf(rules, "skill", "takt-memory-contract") == "deny" {
 				t.Error("missing accessible takt-memory-contract")
 			}
-			producer := slices.Contains([]string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"}, spec.ID)
+			producer := spec.Role == model.RolePlanningAuthor || spec.Role == model.RoleDirectInterlocutor
 			// Verification instances deliver their report through the same handoff.
 			for skill, owner := range map[string]bool{
 				"takt-handoff":        producer,

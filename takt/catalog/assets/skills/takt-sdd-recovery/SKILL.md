@@ -43,6 +43,7 @@ which retries in place without this protocol.
 3. **Escalate:** structural/interface failure → `architect`; behavioral/acceptance
    failure → `spec`; experience/identity failure → `product-designer`; scope
    tradeoff → PM and the user. Provide the failed task ID, evidence, and contract segment.
+   Testing outcomes route by the oracle rules of `takt-test-strategy`.
 4. **Contract delta & re-index:** the owner emits a contract delta, naming the exact prior
    version it replaces and what it adds or retires; TPM revises affected task decomposition
    if needed. Takt alone restructures the sub-DAG, commits the revised plan with

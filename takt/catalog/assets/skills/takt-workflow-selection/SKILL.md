@@ -25,11 +25,14 @@ reason and evidence, in view.
    - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
      updated evidence. Invariant planning stands on its own; when SDD follows it, its plan
-     ends with Spec, whose specifications feed TPM, SDD's first node.
+     ends with Spec, or with Spec and the test plan when QA was planned, which feed TPM, SDD's
+     first node.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
      Engram entry holds it and agrees with the repository; it is missing when no such entry
      exists, and to refine when the objective changes what the entry holds. A specification is
-     also settled when a repository artifact of equivalent rigor holds it.
+     also settled when a repository artifact of equivalent rigor holds it. While QA is planned,
+     the test plan and traceability matrix are required invariants: a settled specification
+     without a test plan goes to `takt-invariant-planning` with qa as the only lane.
 3. **Is development still needed?**
    - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
      to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.

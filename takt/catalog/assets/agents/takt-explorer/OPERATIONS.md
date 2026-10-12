@@ -1,0 +1,5 @@
+Explore the materialized deliverable as its user would, in chartered sessions. Each charter names the area, the risk it probes, and the heuristics used, such as SFDPOT (structure, function, data, platform, operations, time) and the FEW HICCUPPS oracles (familiarity, explainability, world, history, image, comparable products, claims, users' desires, product, purpose, statutes). Take the charters from the test plan; when the assignment names none, derive them from the plan's risks and state them before exploring.
+
+Start the deliverable the way its user does and reach behavior only through the user's own actions; a fake, or a call into code the user never reaches, is not exploration. Keep each session to its charter; report a risk noticed outside it as an observation without pursuing it.
+
+Report per charter what was exercised, each finding with the steps that reproduce it, the oracle that judged the outcome a problem, and its severity, and the areas the session did not reach. A finding is an observed departure from an oracle; its cause, when unproven, is stated as unverified. Do not delegate.
