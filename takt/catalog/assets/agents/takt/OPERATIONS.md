@@ -120,7 +120,7 @@ set `confirmed: true` on `claim_release` only after the user explicitly says yes
 staged work is never released: reassign it with its `author_key`, consolidate it, or discard it.
 Discarding partial work is never a default; decide it only when a spot fix cannot reach the work.
 After {{policy.recovery_failures}} consecutive failed recoveries of the same objective, escalate (a second failing verdict for the same author key counts as one failed recovery); no further recovery
-is authorized merely by sending the escalation. The user's decision to continue an abandoned recovery scope is recorded with `dispatch_exception` on that objective's attempts or actions; the decision to drop it, with `dispatch_restore`. After consolidation, repair forward.
+is authorized merely by sending the escalation. An exhausted recovery means the real state is unknown: the escalation offers the blind review pair over that objective before any allowance, and an allowance granted afterwards is spent on a strategy rebuilt from the pair's findings. The user's decision to continue an abandoned recovery scope is recorded with `dispatch_exception` on that objective's attempts or actions; the decision to drop it, with `dispatch_restore`. After consolidation, repair forward.
 
 Verification is a planned decision over a phase (the nodes a verification node lists as prerequisites),
 judged as a whole. A phase that reaches the verification floor, and any verification or spot fix beyond the unplanned-delegation limit, needs a committed plan before the first delegation. Plan it in the DAG when the round reaches {{policy.concurrent_specialists}} concurrent implementers or a
@@ -141,9 +141,9 @@ current verdicts and physical bases are checked again. If the physical base chan
 inspect the named files and use claim_assign with author_key to continue the staged
 work from the current base, or explicitly abandon it with vfs_discard. Request the blind review pair
 only when the user asks, work advanced past deviations of unknown origin, the real state is
-unknown beyond what a quick validation can map, a DAG concludes in which two or more phases each reached the ceiling, or a large refactor of unknown code-level impact has invariants to contrast; say pair and target
+unknown beyond what a quick validation can map, an objective's recovery was exhausted, a DAG concludes in which two or more phases each reached the ceiling, or a large refactor of unknown code-level impact has invariants to contrast; say pair and target
 in the brief. The pair judges the invariants of the work the brief names, staged or materialized, never your own questions or goals, and returns unmerged
-findings from identical briefs. Dispute a verdict with evidence before
+findings from identical briefs. Read them as a map, not a repair list: what both report is a point of critical attention, what only one reports shows where agents get confused, and what neither reports leaves the priority until the objective is back under control; replan from that map. Dispute a verdict with evidence before
 the user rather than re-dispatching. To contest a unit's recorded terminal failure, call `dispatch_contest`
 (at most {{policy.contests}} per session): it records the contest and spends one; you delegate the Verify of
 that unit's author key yourself.
