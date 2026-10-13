@@ -435,25 +435,29 @@ func TestShortTerminalNeverClipsARuleAtTheEdge(t *testing.T) {
 				rows = append(rows, trimmed)
 			}
 		}
-		if first, last := rows[len(rows)-1], rows[1]; strings.Trim(first, "─") == "" || strings.Trim(last, "─") == "" {
+		if first, last := rows[1], rows[len(rows)-1]; strings.Trim(first, "─") == "" || strings.Trim(last, "─") == "" {
 			t.Fatalf("rule at the window edge:\n%s", body(p))
 		}
 	}
 }
 
-// Models from different providers that share a name keep their provider;
-// otherwise no provider prefix repeats down the model column.
+// Models from different providers that share a name keep their provider, and
+// models of one provider that share a name show their id; otherwise no
+// provider prefix repeats down the model column.
 func TestModelColumnDropsTheProviderUnlessNamesCollide(t *testing.T) {
 	p := modelpicker.New()
-	p.Available = []string{"a/one", "b/two", "a/same", "b/same"}
-	p.Names = map[string]string{"a/one": "One", "b/two": "Two", "a/same": "Same", "b/same": "Same"}
+	p.Available = []string{"a/one", "b/two", "a/same", "b/same", "a/x", "a/y"}
+	p.Names = map[string]string{"a/one": "One", "b/two": "Two", "a/same": "Same", "b/same": "Same", "a/x": "Dup", "a/y": "Dup"}
 	p.Providers = map[string]string{"a": "Alpha", "b": "Beta"}
-	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "a/one"}, "dev": {Model: "b/same"}})
+	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "a/one"}, "dev": {Model: "b/same"}, "fix": {Model: "a/y"}})
 	view := body(p)
 	if !rowShows(view, "Analyst", "One") || strings.Contains(view, "a/one") {
 		t.Fatalf("model shown with its provider prefix:\n%s", view)
 	}
 	if !rowShows(view, "Developer", "Same · Beta") {
 		t.Fatalf("colliding names lost their provider:\n%s", view)
+	}
+	if !rowShows(view, "Bug-Fixer", " y") || strings.Contains(view, "Dup") {
+		t.Fatalf("names colliding within one provider not told apart:\n%s", view)
 	}
 }

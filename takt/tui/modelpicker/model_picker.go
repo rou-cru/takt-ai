@@ -328,7 +328,7 @@ func (p Model) Pending() []Change {
 	for _, agent := range p.agents {
 		before, after := p.base[agent.Name], p.overrides[agent.Name]
 		if before != after {
-			changes = append(changes, Change{Agent: p.displayName(agent.Name), From: p.assignmentLabel(before), To: p.assignmentLabel(after)})
+			changes = append(changes, Change{Agent: agent.Display, From: p.assignmentLabel(before), To: p.assignmentLabel(after)})
 		}
 	}
 	return changes
@@ -460,7 +460,7 @@ func (p Model) footer() string {
 func (p Model) assignmentsView() string {
 	width := lipgloss.Width(ui.TextPickerAllAgents)
 	for _, agent := range p.agents {
-		width = max(width, lipgloss.Width(p.displayName(agent.Name)))
+		width = max(width, lipgloss.Width(agent.Display))
 	}
 	row := func(name, marker, value string) string {
 		return name + strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + marker + value
@@ -477,33 +477,29 @@ func (p Model) assignmentsView() string {
 		allValue = value(shared)
 	}
 	rows := make([]string, 0, len(p.agents))
-	ruleAt := make([]bool, 0, len(p.agents))
-	cursorRow := 0
-	for index, agent := range p.agents {
-		if index > 0 && agent.Group != p.agents[index-1].Group {
-			rows, ruleAt = append(rows, ""), append(ruleAt, true)
-		}
-		if index == p.cursor-1 {
-			cursorRow = len(rows)
-		}
+	for _, agent := range p.agents {
 		marker := unchangedMark
 		if p.overrides[agent.Name] != p.base[agent.Name] {
 			marker = ui.TextPickerChangedMark
 		}
-		rows, ruleAt = append(rows, row(p.displayName(agent.Name), marker, value(p.overrides[agent.Name]))), append(ruleAt, false)
+		rows = append(rows, row(agent.Display, marker, value(p.overrides[agent.Name])))
 	}
 	// A rule is as wide as the table's widest row, so it ends where the table does.
 	ruleWidth := lipgloss.Width(row(ui.TextPickerAllAgents, unchangedMark, allValue))
-	for index, text := range rows {
-		if !ruleAt[index] {
-			ruleWidth = max(ruleWidth, lipgloss.Width(text))
-		}
+	for _, text := range rows {
+		ruleWidth = max(ruleWidth, lipgloss.Width(text))
 	}
 	rule := theme.Caption.Render(strings.Repeat(groupRule, ruleWidth))
-	for index := range rows {
-		if ruleAt[index] {
-			rows[index] = rule
+	table := make([]string, 0, len(rows)+len(catalog.AgentGroups))
+	cursorRow := 0
+	for index, text := range rows {
+		if index > 0 && p.agents[index].Group != p.agents[index-1].Group {
+			table = append(table, rule)
 		}
+		if index == p.cursor-1 {
+			cursorRow = len(table)
+		}
+		table = append(table, text)
 	}
 	focused := p.focus == ui.SectionBody
 	// All agents stands apart from the specialists it assigns to.
@@ -513,15 +509,15 @@ func (p Model) assignmentsView() string {
 	}
 	var b strings.Builder
 	b.WriteString(ui.Options([]string{row(ui.TextPickerAllAgents, unchangedMark, allValue)}, allCursor, focused) + "\n")
-	start, end, overflow := p.windowBounds(len(rows), cursorRow, assignmentListOverhead+allAgentsOverhead+resetHintOverhead)
+	start, end, overflow := p.windowBounds(len(table), cursorRow, assignmentListOverhead+allAgentsOverhead+resetHintOverhead)
 	// A rule cut off at either edge of the window would separate nothing.
-	for start < end && ruleAt[start] {
+	for start < end && table[start] == rule {
 		start++
 	}
-	for end > start && ruleAt[end-1] {
+	for end > start && table[end-1] == rule {
 		end--
 	}
-	b.WriteString(strings.TrimSuffix(ui.Options(rows[start:end], cursorRow-start, focused && p.cursor > 0), "\n"))
+	b.WriteString(strings.TrimSuffix(ui.Options(table[start:end], cursorRow-start, focused && p.cursor > 0), "\n"))
 	if overflow {
 		b.WriteString("\n" + theme.Caption.Render(fmt.Sprintf(ui.TextPickerPosFmt, p.cursor+1, len(p.agents)+1)))
 	}
@@ -569,29 +565,45 @@ func (p Model) assignmentLabel(assignment model.ModelAssignment) string {
 }
 
 // modelLabel names a model by its display name without the provider prefix the
-// provider tabs already carry. Models from different providers that share a
-// name keep their provider so the two stay distinguishable.
+// provider tabs already carry. A name shared within the provider falls back to
+// the model id, and a name shared across providers keeps the provider, so every
+// label stays distinguishable.
 func (p Model) modelLabel(ref string) string {
-	name := p.shortName(ref)
+	name, provider := p.shortName(ref), providerOf(ref)
+	sameProvider, otherProvider := false, false
 	for _, other := range p.Available {
-		if other != ref && p.shortName(other) == name {
-			return name + ui.TextListSeparator + p.providerLabel(providerOf(ref))
+		if other == ref || p.shortName(other) != name {
+			continue
 		}
+		if providerOf(other) == provider {
+			sameProvider = true
+		} else {
+			otherProvider = true
+		}
+	}
+	if sameProvider {
+		name = modelID(ref)
+	}
+	if otherProvider {
+		name += ui.TextListSeparator + p.providerLabel(provider)
 	}
 	return name
 }
 
-// shortName is a model's display name, or the part of its reference after the
-// provider when OpenCode gives none.
+// shortName is a model's display name, or its id when OpenCode gives none.
 func (p Model) shortName(ref string) string {
 	if name := p.Names[ref]; name != "" {
 		return name
 	}
-	_, id, found := strings.Cut(ref, "/")
-	if !found {
-		return ref
+	return modelID(ref)
+}
+
+// modelID is the part of a model reference after the provider.
+func modelID(ref string) string {
+	if _, id, found := strings.Cut(ref, "/"); found {
+		return id
 	}
-	return id
+	return ref
 }
 
 // defaultLabel names what an agent without an assigned model runs.
