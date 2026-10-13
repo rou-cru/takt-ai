@@ -35,12 +35,6 @@ const (
 	ComponentCodegraph ComponentID = "codegraph"
 )
 
-// CanonicalSubAgent names one specialist of the crew every adapter configures.
-type CanonicalSubAgent struct {
-	// Name identifies the specialist, stable so assignments can match by name.
-	Name string
-}
-
 // InjectionResult reports what an inject or remove changed so callers can record ownership and show honest summaries.
 type InjectionResult struct {
 	// Changed flags whether any file changed, so callers can skip redundant bookkeeping.

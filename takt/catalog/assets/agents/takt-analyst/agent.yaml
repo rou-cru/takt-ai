@@ -4,6 +4,9 @@ description: Reduce uncertainty through codebase research, evidence, and compare
   alternatives.
 id: takt-analyst
 label: analyst
+group: planning
+display_names:
+  analyst: Analyst
 instances:
 - analyst
 vfs_capabilities:

@@ -4,6 +4,9 @@ description: Implement cleanup that removes duplication, dead code, and structur
   complexity without changing behavior.
 id: takt-simplify
 label: simplify
+group: building
+display_names:
+  simplify: Simplifier
 instances:
 - simplify
 vfs_capabilities:

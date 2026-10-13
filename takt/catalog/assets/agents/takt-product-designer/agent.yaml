@@ -5,6 +5,9 @@ context:
 description: Define coherent, accessible, feasible UI/UX and developer experiences.
 id: takt-product-designer
 label: design
+group: planning
+display_names:
+  product-designer: Product-Designer
 instances:
 - product-designer
 vfs_capabilities:

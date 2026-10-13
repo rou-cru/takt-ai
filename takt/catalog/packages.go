@@ -26,6 +26,12 @@ type ContextFiles struct {
 	Operations string `yaml:"operations"`
 }
 
+// AgentGroup is the logical block an agent is listed under.
+type AgentGroup string
+
+// AgentGroups lists every group in presentation order.
+var AgentGroups = []AgentGroup{"orchestrator", "planning", "building", "testing", "review"}
+
 // AgentDefinition retains references until the target adapter composes its
 // prompt. VFS grants are always declared separately by exact instance ID.
 type AgentDefinition struct {
@@ -36,6 +42,10 @@ type AgentDefinition struct {
 	// Label is the short name every instance shows where space is scarce,
 	// such as the DAG sidebar's completed row.
 	Label string `yaml:"label"`
+	// DisplayNames names every instance for people, where the id is internal.
+	DisplayNames map[string]string `yaml:"display_names"`
+	// Group is the logical block the agent belongs to wherever agents are listed.
+	Group AgentGroup `yaml:"group"`
 	// VFSGrants declares an explicit VFS capability list for every instance ID.
 	// Grants never inherit from the definition or role.
 	VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
@@ -259,6 +269,8 @@ func loadSkills(fsys fs.FS, files pkgFiles) ([]SkillPackage, error) {
 	return skills, nil
 }
 
+// loadAgents loads every agent definition under agents/, each claiming its
+// instance ids exclusively.
 func loadAgents(fsys fs.FS, files pkgFiles, skills []SkillPackage) ([]AgentDefinition, error) {
 	dirs, err := fs.ReadDir(fsys, "agents")
 	if err != nil {
@@ -303,6 +315,9 @@ func loadAgent(files pkgFiles, id string, skills, instances map[string]bool) (Ag
 	if err := claimInstances(a, instances); err != nil {
 		return a, err
 	}
+	if err := validateListing(a); err != nil {
+		return a, err
+	}
 	if err := validateVFSCapabilities(a); err != nil {
 		return a, err
 	}
@@ -324,6 +339,8 @@ func validAgentDefinition(a AgentDefinition, id string) bool {
 		packageID.MatchString(a.Label) && len(a.Label) <= maxAgentLabelWidth
 }
 
+// claimInstances records a's instance ids, refusing invalid ids and ids
+// another agent already claimed.
 func claimInstances(a AgentDefinition, instances map[string]bool) error {
 	for _, instance := range a.Instances {
 		if !packageID.MatchString(instance) || instances[instance] {
@@ -334,6 +351,30 @@ func claimInstances(a AgentDefinition, instances map[string]bool) error {
 	return nil
 }
 
+// validateListing requires a known group and a display name for exactly the
+// declared instances, so no list ever falls back to an internal id.
+func validateListing(a AgentDefinition) error {
+	if !slices.Contains(AgentGroups, a.Group) {
+		return fmt.Errorf("agent %q: unknown group %q", a.ID, a.Group)
+	}
+	for name, display := range a.DisplayNames {
+		if !slices.Contains(a.Instances, name) {
+			return fmt.Errorf("agent %q display names declare undeclared instance %q", a.ID, name)
+		}
+		if strings.TrimSpace(display) == "" {
+			return fmt.Errorf("agent instance %q: empty display name", name)
+		}
+	}
+	for _, instance := range a.Instances {
+		if a.DisplayNames[instance] == "" {
+			return fmt.Errorf("agent instance %q: missing display name", instance)
+		}
+	}
+	return nil
+}
+
+// validateVFSCapabilities requires a known VFS grant for exactly the declared
+// instances.
 func validateVFSCapabilities(a AgentDefinition) error {
 	for instance, capabilities := range a.VFSGrants {
 		if !slices.Contains(a.Instances, instance) {

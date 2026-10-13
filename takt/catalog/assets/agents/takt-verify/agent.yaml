@@ -4,6 +4,9 @@ description: Independently assess reference invariants, staged gates, and execut
   acceptance.
 id: takt-verify
 label: verify
+group: review
+display_names:
+  verify: Verifier
 instances:
 - verify
 vfs_capabilities:

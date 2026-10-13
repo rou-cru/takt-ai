@@ -5,6 +5,9 @@ context:
 description: Define product intent, value, scope, priorities, and measurable success.
 id: takt-pm
 label: pm
+group: planning
+display_names:
+  pm: Product-Manager
 instances:
 - pm
 vfs_capabilities:

@@ -32,32 +32,47 @@ func typeText(p *modelpicker.Model, text string) {
 
 func body(p modelpicker.Model) string { return ansi.Strip(p.Frame().Body) }
 
-// agentNames lists the deployed specialist instances in picker order.
-func agentNames(t *testing.T) []string {
+// displayNames maps each deployed specialist instance to its catalog name.
+func displayNames(t *testing.T) map[string]string {
 	t.Helper()
 	loaded, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
+	names := map[string]string{}
 	for _, def := range loaded.Agents {
-		names = append(names, def.Instances...)
+		for _, instance := range def.Instances {
+			names[instance] = def.DisplayNames[instance]
+		}
 	}
 	return names
 }
 
-// focusAgent moves the assignment list's cursor to name; row 0 is All agents.
+// focusAgent moves the assignment list's cursor to the row of instance name,
+// whatever order the picker lists agents in.
 func focusAgent(t *testing.T, p *modelpicker.Model, name string) bool {
 	t.Helper()
-	for index, agent := range agentNames(t) {
-		if agent == name {
-			for range index + 1 {
-				p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-			}
+	display, ok := displayNames(t)[name]
+	if !ok {
+		return false
+	}
+	for range displayNames(t) {
+		p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		if strings.HasPrefix(focusedRow(body(*p)), display+" ") {
 			return true
 		}
 	}
 	return false
+}
+
+// focusedRow is the table row under the cursor, marker and padding removed.
+func focusedRow(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if row, ok := strings.CutPrefix(strings.TrimSpace(line), ">"); ok {
+			return strings.TrimSpace(row)
+		}
+	}
+	return ""
 }
 
 // rowShows reports whether a table row lists agent with value in its model
@@ -84,7 +99,7 @@ func TestOpenCodeSearchAcceptsJKAndReturnsRealSelection(t *testing.T) {
 		t.Fatal(body)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if body := body(p); !strings.Contains(body, "> analyst") || !rowShows(body, "analyst", "opencode/big-pickle") {
+	if body := body(p); focusedRow(body) == "" || !rowShows(body, "Analyst", "big-pickle") || strings.Contains(body, "opencode/") {
 		t.Fatalf("selection missing from the assignment list:\n%s", body)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -125,7 +140,7 @@ func TestOrchestratorCanBeAssignedAModel(t *testing.T) {
 	if got := p.SparseOverrides()[shared.OrchestratorID]; got.Model != "provider/orchestrator-model" {
 		t.Fatalf("orchestrator assignment = %#v, want provider/orchestrator-model", got)
 	}
-	if !rowShows(body(p), ui.TextPickerOrchestrator, "provider/orchestrator-model") {
+	if !rowShows(body(p), "Orchestrator", "orchestrator-model") {
 		t.Fatalf("assignment list does not show orchestrator model:\n%s", body(p))
 	}
 }
@@ -194,7 +209,12 @@ func TestInstalledVariantsSurvivePickerVisitsAndUnrelatedChanges(t *testing.T) {
 			p.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 			p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 			p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-			other := p.Detail()
+			other := ""
+			for id, display := range displayNames(t) {
+				if display == p.Detail() {
+					other = id
+				}
+			}
 			typeText(&p, "provider/new")
 			p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			p.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -219,14 +239,14 @@ func TestResetRemovesInstalledModelAndVariant(t *testing.T) {
 	if !focusAgent(t, &p, "analyst") {
 		t.Fatal("analyst missing from assignment targets")
 	}
-	if !strings.Contains(body(p), "reset to OpenCode default") {
+	if !strings.Contains(body(p), "reset to default") {
 		t.Fatalf("reset hint missing on an assigned row:\n%s", body(p))
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if p.Changes() != 1 || p.SparseOverrides()["analyst"] != (model.ModelAssignment{}) {
 		t.Fatalf("reset did not clear the override: %v", p.SparseOverrides())
 	}
-	if view := body(p); !rowShows(view, "analyst", "OpenCode default") || strings.Contains(view, "reset to") {
+	if view := body(p); !rowShows(view, "Analyst", "Default") || strings.Contains(view, "reset to") {
 		t.Fatal(view)
 	}
 }
@@ -248,18 +268,18 @@ func TestAllAgentsAssignsEveryAgentAtOnce(t *testing.T) {
 	p.Available = []string{"provider/shared"}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if p.Changes() != len(agentNames(t)) {
-		t.Fatalf("Changes() = %d, want every agent (%d)", p.Changes(), len(agentNames(t)))
+	if p.Changes() != len(displayNames(t)) {
+		t.Fatalf("Changes() = %d, want every agent (%d)", p.Changes(), len(displayNames(t)))
 	}
-	for _, agent := range agentNames(t) {
+	for agent := range displayNames(t) {
 		if p.SparseOverrides()[agent].Model != "provider/shared" {
 			t.Fatalf("%s not assigned the shared model: %v", agent, p.SparseOverrides())
 		}
 	}
-	if !rowShows(body(p), ui.TextPickerAllAgents, "provider/shared") {
+	if !rowShows(body(p), ui.TextPickerAllAgents, "shared") {
 		t.Fatalf("All agents row does not show the shared model:\n%s", body(p))
 	}
-	if len(p.Pending()) != len(agentNames(t)) {
+	if len(p.Pending()) != len(displayNames(t)) {
 		t.Fatalf("Pending() = %v, want every agent", p.Pending())
 	}
 }
@@ -288,7 +308,7 @@ func TestProviderTabsNarrowTheList(t *testing.T) {
 	p.Providers = map[string]string{"openai": "OpenAI", "opencode": "Default / OpenCode"}
 	p.Height = 6
 	p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if view := body(p); !strings.Contains(view, "OpenAI 2") || !strings.Contains(view, "OpenCode 1") || strings.Contains(view, "Default") || strings.Contains(view, "Gamma") {
+	if view := body(p); !strings.Contains(view, "OpenAI 2") || !strings.Contains(view, "OpenCode 1") || strings.Contains(view, "Default /") || strings.Contains(view, "Gamma") {
 		t.Fatalf("tabs wrong or list not narrowed:\n%s", view)
 	}
 	p.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -365,5 +385,79 @@ func TestDetailShowsOnlyStatedFacts(t *testing.T) {
 	}
 	if view := body(build(60)); strings.Contains(view, "Limits") {
 		t.Fatalf("detail pane drawn without room:\n%s", view)
+	}
+}
+
+// A rule separates each catalog group, never leads or trails the table, and
+// the cursor walks past it from the last agent of one group to the first of the next.
+func TestGroupsAreSeparatedByRulesTheCursorSkips(t *testing.T) {
+	p := modelpicker.New()
+	p.Height = 60
+	lines := strings.Split(body(p), "\n")
+	rules := 0
+	for index, line := range lines {
+		if strings.Trim(strings.TrimSpace(line), "─") != "" {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		rules++
+		if index == 0 || index == len(lines)-1 {
+			t.Fatalf("rule at the table edge:\n%s", body(p))
+		}
+	}
+	if rules != len(catalog.AgentGroups)-1 {
+		t.Fatalf("%d rules, want one between each of %d groups:\n%s", rules, len(catalog.AgentGroups), body(p))
+	}
+	if !focusAgent(t, &p, "test") {
+		t.Fatal("test missing from assignment targets")
+	}
+	p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if row := focusedRow(body(p)); strings.Trim(row, "─") == "" || row == "" {
+		t.Fatalf("cursor landed on a rule or nowhere: %q", row)
+	}
+}
+
+// In a short terminal the window scrolls with the cursor and never shows a
+// rule at its edge.
+func TestShortTerminalNeverClipsARuleAtTheEdge(t *testing.T) {
+	p := modelpicker.New()
+	p.Height = 16
+	for range displayNames(t) {
+		p.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		if focusedRow(body(p)) == "" {
+			t.Fatalf("cursor row not visible:\n%s", body(p))
+		}
+		var rows []string
+		for _, line := range strings.Split(body(p), "\n") {
+			if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.Contains(trimmed, " / ") {
+				rows = append(rows, trimmed)
+			}
+		}
+		if first, last := rows[1], rows[len(rows)-1]; strings.Trim(first, "─") == "" || strings.Trim(last, "─") == "" {
+			t.Fatalf("rule at the window edge:\n%s", body(p))
+		}
+	}
+}
+
+// Models from different providers that share a name keep their provider, and
+// models of one provider that share a name show their id; otherwise no
+// provider prefix repeats down the model column.
+func TestModelColumnDropsTheProviderUnlessNamesCollide(t *testing.T) {
+	p := modelpicker.New()
+	p.Available = []string{"a/one", "b/two", "a/same", "b/same", "a/x", "a/y"}
+	p.Names = map[string]string{"a/one": "One", "b/two": "Two", "a/same": "Same", "b/same": "Same", "a/x": "Dup", "a/y": "Dup"}
+	p.Providers = map[string]string{"a": "Alpha", "b": "Beta"}
+	p.Preload(map[string]model.ModelAssignment{"analyst": {Model: "a/one"}, "dev": {Model: "b/same"}, "fix": {Model: "a/y"}})
+	view := body(p)
+	if !rowShows(view, "Analyst", "One") || strings.Contains(view, "a/one") {
+		t.Fatalf("model shown with its provider prefix:\n%s", view)
+	}
+	if !rowShows(view, "Developer", "Same · Beta") {
+		t.Fatalf("colliding names lost their provider:\n%s", view)
+	}
+	if !rowShows(view, "Bug-Fixer", " y") || strings.Contains(view, "Dup") {
+		t.Fatalf("names colliding within one provider not told apart:\n%s", view)
 	}
 }

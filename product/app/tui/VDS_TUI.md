@@ -188,17 +188,24 @@ Review states what the install sets up in the user's terms, never as file catego
   Takt AI                                           Agents
 
   ┌──────────────────────────────────────────────────────┐
-  │   All agents          [shared model | different models]
-  │   takt                [provider/model]               │
-  │ > analyst             [provider/model]               │
-  │   dev               • [newly chosen provider/model]  │
-  │   judge-a             inherits OpenCode default      │
+  │   All agents            [shared model | different models]
+  │                                                      │
+  │   Orchestrator          [model name]                 │
+  │   ───────────────────────────────────────            │
+  │ > Analyst               [model name]                 │
+  │   Product-Manager     • [newly chosen model name]    │
+  │   ───────────────────────────────────────            │
+  │   Developer             Default                      │
+  │   ───────────────────────────────────────            │
+  │   Test-Planner          Default                      │
+  │   ───────────────────────────────────────            │
+  │   Judge-A               Default                      │
   └──────────────────────────────────────────────────────┘
 
                    ░ Apply changes ░
 ```
 
-`All agents` opens the same model picker and records its choice for every agent as pending; individual rows stay editable before applying. `•` marks agents whose model changes when applied. The table keeps one width whatever row is visible. Choosing a model returns to this draft; `Apply changes` commits every pending assignment in one change. When search owns focus, printable keys write instead of acting as shortcuts.
+Agents carry the catalog's role names, not their ids, and sit in logical blocks — Orchestrator, planning, building, testing, review — separated by a rule the cursor skips. The model column shows each model by its display name without the provider prefix, keeping the provider only when two providers share a name; an agent without an assignment reads muted `Default`. `All agents` opens the same model picker and records its choice for every agent as pending; individual rows stay editable before applying. `•` marks agents whose model changes when applied. The table keeps one width whatever row is visible. Choosing a model returns to this draft; `Apply changes` commits every pending assignment in one change. When search owns focus, printable keys write instead of acting as shortcuts.
 
 ### Execution
 

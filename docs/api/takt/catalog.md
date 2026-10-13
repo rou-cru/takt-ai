@@ -11,6 +11,7 @@ Package catalog is the single declarative source of Takt's installable content: 
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func AssetFS\(\) fs.FS](<#AssetFS>)
 - [func ComponentPurpose\(id model.ComponentID\) string](<#ComponentPurpose>)
 - [func LoadNativeContent\(\) \(map\[string\]NativeSubAgentContent, error\)](<#LoadNativeContent>)
@@ -19,6 +20,7 @@ Package catalog is the single declarative source of Takt's installable content: 
   - [func \(a AgentDefinition\) ComposeText\(fsys fs.FS\) \(string, error\)](<#AgentDefinition.ComposeText>)
   - [func \(a AgentDefinition\) ContextPaths\(\) \[\]string](<#AgentDefinition.ContextPaths>)
   - [func \(a AgentDefinition\) VFSCapabilities\(instanceID string\) \(\[\]model.VFSCapability, bool\)](<#AgentDefinition.VFSCapabilities>)
+- [type AgentGroup](<#AgentGroup>)
 - [type Capabilities](<#Capabilities>)
   - [func LoadCapabilities\(\) \(Capabilities, error\)](<#LoadCapabilities>)
 - [type Capability](<#Capability>)
@@ -46,6 +48,14 @@ const BaselinePath = "shared/BASELINE.md"
 
 ```go
 const SkillFileName = "SKILL.md"
+```
+
+## Variables
+
+<a name="AgentGroups"></a>AgentGroups lists every group in presentation order.
+
+```go
+var AgentGroups = []AgentGroup{"orchestrator", "planning", "building", "testing", "review"}
 ```
 
 <a name="AssetFS"></a>
@@ -98,6 +108,10 @@ type AgentDefinition struct {
     // Label is the short name every instance shows where space is scarce,
     // such as the DAG sidebar's completed row.
     Label string `yaml:"label"`
+    // DisplayNames names every instance for people, where the id is internal.
+    DisplayNames map[string]string `yaml:"display_names"`
+    // Group is the logical block the agent belongs to wherever agents are listed.
+    Group AgentGroup `yaml:"group"`
     // VFSGrants declares an explicit VFS capability list for every instance ID.
     // Grants never inherit from the definition or role.
     VFSGrants map[string][]model.VFSCapability `yaml:"vfs_capabilities"`
@@ -138,6 +152,15 @@ func (a AgentDefinition) VFSCapabilities(instanceID string) ([]model.VFSCapabili
 ```
 
 VFSCapabilities returns the grants declared for this exact instance ID. The bool is false when the declaration is missing; no definition or role fallback is performed. The returned slice is independent of the catalog's map.
+
+<a name="AgentGroup"></a>
+## type AgentGroup
+
+AgentGroup is the logical block an agent is listed under.
+
+```go
+type AgentGroup string
+```
 
 <a name="Capabilities"></a>
 ## type Capabilities

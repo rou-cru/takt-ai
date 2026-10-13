@@ -19,7 +19,7 @@ import (
 
 const (
 	validSkillDescriptor = "---\nname: s\ndescription: d\n---\nbody\n"
-	validAgentYAML       = "id: x\nlabel: x\ninstances: [x]\ndescription: d\nrole: execution\nvfs_capabilities: {x: [bind]}\ncontext: {operations: OPERATIONS.md}\n"
+	validAgentYAML       = "id: x\nlabel: x\ngroup: building\ndisplay_names: {x: X}\ninstances: [x]\ndescription: d\nrole: execution\nvfs_capabilities: {x: [bind]}\ncontext: {operations: OPERATIONS.md}\n"
 	scriptFileMode       = fs.FileMode(0o755)
 	regularFileMode      = fs.FileMode(0o644)
 )
@@ -114,18 +114,22 @@ func TestLoadFSRejectsInvalidTrees(t *testing.T) {
 			skillWith("---\nname: s\ndescription: d\nmetadata:\n  executables: [scripts/gone.sh]\n---\n"), "missing or empty catalog file"},
 		"executable bad chars": {
 			skillWith("---\nname: s\ndescription: d\nmetadata:\n  executables: ['scripts/a:b']\n---\n"), "invalid catalog path"},
-		"stray agent file":  {func(m fstest.MapFS) { m["agents/notes.md"] = &fstest.MapFile{Data: []byte("n")} }, "unexpected agent file"},
-		"agent no yaml":     {func(m fstest.MapFS) { delete(m, "agents/x/agent.yaml") }, "missing or empty catalog file"},
-		"agent unknown key": {agentWith(validAgentYAML + "surprise: 1\n"), "agents/x/agent.yaml"},
-		"agent id mismatch": {agentWith(strings.Replace(validAgentYAML, "id: x", "id: y", 1)), "invalid or duplicate agent definition"},
-		"agent no instance": {agentWith("id: x\nlabel: x\ninstances: []\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"), "invalid or duplicate agent definition"},
-		"agent no label":    {agentWith(strings.Replace(validAgentYAML, "label: x\n", "", 1)), "invalid or duplicate agent definition"},
-		"agent wide label":  {agentWith(strings.Replace(validAgentYAML, "label: x", "label: much-too-wide", 1)), "invalid or duplicate agent definition"},
-		"agent no role":     {agentWith(strings.Replace(validAgentYAML, "role: execution\n", "", 1)), "missing role class"},
-		"agent bad role":    {agentWith(strings.Replace(validAgentYAML, "execution", "wizard", 1)), "unknown role class"},
-		"bad instance id":   {agentWith(strings.Replace(validAgentYAML, "instances: [x]", "instances: [X_1]", 1)), "invalid or duplicate agent instance"},
+		"stray agent file":         {func(m fstest.MapFS) { m["agents/notes.md"] = &fstest.MapFile{Data: []byte("n")} }, "unexpected agent file"},
+		"agent no yaml":            {func(m fstest.MapFS) { delete(m, "agents/x/agent.yaml") }, "missing or empty catalog file"},
+		"agent unknown key":        {agentWith(validAgentYAML + "surprise: 1\n"), "agents/x/agent.yaml"},
+		"agent id mismatch":        {agentWith(strings.Replace(validAgentYAML, "id: x", "id: y", 1)), "invalid or duplicate agent definition"},
+		"agent no instance":        {agentWith("id: x\nlabel: x\ngroup: building\ndisplay_names: {x: X}\ninstances: []\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"), "invalid or duplicate agent definition"},
+		"agent no label":           {agentWith(strings.Replace(validAgentYAML, "label: x\n", "", 1)), "invalid or duplicate agent definition"},
+		"agent wide label":         {agentWith(strings.Replace(validAgentYAML, "label: x", "label: much-too-wide", 1)), "invalid or duplicate agent definition"},
+		"agent unknown group":      {agentWith(strings.Replace(validAgentYAML, "group: building", "group: misc", 1)), "unknown group"},
+		"agent no group":           {agentWith(strings.Replace(validAgentYAML, "group: building\n", "", 1)), "unknown group"},
+		"agent no display name":    {agentWith(strings.Replace(validAgentYAML, "display_names: {x: X}\n", "display_names: {}\n", 1)), "missing display name"},
+		"agent stray display name": {agentWith(strings.Replace(validAgentYAML, "{x: X}", "{x: X, z: Z}", 1)), "undeclared instance"},
+		"agent no role":            {agentWith(strings.Replace(validAgentYAML, "role: execution\n", "", 1)), "missing role class"},
+		"agent bad role":           {agentWith(strings.Replace(validAgentYAML, "execution", "wizard", 1)), "unknown role class"},
+		"bad instance id":          {agentWith(strings.Replace(validAgentYAML, "instances: [x]", "instances: [X_1]", 1)), "invalid or duplicate agent instance"},
 		"duplicate instance in agent": {
-			agentWith("id: x\nlabel: x\ninstances: [x, x]\ndescription: d\nrole: execution\nvfs_capabilities: {x: []}\ncontext: {operations: OPERATIONS.md}\n"),
+			agentWith("id: x\nlabel: x\ngroup: building\ndisplay_names: {x: X}\ninstances: [x, x]\ndescription: d\nrole: execution\nvfs_capabilities: {x: []}\ncontext: {operations: OPERATIONS.md}\n"),
 			"invalid or duplicate agent instance"},
 		"instance claimed by two agents": {func(m fstest.MapFS) {
 			m["agents/a/agent.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(validAgentYAML, "id: x", "id: a", 1))}

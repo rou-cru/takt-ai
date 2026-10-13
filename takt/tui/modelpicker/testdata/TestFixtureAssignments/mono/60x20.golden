@@ -1,19 +1,19 @@
   Takt AI                                           Agents  
                                                             
   ┌──────────────────────────────────────────────────────┐  
-  │   All agents          different models               │  
+  │   All agents               different models          │  
   │                                                      │  
-  │   Orchestrator        openai/gpt-6-luna              │  
-  │ > analyst             openai/gpt-6-luna              │  
-  │   architect           OpenCode default               │  
-  │   dev               • opencode-go/hy4-preview        │  
-  │   explorer            OpenCode default               │  
-  │   fix                 OpenCode default               │  
-  │   judge-a             OpenCode default               │  
-  │   judge-b             OpenCode default               │  
+  │   Orchestrator             gpt-6-luna                │  
+  │   ─────────────────────────────────────────          │  
+  │ > Analyst                  gpt-6-luna                │  
+  │   Architect                Default                   │  
+  │   Product-Designer         Default                   │  
+  │   Product-Manager          Default                   │  
+  │   Spec-Writer              Default                   │  
+  │   Task-Planner             Default                   │  
   │ 3 / 19                                               │  
   │                                                      │  
-  │ ⌫ reset to OpenCode default                          │  
+  │ ⌫ reset to default                                   │  
   └──────────────────────────────────────────────────────┘  
                                                             
                        Apply changes                        

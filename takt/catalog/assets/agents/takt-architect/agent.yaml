@@ -6,6 +6,9 @@ description: Define buildable architecture, boundaries, data flow, and exact int
   contracts.
 id: takt-architect
 label: arch
+group: planning
+display_names:
+  architect: Architect
 instances:
 - architect
 vfs_capabilities:

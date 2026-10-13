@@ -16,7 +16,6 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 - [func OpenCodePluginPath\(home, file string\) string](<#OpenCodePluginPath>)
 - [func OpenCodePromptPath\(home string\) string](<#OpenCodePromptPath>)
 - [func ValidateRoleClass\(subject string, r RoleClass\) error](<#ValidateRoleClass>)
-- [type CanonicalSubAgent](<#CanonicalSubAgent>)
 - [type ComponentID](<#ComponentID>)
 - [type InjectionResult](<#InjectionResult>)
 - [type ModelAssignment](<#ModelAssignment>)
@@ -141,18 +140,6 @@ func ValidateRoleClass(subject string, r RoleClass) error
 ```
 
 ValidateRoleClass fails fast on missing or unknown classes so bad configs surface before dispatch.
-
-<a name="CanonicalSubAgent"></a>
-## type CanonicalSubAgent
-
-CanonicalSubAgent names one specialist of the crew every adapter configures.
-
-```go
-type CanonicalSubAgent struct {
-    // Name identifies the specialist, stable so assignments can match by name.
-    Name string
-}
-```
 
 <a name="ComponentID"></a>
 ## type ComponentID
