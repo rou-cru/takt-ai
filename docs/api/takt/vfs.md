@@ -52,11 +52,13 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) DiscardAs\(c Caller, author AgentID\) \(err error\)](<#FS.DiscardAs>)
   - [func \(f \*FS\) DiscardCycle\(cycleID string\) \(restored \[\]string, err error\)](<#FS.DiscardCycle>)
   - [func \(f \*FS\) DropCycleStaging\(cycle string\) \(err error\)](<#FS.DropCycleStaging>)
+  - [func \(f \*FS\) EndNativeInspection\(c Caller, callID string\) \(err error\)](<#FS.EndNativeInspection>)
   - [func \(f \*FS\) GuardNativeEdit\(session string, resources \[\]string\) error](<#FS.GuardNativeEdit>)
   - [func \(f \*FS\) InspectDelta\(key AgentID\) StagedView](<#FS.InspectDelta>)
   - [func \(f \*FS\) JournalPage\(sessionID, unitID string, after, limit int\) \[\]JournalEntry](<#FS.JournalPage>)
   - [func \(f \*FS\) JudgeDelta\(gate, author AgentID\) \(view StagedView, err error\)](<#FS.JudgeDelta>)
   - [func \(f \*FS\) Maintenance\(\) json.RawMessage](<#FS.Maintenance>)
+  - [func \(f \*FS\) NativeInspections\(\) \[\]NativeInspectionCall](<#FS.NativeInspections>)
   - [func \(f \*FS\) OnCollision\(fn func\(CollisionEvent\)\)](<#FS.OnCollision>)
   - [func \(f \*FS\) OnJournal\(fn func\(JournalEntry\)\)](<#FS.OnJournal>)
   - [func \(f \*FS\) Operate\(c Caller, op CallerOperation\) \(result OperationResult, err error\)](<#FS.Operate>)
@@ -65,7 +67,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) PendingOrdinaryDeltas\(\) int](<#FS.PendingOrdinaryDeltas>)
   - [func \(f \*FS\) PrepareDelegation\(identity Identity, authors \[\]AgentID, needsClaim bool, admit func\(\) \(string, error\)\) \(err error\)](<#FS.PrepareDelegation>)
   - [func \(f \*FS\) PrepareMaintenance\(author, verifier Identity, scope \[\]string\) \(authorKey, verifierKey AgentID, err error\)](<#FS.PrepareMaintenance>)
-  - [func \(f \*FS\) PrepareShell\(c Caller, callID, command, stateDir string\) \(plan ShellPlan, err error\)](<#FS.PrepareShell>)
+  - [func \(f \*FS\) PrepareShell\(c Caller, callID, command, stateDir string, hostCallID ...string\) \(plan ShellPlan, err error\)](<#FS.PrepareShell>)
   - [func \(f \*FS\) PreserveInterruptedCycle\(cycle, state string, a RepairApproval\) \(err error\)](<#FS.PreserveInterruptedCycle>)
   - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
@@ -75,6 +77,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) RepairRecovery\(a RepairApproval\) \(err error\)](<#FS.RepairRecovery>)
   - [func \(f \*FS\) RevokeOwnership\(key AgentID\) \(err error\)](<#FS.RevokeOwnership>)
   - [func \(f \*FS\) SetMaintenance\(raw json.RawMessage\) \(err error\)](<#FS.SetMaintenance>)
+  - [func \(f \*FS\) StartNativeInspection\(c Caller, callID, tool, resource string\) \(err error\)](<#FS.StartNativeInspection>)
   - [func \(f \*FS\) StateDirectory\(\) string](<#FS.StateDirectory>)
   - [func \(f \*FS\) Verify\(verifier, author AgentID, callID string, expected uint64, deltaHash string, pass bool, finding string\) \(err error\)](<#FS.Verify>)
   - [func \(f \*FS\) VerifyAs\(c Caller, callID string, author AgentID, pass bool, finding string\) \(err error\)](<#FS.VerifyAs>)
@@ -86,6 +89,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type InvariantSet](<#InvariantSet>)
 - [type JournalEntry](<#JournalEntry>)
   - [func \(e JournalEntry\) Ref\(\) string](<#JournalEntry.Ref>)
+- [type NativeInspectionCall](<#NativeInspectionCall>)
 - [type Operation](<#Operation>)
 - [type OperationResult](<#OperationResult>)
 - [type OperationType](<#OperationType>)
@@ -652,6 +656,15 @@ func (f *FS) DropCycleStaging(cycle string) (err error)
 
 DropCycleStaging discards only bindings owned by the specified cycle. Consolidated content must separately pass DiscardCycle's divergence checks.
 
+<a name="FS.EndNativeInspection"></a>
+### func \(\*FS\) EndNativeInspection
+
+```go
+func (f *FS) EndNativeInspection(c Caller, callID string) (err error)
+```
+
+EndNativeInspection releases a completed native call, idempotently. It uses the recorded identity even if the execution has since ended.
+
 <a name="FS.GuardNativeEdit"></a>
 ### func \(\*FS\) GuardNativeEdit
 
@@ -696,6 +709,15 @@ func (f *FS) Maintenance() json.RawMessage
 ```
 
 Maintenance is stored with bindings, shell calls and retained rollback state, not in a second coordinator file. The GC algorithm owns no durable copy.
+
+<a name="FS.NativeInspections"></a>
+### func \(\*FS\) NativeInspections
+
+```go
+func (f *FS) NativeInspections() []NativeInspectionCall
+```
+
+NativeInspections returns pending calls, never inferring completion from age or delegation cancellation. The host must observe each exact call terminal.
 
 <a name="FS.OnCollision"></a>
 ### func \(\*FS\) OnCollision
@@ -773,7 +795,7 @@ PrepareMaintenance reserves the collector scope and independent verifier togethe
 ### func \(\*FS\) PrepareShell
 
 ```go
-func (f *FS) PrepareShell(c Caller, callID, command, stateDir string) (plan ShellPlan, err error)
+func (f *FS) PrepareShell(c Caller, callID, command, stateDir string, hostCallID ...string) (plan ShellPlan, err error)
 ```
 
 PrepareShell classifies one command for the author binding c holds and prepares its sandbox files. A caller holding none gets an unbound plan: it may inspect but cannot mutate the workspace. Quoted spans are not treated as mutations for callers without file scope, but the sandbox still enforces the returned restrictions. Non\-denied plans create scratch; only allowed workspace mutations create a projection. Preparation does not execute the command; a policy denial returns a ShellDeny plan with a nil error. A capturing plan records, under callID, the binding and its staged state, which the import requires unchanged. Identity problems, and store or filesystem errors, propagate.
@@ -858,6 +880,15 @@ func (f *FS) SetMaintenance(raw json.RawMessage) (err error)
 ```
 
 
+
+<a name="FS.StartNativeInspection"></a>
+### func \(\*FS\) StartNativeInspection
+
+```go
+func (f *FS) StartNativeInspection(c Caller, callID, tool, resource string) (err error)
+```
+
+StartNativeInspection atomically authorizes and reserves the native tool's complete execution. The caller must end it only after native execution exits.
 
 <a name="FS.StateDirectory"></a>
 ### func \(\*FS\) StateDirectory
@@ -1039,6 +1070,21 @@ func (e JournalEntry) Ref() string
 ```
 
 Ref returns the entry's stable reference for telemetry.
+
+<a name="NativeInspectionCall"></a>
+## type NativeInspectionCall
+
+NativeInspectionCall identifies a durable native call for host reconciliation.
+
+```go
+type NativeInspectionCall struct {
+    CallID     string  `json:"call_id"`
+    Session    string  `json:"session_id"`
+    Host       string  `json:"caller_session"`
+    Agent      AgentID `json:"caller_agent"`
+    ToolCallID string  `json:"tool_call_id,omitempty"`
+}
+```
 
 <a name="Operation"></a>
 ## type Operation

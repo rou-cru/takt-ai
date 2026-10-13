@@ -20,7 +20,9 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [type Author](<#Author>)
   - [func AuthorOf\(k Kind\) Author](<#AuthorOf>)
 - [type Budgets](<#Budgets>)
+  - [func \(b Budgets\) QARoundFor\(unit string\) \(string, Strengthening\)](<#Budgets.QARoundFor>)
   - [func \(b Budgets\) Scope\(unit string\) \(string, Recovery\)](<#Budgets.Scope>)
+  - [func \(b Budgets\) StrengtheningUsed\(objective string\) int](<#Budgets.StrengtheningUsed>)
 - [type Edge](<#Edge>)
 - [type Entry](<#Entry>)
   - [func ReadEntries\(stateDir string\) \(\_ \[\]Entry, err error\)](<#ReadEntries>)
@@ -30,6 +32,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [type History](<#History>)
   - [func Open\(stateDir string\) \(\*History, error\)](<#Open>)
   - [func \(h \*History\) Append\(e Entry\) error](<#History.Append>)
+  - [func \(h \*History\) AppendBatch\(entries \[\]Entry\) \(err error\)](<#History.AppendBatch>)
   - [func \(h \*History\) AttachChild\(dispatch, child, agent string\) \(Execution, error\)](<#History.AttachChild>)
   - [func \(h \*History\) AttachMaintenance\(root, cycle, role, child, owner string\) error](<#History.AttachMaintenance>)
   - [func \(h \*History\) Close\(\) error](<#History.Close>)
@@ -50,12 +53,14 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
   - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
+- [type QARound](<#QARound>)
 - [type Recovery](<#Recovery>)
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
 - [type Snapshot](<#Snapshot>)
   - [func BuildSnapshot\(entries \[\]Entry\) Snapshot](<#BuildSnapshot>)
 - [type State](<#State>)
   - [func \(s State\) MarshalJSON\(\) \(\[\]byte, error\)](<#State.MarshalJSON>)
+- [type Strengthening](<#Strengthening>)
 - [type Unit](<#Unit>)
 
 
@@ -114,6 +119,8 @@ const (
     // budgets of one declared recovery (PR-HAR-6, PR-ORQ-13).
     BoundRecoveryActions  = "budget/recovery-actions"
     BoundRecoveryAttempts = "budget/recovery-attempts"
+    // BoundQARounds caps forward strengthening per acceptance objective.
+    BoundQARounds = "budget/qa-strengthening-rounds"
 )
 ```
 
@@ -263,6 +270,7 @@ Budgets is a session's derived consumption of the bounds of PR\-HAR\-19..21. Con
 
 ```go
 type Budgets struct {
+    QARounds map[string]Strengthening `json:"qa_rounds,omitempty"`
     // Unplanned counts distinct work units admitted without plan coverage,
     // including work never launched and work later cancelled (PR-DAG-MUT-10).
     Unplanned int `json:"unplanned"`
@@ -291,6 +299,15 @@ type Budgets struct {
 }
 ```
 
+<a name="Budgets.QARoundFor"></a>
+### func \(Budgets\) QARoundFor
+
+```go
+func (b Budgets) QARoundFor(unit string) (string, Strengthening)
+```
+
+QARoundFor finds a unit's declared membership from this session's history.
+
 <a name="Budgets.Scope"></a>
 ### func \(Budgets\) Scope
 
@@ -299,6 +316,15 @@ func (b Budgets) Scope(unit string) (string, Recovery)
 ```
 
 Scope returns the objective of the unresolved recovery whose declared scope contains unit. Membership is declared, never inferred \(PR\-DAG\-MUT\-9\), and an overlapping declaration is refused, so at most one recovery matches.
+
+<a name="Budgets.StrengtheningUsed"></a>
+### func \(Budgets\) StrengtheningUsed
+
+```go
+func (b Budgets) StrengtheningUsed(objective string) int
+```
+
+StrengtheningUsed counts started rounds, not attempts or plan revisions.
 
 <a name="Edge"></a>
 ## type Edge
@@ -383,7 +409,9 @@ type Entry struct {
     // PlanVersion, Contract and Prerequisites are the identified baseline
     // version, the unit's contract, and its explicit prerequisite identities,
     // recorded by a plan commitment (PR-DAG-MUT-1).
-    PlanVersion   string   `json:"plan_version,omitempty"`
+    PlanVersion string `json:"plan_version,omitempty"`
+    // QARound declares authoring membership, identified by this plan version.
+    QARound       *QARound `json:"qa_round,omitempty"`
     Contract      string   `json:"contract,omitempty"`
     Prerequisites []string `json:"prerequisites,omitempty"`
     // BaseVersion is the plan version a revision expects still to be current;
@@ -514,6 +542,15 @@ func (h *History) Append(e Entry) error
 ```
 
 Append assigns the next position and durably records the entry. A rejected entry is not recorded: an invalid state never becomes representable here.
+
+<a name="History.AppendBatch"></a>
+### func \(\*History\) AppendBatch
+
+```go
+func (h *History) AppendBatch(entries []Entry) (err error)
+```
+
+AppendBatch makes a declaration and all of its plan effects indivisible. Validation or persistence failure leaves both the store and replay unchanged.
 
 <a name="History.AttachChild"></a>
 ### func \(\*History\) AttachChild
@@ -661,6 +698,8 @@ const (
     // version; Classification is the harness-derived tactical/strategic label
     // (PR-DAG-MUT-4, PR-DAG-MUT-6).
     KindRevised Kind = "revised"
+    // KindQARound declares forward test strengthening, distinct from recovery.
+    KindQARound Kind = "qa_round_declared"
     // KindInvalidRevision records a rejected plan revision and its reason,
     // leaving the last valid plan untouched (PR-DAG-MUT-6).
     KindInvalidRevision Kind = "invalid_revision"
@@ -852,6 +891,18 @@ func (p Projection) Unit(session, unit string) (Unit, bool)
 
 Unit returns session's work unit named unit, and whether it is known.
 
+<a name="QARound"></a>
+## type QARound
+
+QARound is a plan's explicit authoring membership, never inferred for older histories. The plan version identifies the round across later replanning.
+
+```go
+type QARound struct {
+    Objective string   `json:"objective"`
+    Units     []string `json:"units"`
+}
+```
+
 <a name="Recovery"></a>
 ## type Recovery
 
@@ -973,6 +1024,18 @@ func (s State) MarshalJSON() ([]byte, error)
 ```
 
 MarshalJSON emits the state's wire name.
+
+<a name="Strengthening"></a>
+## type Strengthening
+
+Strengthening is one declared round as replay derives it. The first admitted member starts it; siblings and later attempts continue the same round.
+
+```go
+type Strengthening struct {
+    QARound
+    Started bool `json:"started"`
+}
+```
 
 <a name="Unit"></a>
 ## type Unit

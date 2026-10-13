@@ -18,11 +18,11 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(map\[string\]any, error\)](<#BuildAbortEnvelope>)
 - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(map\[string\]any, error\)](<#BuildHandoffEnvelope>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
-- [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit\) error](<#Commit>)
+- [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit, qaRound ...\*history.QARound\) error](<#Commit>)
 - [func Contest\(h \*history.History, p AdmissionPolicy, journalRef, event, session, attempt string\) error](<#Contest>)
 - [func CurrentAttempt\(p history.Projection, session, event string\) string](<#CurrentAttempt>)
 - [func CurrentHolder\(h \*history.History, root string\) string](<#CurrentHolder>)
-- [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string\) error](<#Declare>)
+- [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Declare>)
 - [func DeclareRecovery\(h \*history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration\) error](<#DeclareRecovery>)
 - [func Except\(h \*history.History, journalRef, event, session, bound, objective string, allowance int\) error](<#Except>)
 - [func ExpectedArtifact\(h \*history.History, root string\) string](<#ExpectedArtifact>)
@@ -34,7 +34,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Record\(h \*history.History, journalRef, event, session string, kind history.Kind\) error](<#Record>)
 - [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
 - [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string\) error](<#Restore>)
-- [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string\) error](<#Revise>)
+- [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Revise>)
 - [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
 - [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
 - [func Withdraw\(h \*history.History, journalRef, event, session string\) error](<#Withdraw>)
@@ -139,7 +139,7 @@ CloseRecovery closes a declared recovery, recording whether its result was demon
 ## func Commit
 
 ```go
-func Commit(h *history.History, journalRef, session, version string, units []PlanUnit) error
+func Commit(h *history.History, journalRef, session, version string, units []PlanUnit, qaRound ...*history.QARound) error
 ```
 
 Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\).
@@ -175,7 +175,7 @@ CurrentHolder returns the session holding root's interlocutor role, read from it
 ## func Declare
 
 ```go
-func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string) error
+func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string, qaRound ...*history.QARound) error
 ```
 
 Declare is the orchestrator's one plan declaration: the first one commits the baseline; once a plan stands, a declaration revises it and must name the version it revises, so a stale or silent rewrite of the plan is refused instead of recorded as a fresh commitment \(PR\-DAG\-MUT\-6\).
@@ -283,7 +283,7 @@ Restore confirms restoration of an abandoned recovery scope's virtual state: it 
 ## func Revise
 
 ```go
-func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string) error
+func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string, qaRound ...*history.QARound) error
 ```
 
 Revise records a plan revision against its expected prior valid version \(PR\-DAG\-MUT\-6\). A valid revision is classified strategic or tactical by comparing the old and new plans \(PR\-DAG\-MUT\-4\) and applies as a whole; an invalid one is rejected with its reason recorded, touching no per\-unit state, so the last valid plan is untouched by construction.
