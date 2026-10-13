@@ -27,6 +27,7 @@ Package catalog is the single declarative source of Takt's installable content: 
 - [type Catalog](<#Catalog>)
   - [func LoadFS\(fsys fs.FS\) \(Catalog, error\)](<#LoadFS>)
   - [func LoadPackages\(\) \(Catalog, error\)](<#LoadPackages>)
+  - [func \(c Catalog\) VFSAuthors\(\) \[\]string](<#Catalog.VFSAuthors>)
 - [type ContextFiles](<#ContextFiles>)
 - [type NativeSubAgentContent](<#NativeSubAgentContent>)
 - [type PackageFile](<#PackageFile>)
@@ -231,6 +232,15 @@ func LoadPackages() (Catalog, error)
 ```
 
 LoadPackages loads and validates the embedded declarative catalog.
+
+<a name="Catalog.VFSAuthors"></a>
+### func \(Catalog\) VFSAuthors
+
+```go
+func (c Catalog) VFSAuthors() []string
+```
+
+VFSAuthors lists, sorted, every instance granted VFS writes: the authors whose native inspections reserve their read scope.
 
 <a name="ContextFiles"></a>
 ## type ContextFiles

@@ -55,6 +55,7 @@ type VFSResponse = {
   stop_cycle?: { cycle:string; lanes:Array<{dispatch:string;attempt:string;child:string}> }
   ok: boolean; key?: string; content?: string; revision?: number; delta_hash?: string
   error?: string; attempt_id?: string; invariants_version?: string
+  inspections?: Array<{call_id:string;session_id:string;caller_session:string;caller_agent:string;tool_call_id?:string}>
   shell?: VFSShellResponse; claims?: OwnershipClaim[]; outdated_paths?: string[]; gates?: AdoptedGate[]
 }
 type GCPlan = Record<string, unknown> & { session_id: string; cycle_id: string; mandate_class: string; delta: unknown[]; closure: string[]; reachability: string }
@@ -137,6 +138,8 @@ export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSRe
     ...(isResponseObject(parsed.stop_cycle) && isString(parsed.stop_cycle.cycle) && Array.isArray(parsed.stop_cycle.lanes) && parsed.stop_cycle.lanes.every(lane => isResponseObject(lane) && isString(lane.dispatch) && isString(lane.attempt) && isString(lane.child)) ? { stop_cycle: parsed.stop_cycle as VFSResponse["stop_cycle"] } : {}),
     ...(typeof parsed.key === "string" ? { key: parsed.key } : {}),
     ...(typeof parsed.content === "string" ? { content: parsed.content } : {}),
+    ...(Array.isArray(parsed.inspections) && parsed.inspections.every(item => isResponseObject(item) && isString(item.call_id) && isString(item.session_id) && isString(item.caller_session) && isString(item.caller_agent) && isOptional(item.tool_call_id,isString))
+      ? { inspections: parsed.inspections as VFSResponse["inspections"] } : {}),
     ...(typeof parsed.revision === "number" ? { revision: parsed.revision } : {}),
     ...(typeof parsed.delta_hash === "string" ? { delta_hash: parsed.delta_hash } : {}),
     ...(typeof parsed.error === "string" ? { error: parsed.error } : {}),
@@ -253,11 +256,15 @@ const VFS_SHELL_ENFORCED: boolean = "__TAKT_VFS_SHELL_ENFORCED__" as unknown as 
 // skill: their delegation must call deliver_result before it ends.
 const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
 
+// VFS_AUTHORS are the catalog instances granted VFS writes; only their native
+// inspections reserve a read scope, so no other agent's read needs the core.
+const VFS_AUTHORS: string[] = "__TAKT_VFS_AUTHORS__" as unknown as string[]
+
 // EXCEPTION_BOUNDS are the limits a user exception may raise, by the names the
 // execution history records them under.
 const EXCEPTION_BOUNDS = [
   "ceiling/concurrent-specialists", "budget/unplanned-units", "budget/contests",
-  "budget/recovery-failures", "budget/recovery-actions", "budget/recovery-attempts",
+  "budget/recovery-failures", "budget/recovery-actions", "budget/recovery-attempts", "budget/qa-strengthening-rounds",
 ]
 
 // FAILING_VERDICT is how the core words a refusal to consolidate over a current
@@ -398,7 +405,27 @@ export default Plugin.define({
       await dispatchAction({ action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit })
       scheduleGC()
     }
+    const reconcileNativeInspections = async () => {
+      const response = await taktUnlocked("native-inspections", { session_id:"reconcile", caller_session:"reconcile", caller_agent:"harness" })
+      const pending = response.inspections ?? []
+      for (const call of pending) {
+        try {
+          // A deleted caller session can never complete the call: it is terminal.
+          let gone = false
+          const messages = await ctx.session.context({sessionID:call.caller_session},{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)])})
+            .catch((error: unknown) => { if (notFound(error)) { gone = true; return [] } throw error })
+          const observed = messages.flatMap(message => message.type === "assistant" ? message.content : [])
+            .find(part => part.type === "tool" && part.id === (call.tool_call_id || call.call_id))
+          if (!gone && (observed?.type !== "tool" || (observed.state.status !== "completed" && observed.state.status !== "error"))) continue
+          await taktUnlocked("native-inspection-end", {
+            ipc_version: IPC_VERSION, session_id: call.session_id, caller_session: call.caller_session,
+            caller_agent: call.caller_agent, caller_dispatch: "", work_unit_id: "", call_id: call.call_id,
+          })
+        } catch (error) { console.error("Takt native inspection reconciliation",call.call_id,error) }
+      }
+    }
     const reconcileStoredDelegations = async () => {
+      await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
       for (const d of await unsettledExecutions()) {
         if (d.cycle) continue
         let backgroundLaunched = false
@@ -695,7 +722,7 @@ export default Plugin.define({
         try {
           // The core plans from the binding this session holds; an unbound caller
           // may still inspect, but it may not mutate.
-          const res = await takt("shell-prepare", event, { call_id: callID, command })
+          const res = await takt("shell-prepare", event, { call_id: callID, command, tool_call_id:event.id })
           shellPlanOf(res.shell, event.agent, event.sessionID)
           entry.ready = true
         } catch (e) {
@@ -1429,11 +1456,15 @@ export default Plugin.define({
             unit: str("Work unit identity"), contract: str("Frozen contract this unit is dispatched against"),
             prerequisites: { type: "array", items: { type: "string" }, description: "Prerequisite work unit identities" },
           }, ["unit", "contract"]), description: "Every unit this baseline covers, or that a revision adds or replaces" },
+          qa_round: obj({ objective: str("Stable acceptance objective; never rename it to reset strengthening"),
+            units: { type: "array", items: str(), minItems: 1, uniqueItems: true, description: "This round's test-authoring units, declared before admission; gates and mutation are not members" },
+          }, ["objective", "units"]),
           withdraw: { type: "array", items: { type: "string" }, description: "Still-planned unit identities a revision removes" },
         }, ["version", "plan"]),
-        (args: { version: string; base_version?: string; withdraw?: string[]; plan: { unit: string; contract: string; prerequisites?: string[] }[] }) =>
+        (args: { version: string; base_version?: string; withdraw?: string[]; qa_round?: { objective: string; units: string[] }; plan: { unit: string; contract: string; prerequisites?: string[] }[] }) =>
           ({
             version: args.version,
+            ...(args.qa_round ? { qa_round: args.qa_round } : {}),
             ...(args.base_version ? { base_version: args.base_version } : {}),
             plan: args.plan.map(u => ({ unit: u.unit, contract: u.contract, prerequisites: u.prerequisites ?? [] })),
             ...(args.withdraw?.length ? { withdrawals: args.withdraw } : {}),
@@ -1521,12 +1552,12 @@ export default Plugin.define({
         }, ["objective"]),
         (args: { objective: string }) => ({ objective: args.objective }))
 
-      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. A recovery bound needs the objective. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
+      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. A recovery or QA-strengthening bound needs the objective. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
         "exception",
         obj({
           event: str("Optional label for the record"),
-          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, one of: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts" },
-          objective: str("Recovery objective the exception applies to; required for the recovery bounds"),
+          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, one of: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts, budget/qa-strengthening-rounds" },
+          objective: str("Stable objective the exception applies to; required for recovery and QA-strengthening bounds"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
         }, ["bound", "allowance"]),
         (args: { event?: string; bound: string; objective?: string; allowance: number }) => args)
@@ -1824,6 +1855,39 @@ export default Plugin.define({
           return { content: `Delivered ${count} result id(s)` }
         },
       })
+      // Keep OpenCode's native readers as the execution path. The VFS reserves
+      // their exact read scope across the complete native call; it never
+      // reconstructs their output or transports file contents through IPC.
+      for (const item of editor.list()) {
+        const name = item.id
+        if (!["read", "grep", "glob"].includes(name) && !/codegraph/i.test(name)) continue
+        editor.update(name, (tool) => {
+          const native = tool.execute
+          tool.execute = async (value, c) => {
+            if (c.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(c.agent) || !VFS_AUTHORS.includes(c.agent)) return native(value,c)
+            const args = toolInput(value)
+            const pathValue = typeof args.filePath === "string" ? args.filePath :
+              typeof args.path === "string" ? args.path :
+              typeof args.directory === "string" ? args.directory : ""
+            // Reconciliation finds a reservation only by the host's own call id.
+            if (typeof c.id !== "string" || !c.id) throw new Error(`${name} call has no host call id, so its read reservation could never be reconciled; issue the call again`)
+            const callID = c.id
+            await takt("native-inspection-start", c, {
+              call_id: callID, tool: name, path: /codegraph/i.test(name) ? "" : pathValue,
+            })
+            let result: Awaited<ReturnType<typeof native>> | undefined
+            let failure: unknown
+            try { result = await native(value,c) } catch (error) { failure = error }
+            try { await takt("native-inspection-end", c, { call_id: callID }) }
+            catch (error) {
+              if (failure !== undefined) throw new AggregateError([failure,error], "native inspection and reservation release failed", { cause: error })
+              throw error
+            }
+            if (failure !== undefined) throw failure
+            return result!
+          }
+        })
+      }
     })
 
     // Delegated VFS context is granted per exact agent instance and only while
@@ -1863,7 +1927,7 @@ export default Plugin.define({
           delete event.tools?.vfs_bind
           const { gates = [] } = await takt("adopt-gates", event)
           const lines = gates.map(gate => `author_key ${gate.author_key}: ${gate.scope.join(", ")}${gate.error ? ` (gate not adopted: ${gate.error}; report it as unverified)` : ""}`)
-          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""} read project context with native read tools and run validation checks without editing the project.${allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""}\n${lines.join("\n")}` })
+          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.${allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""}\n${lines.join("\n")}` })
           return
         }
         const conduct = [

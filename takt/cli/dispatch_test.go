@@ -71,6 +71,7 @@ type request struct {
 	Allowance  int              `json:"allowance,omitempty"`
 	Version    string           `json:"version,omitempty"`
 	Plan       []gc.PlanUnit    `json:"plan,omitempty"`
+	QARound    *history.QARound `json:"qa_round,omitempty"`
 	Artifact   string           `json:"artifact,omitempty"`
 	ResultIDs  []int64          `json:"result_ids,omitempty"`
 	Origin     string           `json:"origin,omitempty"`

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package memory
+package memory_test
 
 import (
 	"context"
@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +36,17 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/history"
 )
+
+// observation is the HTTP wire payload, asserted independently of internals.
+type observation struct {
+	SessionID string `json:"session_id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	ToolName  string `json:"tool_name"`
+	Project   string `json:"project"`
+	Scope     string `json:"scope"`
+}
 
 type fakeObs struct {
 	observation
@@ -57,8 +69,8 @@ type fakeEngram struct {
 	projects map[int64]string // extra observations seeded for relates_to lookups
 }
 
-// newFake serves an in-memory Engram for the package tests and the Config that reaches it.
-func newFake(t *testing.T) (*fakeEngram, Config) {
+// newFake serves an in-memory Engram for the package tests and the memory.Config that reaches it.
+func newFake(t *testing.T) (*fakeEngram, memory.Config) {
 	t.Helper()
 	f := &fakeEngram{nextID: 100, projects: map[int64]string{}}
 	mux := http.NewServeMux()
@@ -160,7 +172,7 @@ func newFake(t *testing.T) (*fakeEngram, Config) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	clock := time.Date(2026, 9, 13, 15, 0, 0, 0, time.UTC)
-	return f, Config{
+	return f, memory.Config{
 		Root:      t.TempDir(),
 		EngramURL: srv.URL,
 		HTTP:      srv.Client(),
@@ -191,8 +203,8 @@ func (f *fakeEngram) edgesFrom(a int64) []fakeEdge {
 	return out
 }
 
-func base() RecordRequest {
-	return RecordRequest{
+func base() memory.RecordRequest {
+	return memory.RecordRequest{
 		Author: "dev", Session: "ses_1", Directory: "/work/demo",
 		Nature: "proposal", Scope: "project", Title: "Split the parser", Content: "The parser mixes IO and parsing.",
 	}
@@ -213,9 +225,9 @@ func TestValidateResultIDs(t *testing.T) {
 		{"duplicate ID", []int64{123, 123}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateResultIDs(context.Background(), cfg, test.ids)
+			err := memory.ValidateResultIDs(context.Background(), cfg, test.ids)
 			if (err == nil) != test.ok {
-				t.Fatalf("ValidateResultIDs(%v) = %v; want success %v", test.ids, err, test.ok)
+				t.Fatalf("memory.ValidateResultIDs(%v) = %v; want success %v", test.ids, err, test.ok)
 			}
 		})
 	}
@@ -223,28 +235,28 @@ func TestValidateResultIDs(t *testing.T) {
 
 func wantValidation(t *testing.T, err error) {
 	t.Helper()
-	var ve *ValidationError
+	var ve *memory.ValidationError
 	if !errors.As(err, &ve) {
-		t.Fatalf("want *ValidationError, got %v", err)
+		t.Fatalf("want *memory.ValidationError, got %v", err)
 	}
 }
 
 func TestRecordValidation(t *testing.T) {
 	_, cfg := newFake(t)
-	cases := map[string]func(*RecordRequest){
-		"foreign author":           func(r *RecordRequest) { r.Author = "gpt-helper" },
-		"decision w/o evidence":    func(r *RecordRequest) { r.Nature = "decision" },
-		"observation w/o evidence": func(r *RecordRequest) { r.Nature = "observation" },
-		"personal w/o confirm":     func(r *RecordRequest) { r.Scope = "personal" },
-		"bad relation":             func(r *RecordRequest) { r.RelatesTo = &RelatesTo{ID: 1, Relation: "likes"} },
-		"path session":             func(r *RecordRequest) { r.Session = "../etc" },
-		"content over safe limit":  func(r *RecordRequest) { r.Content = strings.Repeat("x", safeContentLimitBytes+1) },
+	cases := map[string]func(*memory.RecordRequest){
+		"foreign author":           func(r *memory.RecordRequest) { r.Author = "gpt-helper" },
+		"decision w/o evidence":    func(r *memory.RecordRequest) { r.Nature = "decision" },
+		"observation w/o evidence": func(r *memory.RecordRequest) { r.Nature = "observation" },
+		"personal w/o confirm":     func(r *memory.RecordRequest) { r.Scope = "personal" },
+		"bad relation":             func(r *memory.RecordRequest) { r.RelatesTo = &memory.RelatesTo{ID: 1, Relation: "likes"} },
+		"path session":             func(r *memory.RecordRequest) { r.Session = "../etc" },
+		"content over safe limit":  func(r *memory.RecordRequest) { r.Content = strings.Repeat("x", 45001) },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
 			req := base()
 			mutate(&req)
-			_, err := Record(context.Background(), cfg, req)
+			_, err := memory.Record(context.Background(), cfg, req)
 			wantValidation(t, err)
 		})
 	}
@@ -254,7 +266,7 @@ func TestRecordDecisionFromInterlocutor(t *testing.T) {
 	f, cfg := newFake(t)
 	req := base()
 	req.Author, req.Nature, req.Evidence = "architect", "decision", "user said so"
-	res, err := Record(context.Background(), cfg, req)
+	res, err := memory.Record(context.Background(), cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +279,7 @@ func TestRecordDecisionFromExecution(t *testing.T) {
 	f, cfg := newFake(t)
 	req := base()
 	req.Nature, req.Evidence = "decision", "user: go with option B"
-	res, err := Record(context.Background(), cfg, req)
+	res, err := memory.Record(context.Background(), cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +294,7 @@ func TestRecordUserOrderAttribution(t *testing.T) {
 	req := base()
 	req.Content = "The user ordered: next steps will cover the CLI."
 	req.UserOrder = true
-	res, err := Record(context.Background(), cfg, req)
+	res, err := memory.Record(context.Background(), cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,16 +306,16 @@ func TestRecordUserOrderAttribution(t *testing.T) {
 func TestRecordRelatesToMissing(t *testing.T) {
 	f, cfg := newFake(t)
 	req := base()
-	req.RelatesTo = &RelatesTo{ID: 9999, Relation: "corrects"}
-	_, err := Record(context.Background(), cfg, req)
+	req.RelatesTo = &memory.RelatesTo{ID: 9999, Relation: "corrects"}
+	_, err := memory.Record(context.Background(), cfg, req)
 	wantValidation(t, err)
 	if len(f.sessions) != 0 {
 		t.Fatalf("rejected record created a session: %v", f.sessions)
 	}
 
 	f.projects[50] = "other"
-	req.RelatesTo = &RelatesTo{ID: 50, Relation: "corrects"}
-	_, err = Record(context.Background(), cfg, req)
+	req.RelatesTo = &memory.RelatesTo{ID: 50, Relation: "corrects"}
+	_, err = memory.Record(context.Background(), cfg, req)
 	wantValidation(t, err)
 }
 
@@ -312,13 +324,13 @@ func TestRecordContentAndLazyAnchor(t *testing.T) {
 	ctx := context.Background()
 	req := base()
 	req.Nature, req.Evidence = "observation", "go test output"
-	first, err := Record(ctx, cfg, req)
+	first, err := memory.Record(ctx, cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second := base()
 	second.Title = "Parser split landed"
-	if _, err := Record(ctx, cfg, second); err != nil {
+	if _, err := memory.Record(ctx, cfg, second); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.sessions) != 1 || f.sessions[0]["id"] != "ses_1" || f.sessions[0]["project"] != "demo" || f.sessions[0]["directory"] != "/work/demo" {
@@ -351,11 +363,11 @@ func TestRecordContentAndLazyAnchor(t *testing.T) {
 func TestRecordRelationEdges(t *testing.T) {
 	f, cfg := newFake(t)
 	ctx := context.Background()
-	target, err := Record(ctx, cfg, base())
+	target, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_1")
+	l, _ := readIndex(cfg.Root, "ses_1")
 	verbs := map[string]struct{ verb, effect string }{
 		"corrects":     {"supersedes", " (#%d is superseded)"},
 		"supersedes":   {"supersedes", " (#%d is superseded)"},
@@ -367,8 +379,8 @@ func TestRecordRelationEdges(t *testing.T) {
 		verb := want.verb
 		req := base()
 		req.Title = "Relation " + rel
-		req.RelatesTo = &RelatesTo{ID: target.ID, Relation: rel}
-		res, err := Record(ctx, cfg, req)
+		req.RelatesTo = &memory.RelatesTo{ID: target.ID, Relation: rel}
+		res, err := memory.Record(ctx, cfg, req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -394,20 +406,20 @@ func TestRecordRelationEdges(t *testing.T) {
 func TestGlobalTierRejectsWorkspaceArtifacts(t *testing.T) {
 	f, cfg := newFake(t)
 	ctx := context.Background()
-	global := func() RecordRequest {
+	global := func() memory.RecordRequest {
 		r := base()
 		r.Scope, r.Confirmed = "personal", true
 		r.Title, r.Content = "The user works in short review cycles", "The user asked for small diffs reviewed one at a time."
 		return r
 	}
-	for name, mutate := range map[string]func(*RecordRequest){
-		"code excerpt":        func(r *RecordRequest) { r.Content += " ```go\nfunc main() {}\n```" },
-		"workspace directory": func(r *RecordRequest) { r.Content += " Under /work/demo." },
+	for name, mutate := range map[string]func(*memory.RecordRequest){
+		"code excerpt":        func(r *memory.RecordRequest) { r.Content += " ```go\nfunc main() {}\n```" },
+		"workspace directory": func(r *memory.RecordRequest) { r.Content += " Under /work/demo." },
 	} {
 		t.Run(name, func(t *testing.T) {
 			req := global()
 			mutate(&req)
-			_, err := Record(ctx, cfg, req)
+			_, err := memory.Record(ctx, cfg, req)
 			wantValidation(t, err)
 		})
 	}
@@ -417,11 +429,11 @@ func TestGlobalTierRejectsWorkspaceArtifacts(t *testing.T) {
 	quirk := global()
 	quirk.Title = "The user keeps their editor config outside the project"
 	quirk.Content = "Their editor config lives in ~/.config/nvim/init.lua."
-	if _, err := Record(ctx, cfg, quirk); err != nil {
+	if _, err := memory.Record(ctx, cfg, quirk); err != nil {
 		t.Fatalf("global tier rejected an environment quirk: %v", err)
 	}
 
-	res, err := Record(ctx, cfg, global())
+	res, err := memory.Record(ctx, cfg, global())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,18 +446,18 @@ func TestGlobalTierRejectsWorkspaceArtifacts(t *testing.T) {
 	}
 
 	// A workspace entry and a global entry sit in different tiers, so neither relates to the other.
-	workspace, err := Record(ctx, cfg, base())
+	workspace, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
 	cross := global()
-	cross.Title, cross.RelatesTo = "The user restated the review habit", &RelatesTo{ID: workspace.ID, Relation: "supersedes"}
-	_, err = Record(ctx, cfg, cross)
+	cross.Title, cross.RelatesTo = "The user restated the review habit", &memory.RelatesTo{ID: workspace.ID, Relation: "supersedes"}
+	_, err = memory.Record(ctx, cfg, cross)
 	wantValidation(t, err)
 
 	inward := base()
-	inward.Title, inward.RelatesTo = "Parser split contradicts the habit", &RelatesTo{ID: res.ID, Relation: "disputes"}
-	_, err = Record(ctx, cfg, inward)
+	inward.Title, inward.RelatesTo = "Parser split contradicts the habit", &memory.RelatesTo{ID: res.ID, Relation: "disputes"}
+	_, err = memory.Record(ctx, cfg, inward)
 	wantValidation(t, err)
 }
 
@@ -455,26 +467,26 @@ func TestGlobalTierRejectsWorkspaceArtifacts(t *testing.T) {
 func TestSupersededEntryStopsGoverning(t *testing.T) {
 	f, cfg := newFake(t)
 	ctx := context.Background()
-	old, err := Record(ctx, cfg, base())
+	old, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
 	fresh := base()
 	fresh.Nature, fresh.Title, fresh.Evidence = "decision", "Parser stays as one unit", "user approved keeping it"
-	fresh.RelatesTo = &RelatesTo{ID: old.ID, Relation: "supersedes"}
-	newer, err := Record(ctx, cfg, fresh)
+	fresh.RelatesTo = &memory.RelatesTo{ID: old.ID, Relation: "supersedes"}
+	newer, err := memory.Record(ctx, cfg, fresh)
 	if err != nil {
 		t.Fatal(err)
 	}
 	open := base()
 	open.Title, open.Content = "The split is still the better option", "The tradeoff was not settled."
-	open.RelatesTo = &RelatesTo{ID: newer.ID, Relation: "disputes"}
-	disputer, err := Record(ctx, cfg, open)
+	open.RelatesTo = &memory.RelatesTo{ID: newer.ID, Relation: "disputes"}
+	disputer, err := memory.Record(ctx, cfg, open)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo", Objective: "Decide the parser shape", State: "Disagreement open"})
+	res, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo", Objective: "Decide the parser shape", State: "Disagreement open"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,18 +509,18 @@ func TestSupersededEntryStopsGoverning(t *testing.T) {
 func TestRecordDedup(t *testing.T) {
 	_, cfg := newFake(t)
 	ctx := context.Background()
-	a, err := Record(ctx, cfg, base())
+	a, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Record(ctx, cfg, base())
+	b, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a.ID != b.ID || a.Deduplicated || !b.Deduplicated {
 		t.Fatalf("a=%+v b=%+v", a, b)
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_1")
+	l, _ := readIndex(cfg.Root, "ses_1")
 	if len(l.Entries) != 1 {
 		t.Fatalf("entries = %d", len(l.Entries))
 	}
@@ -517,22 +529,22 @@ func TestRecordDedup(t *testing.T) {
 func TestCloseChronology(t *testing.T) {
 	f, cfg := newFake(t)
 	ctx := context.Background()
-	first, err := Record(ctx, cfg, base())
+	first, err := memory.Record(ctx, cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := base()
 	req.Author, req.Nature, req.Title, req.Evidence = "architect", "decision", "Froze the plugin boundary", "user approved the freeze"
-	req.RelatesTo = &RelatesTo{ID: first.ID, Relation: "supplements"}
-	second, err := Record(ctx, cfg, req)
+	req.RelatesTo = &memory.RelatesTo{ID: first.ID, Relation: "supplements"}
+	second, err := memory.Record(ctx, cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = Close(ctx, cfg, CloseRequest{Author: "dev", Session: "ses_1", Directory: "/work/demo"})
+	_, err = memory.Close(ctx, cfg, memory.CloseRequest{Author: "dev", Session: "ses_1", Directory: "/work/demo"})
 	wantValidation(t, err)
 
-	res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo", Objective: "Split parser", State: "Parser split; CLI unwired"})
+	res, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo", Objective: "Split parser", State: "Parser split; CLI unwired"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +574,7 @@ Parser split; CLI unwired`, first.ID, second.ID, second.ID, first.ID)
 	if strings.Contains(strings.ToLower(end.Content), "next steps") {
 		t.Fatal("end anchor mentions next steps")
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_1")
+	l, _ := readIndex(cfg.Root, "ses_1")
 	if got := f.edgesFrom(res.EndAnchorID); fmt.Sprint(got) != fmt.Sprint([]fakeEdge{{res.EndAnchorID, l.StartAnchor, "related", "takt:session-end", "takt-harness"}}) {
 		t.Fatalf("end edges = %v", got)
 	}
@@ -577,13 +589,13 @@ Parser split; CLI unwired`, first.ID, second.ID, second.ID, first.ID)
 		t.Fatalf("session index end anchor = %d", l.EndAnchor)
 	}
 
-	_, err = Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo"})
+	_, err = memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_1", Directory: "/work/demo"})
 	wantValidation(t, err)
 
 	// A new result resumes the same host conversation after a close.
 	late := base()
 	late.Title = "Renamed the parser"
-	_, err = Record(ctx, cfg, late)
+	_, err = memory.Record(ctx, cfg, late)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,8 +603,8 @@ Parser split; CLI unwired`, first.ID, second.ID, second.ID, first.ID)
 	// A3: anchors are not memory entries, so nothing relates to them.
 	for _, anchor := range []int64{l.StartAnchor, res.EndAnchorID} {
 		req := base()
-		req.Session, req.RelatesTo = "ses_2", &RelatesTo{ID: anchor, Relation: "supplements"}
-		_, err = Record(ctx, cfg, req)
+		req.Session, req.RelatesTo = "ses_2", &memory.RelatesTo{ID: anchor, Relation: "supplements"}
+		_, err = memory.Record(ctx, cfg, req)
 		wantValidation(t, err)
 	}
 	if len(f.sessions) != 1 {
@@ -604,19 +616,19 @@ func TestCloseHolder(t *testing.T) {
 	_, cfg := newFake(t)
 	ctx := context.Background()
 	dir := t.TempDir() // a role that HoldsInterface opens history at this state
-	if _, err := Record(ctx, cfg, base()); err != nil {
+	if _, err := memory.Record(ctx, cfg, base()); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Close(ctx, cfg, CloseRequest{Author: "dev", Session: "ses_1", Directory: dir})
+	_, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "dev", Session: "ses_1", Directory: dir})
 	wantValidation(t, err)
-	if _, err := Close(ctx, cfg, CloseRequest{Author: "architect", Session: "ses_1", Directory: dir}); err != nil {
+	if _, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "architect", Session: "ses_1", Directory: dir}); err != nil {
 		t.Fatal(err)
 	}
 	// A fallback close bypasses the holder check.
-	if _, err := Record(ctx, cfg, func() RecordRequest { r := base(); r.Session = "ses_2"; return r }()); err != nil {
+	if _, err := memory.Record(ctx, cfg, func() memory.RecordRequest { r := base(); r.Session = "ses_2"; return r }()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Close(ctx, cfg, CloseRequest{Author: "dev", Session: "ses_2", Directory: dir, Fallback: true}); err != nil {
+	if _, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "dev", Session: "ses_2", Directory: dir, Fallback: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -624,8 +636,8 @@ func TestCloseHolder(t *testing.T) {
 func TestCloseFallbackWithoutSessionIndex(t *testing.T) {
 	f, cfg := newFake(t)
 	cfg.EngramURL = "http://127.0.0.1:1" // must not be contacted
-	res, err := Close(context.Background(), cfg, CloseRequest{Session: "ses_none", Directory: "/work/demo", Fallback: true})
-	if err != nil || res != (CloseResult{}) {
+	res, err := memory.Close(context.Background(), cfg, memory.CloseRequest{Session: "ses_none", Directory: "/work/demo", Fallback: true})
+	if err != nil || res != (memory.CloseResult{}) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 	if len(f.obs) != 0 {
@@ -637,27 +649,27 @@ func TestContinue(t *testing.T) {
 	f, cfg := newFake(t)
 	ctx := context.Background()
 	dir := t.TempDir() // a role that HoldsInterface opens history at this state
-	cont := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_1"}
-	wantValidation(t, Continue(ctx, cfg, cont))
+	cont := memory.ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_1"}
+	wantValidation(t, memory.Continue(ctx, cfg, cont))
 
-	if _, err := Record(ctx, cfg, base()); err != nil {
+	if _, err := memory.Record(ctx, cfg, base()); err != nil {
 		t.Fatal(err)
 	}
-	wantValidation(t, Continue(ctx, cfg, cont)) // previous not closed yet
-	prev, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_1", Directory: dir})
+	wantValidation(t, memory.Continue(ctx, cfg, cont)) // previous not closed yet
+	prev, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_1", Directory: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	bad := cont
 	bad.Author = "dev"
-	wantValidation(t, Continue(ctx, cfg, bad))
+	wantValidation(t, memory.Continue(ctx, cfg, bad))
 
 	cont.Author = "architect"
-	if err := Continue(ctx, cfg, cont); err != nil {
+	if err := memory.Continue(ctx, cfg, cont); err != nil {
 		t.Fatal(err)
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_2")
+	l, _ := readIndex(cfg.Root, "ses_2")
 	if l.PendingContinues != "ses_1" || l.Continues != "" || l.StartAnchor != 0 {
 		t.Fatalf("declaration = %+v, want pending ses_1 and no anchor", l)
 	}
@@ -666,10 +678,10 @@ func TestContinue(t *testing.T) {
 	next.Session = "ses_2"
 	next.Directory = dir
 	next.Title = "Second session entry"
-	if _, err := Record(ctx, cfg, next); err != nil {
+	if _, err := memory.Record(ctx, cfg, next); err != nil {
 		t.Fatal(err)
 	}
-	l, _ = loadSessionIndex(cfg.Root, "ses_2")
+	l, _ = readIndex(cfg.Root, "ses_2")
 	if l.Continues != "ses_1" || l.PendingContinues != "" {
 		t.Fatalf("after first entry = %+v, want continues ses_1", l)
 	}
@@ -677,9 +689,9 @@ func TestContinue(t *testing.T) {
 	if got := f.edgesFrom(l.StartAnchor); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("edges = %v want %v", got, want)
 	}
-	wantValidation(t, Continue(ctx, cfg, cont))
+	wantValidation(t, memory.Continue(ctx, cfg, cont))
 
-	res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
+	res, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,10 +707,10 @@ func TestContinueDeclarationIsRevocableUntilFirstEntry(t *testing.T) {
 	for _, prev := range []string{"ses_a", "ses_b"} {
 		writeIndex(t, cfg.Root, prev, `{"session":"`+prev+`","project":"elsewhere","start_anchor":7,"end_anchor":8,"entries":[]}`)
 	}
-	cont := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_a"}
+	cont := memory.ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir, PreviousSession: "ses_a"}
 	for _, previous := range []string{"ses_a", "ses_b", "", "ses_b"} {
 		cont.PreviousSession = previous
-		if err := Continue(ctx, cfg, cont); err != nil {
+		if err := memory.Continue(ctx, cfg, cont); err != nil {
 			t.Fatalf("declare %q: %v", previous, err)
 		}
 	}
@@ -706,11 +718,11 @@ func TestContinueDeclarationIsRevocableUntilFirstEntry(t *testing.T) {
 		t.Fatalf("a declaration wrote to engram: edges=%v obs=%d", f.edges, len(f.obs))
 	}
 
-	res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
+	res, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_2", Directory: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_2")
+	l, _ := readIndex(cfg.Root, "ses_2")
 	if l.Continues != "ses_b" {
 		t.Fatalf("continues = %q, want the last declaration", l.Continues)
 	}
@@ -727,25 +739,25 @@ func TestContinueWithdrawnLeavesNoLink(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	writeIndex(t, cfg.Root, "ses_1", `{"session":"ses_1","project":"demo","start_anchor":7,"end_anchor":8,"entries":[]}`)
-	cont := ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir}
-	if err := Continue(ctx, cfg, cont); err != nil { // withdrawing nothing is a no-op
+	cont := memory.ContinueRequest{Author: "takt", Session: "ses_2", Directory: dir}
+	if err := memory.Continue(ctx, cfg, cont); err != nil { // withdrawing nothing is a no-op
 		t.Fatal(err)
 	}
 	cont.PreviousSession = "ses_1"
-	if err := Continue(ctx, cfg, cont); err != nil {
+	if err := memory.Continue(ctx, cfg, cont); err != nil {
 		t.Fatal(err)
 	}
 	cont.PreviousSession = ""
-	if err := Continue(ctx, cfg, cont); err != nil {
+	if err := memory.Continue(ctx, cfg, cont); err != nil {
 		t.Fatal(err)
 	}
-	if res, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir, Fallback: true}); err != nil || res != (CloseResult{}) {
+	if res, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_2", Directory: dir, Fallback: true}); err != nil || res != (memory.CloseResult{}) {
 		t.Fatalf("fallback close of a declaration-only session = %+v, %v", res, err)
 	}
-	if _, err := Close(ctx, cfg, CloseRequest{Author: "takt", Session: "ses_2", Directory: dir}); err != nil {
+	if _, err := memory.Close(ctx, cfg, memory.CloseRequest{Author: "takt", Session: "ses_2", Directory: dir}); err != nil {
 		t.Fatal(err)
 	}
-	l, _ := loadSessionIndex(cfg.Root, "ses_2")
+	l, _ := readIndex(cfg.Root, "ses_2")
 	if l.Continues != "" || len(f.edgesFrom(l.StartAnchor)) != 0 {
 		t.Fatalf("withdrawn declaration linked: %+v", l)
 	}
@@ -762,7 +774,7 @@ func TestConcurrentRecords(t *testing.T) {
 			defer wg.Done()
 			req := base()
 			req.Title = fmt.Sprintf("Finding %d", i)
-			_, err := Record(context.Background(), cfg, req)
+			_, err := memory.Record(context.Background(), cfg, req)
 			errs <- err
 		}()
 	}
@@ -773,7 +785,7 @@ func TestConcurrentRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	l, err := loadSessionIndex(cfg.Root, "ses_1")
+	l, err := readIndex(cfg.Root, "ses_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -783,9 +795,9 @@ func TestConcurrentRecords(t *testing.T) {
 }
 
 func TestEnsureServeWithoutBinary(t *testing.T) {
-	cfg := Config{Root: t.TempDir(), EngramURL: "http://127.0.0.1:1"}
-	_, err := Record(context.Background(), cfg, base())
-	var ve *ValidationError
+	cfg := memory.Config{Root: t.TempDir(), EngramURL: "http://127.0.0.1:1"}
+	_, err := memory.Record(context.Background(), cfg, base())
+	var ve *memory.ValidationError
 	if err == nil || errors.As(err, &ve) {
 		t.Fatalf("want internal error, got %v", err)
 	}
@@ -793,7 +805,7 @@ func TestEnsureServeWithoutBinary(t *testing.T) {
 
 func TestDetectProjectBasename(t *testing.T) {
 	dir := t.TempDir() + "/My-Proj"
-	if got := detectProject(context.Background(), dir); got != "my-proj" {
+	if got := memory.ResolveProject(context.Background(), memory.Config{EngramURL: "http://127.0.0.1:1"}, dir); got != "my-proj" {
 		t.Fatalf("project = %q", got)
 	}
 }
@@ -804,14 +816,14 @@ func TestMemoryAcceptsPreviouslyBlockedWords(t *testing.T) {
 			f, cfg := newFake(t)
 			req := base()
 			req.Title, req.Content = text, text
-			result, err := Record(context.Background(), cfg, req)
+			result, err := memory.Record(context.Background(), cfg, req)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(f.byID(result.ID).Content, "**Authority**: author\n") {
 				t.Fatal("changed attribution")
 			}
-			if _, err := Close(context.Background(), cfg, CloseRequest{Author: "takt", Session: req.Session, Directory: req.Directory, Objective: text, State: text}); err != nil {
+			if _, err := memory.Close(context.Background(), cfg, memory.CloseRequest{Author: "takt", Session: req.Session, Directory: req.Directory, Objective: text, State: text}); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -821,7 +833,7 @@ func TestMemoryAcceptsPreviouslyBlockedWords(t *testing.T) {
 // MEM-AUT-6: the harness reports a session's own entries; the specialist never declares them.
 func TestEntryIDsForSession(t *testing.T) {
 	root := t.TempDir()
-	ids, err := EntryIDsForSession(root, "ses_missing")
+	ids, err := memory.EntryIDsForSession(root, "ses_missing")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -830,17 +842,17 @@ func TestEntryIDsForSession(t *testing.T) {
 	}
 
 	_, cfg := newFake(t)
-	first, err := Record(context.Background(), cfg, base())
+	first, err := memory.Record(context.Background(), cfg, base())
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := base()
 	req.Title = "Second finding"
-	second, err := Record(context.Background(), cfg, req)
+	second, err := memory.Record(context.Background(), cfg, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := EntryIDsForSession(cfg.Root, "ses_1")
+	got, err := memory.EntryIDsForSession(cfg.Root, "ses_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -870,26 +882,26 @@ func TestHoldsSessionInterlocutorHolder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := holdsSession("takt", "root", dir); err != nil {
-		t.Fatalf("orchestrator should always pass: %v", err)
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "takt", Session: "root", Directory: dir}); !slices.Contains(got, "memory_continue_session") {
+		t.Fatalf("orchestrator should always pass: %v", got)
 	}
-	if err := holdsSession("architect", "root", dir); err != nil {
-		t.Fatalf("the current holder should pass: %v", err)
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); !slices.Contains(got, "memory_continue_session") {
+		t.Fatalf("the current holder should pass: %v", got)
 	}
-	if err := holdsSession("pm", "root", dir); err == nil {
+	if slices.Contains(memory.Capabilities(memory.CapabilitiesRequest{Author: "pm", Session: "root", Directory: dir}), "memory_continue_session") {
 		t.Fatal("a direct_interlocutor that is not the current holder should fail")
 	}
 }
 
 func TestHoldsSessionBaseHolderWithoutSwitch(t *testing.T) {
 	dir := t.TempDir()
-	if err := holdsSession("takt", "root", dir); err != nil {
-		t.Fatalf("orchestrator should always pass: %v", err)
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "takt", Session: "root", Directory: dir}); !slices.Contains(got, "memory_continue_session") {
+		t.Fatalf("orchestrator should always pass: %v", got)
 	}
-	if err := holdsSession("architect", "root", dir); err != nil {
-		t.Fatalf("the base holder should pass when no switch was ever recorded: %v", err)
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); !slices.Contains(got, "memory_continue_session") {
+		t.Fatalf("the base holder should pass when no switch was ever recorded: %v", got)
 	}
-	if err := holdsSession("dev", "root", dir); err == nil {
+	if slices.Contains(memory.Capabilities(memory.CapabilitiesRequest{Author: "dev", Session: "root", Directory: dir}), "memory_continue_session") {
 		t.Fatal("a role that never holds the interface should fail")
 	}
 }
@@ -903,7 +915,7 @@ func TestCapabilitiesProjectsEveryCatalogInstance(t *testing.T) {
 	for _, def := range cat.Agents {
 		for _, id := range def.Instances {
 			t.Run(id, func(t *testing.T) {
-				tools := Capabilities(CapabilitiesRequest{Author: id, Session: "root", Directory: dir})
+				tools := memory.Capabilities(memory.CapabilitiesRequest{Author: id, Session: "root", Directory: dir})
 				want := []string{"memory_record"}
 				if def.Role == model.RoleOrchestrator || def.Role.HoldsInterface() {
 					want = append(want, "memory_continue_session", "memory_close_session")
@@ -912,10 +924,10 @@ func TestCapabilitiesProjectsEveryCatalogInstance(t *testing.T) {
 					t.Fatalf("got %v, want %v", tools, want)
 				}
 				if len(want) == 1 {
-					if err := Continue(context.Background(), Config{}, ContinueRequest{Author: id, Session: "root", Directory: dir}); err == nil {
+					if err := memory.Continue(context.Background(), memory.Config{}, memory.ContinueRequest{Author: id, Session: "root", Directory: dir}); err == nil {
 						t.Fatal("unauthorized direct continue accepted")
 					}
-					if _, err := Close(context.Background(), Config{}, CloseRequest{Author: id, Session: "root", Directory: dir}); err == nil {
+					if _, err := memory.Close(context.Background(), memory.Config{}, memory.CloseRequest{Author: id, Session: "root", Directory: dir}); err == nil {
 						t.Fatal("unauthorized direct close accepted")
 					}
 				}
@@ -943,7 +955,7 @@ func TestCapabilitiesFailClosedAndReflectHolder(t *testing.T) {
 		{"architect", dir, 3}, {"pm", dir, 1}, {"takt", dir, 3}, {"spec", dir, 1}, {"unknown", dir, 1}, {"architect", "", 1},
 	} {
 		t.Run(tt.author+tt.directory, func(t *testing.T) {
-			got := Capabilities(CapabilitiesRequest{Author: tt.author, Session: "root", Directory: tt.directory})
+			got := memory.Capabilities(memory.CapabilitiesRequest{Author: tt.author, Session: "root", Directory: tt.directory})
 			if len(got) != tt.count || got[0] != "memory_record" {
 				t.Fatalf("unexpected capabilities: %v", got)
 			}
@@ -953,7 +965,7 @@ func TestCapabilitiesFailClosedAndReflectHolder(t *testing.T) {
 
 func TestCapabilitiesDoesNotCreateHistory(t *testing.T) {
 	dir := t.TempDir()
-	if got := Capabilities(CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 3 {
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 3 {
 		t.Fatal(got)
 	}
 	entries, err := os.ReadDir(dir)
@@ -967,7 +979,7 @@ func TestCapabilitiesDoesNotCreateHistory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "history.sqlite"), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got := Capabilities(CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 1 {
+	if got := memory.Capabilities(memory.CapabilitiesRequest{Author: "architect", Session: "root", Directory: dir}); len(got) != 1 {
 		t.Fatal(got)
 	}
 }
@@ -994,7 +1006,7 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, author := range []string{"architect", "pm"} {
-			got := Capabilities(CapabilitiesRequest{Author: author, Session: "root", Directory: dir})
+			got := memory.Capabilities(memory.CapabilitiesRequest{Author: author, Session: "root", Directory: dir})
 			want := 1
 			if author == holder {
 				want = 3
@@ -1003,10 +1015,10 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 				t.Fatalf("holder %s, author %s: %v", holder, author, got)
 			}
 			if author != holder {
-				if err := Continue(context.Background(), Config{}, ContinueRequest{Author: author, Session: "root", Directory: dir}); err == nil {
+				if err := memory.Continue(context.Background(), memory.Config{}, memory.ContinueRequest{Author: author, Session: "root", Directory: dir}); err == nil {
 					t.Fatal("non-holder continue allowed")
 				}
-				if _, err := Close(context.Background(), Config{}, CloseRequest{Author: author, Session: "root", Directory: dir}); err == nil {
+				if _, err := memory.Close(context.Background(), memory.Config{}, memory.CloseRequest{Author: author, Session: "root", Directory: dir}); err == nil {
 					t.Fatal("non-holder close allowed")
 				}
 			}
@@ -1022,42 +1034,42 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 func TestRecordMatrixColumnOwnership(t *testing.T) {
 	_, cfg := newFake(t)
 	ctx := context.Background()
-	entry := func(author, title string, rel *RelatesTo) RecordRequest {
+	entry := func(author, title string, rel *memory.RelatesTo) memory.RecordRequest {
 		req := base()
 		req.Author, req.Title, req.RelatesTo = author, title, rel
 		return req
 	}
-	matrix, err := Record(ctx, cfg, entry("qa", "Traceability Matrix", nil))
+	matrix, err := memory.Record(ctx, cfg, entry("qa", "Traceability Matrix", nil))
 	if err != nil {
 		t.Fatalf("qa creating the matrix: %v", err)
 	}
-	other, err := Record(ctx, cfg, entry("dev", "Split the parser plan", nil))
+	other, err := memory.Record(ctx, cfg, entry("dev", "Split the parser plan", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	supplements := &RelatesTo{ID: matrix.ID, Relation: "supplements"}
+	supplements := &memory.RelatesTo{ID: matrix.ID, Relation: "supplements"}
 	for _, tc := range []struct {
 		name      string
-		req       RecordRequest
+		req       memory.RecordRequest
 		fragments []string // empty when the write is accepted
 	}{
 		{"qa refines its rows", entry("qa", "Traceability Matrix: Requirements", supplements), nil},
 		{"tpm adds the owning node", entry("tpm", "Traceability Matrix: Owning node", supplements), nil},
 		{"verify adds the evidence", entry("verify", "Traceability Matrix: Evidence", supplements), nil},
-		{"anyone disputes it", entry("dev", "The matrix misses a row", &RelatesTo{ID: matrix.ID, Relation: "disputes"}), nil},
-		{"a non-matrix target is unaffected", entry("dev", "Traceability Matrix: Evidence", &RelatesTo{ID: other.ID, Relation: "supplements"}), nil},
+		{"anyone disputes it", entry("dev", "The matrix misses a row", &memory.RelatesTo{ID: matrix.ID, Relation: "disputes"}), nil},
+		{"a non-matrix target is unaffected", entry("dev", "Parser evidence", &memory.RelatesTo{ID: other.ID, Relation: "supplements"}), nil},
 		{"tpm creating a matrix", entry("tpm", "Traceability Matrix", nil), []string{"supplements", `"Traceability Matrix: Owning node"`}},
 		{"dev creating a matrix", entry("dev", "Traceability Matrix", nil), []string{"qa, tpm and verify", "disputes"}},
 		{"tpm writing evidence", entry("tpm", "Traceability Matrix: Evidence", supplements), []string{`"Traceability Matrix: Owning node"`}},
 		{"tpm without a column", entry("tpm", "Owning nodes", supplements), []string{`"Traceability Matrix: Owning node"`}},
-		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
+		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
 		{"dev adding to it", entry("dev", "Traceability Matrix: Evidence", supplements), []string{"qa, tpm and verify", "disputes"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Record(ctx, cfg, tc.req)
+			_, err := memory.Record(ctx, cfg, tc.req)
 			if len(tc.fragments) == 0 {
 				if err != nil {
-					t.Fatalf("Record() = %v; want the write accepted", err)
+					t.Fatalf("memory.Record() = %v; want the write accepted", err)
 				}
 				return
 			}

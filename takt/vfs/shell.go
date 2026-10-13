@@ -110,14 +110,16 @@ func shellRoot(stateDir, callID string) string {
 // shellCall is what a prepared command was planned against: the binding it
 // captures into and that binding's staged state at preparation.
 type shellCall struct {
-	Key       AgentID
-	Revision  uint64
-	DeltaHash string
-	Caller    Caller
-	Command   string
-	Plan      ShellPlan
-	Started   bool
-	Evaluated bool
+	Inspection *nativeInspection `json:",omitempty"`
+	HostCallID string            `json:"host_call_id,omitempty"`
+	Key        AgentID
+	Revision   uint64
+	DeltaHash  string
+	Caller     Caller
+	Command    string
+	Plan       ShellPlan
+	Started    bool
+	Evaluated  bool
 }
 
 // errShellMoved refuses an import over staged work that changed after the
@@ -134,7 +136,7 @@ var errShellMoved = fmt.Errorf("%w: the staged work changed while the command ra
 // records, under callID, the binding and its staged state, which the import
 // requires unchanged. Identity problems, and store or filesystem errors,
 // propagate.
-func (f *FS) PrepareShell(c Caller, callID, command, stateDir string) (plan ShellPlan, err error) {
+func (f *FS) PrepareShell(c Caller, callID, command, stateDir string, hostCallID ...string) (plan ShellPlan, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
@@ -158,13 +160,29 @@ func (f *FS) PrepareShell(c Caller, callID, command, stateDir string) (plan Shel
 	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", key); err != nil {
 		return ShellPlan{}, err
 	}
+	codegraphQuery := slices.ContainsFunc(shellWords(command), func(word string) bool { return filepath.Base(word) == "codegraph" })
+	if codegraphQuery {
+		if err = f.guardCodeQueryLocked(c); err != nil {
+			return ShellPlan{}, err
+		}
+	}
 	if _, exists := f.shellCalls[shellCallKey(c.SessionID, callID)]; exists {
 		return ShellPlan{}, fmt.Errorf("%w: shell call already prepared; issue a new tool call", ErrDuplicateCall)
 	}
 	plan, err = f.prepareShellLocked(key, callID, command, stateDir)
+	if err == nil && plan.Cwd == f.rootDir && isVFSAuthor(c.Agent) {
+		plan.Private = append(plan.Private, f.foreignReadPathsLocked(key)...)
+	}
 	if err == nil && plan.Decision != ShellDeny {
 		index := shellCallKey(c.SessionID, callID)
-		f.shellCalls[index] = shellCall{Key: key, Revision: f.revisionOf(key), DeltaHash: f.deltaHashLocked(key), Caller: c, Command: command, Plan: plan}
+		call := shellCall{Key: key, Revision: f.revisionOf(key), DeltaHash: f.deltaHashLocked(key), Caller: c, Command: command, Plan: plan}
+		if len(hostCallID) > 0 {
+			call.HostCallID = hostCallID[0]
+		}
+		if codegraphQuery {
+			call.Inspection = &nativeInspection{Tree: true}
+		}
+		f.shellCalls[index] = call
 	}
 	return plan, err
 }
@@ -273,6 +291,12 @@ func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationR
 	}
 	if c != recorded.Caller {
 		return result, fmt.Errorf("%w: shell %s belongs to an earlier execution; issue the command again as a new tool call", ErrIdentity, callID)
+	}
+	if recorded.Inspection != nil {
+		delete(f.shellCalls, shellCallKey(c.SessionID, callID))
+		result.Revision, result.DeltaHash = f.revisionOf(recorded.Key), f.deltaHashLocked(recorded.Key)
+		f.finishLocked(&err)
+		return result, err
 	}
 	if !recorded.Plan.Capture {
 		delete(f.shellCalls, shellCallKey(c.SessionID, callID))
@@ -750,6 +774,13 @@ func (f *FS) ContinueShell(c Caller, callID, phase string) (plan ShellPlan, err 
 	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", call.Key); err != nil {
 		return plan, err
 	}
+	if call.Plan.Cwd == f.rootDir && isVFSAuthor(c.Agent) {
+		for _, path := range f.foreignReadPathsLocked(call.Key) {
+			if !slices.Contains(call.Plan.Private, path) {
+				return plan, fmt.Errorf("%w: ownership changed since shell preparation; issue the command again as a new tool call", ErrScopeDenied)
+			}
+		}
+	}
 	switch phase {
 	case "start":
 		if call.Started {
@@ -781,7 +812,9 @@ func (f *FS) ReleaseShell(c Caller, callID string) (err error) {
 	if !ok {
 		return nil
 	}
-	if call.Caller.HostSession != c.HostSession || call.Caller.Agent != c.Agent {
+	// A native tool's reservation ends only through EndNativeInspection, after
+	// the native call exits; a shell's inspection ends with its shell.
+	if (call.Inspection != nil && call.Command == "") || call.Caller.HostSession != c.HostSession || call.Caller.Agent != c.Agent {
 		return ErrIdentity
 	}
 	delete(f.shellCalls, index)

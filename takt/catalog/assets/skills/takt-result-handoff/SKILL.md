@@ -1,6 +1,6 @@
 ---
 name: takt-result-handoff
-description: "Before presenting a finished result to the orchestrator. How a producer agent delivers a completed Engram artifact through deliver_result."
+description: "Before presenting a finished result to the orchestrator. How a producer agent delivers a completed Engram artifact or diagnostic blocker through deliver_result."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -10,7 +10,7 @@ metadata:
 # Takt Result Handoff
 
 In a delegation (your session opened with a work unit and its consumed invariants), `deliver_result` is how you present a complete Engram artifact as your
-final result. Record each artifact with `memory_record` first, as its own
+final result. A documented blocker is a completed diagnostic result: name what is missing, its evidence and who can resolve it; do not fabricate a standard artifact or present partial work as final. Record each artifact with `memory_record` first, as its own
 dedicated entry; only entries you recorded in this session count as your result.
 `deliver_result` then takes those IDs, one call per batch. Never call it before the
 corresponding `memory_record` has succeeded, and never bundle unrelated entries into one

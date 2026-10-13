@@ -85,12 +85,50 @@ const (
 	// budgets of one declared recovery (PR-HAR-6, PR-ORQ-13).
 	BoundRecoveryActions  = "budget/recovery-actions"
 	BoundRecoveryAttempts = "budget/recovery-attempts"
+	// BoundQARounds caps forward strengthening per acceptance objective.
+	BoundQARounds = "budget/qa-strengthening-rounds"
 )
 
 // bounds enumerates the limits a user exception may scope.
 var bounds = map[string]bool{
 	BoundConcurrency: true, BoundUnplanned: true, BoundContests: true,
 	BoundRecovery: true, BoundRecoveryActions: true, BoundRecoveryAttempts: true,
+	BoundQARounds: true,
+}
+
+// QARound is a plan's explicit authoring membership, never inferred for older
+// histories. The plan version identifies the round across later replanning.
+type QARound struct {
+	Objective string   `json:"objective"`
+	Units     []string `json:"units"`
+}
+
+// Strengthening is one declared round as replay derives it. The first admitted
+// member starts it; siblings and later attempts continue the same round.
+type Strengthening struct {
+	QARound
+	Started bool `json:"started"`
+}
+
+// QARoundFor finds a unit's declared membership from this session's history.
+func (b Budgets) QARoundFor(unit string) (string, Strengthening) {
+	for version, round := range b.QARounds {
+		if slices.Contains(round.Units, unit) {
+			return version, round
+		}
+	}
+	return "", Strengthening{}
+}
+
+// StrengtheningUsed counts started rounds, not attempts or plan revisions.
+func (b Budgets) StrengtheningUsed(objective string) int {
+	used := 0
+	for _, round := range b.QARounds {
+		if round.Objective == objective && round.Started {
+			used++
+		}
+	}
+	return used
 }
 
 // AllowanceKey names the scope an exception's allowance applies to: a bound,
@@ -213,6 +251,7 @@ func refSeq(ref string) int {
 // Consumption only grows: a recorded exception adds allowance beside it rather
 // than erasing it (PR-HAR-22).
 type Budgets struct {
+	QARounds map[string]Strengthening `json:"qa_rounds,omitempty"`
 	// Unplanned counts distinct work units admitted without plan coverage,
 	// including work never launched and work later cancelled (PR-DAG-MUT-10).
 	Unplanned int `json:"unplanned"`
@@ -358,6 +397,12 @@ func (p *Projection) fold(e Entry) {
 	if e.Kind == KindAdmitted && !known {
 		p.budgets(e.SessionID).Unplanned++
 	}
+	if e.Kind == KindAdmitted {
+		if version, round := b.QARoundFor(e.WorkUnitID); version != "" {
+			round.Started = true
+			b.QARounds[version] = round
+		}
+	}
 	// An admission that declares its recovery scope membership consumes one
 	// attempt of that recovery; a repeated request never reaches here
 	// (PR-HAR-6, PR-HAR-17).
@@ -410,6 +455,11 @@ func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 // visible; a denial in particular consumes nothing.
 func budgeted(b *Budgets, e Entry) bool {
 	switch e.Kind {
+	case KindQARound:
+		if b.QARounds == nil {
+			b.QARounds = map[string]Strengthening{}
+		}
+		b.QARounds[e.PlanVersion] = Strengthening{QARound: *e.QARound}
 	case KindDenied:
 	case KindContested:
 		b.Contests[e.WorkUnitID+"/"+e.AttemptID] = true
