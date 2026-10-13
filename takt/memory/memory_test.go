@@ -57,6 +57,7 @@ type fakeEngram struct {
 	projects map[int64]string // extra observations seeded for relates_to lookups
 }
 
+// newFake serves an in-memory Engram for the package tests and the Config that reaches it.
 func newFake(t *testing.T) (*fakeEngram, Config) {
 	t.Helper()
 	f := &fakeEngram{nextID: 100, projects: map[int64]string{}}
@@ -121,7 +122,7 @@ func newFake(t *testing.T) (*fakeEngram, Config) {
 		}
 		for _, o := range f.obs {
 			if o.ID == id {
-				if err := json.NewEncoder(w).Encode(map[string]any{"id": id, "project": o.Project, "type": o.Type}); err != nil {
+				if err := json.NewEncoder(w).Encode(map[string]any{"id": id, "project": o.Project, "type": o.Type, "title": o.Title}); err != nil {
 					t.Errorf("encode observation lookup response: %v", err)
 				}
 				return
@@ -1010,5 +1011,62 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestRecordMatrixColumnOwnership checks that each traceability matrix column is
+// written only by its author: qa creates the matrix and its rows, tpm the
+// owning node, verify the evidence, each declared in the entry's title; a
+// dispute stays open to anyone, and entries that are not the matrix are
+// unaffected.
+func TestRecordMatrixColumnOwnership(t *testing.T) {
+	_, cfg := newFake(t)
+	ctx := context.Background()
+	entry := func(author, title string, rel *RelatesTo) RecordRequest {
+		req := base()
+		req.Author, req.Title, req.RelatesTo = author, title, rel
+		return req
+	}
+	matrix, err := Record(ctx, cfg, entry("qa", "Traceability Matrix", nil))
+	if err != nil {
+		t.Fatalf("qa creating the matrix: %v", err)
+	}
+	other, err := Record(ctx, cfg, entry("dev", "Split the parser plan", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	supplements := &RelatesTo{ID: matrix.ID, Relation: "supplements"}
+	for _, tc := range []struct {
+		name      string
+		req       RecordRequest
+		fragments []string // empty when the write is accepted
+	}{
+		{"qa refines its rows", entry("qa", "Traceability Matrix: Requirements", supplements), nil},
+		{"tpm adds the owning node", entry("tpm", "Traceability Matrix: Owning node", supplements), nil},
+		{"verify adds the evidence", entry("verify", "Traceability Matrix: Evidence", supplements), nil},
+		{"anyone disputes it", entry("dev", "The matrix misses a row", &RelatesTo{ID: matrix.ID, Relation: "disputes"}), nil},
+		{"a non-matrix target is unaffected", entry("dev", "Traceability Matrix: Evidence", &RelatesTo{ID: other.ID, Relation: "supplements"}), nil},
+		{"tpm creating a matrix", entry("tpm", "Traceability Matrix", nil), []string{"supplements", `"Traceability Matrix: Owning node"`}},
+		{"dev creating a matrix", entry("dev", "Traceability Matrix", nil), []string{"qa, tpm and verify", "disputes"}},
+		{"tpm writing evidence", entry("tpm", "Traceability Matrix: Evidence", supplements), []string{`"Traceability Matrix: Owning node"`}},
+		{"tpm without a column", entry("tpm", "Owning nodes", supplements), []string{`"Traceability Matrix: Owning node"`}},
+		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
+		{"dev adding to it", entry("dev", "Traceability Matrix: Evidence", supplements), []string{"qa, tpm and verify", "disputes"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Record(ctx, cfg, tc.req)
+			if len(tc.fragments) == 0 {
+				if err != nil {
+					t.Fatalf("Record() = %v; want the write accepted", err)
+				}
+				return
+			}
+			wantValidation(t, err)
+			for _, fragment := range tc.fragments {
+				if !strings.Contains(err.Error(), fragment) {
+					t.Errorf("rejection lacks %q: %v", fragment, err)
+				}
+			}
+		})
 	}
 }

@@ -1,6 +1,6 @@
 # PRD: Quality Assurance and Testing
 
-**Actual implementation progress: 98%** — 20 own requirements: 19 complete, 1 partial, 0 not integrated. The strategy skill, the QA workflow, the QA specialists with their class and conduct, their documents, and the routing of planning, the acceptance tail, and testing outcomes are catalog content reachable through the crew's normal flow; blindness rests on VFS file ownership, and a read of another author's staged work is answered with the reader's own inputs by ID. Gap: sole authorship of each traceability matrix column (`PR-QA-9`) rests on conduct; nothing refuses an entry for another author's column.
+**Actual implementation progress: 100%** — 20 own requirements: 20 complete, 0 partial, 0 not integrated. The strategy skill, the QA workflow, the QA specialists with their class and conduct, their documents, and the routing of planning, the acceptance tail, and testing outcomes are catalog content reachable through the crew's normal flow; blindness rests on VFS file ownership, and a read of another author's staged work is answered with the reader's own inputs by ID; memory refuses a matrix entry from anyone but its column's author.
 
 ## 1. Problem
 
@@ -48,7 +48,7 @@ The QA lead (`takt-qa`) is a planning author. The test author is an ordinary exe
 
 | ID | Requirement |
 | --- | --- |
-| PR-QA-9 | Each objective with QA planned has one requirements traceability matrix: requirement → test condition → owning DAG node → evidence. The QA lead creates it with the requirement, the test condition, and the must-not-fail marking; TPM adds the owning node; Verify adds the evidence, identifying the evaluated scope as `PR-VFS-CSL-7` requires. Each column has exactly that one author. |
+| PR-QA-9 | Each objective with QA planned has one requirements traceability matrix: requirement → test condition → owning DAG node → evidence. The QA lead creates it with the requirement, the test condition, and the must-not-fail marking; TPM adds the owning node; Verify adds the evidence, identifying the evaluated scope as `PR-VFS-CSL-7` requires. Each column has exactly that one author, and memory enforces it at write: the matrix is created only by the QA lead, and an entry that supplements, corrects, supersedes or makes an exception to it is accepted only from the author of the column its title declares (`Traceability Matrix: Requirements`, `: Owning node`, `: Evidence`). A refusal names the title to record again, or `disputes` for an author with no column, which stays open to all. |
 | PR-QA-10 | Every addition to the matrix is a supplementing memory entry linked to the matrix (`MEM-OPS-2`), never a rewrite of it. A requirement with no test condition, a condition with no owning node, and a row with no evidence when acceptance closes are each visible in the matrix as such. |
 
 ### 2.5 Test Authorship and Oracle

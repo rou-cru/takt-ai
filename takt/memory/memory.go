@@ -386,13 +386,19 @@ func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author s
 	return ValidateResultIDs(ctx, cfg, ids)
 }
 
+// prepareRecord checks what a write depends on outside the request: the related
+// entry, the matrix column the author may write, and the session start.
 func (s *openSession) prepareRecord(ctx context.Context, cfg Config, req RecordRequest) error {
 	if err := s.client.ensureServe(ctx); err != nil {
 		return err
 	}
 	project := recordProject(req.Scope, s.resolveProject(ctx, req.Directory))
 
-	if err := checkRelatesTo(ctx, s.client, req.RelatesTo, project); err != nil {
+	target, err := checkRelatesTo(ctx, s.client, req.RelatesTo, project)
+	if err != nil {
+		return err
+	}
+	if err := checkMatrixColumn(req, target); err != nil {
 		return err
 	}
 	return s.start(ctx, cfg, req.Session, req.Directory)
@@ -441,31 +447,97 @@ func (s *openSession) recordLinks(ctx context.Context, cfg Config, req RecordReq
 	return saveSessionIndex(cfg.Root, l)
 }
 
+// relatedEntry is the stored title of the entry a record relates to, as Engram
+// holds it: "[author] Title".
+type relatedEntry struct{ title string }
+
 // checkRelatesTo requires rel, when given, to name an existing memory entry of
-// the same tier: the same project, or the unbound global tier.
-func checkRelatesTo(ctx context.Context, c *engramClient, rel *RelatesTo, project string) error {
+// the same tier: the same project, or the unbound global tier. It returns the
+// related entry's stored title.
+func checkRelatesTo(ctx context.Context, c *engramClient, rel *RelatesTo, project string) (relatedEntry, error) {
 	if rel == nil {
-		return nil
+		return relatedEntry{}, nil
 	}
 	var target struct {
 		Project *string `json:"project"`
 		Type    string  `json:"type"`
+		Title   string  `json:"title"`
 	}
 	status, err := c.call(ctx, http.MethodGet, "/observations/"+strconv.FormatInt(rel.ID, 10), nil, &target)
 	if status == http.StatusNotFound {
-		return reject("relates_to #%d does not exist", rel.ID)
+		return relatedEntry{}, reject("relates_to #%d does not exist", rel.ID)
 	}
 	if err != nil {
-		return err
+		return relatedEntry{}, err
 	}
 	if target.Type == "session_anchor" {
-		return reject("relates_to #%d is a session anchor, not a memory entry", rel.ID)
+		return relatedEntry{}, reject("relates_to #%d is a session anchor, not a memory entry", rel.ID)
 	}
 	if targetProject(target.Project) != project {
 		if project == "" {
-			return reject("relates_to #%d is a workspace entry; a global memory relates only to global memories", rel.ID)
+			return relatedEntry{}, reject("relates_to #%d is a workspace entry; a global memory relates only to global memories", rel.ID)
 		}
-		return reject("relates_to #%d belongs to another project; relations stay inside project %q", rel.ID, project)
+		return relatedEntry{}, reject("relates_to #%d belongs to another project; relations stay inside project %q", rel.ID, project)
+	}
+	return relatedEntry{title: target.Title}, nil
+}
+
+// matrixTitle names the traceability matrix and, followed by ": <column>",
+// each entry that writes one of its columns (PR-QA-9).
+const matrixTitle = "Traceability Matrix"
+
+// matrixColumns maps each traceability matrix column to its sole author.
+var matrixColumns = map[string]string{
+	"Requirements": "qa",
+	"Owning node":  "tpm",
+	"Evidence":     "verify",
+}
+
+// ownColumn is the matrix column author writes, or "" when it writes none.
+func ownColumn(author string) string {
+	for column, owner := range matrixColumns {
+		if owner == author {
+			return column
+		}
+	}
+	return ""
+}
+
+// declaredColumn is the matrix column a title declares, or "" when it declares none.
+func declaredColumn(title string) string {
+	column, ok := strings.CutPrefix(strings.TrimSpace(title), matrixTitle+":")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(column)
+}
+
+// columnTitle is the exact title an entry writing column carries.
+func columnTitle(column string) string { return matrixTitle + ": " + column }
+
+// checkMatrixColumn keeps each traceability matrix column to its sole author:
+// only qa creates the matrix, and an entry that adds to or revises it must be
+// its author's own column, declared in its title. A dispute stays open to any
+// author, as the way to state a contradiction.
+func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
+	own := ownColumn(req.Author)
+	if req.RelatesTo == nil {
+		if strings.HasPrefix(strings.TrimSpace(req.Title), matrixTitle) && req.Author != matrixColumns["Requirements"] {
+			if own == "" {
+				return reject("only qa, tpm and verify write the traceability matrix; record your fact under another title, related to the matrix with disputes when it contradicts it")
+			}
+			return reject("a traceability matrix is qa's; to add your column, relate this entry to the matrix with supplements and title it %q", columnTitle(own))
+		}
+		return nil
+	}
+	if req.RelatesTo.Relation == "disputes" || !strings.HasPrefix(target.title, "["+matrixColumns["Requirements"]+"] "+matrixTitle) {
+		return nil
+	}
+	switch {
+	case own == "":
+		return reject("relates_to #%d is the traceability matrix, which only qa, tpm and verify write; record your fact as its own entry, related to #%d with disputes when it contradicts the matrix", req.RelatesTo.ID, req.RelatesTo.ID)
+	case declaredColumn(req.Title) != own:
+		return reject("relates_to #%d is the traceability matrix; your column is %s, so record this entry again titled %q", req.RelatesTo.ID, own, columnTitle(own))
 	}
 	return nil
 }

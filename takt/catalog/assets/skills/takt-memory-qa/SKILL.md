@@ -15,9 +15,11 @@ only narrows what your role records.
 ## Records
 
 - Standard results: the test policy, the test plan, the environment requirements and the
-  traceability matrix, each in its own `project` entry.
+  traceability matrix, each in its own `project` entry; the matrix is titled
+  `Traceability Matrix`.
 - The test policy once per workspace; a later refinement is a new entry that `supplements` it.
-- Your later additions to the matrix are entries that `supplements` it.
+- Your later additions to the matrix are entries that `supplements` it, titled
+  `Traceability Matrix: Requirements`.
 - `observation` (`project`): a repository testing fact the policy rests on — test tooling, CI
   checks, a convention — with the file or command as evidence.
 

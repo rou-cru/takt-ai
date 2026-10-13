@@ -18,7 +18,7 @@ only narrows what your role records.
 - A later report on the same code is a new entry that `supplements` the earlier one.
 - An `observation` that `corrects` or `disputes` a recorded fact or decision verification contradicted.
 - The evidence for each traceability matrix row you verified, naming the evaluated scope, as an
-  entry that `supplements` the matrix.
+  entry that `supplements` the matrix, titled `Traceability Matrix: Evidence`.
 
 ## Recognized documents
 
