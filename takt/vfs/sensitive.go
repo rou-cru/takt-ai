@@ -114,6 +114,18 @@ func matchesSensitive(rel string, dir bool) bool {
 	return false
 }
 
+// sensitiveInspection reports whether a single inspected path is secret: rel
+// itself by its real kind, or any ancestor as a denied directory.
+func sensitiveInspection(rel string, dir bool) bool {
+	parts := strings.Split(rel, "/")
+	for i := 1; i < len(parts); i++ {
+		if matchesSensitive(strings.Join(parts[:i], "/"), true) {
+			return true
+		}
+	}
+	return matchesSensitive(rel, dir)
+}
+
 // userHome is the home directory whose secrets inspection must not read; an
 // unresolvable home only drops the home-relative denials.
 func userHome() string {

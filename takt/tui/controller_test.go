@@ -233,6 +233,10 @@ func TestStaleActionResultIsIgnored(t *testing.T) {
 // screen, no mouse, no focus reporting, and the painted dark backgrounds.
 // Flows declare content only.
 func TestControllerDeclaresTerminalViewFields(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Cleanup(func() { theme.SetMode(theme.DetectMode()) })
+	theme.SetMode(theme.ModeColor)
 	for _, m := range []Model{New(t.TempDir()), withStack(newStub(false))} {
 		v := m.View()
 		if !v.AltScreen || v.MouseMode != tea.MouseModeNone || v.ReportFocus {

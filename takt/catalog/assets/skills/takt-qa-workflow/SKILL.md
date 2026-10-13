@@ -1,6 +1,6 @@
 ---
 name: takt-qa-workflow
-description: "Selected when an objective's work is assessing, testing or hardening a deliverable, or when a route closes the acceptance of an objective with QA planned. Governs QA planning, blind test authoring, acceptance, the mutation, exploration and quality critique, and the test completion report as one state machine. Orchestrator-only guide."
+description: "Selected when an objective assesses, tests or hardens a deliverable, or when a route closes acceptance with QA planned. Governs QA planning, blind test authoring, acceptance, critique, strengthening and reporting as one state machine."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,64 +9,81 @@ metadata:
 
 # Takt QA Workflow
 
-> **Target Audience:** Orchestrator agent only. QA specialists consume their assignments,
-> not this skill.
+> **Target Audience:** Orchestrator only. Specialists consume assignments, not this flow.
 
-Governs the objective's testing as states. Each state names what you delegate, the entries
-you declare with `dispatch_inputs` for it, the result that ends it, and the next state. Every
-datum travels by Engram ID; a brief never restates an entry it declares.
+Declare each assignment's inputs with `dispatch_inputs` by Engram ID, including applicable
+supplements. Briefs name the purpose and scope, never restate consumed artifacts. Distinguish
+an objective that delivers or hardens code from an audit that only assesses it: an audit
+preserves findings and never infers permission to repair.
 
 ## Entry
 
 | You arrive from | Start at |
 | --- | --- |
-| The selection tree, for an objective that assesses, tests or hardens a deliverable | 1. Assess |
-| `takt-sdd-workflow`, at the acceptance of an objective with a test plan | 4. Accept |
-| A bounded unit whose change touches behavior a current test plan covers | 4. Accept, for the matrix rows of that unit |
+| The selection tree, to assess, test or harden an existing deliverable | 1. Assess |
+| `takt-sdd-workflow`, at acceptance with QA planned | 4. Accept |
+| A bounded change covered by a current test plan | 4. Accept, for its matrix rows |
 
-An objective reaches this skill from the second and third entries only with QA planned, its
-test plan and matrix already delivered by invariant planning; one without QA planned is held
-to the Definition of Done in force, without a test plan.
+The last two entries require the test plan and matrix from invariant planning. Without QA
+planned, use the Definition of Done in force, without manufacturing a test plan.
 
 ## States
 
-| State | Delegate, with `dispatch_inputs` | Ends when | Next |
+| State | Delegate, with inputs by ID | Ends when | Next |
 | --- | --- | --- | --- |
-| 1. Assess | Nothing; read the current entries | Specification settled (Engram, or a repository artifact of equivalent rigor) | Test plan and matrix missing → 2; settled and the plan selects Q2 → 3; settled without Q2 → 4 |
-| | | Specification missing | Return control to Takt: a required invariant is missing |
-| 2. Plan | `qa`: the specification, the frozen contracts, the PRD, the analyst's facts, the workspace test policy when one exists | `qa` delivers the policy (when authored), plan, matrix and environment requirements (when authored) | The plan selects Q2 → 3; otherwise → 4 |
-| 3. Author | `tpm`: the plan and the matrix, for the test-author tasks and each row's owning node. Then one `test` per task: the plan, the specification, the frozen contracts, the matrix; each task's test files reserved with `claim_assign` | Every test task's staged work passes its Verify gate and is consolidated | 4 |
-| 4. Accept | `verify` on the materialized workspace: the plan, the matrix, the specification. The brief states that it closes the objective's acceptance when the plan selects no mutation, exploration or quality | `verify` delivers its report | Failure → the outcome table; the plan selects Q3 or Q4, or the matrix holds must-not-fail rows → 5; otherwise this report closed the acceptance → 8 |
-| 5. Critique | In one concurrent round: `mutation` when the matrix holds must-not-fail rows, with the plan and the matrix; `explorer` when the plan selects Q3, with the plan; `quality` when the plan selects Q4, with the plan and the specification | Each delivers its report | A surviving mutant → 6; a failed finding → the outcome table; otherwise → 7 |
-| 6. Strengthen | One round: `test` with its `author_key` through `claim_assign`: the plan, the specification, the contracts, the matrix, the mutation report. Its Verify gate, then consolidation. Then `mutation`: the plan, the matrix, the mutation report, naming the affected rows in the brief | `mutation` reports no survivor on a must-not-fail row, or {{policy.recovery_max_attempts}} rounds have run; a survivor before that starts another round | 7 |
-| 7. Close | `verify` on the materialized workspace when 5 ran: the plan, the matrix, the latest report of each specialty that ran. The brief states that it closes the objective's acceptance | `verify` delivers the test completion report | 8 |
-| 8. Report | Nothing | Your completion report consumes the test completion report by ID and states every residual risk it lists | The objective's acceptance is closed |
+| 1. Assess | Nothing; read current entries | Specification settled (Engram or a repository artifact of equivalent rigor) | Missing plan or matrix → 2; plan selects Q2 → 3; otherwise → 4 |
+| | | Required specification missing | Return the missing invariant to Takt; do not infer it |
+| 2. Plan | `qa`: specification, frozen contracts, PRD, analyst facts, existing test policy | Policy when authored, plan, matrix and applicable environment requirements delivered; a diagnostic blocker is also a real result | Q2 selected → 3; otherwise → 4; blocker → outcomes |
+| 3. Author | `tpm`: plan and matrix, always assigning each matrix row its owning node; creating test-author tasks only when Q2 is selected. Then `test` per task: plan, specification, contracts and matrix, with disjoint test-file claims | Each delta passes its Verify gate and consolidates | 4; gate failure or blocker → outcomes |
+| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report, including failed or unverified checks | Eligible critique → 5; none and completion report delivered → 8; otherwise → 7; failures/blockers → outcomes |
+| 5. Critique | Independent assignments concurrently by default: `mutation` only with Q2 selected, must-not-fail rows and an executable green original suite, consuming plan, matrix and acceptance report; `explorer` for selected Q3, consuming plan and acceptance report; `quality` for selected Q4, consuming plan, specification and acceptance report | Reports or diagnostic blockers delivered | Eligible survivor → 6; findings/blockers → outcomes; otherwise → 7 |
+| 6. Strengthen | `test`: plan, specification, contracts, matrix and mutation report, with its existing author_key when continuing staged work. Authoring → Verify gate → consolidation → `mutation` on only affected rows, consuming plan, matrix and prior mutation report | No must-not-fail survivor, or {{policy.recovery_max_attempts}} rounds admitted | Survivor with budget → next round; exhausted → 7 with residual risk; baseline/gate failure or blocker → outcomes |
+| 7. Close | Existing `verify`, without author_keys, on the materialized workspace: acceptance report, specification, plan, matrix, applicable supplements and the latest mutation, exploration and quality reports that exist. State explicitly that it closes acceptance | Matrix evidence and test completion report delivered | 8 |
+| 8. Report | Nothing | Consume the test completion report by ID; state unmet criteria, unchecked work and every residual risk | Audit/report closed, not necessarily product accepted |
 
-State 6 is forward correction over consolidated work, never a declared recovery: before its
-first round, revise the committed plan with `dispatch_commit` naming the standing version as
-its base. Survivors left after the last round are residual risk, and the closing node states
-them.
+Critique entry criteria apply per assignment: a failed suite bars mutation, not an independent
+Q3/Q4 session whose own entry conditions hold. Serialize only a concrete conflict in services,
+ports, data or measurements, naming it; no general barrier between independent critiques.
+An audit records ineligible critiques as not run, preserves every finding and proceeds to
+Close/Report without repair. If no critique runs, Accept supplies the test completion report
+when tasked to close; otherwise Close records it from the acceptance evidence.
 
-In this route, commit the states it runs from 3, or from 4 without Q2, through 7 with
-`dispatch_commit` before their first delegation; inside SDD they are nodes of its DAG.
+Close consumes valid evidence; it executes only checks missing or invalidated by subsequent
+changes to their evaluated scope. A strengthened suite invalidates its previous suite result;
+it does not automatically invalidate unrelated measurements. Failed or unverified criteria
+stay failed or unverified. Closing an audit certifies neither the product nor a milestone commit.
+
+Commit the states that run from Author (or Accept without Q2) through Close before delegation;
+inside SDD they are nodes of its DAG. Strengthen is forward correction, not reversible recovery.
+Before **each** round, use `dispatch_commit` with a new version and the standing `base_version`,
+plus `qa_round: { objective, units }`: the stable acceptance objective and that round's test-author
+units only, not gates or mutation. The first admitted author unit consumes one round; siblings,
+retries and later plan revisions do not reset or double-count it. Membership cannot migrate.
+At the bound, continue to Close/Report with residual risk or request the user's finite
+`dispatch_exception` on `budget/qa-strengthening-rounds` for that objective.
 
 ## Outcomes
 
-| Outcome | Goes to | Declared with `dispatch_inputs` |
+| Outcome | Destination | Inputs by ID |
 | --- | --- | --- |
-| A Q2 test fails on the workspace, in an objective that delivers the code | `fix`, with the failed finding verbatim in the brief | The failing `verify` report |
-| A Q2 test fails, in an objective that only assesses the code | No delegation: it is a finding of the test completion report, repair is the user's decision, and the states continue | — |
-| `dev`, `fix` or `test` returns a contradiction between a test and the specification or a contract | The contract's owner: `spec` for behavior, `architect` for an interface; freeze the nodes that consume the contract | The specification or contract entry; the test path goes in the brief |
-| The owner rules the test wrong | `test` with its `author_key` through `claim_assign` | The ruling |
-| The owner rules the code wrong | `fix` | The ruling |
-| An exploration or quality finding fails, in an objective that delivers the code | `fix`; a finding the owner of a contract must decide goes to that owner | The report |
-| An exploration or quality finding fails, in an objective that only assesses the code | No delegation: it is a finding of the test completion report, and the states continue | — |
-| `qa` returns an acceptance criterion too vague to test | `spec`, then 2 again with its revision | The specification entry |
+| Build, lint, Q1/Q2 or end-to-end failure; failed exploration or quality finding, in a delivery/hardening objective | `fix` for a code defect; contract owner for a contradiction; data owner for missing prerequisites | Failing report and applicable contracts |
+| The same failure in an assessment-only objective | Retain finding; skip critiques whose entry fails; Close/Report, never inferred repair | Reports retained for closure |
+| Check not run, environment/service/data/configuration blocker | Owner of the missing fact or environment, identified from plan/analyst facts; no pass assumed. In an audit retain as unverified and close | Diagnostic report, plan and relevant facts |
+| A test contradicts specification or frozen interface | `spec` for behavior, `architect` for interface; freeze only consuming nodes pending the ruling | Contradicting artifacts and report; test path in brief |
+| Owner rules test wrong | `test`, continuing its author_key only if staged work exists; gate and consolidate | Ruling and affected artifacts |
+| Owner rules code wrong | `fix`; do not alter the oracle | Ruling and failing report |
+| Verify gate fails | Relevant delta author for the named defect (test defects to `test`); contradiction to contract owner; unmet inputs to their owner. Keep delta staged pending decision; no automatic consolidation | Gate report and applicable inputs |
+| Mutation original baseline cannot run or fails, including during Strengthen | Code failure to `fix`, environment gap to its owner, contradiction to contract owner; in an audit retain blocker and close. It is not a survivor round | Mutation blocker with original command/output, acceptance report and plan |
+| Q4 measurable criterion absent from plan | `qa` to complete the plan; Quality chooses measurement methods, never invents acceptance | Quality blocker, plan and specification |
+| Requirement too vague to derive a criterion (`qa` or `quality`) | `spec`, then Plan with the revision | Diagnostic blocker and specification |
+| Must-not-fail non-equivalent mutant survives | `test` through Strengthen, never implementer; at budget → Close with risk | Mutation report and affected rows |
 
-After a repair consolidates, return to 4.
+After authorized repair consolidates, return to Accept for affected scope; invalidate its older
+evidence and re-run the applicable critiques. A documented blocker is a completed diagnostic
+result: record and deliver it through the existing handoff, without an incomplete plan or a
+fictitious artifact. Resume blocked work only when its missing input or ruling arrives.
 
 ## When this route does not fit
 
-If the objective turns out to need new functionality rather than testing, or the evidence
-shows this route does not fit, return control to Takt with the reason, evidence and user
-constraints. This exit does not select a replacement.
+Return control to Takt with reason, evidence and user constraints when new functionality or a
+different route is needed. This exit does not select the replacement.

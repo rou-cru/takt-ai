@@ -175,6 +175,8 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	ceiling := p.Concurrency.Specialists + budgets.Allowance[history.BoundConcurrency]
 	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
+	qaVersion, qaRound := budgets.QARoundFor(req.Event)
+	qaCeiling := p.Recovery.MaxAttempts + budgets.Allowance[history.AllowanceKey(history.BoundQARounds, qaRound.Objective)]
 	var e error
 	switch {
 	case projection.InFlight() >= ceiling:
@@ -189,6 +191,9 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	case newUnit && budgets.Unplanned >= p.Budgets.UnplannedUnits+budgets.Allowance[history.BoundUnplanned]:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundUnplanned
 		e = fmt.Errorf("harness: unplanned delegation bound of %d reached; commit a plan covering this unit with dispatch_commit and delegate it under that identity, or ask the user for dispatch_exception on bound %s", p.Budgets.UnplannedUnits, history.BoundUnplanned)
+	case qaVersion != "" && !qaRound.Started && budgets.StrengtheningUsed(qaRound.Objective) >= qaCeiling:
+		entry.Kind, entry.Cause = history.KindDenied, history.BoundQARounds
+		e = fmt.Errorf("harness: strengthening round budget of %d consumed for objective %q; Close/Report remain available: close with residual risk, or ask the user for dispatch_exception on %s with this objective and a finite allowance", qaCeiling, qaRound.Objective, history.BoundQARounds)
 	case objective != "" && !recovery.Open:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryAttempts
 		e = fmt.Errorf("harness: recovery %q is abandoned, its %s spent; %s", objective, recovery.Cause, scopeExit(objective, recovery.Cause))
@@ -362,42 +367,39 @@ type PlanUnit struct {
 // Commit records a plan commitment: the units it covers become planned, so a
 // later admission of one of them is covered delegation (PR-DAG-MUT-1,
 // PR-HAR-19).
-func Commit(h *history.History, journalRef, session, version string, units []PlanUnit) error {
+func Commit(h *history.History, journalRef, session, version string, units []PlanUnit, qaRound ...*history.QARound) error {
 	if session == "" || version == "" || len(units) == 0 {
 		return errors.New("dispatch: a commitment records an identified baseline version and its work")
 	}
 	if e := validPlan(h.Project(), session, units); e != nil {
 		return e
 	}
-	for _, u := range units {
-		e := h.Append(history.Entry{
-			Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
-			WorkUnitID: u.Unit, NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
-			JournalRef: journalRef, PlanVersion: version, Contract: u.Contract, Prerequisites: u.Prerequisites,
-		})
-		if e != nil {
-			return e
-		}
+	entries, err := qaRoundEntries(h.Project(), journalRef, session, version, units, qaRound)
+	if err != nil {
+		return err
 	}
-	return nil
+	for _, u := range units {
+		entries = append(entries, plannedEntry(journalRef, session, version, u))
+	}
+	return h.AppendBatch(entries)
 }
 
 // Declare is the orchestrator's one plan declaration: the first one commits
 // the baseline; once a plan stands, a declaration revises it and must name
 // the version it revises, so a stale or silent rewrite of the plan is refused
 // instead of recorded as a fresh commitment (PR-DAG-MUT-6).
-func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string) error {
+func Declare(h *history.History, journalRef, session, version, baseVersion string, units []PlanUnit, withdrawals []string, qaRound ...*history.QARound) error {
 	standing := h.Project().Budgets(session).PlanVersion
 	if standing == "" {
 		if baseVersion != "" || len(withdrawals) > 0 {
 			return errors.New("dispatch: no plan stands in this session yet; commit one before revising it")
 		}
-		return Commit(h, journalRef, session, version, units)
+		return Commit(h, journalRef, session, version, units, qaRound...)
 	}
 	if baseVersion == "" {
 		return fmt.Errorf("dispatch: plan version %s already stands; name it as the base version to revise it", standing)
 	}
-	return Revise(h, journalRef, session, baseVersion, version, units, withdrawals)
+	return Revise(h, journalRef, session, baseVersion, version, units, withdrawals, qaRound...)
 }
 
 // validPlan rejects the declarations PR-DAG-MUT-6 calls invalid: duplicate or
@@ -494,7 +496,7 @@ func acyclic(pending map[string]int, dependents map[string][]string) bool {
 // comparing the old and new plans (PR-DAG-MUT-4) and applies as a whole; an
 // invalid one is rejected with its reason recorded, touching no per-unit
 // state, so the last valid plan is untouched by construction.
-func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string) error {
+func Revise(h *history.History, journalRef, session, baseVersion, newVersion string, adds []PlanUnit, withdrawals []string, qaRound ...*history.QARound) error {
 	if session == "" || baseVersion == "" || newVersion == "" {
 		return errors.New("dispatch: a revision identifies its session, expected base version and new version")
 	}
@@ -514,34 +516,25 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 	if e := checkAdmittedUnchanged(projection, session, adds); e != nil {
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
-	classification := classify(current, resulting)
-	if e := h.Append(history.Entry{
+	entries, err := qaRoundEntries(projection, journalRef, session, newVersion, resulting, qaRound)
+	if err != nil {
+		return invalidRevision(h, journalRef, session, baseVersion, newVersion, err.Error())
+	}
+	entries = append(entries, history.Entry{
 		Author: history.AuthorOrchestrator, Kind: history.KindRevised, SessionID: session,
 		WorkUnitID: session, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
-		JournalRef: journalRef, BaseVersion: baseVersion, PlanVersion: newVersion, Classification: classification,
-	}); e != nil {
-		return e
-	}
+		JournalRef: journalRef, BaseVersion: baseVersion, PlanVersion: newVersion, Classification: classify(current, resulting),
+	})
 	for _, u := range adds {
-		e := h.Append(history.Entry{
-			Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
-			WorkUnitID: u.Unit, NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
-			JournalRef: journalRef, PlanVersion: newVersion, Contract: u.Contract, Prerequisites: u.Prerequisites,
-		})
-		if e != nil {
-			return e
-		}
+		entries = append(entries, plannedEntry(journalRef, session, newVersion, u))
 	}
 	for _, w := range withdrawals {
-		e := h.Append(history.Entry{
+		entries = append(entries, history.Entry{
 			Author: history.AuthorOrchestrator, Kind: history.KindWithdrawn, SessionID: session,
 			WorkUnitID: w, AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured, JournalRef: journalRef,
 		})
-		if e != nil {
-			return e
-		}
 	}
-	return nil
+	return h.AppendBatch(entries)
 }
 
 // invalidRevision records a rejected revision and its reason as a single
@@ -1001,9 +994,9 @@ func Except(h *history.History, journalRef, event, session, bound, objective str
 // for the one that abandoned a scope.
 func checkException(budgets history.Budgets, bound, objective string) error {
 	switch bound {
-	case history.BoundRecovery, history.BoundRecoveryActions, history.BoundRecoveryAttempts:
+	case history.BoundRecovery, history.BoundRecoveryActions, history.BoundRecoveryAttempts, history.BoundQARounds:
 		if objective == "" {
-			return fmt.Errorf("dispatch: an exception on %s names the recovery objective it applies to", bound)
+			return fmt.Errorf("dispatch: an exception on %s names the objective it applies to", bound)
 		}
 	}
 	recovery := budgets.Recoveries[objective]
@@ -1012,4 +1005,49 @@ func checkException(budgets history.Budgets, bound, objective string) error {
 		return fmt.Errorf("dispatch: recovery %q was abandoned because its %s was spent; the exception that lifts it is on %s", objective, recovery.Cause, recovery.Cause)
 	}
 	return nil
+}
+
+// plannedEntry is the sole plan-effect shape for both commitment and revision.
+func plannedEntry(ref, session, version string, u PlanUnit) history.Entry {
+	return history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
+		WorkUnitID: u.Unit, NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, Cause: history.CauseNone,
+		JournalRef: ref, PlanVersion: version, Contract: u.Contract, Prerequisites: u.Prerequisites}
+}
+
+// qaRoundEntries validates membership before any plan effect is persisted. A
+// unit never migrates to a new round; retries retain its original membership.
+func qaRoundEntries(p history.Projection, ref, session, version string, plan []PlanUnit, rounds []*history.QARound) ([]history.Entry, error) {
+	if len(rounds) > 1 {
+		return nil, errors.New("dispatch: declare at most one qa_round per plan version")
+	}
+	if len(rounds) == 0 || rounds[0] == nil {
+		return nil, nil
+	}
+	r := rounds[0]
+	if strings.TrimSpace(r.Objective) == "" || len(r.Units) == 0 {
+		return nil, errors.New("dispatch: qa_round requires a stable acceptance objective and authoring units")
+	}
+	budgets := p.Budgets(session)
+	if _, exists := budgets.QARounds[version]; exists {
+		return nil, errors.New("dispatch: this plan version already declares a QA round; its membership is immutable; use a new version for a new round")
+	}
+	seen := map[string]bool{}
+	for _, id := range r.Units {
+		if strings.TrimSpace(id) == "" || seen[id] {
+			return nil, errors.New("dispatch: qa_round units must be distinct and nonempty")
+		}
+		seen[id] = true
+		if !slices.ContainsFunc(plan, func(u PlanUnit) bool { return u.Unit == id }) {
+			return nil, fmt.Errorf("dispatch: qa_round unit %q is absent from the resulting plan; declare its contract with dispatch_commit", id)
+		}
+		if u, known := p.Unit(session, id); known && u.State != history.StatePlanned {
+			return nil, fmt.Errorf("dispatch: qa_round unit %q has already been admitted or withdrawn; declare new authoring units before delegation", id)
+		}
+		if prior, _ := budgets.QARoundFor(id); prior != "" {
+			return nil, fmt.Errorf("dispatch: qa_round unit %q already belongs to round %s; membership is immutable", id, prior)
+		}
+	}
+	round := &history.QARound{Objective: r.Objective, Units: slices.Clone(r.Units)}
+	return []history.Entry{{Author: history.AuthorOrchestrator, Kind: history.KindQARound, SessionID: session,
+		WorkUnitID: session, AttemptID: history.FirstAttempt, Cause: history.CauseNone, JournalRef: ref, PlanVersion: version, QARound: round}}, nil
 }

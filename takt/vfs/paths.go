@@ -57,7 +57,7 @@ func reservedName(part string) bool {
 
 // validatePath rejects aliases rather than authorizing their target.
 func (f *FS) validatePath(rel string) error {
-	if !fs.ValidPath(rel) || rel == "." || strings.ContainsAny(rel, "\\\x00\r\n") || !norm.NFC.IsNormalString(rel) {
+	if !fs.ValidPath(rel) || rel == "." || !lexicallyCanonical(rel) {
 		return ErrInvalidPath
 	}
 	parts := strings.Split(rel, "/")
@@ -65,10 +65,18 @@ func (f *FS) validatePath(rel string) error {
 	if slices.ContainsFunc(parts, reservedName) {
 		return fmt.Errorf("%w: %q is a protected workspace-relative path", ErrInvalidPath, rel)
 	}
-	return f.validatePathParts(parts)
+	return f.validatePathParts(parts, false)
 }
 
-func (f *FS) validatePathParts(parts []string) error {
+// lexicallyCanonical rejects separators and controls the platform reinterprets
+// and non-NFC spellings a normalization-insensitive filesystem would alias.
+func lexicallyCanonical(rel string) bool {
+	return !strings.ContainsAny(rel, "\\\x00\r\n") && norm.NFC.IsNormalString(rel)
+}
+
+// validatePathParts checks each existing component; dirOK also accepts a
+// directory as the last one.
+func (f *FS) validatePathParts(parts []string, dirOK bool) error {
 	for i, part := range parts {
 		parent := strings.Join(parts[:i], "/")
 		if parent == "" {
@@ -77,7 +85,7 @@ func (f *FS) validatePathParts(parts []string) error {
 		if exists, err := f.checkSiblings(parent, part); !exists || err != nil {
 			return err
 		}
-		if exists, err := f.checkEntry(strings.Join(parts[:i+1], "/"), i == len(parts)-1); !exists || err != nil {
+		if exists, err := f.checkEntry(strings.Join(parts[:i+1], "/"), i == len(parts)-1, dirOK); !exists || err != nil {
 			return err
 		}
 	}
@@ -107,8 +115,9 @@ func (f *FS) checkSiblings(parent, part string) (exists bool, err error) {
 	return true, nil
 }
 
-// checkEntry accepts rel as a plain directory or single-link regular file.
-func (f *FS) checkEntry(rel string, last bool) (exists bool, err error) {
+// checkEntry accepts rel as a plain directory or single-link regular file; a
+// last entry is a directory only when dirOK.
+func (f *FS) checkEntry(rel string, last, dirOK bool) (exists bool, err error) {
 	info, err := f.root.Lstat(rel)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -119,7 +128,7 @@ func (f *FS) checkEntry(rel string, last bool) (exists bool, err error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return false, ErrInvalidPath
 	}
-	if !last {
+	if !last || dirOK && info.IsDir() {
 		if !info.IsDir() {
 			return false, ErrInvalidPath
 		}

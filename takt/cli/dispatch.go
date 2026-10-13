@@ -46,6 +46,7 @@ type coordinationRequest struct {
 	Allowance         int              `json:"allowance"`
 	Version           string           `json:"version"`
 	Plan              []gc.PlanUnit    `json:"plan"`
+	QARound           *history.QARound `json:"qa_round,omitempty"`
 	BaseVersion       string           `json:"base_version,omitempty"`
 	Withdrawals       []string         `json:"withdrawals,omitempty"`
 	Artifact          string           `json:"artifact"`
@@ -421,7 +422,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"withdraw": func() (any, error) { return c, protocol.Withdraw(h, ref, r.Event, r.Session) },
 		"abandon":  func() (any, error) { return abandonExecution(fs, h, workspace, c, entries, r) },
 		"commit": func() (any, error) {
-			return c, protocol.Declare(h, ref, r.Session, r.Version, r.BaseVersion, r.Plan, r.Withdrawals)
+			return c, protocol.Declare(h, ref, r.Session, r.Version, r.BaseVersion, r.Plan, r.Withdrawals, r.QARound)
 		},
 		"switch": func() (any, error) { return nil, protocol.Switch(h, ref, r.Session, r.Child, r.Agent, r.Artifact) },
 		"validate_results": func() (any, error) {

@@ -107,8 +107,8 @@ describe("plugin setup", () => {
         shell: { async hook(name: string, callback: unknown) { shellHooks.set(name, [...(shellHooks.get(name) ?? []), callback]); return { dispose() {} } } },
         tool: {
           async hook(name: string, callback: unknown) { toolHooks.set(name, [...(toolHooks.get(name) ?? []), callback]); return { dispose() {} } },
-          async transform(callback: (editor: { get(): undefined; update(): void; add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
-            await callback({ get() { return undefined }, update() {}, add(definition) { tools.set(definition.name, definition) } })
+          async transform(callback: (editor: { list(): Array<{id:string}>; get(): undefined; update(): void; add(definition: { name: string; execute?: (...args: never[]) => unknown }): void }) => void) {
+            await callback({ list() { return [...tools.keys()].map(id=>({id})) }, get() { return undefined }, update() {}, add(definition) { tools.set(definition.name, definition) } })
             return { dispose() {} }
           },
         },
@@ -149,6 +149,9 @@ describe("plugin setup", () => {
       await execute("dispatch_inputs", { work_unit_id: "unit-b", none: true }, orchestrator)
       await execute("claim_assign", { work_unit_id: "unit-b", agent: "test", scope: ["src/new.ts"] }, orchestrator)
       await execute("dispatch_commit", { version: "plan-1", plan: [{ unit: "unit-b", contract: "unit tests" }] }, orchestrator)
+      const qaRound = { objective: "acceptance/cart", units: ["unit-b"] }
+      await execute("dispatch_commit", { version: "plan-2", base_version: "plan-1", qa_round: qaRound, plan: [{ unit: "unit-b", contract: "unit tests" }] }, orchestrator)
+      expect(requests.some(({ request }) => request.version === "plan-2" && JSON.stringify(request.qa_round) === JSON.stringify(qaRound))).toBe(true)
       await execute("dispatch_activity_start", { activity_id: "activity-1", node_kind: "orchestrator" }, orchestrator)
       await execute("dispatch_close_recovery", { objective: "restore", evidence: "tests pass", demonstrated: true }, orchestrator)
       await execute("dispatch_switch", { target_agent: "dev", objective: "Implement feature", requirements: "typed", client: "review" }, orchestrator)

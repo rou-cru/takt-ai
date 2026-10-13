@@ -103,7 +103,7 @@ func (f *FS) SyncParent(rel string) error                     { return f.syncPar
 func (f *FS) RemoveIfPresentLocked(rel string) error          { return f.removeIfPresentLocked(rel) }
 func (f *FS) RemoveLeftovers(m *RecoveryManifest) error       { return f.removeLeftovers(m) }
 func (f *FS) CheckSiblings(parent, part string) (bool, error) { return f.checkSiblings(parent, part) }
-func (f *FS) CheckEntry(rel string, last bool) (bool, error)  { return f.checkEntry(rel, last) }
+func (f *FS) CheckEntry(rel string, last bool) (bool, error)  { return f.checkEntry(rel, last, false) }
 func (f *FS) Physical(rel string) (BaseFile, error)           { return f.physical(rel) }
 func (f *FS) CaptureBaseLocked(agent AgentID, rel string) error {
 	return f.captureBaseLocked(agent, rel)

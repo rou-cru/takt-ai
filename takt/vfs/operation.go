@@ -342,6 +342,9 @@ func (f *FS) requireAdoptionGrantsLocked(assigned Identity) error {
 // claimLocked captures the base of every scoped path and registers identity as
 // its exclusive owner under a fresh key.
 func (f *FS) claimLocked(identity Identity, scope []string) (AgentID, error) {
+	if err := f.guardInspectionClaimLocked(identity, "", scope); err != nil {
+		return "", err
+	}
 	bases := make(map[string]baseFile, len(scope))
 	for _, p := range scope {
 		var err error
@@ -550,6 +553,9 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 	}
 	if len(scope) == 0 {
 		return fmt.Errorf("%w: the new scope names at least one path", ErrIdentity)
+	}
+	if err := f.guardInspectionClaimLocked(identity, key, scope); err != nil {
+		return err
 	}
 	var staged []string
 	if existing := f.staged[key]; existing != nil {

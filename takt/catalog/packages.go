@@ -70,6 +70,21 @@ func (a AgentDefinition) VFSCapabilities(instanceID string) ([]model.VFSCapabili
 	return slices.Clone(capabilities), true
 }
 
+// VFSAuthors lists, sorted, every instance granted VFS writes: the authors
+// whose native inspections reserve their read scope.
+func (c Catalog) VFSAuthors() []string {
+	ids := []string{}
+	for _, def := range c.Agents {
+		for instance, grants := range def.VFSGrants {
+			if slices.Contains(grants, model.VFSCapabilityWrite) {
+				ids = append(ids, instance)
+			}
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
 // PackageFile preserves binary bytes and an explicit deployment mode.
 type PackageFile struct {
 	// Path is the slash-separated path inside the catalog source tree.

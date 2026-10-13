@@ -145,6 +145,8 @@ const (
 	// version; Classification is the harness-derived tactical/strategic label
 	// (PR-DAG-MUT-4, PR-DAG-MUT-6).
 	KindRevised Kind = "revised"
+	// KindQARound declares forward test strengthening, distinct from recovery.
+	KindQARound Kind = "qa_round_declared"
 	// KindInvalidRevision records a rejected plan revision and its reason,
 	// leaving the last valid plan untouched (PR-DAG-MUT-6).
 	KindInvalidRevision Kind = "invalid_revision"
@@ -188,6 +190,7 @@ var authorOf = map[Kind]Author{
 	KindInterlocutorSwitched: AuthorOrchestrator,
 	KindInterlocutorHandoff:  AuthorOrchestrator,
 	KindRevised:              AuthorOrchestrator,
+	KindQARound:              AuthorOrchestrator,
 	KindInvalidRevision:      AuthorOrchestrator,
 	KindActivityStarted:      AuthorOrchestrator,
 	KindActivityFinished:     AuthorOrchestrator,
@@ -298,7 +301,9 @@ type Entry struct {
 	// PlanVersion, Contract and Prerequisites are the identified baseline
 	// version, the unit's contract, and its explicit prerequisite identities,
 	// recorded by a plan commitment (PR-DAG-MUT-1).
-	PlanVersion   string   `json:"plan_version,omitempty"`
+	PlanVersion string `json:"plan_version,omitempty"`
+	// QARound declares authoring membership, identified by this plan version.
+	QARound       *QARound `json:"qa_round,omitempty"`
 	Contract      string   `json:"contract,omitempty"`
 	Prerequisites []string `json:"prerequisites,omitempty"`
 	// BaseVersion is the plan version a revision expects still to be current;
@@ -443,19 +448,37 @@ func (h *History) Project() Projection { return Project(h.entries) }
 // Append assigns the next position and durably records the entry. A rejected
 // entry is not recorded: an invalid state never becomes representable here.
 func (h *History) Append(e Entry) error {
-	e.Seq = len(h.entries)
-	if err := e.validate(); err != nil {
-		return err
+	return h.AppendBatch([]Entry{e})
+}
+
+// AppendBatch makes a declaration and all of its plan effects indivisible.
+// Validation or persistence failure leaves both the store and replay unchanged.
+func (h *History) AppendBatch(entries []Entry) (err error) {
+	entries = slices.Clone(entries)
+	raws := make([][]byte, len(entries))
+	for i := range entries {
+		entries[i].Seq = len(h.entries) + i
+		if err := entries[i].validate(); err != nil {
+			return err
+		}
+		if raws[i], err = json.Marshal(entries[i]); err != nil {
+			return err
+		}
 	}
-	raw, err := json.Marshal(e)
+	tx, err := h.db.Begin()
 	if err != nil {
 		return err
 	}
-	if _, err = h.db.Exec("INSERT INTO history(seq,data) VALUES(?,?)", e.Seq, raw); err != nil {
-		return err
+	defer func() { _ = tx.Rollback() }()
+	for i, e := range entries {
+		if _, err = tx.Exec("INSERT INTO history(seq,data) VALUES(?,?)", e.Seq, raws[i]); err != nil {
+			return err
+		}
 	}
-	h.entries = append(h.entries, e)
-	return nil
+	if err = tx.Commit(); err == nil {
+		h.entries = append(h.entries, entries...)
+	}
+	return err
 }
 
 func (e Entry) validate() error {
@@ -537,7 +560,21 @@ func (e Entry) validateOutcomeShape() error {
 
 // validateKindFields checks the fields specific to each entry kind.
 func (e Entry) validateKindFields() error {
+	if e.QARound != nil && e.Kind != KindQARound {
+		return errors.New("history: qa_round belongs only to a round declaration")
+	}
 	switch e.Kind {
+	case KindQARound:
+		if e.PlanVersion == "" || e.QARound == nil || strings.TrimSpace(e.QARound.Objective) == "" || len(e.QARound.Units) == 0 {
+			return errors.New("history: a QA round names its plan version, acceptance objective and authoring units")
+		}
+		seen := map[string]bool{}
+		for _, unit := range e.QARound.Units {
+			if strings.TrimSpace(unit) == "" || seen[unit] {
+				return errors.New("history: QA round units must be distinct and nonempty")
+			}
+			seen[unit] = true
+		}
 	case KindRecoveryDeclared, KindRecoveryClosed, KindActions, KindActionsUncertain, KindRestored:
 		if e.Objective == "" {
 			return errors.New("history: recovery requires an objective identity")

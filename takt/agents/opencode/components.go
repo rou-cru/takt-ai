@@ -106,8 +106,10 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	enforced, _ := json.Marshal(shellEnforced)             // a bool always marshals
 	resultAgents, _ := json.Marshal(resultAgentIDs())      // a string slice always marshals
 	sensitive, _ := json.Marshal(model.SensitivePathGlobs) // a string slice always marshals
+	authors, _ := json.Marshal(loadCatalog().VFSAuthors()) // a string slice always marshals
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
 	content = strings.Replace(content, `"__TAKT_SENSITIVE_READ_GLOBS__"`, string(sensitive), 1)
+	content = strings.Replace(content, `"__TAKT_VFS_AUTHORS__"`, string(authors), 1)
 	artifact.Content = []byte(strings.Replace(content, `"__TAKT_RESULT_AGENTS__"`, string(resultAgents), 1))
 	return artifact
 }

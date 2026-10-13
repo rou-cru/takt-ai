@@ -152,7 +152,7 @@ func (f *FS) CancelPreparedDelegation(root, unit, attempt string) (err error) {
 	// ponytail: unit-less orchestrator shells are released by the host when its
 	// session ends; a host crash leaves those few until the workspace is reset.
 	for index, call := range f.shellCalls {
-		if call.Caller.SessionID == root && call.Caller.WorkUnitID == unit && call.Caller.AttemptID == attempt {
+		if call.Inspection == nil && call.Caller.SessionID == root && call.Caller.WorkUnitID == unit && call.Caller.AttemptID == attempt {
 			delete(f.shellCalls, index)
 		}
 	}

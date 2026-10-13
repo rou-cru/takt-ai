@@ -254,3 +254,7 @@ The harness has the recovery boundary before the risk is taken. Both bounds are 
 | Second consecutive failed recovery of the same objective | Record the reached bound and escalation; further recovery remains blocked pending an enabling user decision (`PR-HAR-21`). |
 | Active workflow requires commitment before delegation | Record the requirement and deny uncovered delegation until valid commitment, independently of remaining volume (`PR-HAR-19`). |
 | Continuity declared for a closed session | Preserve identities, terminal history, and carried restrictions; no automatic reactivation (`PR-DAG-USE-1`). |
+
+### QA strengthening declarations
+
+Optional `qa_round` membership (`PR-QA-16`) is recorded atomically with the declared plan version. The history retains the stable acceptance objective and authoring unit identities; first member admission starts the round, with siblings and retries in the same round. Plan revisions and runtime restarts cannot erase consumed rounds or move their members. Absence in older histories means no declared round, not inferred recovery. This forward correction does not supersede branches, restore files or bar closing/reporting an objective.

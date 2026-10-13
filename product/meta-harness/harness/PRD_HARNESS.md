@@ -25,7 +25,7 @@ Relying exclusively on semantic instructions in natural language leaves the syst
 
 | ID | Requirement |
 | --- | --- |
-| PR-HAR-10 | Governed capabilities: filesystem mutation (transactionally staged via VFS), Git mutation (governed per role), and configuration mutation (reserved to the active user-facing interface holder). Filesystem read is available to all specialists but remains subject to exclusive file ownership during concurrent work; network access is unrestricted for all specialists. |
+| PR-HAR-10 | Governed capabilities: filesystem mutation (transactionally staged via VFS), Git mutation (governed per role), and configuration mutation (reserved to the active user-facing interface holder). Filesystem read is available to all specialists; author isolation and authorized staged gates are governed by `PR-VFS-COL-2`. Authors retain native OpenCode reads and queries under full-call VFS reservations, while Verify/QA and the orchestrator retain native materialized reads and shell without author isolation; network access is unrestricted for all specialists. |
 | PR-HAR-11 | Shell command execution is available to the orchestrator and specialists under their OpenCode permission profiles. Orchestrator shell uses native OpenCode permissions and is not forced through VFS. Verification-class shell does the same, with native edit denied: the class is bound by its conduct not to modify the project. For other specialists, a command with effects outside the workspace that VFS cannot capture is approval-gated (`PR-HAR-8`, `PR-HAR-9`): the request identifies the exact command and approval authorizes that one execution. Unrestricted network reachability (`PR-HAR-10`) does not exempt a specialist command from this rule. Specialist workspace mutations follow `PR-HAR-15`; Git mutation follows `PR-VFS-GIT-1` and `PR-VFS-GIT-3..5`. |
 
 ### 2.3 Customization and Conflict Management
@@ -90,3 +90,5 @@ Relying exclusively on semantic instructions in natural language leaves the syst
 | Temporary layer is destroyed without an accepted handoff | Control returns to the convening agent with a synthesized `Tech Fault` and empty optional fields; nothing is reconstructed (`PR-HAR-25`, `IR-23`). |
 | Deterministic confirmation is unavailable during a specialist session | The specialist reports the problem instead of improvising a transition; user abortion remains the exit (`IR-20`, `PR-HAR-23`). |
 | A result attributes cause to the convening agent | It receives that isolated incident only, never the aggregate or any threshold over it (`PR-HAR-28`). |
+
+QA forward-strengthening uses the same persistent admission pattern and the recovery attempt ceiling, but never reversible recovery semantics. `PR-QA-16` owns its explicit plan-round declaration, consumption and finite objective-scoped exception; exhaustion leaves Close/Report available.

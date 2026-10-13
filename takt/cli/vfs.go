@@ -45,7 +45,7 @@ func runVFS(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 // vfsCommands lists every request-driven vfs command.
 var vfsCommands = []string{"claims", "assign", "release", "bind", "adopt-gates", "op", "verify", "consolidate", "discard",
-	"shell-prepare", "shell-complete", "shell-guard", "shell-continue", "shell-release", "edit-guard"}
+	"shell-prepare", "shell-complete", "shell-guard", "shell-continue", "shell-release", "edit-guard", "native-inspection-start", "native-inspection-end", "native-inspections"}
 
 // usageVFS lists valid vfs commands so callers can recover after a mistake.
 var usageVFS = "usage: takt-ai vfs journal|recover --workspace <dir> --state <private-dir> [--restore] | " +
@@ -153,12 +153,14 @@ type request struct {
 	MandateClass string   `json:"mandate_class,omitempty"`
 	Scope        []string `json:"scope,omitempty"`
 	// op, verify, shell-prepare, shell-complete
-	CallID    string   `json:"call_id,omitempty"`
-	Resources []string `json:"resources,omitempty"`
-	Phase     string   `json:"phase,omitempty"`
-	Action    string   `json:"action,omitempty"`
-	Path      string   `json:"path,omitempty"`
-	Content   string   `json:"content,omitempty"`
+	CallID     string   `json:"call_id,omitempty"`
+	Resources  []string `json:"resources,omitempty"`
+	Tool       string   `json:"tool,omitempty"`
+	ToolCallID string   `json:"tool_call_id,omitempty"`
+	Phase      string   `json:"phase,omitempty"`
+	Action     string   `json:"action,omitempty"`
+	Path       string   `json:"path,omitempty"`
+	Content    string   `json:"content,omitempty"`
 	// AuthorKey names the binding an op acts through, the author a judge reads
 	// or verifies, the work consolidate or discard acts on, or the work an
 	// assignment continues.
@@ -238,6 +240,14 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	var req request
 	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
 		return fmt.Errorf("vfs: invalid request: %w", err)
+	}
+	if command == "native-inspections" && req.IPCVersion == IPCVersion {
+		fs, openErr := vfs.Open(*workspace, *state)
+		if openErr != nil {
+			return openErr
+		}
+		defer func() { err = errors.Join(err, fs.Close()) }()
+		return json.NewEncoder(stdout).Encode(map[string]any{"ok": true, "inspections": fs.NativeInspections()})
 	}
 	if err := validateVFSRequest(req); err != nil {
 		return err
@@ -418,6 +428,10 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, caller vfs.Cal
 		return response{OK: true}, fs.DiscardAs(caller, vfs.AgentID(req.AuthorKey))
 	case "edit-guard":
 		return response{OK: true}, fs.GuardNativeEdit(req.SessionID, req.Resources)
+	case "native-inspection-start":
+		return response{OK: true}, fs.StartNativeInspection(caller, req.CallID, req.Tool, req.Path)
+	case "native-inspection-end":
+		return response{OK: true}, fs.EndNativeInspection(caller, req.CallID)
 	case "shell-continue":
 		plan, err := fs.ContinueShell(caller, req.CallID, req.Phase)
 		return response{OK: true, Shell: &plan}, err
@@ -425,7 +439,7 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, caller vfs.Cal
 		return response{OK: true}, fs.ReleaseShell(caller, req.CallID)
 	case "shell-prepare":
 		// A policy denial returns OK true with Shell.Decision deny.
-		plan, err := fs.PrepareShell(caller, req.CallID, req.Command, state)
+		plan, err := fs.PrepareShell(caller, req.CallID, req.Command, state, req.ToolCallID)
 		return response{OK: true, Shell: &plan}, err
 	case "shell-complete":
 		// Success reports the resulting revision and delta hash even when the
