@@ -32,12 +32,13 @@ Everything takt decides is conduct from `OPERATIONS.md` and its skills. These vi
 | Handling a staged delivery | [delivery.html](diagrams/orchestrator/delivery.html) | OPERATIONS, takt-vfs-coordination |
 | Acting directly | [direct-work.html](diagrams/orchestrator/direct-work.html) | OPERATIONS |
 | Lending an interlocutor, reading the return | [lending.html](diagrams/orchestrator/lending.html) | takt-interlocutor-lending |
+| Testing an objective | Not drawn yet; the state table in the skill is normative | takt-qa-workflow |
 
 Not drawn as diagrams:
 
 | Decision | Rule |
 | :--- | :--- |
-| Which specialist for which need | Unverified context: analyst. Intent and scope: pm. Behavior and acceptance: spec. Structure and technology: architect. Experience or identity: product-designer. Task decomposition: tpm. Implementation: dev. Defect repair: fix. Cleanup: simplify. Independent verdict: verify, never omitted from a planned verification. Each is omitted when settled artifacts already cover the need. |
+| Which specialist for which need | Unverified context: analyst. Intent and scope: pm. Behavior and acceptance: spec. Structure and technology: architect. Experience or identity: product-designer. Task decomposition: tpm. Implementation: dev. Defect repair: fix. Cleanup: simplify. Independent verdict: verify, never omitted from a planned verification. Test policy, plan and matrix: qa, when QA is planned. Blind Q2 tests, mutation, exploration and non-functional analysis: test, mutation, explorer and quality, where takt-qa-workflow reaches them. Each is omitted when settled artifacts already cover the need. |
 | When to request the blind judge pair | Only when the user asks, work advanced past deviations of unknown origin, the real state is unknown beyond a quick validation, a DAG ends with two or more phases that each reached the ceiling, or a large refactor of unknown impact has invariants to contrast. |
 | Whether a phase is verified | A committed plan is required when a round reaches the concurrency ceiling of implementers or the change is critical; below that floor it is planned when the restored confidence outweighs the cost, and skipped for documentation or minor adjustments. |
 | Contesting a recorded failure | `dispatch_contest`, at most the per-session contest budget; it requests independent verification and takt never chooses the verifier. |
@@ -50,10 +51,11 @@ Role classes come from `agent.yaml`.
 | Class | Agents | VFS capabilities | Receives | Produces |
 | :--- | :--- | :--- | :--- | :--- |
 | orchestrator | takt | claim_list, claim_assign, claim_release, discard, consolidate | Objective from the user | Briefs, plan, DAG, final report |
-| planning_author | analyst, spec, tpm | none | Brief and consumed invariants | One Engram record per artifact, returned as IDs |
+| planning_author | analyst, spec, tpm, qa | none | Brief and consumed invariants | One Engram record per artifact, returned as IDs |
 | direct_interlocutor | pm, architect, product-designer | none | Brief, or a lent session with requirements | Decisions with user approval, returned as IDs |
-| execution | dev, fix, simplify | bind, write, read, delete | Brief, writable set, acceptance | Staged work and an author key |
+| execution | dev, fix, simplify, test | bind, write, read, delete | Brief, writable set, acceptance | Staged work and an author key |
 | verification | verify, judge-a, judge-b | read, verify (gates arrive bound; no bind tool) | Brief, author keys | A verdict per author key, plus a report |
+| quality_assurance | mutation, explorer, quality | none | Brief, test plan and matrix by ID | A report recorded in Engram and delivered by ID |
 
 ## Messages
 

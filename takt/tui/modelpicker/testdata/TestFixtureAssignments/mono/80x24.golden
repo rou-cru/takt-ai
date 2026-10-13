@@ -7,15 +7,15 @@
    │ > analyst             openai/gpt-6-luna                                │   
    │   architect           OpenCode default                                 │   
    │   dev               • opencode-go/hy4-preview                          │   
+   │   explorer            OpenCode default                                 │   
    │   fix                 OpenCode default                                 │   
    │   judge-a             OpenCode default                                 │   
    │   judge-b             OpenCode default                                 │   
+   │   mutation            OpenCode default                                 │   
    │   pm                  OpenCode default                                 │   
    │   product-designer    OpenCode default                                 │   
-   │   simplify            OpenCode default                                 │   
-   │   spec                OpenCode default                                 │   
-   │   tpm                 OpenCode default                                 │   
-   │ 3 / 14                                                                 │   
+   │   qa                  OpenCode default                                 │   
+   │ 3 / 19                                                                 │   
    │                                                                        │   
    │ ⌫ reset to OpenCode default                                            │   
    └────────────────────────────────────────────────────────────────────────┘   

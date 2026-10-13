@@ -4,7 +4,7 @@ description: "Before a planning or implementation phase starts, choose the route
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt Workflow Selection
@@ -24,18 +24,23 @@ reason and evidence, in view.
 2. **Are required invariants missing or in need of refinement?**
    - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
-     updated evidence. Invariant planning stands on its own; when SDD follows it, its plan
-     ends with Spec, whose specifications feed TPM, SDD's first node.
+     updated evidence. Invariant planning stands on its own; when SDD follows it, its
+     specifications, and its test plan when QA is planned, feed TPM, SDD's first node.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
      Engram entry holds it and agrees with the repository; it is missing when no such entry
      exists, and to refine when the objective changes what the entry holds. A specification is
-     also settled when a repository artifact of equivalent rigor holds it.
+     also settled when a repository artifact of equivalent rigor holds it. QA is planned when
+     the PRD marks a priority must-not-fail, or an acceptance criterion of the specification
+     crosses more than one frozen contract; its test plan and traceability matrix are then
+     required invariants too.
 3. **Is development still needed?**
    - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
      to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.
    - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow` once formal,
      broken-down specifications exist; without them they are required invariants: go to 2.
-   - No → deliver the settled result; no implementation route is needed.
+   - No, the objective assesses, tests or hardens a deliverable that exists → adopt
+     `takt-qa-workflow`.
+   - No, nothing else → deliver the settled result; no implementation route is needed.
 
 Bounded is never chosen by elimination, convenience, dispatch cost, or absence of
 specialists. SDD and bounded never govern the same implementation simultaneously: end the

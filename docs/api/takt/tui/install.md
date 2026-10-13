@@ -12,6 +12,7 @@ Package install provides the focused install selection flow.
 
 - [type Model](<#Model>)
   - [func New\(rootDir string\) Model](<#New>)
+  - [func NewUpgrade\(rootDir string\) Model](<#NewUpgrade>)
   - [func \(m Model\) Dirty\(\) bool](<#Model.Dirty>)
   - [func \(Model\) Init\(\) tea.Cmd](<#Model.Init>)
   - [func \(m Model\) Run\(\) runtime.Run](<#Model.Run>)
@@ -42,6 +43,15 @@ func New(rootDir string) Model
 ```
 
 New creates an install flow for rootDir.
+
+<a name="NewUpgrade"></a>
+### func NewUpgrade
+
+```go
+func NewUpgrade(rootDir string) Model
+```
+
+NewUpgrade creates the upgrade flow: the configuration flow over the recorded choices, reviewed and committed as one upgrade.
 
 <a name="Model.Dirty"></a>
 ### func \(Model\) Dirty

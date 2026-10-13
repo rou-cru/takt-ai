@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package catalog
+package catalog_test
 
 import (
 	"slices"
@@ -21,11 +21,14 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
+// TestLoadNativeContent checks that every specialist instance loads with its description and
+// composed instructions.
 func TestLoadNativeContent(t *testing.T) {
-	content, err := LoadNativeContent()
+	content, err := catalog.LoadNativeContent()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,15 +37,16 @@ func TestLoadNativeContent(t *testing.T) {
 		"analyst", "pm", "spec", "architect",
 		"product-designer", "tpm", "dev", "verify",
 		"judge-a", "judge-b", "fix", "simplify",
+		"qa", "test", "mutation", "explorer", "quality",
 	}
 	if len(content) != len(wantIDs) {
 		t.Fatalf("loaded %d entries, want %d: %v", len(content), len(wantIDs), content)
 	}
-	packages, err := LoadPackages()
+	packages, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defByInstance := make(map[string]AgentDefinition)
+	defByInstance := make(map[string]catalog.AgentDefinition)
 	for _, def := range packages.Agents {
 		for _, id := range def.Instances {
 			defByInstance[id] = def
@@ -60,7 +64,7 @@ func TestLoadNativeContent(t *testing.T) {
 		if def.Description == "" {
 			t.Errorf("entry %q missing description", id)
 		}
-		if text, err := def.ComposeText(AssetFS()); err != nil || text == "" {
+		if text, err := def.ComposeText(catalog.AssetFS()); err != nil || text == "" {
 			t.Errorf("entry %q missing instructions: %v", id, err)
 		}
 	}
@@ -69,10 +73,12 @@ func TestLoadNativeContent(t *testing.T) {
 	}
 }
 
+// TestLoadNativeContentInterlocutors checks that exactly the direct interlocutors hold the
+// interface.
 func TestLoadNativeContentInterlocutors(t *testing.T) {
 	// Holding the interface is a property of the role class, not a separately
 	// declared flag: exactly the direct interlocutors derive it.
-	content, err := LoadNativeContent()
+	content, err := catalog.LoadNativeContent()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,10 +92,11 @@ func TestLoadNativeContentInterlocutors(t *testing.T) {
 	}
 }
 
+// TestLoadNativeContentDeclaresRoleClass checks every specialist's role class and exact VFS grants.
 func TestLoadNativeContentDeclaresRoleClass(t *testing.T) {
 	// Every specialist in the canonical definition belongs to exactly one
 	// role class; without it there is no dispatch.
-	content, err := LoadNativeContent()
+	content, err := catalog.LoadNativeContent()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +114,7 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	// ordinary cleanup and harness-attached GC collection. GC authority comes
 	// from the cycle attachment, never from a second maintenance instance, and
 	// the independent verifier stays a distinct instance.
-	content, err := LoadNativeContent()
+	content, err := catalog.LoadNativeContent()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +128,7 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 		"judge-a": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
 		"judge-b": {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify},
 	}
-	packages, err := LoadPackages()
+	packages, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,9 +141,39 @@ func TestSimplifyInstancesHoldOneAdmittedRoleEach(t *testing.T) {
 	}
 }
 
+// TestQAInstancesHoldExistingClassProfiles checks that the QA specialties
+// introduce no role class or permission profile of their own: the QA lead is a
+// planning author, the test author an execution instance, and the mutation,
+// exploration and quality analysts verification instances like verify.
+func TestQAInstancesHoldExistingClassProfiles(t *testing.T) {
+	content, err := catalog.LoadNativeContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	packages, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]struct {
+		role model.RoleClass
+		vfs  []model.VFSCapability
+	}{
+		"qa":       {model.RolePlanningAuthor, []model.VFSCapability{}},
+		"test":     {model.RoleExecution, []model.VFSCapability{model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete}},
+		"mutation": {model.RoleQualityAssurance, []model.VFSCapability{}},
+		"explorer": {model.RoleQualityAssurance, []model.VFSCapability{}},
+		"quality":  {model.RoleQualityAssurance, []model.VFSCapability{}},
+	} {
+		if got := content[id].Role; got != want.role {
+			t.Errorf("%s role = %q, want %q", id, got, want.role)
+		}
+		assertInstanceHasExactVFSCapabilities(t, packages, id, want.vfs)
+	}
+}
+
 // assertInstanceHasExactVFSCapabilities checks that some agent definition
 // grants instance id exactly the expected VFS capabilities.
-func assertInstanceHasExactVFSCapabilities(t *testing.T, packages Catalog, id string, expected []model.VFSCapability) {
+func assertInstanceHasExactVFSCapabilities(t *testing.T, packages catalog.Catalog, id string, expected []model.VFSCapability) {
 	t.Helper()
 	found := false
 	for _, def := range packages.Agents {
@@ -154,7 +191,7 @@ func assertInstanceHasExactVFSCapabilities(t *testing.T, packages Catalog, id st
 
 // assertRetiredSimplifyInstancesGone checks none of the retired simplify
 // instances are still exposed in content.
-func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeSubAgentContent) {
+func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]catalog.NativeSubAgentContent) {
 	t.Helper()
 	for _, retired := range []string{"simplify-align", "simplify-plan", "simplify-verify", "simplify-gc"} {
 		if _, ok := content[retired]; ok {
@@ -163,6 +200,8 @@ func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]NativeS
 	}
 }
 
+// TestVFSGrantValidationRequiresExactInstanceCoverage checks that a definition is refused unless
+// every instance declares an explicit, known VFS grant.
 func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
 	base := "id: x\nlabel: x\ninstances: [x, y]\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"
 	for name, tc := range map[string]struct{ grant, want string }{
@@ -174,20 +213,22 @@ func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fsys := fstest.MapFS{
 				"README.md":              {Data: []byte("r")},
-				BaselinePath:             {Data: []byte("b")},
+				catalog.BaselinePath:     {Data: []byte("b")},
 				"skills/s/SKILL.md":      {Data: []byte("---\nname: s\ndescription: d\n---\n")},
 				"agents/x/agent.yaml":    {Data: []byte(base + tc.grant)},
 				"agents/x/OPERATIONS.md": {Data: []byte("ops")},
 			}
-			if _, err := LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := catalog.LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("LoadFS() error = %v, want %q", err, tc.want)
 			}
 		})
 	}
 }
 
+// TestVFSCapabilitiesUsesExactIDAndExplicitEmpty checks that grants resolve by exact instance ID
+// and that an explicit empty list still counts as declared.
 func TestVFSCapabilitiesUsesExactIDAndExplicitEmpty(t *testing.T) {
-	definition := AgentDefinition{
+	definition := catalog.AgentDefinition{
 		Role: model.RoleExecution,
 		VFSGrants: map[string][]model.VFSCapability{
 			"writer": {model.VFSCapabilityBind, model.VFSCapabilityWrite},
@@ -205,8 +246,10 @@ func TestVFSCapabilitiesUsesExactIDAndExplicitEmpty(t *testing.T) {
 	}
 }
 
+// TestBuildNativeContentSkipsOrchestrator checks that the orchestrator is never exposed as a
+// sub-agent.
 func TestBuildNativeContentSkipsOrchestrator(t *testing.T) {
-	content, err := LoadNativeContent()
+	content, err := catalog.LoadNativeContent()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,18 +262,18 @@ func TestBuildNativeContentSkipsOrchestrator(t *testing.T) {
 // native `edit` is denied by permissionsConfig (renderer.go) declares the
 // takt-vfs-mutation skill.
 func TestVFSMutationSkillDeclaredByMutatingAgents(t *testing.T) {
-	cat, err := LoadPackages()
+	cat, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertAgentsDeclareSkill(t, cat, "takt-vfs-mutation", "takt-dev", "takt-fix", "takt-simplify")
+	assertAgentsDeclareSkill(t, cat, "takt-vfs-mutation", "takt-dev", "takt-fix", "takt-simplify", "takt-test")
 }
 
 // TestNoOrphanSkills operationalizes DOCTRINE's no-orphan-skill norm
 // (STR-13): every skill in the catalog must have at least one real
 // consumer, declared on some agent's skills list.
 func TestNoOrphanSkills(t *testing.T) {
-	cat, err := LoadPackages()
+	cat, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +292,7 @@ func TestNoOrphanSkills(t *testing.T) {
 
 // assertAgentsDeclareSkill checks that every named agent in the catalog
 // declares skillID among its skills.
-func assertAgentsDeclareSkill(t *testing.T, cat Catalog, skillID string, agentIDs ...string) {
+func assertAgentsDeclareSkill(t *testing.T, cat catalog.Catalog, skillID string, agentIDs ...string) {
 	t.Helper()
 	wantAgents := map[string]bool{}
 	for _, id := range agentIDs {
@@ -268,6 +311,30 @@ func assertAgentsDeclareSkill(t *testing.T, cat Catalog, skillID string, agentID
 	for id, found := range wantAgents {
 		if !found {
 			t.Errorf("%s does not declare the %s skill", id, skillID)
+		}
+	}
+}
+
+// TestQualityAssuranceSquadCarriesItsOwnConduct checks that the QA analysts
+// follow their class's conduct, never the gate verifier's, and that the
+// orchestrator carries the QA workflow that routes them.
+func TestQualityAssuranceSquadCarriesItsOwnConduct(t *testing.T) {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysts := []string{"takt-mutation", "takt-explorer", "takt-quality"}
+	assertAgentsDeclareSkill(t, pack, "takt-qa-conduct", analysts...)
+	assertAgentsDeclareSkill(t, pack, "takt-qa-workflow", "takt")
+	assertAgentsDeclareSkill(t, pack, "takt-test-strategy", "takt-qa")
+	for _, agent := range pack.Agents {
+		if !slices.Contains(analysts, agent.ID) {
+			continue
+		}
+		for _, verifierSkill := range []string{"takt-verification-conduct", "takt-vfs-verification"} {
+			if slices.Contains(agent.Skills, verifierSkill) {
+				t.Errorf("%s declares the verifier skill %s", agent.ID, verifierSkill)
+			}
 		}
 	}
 }

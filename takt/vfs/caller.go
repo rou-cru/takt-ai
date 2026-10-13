@@ -69,6 +69,22 @@ func errKeyNotHeld(key AgentID) error {
 	return fmt.Errorf("%w: author_key %s is not held by this delegation; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", ErrIdentity, key)
 }
 
+// errForeignAuthor answers a read of another author's staged work with the
+// memory entries the caller's own unit consumes, by ID.
+func errForeignAuthor(key AgentID, invariants InvariantSet) error {
+	var ids []string
+	for _, invariant := range invariants {
+		if id, ok := strings.CutPrefix(invariant, engramInvariantPrefix); ok {
+			ids = append(ids, "#"+id)
+		}
+	}
+	inputs := "consumes no memory entry: return to the orchestrator a blocker naming what you need"
+	if len(ids) > 0 {
+		inputs = "consumes memory entries " + strings.Join(ids, ", ") + ": read them with mem_get_observation, and return to the orchestrator a blocker naming what they leave unsettled"
+	}
+	return fmt.Errorf("%w: author_key %s is another unit's staged work, not an input of yours; your unit %s", ErrIdentity, key, inputs)
+}
+
 func errNotYourGate(key AgentID, gates []AgentID) error {
 	authors := make([]string, len(gates))
 	for i, gate := range gates {
@@ -101,6 +117,9 @@ func (f *FS) heldAuthorLocked(c Caller, named AgentID) (AgentID, error) {
 	switch {
 	case named != "" && slices.Contains(authors, named):
 		return named, nil
+	case named != "" && len(authors) == 1 && f.bindings[named].AgentID != "":
+		// Another author's staged work: the way forward is this unit's own inputs.
+		return "", errForeignAuthor(named, f.bindings[authors[0]].Invariants)
 	case named != "":
 		return "", errKeyNotHeld(named)
 	case len(authors) == 0:

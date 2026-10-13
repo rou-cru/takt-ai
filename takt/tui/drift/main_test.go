@@ -7,4 +7,9 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-func TestMain(m *testing.M) { os.Exit(testutil.RunWithFakeEngram(m)) }
+// TestMain runs the package with a fake Engram and removes the shared installed roots afterwards.
+func TestMain(m *testing.M) {
+	code := testutil.RunWithFakeEngram(m)
+	removeFixtures()
+	os.Exit(code)
+}

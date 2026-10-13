@@ -14,39 +14,46 @@
 ## Canonical DAG
 
 ```
-                  ┌─────────────────────┐
-                  │ C  TPM WBS+contract │   ← TPM WBS over settled specs and contracts; Takt binds
-                  └──────────┬──────────┘
-        ┌─────────────┬──────┼──────┬─────────────┐
-        ▼             ▼             ▼             ▼
-   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐    Wave 1 · width 4 · 4/4 in-flight
-   │ T1 types│   │ T2 API  │   │ T3 queue│   │ T4 UI   │
-   │ + store │   │ handler │   │ worker  │   │ view    │
-   └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘
-        │             │             │             │
-        │             ▼             │             │
-        │        ┌─────────┐        │             │
-        │        │ T5 tests│        │             │    Wave 2 · width 1
-        │        └────┬────┘        │             │    (T5 writes api/* → after T2 only)
-        │             │             │             │
-        └─────────────┴──────┬──────┘─────────────┘
-                             ▼
-                  ┌─────────────────┐
-                  │ I   integration │    ← Fan-in · Single integration owner
-                  └────────┬────────┘
-                           ▼
-                  ┌─────────────────┐
-                  │ V  verify + e2e │    ← Acceptance · Full build + test + e2e
-                  └─────────────────┘
+                       ┌─────────────────────┐
+                       │ C  TPM WBS+contract │   ← TPM WBS over settled specs and contracts; Takt binds
+                       └──────────┬──────────┘
+        ┌─────────────┬───────────┼─────────────┬─────────────┐
+        ▼             ▼           ▼             ▼             ▼
+   ┌─────────┐   ┌─────────┐ ┌─────────┐   ┌─────────┐   ┌─────────┐   Wave 1 · width 5 · 4 in flight, 1 queued
+   │ T1 types│   │ T2 API  │ │ T3 queue│   │ T4 UI   │   │ T5 Q2   │
+   │ + store │   │ handler │ │ worker  │   │ view    │   │ tests   │
+   └────┬────┘   └────┬────┘ └────┬────┘   └────┬────┘   └────┬────┘
+        └─────────────┴───────────┼─────────────┴─────────────┘
+                                  ▼
+                         ┌─────────────────┐
+                         │ I   integration │    ← Fan-in · Single integration owner
+                         └────────┬────────┘
+                                  ▼
+                         ┌─────────────────┐
+                         │ V  verify + e2e │    ← Acceptance · Full build + test + e2e
+                         └────────┬────────┘
+                    ┌─────────────┴─────────────┐
+                    ▼             ▼             ▼
+               ┌─────────┐   ┌─────────┐   ┌─────────┐   ← Only what the test plan selects
+               │ M mutate│   │X explore│   │Q quality│
+               └────┬────┘   └────┬────┘   └────┬────┘
+                    └─────────────┼─────────────┘
+                                  ▼
+                         ┌─────────────────┐
+                         │ VC verify close │    ← Consumes their reports · matrix evidence · completion report
+                         └─────────────────┘
 ```
 
-Mean width: 5 implementation nodes ÷ 2 waves = 2.5. Passes the wave-width self-check.
+Mean width: 5 implementation nodes ÷ 1 wave = 5. Passes the wave-width self-check.
 
-Two topological readings that matter more than the labels:
+Three topological readings that matter more than the labels:
 
 - **The absent edge `T2 → T4` is what this skill buys.** The UI consumes the API contract,
   not the API implementation. The signature lives in `C`, so the consumer never waits on the
   producer. Every lane in wave 1 exists because some edge was dissolved this way.
-- **`T5` hangs off `T2` alone**, not off wave 1. It writes into `api/*`, which `T2` owns —
-  a named implementation edge. Placing `T5` after the full wave would surrender three lanes
-  to buy nothing.
+- **`T5` has no edge to `T2`.** The test author writes its own test files from the frozen
+  contracts and the traceability matrix, never reading `api/*` while `T2` writes it, so it
+  shares the wave with the code it tests.
+- **The tail is `takt-qa-workflow`'s.** `V`, `M`, `X`, `Q` and `VC` are its Accept, Critique
+  and Close states drawn as nodes; only what the test plan selects appears. `VC` gathers
+  reports, not implementation nodes, so it is no second integration fan-in.

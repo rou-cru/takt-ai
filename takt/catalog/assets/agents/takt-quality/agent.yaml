@@ -1,0 +1,15 @@
+context:
+  operations: OPERATIONS.md
+description: Analyze the non-functional quality characteristics the brief names, with evidence for each.
+id: takt-quality
+label: quality
+instances:
+- quality
+vfs_capabilities:
+  quality: []
+role: quality_assurance
+skills:
+- takt-memory-contract
+- takt-memory-quality
+- takt-qa-conduct
+- takt-result-handoff

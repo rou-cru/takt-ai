@@ -1,11 +1,15 @@
-package catalog
+package catalog_test
 
 import (
 	"io/fs"
 	"strings"
 	"testing"
+
+	"github.com/rou-cru/takt-ai/takt/catalog"
 )
 
+// TestPlanningDocumentTemplates checks that each planning skill directs its reader to every
+// document template it recognizes, and that each template carries its title and fields.
 func TestPlanningDocumentTemplates(t *testing.T) {
 	// This is the set of recognized types promised by the planning skills. Keep
 	// the contract structural: descriptions may improve without snapshot churn.
@@ -31,18 +35,23 @@ func TestPlanningDocumentTemplates(t *testing.T) {
 		{"takt-memory-tpm", "wbs", "WBS"},
 		{"takt-memory-analyst", "technical-spike", "Technical Spike"},
 		{"takt-memory-analyst", "trade-off-analysis", "Trade-off Analysis"},
+		{"takt-memory-qa", "test-policy", "Test Policy"},
+		{"takt-memory-qa", "test-plan", "Test Plan"},
+		{"takt-memory-qa", "environment-requirements", "Environment Requirements"},
+		{"takt-memory-qa", "traceability-matrix", "Traceability Matrix"},
+		{"takt-memory-verify", "test-completion-report", "Test Completion Report"},
 		{"takt-invariant-authoring", "generic-artifact", "Generic Artifact Skeleton"},
 	} {
 		t.Run(tc.skill+"/"+tc.file, func(t *testing.T) {
 			reference := "references/" + tc.file + ".md"
-			descriptor, err := fs.ReadFile(AssetFS(), "skills/"+tc.skill+"/SKILL.md")
+			descriptor, err := fs.ReadFile(catalog.AssetFS(), "skills/"+tc.skill+"/SKILL.md")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(string(descriptor), "`"+reference+"`") {
 				t.Errorf("skill does not direct the reader to %s", reference)
 			}
-			body, err := fs.ReadFile(AssetFS(), "skills/"+tc.skill+"/"+reference)
+			body, err := fs.ReadFile(catalog.AssetFS(), "skills/"+tc.skill+"/"+reference)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -79,11 +88,13 @@ func TestPlanningDocumentTemplates(t *testing.T) {
 	}
 }
 
+// TestPlanningAgentsDeclareInvariantAuthoring checks that every agent that authors invariants
+// carries the invariant-authoring skill.
 func TestPlanningAgentsDeclareInvariantAuthoring(t *testing.T) {
-	pack, err := LoadPackages()
+	pack, err := catalog.LoadPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertAgentsDeclareSkill(t, pack, "takt-invariant-authoring",
-		"takt-pm", "takt-architect", "takt-product-designer", "takt-spec", "takt-tpm", "takt-analyst")
+		"takt-pm", "takt-architect", "takt-product-designer", "takt-spec", "takt-tpm", "takt-analyst", "takt-qa")
 }

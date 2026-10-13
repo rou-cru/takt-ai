@@ -1,9 +1,6 @@
    Takt AI                                                                                                     Agents   
                                                                                                                         
                                                                                                                         
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
             ┌──────────────────────────────────────────────────────────────────────────────────────────────┐            
             │   All agents          different models                                                       │            
             │                                                                                              │            
@@ -11,13 +8,18 @@
             │ > analyst             openai/gpt-6-luna                                                      │            
             │   architect           OpenCode default                                                       │            
             │   dev               • opencode-go/hy4-preview                                                │            
+            │   explorer            OpenCode default                                                       │            
             │   fix                 OpenCode default                                                       │            
             │   judge-a             OpenCode default                                                       │            
             │   judge-b             OpenCode default                                                       │            
+            │   mutation            OpenCode default                                                       │            
             │   pm                  OpenCode default                                                       │            
             │   product-designer    OpenCode default                                                       │            
+            │   qa                  OpenCode default                                                       │            
+            │   quality             OpenCode default                                                       │            
             │   simplify            OpenCode default                                                       │            
             │   spec                OpenCode default                                                       │            
+            │   test                OpenCode default                                                       │            
             │   tpm                 OpenCode default                                                       │            
             │   verify              OpenCode default                                                       │            
             │                                                                                              │            
@@ -25,8 +27,6 @@
             └──────────────────────────────────────────────────────────────────────────────────────────────┘            
                                                                                                                         
                                                      Apply changes                                                      
-                                                                                                                        
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

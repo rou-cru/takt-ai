@@ -1,9 +1,15 @@
-package drift
+package drift_test
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/spinner"
@@ -12,6 +18,8 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
+	"github.com/rou-cru/takt-ai/takt/tui/drift"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
@@ -20,10 +28,13 @@ import (
 const (
 	testWidth  = 200
 	testHeight = 40
-	// manyConflicts overflows the checklist so the position footer appears.
-	manyConflicts = 80
-	// shortHeight is a window too small to hold manyConflicts rows.
+	// manyMissing overflows the checklist so the position footer appears.
+	manyMissing = 40
+	// shortHeight is a window too small to hold manyMissing rows.
 	shortHeight = 24
+	// olderVersion and newerVersion bracket a release build for version drift.
+	olderVersion = "0.0.25"
+	newerVersion = "0.0.27"
 )
 
 var (
@@ -34,34 +45,200 @@ var (
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 	keySpace = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	keyPgDn  = tea.KeyPressMsg{Code: tea.KeyPgDown}
+	keyPgUp  = tea.KeyPressMsg{Code: tea.KeyPgUp}
 )
 
-// conflicts returns one entry per recorded drift reason.
-func conflicts() []setup.ConflictEntry {
-	return []setup.ConflictEntry{
-		{Path: "agents/missing.md", Reason: "missing"},
-		{Path: "agents/edited.md", Reason: "user-edited"},
-		{Path: "agents/preexisting.md", Reason: "pre-existing"},
+// fixtureDir holds the installed roots shared by the tests: drift.Model only
+// reads them, so each is installed once per package run.
+var (
+	fixtureDir string
+	fixtures   = map[string]driftFixture{}
+)
+
+// driftFixture is an installed root and the managed paths it drifted, one per
+// drift reason.
+type driftFixture struct {
+	root                         string
+	missing, edited, preexisting string
+}
+
+// removeFixtures deletes the installed roots the package's tests shared.
+func removeFixtures() {
+	if fixtureDir != "" {
+		_ = os.RemoveAll(fixtureDir)
 	}
 }
 
-// scanned returns a report screen holding a finished scan.
-func scanned(found []setup.ConflictEntry, version string, err error) Model {
-	m := New("unused-root")
-	m.state = StateReport
-	next, _ := m.Update(tea.WindowSizeMsg{Width: testWidth, Height: testHeight})
-	next, _ = next.Update(resultMsg{conflicts: found, installedVersion: version, err: err})
-	return next.(Model)
+// fixture installs a root once under name and lets drifted alter it.
+func fixture(t *testing.T, name string, drifted func(t *testing.T, root string, paths []string) driftFixture) driftFixture {
+	t.Helper()
+	if cached, ok := fixtures[name]; ok {
+		return cached
+	}
+	if fixtureDir == "" {
+		dir, err := os.MkdirTemp("", "takt-drift-fixtures-")
+		if err != nil {
+			t.Fatalf("MkdirTemp() error = %v", err)
+		}
+		fixtureDir = dir
+	}
+	root := filepath.Join(fixtureDir, name)
+	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+		t.Fatalf("Run(install) error = %v", err)
+	}
+	manifest, err := setup.LoadOwnershipManifest(root)
+	if err != nil {
+		t.Fatalf("LoadOwnershipManifest() error = %v", err)
+	}
+	var paths []string
+	for path := range manifest.Entries {
+		if strings.HasSuffix(path, ".md") {
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+	made := drifted(t, root, paths)
+	made.root = root
+	fixtures[name] = made
+	return made
 }
 
-func send(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
+// cleanRoot is an installation nothing changed.
+func cleanRoot(t *testing.T) driftFixture {
+	return fixture(t, "clean", func(*testing.T, string, []string) driftFixture { return driftFixture{} })
+}
+
+// driftedRoot has one missing, one edited and one pre-existing managed file.
+func driftedRoot(t *testing.T) driftFixture {
+	return fixture(t, "drifted", func(t *testing.T, root string, paths []string) driftFixture {
+		if len(paths) < 3 {
+			t.Fatalf("installed manifest has %d markdown entries, want at least 3", len(paths))
+		}
+		made := driftFixture{missing: paths[0], edited: paths[1], preexisting: paths[2]}
+		if err := os.Remove(filepath.Join(root, made.missing)); err != nil {
+			t.Fatalf("Remove() error = %v", err)
+		}
+		for _, path := range []string{made.edited, made.preexisting} {
+			appendTo(t, filepath.Join(root, path))
+		}
+		// A file the manifest no longer owns reads as pre-existing.
+		manifest, err := setup.LoadOwnershipManifest(root)
+		if err != nil {
+			t.Fatalf("LoadOwnershipManifest() error = %v", err)
+		}
+		delete(manifest.Entries, made.preexisting)
+		if err := manifest.Save(root); err != nil {
+			t.Fatalf("Save() error = %v", err)
+		}
+		return made
+	})
+}
+
+// manyMissingRoot lost more managed files than a short window shows.
+func manyMissingRoot(t *testing.T) driftFixture {
+	return fixture(t, "many", func(t *testing.T, root string, paths []string) driftFixture {
+		if len(paths) < manyMissing {
+			t.Fatalf("installed manifest has %d markdown entries, want at least %d", len(paths), manyMissing)
+		}
+		for _, path := range paths[:manyMissing] {
+			if err := os.Remove(filepath.Join(root, path)); err != nil {
+				t.Fatalf("Remove() error = %v", err)
+			}
+		}
+		return driftFixture{}
+	})
+}
+
+// appendTo edits path as a user would, appending a line.
+func appendTo(t *testing.T, path string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	if err := os.WriteFile(path, append(content, []byte("\n# edited by test\n")...), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+}
+
+// withFile replaces root's name with content while fn runs, then puts the
+// original back, so a shared fixture stays as installed.
+func withFile(t *testing.T, root, name string, content []byte, fn func()) {
+	t.Helper()
+	path := filepath.Join(root, name)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+	defer func() {
+		if err := os.WriteFile(path, original, 0o644); err != nil {
+			t.Fatalf("restore %q: %v", path, err)
+		}
+	}()
+	fn()
+}
+
+// scanned is the report after a finished scan of root, read as if version
+// had installed it.
+func scanned(t *testing.T, root, version string) drift.Model {
+	t.Helper()
+	path := filepath.Join(root, setup.InstalledConfigFilename)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatalf("Unmarshal(installed record) error = %v", err)
+	}
+	record["takt_version"] = version
+	if version == "" {
+		delete(record, "takt_version")
+	}
+	rewritten, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("Marshal(installed record) error = %v", err)
+	}
+	var m drift.Model
+	withFile(t, root, setup.InstalledConfigFilename, rewritten, func() { m = scanNow(t, root) })
+	return m
+}
+
+// scanNow runs the scan of root as the event loop would, at the test size.
+func scanNow(t *testing.T, root string) drift.Model {
+	t.Helper()
+	m := drift.New(root)
+	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: testHeight})
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init() returned no scan for an installed root")
+	}
+	m, _ = send(t, m, cmd())
+	return m
+}
+
+// withBuild runs the test as a release build of version.
+func withBuild(t *testing.T, version string) {
+	t.Helper()
+	previous := setup.BuildVersion
+	setup.BuildVersion = version
+	t.Cleanup(func() { setup.BuildVersion = previous })
+}
+
+// send delivers msg to m and returns the next drift model.
+func send(t *testing.T, m drift.Model, msg tea.Msg) (drift.Model, tea.Cmd) {
 	t.Helper()
 	next, cmd := m.Update(msg)
-	return next.(Model), cmd
+	return next.(drift.Model), cmd
 }
 
-func text(m Model) string { return ansi.Strip(m.View().Content) }
+// text renders m without styling, for content assertions.
+func text(m drift.Model) string { return ansi.Strip(m.View().Content) }
 
+// requireContains fails for each wanted text the view does not show.
 func requireContains(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	for _, want := range wants {
@@ -71,87 +248,159 @@ func requireContains(t *testing.T, got string, wants ...string) {
 	}
 }
 
-// reviewScreen walks report, select (choosing every file) and review.
-func reviewScreen(t *testing.T, version string) Model {
+// requireAbsent fails for each unwanted text the view shows.
+func requireAbsent(t *testing.T, got string, unwanted ...string) {
 	t.Helper()
-	m := scanned(conflicts(), version, nil)
-	m, _ = send(t, m, keyEnter) // Select files
-	for range conflicts() {
+	for _, want := range unwanted {
+		if testutil.Shows(got, want) {
+			t.Errorf("view shows %q:\n%s", want, got)
+		}
+	}
+}
+
+// requireMsg presses Enter on m and requires cmd to produce a message of type T.
+func requireMsg[T any](t *testing.T, m drift.Model) {
+	t.Helper()
+	_, cmd := send(t, m, keyEnter)
+	if cmd == nil {
+		t.Fatal("Enter produced no command")
+	}
+	if msg, ok := cmd().(T); !ok {
+		t.Fatalf("Enter produced %T, want %T", msg, *new(T))
+	}
+}
+
+// reviewScreen walks report, select (choosing every file) and review.
+func reviewScreen(t *testing.T) (drift.Model, driftFixture) {
+	t.Helper()
+	f := driftedRoot(t)
+	m, _ := send(t, scanned(t, f.root, setup.BuildVersion), keyEnter) // Select files
+	for range 3 {
 		m, _ = send(t, m, keySpace)
 		m, _ = send(t, m, keyDown)
 	}
 	m, _ = send(t, m, keyEnter)
-	if m.State() != StateReview {
+	if m.State() != drift.StateReview {
 		t.Fatalf("state = %v, want review", m.State())
 	}
-	return m
+	return m, f
 }
 
-func TestReportStatesBeforeAndAfterScan(t *testing.T) {
-	pending := New("unused-root")
-	pending.state = StateReport
-	requireContains(t, text(pending), ui.TextDriftChecking)
-
-	requireContains(t, text(scanned(nil, "", errors.New("no manifest"))), ui.TextDriftCannotCheck+"no manifest")
-	requireContains(t, text(scanned(nil, "", nil)), ui.TextDriftClean, ui.TextDriftNoVerify)
-
-	found := text(scanned(conflicts(), "", nil))
-	requireContains(t, found, count(len(conflicts()))+ui.TextDriftDifferOutro, "agents/missing.md", "agents/edited.md", ui.TextActionSelectFiles)
-}
-
-func TestCleanReportOffersOnlyTheMenuAndSelectIsBlocked(t *testing.T) {
-	m := scanned(nil, "", nil)
-	if got := m.actions(); len(got) != 1 || got[0] != actionMenu {
-		t.Fatalf("actions = %v, want only the menu", got)
-	}
-	_, cmd := send(t, m, keyEnter)
+// restoreRequest starts the reviewed correction and returns its request.
+func restoreRequest(t *testing.T) (drift.Model, runtime.ActionRequest) {
+	t.Helper()
+	m, _ := reviewScreen(t)
+	m, _ = send(t, m, keyLeft) // focus starts on the safe action
+	m, cmd := send(t, m, keyEnter)
 	if cmd == nil {
-		t.Fatal("Enter on Back to menu produced no command")
+		t.Fatal("Restore produced no command")
 	}
-	if _, ok := cmd().(ui.BackMsg); !ok {
-		t.Error("Enter on Back to menu did not request BackMsg")
+	request, ok := cmd().(runtime.ActionRequest)
+	if !ok {
+		t.Fatal("Restore did not emit an action request")
 	}
-	// The table refuses to open the checklist when nothing drifted.
-	blocked, _ := m.applyTransition(eventSelect)
-	if blocked.(Model).State() != StateReport {
-		t.Errorf("select on a clean report moved to %v", blocked.(Model).State())
-	}
+	return m, request
 }
 
+// TestReportStatesBeforeAndAfterScan checks the report while scanning, when the scan fails, and
+// when it finds no drift.
+func TestReportStatesBeforeAndAfterScan(t *testing.T) {
+	clean := cleanRoot(t)
+	requireContains(t, text(drift.New(clean.root)), ui.TextDriftChecking)
+
+	withFile(t, clean.root, setup.OwnershipManifestFilename, []byte("{"), func() {
+		requireContains(t, text(scanNow(t, clean.root)), ui.TextDriftCannotCheck)
+	})
+	requireContains(t, text(scanned(t, clean.root, setup.BuildVersion)), ui.TextDriftClean, ui.TextDriftNoVerify)
+
+	f := driftedRoot(t)
+	found := text(scanned(t, f.root, setup.BuildVersion))
+	requireContains(t, found, fmt.Sprintf(ui.TextDriftManagedFmt, 3)+ui.TextDriftDifferOutro, f.missing, f.edited, f.preexisting, ui.TextActionSelectFiles)
+}
+
+// TestCleanReportOffersOnlyTheMenu checks that a scan without drift offers neither correction nor
+// upgrade.
+func TestCleanReportOffersOnlyTheMenu(t *testing.T) {
+	m := scanned(t, cleanRoot(t).root, setup.BuildVersion)
+	requireAbsent(t, text(m), ui.TextActionSelectFiles, ui.TextActionUpgrade)
+	requireMsg[ui.BackMsg](t, m)
+}
+
+// TestVersionDriftAloneRecommendsUpgrade checks that an older installation with matching files is
+// offered the upgrade first.
+func TestVersionDriftAloneRecommendsUpgrade(t *testing.T) {
+	withBuild(t, newerVersion)
+	m := scanned(t, cleanRoot(t).root, olderVersion)
+	view := text(m)
+	requireContains(t, view, fmt.Sprintf(ui.TextDriftVersionFmt, olderVersion, newerVersion), ui.TextDriftFilesMatch, ui.TextDriftUpgradeNext, ui.TextActionUpgrade)
+	requireAbsent(t, view, ui.TextDriftClean, ui.TextActionSelectFiles)
+	// Upgrade is the focused, recommended action.
+	requireMsg[drift.OpenUpgradeMsg](t, m)
+}
+
+// TestVersionDriftWithEditsReportsBoth checks that version drift and edited files are reported
+// together, with the upgrade deciding the files.
+func TestVersionDriftWithEditsReportsBoth(t *testing.T) {
+	withBuild(t, newerVersion)
+	f := driftedRoot(t)
+	m := scanned(t, f.root, olderVersion)
+	view := text(m)
+	requireContains(t, view, fmt.Sprintf(ui.TextDriftVersionFmt, olderVersion, newerVersion), f.missing, f.edited, f.preexisting, ui.TextDriftUpgradeAsks)
+	requireAbsent(t, view, ui.TextActionSelectFiles)
+	requireMsg[drift.OpenUpgradeMsg](t, m)
+}
+
+// TestUnrecordedVersionIsVersionDrift checks that an installation without a recorded version counts
+// as older.
+func TestUnrecordedVersionIsVersionDrift(t *testing.T) {
+	withBuild(t, newerVersion)
+	view := text(scanned(t, cleanRoot(t).root, ""))
+	requireContains(t, view, fmt.Sprintf(ui.TextDriftVersionFmt, ui.TextVersionUnrecorded, newerVersion), ui.TextActionUpgrade)
+}
+
+// TestNewerInstallationCannotBeUpgradedOrCorrected checks that a newer installation is neither
+// upgraded nor corrected by this build.
+func TestNewerInstallationCannotBeUpgradedOrCorrected(t *testing.T) {
+	withBuild(t, olderVersion)
+	m := scanned(t, driftedRoot(t).root, newerVersion)
+	view := text(m)
+	requireContains(t, view, fmt.Sprintf(ui.TextDriftVersionFmt, newerVersion, olderVersion), ui.TextDriftNoUpgrade)
+	requireAbsent(t, view, ui.TextActionUpgrade, ui.TextActionSelectFiles)
+	requireMsg[ui.BackMsg](t, m)
+}
+
+// TestSelectionRequiresAtLeastOneFile checks that the checklist cannot continue empty.
 func TestSelectionRequiresAtLeastOneFile(t *testing.T) {
-	m := scanned(conflicts(), "", nil)
-	m, _ = send(t, m, keyEnter)
-	if m.State() != StateSelect {
+	m, _ := send(t, scanned(t, driftedRoot(t).root, setup.BuildVersion), keyEnter)
+	if m.State() != drift.StateSelect {
 		t.Fatalf("state = %v, want select", m.State())
 	}
 	requireContains(t, text(m), ui.TextDriftSelectIntro, ui.TextDriftSelectStar)
 
 	m, _ = send(t, m, keyEnter)
-	if m.State() != StateSelect {
+	if m.State() != drift.StateSelect {
 		t.Errorf("state = %v, want Enter with nothing chosen to stay on select", m.State())
 	}
 
 	m, _ = send(t, m, keySpace)
-	if !m.Dirty() || len(m.selected) != 1 {
-		t.Fatalf("selected = %v dirty = %v, want one chosen file", m.selected, m.Dirty())
+	if !m.Dirty() {
+		t.Fatal("Dirty() = false after choosing a file")
 	}
 	m, _ = send(t, m, keySpace)
-	if len(m.selected) != 0 {
-		t.Errorf("selected = %v, want a second Space to untoggle", m.selected)
+	if m.Dirty() {
+		t.Error("Dirty() = true, want a second Space to untoggle")
 	}
 
 	back, _ := send(t, m, keyEsc)
-	if back.State() != StateReport {
+	if back.State() != drift.StateReport {
 		t.Errorf("state = %v, want Esc on select to return to the report", back.State())
 	}
 }
 
+// TestSelectShowsPositionWhenListOverflows checks that an overflowing checklist shows which rows
+// are visible.
 func TestSelectShowsPositionWhenListOverflows(t *testing.T) {
-	many := make([]setup.ConflictEntry, manyConflicts)
-	for i := range many {
-		many[i] = setup.ConflictEntry{Path: fmt.Sprintf("agents/file-%02d.md", i), Reason: "missing"}
-	}
-	m := scanned(many, "", nil)
+	m := scanned(t, manyMissingRoot(t).root, setup.BuildVersion)
 	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: shortHeight})
 	m, _ = send(t, m, keyEnter)
 	// The shell shows which rows are visible once the checklist overflows.
@@ -160,62 +409,53 @@ func TestSelectShowsPositionWhenListOverflows(t *testing.T) {
 	}
 }
 
+// TestPageKeysScrollTheBody checks that PgDn and PgUp scroll a long report and return to its top.
 func TestPageKeysScrollTheBody(t *testing.T) {
-	m := scanned(conflicts(), "", nil)
+	m := scanned(t, manyMissingRoot(t).root, setup.BuildVersion)
+	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: shortHeight})
+	top := text(m)
 	m, _ = send(t, m, keyPgDn)
-	if m.scroll == 0 {
+	if text(m) == top {
 		t.Error("PgDn did not scroll the body")
 	}
-	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if m.scroll != 0 {
-		t.Errorf("scroll after PgUp = %d, want 0", m.scroll)
+	m, _ = send(t, m, keyPgUp)
+	if text(m) != top {
+		t.Error("PgUp did not return to the top")
 	}
 }
 
+// TestReviewNamesReferenceAndConsequencePerReason checks that review names the reference version
+// and each file's consequence, and that Esc keeps the selection.
 func TestReviewNamesReferenceAndConsequencePerReason(t *testing.T) {
-	m := reviewScreen(t, setup.BuildVersion)
+	m, f := reviewScreen(t)
 	requireContains(t, text(m),
 		fmt.Sprintf(ui.TextDriftRefFmt, setup.BuildVersion),
 		ui.TextDriftRestoreHead, ui.TextDriftPreserveHead, ui.TextDriftPreserveAll,
 		ui.TextDriftRecreated, ui.TextDriftReplacedEdit, ui.TextDriftReplacedFile,
+		f.missing, f.edited, f.preexisting,
 		ui.TextActionRestoreSelected, ui.TextActionReselect)
 
 	back, _ := send(t, m, keyEsc)
-	if back.State() != StateSelect || len(back.selected) != len(conflicts()) {
-		t.Errorf("state = %v selected = %v, want Esc to return to select keeping the choice", back.State(), back.selected)
+	if back.State() != drift.StateSelect || !back.Dirty() {
+		t.Errorf("state = %v dirty = %v, want Esc to return to select keeping the choice", back.State(), back.Dirty())
 	}
 }
 
-func TestRestoreIsBlockedWhenInstalledVersionDiffers(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		want    string
-	}{
-		{"unknown version", "", ui.TextDriftRefUnknown + setup.BuildVersion},
-		{"other version", "0.0.0-other", ui.TextDriftRefMismatch + "0.0.0-other"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := reviewScreen(t, tt.version)
-			requireContains(t, text(m), tt.want, ui.TextDriftVersionBlock)
-			next, cmd := send(t, m, keyEnter)
-			if cmd != nil || next.Run().Busy() {
-				t.Error("Restore ran although the installed definitions are unavailable")
-			}
-		})
-	}
-}
-
+// TestRestoreStartsCorrectionForSelectedPaths checks that restoring requests the correction of
+// exactly the selected files.
 func TestRestoreStartsCorrectionForSelectedPaths(t *testing.T) {
-	m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft) // focus starts on the safe action
-	m, cmd := send(t, m, keyEnter)
-	if !m.Run().Busy() || cmd == nil {
-		t.Fatalf("busy = %v cmd = %v, want a running correction", m.Run().Busy(), cmd != nil)
+	m, request := restoreRequest(t)
+	f := driftedRoot(t)
+	if request.Action != runtime.ActionCorrectDrift {
+		t.Fatalf("action = %q, want correct-drift", request.Action)
 	}
-	request, ok := cmd().(runtime.ActionRequest)
-	if !ok || request.Action != runtime.ActionCorrectDrift || len(request.SelectedDriftPaths) != len(conflicts()) {
-		t.Fatalf("request = %#v, want correct-drift for every selected path", request)
+	for _, path := range []string{f.missing, f.edited, f.preexisting} {
+		if !slices.Contains(request.SelectedDriftPaths, path) {
+			t.Errorf("request paths = %v, want %q", request.SelectedDriftPaths, path)
+		}
+	}
+	if !m.Run().Busy() {
+		t.Fatal("the correction is not running")
 	}
 	requireContains(t, text(m), ui.TextDriftBusy)
 
@@ -234,7 +474,7 @@ func TestRestoreStartsCorrectionForSelectedPaths(t *testing.T) {
 
 	stale := request
 	stale.ID++
-	if m, _ = send(t, m, runtime.ActionResultMsg{Request: stale}); m.State() != StateReview {
+	if m, _ = send(t, m, runtime.ActionResultMsg{Request: stale}); m.State() != drift.StateReview {
 		t.Errorf("state = %v, want a stale result to be ignored", m.State())
 	}
 	if m, _ = send(t, m, struct{}{}); !m.Run().Busy() {
@@ -242,7 +482,18 @@ func TestRestoreStartsCorrectionForSelectedPaths(t *testing.T) {
 	}
 }
 
+// result delivers correction and err to a running correction.
+func result(t *testing.T, correction runtime.ActionResult, err error) drift.Model {
+	t.Helper()
+	m, request := restoreRequest(t)
+	m, _ = send(t, m, runtime.ActionResultMsg{Request: request, Result: correction, Err: err})
+	return m
+}
+
+// TestResultBodies checks the result screen of each correction outcome.
 func TestResultBodies(t *testing.T) {
+	// A backup note needs a restored path the scan found edited.
+	edited := driftedRoot(t).edited
 	tests := []struct {
 		name       string
 		correction runtime.ActionResult
@@ -251,8 +502,8 @@ func TestResultBodies(t *testing.T) {
 	}{
 		{
 			name:       "restored files with a backup note",
-			correction: runtime.ActionResult{Changed: []string{"agents/edited.md"}, CancelRequested: true},
-			want:       []string{ui.TextDriftRestoredOk, ui.TextDriftRestoredHead, "agents/edited.md", ui.TextDriftTakeEffect, ui.TextDriftBackupIntro + setup.BackupDir, ui.TextLateCancel},
+			correction: runtime.ActionResult{Changed: []string{edited}, CancelRequested: true},
+			want:       []string{ui.TextDriftRestoredOk, ui.TextDriftRestoredHead, edited, ui.TextDriftTakeEffect, ui.TextDriftBackupIntro + setup.BackupDir, ui.TextLateCancel},
 		},
 		{
 			name:       "nothing needed restoring",
@@ -288,11 +539,8 @@ func TestResultBodies(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft)
-			m, cmd := send(t, m, keyEnter)
-			request := cmd().(runtime.ActionRequest)
-			m, _ = send(t, m, runtime.ActionResultMsg{Request: request, Result: tt.correction, Err: tt.err})
-			if m.State() != StateResult || m.Run().Busy() {
+			m := result(t, tt.correction, tt.err)
+			if m.State() != drift.StateResult || m.Run().Busy() {
 				t.Fatalf("state = %v busy = %v, want the idle result step", m.State(), m.Run().Busy())
 			}
 			if m.Title() != ui.TextDriftResultTitle || m.Dirty() {
@@ -303,52 +551,45 @@ func TestResultBodies(t *testing.T) {
 	}
 }
 
+// TestResultActionsRescanAndLeave checks that the result either scans again from scratch or leaves
+// the flow.
 func TestResultActionsRescanAndLeave(t *testing.T) {
-	result := func(t *testing.T, correction runtime.ActionResult) Model {
-		t.Helper()
-		m, _ := send(t, reviewScreen(t, setup.BuildVersion), keyLeft)
-		m, cmd := send(t, m, keyEnter)
-		m, _ = send(t, m, runtime.ActionResultMsg{Request: cmd().(runtime.ActionRequest), Result: correction})
-		return m
-	}
-
+	restored := runtime.ActionResult{Changed: []string{"agents/missing.md"}}
 	t.Run("rescan clears the scan and starts another", func(t *testing.T) {
-		m, cmd := send(t, result(t, runtime.ActionResult{Changed: []string{"agents/missing.md"}}), keyEnter)
-		if m.State() != StateReport || m.scanned || len(m.selected) != 0 || cmd == nil {
-			t.Errorf("state = %v scanned = %v selected = %v cmd = %v, want a fresh pending scan", m.State(), m.scanned, m.selected, cmd != nil)
+		m, cmd := send(t, result(t, restored, nil), keyEnter)
+		if m.State() != drift.StateReport || m.Dirty() || cmd == nil {
+			t.Fatalf("state = %v dirty = %v cmd = %v, want a fresh pending scan", m.State(), m.Dirty(), cmd != nil)
 		}
+		requireContains(t, text(m), ui.TextDriftChecking)
 	})
 	t.Run("menu leaves the flow", func(t *testing.T) {
-		m := result(t, runtime.ActionResult{Changed: []string{"agents/missing.md"}})
-		m, _ = send(t, m, keyRight)
-		_, cmd := send(t, m, keyEnter)
-		if _, ok := cmd().(ui.BackMsg); !ok {
-			t.Error("Back to menu did not request BackMsg")
-		}
+		m, _ := send(t, result(t, restored, nil), keyRight)
+		requireMsg[ui.BackMsg](t, m)
 	})
 	t.Run("keep current state leaves after a partial correction", func(t *testing.T) {
-		m := result(t, runtime.ActionResult{Outcome: lifecycle.OutcomeCancelledPartial, Changed: []string{"agents/missing.md"}})
-		m, _ = send(t, m, keyRight)
-		_, cmd := send(t, m, keyEnter)
-		if _, ok := cmd().(ui.BackMsg); !ok {
-			t.Error("Keep current state did not request BackMsg")
-		}
+		m, _ := send(t, result(t, runtime.ActionResult{Outcome: lifecycle.OutcomeCancelledPartial, Changed: []string{"agents/missing.md"}}, nil), keyRight)
+		requireMsg[ui.BackMsg](t, m)
 	})
 }
 
+// TestTitlesFollowTheStep checks that the header names each step of the flow.
 func TestTitlesFollowTheStep(t *testing.T) {
-	want := map[State]string{
-		StateReport:       ui.TextDriftReportTitle,
-		StateSelect:       ui.TextDriftSelectTitle,
-		StateReview:       ui.TextDriftReviewTitle,
-		StateResult:       ui.TextDriftResultTitle,
-		StateNotInstalled: ui.TextDriftEmptyTitle,
+	report := scanned(t, driftedRoot(t).root, setup.BuildVersion)
+	selecting, _ := send(t, report, keyEnter)
+	review, _ := reviewScreen(t)
+	steps := []struct {
+		m    drift.Model
+		want string
+	}{
+		{drift.New(t.TempDir()), ui.TextDriftEmptyTitle},
+		{report, ui.TextDriftReportTitle},
+		{selecting, ui.TextDriftSelectTitle},
+		{review, ui.TextDriftReviewTitle},
+		{result(t, runtime.ActionResult{}, nil), ui.TextDriftResultTitle},
 	}
-	m := New("unused-root")
-	for state, title := range want {
-		m.state = state
-		if got := m.Title(); got != title {
-			t.Errorf("Title() in state %v = %q, want %q", state, got, title)
+	for _, step := range steps {
+		if got := step.m.Title(); got != step.want {
+			t.Errorf("Title() = %q, want %q", got, step.want)
 		}
 	}
 }

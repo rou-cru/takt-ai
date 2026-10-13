@@ -208,7 +208,9 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 			rules = append(rules, permissionRule{name, allResources, "allow"})
 		}
 	} else {
-		if spec.Role == model.RoleVerification {
+		// Verification and quality assurance never write the project; their
+		// output goes outside it through the shell.
+		if spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance {
 			rules = append(rules, permissionRule{"edit", allResources, "deny"})
 		}
 		rules = append(rules, shellRules(spec.Role)...)

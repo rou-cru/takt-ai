@@ -17,6 +17,14 @@ only narrows what your role records.
 - `observation` (`project`): the verification report — which requirements held, failed, or stayed unverified — each with the command, test output, or reading that shows it, and for staged work the author_key, file and line it concerns.
 - A later report on the same code is a new entry that `supplements` the earlier one.
 - An `observation` that `corrects` or `disputes` a recorded fact or decision verification contradicted.
+- The evidence for each traceability matrix row you verified, naming the evaluated scope, as an
+  entry that `supplements` the matrix, titled `Traceability Matrix: Evidence`.
+
+## Recognized documents
+
+- **Test Completion Report** (`references/test-completion-report.md`) — at the node that closes
+  an objective's acceptance, when the objective has a test plan, consuming by ID the mutation,
+  exploration and quality reports that ran.
 
 ## When
 

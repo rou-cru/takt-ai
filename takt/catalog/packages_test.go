@@ -5,7 +5,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package catalog
+package catalog_test
 
 import (
 	"io/fs"
@@ -13,27 +13,31 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/rou-cru/takt-ai/takt/catalog"
 )
 
 const (
 	validSkillDescriptor = "---\nname: s\ndescription: d\n---\nbody\n"
 	validAgentYAML       = "id: x\nlabel: x\ninstances: [x]\ndescription: d\nrole: execution\nvfs_capabilities: {x: [bind]}\ncontext: {operations: OPERATIONS.md}\n"
 	scriptFileMode       = fs.FileMode(0o755)
+	regularFileMode      = fs.FileMode(0o644)
 )
 
 // validTree is the smallest catalog LoadFS accepts: one skill, one agent.
 func validTree() fstest.MapFS {
 	return fstest.MapFS{
 		"README.md":              {Data: []byte("r")},
-		BaselinePath:             {Data: []byte("base")},
+		catalog.BaselinePath:     {Data: []byte("base")},
 		"skills/s/SKILL.md":      {Data: []byte(validSkillDescriptor)},
 		"agents/x/agent.yaml":    {Data: []byte(validAgentYAML)},
 		"agents/x/OPERATIONS.md": {Data: []byte("ops")},
 	}
 }
 
+// TestLoadFSAcceptsMinimalTree checks that one skill and one agent form a valid catalog.
 func TestLoadFSAcceptsMinimalTree(t *testing.T) {
-	c, err := LoadFS(validTree())
+	c, err := catalog.LoadFS(validTree())
 	if err != nil {
 		t.Fatalf("LoadFS() error = %v", err)
 	}
@@ -43,24 +47,26 @@ func TestLoadFSAcceptsMinimalTree(t *testing.T) {
 	var paths []string
 	for _, f := range c.Files {
 		paths = append(paths, f.Path)
-		if f.Mode != packageFileMode {
-			t.Errorf("file %q mode = %v, want %v", f.Path, f.Mode, packageFileMode)
+		if f.Mode != regularFileMode {
+			t.Errorf("file %q mode = %v, want %v", f.Path, f.Mode, regularFileMode)
 		}
 	}
 	if !slices.IsSorted(paths) || len(paths) != 5 {
 		t.Fatalf("file order = %v, want the five files in lexical order", paths)
 	}
-	if got := c.Skills[0].Files; len(got) != 1 || got[0].Path != SkillFileName {
+	if got := c.Skills[0].Files; len(got) != 1 || got[0].Path != catalog.SkillFileName {
 		t.Fatalf("skill files = %+v, want SKILL.md with the skill prefix trimmed", got)
 	}
 }
 
+// TestLoadFSMarksDeclaredExecutables checks that only the scripts a skill declares are marked
+// executable.
 func TestLoadFSMarksDeclaredExecutables(t *testing.T) {
 	fsys := validTree()
 	fsys["skills/s/SKILL.md"] = &fstest.MapFile{Data: []byte("---\nname: s\ndescription: d\nmetadata:\n  executables: [scripts/run.sh]\n---\n")}
 	fsys["skills/s/scripts/run.sh"] = &fstest.MapFile{Data: []byte("#!/bin/sh\n")}
 	fsys["skills/s/scripts/other.sh"] = &fstest.MapFile{Data: []byte("#!/bin/sh\n")}
-	c, err := LoadFS(fsys)
+	c, err := catalog.LoadFS(fsys)
 	if err != nil {
 		t.Fatalf("LoadFS() error = %v", err)
 	}
@@ -71,8 +77,8 @@ func TestLoadFSMarksDeclaredExecutables(t *testing.T) {
 	if modes["scripts/run.sh"] != scriptFileMode {
 		t.Errorf("declared script mode = %v, want %v", modes["scripts/run.sh"], scriptFileMode)
 	}
-	if modes["scripts/other.sh"] != packageFileMode {
-		t.Errorf("undeclared script mode = %v, want %v", modes["scripts/other.sh"], packageFileMode)
+	if modes["scripts/other.sh"] != regularFileMode {
+		t.Errorf("undeclared script mode = %v, want %v", modes["scripts/other.sh"], regularFileMode)
 	}
 }
 
@@ -88,7 +94,7 @@ func TestLoadFSRejectsInvalidTrees(t *testing.T) {
 		want   string
 	}{
 		"missing readme":   {func(m fstest.MapFS) { delete(m, "README.md") }, "missing or empty catalog file"},
-		"blank baseline":   {func(m fstest.MapFS) { m[BaselinePath] = &fstest.MapFile{Data: []byte(" \n")} }, "missing or empty catalog file"},
+		"blank baseline":   {func(m fstest.MapFS) { m[catalog.BaselinePath] = &fstest.MapFile{Data: []byte(" \n")} }, "missing or empty catalog file"},
 		"non-regular file": {func(m fstest.MapFS) { m["link"] = &fstest.MapFile{Mode: fs.ModeSymlink} }, "not regular"},
 		"no skills dir":    {func(m fstest.MapFS) { delete(m, "skills/s/SKILL.md") }, "skills"},
 		"stray skill file": {func(m fstest.MapFS) { m["skills/notes.md"] = &fstest.MapFile{Data: []byte("n")} }, "invalid skill package"},
@@ -134,26 +140,29 @@ func TestLoadFSRejectsInvalidTrees(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fsys := validTree()
 			tc.mutate(fsys)
-			if _, err := LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := catalog.LoadFS(fsys); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("LoadFS() error = %v, want %q", err, tc.want)
 			}
 		})
 	}
 }
 
+// TestLoadFSWithoutAgentsDirFails checks that a catalog without agents is refused.
 func TestLoadFSWithoutAgentsDirFails(t *testing.T) {
 	fsys := validTree()
 	delete(fsys, "agents/x/agent.yaml")
 	delete(fsys, "agents/x/OPERATIONS.md")
-	if _, err := LoadFS(fsys); err == nil {
-		t.Fatal("LoadFS() succeeded without an agents directory")
+	if _, err := catalog.LoadFS(fsys); err == nil {
+		t.Fatal("catalog.LoadFS() succeeded without an agents directory")
 	}
 }
 
+// TestLoadFSAcceptsAgentReferencingSkill checks that an agent may declare a skill the catalog
+// ships.
 func TestLoadFSAcceptsAgentReferencingSkill(t *testing.T) {
 	fsys := validTree()
 	fsys["agents/x/agent.yaml"] = &fstest.MapFile{Data: []byte(validAgentYAML + "skills: [s]\n")}
-	c, err := LoadFS(fsys)
+	c, err := catalog.LoadFS(fsys)
 	if err != nil {
 		t.Fatalf("LoadFS() error = %v", err)
 	}
@@ -167,12 +176,12 @@ func TestContextPathsAndComposeText(t *testing.T) {
 	fsys["agents/x/agent.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(validAgentYAML, "{operations", "{persona: PERSONA.md, soul: SOUL.md, operations", 1))}
 	fsys["agents/x/PERSONA.md"] = &fstest.MapFile{Data: []byte("\npersona\n")}
 	fsys["agents/x/SOUL.md"] = &fstest.MapFile{Data: []byte("soul\n")}
-	c, err := LoadFS(fsys)
+	c, err := catalog.LoadFS(fsys)
 	if err != nil {
 		t.Fatalf("LoadFS() error = %v", err)
 	}
 	a := c.Agents[0]
-	wantPaths := []string{BaselinePath, "agents/x/PERSONA.md", "agents/x/SOUL.md", "agents/x/OPERATIONS.md"}
+	wantPaths := []string{catalog.BaselinePath, "agents/x/PERSONA.md", "agents/x/SOUL.md", "agents/x/OPERATIONS.md"}
 	if got := a.ContextPaths(); !slices.Equal(got, wantPaths) {
 		t.Fatalf("ContextPaths() = %v, want %v", got, wantPaths)
 	}

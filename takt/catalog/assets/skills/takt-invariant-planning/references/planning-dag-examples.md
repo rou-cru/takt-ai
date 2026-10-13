@@ -1,7 +1,7 @@
 # Planning DAG Examples
 
 Each scenario shows the assessment, the DAG it produces, and why each edge exists. The
-assessment drives the shape: the same five lanes connect differently when different
+assessment drives the shape: the same lanes connect differently when different
 invariants are already settled.
 
 ## 1. Greenfield, raw intent
@@ -173,3 +173,24 @@ detail. Structure to generate; behavior to generate.
 - `D → S`, `R → S`: behavior is specified against the consolidated experience and the structure.
 - Without a consolidator, the partial results go straight to their consumers (`Dv, Dx → R`)
   when those consumers can reconcile them within their own lane.
+
+## 8. QA planned
+
+Assessment: intent and structure settled; behavior to generate; pm's requirements name a
+must-not-fail item and acceptance spans several units; no test policy in the workspace.
+
+```
+               ┌────────────┐
+               │ S  spec    │                 Round 1 · width 1
+               └─────┬──────┘
+                     ▼
+               ┌────────────┐
+               │ Q  qa      │                 Round 2 · width 1
+               └────────────┘
+```
+
+- `S → Q`: the test plan and traceability matrix are drawn from the specification's
+  acceptance; Q also consumes the frozen contracts and the PRD's must-not-fail priorities,
+  and generates the test policy.
+- Planning ends with S and Q; both feed TPM.
+- With the specification already settled and no test plan, Q is the only lane.

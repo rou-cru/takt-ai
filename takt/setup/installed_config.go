@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/mod/semver"
 )
 
 // InstalledConfigFilename records the PlanRequest last applied, so later operations reapply real custom choices.
@@ -81,6 +83,18 @@ func InstalledVersion(rootDir string) string {
 // correction never restores another version's definitions.
 func IsCurrentVersion(installed string) bool {
 	return installed == BuildVersion
+}
+
+// UpgradeAvailable reports whether this build is newer than installed, so an
+// upgrade never downgrades. An unrecorded installed version predates version
+// tracking, and one that is not semver (a dev build) cannot be ordered: both
+// count as older. A non-release build is never an upgrade.
+func UpgradeAvailable(installed string) bool {
+	build := "v" + BuildVersion
+	if !semver.IsValid(build) {
+		return false
+	}
+	return installed == "" || semver.Compare(build, "v"+installed) > 0
 }
 
 // ForgetInstallation drops rootDir's installed record and the risk acceptances

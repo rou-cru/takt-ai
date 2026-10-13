@@ -3,7 +3,9 @@ package runtime_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -34,6 +36,81 @@ func TestAdapterLifecycleActions(t *testing.T) {
 	uninstall, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root})
 	if err != nil || len(uninstall.Removed) == 0 {
 		t.Fatalf("uninstall = %+v, %v", uninstall, err)
+	}
+}
+
+// An upgrade is the install of the recorded choices onto this build: a managed
+// file the user edited after an older install is replaced unless preserved,
+// and the installed version becomes this build's.
+func TestAdapterUpgradeHonorsReplaceAndPreserve(t *testing.T) {
+	previous := setup.BuildVersion
+	t.Cleanup(func() { setup.BuildVersion = previous })
+	for _, preserve := range []bool{false, true} {
+		root := t.TempDir()
+		adapter := testAdapter(nil)
+		setup.BuildVersion = "0.0.25"
+		install, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
+		if err != nil {
+			t.Fatalf("install error = %v", err)
+		}
+		path := managedMarkdown(t, install.Changed)
+		full := filepath.Join(root, filepath.FromSlash(path))
+		released, err := os.ReadFile(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		olderInstallThenEdit(t, root, path)
+
+		setup.BuildVersion = "0.0.27"
+		request := runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}
+		if preserve {
+			request.PreservePaths = []string{path}
+		}
+		if _, err := adapter.Execute(request); err != nil {
+			t.Fatalf("upgrade error = %v", err)
+		}
+		got, err := os.ReadFile(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := map[bool][]byte{false: released, true: []byte("user edit")}[preserve]; !bytes.Equal(got, want) {
+			t.Errorf("preserve=%v: %s = %q, want %q", preserve, path, got, want)
+		}
+		if got := setup.InstalledVersion(root); got != "0.0.27" {
+			t.Errorf("preserve=%v: InstalledVersion() = %q, want the upgraded build", preserve, got)
+		}
+	}
+}
+
+// managedMarkdown returns one deployed Markdown path.
+func managedMarkdown(t *testing.T, changed []string) string {
+	t.Helper()
+	for _, path := range changed {
+		if filepath.Ext(path) == ".md" {
+			return path
+		}
+	}
+	t.Fatalf("no Markdown file among %v", changed)
+	return ""
+}
+
+// olderInstallThenEdit records path as written by an older build with other
+// content, then edits it as the user would.
+func olderInstallThenEdit(t *testing.T, root, path string) {
+	t.Helper()
+	manifest, err := setup.LoadOwnershipManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := manifest.Entries[path]
+	older := sha256.Sum256([]byte("older build content"))
+	entry.SHA256 = hex.EncodeToString(older[:])
+	manifest.Entries[path] = entry
+	if err := manifest.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(path)), []byte("user edit"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

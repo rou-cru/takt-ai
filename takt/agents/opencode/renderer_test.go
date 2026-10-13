@@ -95,11 +95,11 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 			if !slices.Contains(spec.Skills, "takt-memory-contract") || effectOf(rules, "skill", "takt-memory-contract") == "deny" {
 				t.Error("missing accessible takt-memory-contract")
 			}
-			producer := slices.Contains([]string{"analyst", "pm", "architect", "product-designer", "spec", "tpm"}, spec.ID)
-			// Verification instances deliver their report through the same handoff.
+			producer := spec.Role == model.RolePlanningAuthor || spec.Role == model.RoleDirectInterlocutor
+			// Verification and quality-assurance instances deliver their report through the same handoff.
 			for skill, owner := range map[string]bool{
 				"takt-handoff":        producer,
-				"takt-result-handoff": producer || spec.Role == model.RoleVerification,
+				"takt-result-handoff": producer || spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance,
 			} {
 				if slices.Contains(spec.Skills, skill) != owner {
 					t.Errorf("incorrect %s assignment", skill)
@@ -461,13 +461,17 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	}
 }
 
-func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *testing.T) {
+// TestRenderConfigDeniesInterlocutorStackForVerificationQualityAssuranceAndMaintenance checks that
+// internal classes never switch, abort or hand off the interface, while the orchestrator and
+// interlocutors keep their tools.
+func TestRenderConfigDeniesInterlocutorStackForVerificationQualityAssuranceAndMaintenance(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
 			{ID: "takt", Description: "Orchestrator", Mode: "primary", System: "p", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
 			{ID: "pm", Description: "PM", Mode: "all", System: "p", Role: model.RoleDirectInterlocutor, VFSCapabilities: vfsCaps()},
 			{ID: "verify", Description: "Verify", Mode: "subagent", System: "p", Role: model.RoleVerification, VFSCapabilities: vfsCaps(model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityVerify)},
 			{ID: "takt-gc", Description: "GC", Mode: "subagent", System: "p", Role: model.RoleMaintenance, VFSCapabilities: vfsCaps(model.VFSCapabilityBind, model.VFSCapabilityWrite, model.VFSCapabilityRead, model.VFSCapabilityDelete)},
+			{ID: "mutation", Description: "Mutation", Mode: "subagent", System: "p", Role: model.RoleQualityAssurance, VFSCapabilities: vfsCaps()},
 		},
 	})
 	if err != nil {
@@ -475,7 +479,7 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *tes
 	}
 	config := decodeConfig(t, artifact.Content)
 	switchTools := []string{"dispatch_switch", "dispatch_abort_switch"}
-	for _, id := range []string{"verify", "takt-gc", "pm"} {
+	for _, id := range []string{"verify", "takt-gc", "mutation", "pm"} {
 		rules := config.Agents[id].Permissions
 		for _, tool := range switchTools {
 			if effectOf(rules, tool, "*") != "deny" {
@@ -489,7 +493,7 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationAndMaintenance(t *tes
 			t.Errorf("takt %s must not be denied by the static interlocutor rule", tool)
 		}
 	}
-	for _, id := range []string{"verify", "takt-gc"} {
+	for _, id := range []string{"verify", "takt-gc", "mutation"} {
 		rules := config.Agents[id].Permissions
 		if effectOf(rules, "dispatch_handoff", "*") != "deny" {
 			t.Errorf("%s dispatch_handoff = %q, want deny", id, effectOf(rules, "dispatch_handoff", "*"))
@@ -567,6 +571,8 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 	}
 }
 
+// TestRenderConfigNativeEditNeverReachesTheEventStore checks that an agent allowed native edits
+// still cannot write the workspace event store.
 func TestRenderConfigNativeEditNeverReachesTheEventStore(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -579,5 +585,28 @@ func TestRenderConfigNativeEditNeverReachesTheEventStore(t *testing.T) {
 	rules := decodeConfig(t, artifact.Content).Agents["pm"].Permissions
 	if effectOf(rules, "edit", "*") != "allow" || effectOf(rules, "edit", eventStoreGlob) != "deny" {
 		t.Errorf("pm may edit the workspace event store: %v", rules)
+	}
+}
+
+// A quality-assurance instance critiques the project without writing it: native
+// edit is denied everywhere and git stays read-only.
+func TestRenderConfigQualityAssuranceNeverEditsTheProject(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: "explorer", Description: "Explorer", Mode: "subagent", System: "p", Model: "openai/gpt-5.6-luna", Role: model.RoleQualityAssurance, VFSCapabilities: vfsCaps()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := decodeConfig(t, artifact.Content).Agents["explorer"].Permissions
+	if got := effectOf(rules, "edit", "*"); got != "deny" {
+		t.Errorf("explorer edit = %q, want deny", got)
+	}
+	if effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "git diff") != "allow" {
+		t.Errorf("explorer git rules = %v, want read-only git", rules)
+	}
+	if got := effectOf(rules, "vfs_verify", "*"); got != "deny" {
+		t.Errorf("explorer vfs_verify = %q, want deny", got)
 	}
 }

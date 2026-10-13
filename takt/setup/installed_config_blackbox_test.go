@@ -16,6 +16,29 @@ func TestIsCurrentVersion(t *testing.T) {
 	}
 }
 
+// TestUpgradeAvailable checks that only a newer release build upgrades, and an unrecorded
+// installation counts as older.
+func TestUpgradeAvailable(t *testing.T) {
+	tests := []struct {
+		build, installed string
+		want             bool
+	}{
+		{"0.0.27", "0.0.25", true},
+		{"0.0.27", "", true},
+		{"0.0.27", "0.0.27", false},
+		{"0.0.25", "0.0.27", false},
+		{"dev", "0.0.25", false},
+	}
+	previous := setup.BuildVersion
+	t.Cleanup(func() { setup.BuildVersion = previous })
+	for _, tt := range tests {
+		setup.BuildVersion = tt.build
+		if got := setup.UpgradeAvailable(tt.installed); got != tt.want {
+			t.Errorf("build %q: UpgradeAvailable(%q) = %v, want %v", tt.build, tt.installed, got, tt.want)
+		}
+	}
+}
+
 func TestIsInstalled(t *testing.T) {
 	root := t.TempDir()
 	if setup.IsInstalled(root) {

@@ -1,0 +1,18 @@
+context:
+  operations: OPERATIONS.md
+description: Plan risk-based testing from requirements, with its policy, plan, environment
+  and traceability.
+id: takt-qa
+label: qa
+instances:
+- qa
+vfs_capabilities:
+  qa: []
+role: planning_author
+skills:
+- takt-memory-contract
+- takt-memory-qa
+- takt-test-strategy
+- takt-invariant-authoring
+- takt-handoff
+- takt-result-handoff

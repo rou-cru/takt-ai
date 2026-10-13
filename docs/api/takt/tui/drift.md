@@ -19,6 +19,7 @@ Package drift shows which managed files differ from their installed definition a
   - [func \(m Model\) Title\(\) string](<#Model.Title>)
   - [func \(m Model\) Update\(msg tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
   - [func \(m Model\) View\(\) tea.View](<#Model.View>)
+- [type OpenUpgradeMsg](<#OpenUpgradeMsg>)
 - [type State](<#State>)
 
 
@@ -104,6 +105,15 @@ func (m Model) View() tea.View
 ```
 
 View renders the active drift step.
+
+<a name="OpenUpgradeMsg"></a>
+## type OpenUpgradeMsg
+
+OpenUpgradeMsg asks the controller to open the upgrade flow, the operation that resolves version drift; drift correction never crosses versions.
+
+```go
+type OpenUpgradeMsg struct{}
+```
 
 <a name="State"></a>
 ## type State

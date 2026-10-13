@@ -17,6 +17,8 @@ only narrows what your role records.
 - Standard result: the complete final task list produced by the breakdown, in one dedicated
   `project` entry. Include each task's scope, acceptance, consumed contracts, exact writable
   files, and justified dependencies.
+- When a traceability matrix exists: an entry that `supplements` it, titled
+  `Traceability Matrix: Owning node`, adding each row's owning task.
 - `observation` (`project`): a dependency fact established by the breakdown, with the shared
   path or entry `#id` as evidence.
 

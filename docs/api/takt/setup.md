@@ -27,6 +27,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
 - [func SafeJoin\(root, rel string\) \(string, error\)](<#SafeJoin>)
 - [func SaveInstalledConfig\(rootDir string, request PlanRequest\) error](<#SaveInstalledConfig>)
+- [func UpgradeAvailable\(installed string\) bool](<#UpgradeAvailable>)
 - [func ValidateComponents\(names \[\]string\) \(\[\]model.ComponentID, error\)](<#ValidateComponents>)
 - [type Artifact](<#Artifact>)
 - [type ConflictEntry](<#ConflictEntry>)
@@ -310,6 +311,15 @@ func SaveInstalledConfig(rootDir string, request PlanRequest) error
 ```
 
 SaveInstalledConfig persists request as the installed snapshot, keeping the recorded version. Partial changes must not claim the whole installation matches this build, so the version stays.
+
+<a name="UpgradeAvailable"></a>
+## func UpgradeAvailable
+
+```go
+func UpgradeAvailable(installed string) bool
+```
+
+UpgradeAvailable reports whether this build is newer than installed, so an upgrade never downgrades. An unrecorded installed version predates version tracking, and one that is not semver \(a dev build\) cannot be ordered: both count as older. A non\-release build is never an upgrade.
 
 <a name="ValidateComponents"></a>
 ## func ValidateComponents
