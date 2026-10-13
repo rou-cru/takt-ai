@@ -29,22 +29,8 @@ type ContextFiles struct {
 // AgentGroup is the logical block an agent is listed under.
 type AgentGroup string
 
-// Agent groups, in the order lists present them.
-const (
-	// GroupOrchestrator holds the agent that coordinates the crew.
-	GroupOrchestrator AgentGroup = "orchestrator"
-	// GroupPlanning holds the agents that define what to build and how.
-	GroupPlanning AgentGroup = "planning"
-	// GroupBuilding holds the agents that change product code.
-	GroupBuilding AgentGroup = "building"
-	// GroupTesting holds the agents that plan, write, run, or audit tests.
-	GroupTesting AgentGroup = "testing"
-	// GroupReview holds the agents that independently judge delivered work.
-	GroupReview AgentGroup = "review"
-)
-
 // AgentGroups lists every group in presentation order.
-var AgentGroups = []AgentGroup{GroupOrchestrator, GroupPlanning, GroupBuilding, GroupTesting, GroupReview}
+var AgentGroups = []AgentGroup{"orchestrator", "planning", "building", "testing", "review"}
 
 // AgentDefinition retains references until the target adapter composes its
 // prompt. VFS grants are always declared separately by exact instance ID.
@@ -283,6 +269,8 @@ func loadSkills(fsys fs.FS, files pkgFiles) ([]SkillPackage, error) {
 	return skills, nil
 }
 
+// loadAgents loads every agent definition under agents/, each claiming its
+// instance ids exclusively.
 func loadAgents(fsys fs.FS, files pkgFiles, skills []SkillPackage) ([]AgentDefinition, error) {
 	dirs, err := fs.ReadDir(fsys, "agents")
 	if err != nil {
@@ -351,6 +339,8 @@ func validAgentDefinition(a AgentDefinition, id string) bool {
 		packageID.MatchString(a.Label) && len(a.Label) <= maxAgentLabelWidth
 }
 
+// claimInstances records a's instance ids, refusing invalid ids and ids
+// another agent already claimed.
 func claimInstances(a AgentDefinition, instances map[string]bool) error {
 	for _, instance := range a.Instances {
 		if !packageID.MatchString(instance) || instances[instance] {
@@ -383,6 +373,8 @@ func validateListing(a AgentDefinition) error {
 	return nil
 }
 
+// validateVFSCapabilities requires a known VFS grant for exactly the declared
+// instances.
 func validateVFSCapabilities(a AgentDefinition) error {
 	for instance, capabilities := range a.VFSGrants {
 		if !slices.Contains(a.Instances, instance) {

@@ -55,7 +55,7 @@ const SkillFileName = "SKILL.md"
 <a name="AgentGroups"></a>AgentGroups lists every group in presentation order.
 
 ```go
-var AgentGroups = []AgentGroup{GroupOrchestrator, GroupPlanning, GroupBuilding, GroupTesting, GroupReview}
+var AgentGroups = []AgentGroup{"orchestrator", "planning", "building", "testing", "review"}
 ```
 
 <a name="AssetFS"></a>
@@ -160,23 +160,6 @@ AgentGroup is the logical block an agent is listed under.
 
 ```go
 type AgentGroup string
-```
-
-<a name="GroupOrchestrator"></a>Agent groups, in the order lists present them.
-
-```go
-const (
-    // GroupOrchestrator holds the agent that coordinates the crew.
-    GroupOrchestrator AgentGroup = "orchestrator"
-    // GroupPlanning holds the agents that define what to build and how.
-    GroupPlanning AgentGroup = "planning"
-    // GroupBuilding holds the agents that change product code.
-    GroupBuilding AgentGroup = "building"
-    // GroupTesting holds the agents that plan, write, run, or audit tests.
-    GroupTesting AgentGroup = "testing"
-    // GroupReview holds the agents that independently judge delivered work.
-    GroupReview AgentGroup = "review"
-)
 ```
 
 <a name="Capabilities"></a>
