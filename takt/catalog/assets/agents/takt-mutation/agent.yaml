@@ -3,6 +3,9 @@ context:
 description: Judge whether acceptance tests detect targeted faults behind must-not-fail requirements.
 id: takt-mutation
 label: mutation
+group: testing
+display_names:
+  mutation: Test-Auditor
 instances:
 - mutation
 vfs_capabilities:

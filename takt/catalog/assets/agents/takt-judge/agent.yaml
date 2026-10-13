@@ -4,6 +4,10 @@ description: Provide independent adversarial review when ordinary verification i
   insufficient.
 id: takt-judge
 label: judge
+group: review
+display_names:
+  judge-a: Judge-A
+  judge-b: Judge-B
 instances:
 - judge-a
 - judge-b

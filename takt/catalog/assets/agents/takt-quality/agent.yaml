@@ -3,6 +3,9 @@ context:
 description: Analyze the non-functional quality characteristics the brief names, with evidence for each.
 id: takt-quality
 label: quality
+group: testing
+display_names:
+  quality: Non-Functional-Tester
 instances:
 - quality
 vfs_capabilities:

@@ -2,6 +2,7 @@
 package modelpicker
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -55,7 +55,7 @@ const (
 
 // Model is the specialist model/effort draft.
 type Model struct {
-	agents      []model.CanonicalSubAgent
+	agents      []specialist
 	overrides   map[string]model.ModelAssignment
 	base        map[string]model.ModelAssignment
 	keymap      keys.KeyMap
@@ -86,10 +86,21 @@ type Model struct {
 	Height, Width int
 }
 
-// openCodeInstances lists the deployed OpenCode specialist instances once; the
-// embedded catalog never changes at runtime.
-var openCodeInstances = sync.OnceValue(func() []model.CanonicalSubAgent {
-	agents := []model.CanonicalSubAgent{}
+// specialist is one specialist instance as the picker lists it.
+type specialist struct {
+	// Name is the stable instance id assignments match by.
+	Name string
+	// Display is the catalog's user-facing name for the instance.
+	Display string
+	// Group is the logical block the instance is listed under.
+	Group catalog.AgentGroup
+}
+
+// openCodeInstances lists the deployed OpenCode specialist instances once, in
+// presentation order: catalog group, then display name. The embedded catalog
+// never changes at runtime.
+var openCodeInstances = sync.OnceValue(func() []specialist {
+	agents := []specialist{}
 	loaded, err := catalog.LoadPackages()
 	if err != nil {
 		// A broken catalog leaves the picker empty rather than failing to open.
@@ -97,9 +108,15 @@ var openCodeInstances = sync.OnceValue(func() []model.CanonicalSubAgent {
 	}
 	for _, def := range loaded.Agents {
 		for _, instance := range def.Instances {
-			agents = append(agents, model.CanonicalSubAgent{Name: instance})
+			agents = append(agents, specialist{Name: instance, Display: def.DisplayNames[instance], Group: def.Group})
 		}
 	}
+	slices.SortFunc(agents, func(a, b specialist) int {
+		return cmp.Or(
+			cmp.Compare(slices.Index(catalog.AgentGroups, a.Group), slices.Index(catalog.AgentGroups, b.Group)),
+			cmp.Compare(a.Display, b.Display),
+		)
+	})
 	return agents
 })
 
@@ -281,7 +298,7 @@ func (p Model) focusedAgent() string {
 
 // assign records the choice for one agent, or for every agent on the All
 // agents row; individual rows stay editable afterwards. An empty assignment
-// clears the override, so the agent falls back to the OpenCode default.
+// clears the override, so the agent falls back to the default model.
 func (p *Model) assign(name string, assignment model.ModelAssignment) {
 	targets := []string{name}
 	if name == allAgents {
@@ -311,7 +328,7 @@ func (p Model) Pending() []Change {
 	for _, agent := range p.agents {
 		before, after := p.base[agent.Name], p.overrides[agent.Name]
 		if before != after {
-			changes = append(changes, Change{Agent: displayAgentName(agent.Name), From: p.assignmentLabel(before), To: p.assignmentLabel(after)})
+			changes = append(changes, Change{Agent: p.displayName(agent.Name), From: p.assignmentLabel(before), To: p.assignmentLabel(after)})
 		}
 	}
 	return changes
@@ -410,7 +427,7 @@ func (p Model) Detail() string {
 	if p.selected == allAgents {
 		return ui.TextPickerAllAgents
 	}
-	return displayAgentName(p.selected)
+	return p.displayName(p.selected)
 }
 
 // Searching reports that the search field owns printable keys.
@@ -438,11 +455,12 @@ func (p Model) footer() string {
 }
 
 // assignmentsView is the agent | model table, led by the All agents row;
-// a • marks agents whose model changes when applied.
+// a • marks agents whose model changes when applied, and a rule separates
+// the catalog's groups.
 func (p Model) assignmentsView() string {
 	width := lipgloss.Width(ui.TextPickerAllAgents)
 	for _, agent := range p.agents {
-		width = max(width, lipgloss.Width(displayAgentName(agent.Name)))
+		width = max(width, lipgloss.Width(p.displayName(agent.Name)))
 	}
 	row := func(name, marker, value string) string {
 		return name + strings.Repeat(" ", width-lipgloss.Width(name)+columnGap) + marker + value
@@ -452,19 +470,40 @@ func (p Model) assignmentsView() string {
 		if assignment.Model == "" {
 			return theme.Caption.Render(defaultLabel())
 		}
-		return assignment.Model
+		return p.modelLabel(assignment.Model)
 	}
 	allValue := theme.Caption.Render(ui.TextPickerMixed)
 	if shared, ok := p.sharedAssignment(); ok {
 		allValue = value(shared)
 	}
 	rows := make([]string, 0, len(p.agents))
-	for _, agent := range p.agents {
+	ruleAt := make([]bool, 0, len(p.agents))
+	cursorRow := 0
+	for index, agent := range p.agents {
+		if index > 0 && agent.Group != p.agents[index-1].Group {
+			rows, ruleAt = append(rows, ""), append(ruleAt, true)
+		}
+		if index == p.cursor-1 {
+			cursorRow = len(rows)
+		}
 		marker := unchangedMark
 		if p.overrides[agent.Name] != p.base[agent.Name] {
 			marker = ui.TextPickerChangedMark
 		}
-		rows = append(rows, row(displayAgentName(agent.Name), marker, value(p.overrides[agent.Name])))
+		rows, ruleAt = append(rows, row(p.displayName(agent.Name), marker, value(p.overrides[agent.Name]))), append(ruleAt, false)
+	}
+	// A rule is as wide as the table's widest row, so it ends where the table does.
+	ruleWidth := lipgloss.Width(row(ui.TextPickerAllAgents, unchangedMark, allValue))
+	for index, text := range rows {
+		if !ruleAt[index] {
+			ruleWidth = max(ruleWidth, lipgloss.Width(text))
+		}
+	}
+	rule := theme.Caption.Render(strings.Repeat(groupRule, ruleWidth))
+	for index := range rows {
+		if ruleAt[index] {
+			rows[index] = rule
+		}
 	}
 	focused := p.focus == ui.SectionBody
 	// All agents stands apart from the specialists it assigns to.
@@ -474,13 +513,20 @@ func (p Model) assignmentsView() string {
 	}
 	var b strings.Builder
 	b.WriteString(ui.Options([]string{row(ui.TextPickerAllAgents, unchangedMark, allValue)}, allCursor, focused) + "\n")
-	list, overflow := p.window(rows, p.cursor-1, focused, assignmentListOverhead+allAgentsOverhead+resetHintOverhead)
-	b.WriteString(list)
+	start, end, overflow := p.windowBounds(len(rows), cursorRow, assignmentListOverhead+allAgentsOverhead+resetHintOverhead)
+	// A rule cut off at either edge of the window would separate nothing.
+	for start < end && ruleAt[start] {
+		start++
+	}
+	for end > start && ruleAt[end-1] {
+		end--
+	}
+	b.WriteString(strings.TrimSuffix(ui.Options(rows[start:end], cursorRow-start, focused && p.cursor > 0), "\n"))
 	if overflow {
 		b.WriteString("\n" + theme.Caption.Render(fmt.Sprintf(ui.TextPickerPosFmt, p.cursor+1, len(p.agents)+1)))
 	}
 	if p.resettable() {
-		b.WriteString("\n\n" + theme.Caption.Render(fmt.Sprintf(ui.TextPickerResetHint, ui.OpenCodeLabel)))
+		b.WriteString("\n\n" + theme.Caption.Render(ui.TextPickerResetHint))
 	}
 	return b.String()
 }
@@ -493,6 +539,9 @@ func (p Model) resettable() bool {
 	return len(p.overrides) > 0
 }
 
+// groupRule is the horizontal rule between agent groups.
+const groupRule = "─"
+
 // columnGap separates the agent column from the model column; unchangedMark
 // keeps unchanged rows aligned with the changed-row marker.
 const (
@@ -500,26 +549,54 @@ const (
 	unchangedMark = "  "
 )
 
-// displayAgentName presents internal catalog IDs as concise user-facing names.
-func displayAgentName(name string) string {
-	if name == shared.OrchestratorID {
-		return ui.TextPickerOrchestrator
+// displayName is the catalog's user-facing name for an instance id.
+func (p Model) displayName(name string) string {
+	for _, a := range p.agents {
+		if a.Name == name {
+			return a.Display
+		}
 	}
-	return strings.TrimPrefix(name, "takt-")
+	return name
 }
 
 // assignmentLabel describes one effective assignment: the model, or the
-// OpenCode default when none is assigned.
+// default when none is assigned.
 func (p Model) assignmentLabel(assignment model.ModelAssignment) string {
 	if assignment.Model == "" {
 		return defaultLabel()
 	}
-	return assignment.Model
+	return p.modelLabel(assignment.Model)
+}
+
+// modelLabel names a model by its display name without the provider prefix the
+// provider tabs already carry. Models from different providers that share a
+// name keep their provider so the two stay distinguishable.
+func (p Model) modelLabel(ref string) string {
+	name := p.shortName(ref)
+	for _, other := range p.Available {
+		if other != ref && p.shortName(other) == name {
+			return name + ui.TextListSeparator + p.providerLabel(providerOf(ref))
+		}
+	}
+	return name
+}
+
+// shortName is a model's display name, or the part of its reference after the
+// provider when OpenCode gives none.
+func (p Model) shortName(ref string) string {
+	if name := p.Names[ref]; name != "" {
+		return name
+	}
+	_, id, found := strings.Cut(ref, "/")
+	if !found {
+		return ref
+	}
+	return id
 }
 
 // defaultLabel names what an agent without an assigned model runs.
 func defaultLabel() string {
-	return fmt.Sprintf(ui.TextPickerDefaultFmt, ui.OpenCodeLabel)
+	return ui.TextPickerDefault
 }
 
 // loadFailReason names why the catalog is missing in the user's terms; the
@@ -644,6 +721,13 @@ func (p Model) SparseOverrides() map[string]model.ModelAssignment {
 // window keeps the cursor visible in long lists, reporting whether the list
 // overflows so the caller can show the position.
 func (p Model) window(items []string, cursor int, focused bool, overhead int) (string, bool) {
+	start, end, overflow := p.windowBounds(len(items), cursor, overhead)
+	return strings.TrimSuffix(ui.Options(items[start:end], cursor-start, focused), "\n"), overflow
+}
+
+// windowBounds is the slice of total rows that fits the viewport with the
+// cursor row last once the list scrolls, and whether the list overflows.
+func (p Model) windowBounds(total, cursor, overhead int) (start, end int, overflow bool) {
 	height := p.Height
 	if height <= 0 {
 		height = ui.DefaultHeight
@@ -653,7 +737,6 @@ func (p Model) window(items []string, cursor int, focused bool, overhead int) (s
 		footer = lipgloss.Height(p.footer())
 	}
 	count := max(1, ui.ContentRows(height, footer)-overhead)
-	start := max(0, cursor-count+1)
-	end := min(len(items), start+count)
-	return strings.TrimSuffix(ui.Options(items[start:end], cursor-start, focused), "\n"), len(items) > count
+	start = max(0, cursor-count+1)
+	return start, min(total, start+count), total > count
 }

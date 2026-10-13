@@ -3,6 +3,9 @@ context:
 description: Translate intent into observable behavior and acceptance scenarios.
 id: takt-spec
 label: spec
+group: planning
+display_names:
+  spec: Spec-Writer
 instances:
 - spec
 vfs_capabilities:

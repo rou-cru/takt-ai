@@ -4,6 +4,9 @@ description: Plan risk-based testing from requirements, with its policy, plan, e
   and traceability.
 id: takt-qa
 label: qa
+group: testing
+display_names:
+  qa: Test-Planner
 instances:
 - qa
 vfs_capabilities:

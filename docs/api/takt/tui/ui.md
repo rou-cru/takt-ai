@@ -325,13 +325,11 @@ const (
     TextModelsTitleFmt    = "Assign models · %s"
 
     // Model picker.
-    TextPickerDefaultFmt = "%s default"
-    TextPickerAllAgents  = "All agents"
-    // TextPickerOrchestrator names the orchestrator wherever models are
-    // assigned, so it never reads as the product itself.
-    TextPickerOrchestrator = "Orchestrator"
+    // TextPickerDefault names what an agent without an assigned model runs.
+    TextPickerDefault   = "Default"
+    TextPickerAllAgents = "All agents"
     // TextPickerResetHint shows while the focused row has a model to clear.
-    TextPickerResetHint   = "⌫ reset to %s default"
+    TextPickerResetHint   = "⌫ reset to default"
     TextPickerMixed       = "different models"
     TextPickerChangedMark = "• "
     TextModelsAgentsStep  = "Agents"

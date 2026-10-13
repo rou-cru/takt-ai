@@ -3,6 +3,9 @@ context:
 description: Decompose requirements into scoped, traceable tasks with justified dependencies.
 id: takt-tpm
 label: tpm
+group: planning
+display_names:
+  tpm: Task-Planner
 instances:
 - tpm
 vfs_capabilities:

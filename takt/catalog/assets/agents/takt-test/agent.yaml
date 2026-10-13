@@ -4,6 +4,9 @@ description: Write acceptance and contract tests blind, from specifications and 
   contracts.
 id: takt-test
 label: test
+group: testing
+display_names:
+  test: Test-Writer
 instances:
 - test
 vfs_capabilities:

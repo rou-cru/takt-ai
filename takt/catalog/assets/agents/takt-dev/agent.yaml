@@ -3,6 +3,9 @@ context:
 description: Implement requested changes and demonstrate them against available contracts.
 id: takt-dev
 label: dev
+group: building
+display_names:
+  dev: Developer
 instances:
 - dev
 vfs_capabilities:

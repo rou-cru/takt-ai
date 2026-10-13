@@ -3,6 +3,9 @@ context:
 description: Explore the delivered product as its user would, in chartered sessions.
 id: takt-explorer
 label: explorer
+group: testing
+display_names:
+  explorer: Exploratory-Tester
 instances:
 - explorer
 vfs_capabilities:

@@ -5,6 +5,9 @@ context:
 description: Integrate the crew the user's objective requires
 id: takt
 label: takt
+group: orchestrator
+display_names:
+  takt: Orchestrator
 instances:
 - takt
 vfs_capabilities:
