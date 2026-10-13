@@ -65,7 +65,7 @@ The QA lead (`takt-qa`) is a planning author. The test author is an ordinary exe
 | ID | Requirement |
 | --- | --- |
 | PR-QA-15 | The mutation analyst judges whether the Q2 suite detects faults where they matter: it generates a small number of mutants targeted at the code behind must-not-fail matrix rows, on a copy outside the project, never in the workspace. It discards equivalent mutants before reporting. |
-| PR-QA-16 | Surviving mutants are delivered to the test author, which strengthens the suite; they are never delivered to the implementer. The strengthened tests pass a staged verdict and are consolidated, then the mutation analyst re-runs only the affected rows, within the ordinary recovery budgets. A surviving mutant on a must-not-fail row still unresolved when the objective's acceptance closes is residual risk (`PR-QA-19`). |
+| PR-QA-16 | Surviving mutants are delivered to the test author, which strengthens the suite; they are never delivered to the implementer. The strengthened tests pass a staged verdict and are consolidated, then the mutation analyst re-runs only the affected rows. The loop is forward correction over consolidated work, not a reversible recovery (`PR-ORQ-13`), bounded by the recovery attempt budget in rounds. A surviving mutant on a must-not-fail row still unresolved when the objective's acceptance closes is residual risk (`PR-QA-19`). |
 
 ### 2.7 Exploration and Non-functional Analysis
 

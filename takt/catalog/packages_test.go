@@ -35,6 +35,7 @@ func validTree() fstest.MapFS {
 	}
 }
 
+// TestLoadFSAcceptsMinimalTree checks that one skill and one agent form a valid catalog.
 func TestLoadFSAcceptsMinimalTree(t *testing.T) {
 	c, err := catalog.LoadFS(validTree())
 	if err != nil {
@@ -58,6 +59,8 @@ func TestLoadFSAcceptsMinimalTree(t *testing.T) {
 	}
 }
 
+// TestLoadFSMarksDeclaredExecutables checks that only the scripts a skill declares are marked
+// executable.
 func TestLoadFSMarksDeclaredExecutables(t *testing.T) {
 	fsys := validTree()
 	fsys["skills/s/SKILL.md"] = &fstest.MapFile{Data: []byte("---\nname: s\ndescription: d\nmetadata:\n  executables: [scripts/run.sh]\n---\n")}
@@ -144,6 +147,7 @@ func TestLoadFSRejectsInvalidTrees(t *testing.T) {
 	}
 }
 
+// TestLoadFSWithoutAgentsDirFails checks that a catalog without agents is refused.
 func TestLoadFSWithoutAgentsDirFails(t *testing.T) {
 	fsys := validTree()
 	delete(fsys, "agents/x/agent.yaml")
@@ -153,6 +157,8 @@ func TestLoadFSWithoutAgentsDirFails(t *testing.T) {
 	}
 }
 
+// TestLoadFSAcceptsAgentReferencingSkill checks that an agent may declare a skill the catalog
+// ships.
 func TestLoadFSAcceptsAgentReferencingSkill(t *testing.T) {
 	fsys := validTree()
 	fsys["agents/x/agent.yaml"] = &fstest.MapFile{Data: []byte(validAgentYAML + "skills: [s]\n")}

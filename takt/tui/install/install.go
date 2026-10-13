@@ -406,6 +406,9 @@ func installConflictsConfirm(m *Model) (Step, tea.Cmd) {
 	}
 	return StepReview, nil
 }
+
+// installReviewConfirm commits the review: Retry resolves the plan again, Personalize opens the
+// checklist, and the operation starts otherwise.
 func installReviewConfirm(m *Model) (Step, tea.Cmd) {
 	switch m.reviewActions()[m.cursor] {
 	case actionRetry:
@@ -892,6 +895,7 @@ func (m Model) resultBody() string {
 	return m.resultSuccess()
 }
 
+// resultError reports a failed operation with the retry note that fits it.
 func (m Model) resultError(err error) string {
 	retry := ui.TextRetryInstall
 	switch {
@@ -902,6 +906,9 @@ func (m Model) resultError(err error) string {
 	}
 	return ui.Status(ui.StateFailed, err.Error()) + "\n\n" + theme.Label.Render(retry)
 }
+
+// resultSuccess reports a completed operation: what it set up, what it kept, and what to check
+// next.
 func (m Model) resultSuccess() string {
 	harness := ui.OpenCodeLabel
 	var b strings.Builder

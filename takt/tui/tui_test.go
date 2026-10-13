@@ -118,6 +118,8 @@ func openFromMenu(app tui.Model, steps int) tui.Model {
 // and Check for drift.
 const upgradeRow = 3
 
+// TestUpgradeIsATaskOnlyWhenThisBuildIsNewer checks that the menu offers Upgrade only when this
+// build is newer than the installation.
 func TestUpgradeIsATaskOnlyWhenThisBuildIsNewer(t *testing.T) {
 	newer := tui.New(recordedAt(t, "0.0.25", "0.0.27"))
 	newer, _ = update(newer, tea.WindowSizeMsg{Width: 200, Height: 50})
@@ -132,6 +134,8 @@ func TestUpgradeIsATaskOnlyWhenThisBuildIsNewer(t *testing.T) {
 	}
 }
 
+// TestDriftHandsVersionDriftToUpgrade checks that the drift check hands version drift to the
+// upgrade flow.
 func TestDriftHandsVersionDriftToUpgrade(t *testing.T) {
 	app := openFromMenu(tui.New(recordedAt(t, "0.0.25", "0.0.27")), upgradeRow-1)
 	if app.CurrentRoute() != tui.RouteDrift {

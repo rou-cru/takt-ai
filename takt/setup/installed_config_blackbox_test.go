@@ -16,6 +16,8 @@ func TestIsCurrentVersion(t *testing.T) {
 	}
 }
 
+// TestUpgradeAvailable checks that only a newer release build upgrades, and an unrecorded
+// installation counts as older.
 func TestUpgradeAvailable(t *testing.T) {
 	tests := []struct {
 		build, installed string

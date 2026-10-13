@@ -94,6 +94,8 @@ func TestAuthorOperationsChainRevisions(t *testing.T) {
 	}
 }
 
+// TestAuthorRefusalsNameTheContinuation checks that each refusal of an author operation names what
+// the author does next.
 func TestAuthorRefusalsNameTheContinuation(t *testing.T) {
 	f, _, state := newStore(t)
 	c, _ := delegate(t, f, state, testSession, "dev", "u", "a.go")

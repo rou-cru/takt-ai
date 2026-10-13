@@ -62,6 +62,7 @@ type driftFixture struct {
 	missing, edited, preexisting string
 }
 
+// removeFixtures deletes the installed roots the package's tests shared.
 func removeFixtures() {
 	if fixtureDir != "" {
 		_ = os.RemoveAll(fixtureDir)
@@ -148,6 +149,7 @@ func manyMissingRoot(t *testing.T) driftFixture {
 	})
 }
 
+// appendTo edits path as a user would, appending a line.
 func appendTo(t *testing.T, path string) {
 	t.Helper()
 	content, err := os.ReadFile(path)
@@ -226,14 +228,17 @@ func withBuild(t *testing.T, version string) {
 	t.Cleanup(func() { setup.BuildVersion = previous })
 }
 
+// send delivers msg to m and returns the next drift model.
 func send(t *testing.T, m drift.Model, msg tea.Msg) (drift.Model, tea.Cmd) {
 	t.Helper()
 	next, cmd := m.Update(msg)
 	return next.(drift.Model), cmd
 }
 
+// text renders m without styling, for content assertions.
 func text(m drift.Model) string { return ansi.Strip(m.View().Content) }
 
+// requireContains fails for each wanted text the view does not show.
 func requireContains(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	for _, want := range wants {
@@ -243,6 +248,7 @@ func requireContains(t *testing.T, got string, wants ...string) {
 	}
 }
 
+// requireAbsent fails for each unwanted text the view shows.
 func requireAbsent(t *testing.T, got string, unwanted ...string) {
 	t.Helper()
 	for _, want := range unwanted {
@@ -296,6 +302,8 @@ func restoreRequest(t *testing.T) (drift.Model, runtime.ActionRequest) {
 	return m, request
 }
 
+// TestReportStatesBeforeAndAfterScan checks the report while scanning, when the scan fails, and
+// when it finds no drift.
 func TestReportStatesBeforeAndAfterScan(t *testing.T) {
 	clean := cleanRoot(t)
 	requireContains(t, text(drift.New(clean.root)), ui.TextDriftChecking)
@@ -310,12 +318,16 @@ func TestReportStatesBeforeAndAfterScan(t *testing.T) {
 	requireContains(t, found, fmt.Sprintf(ui.TextDriftManagedFmt, 3)+ui.TextDriftDifferOutro, f.missing, f.edited, f.preexisting, ui.TextActionSelectFiles)
 }
 
+// TestCleanReportOffersOnlyTheMenu checks that a scan without drift offers neither correction nor
+// upgrade.
 func TestCleanReportOffersOnlyTheMenu(t *testing.T) {
 	m := scanned(t, cleanRoot(t).root, setup.BuildVersion)
 	requireAbsent(t, text(m), ui.TextActionSelectFiles, ui.TextActionUpgrade)
 	requireMsg[ui.BackMsg](t, m)
 }
 
+// TestVersionDriftAloneRecommendsUpgrade checks that an older installation with matching files is
+// offered the upgrade first.
 func TestVersionDriftAloneRecommendsUpgrade(t *testing.T) {
 	withBuild(t, newerVersion)
 	m := scanned(t, cleanRoot(t).root, olderVersion)
@@ -326,6 +338,8 @@ func TestVersionDriftAloneRecommendsUpgrade(t *testing.T) {
 	requireMsg[drift.OpenUpgradeMsg](t, m)
 }
 
+// TestVersionDriftWithEditsReportsBoth checks that version drift and edited files are reported
+// together, with the upgrade deciding the files.
 func TestVersionDriftWithEditsReportsBoth(t *testing.T) {
 	withBuild(t, newerVersion)
 	f := driftedRoot(t)
@@ -336,12 +350,16 @@ func TestVersionDriftWithEditsReportsBoth(t *testing.T) {
 	requireMsg[drift.OpenUpgradeMsg](t, m)
 }
 
+// TestUnrecordedVersionIsVersionDrift checks that an installation without a recorded version counts
+// as older.
 func TestUnrecordedVersionIsVersionDrift(t *testing.T) {
 	withBuild(t, newerVersion)
 	view := text(scanned(t, cleanRoot(t).root, ""))
 	requireContains(t, view, fmt.Sprintf(ui.TextDriftVersionFmt, ui.TextVersionUnrecorded, newerVersion), ui.TextActionUpgrade)
 }
 
+// TestNewerInstallationCannotBeUpgradedOrCorrected checks that a newer installation is neither
+// upgraded nor corrected by this build.
 func TestNewerInstallationCannotBeUpgradedOrCorrected(t *testing.T) {
 	withBuild(t, olderVersion)
 	m := scanned(t, driftedRoot(t).root, newerVersion)
@@ -351,6 +369,7 @@ func TestNewerInstallationCannotBeUpgradedOrCorrected(t *testing.T) {
 	requireMsg[ui.BackMsg](t, m)
 }
 
+// TestSelectionRequiresAtLeastOneFile checks that the checklist cannot continue empty.
 func TestSelectionRequiresAtLeastOneFile(t *testing.T) {
 	m, _ := send(t, scanned(t, driftedRoot(t).root, setup.BuildVersion), keyEnter)
 	if m.State() != drift.StateSelect {
@@ -378,6 +397,8 @@ func TestSelectionRequiresAtLeastOneFile(t *testing.T) {
 	}
 }
 
+// TestSelectShowsPositionWhenListOverflows checks that an overflowing checklist shows which rows
+// are visible.
 func TestSelectShowsPositionWhenListOverflows(t *testing.T) {
 	m := scanned(t, manyMissingRoot(t).root, setup.BuildVersion)
 	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: shortHeight})
@@ -388,6 +409,7 @@ func TestSelectShowsPositionWhenListOverflows(t *testing.T) {
 	}
 }
 
+// TestPageKeysScrollTheBody checks that PgDn and PgUp scroll a long report and return to its top.
 func TestPageKeysScrollTheBody(t *testing.T) {
 	m := scanned(t, manyMissingRoot(t).root, setup.BuildVersion)
 	m, _ = send(t, m, tea.WindowSizeMsg{Width: testWidth, Height: shortHeight})
@@ -402,6 +424,8 @@ func TestPageKeysScrollTheBody(t *testing.T) {
 	}
 }
 
+// TestReviewNamesReferenceAndConsequencePerReason checks that review names the reference version
+// and each file's consequence, and that Esc keeps the selection.
 func TestReviewNamesReferenceAndConsequencePerReason(t *testing.T) {
 	m, f := reviewScreen(t)
 	requireContains(t, text(m),
@@ -417,6 +441,8 @@ func TestReviewNamesReferenceAndConsequencePerReason(t *testing.T) {
 	}
 }
 
+// TestRestoreStartsCorrectionForSelectedPaths checks that restoring requests the correction of
+// exactly the selected files.
 func TestRestoreStartsCorrectionForSelectedPaths(t *testing.T) {
 	m, request := restoreRequest(t)
 	f := driftedRoot(t)
@@ -464,6 +490,7 @@ func result(t *testing.T, correction runtime.ActionResult, err error) drift.Mode
 	return m
 }
 
+// TestResultBodies checks the result screen of each correction outcome.
 func TestResultBodies(t *testing.T) {
 	// A backup note needs a restored path the scan found edited.
 	edited := driftedRoot(t).edited
@@ -524,6 +551,8 @@ func TestResultBodies(t *testing.T) {
 	}
 }
 
+// TestResultActionsRescanAndLeave checks that the result either scans again from scratch or leaves
+// the flow.
 func TestResultActionsRescanAndLeave(t *testing.T) {
 	restored := runtime.ActionResult{Changed: []string{"agents/missing.md"}}
 	t.Run("rescan clears the scan and starts another", func(t *testing.T) {
@@ -543,6 +572,7 @@ func TestResultActionsRescanAndLeave(t *testing.T) {
 	})
 }
 
+// TestTitlesFollowTheStep checks that the header names each step of the flow.
 func TestTitlesFollowTheStep(t *testing.T) {
 	report := scanned(t, driftedRoot(t).root, setup.BuildVersion)
 	selecting, _ := send(t, report, keyEnter)

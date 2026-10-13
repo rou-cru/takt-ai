@@ -25,6 +25,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
+// TestLoadNativeContent checks that every specialist instance loads with its description and
+// composed instructions.
 func TestLoadNativeContent(t *testing.T) {
 	content, err := catalog.LoadNativeContent()
 	if err != nil {
@@ -71,6 +73,8 @@ func TestLoadNativeContent(t *testing.T) {
 	}
 }
 
+// TestLoadNativeContentInterlocutors checks that exactly the direct interlocutors hold the
+// interface.
 func TestLoadNativeContentInterlocutors(t *testing.T) {
 	// Holding the interface is a property of the role class, not a separately
 	// declared flag: exactly the direct interlocutors derive it.
@@ -88,6 +92,7 @@ func TestLoadNativeContentInterlocutors(t *testing.T) {
 	}
 }
 
+// TestLoadNativeContentDeclaresRoleClass checks every specialist's role class and exact VFS grants.
 func TestLoadNativeContentDeclaresRoleClass(t *testing.T) {
 	// Every specialist in the canonical definition belongs to exactly one
 	// role class; without it there is no dispatch.
@@ -195,6 +200,8 @@ func assertRetiredSimplifyInstancesGone(t *testing.T, content map[string]catalog
 	}
 }
 
+// TestVFSGrantValidationRequiresExactInstanceCoverage checks that a definition is refused unless
+// every instance declares an explicit, known VFS grant.
 func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
 	base := "id: x\nlabel: x\ninstances: [x, y]\ndescription: d\nrole: execution\ncontext: {operations: OPERATIONS.md}\n"
 	for name, tc := range map[string]struct{ grant, want string }{
@@ -218,6 +225,8 @@ func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
 	}
 }
 
+// TestVFSCapabilitiesUsesExactIDAndExplicitEmpty checks that grants resolve by exact instance ID
+// and that an explicit empty list still counts as declared.
 func TestVFSCapabilitiesUsesExactIDAndExplicitEmpty(t *testing.T) {
 	definition := catalog.AgentDefinition{
 		Role: model.RoleExecution,
@@ -237,6 +246,8 @@ func TestVFSCapabilitiesUsesExactIDAndExplicitEmpty(t *testing.T) {
 	}
 }
 
+// TestBuildNativeContentSkipsOrchestrator checks that the orchestrator is never exposed as a
+// sub-agent.
 func TestBuildNativeContentSkipsOrchestrator(t *testing.T) {
 	content, err := catalog.LoadNativeContent()
 	if err != nil {

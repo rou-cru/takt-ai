@@ -170,6 +170,8 @@ func (m *Model) pop() Route {
 
 func openEvent(route Route) string { return "open:" + string(route) }
 
+// routeTransitions is the controller's declarative route table: every flow opened, closed or handed
+// off to another.
 func routeTransitions() ui.Table[Route, Model] {
 	open := func(route Route, screen func(string) tea.Model) func(*Model) (Route, tea.Cmd) {
 		return func(m *Model) (Route, tea.Cmd) {
@@ -385,6 +387,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m.dispatch(message)
 }
 
+// dispatch routes a message to the controller's own handling or, failing that, to the active flow.
 func (m Model) dispatch(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case runtime.ActionRequest, runtime.ActionProgressMsg, runtime.ActionResultMsg, runtime.CancelRequest:

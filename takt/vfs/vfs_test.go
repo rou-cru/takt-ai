@@ -44,6 +44,8 @@ func TestGuardGitMutation_OrchestratorAllowed(t *testing.T) {
 	}
 }
 
+// TestGuardGitMutation_AllNonOrchestratorRolesDenied checks that every class but the orchestrator
+// is denied git mutation.
 func TestGuardGitMutation_AllNonOrchestratorRolesDenied(t *testing.T) {
 	denied := []model.RoleClass{
 		model.RoleDirectInterlocutor,

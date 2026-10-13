@@ -461,6 +461,9 @@ func TestMutationSkillAndVFSAccessFollowExplicitInstanceGrant(t *testing.T) {
 	}
 }
 
+// TestRenderConfigDeniesInterlocutorStackForVerificationQualityAssuranceAndMaintenance checks that
+// internal classes never switch, abort or hand off the interface, while the orchestrator and
+// interlocutors keep their tools.
 func TestRenderConfigDeniesInterlocutorStackForVerificationQualityAssuranceAndMaintenance(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -568,6 +571,8 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 	}
 }
 
+// TestRenderConfigNativeEditNeverReachesTheEventStore checks that an agent allowed native edits
+// still cannot write the workspace event store.
 func TestRenderConfigNativeEditNeverReachesTheEventStore(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{

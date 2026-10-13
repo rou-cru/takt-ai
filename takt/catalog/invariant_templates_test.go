@@ -8,6 +8,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/catalog"
 )
 
+// TestPlanningDocumentTemplates checks that each planning skill directs its reader to every
+// document template it recognizes, and that each template carries its title and fields.
 func TestPlanningDocumentTemplates(t *testing.T) {
 	// This is the set of recognized types promised by the planning skills. Keep
 	// the contract structural: descriptions may improve without snapshot churn.
@@ -86,6 +88,8 @@ func TestPlanningDocumentTemplates(t *testing.T) {
 	}
 }
 
+// TestPlanningAgentsDeclareInvariantAuthoring checks that every agent that authors invariants
+// carries the invariant-authoring skill.
 func TestPlanningAgentsDeclareInvariantAuthoring(t *testing.T) {
 	pack, err := catalog.LoadPackages()
 	if err != nil {
