@@ -187,3 +187,18 @@ func TestLegacyPlansDoNotInferQARounds(t *testing.T) {
 		t.Fatal("batch failed non-atomically")
 	}
 }
+
+func TestQARoundCommitmentIsAllOrNothing(t *testing.T) {
+	h := newHistory(t)
+	plan := []dispatch.PlanUnit{{Unit: "author", Contract: "test"}}
+	round := &history.QARound{Objective: "acceptance", Units: []string{"author"}}
+	if err := dispatch.Commit(h, "", "root", "v1", plan, round, round); err == nil {
+		t.Fatal("two rounds declared for one plan version")
+	}
+	if err := dispatch.Commit(h, "", "root", "v1", plan, &history.QARound{Objective: "acceptance", Units: []string{"absent"}}); err == nil {
+		t.Fatal("round over a unit outside the plan committed")
+	}
+	if len(h.Entries()) != 0 {
+		t.Fatalf("refused commitments recorded %d entries", len(h.Entries()))
+	}
+}

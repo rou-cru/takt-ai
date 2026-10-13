@@ -410,10 +410,13 @@ export default Plugin.define({
       const pending = response.inspections ?? []
       for (const call of pending) {
         try {
+          // A deleted caller session can never complete the call: it is terminal.
+          let gone = false
           const messages = await ctx.session.context({sessionID:call.caller_session},{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)])})
+            .catch((error: unknown) => { if (notFound(error)) { gone = true; return [] } throw error })
           const observed = messages.flatMap(message => message.type === "assistant" ? message.content : [])
             .find(part => part.type === "tool" && part.id === (call.tool_call_id || call.call_id))
-          if (observed?.type !== "tool" || (observed.state.status !== "completed" && observed.state.status !== "error")) continue
+          if (!gone && (observed?.type !== "tool" || (observed.state.status !== "completed" && observed.state.status !== "error"))) continue
           await taktUnlocked("native-inspection-end", {
             ipc_version: IPC_VERSION, session_id: call.session_id, caller_session: call.caller_session,
             caller_agent: call.caller_agent, caller_dispatch: "", work_unit_id: "", call_id: call.call_id,
@@ -1866,7 +1869,9 @@ export default Plugin.define({
             const pathValue = typeof args.filePath === "string" ? args.filePath :
               typeof args.path === "string" ? args.path :
               typeof args.directory === "string" ? args.directory : ""
-            const callID = typeof c.id === "string" && c.id ? c.id : randomUUID()
+            // Reconciliation finds a reservation only by the host's own call id.
+            if (typeof c.id !== "string" || !c.id) throw new Error(`${name} call has no host call id, so its read reservation could never be reconciled; issue the call again`)
+            const callID = c.id
             await takt("native-inspection-start", c, {
               call_id: callID, tool: name, path: /codegraph/i.test(name) ? "" : pathValue,
             })

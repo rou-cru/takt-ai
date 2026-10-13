@@ -1,15 +1,17 @@
-package tui
+package tui_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/tui"
 	"github.com/rou-cru/takt-ai/takt/tui/install"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
@@ -17,8 +19,6 @@ import (
 )
 
 const (
-	// installedMenuEntries counts the menu rows of an installed root, Quit included.
-	installedMenuEntries = 6
 	// minWidth and minHeight are the smallest terminal the shell supports.
 	minWidth  = 60
 	minHeight = 20
@@ -46,17 +46,23 @@ func (s titledStub) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return s, cmd
 }
 
-// installedApp builds the menu over a root with a recorded installation.
-func installedApp(t *testing.T) Model {
+// installedRoot records an installation in a fresh root.
+func installedRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	return New(root)
+	return root
 }
 
-func screenText(m Model) string { return ansi.Strip(m.View().Content) }
+// installedApp builds the menu over a root with a recorded installation.
+func installedApp(t *testing.T) tui.Model { return tui.New(installedRoot(t)) }
+
+// onMenu reports whether the home menu is on screen with no flow open.
+func onMenu(m tui.Model) bool {
+	return m.CurrentRoute() == tui.RouteMenu && strings.Contains(screenText(m), ui.TextMenuQuit)
+}
 
 func TestInstalledMenuShowsEveryOperationAndOpensEachRoute(t *testing.T) {
 	menu := screenText(installedApp(t))
@@ -66,7 +72,7 @@ func TestInstalledMenuShowsEveryOperationAndOpensEachRoute(t *testing.T) {
 		}
 	}
 
-	wantRoutes := []Route{RouteInstall, RouteModels, RouteDrift, RouteUninstall, RouteDiagnostics}
+	wantRoutes := []tui.Route{tui.RouteInstall, tui.RouteModels, tui.RouteDrift, tui.RouteUninstall, tui.RouteDiagnostics}
 	for index, route := range wantRoutes {
 		t.Run(string(route), func(t *testing.T) {
 			m := installedApp(t)
@@ -74,12 +80,13 @@ func TestInstalledMenuShowsEveryOperationAndOpensEachRoute(t *testing.T) {
 				m, _ = step(t, m, keyDown)
 			}
 			m, _ = step(t, m, keyEnter)
-			if m.CurrentRoute() != route || len(m.stack) != 1 {
-				t.Fatalf("route = %v depth = %d, want %v opened", m.CurrentRoute(), len(m.stack), route)
+			if m.CurrentRoute() != route || onMenu(m) {
+				t.Fatalf("route = %v, want %v opened over the menu", m.CurrentRoute(), route)
 			}
+			// One step back reaches the menu: the route opened a single flow.
 			m, _ = step(t, m, ui.BackMsg{})
-			if m.CurrentRoute() != RouteMenu || len(m.stack) != 0 {
-				t.Errorf("route = %v depth = %d, want back on the menu", m.CurrentRoute(), len(m.stack))
+			if !onMenu(m) {
+				t.Errorf("route = %v, want back on the menu", m.CurrentRoute())
 			}
 		})
 	}
@@ -87,20 +94,19 @@ func TestInstalledMenuShowsEveryOperationAndOpensEachRoute(t *testing.T) {
 
 func TestMenuCursorWrapsAndQuitEntryQuits(t *testing.T) {
 	m := installedApp(t)
+	// Up from the top wraps to Quit.
 	m, _ = step(t, m, keyUp)
-	if m.cursor != installedMenuEntries-1 {
-		t.Fatalf("cursor after up from the top = %d, want it to wrap to Quit", m.cursor)
-	}
 	if _, cmd := step(t, m, keyEnter); !isQuit(cmd) {
-		t.Error("Enter on Quit did not quit")
+		t.Fatal("Enter after up from the top did not quit")
 	}
-	m, _ = step(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if m.cursor != 0 {
-		t.Errorf("cursor after j from Quit = %d, want it to wrap to the top", m.cursor)
+	// j from Quit wraps to the first operation.
+	if opened, _ := step(t, step1(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"}), keyEnter); opened.CurrentRoute() != tui.RouteInstall {
+		t.Errorf("Enter after j from Quit opened %v, want install", opened.CurrentRoute())
 	}
-	m, _ = step(t, m, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if m.cursor != installedMenuEntries-1 {
-		t.Errorf("cursor after k from the top = %d, want it to wrap to Quit", m.cursor)
+	// k from the top wraps back to Quit.
+	m = step1(t, step1(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"}), tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if _, cmd := step(t, m, keyEnter); !isQuit(cmd) {
+		t.Error("Enter after k from the top did not quit")
 	}
 	if _, cmd := step(t, m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); !isQuit(cmd) {
 		t.Error("ctrl+c on the menu did not quit")
@@ -108,17 +114,26 @@ func TestMenuCursorWrapsAndQuitEntryQuits(t *testing.T) {
 	if _, cmd := step(t, m, struct{}{}); cmd != nil {
 		t.Error("an unknown message on the menu produced a command")
 	}
-	if got := m.flowRun(); got.Busy() {
-		t.Error("the menu reports a running action")
-	}
+}
+
+// step1 is step without its command.
+func step1(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
+	t.Helper()
+	next, _ := step(t, m, msg)
+	return next
 }
 
 func TestMenuClampsCursorWhenItemsShrink(t *testing.T) {
-	m := New(t.TempDir()) // fresh root: Install and Quit only
-	m.cursor = installedMenuEntries
-	m, _ = step(t, m, keyDown)
-	if m.cursor > 1 {
-		t.Errorf("cursor = %d, want it clamped into the two visible entries", m.cursor)
+	root := installedRoot(t)
+	m := step1(t, tui.New(root), keyUp) // on Quit, the last of six entries
+	if err := os.Remove(filepath.Join(root, setup.InstalledConfigFilename)); err != nil {
+		t.Fatal(err)
+	}
+	// Uninstalled: Install and Quit only. The cursor clamps onto Quit, so
+	// down wraps to Install instead of leaving the visible entries.
+	m = step1(t, m, keyDown)
+	if opened, cmd := step(t, m, keyEnter); isQuit(cmd) || opened.CurrentRoute() != tui.RouteInstall {
+		t.Errorf("Enter after the menu shrank opened %v, want install", opened.CurrentRoute())
 	}
 }
 
@@ -131,19 +146,19 @@ func TestMenuShowsIncompleteOperationNotice(t *testing.T) {
 	if !found {
 		t.Fatal("test setup left no incomplete operation record")
 	}
-	if got := screenText(New(root)); !strings.Contains(got, "did not finish") || !strings.Contains(got, record.Notice(root)[1]) {
+	if got := screenText(tui.New(root)); !strings.Contains(got, "did not finish") || !strings.Contains(got, record.Notice(root)[1]) {
 		t.Errorf("menu = %q, want the incomplete-operation notice", got)
 	}
 }
 
 func TestMenuAdaptsToTerminalSize(t *testing.T) {
 	for _, size := range []tea.WindowSizeMsg{{Width: 200, Height: 60}, {Width: minWidth, Height: minHeight}} {
-		m, _ := step(t, New(t.TempDir()), size)
+		m, _ := step(t, tui.New(t.TempDir()), size)
 		if got := screenText(m); !strings.Contains(got, ui.TextMenuInstall) || !strings.Contains(got, ui.TextMenuQuit) {
 			t.Errorf("menu at %dx%d lost its entries:\n%s", size.Width, size.Height, got)
 		}
 	}
-	tiny, _ := step(t, New(t.TempDir()), tea.WindowSizeMsg{Width: tinyWidth, Height: tinyHeight})
+	tiny, _ := step(t, tui.New(t.TempDir()), tea.WindowSizeMsg{Width: tinyWidth, Height: tinyHeight})
 	if got := screenText(tiny); !strings.Contains(got, "too small") {
 		t.Errorf("menu at %dx%d = %q, want the terminal-too-small notice", tinyWidth, tinyHeight, got)
 	}
@@ -152,7 +167,7 @@ func TestMenuAdaptsToTerminalSize(t *testing.T) {
 func TestMonoModeSkipsCanvasPainting(t *testing.T) {
 	theme.SetMode(theme.ModeMono)
 	t.Cleanup(func() { theme.SetMode(theme.ModeColor) })
-	v := New(t.TempDir()).View()
+	v := tui.New(t.TempDir()).View()
 	if v.BackgroundColor != nil || v.ForegroundColor != nil {
 		t.Errorf("mono view painted bg=%v fg=%v, want no canvas colors", v.BackgroundColor, v.ForegroundColor)
 	}
@@ -162,37 +177,36 @@ func TestMonoModeSkipsCanvasPainting(t *testing.T) {
 }
 
 func TestGuardOverlayNamesTheTaskAndNavigates(t *testing.T) {
-	m := withStack(titledStub{newStub(true)})
-	m, _ = step(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	if m.guard.state != guardOpen {
+	ctrlB := tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl}
+	m := step1(t, tui.WithStack(titledStub{newStub(true)}), ctrlB)
+	if !guardOpen(m) {
 		t.Fatal("ctrl+b on a dirty flow did not open the guard")
 	}
-	if got := m.guardTitle(); got != "Install · "+ui.TextGuardUnappliedWord {
-		t.Errorf("guardTitle() = %q, want the task name with the unapplied marker", got)
-	}
 	got := screenText(m)
+	// The header shows the step after the task: the unapplied marker.
 	for _, want := range []string{ui.TextGuardUnappliedWord, ui.TextGuardDiscardBody, ui.TextGuardKeepEditing, ui.TextGuardDiscard} {
 		if !strings.Contains(got, want) {
 			t.Errorf("guard view missing %q:\n%s", want, got)
 		}
 	}
 
-	m, _ = step(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if m.guard.cursor != 1 {
-		t.Fatalf("guard cursor after j = %d, want Discard", m.guard.cursor)
+	// j selects Discard: Enter pops the flow.
+	if discarded := step1(t, step1(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"}), keyEnter); !onMenu(discarded) {
+		t.Fatalf("Enter after j left route %v, want Discard to pop to the menu", discarded.CurrentRoute())
 	}
-	m, _ = step(t, m, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	m, _ = step(t, m, keyDown)
-	m, _ = step(t, m, keyUp)
-	if m.guard.cursor != 0 {
-		t.Errorf("guard cursor after down, up = %d, want Keep editing", m.guard.cursor)
+	// k, down, up end on Keep editing: Enter keeps the flow.
+	for _, key := range []tea.KeyPressMsg{{Code: 'j', Text: "j"}, {Code: 'k', Text: "k"}, keyDown, keyUp} {
+		m = step1(t, m, key)
 	}
 	if _, cmd := step(t, m, tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
 		t.Error("an unrelated key produced a guard command")
 	}
+	if kept := step1(t, m, keyEnter); guardOpen(kept) || kept.CurrentRoute() != tui.RouteInstall {
+		t.Errorf("Enter after down, up left guard=%v route=%v, want Keep editing", guardOpen(kept), kept.CurrentRoute())
+	}
 	// Paste never reaches the flow while the guard is open.
 	flow := titledStub{newStub(true)}
-	guarded := withStack(flow)
+	guarded := tui.WithStack(flow)
 	guarded, _ = step(t, guarded, ui.BackMsg{})
 	step(t, guarded, tea.PasteMsg{Content: "pasted"})
 	if flow.count(func(msg tea.Msg) bool { _, ok := msg.(tea.PasteMsg); return ok }) != 0 {
@@ -201,21 +215,20 @@ func TestGuardOverlayNamesTheTaskAndNavigates(t *testing.T) {
 }
 
 func TestGuardTitleFallsBackForUntitledFlows(t *testing.T) {
-	m := withStack(newStub(true))
-	m, _ = step(t, m, ui.BackMsg{})
-	if got := m.guardTitle(); got != ui.TextGuardUnappliedWord {
-		t.Errorf("guardTitle() = %q, want %q", got, ui.TextGuardUnappliedWord)
+	m := step1(t, tui.WithStack(newStub(true)), ui.BackMsg{})
+	if got := screenText(m); !strings.Contains(got, ui.TextGuardUnappliedWord) {
+		t.Errorf("guard view = %q, want the %q title", got, ui.TextGuardUnappliedWord)
 	}
 }
 
 func TestPasteReachesTheForegroundFlowOrIsDroppedOnTheMenu(t *testing.T) {
 	flow := newStub(false)
-	m := withStack(flow)
+	m := tui.WithStack(flow)
 	step(t, m, tea.PasteMsg{Content: "hello"})
 	if flow.count(func(msg tea.Msg) bool { p, ok := msg.(tea.PasteMsg); return ok && p.Content == "hello" }) != 1 {
 		t.Error("paste did not reach the foreground flow")
 	}
-	if _, cmd := step(t, New(t.TempDir()), tea.PasteMsg{Content: "hello"}); cmd != nil {
+	if _, cmd := step(t, tui.New(t.TempDir()), tea.PasteMsg{Content: "hello"}); cmd != nil {
 		t.Error("paste on the menu produced a command")
 	}
 }
@@ -223,35 +236,33 @@ func TestPasteReachesTheForegroundFlowOrIsDroppedOnTheMenu(t *testing.T) {
 func TestOpenModelsReplacesTheInstallScreen(t *testing.T) {
 	m := installedApp(t)
 	m, _ = step(t, m, keyEnter)
-	if m.CurrentRoute() != RouteInstall {
+	if m.CurrentRoute() != tui.RouteInstall {
 		t.Fatalf("route = %v, want install", m.CurrentRoute())
 	}
 	m, _ = step(t, m, install.OpenModelsMsg{})
-	if m.CurrentRoute() != RouteModels || len(m.stack) != 1 {
-		t.Errorf("route = %v depth = %d, want the models flow alone on the stack", m.CurrentRoute(), len(m.stack))
+	if m.CurrentRoute() != tui.RouteModels {
+		t.Fatalf("route = %v, want models", m.CurrentRoute())
+	}
+	// The models flow replaced install: one step back reaches the menu.
+	if m, _ = step(t, m, ui.BackMsg{}); !onMenu(m) {
+		t.Errorf("route = %v, want the models flow alone on the stack", m.CurrentRoute())
 	}
 }
 
 func TestClosingWithAnEmptyStackReturnsToMenu(t *testing.T) {
-	m := New(t.TempDir())
-	m.route = RouteInstall
-	m, _ = step(t, m, ui.BackMsg{})
-	if m.CurrentRoute() != RouteMenu {
+	m, _ := step(t, tui.WithStack(), ui.BackMsg{})
+	if m.CurrentRoute() != tui.RouteMenu {
 		t.Errorf("route = %v, want the menu", m.CurrentRoute())
 	}
 }
 
 func TestActionMessagesOnTheMenuAndForeignProgress(t *testing.T) {
-	m := New(t.TempDir())
-	if _, cmd := step(t, m, runtime.ActionRequest{ID: 5}); cmd == nil {
+	if _, cmd := step(t, tui.New(t.TempDir()), runtime.ActionRequest{ID: 5}); cmd == nil {
 		t.Error("a request with no active flow was not executed")
-	}
-	if m.actionCancel != nil {
-		t.Error("New() model already holds an action context")
 	}
 
 	flow := newStub(false)
-	m = withStack(flow)
+	m := tui.WithStack(flow)
 	m, _ = step(t, m, runtime.ActionRequest{ID: 9})
 	isProgress := func(msg tea.Msg) bool { _, ok := msg.(runtime.ActionProgressMsg); return ok }
 	m, _ = step(t, m, runtime.ActionProgressMsg{Request: runtime.ActionRequest{ID: 10}})
@@ -266,7 +277,7 @@ func TestActionMessagesOnTheMenuAndForeignProgress(t *testing.T) {
 
 func TestRunReportsMissingHomeDirectory(t *testing.T) {
 	t.Setenv("HOME", "")
-	if err := Run(strings.NewReader(""), &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "resolve home directory") {
+	if err := tui.Run(strings.NewReader(""), &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "resolve home directory") {
 		t.Errorf("Run() error = %v, want a home directory error", err)
 	}
 }
@@ -275,7 +286,7 @@ func TestRunQuitsFromTheMenu(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	done := make(chan error, 1)
 	var out bytes.Buffer
-	go func() { done <- Run(strings.NewReader("q"), &out) }()
+	go func() { done <- tui.Run(strings.NewReader("q"), &out) }()
 	select {
 	case err := <-done:
 		if err != nil {

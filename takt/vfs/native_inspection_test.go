@@ -180,3 +180,72 @@ func TestCodeGraphShellInspectionEndsWithShellRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeInspectionRefusesUnidentifiedOrRepeatedCalls(t *testing.T) {
+	f, _, state := newStore(t)
+	author, _ := delegate(t, f, state, testSession, "test", "tests", "tests.go")
+	for _, tt := range []struct {
+		call, tool string
+		want       error
+	}{
+		{"", "read", vfs.ErrIdentity},
+		{"write", "write", vfs.ErrIdentity},
+	} {
+		if err := f.StartNativeInspection(author, tt.call, tt.tool, "tests.go"); !errors.Is(err, tt.want) {
+			t.Fatalf("call %q tool %q = %v, want %v", tt.call, tt.tool, err, tt.want)
+		}
+	}
+	if err := f.StartNativeInspection(author, "once", "read", "tests.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.StartNativeInspection(author, "once", "read", "tests.go"); !errors.Is(err, vfs.ErrDuplicateCall) {
+		t.Fatalf("repeated call = %v, want ErrDuplicateCall", err)
+	}
+	// Only the caller that reserved a call releases it.
+	impostor := author
+	impostor.Agent = "dev"
+	if err := f.EndNativeInspection(impostor, "once"); !errors.Is(err, vfs.ErrIdentity) {
+		t.Fatalf("foreign release = %v, want ErrIdentity", err)
+	}
+	if err := f.EndNativeInspection(author, "once"); err != nil {
+		t.Fatal(err)
+	}
+	// A read with no path conservatively reserves the whole workspace.
+	if err := f.StartNativeInspection(author, "unrooted", "read", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.AssignScope(ident("dev", "under-unrooted", "dev"), []string{"lib/any.go"}); err == nil {
+		t.Fatal("a pathless read left the workspace claimable")
+	}
+	if err := f.EndNativeInspection(author, "unrooted"); err != nil {
+		t.Fatal(err)
+	}
+	// A path outside the workspace reserves nothing in it.
+	outside := filepath.Join(t.TempDir(), "notes.txt")
+	if err := f.StartNativeInspection(author, "outside", "read", outside); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.AssignScope(ident("dev", "after-outside", "dev"), []string{"src/any.go"}); err != nil {
+		t.Fatalf("an outside read blocked a workspace claim: %v", err)
+	}
+}
+
+func TestCodeGraphShellQueryDefersWhileForeignAuthorsHoldFiles(t *testing.T) {
+	f, _, state := newStore(t)
+	author, _ := delegate(t, f, state, testSession, "test", "tests", "tests.go")
+	// An ordinary shell call is not a native inspection.
+	if _, err := f.PrepareShell(author, "plain", "ls", state, "host-plain"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.PrepareShell(author, "graph", "codegraph explore src", state, "host-graph"); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.NativeInspections()
+	if len(calls) != 1 || calls[0].CallID != "graph" || calls[0].ToolCallID != "host-graph" {
+		t.Fatalf("call registry = %+v; want only the CodeGraph query under its host call id", calls)
+	}
+	_, _ = delegate(t, f, state, testSession, "dev", "impl", "src/impl.go")
+	if _, err := f.PrepareShell(author, "graph-2", "codegraph explore src", state); !errors.Is(err, vfs.ErrScopeDenied) {
+		t.Fatalf("query beside a foreign claim = %v, want ErrScopeDenied", err)
+	}
+}

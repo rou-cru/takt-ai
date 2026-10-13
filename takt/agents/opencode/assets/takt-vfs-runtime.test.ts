@@ -35,7 +35,7 @@ type Reply = { out?: string; err?: string; code?: number }
 type Call = { kind: string; command: string; request: Record<string, unknown> }
 type HookEvent = Record<string, unknown>
 type Hooks = Map<string, Array<(event: HookEvent) => Promise<void>>>
-type Ctx = { sessionID: string; agent: string }
+type Ctx = { sessionID: string; agent: string; id?: string }
 type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown>; time?: { created: number } }
 type Options = {
   nativeCalls?: Record<string,"completed"|"error"|"running">
@@ -193,7 +193,7 @@ async function startVfs(options: Options = {}) {
       location: { directory: options.home ? homedir() : WORKSPACE },
       storage: { async get(key: string) { reads.push(key); return storage.get(key) }, async set(key: string, value: unknown) { writes.push(key); storage.set(key, value) }, async remove(key: string) { storage.delete(key) } },
       session: {
-        context: async ({sessionID}:{sessionID:string}) => [{type:"assistant",content:[...nativeCalls].filter(([dispatch])=>dispatch.startsWith(`${sessionID}:`)).map(([dispatch,status])=>({type:"tool",name:"subagent",id:dispatch.slice(sessionID.length+1),state:{status}}))}],
+        context: async ({sessionID}:{sessionID:string}) => { if (options.missing?.includes(sessionID)) throw {_tag:"SessionNotFoundError",message:`session ${sessionID} not found`}; return [{type:"assistant",content:[...nativeCalls].filter(([dispatch])=>dispatch.startsWith(`${sessionID}:`)).map(([dispatch,status])=>({type:"tool",name:"subagent",id:dispatch.slice(sessionID.length+1),state:{status}}))}] },
         async get({ sessionID }: { sessionID: string }) {
           if (options.missing?.includes(sessionID)) throw {_tag:"SessionNotFoundError",message:`session ${sessionID} not found`}
           return { id: sessionID, ...options.sessions?.[sessionID] }
@@ -1906,7 +1906,7 @@ describe("native inspection lifecycle", () => {
     } })
     try {
       const input = {filePath:"own.go",offset:2,limit:1}
-      const running = vfs.run("read",input,author)
+      const running = vfs.run("read",input,{...author,id:"read-1"})
       await entered
       expect(vfs.requests("vfs","native-inspection-start")).toHaveLength(1)
       expect(vfs.requests("vfs","native-inspection-end")).toHaveLength(0)
@@ -1924,8 +1924,30 @@ describe("native inspection lifecycle", () => {
       return undefined
     } })
     try {
-      await expect(vfs.run("read",{filePath:"own.go"},author)).rejects.toThrow("native inspection and reservation release failed")
+      await expect(vfs.run("read",{filePath:"own.go"},{...author,id:"read-2"})).rejects.toThrow("native inspection and reservation release failed")
       expect(vfs.requests("vfs","native-inspection-end")).toHaveLength(1)
+    } finally { await vfs.stop() }
+  })
+
+  test("an author's native read without a host call id reserves nothing and is refused", async () => {
+    const vfs = await startVfs({ sessions:unitSessions })
+    try {
+      await expect(vfs.run("read",{filePath:"own.go"},author)).rejects.toThrow("no host call id")
+      expect(vfs.requests("vfs","native-inspection-start")).toHaveLength(0)
+    } finally { await vfs.stop() }
+  })
+
+  test("reconciliation releases a reservation whose caller session is gone, never a live one", async () => {
+    const inspections = [
+      {call_id:"gone-call",session_id:"root",caller_session:"gone",caller_agent:VFS_AUTHOR},
+      {call_id:"live-call",session_id:"root",caller_session:"live",caller_agent:VFS_AUTHOR},
+    ]
+    const vfs = await startVfs({ missing:["gone"], respond: call => call.command === "native-inspections" ? json({ok:true,inspections}) : undefined })
+    try {
+      await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+      await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
+      await until(()=>vfs.requests("vfs","native-inspection-end").length > 0)
+      expect(vfs.requests("vfs","native-inspection-end")).toEqual([expect.objectContaining({call_id:"gone-call",caller_session:"gone"})])
     } finally { await vfs.stop() }
   })
 

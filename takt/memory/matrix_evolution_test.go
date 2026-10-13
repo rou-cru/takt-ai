@@ -94,6 +94,38 @@ func TestMatrixEvolutionChecksBothTitlesAndColumnOwner(t *testing.T) {
 	}
 }
 
+func TestMatrixRootIsRevisedOnlyByQA(t *testing.T) {
+	ctx := context.Background()
+	_, cfg := newFake(t)
+	record := func(author, title string, rel *memory.RelatesTo) (memory.RecordResult, error) {
+		req := base()
+		req.Author, req.Title, req.RelatesTo = author, title, rel
+		return memory.Record(ctx, cfg, req)
+	}
+	matrix, err := record("qa", "Traceability Matrix", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []struct{ owner, title string }{{"tpm", "Traceability Matrix: Owning node"}, {"verify", "Traceability Matrix: Evidence"}} {
+		for _, relation := range []string{"corrects", "supersedes", "exception-to"} {
+			before, _ := memory.EntryIDsForSession(cfg.Root, "ses_1")
+			if _, err := record(column.owner, column.title, &memory.RelatesTo{ID: matrix.ID, Relation: relation}); err == nil {
+				t.Fatalf("%s %s the matrix root", column.owner, relation)
+			}
+			if after, _ := memory.EntryIDsForSession(cfg.Root, "ses_1"); !slices.Equal(before, after) {
+				t.Fatal("refused root revision left writes")
+			}
+		}
+	}
+	if _, err := record("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}); err != nil {
+		t.Fatalf("qa correcting its matrix: %v", err)
+	}
+	// An unterminated attribution is part of the title, not a matrix artifact.
+	if _, err := record("dev", "[unterminated Traceability Matrix", nil); err != nil {
+		t.Fatalf("ordinary title refused: %v", err)
+	}
+}
+
 func mustIDs(t *testing.T, cfg memory.Config, author string) []int64 {
 	t.Helper()
 	ids, err := memory.EntryIDsByAuthor(cfg.Root, "ses_1", author)

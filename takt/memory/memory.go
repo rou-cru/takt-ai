@@ -561,6 +561,9 @@ func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
 		return reject("your traceability matrix column is %s; record the entry with supplements titled %q", own, columnTitle(own))
 	case related && declaredColumn(target.title) != "" && declaredColumn(target.title) != own:
 		return reject("the related entry writes %s; only %s may evolve that column, without changing it by title; use disputes to state a contradiction", declaredColumn(target.title), matrixColumns[declaredColumn(target.title)])
+	// Only qa revises the matrix itself; another column only adds to it.
+	case related && matrixEntryTitle(target.title) == matrixTitle && req.Author != matrixColumns["Requirements"] && req.RelatesTo.Relation != "supplements":
+		return reject("the traceability matrix is qa's; relate your column to it with supplements, titled %q", columnTitle(own))
 	case !related:
 		return reject("a matrix column relates to the matrix or its column entry with supplements; record it titled %q", columnTitle(own))
 	}
