@@ -88,6 +88,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type Identity](<#Identity>)
 - [type InvariantSet](<#InvariantSet>)
 - [type JournalEntry](<#JournalEntry>)
+  - [func ReadJournal\(stateDir, sessionID, unitID string, after, limit int\) \(\_ \[\]JournalEntry, err error\)](<#ReadJournal>)
   - [func \(e JournalEntry\) Ref\(\) string](<#JournalEntry.Ref>)
 - [type NativeInspectionCall](<#NativeInspectionCall>)
 - [type Operation](<#Operation>)
@@ -1061,6 +1062,15 @@ type JournalEntry struct {
     ReeditOfMandateClass string `json:"reedit_of_mandate_class,omitempty"`
 }
 ```
+
+<a name="ReadJournal"></a>
+### func ReadJournal
+
+```go
+func ReadJournal(stateDir, sessionID, unitID string, after, limit int) (_ []JournalEntry, err error)
+```
+
+ReadJournal pages the recorded journal read\-only, without taking the workspace lock or creating a store, so a reader never blocks or writes. An absent store has no entries; a malformed existing journal is an error.
 
 <a name="JournalEntry.Ref"></a>
 ### func \(JournalEntry\) Ref

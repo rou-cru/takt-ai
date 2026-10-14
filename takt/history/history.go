@@ -412,6 +412,24 @@ func ReadEntries(stateDir string) (_ []Entry, err error) {
 	return h.entries, nil
 }
 
+// ReadPage pages the recorded order read-only, oldest first: entries after the
+// exclusive cursor, optionally of one session and unit, at most limit of them.
+func ReadPage(stateDir, sessionID, unitID string, after, limit int) ([]Entry, error) {
+	entries, err := ReadEntries(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	page := []Entry{}
+	for _, e := range entries {
+		if e.Seq > after && (sessionID == "" || e.SessionID == sessionID) && (unitID == "" || e.WorkUnitID == unitID) {
+			if page = append(page, e); len(page) == limit {
+				break
+			}
+		}
+	}
+	return page, nil
+}
+
 // Close releases the store handle.
 func (h *History) Close() error { return h.db.Close() }
 

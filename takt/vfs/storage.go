@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +38,8 @@ const (
 	stateDirectoryMode os.FileMode = 0700
 	// stateFileMode prevents group and other users from reading the VFS database.
 	stateFileMode os.FileMode = 0600
+	// stateDBFile is the VFS database's name inside the private state directory.
+	stateDBFile = "vfs.sqlite"
 )
 
 // MaxJournalPageSize bounds the number of entries JournalPage returns.
@@ -218,7 +221,7 @@ const stateSchema = `PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA;
 
 // openStateDB opens the private SQLite store, creating it if absent.
 func (f *FS) openStateDB(stateDir string) (err error) {
-	dbPath := filepath.Join(stateDir, "vfs.sqlite")
+	dbPath := filepath.Join(stateDir, stateDBFile)
 	if err = ensurePrivateFile(dbPath); err != nil {
 		return err
 	}
@@ -329,7 +332,8 @@ func (f *FS) replayJournal(count int) (err error) {
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	if len(f.journal) != count {
+	// A negative count is a read-only reader, which has no recorded count to check.
+	if count >= 0 && len(f.journal) != count {
 		return fmt.Errorf("vfs: journal incomplete")
 	}
 	return nil
@@ -428,9 +432,14 @@ func (f *FS) Close() error {
 func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEntry {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return journalPage(f.journal[:f.persisted], sessionID, unitID, after, limit)
+}
+
+// journalPage is the one definition of what a page of journal entries holds.
+func journalPage(entries []JournalEntry, sessionID, unitID string, after, limit int) []JournalEntry {
 	limit = max(1, min(limit, MaxJournalPageSize))
 	result := make([]JournalEntry, 0, limit)
-	for _, e := range f.journal[:f.persisted] {
+	for _, e := range entries {
 		if e.Seq > after && (sessionID == "" || e.SessionID == sessionID) && (unitID == "" || e.WorkUnitID == unitID) {
 			result = append(result, e)
 			if len(result) == limit {
@@ -439,4 +448,30 @@ func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEn
 		}
 	}
 	return result
+}
+
+// ReadJournal pages the recorded journal read-only, without taking the
+// workspace lock or creating a store, so a reader never blocks or writes. An
+// absent store has no entries; a malformed existing journal is an error.
+func ReadJournal(stateDir, sessionID, unitID string, after, limit int) (_ []JournalEntry, err error) {
+	path, err := filepath.Abs(filepath.Join(stateDir, stateDBFile))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return []JournalEntry{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}).String())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, db.Close()) }()
+	db.SetMaxOpenConns(1)
+	f := &FS{db: db}
+	if err = f.replayJournal(-1); err != nil {
+		return nil, err
+	}
+	return journalPage(f.journal, sessionID, unitID, after, limit), nil
 }

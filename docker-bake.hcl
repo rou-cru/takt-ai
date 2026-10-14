@@ -5,7 +5,7 @@
 # reimplementing the Dockerfile references, so there is exactly one
 # definition of each image.
 variable "OPENCODE_VERSION" {
-  default = "2.0.20"
+  default = "2.0.28"
 }
 variable "GO_VERSION" {
   default = "1.27.1"

@@ -40,6 +40,9 @@ const (
 	VFSCapabilityVerify VFSCapability = "verify"
 	// VFSCapabilityConsolidate lets the orchestrator consolidate verified work.
 	VFSCapabilityConsolidate VFSCapability = "consolidate"
+	// VFSCapabilityInspect lets an instance read the recorded journal and
+	// execution history, which hold no file content.
+	VFSCapabilityInspect VFSCapability = "inspect"
 )
 
 // Valid reports whether c names one of the closed set of VFS operations.
@@ -48,7 +51,7 @@ func (c VFSCapability) Valid() bool {
 	case VFSCapabilityClaimList, VFSCapabilityClaimAssign, VFSCapabilityClaimRelease,
 		VFSCapabilityBind, VFSCapabilityWrite,
 		VFSCapabilityRead, VFSCapabilityDelete, VFSCapabilityDiscard,
-		VFSCapabilityVerify, VFSCapabilityConsolidate:
+		VFSCapabilityVerify, VFSCapabilityConsolidate, VFSCapabilityInspect:
 		return true
 	default:
 		return false

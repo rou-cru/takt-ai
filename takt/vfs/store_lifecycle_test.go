@@ -16,6 +16,7 @@
 package vfs_test
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -356,5 +357,33 @@ func TestReopenDiscardsSavedCollisions(t *testing.T) {
 	}
 	if len(seen) != 1 || seen[0].AttemptingAgent != "intruder" || seen[0].OwningAgent != "owner" || seen[0].Path != "a.go" {
 		t.Fatalf("new collision notification = %+v", seen)
+	}
+}
+
+func TestReadJournalMatchesTheOpenStoreWithoutItsLock(t *testing.T) {
+	f, _, state := newStore(t)
+	for _, unit := range []string{"u1", "u2"} {
+		key := bind(t, f, "agent-"+unit, unit, "dev", unit+".go")
+		apply(t, f, applyCase{key, "write-" + unit, 0, vfs.OpCreate, unit + ".go", unit})
+	}
+	got, err := vfs.ReadJournal(state, "s", "u2", -1, vfs.MaxJournalPageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The open store keeps a monotonic clock reading the persisted copy lacks.
+	want, _ := json.Marshal(f.JournalPage("s", "u2", -1, vfs.MaxJournalPageSize))
+	if have, _ := json.Marshal(got); !bytes.Equal(have, want) || len(got) != 1 {
+		t.Fatalf("ReadJournal = %s, want %s", have, want)
+	}
+}
+
+func TestReadJournalOfAbsentStoreCreatesNothing(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	got, err := vfs.ReadJournal(state, "", "", -1, vfs.MaxJournalPageSize)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("ReadJournal = %+v, %v; want an empty page", got, err)
+	}
+	if _, err := os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("ReadJournal created the state directory: %v", err)
 	}
 }

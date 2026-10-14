@@ -26,6 +26,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [type Edge](<#Edge>)
 - [type Entry](<#Entry>)
   - [func ReadEntries\(stateDir string\) \(\_ \[\]Entry, err error\)](<#ReadEntries>)
+  - [func ReadPage\(stateDir, sessionID, unitID string, after, limit int\) \(\[\]Entry, error\)](<#ReadPage>)
 - [type Execution](<#Execution>)
 - [type Flight](<#Flight>)
   - [func \(f Flight\) MarshalJSON\(\) \(\[\]byte, error\)](<#Flight.MarshalJSON>)
@@ -448,6 +449,15 @@ func ReadEntries(stateDir string) (_ []Entry, err error)
 ```
 
 ReadEntries reads the recorded order read\-only, without creating a store or schema, so a reader outside the workspace lock never writes. An absent history has no entries.
+
+<a name="ReadPage"></a>
+### func ReadPage
+
+```go
+func ReadPage(stateDir, sessionID, unitID string, after, limit int) ([]Entry, error)
+```
+
+ReadPage pages the recorded order read\-only, oldest first: entries after the exclusive cursor, optionally of one session and unit, at most limit of them.
 
 <a name="Execution"></a>
 ## type Execution

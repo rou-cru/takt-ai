@@ -276,6 +276,9 @@ const (
     VFSCapabilityVerify VFSCapability = "verify"
     // VFSCapabilityConsolidate lets the orchestrator consolidate verified work.
     VFSCapabilityConsolidate VFSCapability = "consolidate"
+    // VFSCapabilityInspect lets an instance read the recorded journal and
+    // execution history, which hold no file content.
+    VFSCapabilityInspect VFSCapability = "inspect"
 )
 ```
 

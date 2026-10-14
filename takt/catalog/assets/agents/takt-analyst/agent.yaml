@@ -10,7 +10,7 @@ display_names:
 instances:
 - analyst
 vfs_capabilities:
-  analyst: []
+  analyst: [inspect]
 role: planning_author
 skills:
 - takt-memory-contract

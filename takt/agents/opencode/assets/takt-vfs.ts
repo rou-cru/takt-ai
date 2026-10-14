@@ -29,6 +29,8 @@ export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: strin
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 5
+// INSPECT_PAGE_LIMIT is the largest page takt-ai vfs journal and history serve.
+const INSPECT_PAGE_LIMIT = 500
 
 async function sameDirectory(left: string, right: string): Promise<boolean> {
   // canonical resolves symlinks, falling back to the plain path when it cannot.
@@ -1697,6 +1699,35 @@ export default Plugin.define({
         },
       })
 
+      // The recorded journal and execution history are read from their stores
+      // without the workspace lock; neither holds file content.
+      editor.add({
+        name: "vfs_inspect",
+        description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned.",
+        input: obj({
+          source: { type: "string", enum: ["journal", "history"], description: "Which record to read" },
+          session: str("Only entries of this session"),
+          unit: str("Only entries of this work unit"),
+          after: { type: "integer", minimum: -1, description: "Return entries after this seq; -1 starts from the first" },
+          limit: { type: "integer", minimum: 1, maximum: INSPECT_PAGE_LIMIT, description: `Page size, at most ${INSPECT_PAGE_LIMIT}` },
+        }, ["source"]),
+        async execute(input: unknown) {
+          const args = toolInput<{ source: "journal" | "history"; session?: string; unit?: string; after?: number; limit?: number }>(input)
+          if (args.source !== "journal" && args.source !== "history") throw new Error("source must be journal or history")
+          const flags = [
+            ...args.session ? ["--session", args.session] : [],
+            ...args.unit ? ["--unit", args.unit] : [],
+            ...args.after !== undefined ? ["--after", String(args.after)] : [],
+            ...args.limit !== undefined ? ["--limit", String(args.limit)] : [],
+          ]
+          const proc = Bun.spawn([TAKT_AI, "vfs", args.source, "--workspace", workspace, "--state", stateDir(), ...flags], {
+            detached: true, stdout: "pipe", stderr: "pipe", cwd: workspace,
+          })
+          const [out, err, code] = await ipcOutput(proc, `vfs ${args.source}`)
+          if (code !== 0) throw new Error(`takt-ai vfs ${args.source} exited ${code}: ${err || out}`)
+          return { content: out }
+        },
+      })
       editor.add({
         name: "vfs_bind",
         description: "Bind to the assignment named in your context, before any other VFS tool.",

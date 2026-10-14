@@ -7,7 +7,7 @@ services:
       dockerfile: deploy/images/Dockerfile
       target: dev
       args:
-        OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.20}
+        OPENCODE_VERSION: ${OPENCODE_VERSION:-2.0.28}
         GO_VERSION: ${GO_VERSION:-1.27.1}
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}

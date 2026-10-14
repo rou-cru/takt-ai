@@ -37,7 +37,7 @@ func runVFS(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return errors.New(usageVFS)
 	}
-	if args[0] == "journal" || args[0] == "recover" {
+	if args[0] == "journal" || args[0] == "history" || args[0] == "recover" {
 		return runVFSOffline(args, stdout, stderr)
 	}
 	return runVFSOperation(args, stdin, stdout, stderr)
@@ -48,12 +48,12 @@ var vfsCommands = []string{"claims", "assign", "release", "bind", "adopt-gates",
 	"shell-prepare", "shell-complete", "shell-guard", "shell-continue", "shell-release", "edit-guard", "native-inspection-start", "native-inspection-end", "native-inspections"}
 
 // usageVFS lists valid vfs commands so callers can recover after a mistake.
-var usageVFS = "usage: takt-ai vfs journal|recover --workspace <dir> --state <private-dir> [--restore] | " +
+var usageVFS = "usage: takt-ai vfs journal|history|recover --workspace <dir> --state <private-dir> [--restore] | " +
 	strings.Join(vfsCommands, "|") + " --workspace <dir> --state <private-dir> < request.json"
 
 const defaultVFSPageSize = 100
 
-// vfsOffline is a validated offline invocation: journal or recover.
+// vfsOffline is a validated offline invocation: journal, history or recover.
 type vfsOffline struct {
 	command, workspace, state, sessionID, unitID string
 	after, limit                                 int
@@ -92,13 +92,14 @@ func validateVFSRecoveryFlags(command string, restore bool) error {
 	if command == "recover" && !restore {
 		return errors.New("vfs: recovery requires explicit --restore; incompatible external changes will not be overwritten")
 	}
-	if command == "journal" && restore {
+	if command != "recover" && restore {
 		return errors.New("vfs: --restore applies only to recover")
 	}
 	return nil
 }
 
-// runVFSOffline serves journal pagination and explicit recovery only.
+// runVFSOffline serves read-only journal and history pagination, which never
+// open the workspace lock, and explicit recovery.
 func runVFSOffline(args []string, stdout, stderr io.Writer) (err error) {
 	o, err := parseVFSOffline(args, stderr)
 	if err != nil {
@@ -108,18 +109,30 @@ func runVFSOffline(args []string, stdout, stderr io.Writer) (err error) {
 	if _, err := os.Stat(filepath.Join(o.state, "vfs.sqlite")); err != nil {
 		return fmt.Errorf("vfs: existing store required: %w", err)
 	}
+	enc := json.NewEncoder(stdout)
+	switch o.command {
+	case "journal":
+		page, err := vfs.ReadJournal(o.state, o.sessionID, o.unitID, o.after, o.limit)
+		if err != nil {
+			return err
+		}
+		return enc.Encode(page)
+	case "history":
+		page, err := history.ReadPage(o.state, o.sessionID, o.unitID, o.after, o.limit)
+		if err != nil {
+			return err
+		}
+		return enc.Encode(page)
+	}
 	fs, err := vfs.Open(o.workspace, o.state)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, fs.Close()) }()
-	if o.command == "recover" {
-		if err = fs.Recover(); err != nil {
-			return err
-		}
-		return json.NewEncoder(stdout).Encode(map[string]string{"recovery": "complete"})
+	if err = fs.Recover(); err != nil {
+		return err
 	}
-	return json.NewEncoder(stdout).Encode(fs.JournalPage(o.sessionID, o.unitID, o.after, o.limit))
+	return enc.Encode(map[string]string{"recovery": "complete"})
 }
 
 // IPCVersion is the wire contract version every mutation request must carry.
