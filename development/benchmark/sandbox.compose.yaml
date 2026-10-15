@@ -1,0 +1,7 @@
+# The VFS sandbox (bubblewrap) needs user namespaces, which Docker's default
+# seccomp and AppArmor profiles deny.
+services:
+  main:
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined

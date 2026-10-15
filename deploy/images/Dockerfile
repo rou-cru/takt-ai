@@ -50,7 +50,7 @@ COPY --from=builder /out/tools/ /usr/local/bin/
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep tar tzdata unzip; \
+      bubblewrap ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep socat tar tzdata unzip; \
     # Register the NodeSource apt repo via NodeSource's own documented
     # manual steps (GPG-signed key + apt source) instead of piping their
     # setup script to bash: apt then verifies every nodejs package signature
