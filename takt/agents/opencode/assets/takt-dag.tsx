@@ -402,16 +402,21 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   const slots = new Map<string, Slot>()
   const slot = (id: string) => slots.get(id) as Slot
   for (const id of members) slots.set(`n:${id}`, { id: `n:${id}`, depth: depthOf(id), node: id, height: NODE_ROWS })
-  const chains = edges.map((e, index) => {
+  // The pass-throughs of one origin are shared by its layer-skipping edges, so
+  // a fork runs as one trunk instead of one slot per edge and column.
+  const chains = edges.map((e) => {
     const chain = [`n:${e.from}`]
     for (let depth = depthOf(e.from) + 1; depth < depthOf(e.to); depth++) {
-      const id = `p:${index}:${depth}`
+      const id = `p:${e.from}:${depth}`
       slots.set(id, { id, depth, height: PASS_ROWS })
       chain.push(id)
     }
     return [...chain, `n:${e.to}`]
   })
-  const links: Link[] = chains.flatMap((chain) => chain.slice(1).map((b, i) => ({ a: chain[i], b })))
+  const linkKeys = new Set<string>()
+  const links: Link[] = chains
+    .flatMap((chain) => chain.slice(1).map((b, i) => ({ a: chain[i], b })))
+    .filter((l) => !linkKeys.has(`${l.a}|${l.b}`) && linkKeys.add(`${l.a}|${l.b}`))
   const parents = new Map<string, string[]>()
   const children = new Map<string, string[]>()
   for (const l of links) {
@@ -462,9 +467,9 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   for (let c = lastDepth - 1; c >= 0; c--) place(c, children)
   for (let c = 0; c <= lastDepth; c++) place(c, parents)
 
-  const colWidth = cols.map((col) =>
-    Math.max(PASS_WIDTH, ...col.map((id) => { const node = slot(id).node; return node === undefined ? 0 : Math.min(Bun.stringWidth(node), sizing.cap) + NODE_CHROME })),
-  )
+  // Every box is as wide as the longest identity, so none is shorter for no reason.
+  const boxWidth = Math.max(...members.map((id) => Math.min(Bun.stringWidth(id), sizing.cap))) + NODE_CHROME
+  const colWidth = cols.map((col) => (col.some((id) => slot(id).node !== undefined) ? boxWidth : PASS_WIDTH))
   const depthOfSlot = (id: string) => slot(id).depth
   const stripRow = (id: string) => (top.get(id) as number) + (slot(id).height - 1) / 2
   const segOf = (l: Link, row: (id: string) => number): LaneSeg => {
