@@ -4,3 +4,5 @@ overrides:
   "@babel/core": 7.29.6
   seroval: 1.6.8
   seroval-plugins: 1.6.8
+  # @npmcli/map-workspaces pins glob ^11.0.3; 11.0.x has GHSA-5j98-mcp5-4vw2.
+  "glob@>=11.0.0 <11.1.0": ^11.1.0
