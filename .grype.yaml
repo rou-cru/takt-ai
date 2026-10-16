@@ -1,0 +1,12 @@
+# Grype matches the Terraform provider registry.terraform.io/coder/coder by
+# name against advisories for the Coder server (github.com/coder/coder), whose
+# 2.x release line shares the version prefix. The provider is versioned
+# independently (github.com/coder/terraform-provider-coder), so these matches
+# do not apply. The rule is pinned to the locked provider version: a provider
+# bump in deploy/coder/.terraform.lock.hcl must re-review it.
+ignore:
+  - package:
+      name: registry.terraform.io/coder/coder
+      version: 2.0.2
+      type: terraform
+    reason: Coder server advisories matched against the independently versioned Terraform provider.

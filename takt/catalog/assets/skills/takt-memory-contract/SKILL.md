@@ -111,6 +111,7 @@ per domain — consulted only for that doubt, not on every entry.
 
 - In an autonomous delegation, call `memory_record` once per entry **when the assigned work
   finishes**, before you return your result, not after every step. Keep entries concise.
+  A brief never waives this; if it does, follow the contract.
 - A specialist holding the chat with the user records its artifact progressively: each draft
   is a `hypothesis` entry that `supplements` the previous draft, and the version the user
   accepts is a new entry that `supersedes` the last draft with that accept as `evidence`.

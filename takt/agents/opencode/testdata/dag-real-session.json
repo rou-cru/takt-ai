@@ -1,0 +1,1069 @@
+{
+  "schema_version": 1,
+  "projection_revision": 586,
+  "history_position": 586,
+  "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+  "capture": "current",
+  "plan_version": "ramirez-resume-v25",
+  "nodes": [
+    {
+      "id": "Acceptance tooling repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "3",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Repair integration-owned smoke oracles/native policy/raw exports against #14946/#14984/#14985/#14986 and pair #14982; no gameplay changes; actual observations and WAV/pack output, no empty success.",
+      "prerequisites": [
+        "Evidence execution interface closure",
+        "Live audio scheduling evidence contract",
+        "Audio trace time-origin clarification"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Aligned risk ledge repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Apply designer geometry ruling #14968 in current integration author: move second optional ledge and matching metadata to335-337 height10 with unchanged gold-high-5; no contract/loot/check relaxation.",
+      "prerequisites": [
+        "Risk ledge placement reconciliation"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Audio Q2 runtime repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Test owner repairs own Q2 PASS undefined runtime defect and same-cause status constants, preserving independent frozen audio/evidence oracles and CLI.",
+      "prerequisites": [
+        "Rev36 acceptance blind review A",
+        "Rev36 acceptance blind review B"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Audio acceptance test repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Test owner repairs only syntax defect JD-I1 and completes interrupted Q2-AUDIO-EVIDENCE handoff in existing approved test path; preserve blind-derived assertions.",
+      "prerequisites": [
+        "Preserved candidate blind review A",
+        "Preserved candidate blind review B"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Audio trace time-origin clarification",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Architect specifies exact scene-origin normalization for #14985 live absolute audio clock versus offline zero clock, without changing raw schemas or acceptance thresholds; resolve invocation ambiguity before both consumers.",
+      "prerequisites": [
+        "Live audio scheduling evidence contract"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "Blind acceptance test placement",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Architect resolves architecture zero-new-project-files constraint versus required independently staged Q2 tests; deliver minimal test artifact interface and exact file scope without altering product runtime or acceptance.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "COMPLETE-REPORT",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "planned",
+      "launched": false,
+      "contract": "Verify closes QA acceptance consuming acceptance, mutation and exploration results; per-row evidence, failures, unverified human criteria and residual risks in test completion report.",
+      "prerequisites": [
+        "MUTATION",
+        "Q3-VISUAL",
+        "Q3-AUDIO"
+      ]
+    },
+    {
+      "id": "Corrected candidate review snapshot",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "3",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Read-only freeze current seven-author 26-path corrected candidate plus exact delta against #14955; no test/build or workspace changes.",
+      "prerequisites": [
+        "Startup and terrain correction",
+        "Audio acceptance test repair"
+      ],
+      "agent": "analyst"
+    },
+    {
+      "id": "Corrected startup rejudgment A",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Judgment Day scoped rejudgment round1 over ledger #14958 and immutable fix delta only, confirmed critical JD-C1 and fix-caused defects, no delivery authority.",
+      "prerequisites": [
+        "Corrected candidate review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Corrected startup rejudgment B",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Judgment Day scoped rejudgment round1 over ledger #14958 and immutable fix delta only, confirmed critical JD-C1 and fix-caused defects, no delivery authority.",
+      "prerequisites": [
+        "Corrected candidate review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Evidence execution interface closure",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Architect closes executable raw probe/audio-controller/native-route evidence mapping against actual preserved public APIs and parity gap, within original #14946 schemas and #14983 tooling-only authority; no game/oracle weakening.",
+      "prerequisites": [
+        "Rev36 acceptance blind review A",
+        "Rev36 acceptance blind review B"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "Geometry and landing repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Scoped forward staged correction of4u rise and Reten mandatory landing failure exactly #14972, per approval #14973, original contracts/economy unchanged; owner diagnoses code versus oracle causality.",
+      "prerequisites": [
+        "V-REPAIRED"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "I-ART",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Scoped correction task I-ART in #14941 as corrected by #14943; consumed spec #14912/#14913, architecture #14910/#14911/#14946, preserved identity #14940; no author-run staged checks.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "I-AUDIO",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Scoped correction task I-AUDIO in #14941 as corrected by #14943; consumed spec #14912/#14913, architecture #14910/#14911/#14946, preserved identity #14940; no author-run staged checks.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "I-INTEGRATION",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Scoped correction task I-INTEGRATION in #14941 as corrected by #14943; consumed spec #14912/#14913, architecture #14910/#14911/#14946, preserved identity #14940; no author-run staged checks.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "I-SIM",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Scoped correction task I-SIM in #14941 as corrected by #14943; consumed spec #14912/#14913, architecture #14910/#14911/#14946, preserved identity #14940; no author-run staged checks.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Independent evidence interface closure",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Close test-only paths and raw candidate evidence interface contracts with user exception #14945; additive test evidence seams within existing driver path only, no acceptance weakening.",
+      "prerequisites": [
+        "Blind acceptance test placement"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "Integrated gate candidate snapshot",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Mechanical read-only local materialization and exact manifest of current seven staged authors for final authorized Verify retry, including integrationrev34; correct stored-base comparison; bounded10actions.",
+      "prerequisites": [
+        "Aligned risk ledge repair",
+        "Audio acceptance test repair"
+      ],
+      "agent": "analyst"
+    },
+    {
+      "id": "Level metadata compatibility repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Repair independently confirmed integrated compiler/beacon metadata failure #14964/#14965 in existing integration-owned level only; preserve frozen positions and M2 overlap contract. Separate ordinary repair, not a Judgment Day fix-caused round.",
+      "prerequisites": [
+        "Corrected startup rejudgment A",
+        "Corrected startup rejudgment B"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Live audio scheduling evidence contract",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Architect closes additive exact observation-only audio trace/equivalence interface needed by #14984; current tooling-only authority #14983, no live scheduling/voices/gameplay change or hidden gap.",
+      "prerequisites": [
+        "Evidence execution interface closure"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "Live audio trace implementation",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Implement frozen additive observation-only tracing and offline actual-clock replay #14985/#14986 in existing audio author paths; unchanged live playback, honest gaps until trace equivalence passes.",
+      "prerequisites": [
+        "Live audio scheduling evidence contract",
+        "Audio trace time-origin clarification"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "MUTATION",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "planned",
+      "launched": false,
+      "contract": "Q2 adequacy over must-not-fail rows after green original suite, against #14937/#14938/#14946; no product writes.",
+      "prerequisites": [
+        "V-VERIFY"
+      ]
+    },
+    {
+      "id": "Offline scene parity ruling",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Architect determines whether reported renderOffline gaps pump-cadence/song-transition-crossfade block frozen single-scene app-mix acceptance and supplies scoped parity correction contract without waiver.",
+      "prerequisites": [
+        "I-AUDIO"
+      ],
+      "agent": "arch"
+    },
+    {
+      "id": "Preserved candidate blind review A",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind read-only review pair over current preserved improvement invariants and diagnostic recovery objective; identical immutable snapshot/scope; no delivery authority.",
+      "prerequisites": [
+        "Preserved candidate review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Preserved candidate blind review B",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind read-only review pair over current preserved improvement invariants and diagnostic recovery objective; identical immutable snapshot/scope; no delivery authority.",
+      "prerequisites": [
+        "Preserved candidate review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Preserved candidate review snapshot",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Read-only establish and materialize one immutable current staged candidate covering four implementation authors, two delivered Q2 tests and any partial audio-test state; exact revision/hash manifest. No testing, repair or consolidation.",
+      "prerequisites": [
+        "I-SIM",
+        "I-ART",
+        "I-AUDIO",
+        "I-INTEGRATION",
+        "Q2-ROUTE",
+        "Q2-LAYOUT"
+      ],
+      "agent": "analyst"
+    },
+    {
+      "id": "Preserved overhaul QA planning",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Generate missing QA policy, plan, traceability matrix and environment requirements against Engram #14912 corrected by #14913, consuming the preserved-overhaul contracts and judge findings; no implementation or DAG authorship.",
+      "agent": "qa"
+    },
+    {
+      "id": "Preserved overhaul task decomposition",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "TPM scoped vertical WBS and full matrix ownership mapping against specification #14912/#14913, architecture #14910/#14911, QA #14935/#14937/#14938/#14939, identity #14940. No DAG sequencing or plan commitment.",
+      "agent": "tpm"
+    },
+    {
+      "id": "Preserved revision identity audit",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Read-only confirmation of current four staged author revisions, workspace physical bases and historical 23-file candidate identity; environment fact required by QA #14939. No builds or certification.",
+      "agent": "analyst"
+    },
+    {
+      "id": "Preserved task evidence correction",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "TPM corrects WBS #14941 first paragraph target/base identity attribution against #14940 only; remaining task scope and matrix stand.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition"
+      ],
+      "agent": "tpm"
+    },
+    {
+      "id": "Q2-AUDIO-EVIDENCE",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind Q2 task Q2-AUDIO-EVIDENCE in #14941/#14942 amended to approved workspace-relative test path by #14945/#14946; frozen raw evidence schemas and independent assertions only.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Q2-LAYOUT",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind Q2 task Q2-LAYOUT in #14941/#14942 amended to approved workspace-relative test path by #14945/#14946; frozen raw evidence schemas and independent assertions only.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Q2-ROUTE",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind Q2 task Q2-ROUTE in #14941/#14942 amended to approved workspace-relative test path by #14945/#14946; frozen raw evidence schemas and independent assertions only.",
+      "prerequisites": [
+        "Preserved overhaul task decomposition",
+        "Independent evidence interface closure"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Q3-AUDIO",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "planned",
+      "launched": false,
+      "contract": "Independent audio evidence exploration per #14937 charter; report unavailable listening explicitly, never invent perception or named human reviewer.",
+      "prerequisites": [
+        "V-VERIFY"
+      ]
+    },
+    {
+      "id": "Q3-VISUAL",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "planned",
+      "launched": false,
+      "contract": "Independent visual exploration from valid candidate evidence pack per #14937 charter; retain human-gated limits, never impersonate human reviewer.",
+      "prerequisites": [
+        "V-VERIFY"
+      ]
+    },
+    {
+      "id": "Rev36 acceptance blind review A",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind diagnostic pair over current preserved Ramirez invariants and failed acceptance #14977; independent code/test/driver causal findings, immutable identical target, no delivery authority.",
+      "prerequisites": [
+        "Rev36 acceptance review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Rev36 acceptance blind review B",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Blind diagnostic pair over current preserved Ramirez invariants and failed acceptance #14977; independent code/test/driver causal findings, immutable identical target, no delivery authority.",
+      "prerequisites": [
+        "Rev36 acceptance review snapshot"
+      ],
+      "agent": "judge"
+    },
+    {
+      "id": "Rev36 acceptance review snapshot",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Read-only freeze exact current26-path seven-author rev36 candidate, manifest and stored-base agreement for user-approved blind diagnostic pair; no checks/repair/consolidation.",
+      "prerequisites": [
+        "V-GEOMETRY"
+      ],
+      "agent": "analyst"
+    },
+    {
+      "id": "Risk ledge placement reconciliation",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Product-designer resolves #14967 contradiction between second optional ledge geography and frozen gold trail/M2 beacon overlap; minimal feasible terrain placement delta, no loot/economy or acceptance relaxation.",
+      "prerequisites": [
+        "Level metadata compatibility repair"
+      ],
+      "agent": "design"
+    },
+    {
+      "id": "Room music single-source repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Remove residual authored env.musicZones duplicate from integration-owned level as required by frozen M2 and #14975; preserve compiled room-derived music identity/extent. Minimal ordinary compatibility correction.",
+      "prerequisites": [
+        "V-GEOMETRY"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Route Q2 report repair",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Test owner repairs own missing headless report/unsupported success behavior, preserving frozen CLI/result schema and native route proof requirements.",
+      "prerequisites": [
+        "Rev36 acceptance blind review A",
+        "Rev36 acceptance blind review B"
+      ],
+      "agent": "test"
+    },
+    {
+      "id": "Startup and terrain correction",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Repair confirmed severe JD-C1 (Judgment Day round1) and separately approved ordinary warning JD-I2 from #14958/#14959 in existing integration author paths; exact compiler/size and terrain acceptance unchanged.",
+      "prerequisites": [
+        "Preserved candidate blind review A",
+        "Preserved candidate blind review B"
+      ],
+      "agent": "fix"
+    },
+    {
+      "id": "Tooling allowance accounting",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Read-only mechanical accounting of governed tooling actions against explicit #14983 allowance and remaining3Verify attempts; no source/test changes, no gate, no ordinary progress memory.",
+      "prerequisites": [
+        "V-TOOLING"
+      ],
+      "agent": "analyst"
+    },
+    {
+      "id": "V-GEOMETRY",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Independent current seven-author staged integrated gate after #14973 geometry repair; two additional Verify attempts maximum, full valid fresh staged read receipts and byte-verified local materialization; original QA criteria.",
+      "prerequisites": [
+        "Geometry and landing repair"
+      ],
+      "agent": "verify"
+    },
+    {
+      "id": "V-PREFLIGHT",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "3",
+      "state": "settled",
+      "outcome": "backtracked",
+      "launched": true,
+      "contract": "Independent diagnostic staged phase verification of four corrected implementation authors and two available blind Q2 tests; Q2-AUDIO-EVIDENCE is blocked by two provider rate-limit failures. No final acceptance or consolidation authorization from incomplete Q2 coverage.",
+      "prerequisites": [
+        "I-SIM",
+        "I-ART",
+        "I-AUDIO",
+        "I-INTEGRATION",
+        "Q2-ROUTE",
+        "Q2-LAYOUT"
+      ],
+      "agent": "verify"
+    },
+    {
+      "id": "V-REPAIRED",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "2",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Independent full seven-author staged integrated gate following scoped startup review and reconciled ledge repair, complete Q2 and original bounds; check stored physical bases directly and materialize locally without source dumps.",
+      "prerequisites": [
+        "Aligned risk ledge repair",
+        "Audio acceptance test repair"
+      ],
+      "agent": "verify"
+    },
+    {
+      "id": "V-STAGED",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "withdrawn",
+      "launched": false,
+      "contract": "Independent staged phase gate over all four corrected authors plus three Q2 authors against #14912/#14913/#14946 and QA plan; diagnose all failed or unverified requirements with exact evidence.",
+      "prerequisites": [
+        "I-SIM",
+        "I-ART",
+        "I-AUDIO",
+        "I-INTEGRATION",
+        "Q2-ROUTE",
+        "Q2-LAYOUT",
+        "Q2-AUDIO-EVIDENCE"
+      ]
+    },
+    {
+      "id": "V-TOOLING",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "settled",
+      "outcome": "completed",
+      "launched": true,
+      "contract": "Independent full seven-author staged gate after tooling-only corrections, exact current revisions, frozen Q2/raw schemas and audio trace contracts; valid fresh read receipts, genuine native/PCM evidence and honest human split. Counts toward #14983 three-Verify allowance.",
+      "prerequisites": [
+        "Acceptance tooling repair",
+        "Live audio trace implementation",
+        "Audio Q2 runtime repair",
+        "Route Q2 report repair"
+      ],
+      "agent": "verify"
+    },
+    {
+      "id": "V-VERIFY",
+      "node_kind": "delegated",
+      "session_id": "ses_ecb983ed9ffeYN1o6NRd4jX5oG",
+      "attempt_id": "1",
+      "state": "planned",
+      "launched": false,
+      "contract": "Materialized acceptance on exact consolidated candidate only after current V-TOOLING pass; required QA matrix evidence and no automatic human approval. Counts toward #14983 three-Verify allowance.",
+      "prerequisites": [
+        "V-TOOLING"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "Evidence execution interface closure",
+      "to": "Acceptance tooling repair"
+    },
+    {
+      "from": "Live audio scheduling evidence contract",
+      "to": "Acceptance tooling repair"
+    },
+    {
+      "from": "Audio trace time-origin clarification",
+      "to": "Acceptance tooling repair"
+    },
+    {
+      "from": "Risk ledge placement reconciliation",
+      "to": "Aligned risk ledge repair"
+    },
+    {
+      "from": "Rev36 acceptance blind review A",
+      "to": "Audio Q2 runtime repair"
+    },
+    {
+      "from": "Rev36 acceptance blind review B",
+      "to": "Audio Q2 runtime repair"
+    },
+    {
+      "from": "Preserved candidate blind review A",
+      "to": "Audio acceptance test repair"
+    },
+    {
+      "from": "Preserved candidate blind review B",
+      "to": "Audio acceptance test repair"
+    },
+    {
+      "from": "Live audio scheduling evidence contract",
+      "to": "Audio trace time-origin clarification"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "Blind acceptance test placement"
+    },
+    {
+      "from": "MUTATION",
+      "to": "COMPLETE-REPORT"
+    },
+    {
+      "from": "Q3-VISUAL",
+      "to": "COMPLETE-REPORT"
+    },
+    {
+      "from": "Q3-AUDIO",
+      "to": "COMPLETE-REPORT"
+    },
+    {
+      "from": "Startup and terrain correction",
+      "to": "Corrected candidate review snapshot"
+    },
+    {
+      "from": "Audio acceptance test repair",
+      "to": "Corrected candidate review snapshot"
+    },
+    {
+      "from": "Corrected candidate review snapshot",
+      "to": "Corrected startup rejudgment A"
+    },
+    {
+      "from": "Corrected candidate review snapshot",
+      "to": "Corrected startup rejudgment B"
+    },
+    {
+      "from": "Rev36 acceptance blind review A",
+      "to": "Evidence execution interface closure"
+    },
+    {
+      "from": "Rev36 acceptance blind review B",
+      "to": "Evidence execution interface closure"
+    },
+    {
+      "from": "V-REPAIRED",
+      "to": "Geometry and landing repair"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "I-ART"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "I-ART"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "I-AUDIO"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "I-AUDIO"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "I-INTEGRATION"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "I-INTEGRATION"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "I-SIM"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "I-SIM"
+    },
+    {
+      "from": "Blind acceptance test placement",
+      "to": "Independent evidence interface closure"
+    },
+    {
+      "from": "Aligned risk ledge repair",
+      "to": "Integrated gate candidate snapshot"
+    },
+    {
+      "from": "Audio acceptance test repair",
+      "to": "Integrated gate candidate snapshot"
+    },
+    {
+      "from": "Corrected startup rejudgment A",
+      "to": "Level metadata compatibility repair"
+    },
+    {
+      "from": "Corrected startup rejudgment B",
+      "to": "Level metadata compatibility repair"
+    },
+    {
+      "from": "Evidence execution interface closure",
+      "to": "Live audio scheduling evidence contract"
+    },
+    {
+      "from": "Live audio scheduling evidence contract",
+      "to": "Live audio trace implementation"
+    },
+    {
+      "from": "Audio trace time-origin clarification",
+      "to": "Live audio trace implementation"
+    },
+    {
+      "from": "V-VERIFY",
+      "to": "MUTATION"
+    },
+    {
+      "from": "I-AUDIO",
+      "to": "Offline scene parity ruling"
+    },
+    {
+      "from": "Preserved candidate review snapshot",
+      "to": "Preserved candidate blind review A"
+    },
+    {
+      "from": "Preserved candidate review snapshot",
+      "to": "Preserved candidate blind review B"
+    },
+    {
+      "from": "I-SIM",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "I-ART",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "I-AUDIO",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "I-INTEGRATION",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "Q2-ROUTE",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "Q2-LAYOUT",
+      "to": "Preserved candidate review snapshot"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "Preserved task evidence correction"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "Q2-AUDIO-EVIDENCE"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "Q2-AUDIO-EVIDENCE"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "Q2-LAYOUT"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "Q2-LAYOUT"
+    },
+    {
+      "from": "Preserved overhaul task decomposition",
+      "to": "Q2-ROUTE"
+    },
+    {
+      "from": "Independent evidence interface closure",
+      "to": "Q2-ROUTE"
+    },
+    {
+      "from": "V-VERIFY",
+      "to": "Q3-AUDIO"
+    },
+    {
+      "from": "V-VERIFY",
+      "to": "Q3-VISUAL"
+    },
+    {
+      "from": "Rev36 acceptance review snapshot",
+      "to": "Rev36 acceptance blind review A"
+    },
+    {
+      "from": "Rev36 acceptance review snapshot",
+      "to": "Rev36 acceptance blind review B"
+    },
+    {
+      "from": "V-GEOMETRY",
+      "to": "Rev36 acceptance review snapshot"
+    },
+    {
+      "from": "Level metadata compatibility repair",
+      "to": "Risk ledge placement reconciliation"
+    },
+    {
+      "from": "V-GEOMETRY",
+      "to": "Room music single-source repair"
+    },
+    {
+      "from": "Rev36 acceptance blind review A",
+      "to": "Route Q2 report repair"
+    },
+    {
+      "from": "Rev36 acceptance blind review B",
+      "to": "Route Q2 report repair"
+    },
+    {
+      "from": "Preserved candidate blind review A",
+      "to": "Startup and terrain correction"
+    },
+    {
+      "from": "Preserved candidate blind review B",
+      "to": "Startup and terrain correction"
+    },
+    {
+      "from": "V-TOOLING",
+      "to": "Tooling allowance accounting"
+    },
+    {
+      "from": "Geometry and landing repair",
+      "to": "V-GEOMETRY"
+    },
+    {
+      "from": "I-SIM",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "I-ART",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "I-AUDIO",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "I-INTEGRATION",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "Q2-ROUTE",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "Q2-LAYOUT",
+      "to": "V-PREFLIGHT"
+    },
+    {
+      "from": "Aligned risk ledge repair",
+      "to": "V-REPAIRED"
+    },
+    {
+      "from": "Audio acceptance test repair",
+      "to": "V-REPAIRED"
+    },
+    {
+      "from": "I-SIM",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "I-ART",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "I-AUDIO",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "I-INTEGRATION",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "Q2-ROUTE",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "Q2-LAYOUT",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "Q2-AUDIO-EVIDENCE",
+      "to": "V-STAGED"
+    },
+    {
+      "from": "Acceptance tooling repair",
+      "to": "V-TOOLING"
+    },
+    {
+      "from": "Live audio trace implementation",
+      "to": "V-TOOLING"
+    },
+    {
+      "from": "Audio Q2 runtime repair",
+      "to": "V-TOOLING"
+    },
+    {
+      "from": "Route Q2 report repair",
+      "to": "V-TOOLING"
+    },
+    {
+      "from": "V-TOOLING",
+      "to": "V-VERIFY"
+    }
+  ],
+  "activities": [
+    {
+      "activity_id": "tooling-budget-audit",
+      "node_kind": "orchestrator",
+      "state": "settled",
+      "outcome": "failed"
+    }
+  ]
+}

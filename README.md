@@ -80,6 +80,12 @@ helm install demo oci://ghcr.io/rou-cru/charts/takt-ai --namespace takt-workspac
 
 Values and prerequisites: [Helm chart](charts/takt-ai/README.md).
 
+> Managed per-human workspaces. Optional, for teams that already run Coder.
+
+Each person gets their own isolated Kubernetes workspace, provisioned and owned through their Coder account, and works from the terminal. Coder is optional: without it, the local install, the Docker image, and the Helm chart above work unchanged.
+
+Template deployment and terminal workflow: [Coder workspaces](deploy/coder/README.md).
+
 ## Usage
 
 Run `takt-ai` and choose **Install**. The TUI guides the rest.
