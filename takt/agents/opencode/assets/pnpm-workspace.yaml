@@ -1,0 +1,6 @@
+# Pins the transitive versions the plugin toolchain needs; pnpm 11 reads
+# overrides here, not from package.json.
+overrides:
+  "@babel/core": 7.29.6
+  seroval: 1.6.8
+  seroval-plugins: 1.6.8

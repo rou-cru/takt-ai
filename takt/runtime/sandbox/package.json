@@ -2,6 +2,11 @@
   "name": "@takt-ai/sandbox-adapter",
   "private": true,
   "type": "module",
-  "scripts": {"test": "node --test probe.test.mjs"},
-  "dependencies": {"@anthropic-ai/sandbox-runtime": "0.0.78"}
+  "scripts": {
+    "test": "node --test probe.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.78"
+  },
+  "packageManager": "pnpm@11.17.0"
 }

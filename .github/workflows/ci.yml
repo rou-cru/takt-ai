@@ -24,11 +24,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.17.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.21.0'
-          cache: npm
-          cache-dependency-path: takt/agents/opencode/assets/package-lock.json
+          cache: pnpm
+          cache-dependency-path: takt/agents/opencode/assets/pnpm-lock.yaml
       - name: Go format
         run: test -z "$(gofmt -l .)"
       - name: Build and vet
@@ -41,9 +44,9 @@ jobs:
           version: v2.14.0
       - name: Typecheck plugins
         run: |
-          npm ci --prefix takt/agents/opencode/assets --ignore-scripts
-          npm run --prefix takt/agents/opencode/assets typecheck
-          npm run --prefix takt/agents/opencode/assets lint
+          pnpm --dir takt/agents/opencode/assets install --frozen-lockfile --ignore-scripts
+          pnpm --dir takt/agents/opencode/assets run typecheck
+          pnpm --dir takt/agents/opencode/assets run lint
       - name: Validate shell and workflows
         run: |
           shellcheck -x development/testing/*.sh development/testing/e2e/setup_test.sh development/release/*.sh deploy/workspace/helm.sh
@@ -91,19 +94,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.17.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.21.0'
-          cache: npm
+          cache: pnpm
           cache-dependency-path: |
-            takt/agents/opencode/assets/package-lock.json
-            takt/runtime/sandbox/package-lock.json
+            takt/agents/opencode/assets/pnpm-lock.yaml
+            takt/runtime/sandbox/pnpm-lock.yaml
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
       - name: Plugin tests and LCOV
         run: |
-          npm ci --prefix takt/agents/opencode/assets --ignore-scripts
+          pnpm --dir takt/agents/opencode/assets install --frozen-lockfile --ignore-scripts
           cd takt/agents/opencode/assets
           bun test --coverage --coverage-reporter=lcov
           # Bun writes SF paths relative to this package; Sonar reads at repo root.
@@ -116,7 +122,7 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends bubblewrap socat ripgrep
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          npm ci --prefix takt/runtime/sandbox --ignore-scripts
+          pnpm --dir takt/runtime/sandbox install --frozen-lockfile --ignore-scripts
           node --test --experimental-test-coverage \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=coverage-js.lcov \
@@ -180,7 +186,7 @@ jobs:
           version: 3.97.9
           extra_args: --only-verified
 
-  # SBOM of the source tree (every Go module and npm lockfile), then a gate on
+  # SBOM of the source tree (every Go module and pnpm lockfile), then a gate on
   # high or critical vulnerabilities that already have a fix.
   sca:
     runs-on: ubuntu-latest
