@@ -1449,7 +1449,7 @@ export default Plugin.define({
           },
         })
 
-      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. A planned unit is executed by delegating it with the unit identity as the subagent description; delegating that name again retries the unit. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. Once a plan stands, change it by naming its current version as base_version: list only the units the revision adds or replaces, withdrawn units leave the plan, and units already delegated stand as committed.",
+      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. To change a standing plan, name its current version as base_version and list only the units the revision adds or replaces; withdrawn units leave the plan, and delegated units stand as committed.",
         "commit",
         obj({
           version: str("Identifier of this baseline version"),
@@ -1501,7 +1501,7 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. With author_key, continue existing work. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept and only added paths are checked for collisions; naming only part of the staged paths hands that part to the new unit under the returned author_key, and the rest stays with its work.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. To continue, retry, or correct staged work, pass its author_key with the new exact file set: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
@@ -1512,7 +1512,7 @@ export default Plugin.define({
         const unit = asString(args.work_unit_id, "").trim()
         return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "Use claim_list to get the exact claim_key. A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first and set confirmed true once they agree.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
+      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
         orchestratorOnly(c, "VFS claim release")
         // The core decides under its lock: staged work and an active claim of
@@ -1524,7 +1524,7 @@ export default Plugin.define({
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
       dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
-      dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins: a binary expected result, a prior recoverable point, explicit scope, and both budgets. The scope cannot overlap a recovery that is still open or abandoned and not restored. After repeated failed recoveries of the same objective, present evidence and alternatives to the user and await their decision.",
+      dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored.",
         "recovery",
         obj({
           objective: str("Identity of the objective being recovered"),
@@ -1537,7 +1537,7 @@ export default Plugin.define({
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close an open declared recovery: record whether its result was demonstrated and link the evidence. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
+      dispatch("dispatch_close_recovery", "Close an open declared recovery. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
@@ -1554,11 +1554,11 @@ export default Plugin.define({
         }, ["objective"]),
         (args: { objective: string }) => ({ objective: args.objective }))
 
-      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. A recovery or QA-strengthening bound needs the objective. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
+      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
         "exception",
         obj({
           event: str("Optional label for the record"),
-          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised, one of: ceiling/concurrent-specialists (concurrent delegations), budget/unplanned-units (units delegated without a committed plan), budget/contests, budget/recovery-failures, budget/recovery-actions, budget/recovery-attempts, budget/qa-strengthening-rounds" },
+          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised; ceiling/concurrent-specialists counts concurrent delegations, budget/unplanned-units counts units delegated without a committed plan" },
           objective: str("Stable objective the exception applies to; required for recovery and QA-strengthening bounds"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
         }, ["bound", "allowance"]),
@@ -1574,7 +1574,7 @@ export default Plugin.define({
 
       editor.add({
         name: "dispatch_abandon",
-        description: "End a delegation that will never return, because its session is gone or will not end: its unit can be delegated again and its slot is freed, and its staged work is kept. Name the dispatch exactly as it was reported. The user is asked to agree first.",
+        description: "End a delegation that will never return, because its session is gone or will not end: its unit can be delegated again and its slot is freed, and its staged work is kept. The user is asked to agree first.",
         input: obj({ dispatch: str("Dispatch identity of the delegation, as reported") }, ["dispatch"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ dispatch: string }>(value)
@@ -1612,7 +1612,7 @@ export default Plugin.define({
       // call it first and only proceed here after an accepted confirmation.
       editor.add({
         name: "dispatch_switch",
-        description: "Switch the active interlocutor role to another specialist for the rest of this conversation. Before calling this tool, invoke the native `question` tool to confirm the target specialist and objective with the user. Call this tool only after an accepted confirmation; on rejection or a freeform answer, do not call this tool — reevaluate instead.",
+        description: "Switch the active interlocutor role to another specialist for the rest of this conversation. First confirm the target specialist and objective with the user through the native `question` tool; call this only after an accepted confirmation (on rejection or a freeform answer, reevaluate).",
         input: obj({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
@@ -1673,7 +1673,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "dispatch_handoff",
-        description: "Hand the interlocutor role back to the base after a switch. Only the temporary holder that a switch created may call this. Before calling this tool, invoke the native `question` tool to confirm with the user what is being handed back (result, additional context, extra artifacts). Call this tool only after an accepted confirmation.",
+        description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. First confirm with the user, through the native `question` tool, what is handed back (result, additional context, extra artifacts); call this only after an accepted confirmation.",
         input: obj({
           result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
           additional_context: str("Context to carry back to the base"),

@@ -179,7 +179,7 @@ export default Plugin.define({
         name: "memory_record",
         description:
           "Record one memory entry for the work you just finished. " +
-          "Returns plain text `Recorded #<id>` (or `Already recorded #<id>`); `<id>` identifies the recorded artifact. " +
+          "Returns `Recorded #<id>` or `Already recorded #<id>`. " +
           CONTRACT,
         input: {
           type: "object",
@@ -245,8 +245,8 @@ export default Plugin.define({
         name: "memory_continue_session",
         description:
           "Declare the closed previous session this session's work continues, so the memory narrative stays unbroken. " +
-          "The link becomes permanent with this session's first new memory entry; until then a new call replaces the declaration " +
-          "and an empty id withdraws it. Only a closed session can be declared, from any workspace, and only before this session's first entry. " +
+          "The link becomes permanent with this session's first new memory entry; until then a new call replaces the declaration. " +
+          "Only a closed session can be declared, from any workspace, and only before this session's first entry. " +
           `Resuming previous work never depends on this link. ${CONTRACT}`,
         input: {
           type: "object",

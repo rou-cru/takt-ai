@@ -25,6 +25,11 @@ With an id, read that session's anchors. Without one, find candidates at the low
 3. A session with a start anchor and no closed anchor was interrupted. Its light
    reconstruction is its entry titles and its last entry: enough to ask, not to resume.
 
+Fetch in steps: search anchors with a small `limit`, judge from titles and dates, and stop
+at the first plausible candidate. To decide which session it was, present the candidate and
+ask instead of reading bodies. After confirmation, read one entry at a time, only when its
+title shows it is useful.
+
 Present the strongest candidate in one or two lines: objective, date, workspace, closed or
 interrupted.
 

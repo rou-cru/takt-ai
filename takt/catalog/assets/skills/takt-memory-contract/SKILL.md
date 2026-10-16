@@ -9,10 +9,8 @@ metadata:
 
 # Takt Memory Contract
 
-This is the only definition of memory rules for Takt agents. Your role skill
-(`~/.opencode/skills/takt-memory-<role>/SKILL.md`) says **what** your role records; this contract
-says what a good memory contains. Where any other memory guidance disagrees with this
-contract, this contract wins.
+This is the only definition of memory rules for Takt agents. Where any other memory guidance
+disagrees with this contract, this contract wins.
 
 ## 1. What a memory is
 
@@ -21,14 +19,10 @@ fact verified, a decision taken, a file created or changed, a problem found, a
 disagreement raised. It is written in **past or present tense** and is anchored to that
 event.
 
-Record what happened, what is true now, or the deliverable your specialty was assigned to
-produce. A specialist whose work is a plan, task breakdown, proposal, or design records
+Also record the deliverable your specialty was assigned to produce. A specialist whose work is a plan, task breakdown, proposal, or design records
 that deliverable. Do not add plans, predictions, or recommendations outside your assignment.
 A direct user order to remember something is recorded as that order ("The user asked to
 keep X"); set `user_order` only then.
-
-An idea that was explored but not adopted is a `proposal` in the past tense ("X was
-proposed as ..."), not a plan.
 
 A good entry has a short, searchable `title` that names what happened, and a `content`
 of a few sentences: what happened or is true, why, and the files or artifacts involved.
@@ -37,22 +31,20 @@ each complete artifact in one dedicated `project` entry, with no other result, p
 commentary mixed in. Aim for under roughly 400 lines and wrap
 `content` as prose paragraphs of no more than 500 words. Keep the whole entry under
 **45,000 bytes**; that limit alone decides a split. Genuinely distinct artifacts each get
-their own self-contained entry; never split an artifact for line count. If an artifact
+their own self-contained entry. If an artifact
 exceeds the byte limit, split it into ordered parts, each `supplements` the previous one.
 
-Consumers retrieve each entry directly by its ID; they do not search for it or reconstruct
-it. The Engram write must succeed before the result is delivered. A requested filesystem
+The Engram write must succeed before the result is delivered. A requested filesystem
 copy is a courtesy: produce it once, with the native edit tool, using the content already
 recorded in Engram. A failed courtesy copy does not invalidate the recorded entry. Present
 its ID through the assigned handoff operation, not through a phrase in your final answer.
-Its nature follows §2.
 
 ## 2. Natures
 
 | `nature` | Meaning |
 |---|---|
 | `proposal` | An option raised or explored and not adopted, with its tradeoff |
-| `decision` | A choice the user approved, with the approval as `evidence`. Any role may record it |
+| `decision` | A choice the user approved, with the approval as `evidence` |
 | `observation` | A result verified against evidence. `evidence` is mandatory: the file, command, test output, or entry `#id` that shows it |
 | `hypothesis` | An interpretation not verified, stated as such |
 
@@ -62,11 +54,8 @@ decision is its author; the authority is the user, and it goes in `evidence`.
 Orchestrator acceptance of an autonomous result permits downstream use; it does not
 turn that result into a user-approved `decision`.
 
-What an entry **is** and what it **governs today** are separate. Nature is
-fixed; currency follows the evolution links already recorded (§4): an entry another
-`supersedes` is superseded, one another `disputes` is in dispute. So an entry stops
-governing without being deleted, and recording a correction or a supersession promotes
-nothing — a `proposal` stays a `proposal`.
+Nature is fixed; currency follows the §4 links: an entry another `supersedes` is superseded,
+one another `disputes` is in dispute. Neither is deleted.
 
 ## 3. Scope and tiers
 
@@ -80,7 +69,7 @@ Memory has two canonical tiers, and the `scope` you choose picks one:
 - A global-tier entry carries nothing of the project: no code, no repository file paths,
   no workspace directory, no proprietary business logic. Read the global tier freely from
   project work; never write workspace artifacts into it.
-- When unsure, use `project`. Never copy project content into `personal`.
+- When unsure, use `project`.
 
 ## 4. Relations
 
@@ -105,7 +94,7 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
 
 Knowledge in another role's domain is still recorded by you when your work produced it.
 When unsure who usually writes it, `references/domain-writers.md` names the natural writer
-per domain — consulted only for that doubt, not on every entry.
+per domain.
 
 ## 5. When to record
 
@@ -116,16 +105,14 @@ per domain — consulted only for that doubt, not on every entry.
   is a `hypothesis` entry that `supplements` the previous draft, and the version the user
   accepts is a new entry that `supersedes` the last draft with that accept as `evidence`.
   Only the accepted entry reaches other agents; drafts stay in memory.
-- For invariant results, the complete-result rule in §1 takes precedence over concision:
-  autonomous delegates record before returning each result; specialists working directly
-  with the user or through a switch obtain any required approval before declaring a final
-  result. An orchestrator's autonomous acceptance is not user approval evidence.
+- For invariant results, the complete-result rule in §1 takes precedence over concision;
+  specialists working directly with the user or through a switch obtain any required
+  approval before declaring a final result.
 - A user preference or guidance noticed in dialogue is recorded only when the user
   expressed it; it usually belongs in `personal`. When it is unclear whether they meant it as
   lasting guidance, confirm before persisting it.
 - Record only what you would stand behind. A memory the user explicitly asked you to record is
-  captured even if brief or narrow in scope; the concision guidance above never becomes a
-  reason to skip a direct request.
+  always captured, however brief or narrow.
 
 ## 6. Never record
 
