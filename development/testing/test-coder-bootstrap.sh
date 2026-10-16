@@ -247,10 +247,10 @@ grep -Eiq 'repo' "$OUTPUT" || {
 
 # Environment values must never become shell program text.
 ready
-TAKT_REPOSITORY_URL='$(marker_injected)'
+TAKT_REPOSITORY_URL="\$(marker_injected)"
 export TAKT_REPOSITORY_URL
 expect_ok 'a repository hint containing a shell substitution is not executed' "$FIX_WORKSPACE" "$FIX_WORKSPACE"
-grep -Fq -- '$(marker_injected)' "$OUTPUT" || {
+grep -Fq -- "\$(marker_injected)" "$OUTPUT" || {
     cat "$OUTPUT"
     fail 'the repository hint must be printed as a literal, not interpolated into shell source'
 }

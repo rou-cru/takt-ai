@@ -41,14 +41,14 @@ fail() {
 
 require_writable_dir() {
 	local stage=$1 path=$2 label=$3
-	if [[ ! -d $path || ! -w $path ]]; then
+	if [[ ! -d $path || ! -w $path || ! -x $path ]]; then
 		fail "$stage" "$label is not a writable directory: $path"
 	fi
 }
 
 require_readable() {
 	local stage=$1 path=$2 label=$3
-	if [[ ! -r $path ]]; then
+	if [[ ! -r $path || ( -d $path && ! -x $path ) ]]; then
 		fail "$stage" "$label is missing or not readable: $path"
 	fi
 }

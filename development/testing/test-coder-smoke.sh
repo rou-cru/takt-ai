@@ -205,33 +205,33 @@ pass "started the isolated container '$NAME' (${CONTAINER_ID:0:12}, entrypoint /
 # Non-root runtime and baked installation visibility
 # --------------------------------------------------------------------------
 
-uid=$("$DOCKER" exec "$NAME" id -u || true)
-gid=$("$DOCKER" exec "$NAME" id -g || true)
+uid=$("$DOCKER" exec "$CONTAINER_ID" id -u || true)
+gid=$("$DOCKER" exec "$CONTAINER_ID" id -g || true)
 [[ "$uid" == "10001" ]] || fail "the runtime user must be UID 10001, got '$uid'"
 [[ "$gid" == "10001" ]] || fail "the runtime group must be GID 10001, got '$gid'"
-configured_user=$("$DOCKER" inspect --format '{{.Config.User}}' "$NAME")
+configured_user=$("$DOCKER" inspect --format '{{.Config.User}}' "$CONTAINER_ID")
 case "$configured_user" in
     ''|0|root) fail "the image must not run as root (Config.User='$configured_user')" ;;
 esac
 pass 'the container runs as UID/GID 10001 with a non-root image user'
 
 for tool in opencode takt-ai engram codegraph; do
-    "$DOCKER" exec "$NAME" bash -c "command -v $tool >/dev/null" ||
+    "$DOCKER" exec "$CONTAINER_ID" bash -c "command -v $tool >/dev/null" ||
         fail "the baked image must expose '$tool' on PATH for the runtime user"
 done
-"$DOCKER" exec "$NAME" test -r "$CONTAINER_HOME/.takt-installed-config.json" ||
+"$DOCKER" exec "$CONTAINER_ID" test -r "$CONTAINER_HOME/.takt-installed-config.json" ||
     fail 'the baked installation must leave a readable .takt-installed-config.json'
-"$DOCKER" exec "$NAME" test -d "$CONTAINER_HOME/.config/opencode" ||
+"$DOCKER" exec "$CONTAINER_ID" test -d "$CONTAINER_HOME/.config/opencode" ||
     fail 'the baked installation must leave a readable .config/opencode directory'
-"$DOCKER" exec "$NAME" test -d "$CONTAINER_HOME/.config/opencode/skills" ||
+"$DOCKER" exec "$CONTAINER_ID" test -d "$CONTAINER_HOME/.config/opencode/skills" ||
     fail 'the baked installation must leave the managed skills directory visible'
 pass 'baked OpenCode/Takt binaries, installed config and skills are visible to UID 10001'
 
-"$DOCKER" exec "$NAME" bash -c "echo takt-coder-smoke-marker > $WORKSPACE_DIR/coder-smoke-marker.txt" ||
+"$DOCKER" exec "$CONTAINER_ID" bash -c "echo takt-coder-smoke-marker > $WORKSPACE_DIR/coder-smoke-marker.txt" ||
     fail 'the runtime user must be able to write a marker into the workspace'
-marker=$("$DOCKER" exec "$NAME" cat "$WORKSPACE_DIR/coder-smoke-marker.txt")
+marker=$("$DOCKER" exec "$CONTAINER_ID" cat "$WORKSPACE_DIR/coder-smoke-marker.txt")
 [[ "$marker" == "takt-coder-smoke-marker" ]] || fail "the workspace marker did not round-trip (got '$marker')"
-marker_owner=$("$DOCKER" exec "$NAME" stat -c '%u' "$WORKSPACE_DIR/coder-smoke-marker.txt")
+marker_owner=$("$DOCKER" exec "$CONTAINER_ID" stat -c '%u' "$WORKSPACE_DIR/coder-smoke-marker.txt")
 [[ "$marker_owner" == "10001" ]] || fail "the workspace marker must be owned by UID 10001, got '$marker_owner'"
 pass 'the workspace is writable by the non-root runtime user'
 
@@ -247,7 +247,7 @@ pass 'the workspace is writable by the non-root runtime user'
 # script because the script's contract uses bash expansions and set -o pipefail.
 
 DIAGNOSTIC_OUT="$TMP/diagnostic.log"
-if "$DOCKER" exec -i -e "TAKT_WORKSPACE_DIR=$WORKSPACE_DIR" "$NAME" /bin/bash -s < "$DIAGNOSTIC" > "$DIAGNOSTIC_OUT" 2>&1; then
+if "$DOCKER" exec -i -e "TAKT_WORKSPACE_DIR=$WORKSPACE_DIR" "$CONTAINER_ID" /bin/bash -s < "$DIAGNOSTIC" > "$DIAGNOSTIC_OUT" 2>&1; then
     cat "$DIAGNOSTIC_OUT"
     pass 'the production bootstrap diagnostic exits 0 inside the image'
 else
@@ -266,7 +266,7 @@ LOG_FILE="$WORKSPACE_DIR/smoke-entrypoint.log"
     -e "OPENCODE_PASSWORD=$password" \
     -e "TAKT_OPENCODE_PORT=$SERVER_PORT" \
     -e "TAKT_WORKSPACE_DIR=$WORKSPACE_DIR" \
-    "$NAME" /bin/bash -c "exec $ENTRYPOINT > $LOG_FILE 2>&1"
+    "$CONTAINER_ID" /bin/bash -c "exec $ENTRYPOINT > $LOG_FILE 2>&1"
 pass 'started the unmodified workspace-entrypoint with a synthetic test-only password'
 
 mapping_count=0
@@ -277,9 +277,9 @@ while read -r mapping; do
         127.0.0.1:*) ;;
         *) fail "the HTTP mapping must be loopback-only, got '$mapping'" ;;
     esac
-done < <("$DOCKER" port "$NAME" "$SERVER_PORT")
+done < <("$DOCKER" port "$CONTAINER_ID" "$SERVER_PORT")
 [[ "$mapping_count" -ge 1 ]] || fail 'the HTTP port was not published'
-HOST_PORT=$("$DOCKER" port "$NAME" "$SERVER_PORT" | head -n 1 | sed 's/.*://')
+HOST_PORT=$("$DOCKER" port "$CONTAINER_ID" "$SERVER_PORT" | head -n 1 | sed 's/.*://')
 [[ -n "$HOST_PORT" ]] || fail 'could not resolve the published loopback port'
 pass "the HTTP server is published on loopback only (127.0.0.1:$HOST_PORT)"
 
@@ -297,7 +297,7 @@ pass "the authenticated /api/info endpoint answered 200 within ${API_POLL_SECOND
 log_text=''
 session_deadline=$((SECONDS + SESSION_POLL_SECONDS))
 while [[ "$SECONDS" -lt "$session_deadline" ]]; do
-    log_text=$("$DOCKER" exec "$NAME" cat "$LOG_FILE" 2>/dev/null || true)
+    log_text=$("$DOCKER" exec "$CONTAINER_ID" cat "$LOG_FILE" 2>/dev/null || true)
     if grep -Fq 'workspace bootstrap:' <<<"$log_text"; then
         break
     fi
@@ -330,8 +330,11 @@ pass 'the authenticated API corroborates the default session for the workspace'
 if [[ "$TUI" -eq 1 ]]; then
     if [[ -t 0 && -t 1 ]]; then
         echo '==> TUI check: launching "docker exec -it <name> opencode"; exit it when you have seen the interface'
-        "$DOCKER" exec -it "$NAME" opencode || true
-        pass 'the interactive TUI check ran in this terminal (rendering is observed by the operator, not asserted here)'
+        if "$DOCKER" exec -it "$CONTAINER_ID" opencode; then
+            pass 'the interactive TUI check ran in this terminal (rendering is observed by the operator, not asserted here)'
+        else
+            echo "TUI rendering: NOT VERIFIED (opencode exited with status $?)"
+        fi
     else
         echo 'TUI rendering: NOT VERIFIABLE here (no controlling terminal). Run in a terminal:'
         echo "  docker exec -it $NAME opencode"
@@ -345,9 +348,9 @@ echo 'connectivity, Kubernetes scheduling and storage, terminal transport, multi
 echo 'isolation, and live memory-tool behaviour.'
 
 if [[ "$CLEANUP" -eq 1 ]]; then
-    current=$("$DOCKER" inspect --format '{{.Name}}' "$NAME" || true)
-    [[ "$current" == "/$NAME" ]] || fail "refusing cleanup: '$NAME' does not resolve to this run's container"
-    "$DOCKER" rm -f "$NAME" >/dev/null
+    current=$("$DOCKER" inspect --format '{{.Id}}' "$CONTAINER_ID" || true)
+    [[ "$current" == "$CONTAINER_ID" ]] || fail "refusing cleanup: '$NAME' ($CONTAINER_ID) is no longer this run's container"
+    "$DOCKER" rm -f "$CONTAINER_ID" >/dev/null
     pass "removed only the container '$NAME'; the image '$IMAGE' was not removed, pruned or rebuilt, and no volume was pruned"
 else
     echo "The container '$NAME' is kept for inspection. Remove it with:"
