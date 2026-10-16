@@ -7,6 +7,8 @@ import { Schema } from "effect"
 import vfsPlugin from "./takt-vfs"
 import { historyFixture, type FixtureExecution } from "../testdata/history-fixture.mjs"
 
+const contracts = JSON.parse(readFileSync(new URL("../testdata/contracts.json", import.meta.url), "utf8"))
+
 // The placeholders the harness templates at deploy time stay literal here, so
 // the identities below are the exact strings the plugin compares against.
 const ORCHESTRATOR = "__TAKT_ORCHESTRATOR_ID__"
@@ -24,6 +26,8 @@ const REMOVED_FIELDS = ["expected_revision", "delta_hash", "verifier_key", "view
 // CLAIM_COMMANDS name an assignment's target with agent_id and specialist.
 const CLAIM_COMMANDS = ["assign"]
 const BROKEN_AGENT = "broken-agent"
+// OVER_HOST_OUTPUT_CAP is a staged file length past any tool-output cap the host applies.
+const OVER_HOST_OUTPUT_CAP = 100_000
 const WORKSPACE = "/workspace"
 const SHELL_NOT_ADMITTED = 122
 const SETTLE_ATTEMPTS = 100
@@ -32,7 +36,7 @@ const QUIET_MS = 25
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 type Reply = { out?: string; err?: string; code?: number }
-type Call = { kind: string; command: string; request: Record<string, unknown> }
+type Call = { kind: string; command: string; request: Record<string, unknown>; argv: string[]; options: Record<string, unknown> }
 type HookEvent = Record<string, unknown>
 type Hooks = Map<string, Array<(event: HookEvent) => Promise<void>>>
 type Ctx = { sessionID: string; agent: string; id?: string }
@@ -144,13 +148,13 @@ async function startVfs(options: Options = {}) {
   }
   console.warn = (...args: unknown[]) => { warnings.push(args) }
   console.error = (...args: unknown[]) => { errors.push(args) }
-  runtime.Bun.spawn = ((argv: string[]) => {
+  runtime.Bun.spawn = ((argv: string[], spawnOptions: Record<string, unknown> = {}) => {
     const kind = argv[1]
     let request: Record<string, unknown> = kind === "dispatch" ? JSON.parse(argv[7]) : kind === "gc" ? JSON.parse(argv[8]) : {}
     let settled: Reply | undefined
     const settle = () => {
       if (!settled) {
-        const call = { kind, command: kind === "dispatch" || kind === "gc" ? String(request.action) : argv[2], request }
+        const call = { kind, command: kind === "dispatch" || kind === "gc" ? String(request.action) : argv[2], request, argv, options: spawnOptions }
         calls.push(call)
         let custom=options.respond?.(call)
         if (!custom && kind==="vfs" && call.command==="assign" && !history.inputs.has(`${request.session_id}\0${request.work_unit_id}`))custom={code:1,err:"inputs absent; call dispatch_inputs before claim_assign"}
@@ -234,11 +238,13 @@ async function startVfs(options: Options = {}) {
     calls, log, warnings, errors, storage, reads, writes, nativeSubagent, history,
     callStatus: (dispatch:string,status:"completed"|"error"|"running")=>nativeCalls.set(dispatch,status),
     actions: (kind: string) => calls.filter((call) => call.kind === kind).map((call) => call.command),
+    // schema is the input schema a registered tool advertises to the host.
+    schema: (name: string) => (tools.get(name) as { input?: { properties?: Record<string, Record<string, unknown>> } } | undefined)?.input,
     requests: (kind: string, command: string) => calls.filter((call) => call.kind === kind && call.command === command).map((call) => call.request),
     run(name: string, input: unknown, ctx: Ctx = dev) {
       const execute = tools.get(name)?.execute
       if (!execute) throw new Error(`missing tool ${name}`)
-      return (execute as unknown as (value: unknown, context: Ctx) => Promise<{ content: string }>)(input, ctx)
+      return (execute as unknown as (value: unknown, context: Ctx) => Promise<{ content: string; metadata?: Record<string, unknown> }>)(input, ctx)
     },
     // fire runs every hook registered under name in order, as the host does.
     fire: (hooks: Hooks, name: string, event: HookEvent) => {
@@ -1273,6 +1279,57 @@ describe("claims and consolidation", () => {
       ])
       expect(vfs.requests("vfs", "op")[0]).not.toHaveProperty("author_key")
     } finally { await vfs.stop() }
+  })
+
+  test("a staged read is handed over whole, outside the host's tool-output cap", async () => {
+    const reviewer: Ctx = { sessionID: "verify-child", agent: "verify" }
+    const big = "x".repeat(OVER_HOST_OUTPUT_CAP)
+    const vfs = await startVfs({
+      sessions: { "verify-child": { parentID: "root", title: "gate" } },
+      respond: (call) => call.command === "op" ? json({ ok: true, revision: 1, delta_hash: "h1", content: big }) : undefined,
+    })
+    try {
+      const read = await vfs.run("vfs_read", { path: "big.js" }, reviewer)
+      expect(read.content).toBe(big)
+      expect(read.metadata).toEqual({ truncated: false })
+    } finally { await vfs.stop() }
+  })
+
+  describe("vfs_inspect", () => {
+    const analyst: Ctx = { sessionID: "analyst-child", agent: "analyst" }
+    const sessions = { "analyst-child": { parentID: "root", title: "inspect" } }
+
+    test("forwards its filters and page to the offline CLI without stdin", async () => {
+      const vfs = await startVfs({ sessions, respond: (call) => call.kind === "vfs" && call.command === "history" ? { out: "page" } : undefined })
+      try {
+        const page = await vfs.run("vfs_inspect", { source: "history", session: "root", unit: "unit-a", after: 3, limit: 10 }, analyst)
+        expect(page.content).toBe("page")
+        const [call] = vfs.calls.filter((c) => c.kind === "vfs" && c.command === "history")
+        expect(call.argv.slice(3)).toEqual(["--workspace", WORKSPACE, "--state", expect.any(String), "--session", "root", "--unit", "unit-a", "--after", "3", "--limit", "10"])
+        expect(call.options).toMatchObject({ stdin: "ignore" })
+      } finally { await vfs.stop() }
+    })
+
+    test("refuses a source that is neither journal nor history", async () => {
+      const vfs = await startVfs({ sessions })
+      try {
+        await expect(vfs.run("vfs_inspect", { source: "events" }, analyst)).rejects.toThrow("source must be journal or history")
+      } finally { await vfs.stop() }
+    })
+
+    test("relays the CLI refusal with its exit code", async () => {
+      const vfs = await startVfs({ sessions, respond: (call) => call.kind === "vfs" && call.command === "journal" ? { code: 2, err: "vfs: --limit between 1 and 500" } : undefined })
+      try {
+        await expect(vfs.run("vfs_inspect", { source: "journal", limit: 0 }, analyst)).rejects.toThrow("takt-ai vfs journal exited 2: vfs: --limit between 1 and 500")
+      } finally { await vfs.stop() }
+    })
+
+    test("advertises the page bound the core serves", async () => {
+      const vfs = await startVfs({ sessions })
+      try {
+        expect(vfs.schema("vfs_inspect")?.properties?.limit).toMatchObject({ minimum: 1, maximum: contracts.inspect_page_limit })
+      } finally { await vfs.stop() }
+    })
   })
 
   test("a verdict the core refuses reaches the verifier unchanged", async () => {

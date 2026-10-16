@@ -532,54 +532,50 @@ func (f *FS) revokeLocked(key AgentID) error {
 
 // ReassignScope gives the work of an existing author key a new exact scope for
 // the target's next adoption, keeping the staged delta, and hands it to the unit, agent and
-// specialist the request names. The delta's own paths must stay in
-// the scope; only the added paths are checked for collisions, and the paths that
-// leave it were never written. The verdict, bound to the old revision, is cleared.
-func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error) {
+// specialist the request names. A scope that leaves out some of the delta's
+// staged paths hands over only the paths it names, under a new key it returns;
+// the rest stays with its work. Only the added paths are checked for collisions,
+// and the paths that leave it were never written. The verdict, bound to the old
+// revision, is cleared.
+func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next AgentID, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
-		return err
+		return "", err
 	}
 	defer f.finishLocked(&err)
 	// The key locates the staged work; whoever the request names takes it over.
 	held, ok := f.bindings[key]
 	if !ok || held.GateAuthorKey != "" {
-		return fmt.Errorf("%w: %q is not an author key", ErrIdentity, key)
+		return "", fmt.Errorf("%w: %q is not an author key", ErrIdentity, key)
 	}
 	role, err := SpecialistRole(identity.Specialist)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(scope) == 0 {
-		return fmt.Errorf("%w: the new scope names at least one path", ErrIdentity)
+		return "", fmt.Errorf("%w: the new scope names at least one path", ErrIdentity)
 	}
 	if err := f.guardInspectionClaimLocked(identity, key, scope); err != nil {
-		return err
-	}
-	var staged []string
-	if existing := f.staged[key]; existing != nil {
-		staged = slices.Sorted(maps.Keys(existing.files))
-	}
-	for _, path := range staged {
-		if !slices.Contains(scope, path) {
-			return fmt.Errorf("%w: the new scope must keep staged path %q", ErrScopeDenied, path)
-		}
+		return "", err
 	}
 	owned := f.ownedScopeLocked(key)
 	added := slices.DeleteFunc(slices.Clone(scope), func(path string) bool { return slices.Contains(owned, path) })
+	if d := f.staged[key]; d != nil && slices.ContainsFunc(slices.Collect(maps.Keys(d.files)), func(path string) bool { return !slices.Contains(scope, path) }) {
+		return f.handOverLocked(identity, key, scope, added)
+	}
 	bases := make(map[string]baseFile, len(added))
 	for _, path := range added {
 		if bases[path], err = f.physical(path); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if err = f.checkClaimScope(identity, added); err != nil {
-		return err
+		return "", err
 	}
 	hash, err := f.invariantsVersionLocked(identity.Invariants)
 	if err != nil {
-		return err
+		return "", err
 	}
 	d := f.ensureDelta(key)
 	held.SessionID, held.WorkUnitID, held.AgentID, held.Specialist, held.Role = identity.SessionID, identity.WorkUnitID, identity.AgentID, identity.Specialist, role
@@ -598,7 +594,42 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err 
 	}
 	maps.Copy(d.bases, bases)
 	d.verdicts = nil
-	return nil
+	return key, nil
+}
+
+// handOverLocked claims scope for identity under a new key, moving the paths
+// it names of key's work there with their staged content and base. The paths
+// it leaves out stay with key; a verdict over key no longer matches its delta.
+func (f *FS) handOverLocked(identity Identity, key AgentID, scope, added []string) (AgentID, error) {
+	if err := f.checkClaimScope(identity, added); err != nil {
+		return "", err
+	}
+	// Like any assignment, the claim awaits adoption by its target.
+	identity.AttemptID, identity.HostSession, identity.Prelaunch = "", "", true
+	identity, err := f.bindableIdentity(identity, scope)
+	if err != nil {
+		return "", err
+	}
+	next, err := f.claimLocked(identity, added)
+	if err != nil {
+		return "", err
+	}
+	from, to := f.ensureDelta(key), f.ensureDelta(next)
+	for _, path := range scope {
+		if f.owners[path] != key {
+			continue
+		}
+		if content, staged := from.files[path]; staged {
+			to.files[path] = content
+			delete(from.files, path)
+		}
+		if base, captured := from.bases[path]; captured {
+			to.bases[path] = base
+			delete(from.bases, path)
+		}
+		f.owners[path] = next
+	}
+	return next, nil
 }
 
 func (f *FS) checkClaimScope(identity Identity, scope []string) error {

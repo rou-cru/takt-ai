@@ -279,6 +279,26 @@ func TestRenderConfigRejectsDuplicateAgentID(t *testing.T) {
 	}
 }
 
+// TestRenderConfigGrantsInspectionOnlyToDeclaredInstances checks that the
+// read-only journal and history tool is allowed exactly where the grant names it.
+func TestRenderConfigGrantsInspectionOnlyToDeclaredInstances(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: "analyst", Description: "Analyst", Mode: "subagent", System: "p", Role: model.RolePlanningAuthor, VFSCapabilities: vfsCaps(model.VFSCapabilityInspect)},
+			{ID: "pm", Description: "PM", Mode: "all", System: "p", Role: model.RoleDirectInterlocutor, VFSCapabilities: vfsCaps()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := decodeConfig(t, artifact.Content)
+	for id, want := range map[string]string{"analyst": "allow", "pm": "deny"} {
+		if got := effectOf(config.Agents[id].Permissions, "vfs_inspect", "*"); got != want {
+			t.Errorf("%s vfs_inspect = %q, want %q", id, got, want)
+		}
+	}
+}
+
 // TestRenderConfigProjectsExplicitVFSGrants checks that each role receives exactly the
 // VFS tool permissions its explicit capability grant names, and no specialist drives
 // the VFS CLI through the shell.

@@ -14,6 +14,7 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 - [func InjectMCPServer\(path, name string, command \[\]string\) \(model.InjectionResult, error\)](<#InjectMCPServer>)
 - [func InjectMarkdownSection\(existing, sectionID, content string\) string](<#InjectMarkdownSection>)
 - [func MergeJSONObjects\(baseJSON, overlayJSON \[\]byte\) \(\[\]byte, error\)](<#MergeJSONObjects>)
+- [func NormalizeJSON\(raw \[\]byte\) \[\]byte](<#NormalizeJSON>)
 - [func ReadFileOrEmpty\(path string\) \(string, error\)](<#ReadFileOrEmpty>)
 - [func RemoveJSONKey\(path string, key string, parents ...string\) \(bool, error\)](<#RemoveJSONKey>)
 - [func RemoveMCPServer\(path, name string\) \(model.InjectionResult, error\)](<#RemoveMCPServer>)
@@ -71,6 +72,15 @@ func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error)
 ```
 
 MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on conflicts; a malformed base is treated as an empty object.
+
+<a name="NormalizeJSON"></a>
+## func NormalizeJSON
+
+```go
+func NormalizeJSON(raw []byte) []byte
+```
+
+NormalizeJSON strips comments and trailing commas, so a user\-edited JSONC file parses with encoding/json.
 
 <a name="ReadFileOrEmpty"></a>
 ## func ReadFileOrEmpty

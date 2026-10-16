@@ -11,8 +11,8 @@ FROM node:24-bookworm-slim
 # Takt requires the OpenCode v2 API (`opencode api`), which is not published to
 # npm; install the same pinned release, through the same checksum-verified
 # installer, as deploy/images/Dockerfile. Keep both pins in sync.
-ARG OPENCODE_VERSION=2.0.20
-ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
+ARG OPENCODE_VERSION=2.0.28
+ARG OPENCODE_INSTALL_SHA256=6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl jq && \
     rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/bash runner

@@ -116,7 +116,7 @@
       "from": "takt",
       "to": "fix",
       "y": 272,
-      "label": "delegate: findings verbatim",
+      "label": "delegate: one localized finding",
       "variant": "emphasis"
     },
     {
@@ -140,7 +140,7 @@
       "from": "fix",
       "to": "memory",
       "y": 356,
-      "label": "memory_record: root cause",
+      "label": "memory_record: resolution",
       "variant": "dashed"
     },
     {
@@ -148,7 +148,7 @@
       "from": "fix",
       "to": "takt",
       "y": 384,
-      "label": "author key, cause, evidence",
+      "label": "author key, resolution evidence",
       "variant": "return"
     },
     {
@@ -214,7 +214,7 @@
       "title": "Loop",
       "items": [
         "A failing verdict leaves the staged work untouched",
-        "takt-fix starts from the verdict and runs nothing on staged work",
+        "Each localized finding gets its own takt-fix, which runs nothing on staged work",
         "takt takes each returned delivery where the plan sends it before delegating more"
       ]
     },

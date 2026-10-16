@@ -10,7 +10,7 @@
 | Interaction and UX | product designer |
 | Adopted sequencing and dependency choices | tpm |
 | Non-obvious implementation facts | dev |
-| Defect root causes | fix |
-| Verified acceptance results | verify |
+| Resolved defects | fix |
+| Verified acceptance results and the defects they localize | verify |
 | Review findings that contradict memory | judges |
 | Session objective and state | orchestrator |

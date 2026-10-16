@@ -91,7 +91,7 @@ func TestInspectionOwnershipIsSerializedThroughCompletion(t *testing.T) {
 	if _, err := f.AssignScope(ident("dev", "new-unit", "dev"), []string{"new.go"}); err == nil || !strings.Contains(err.Error(), "retry claim_assign") {
 		t.Fatalf("conflicting claim not deferred: %v", err)
 	}
-	if err := f.ReassignScope(other, key, []string{"impl.go", "new.go"}); err == nil {
+	if _, err := f.ReassignScope(other, key, []string{"impl.go", "new.go"}); err == nil {
 		t.Fatal("reassignment introduced an exposed claim")
 	}
 	if err := f.ReleaseClaim(testSession, key, false); err != nil {

@@ -37,8 +37,6 @@ pnpm --dir takt/agents/opencode/assets run typecheck
 pnpm --dir takt/agents/opencode/assets run lint
 ```
 
-Existing CI commands and lockfiles do not change this development convention; migrate those only when explicitly requested.
-
 ## Coding style & naming conventions
 
 Follow [CONTRIBUTING.md](CONTRIBUTING.md) and [DOCTRINE.md](product/governance/DOCTRINE.md). The rules below summarize those sources; product requirements govern required behavior, while the doctrine governs implementation structure.

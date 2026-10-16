@@ -1,6 +1,6 @@
 context:
   operations: OPERATIONS.md
-description: Confirm defect causality and repair only the authorized defect scope.
+description: Repair one already-localized problem, or one identical mechanical pattern across its occurrences, and ensure it is resolved.
 id: takt-fix
 label: fix
 group: building

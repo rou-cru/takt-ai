@@ -69,7 +69,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) PrepareMaintenance\(author, verifier Identity, scope \[\]string\) \(authorKey, verifierKey AgentID, err error\)](<#FS.PrepareMaintenance>)
   - [func \(f \*FS\) PrepareShell\(c Caller, callID, command, stateDir string, hostCallID ...string\) \(plan ShellPlan, err error\)](<#FS.PrepareShell>)
   - [func \(f \*FS\) PreserveInterruptedCycle\(cycle, state string, a RepairApproval\) \(err error\)](<#FS.PreserveInterruptedCycle>)
-  - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(err error\)](<#FS.ReassignScope>)
+  - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(next AgentID, err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
   - [func \(f \*FS\) RecoveryRepair\(\) \(\*Repair, error\)](<#FS.RecoveryRepair>)
   - [func \(f \*FS\) ReleaseClaim\(session string, key AgentID, confirmed bool\) \(err error\)](<#FS.ReleaseClaim>)
@@ -88,6 +88,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type Identity](<#Identity>)
 - [type InvariantSet](<#InvariantSet>)
 - [type JournalEntry](<#JournalEntry>)
+  - [func ReadJournal\(stateDir, sessionID, unitID string, after, limit int\) \(\_ \[\]JournalEntry, err error\)](<#ReadJournal>)
   - [func \(e JournalEntry\) Ref\(\) string](<#JournalEntry.Ref>)
 - [type NativeInspectionCall](<#NativeInspectionCall>)
 - [type Operation](<#Operation>)
@@ -121,7 +122,7 @@ const (
 <a name="MaxJournalPageSize"></a>MaxJournalPageSize bounds the number of entries JournalPage returns.
 
 ```go
-const MaxJournalPageSize = 500
+const MaxJournalPageSize = history.MaxPageSize
 ```
 
 <a name="OrchestratorInstance"></a>OrchestratorInstance is the catalog instance of the trusted coordinator, the only one whose grants authorize claims, discard and consolidation.
@@ -813,10 +814,10 @@ PreserveInterruptedCycle records the approved closure before releasing any owner
 ### func \(\*FS\) ReassignScope
 
 ```go
-func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (err error)
+func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next AgentID, err error)
 ```
 
-ReassignScope gives the work of an existing author key a new exact scope for the target's next adoption, keeping the staged delta, and hands it to the unit, agent and specialist the request names. The delta's own paths must stay in the scope; only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
+ReassignScope gives the work of an existing author key a new exact scope for the target's next adoption, keeping the staged delta, and hands it to the unit, agent and specialist the request names. A scope that leaves out some of the delta's staged paths hands over only the paths it names, under a new key it returns; the rest stays with its work. Only the added paths are checked for collisions, and the paths that leave it were never written. The verdict, bound to the old revision, is cleared.
 
 <a name="FS.Recover"></a>
 ### func \(\*FS\) Recover
@@ -1061,6 +1062,15 @@ type JournalEntry struct {
     ReeditOfMandateClass string `json:"reedit_of_mandate_class,omitempty"`
 }
 ```
+
+<a name="ReadJournal"></a>
+### func ReadJournal
+
+```go
+func ReadJournal(stateDir, sessionID, unitID string, after, limit int) (_ []JournalEntry, err error)
+```
+
+ReadJournal pages the recorded journal read\-only, without taking the workspace lock or creating a store, so a reader never blocks or writes. An absent store has no entries; a malformed existing journal is an error.
 
 <a name="JournalEntry.Ref"></a>
 ### func \(JournalEntry\) Ref

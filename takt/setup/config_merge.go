@@ -84,6 +84,139 @@ func carryInjectedMCPServers(rootDir string, artifact Artifact) (Artifact, error
 	return artifact, nil
 }
 
+// patchAgentModels returns existing with only the model of each listed agent
+// replaced by the one in rendered (or removed when rendered carries none).
+// Every other value in existing is kept, so a reassignment never discards what
+// the user added; the file is re-encoded, so its comments and key order are
+// not preserved (the caller backs the edited bytes up first). Comments and
+// trailing commas in existing parse as in MergeJSONObjects. It fails, leaving the caller
+// to keep the file as is, when either side is not a JSON object or an agent is
+// missing from existing or null.
+func patchAgentModels(existing, rendered []byte, ids []string) ([]byte, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(filemerge.NormalizeJSON(existing), &top); err != nil {
+		return nil, fmt.Errorf("parse existing config: %w", err)
+	}
+	disk, err := agentEntries(top)
+	if err != nil {
+		return nil, fmt.Errorf("existing config: %w", err)
+	}
+	var renderedTop map[string]json.RawMessage
+	if err := json.Unmarshal(rendered, &renderedTop); err != nil {
+		return nil, fmt.Errorf("parse rendered config: %w", err)
+	}
+	fresh, err := agentEntries(renderedTop)
+	if err != nil {
+		return nil, fmt.Errorf("rendered config: %w", err)
+	}
+	for _, id := range ids {
+		agent, ok := disk[id]
+		if !ok || agent == nil {
+			return nil, fmt.Errorf("agent %q is not an object in the existing config", id)
+		}
+		if value, ok := fresh[id]["model"]; ok {
+			agent["model"] = value
+		} else {
+			delete(agent, "model")
+		}
+	}
+	agents, err := json.Marshal(disk)
+	if err != nil {
+		return nil, fmt.Errorf("encode agents: %w", err)
+	}
+	top["agents"] = agents
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false) // keep user strings byte-faithful
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(top); err != nil {
+		return nil, fmt.Errorf("encode config: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+// agentEntries decodes the "agents" object of a config into per-agent raw fields.
+func agentEntries(top map[string]json.RawMessage) (map[string]map[string]json.RawMessage, error) {
+	raw, ok := top["agents"]
+	if !ok {
+		return nil, errors.New(`no "agents" object`)
+	}
+	var agents map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &agents); err != nil {
+		return nil, fmt.Errorf(`parse "agents": %w`, err)
+	}
+	return agents, nil
+}
+
+// configPatch is a reassignment applied surgically to a config the user edited.
+type configPatch struct {
+	path    string
+	mode    os.FileMode
+	current []byte
+	content []byte
+}
+
+// planEditedConfigPatch returns the surgical patch for the managed OpenCode
+// config when it no longer matches what Takt last deployed (the user edited
+// it), or nil when the normal redeploy is safe: the file is untouched, missing
+// or unmanaged. It reads only, so a failure aborts before anything is applied.
+func planEditedConfigPatch(rootDir string, after []TargetPlan, changed map[string]bool, ids []string) (*configPatch, error) {
+	path := opencode.ConfigPath()
+	if !changed[path] {
+		return nil, nil
+	}
+	manifest, err := loadOrCreateManifest(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	entry, managed := manifest.Entries[path]
+	if !managed {
+		return nil, nil
+	}
+	full := filepath.Join(rootDir, filepath.FromSlash(path))
+	current, err := os.ReadFile(full)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read existing config %q: %w", path, err)
+	}
+	if hashOf(current) == entry.SHA256 {
+		return nil, nil
+	}
+	var rendered []byte
+	for _, plan := range after {
+		for _, artifact := range plan.Artifacts {
+			if artifact.Path == path {
+				rendered = artifact.Content
+			}
+		}
+	}
+	if rendered == nil {
+		return nil, fmt.Errorf("reassign models in edited %q: the deployment renders no such file", path)
+	}
+	content, err := patchAgentModels(current, rendered, ids)
+	if err != nil {
+		return nil, fmt.Errorf("reassign models in edited %q (file left untouched): %w", path, err)
+	}
+	info, err := os.Stat(full)
+	if err != nil {
+		return nil, fmt.Errorf("inspect existing config %q: %w", path, err)
+	}
+	return &configPatch{path: path, mode: info.Mode().Perm(), current: current, content: content}, nil
+}
+
+// apply backs up the edited bytes and writes the patch atomically. The
+// ownership entry is left alone so the file stays flagged as user-edited for
+// install, sync and any other flow that must ask before replacing it.
+func (p *configPatch) apply(rootDir string) error {
+	if _, err := backupContent(rootDir, p.path, p.current); err != nil {
+		return err
+	}
+	_, err := filemerge.WriteFileAtomic(filepath.Join(rootDir, filepath.FromSlash(p.path)), p.content, p.mode)
+	return err
+}
+
 // mergePreexistingConfig returns artifact with its content merged over an
 // existing unmanaged file beneath rootDir, or unchanged when there is nothing
 // to merge.

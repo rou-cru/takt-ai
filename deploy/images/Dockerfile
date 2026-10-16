@@ -50,7 +50,7 @@ COPY --from=builder /out/tools/ /usr/local/bin/
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep tar tzdata unzip; \
+      bubblewrap ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep socat tar tzdata unzip; \
     # Register the NodeSource apt repo via NodeSource's own documented
     # manual steps (GPG-signed key + apt source) instead of piping their
     # setup script to bash: apt then verifies every nodejs package signature
@@ -118,13 +118,13 @@ LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
       org.opencontainers.image.title="takt-ai" \
       org.opencontainers.image.description="Prepared Takt AI + OpenCode v2 workspace runtime"
 # Pinned to OpenCode 2.x on purpose; never "latest".
-ARG OPENCODE_VERSION=2.0.20
+ARG OPENCODE_VERSION=2.0.28
 # SHA-256 of https://opencode.ai/v2/install. The installer endpoint is shared
 # across all CLI versions and carries no vendor-published checksum of its own,
 # so this pin substitutes one and the build verifies it before ever executing
 # the script (docker:S8482). When OpenCode legitimately updates the installer,
 # this check fails closed: re-download, review the diff, refresh the pin.
-ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
+ARG OPENCODE_INSTALL_SHA256=6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865
 ENV PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:${PATH}"
 RUN useradd --create-home --uid 10001 --shell /bin/bash takt; \
     install -d -o takt -g takt \
@@ -177,8 +177,8 @@ LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
       org.opencontainers.image.vendor="Takt AI Contributors" \
       org.opencontainers.image.title="takt-ai (dev)" \
       org.opencontainers.image.description="Takt AI + OpenCode v2, ready for interactive Go/TS/Python work"
-ARG OPENCODE_VERSION=2.0.20
-ARG OPENCODE_INSTALL_SHA256=bc70dd317fd12ef09350cdb1667e55e19f9e7b3d2897d3a1b750b165ae579d87
+ARG OPENCODE_VERSION=2.0.28
+ARG OPENCODE_INSTALL_SHA256=6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865
 ARG DEV_UID=1000
 ARG DEV_GID=1000
 ENV PATH="/usr/local/go/bin:/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"

@@ -29,6 +29,8 @@ export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: strin
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 5
+// INSPECT_PAGE_LIMIT is the largest page takt-ai vfs journal and history serve.
+const INSPECT_PAGE_LIMIT = 500
 
 async function sameDirectory(left: string, right: string): Promise<boolean> {
   // canonical resolves symlinks, falling back to the plain path when it cannot.
@@ -342,7 +344,7 @@ export default Plugin.define({
       // synchronously here rather than from a later session event, so CodeGraph
       // is active by the time OpenCode asks its MCP server for tools.
       try {
-        const codegraph = Bun.spawn([TAKT_AI, "codegraph", "ensure-index"], { detached:true, cwd: workspace, stdout: "pipe", stderr: "pipe" })
+        const codegraph = Bun.spawn([TAKT_AI, "codegraph", "ensure-index"], { detached: true, cwd: workspace, stdin: "ignore", stdout: "pipe", stderr: "pipe" })
         const [out, err, code] = await ipcOutput(codegraph, "CodeGraph preparation")
         if (code !== 0) throw new Error(err.trim() || out.trim() || `exit ${code}`)
       } catch (error) {
@@ -1499,7 +1501,7 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. With author_key, continue existing work. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept, only added paths are checked for collisions, and the set must include every path already staged.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. With author_key, continue existing work. To retry or correct work that already has staged changes, pass its author_key with the new exact file set: the staged work is kept and only added paths are checked for collisions; naming only part of the staged paths hands that part to the new unit under the returned author_key, and the rest stays with its work.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
@@ -1697,6 +1699,35 @@ export default Plugin.define({
         },
       })
 
+      // The recorded journal and execution history are read from their stores
+      // without the workspace lock; neither holds file content.
+      editor.add({
+        name: "vfs_inspect",
+        description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned.",
+        input: obj({
+          source: { type: "string", enum: ["journal", "history"], description: "Which record to read" },
+          session: str("Only entries of this session"),
+          unit: str("Only entries of this work unit"),
+          after: { type: "integer", minimum: -1, description: "Return entries after this seq; -1 starts from the first" },
+          limit: { type: "integer", minimum: 1, maximum: INSPECT_PAGE_LIMIT, description: `Page size, at most ${INSPECT_PAGE_LIMIT}` },
+        }, ["source"]),
+        async execute(input: unknown) {
+          const args = toolInput<{ source: "journal" | "history"; session?: string; unit?: string; after?: number; limit?: number }>(input)
+          if (args.source !== "journal" && args.source !== "history") throw new Error("source must be journal or history")
+          const flags = [
+            ...args.session ? ["--session", args.session] : [],
+            ...args.unit ? ["--unit", args.unit] : [],
+            ...args.after !== undefined ? ["--after", String(args.after)] : [],
+            ...args.limit !== undefined ? ["--limit", String(args.limit)] : [],
+          ]
+          const proc = Bun.spawn([TAKT_AI, "vfs", args.source, "--workspace", workspace, "--state", stateDir(), ...flags], {
+            detached: true, stdin: "ignore", stdout: "pipe", stderr: "pipe", cwd: workspace,
+          })
+          const [out, err, code] = await ipcOutput(proc, `vfs ${args.source}`)
+          if (code !== 0) throw new Error(`takt-ai vfs ${args.source} exited ${code}: ${err || out}`)
+          return { content: out }
+        },
+      })
       editor.add({
         name: "vfs_bind",
         description: "Bind to the assignment named in your context, before any other VFS tool.",
@@ -1742,7 +1773,9 @@ export default Plugin.define({
           const note = outdated.length > 0
             ? `The author's staged work changed after you read: ${outdated.join(", ")}. What you read there may be outdated; read those files again before attaching the verdict.\n\n`
             : ""
-          return { content: `${note}${res.content ?? ""}` }
+          // A staged file exists nowhere else for the reader to open, so the host
+          // must hand it over whole instead of cutting it at its tool-output cap.
+          return { content: `${note}${res.content ?? ""}`, metadata: { truncated: false } }
         },
       })
       editor.add({
@@ -1816,7 +1849,7 @@ export default Plugin.define({
               if (typeof revision !== "number" || typeof hash !== "string") throw new Error(`${error.message}; the refusal omitted the staged state it refused`, { cause: error })
               // The core's refusal lists every failing finding; the user sees them.
               await confirmWithUser("vfs_consolidate_failing", args.author_key, { author_key: args.author_key, findings: error.message }, c,
-                `correct the work instead: claim_assign with author_key ${args.author_key}, delegate the fix, then delegate Verify again`)
+                `correct the work instead: claim_assign with author_key ${args.author_key}, delegate the correction of each finding, then delegate Verify again`)
               // The acceptance covers exactly the staged state the refusal named.
               await consolidate({ accept_failing: true, accepted_revision: revision, accepted_hash: hash })
             }

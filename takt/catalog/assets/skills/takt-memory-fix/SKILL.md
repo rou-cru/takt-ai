@@ -7,22 +7,22 @@ metadata:
   version: "1.0"
 ---
 
-# Memory role: fix — Defect root causes
+# Memory role: fix — Resolved defects
 
 Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
 only narrows what your role records.
 
 ## Records
 
-- `observation` (`project`): the root cause of a confirmed defect and the pattern it came from, with the path or failing test as evidence.
-- An `observation` that `corrects` a recorded fact or decision the defect proved wrong.
+- `observation` (`project`): the problem you resolved and the pattern occurrences you corrected, with the regression test or path as evidence.
+- An `observation` that `corrects` a recorded fact or decision the resolution proved wrong.
 
 ## When
 
-- When the confirmed fixes are applied, before you return your result.
+- When the repair is applied, before you return your result.
 
 ## Never records
 
 - The list of changed files and lines: it belongs to your result, not to memory.
-- Suspected defects you did not confirm.
+- The problem's root cause: it belongs to whoever localized it.
 - Suggested future hardening.

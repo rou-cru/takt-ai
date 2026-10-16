@@ -57,7 +57,10 @@ await plugin.setup({
   event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
 })
 
-const vfsNames = Object.keys(tools).filter(name => name.startsWith("vfs_"))
+// vfs_inspect reads records that hold no claim, so its permission rule alone
+// gates it and the claim-bound context never filters it.
+assert.ok(tools.vfs_inspect, "fixture expects the registered VFS inspect tool")
+const vfsNames = Object.keys(tools).filter(name => name.startsWith("vfs_") && name !== "vfs_inspect")
 assert.ok(vfsNames.includes("vfs_read"), "fixture expects the registered VFS read tool")
 const root = "root"
 const matching = {

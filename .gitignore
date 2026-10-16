@@ -49,3 +49,9 @@ dist/
 node_modules/
 # Bun's local test coverage (uploaded by CI as an artifact)
 coverage/
+
+# Harbor benchmark runs (make bench)
+/jobs/
+
+# Python bytecode from the benchmark tooling
+__pycache__/

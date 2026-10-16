@@ -66,14 +66,14 @@ At the bound, continue to Close/Report with residual risk or request the user's 
 
 | Outcome | Destination | Inputs by ID |
 | --- | --- | --- |
-| Build, lint, Q1/Q2 or end-to-end failure; failed exploration or quality finding, in a delivery/hardening objective | `fix` for a code defect; contract owner for a contradiction; data owner for missing prerequisites | Failing report and applicable contracts |
+| Build, lint, Q1/Q2 or end-to-end failure; failed exploration or quality finding, in a delivery/hardening objective | One `fix` per localized code defect, `dev` when defects correlate; contract owner for a contradiction; data owner for missing prerequisites | The finding that localizes it and applicable contracts |
 | The same failure in an assessment-only objective | Retain finding; run critiques whose own entry holds, skip the rest; Close/Report, never inferred repair | Reports retained for closure |
 | Check not run, environment/service/data/configuration blocker | Owner of the missing fact or environment, identified from plan/analyst facts; no pass assumed. In an audit retain as unverified and close | Diagnostic report, plan and relevant facts |
 | A test contradicts specification or frozen interface | `spec` for behavior, `architect` for interface; freeze only consuming nodes pending the ruling | Contradicting artifacts and report; test path named in the brief |
 | Owner rules test wrong | `test`, continuing its author_key only if staged work exists; gate and consolidate | Ruling and affected artifacts |
-| Owner rules code wrong | `fix`; do not alter the oracle | Ruling and failing report |
-| Verify gate fails | Relevant delta author for the named defect (test defects to `test`); contradiction to contract owner; unmet inputs to their owner. Keep delta staged pending decision; no automatic consolidation | Gate report and applicable inputs |
-| Mutation original baseline cannot run or fails, including during Strengthen | Code failure to `fix`, environment gap to its owner, contradiction to contract owner; in an audit retain blocker and close. It is not a survivor round | Mutation blocker with original command/output, acceptance report and plan |
+| Owner rules code wrong | One `fix` per localized defect, `dev` when defects correlate; do not alter the oracle | Ruling and the finding that localizes it |
+| Verify gate fails | One `fix` per localized code defect, `dev` when defects correlate (test defects to `test`); contradiction to contract owner; unmet inputs to their owner. Keep delta staged pending decision; no automatic consolidation | Gate report and applicable inputs |
+| Mutation original baseline cannot run or fails, including during Strengthen | Localized code failure to its own `fix`, `dev` when failures correlate; environment gap to its owner, contradiction to contract owner; in an audit retain blocker and close. It is not a survivor round | Mutation blocker with original command/output, acceptance report and plan |
 | Q4 measurable criterion absent from plan | `qa` to complete the plan; Quality chooses measurement methods, never invents acceptance | Quality blocker, plan and specification |
 | Requirement too vague to derive a criterion (`qa` or `quality`) | `spec`, then Plan with the revision | Diagnostic blocker and specification |
 | Must-not-fail non-equivalent mutant survives | `test` through Strengthen, never implementer; at budget → Close with risk | Mutation report and affected rows |

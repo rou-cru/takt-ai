@@ -1,4 +1,4 @@
-.PHONY: test-host test-containerized test-packages test-shell lint docs release-check release-snapshot dev
+.PHONY: test-host test-containerized test-packages test-shell lint docs release-check release-snapshot dev bench
 .DEFAULT_GOAL := test-host
 
 # Build (if needed) and drop into the disposable dev container.
@@ -46,3 +46,15 @@ release-check:
 # Local snapshot build without publishing (dist/ output; requires goreleaser).
 release-snapshot:
 	goreleaser release --snapshot --clean
+
+# Autonomous crew benchmark through Harbor (local Docker). The model is pinned
+# for every role, so runs differ only by the takt-ai binary built here.
+# Defaults cost nothing: a smoke dataset and a free OpenCode Zen model.
+BENCH_DATASET ?= hello-world
+BENCH_MODEL ?= opencode/big-pickle
+BENCH_ARGS ?=
+bench:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/bench/takt-ai ./takt/cli
+	PYTHONPATH=. uvx --from harbor==0.24.0 harbor run -d $(BENCH_DATASET) \
+	  --agent development.benchmark.takt_agent:TaktOpenCode -m $(BENCH_MODEL) \
+	  --ek 'extra_docker_compose=["development/benchmark/sandbox.compose.yaml"]' $(BENCH_ARGS)

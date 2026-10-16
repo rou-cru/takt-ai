@@ -62,7 +62,7 @@ Role classes come from `agent.yaml`.
 - Delegation: one-paragraph brief (objective, authorized scope, expected output, acceptance). Invariants never travel in the brief; they are declared by Engram ID.
 - Lend: Takt asks the user, then switches the interface to a pm, architect or product-designer with requirements, client and objective. The specialist hands back one of Standard, EarlyHandoff, TechFault or Outraged (or the lend is aborted).
 - Delivery: planning and interlocutor results are Engram IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Engram and delivered by ID with `deliver_result`. A later report is a new entry that supplements the earlier one.
-- Two-part delivery: a specialist's delivery ends in VFS; takt releases each one where the plan sends it (phase verification, consolidation or a spot fix) before delegating more.
+- Two-part delivery: a specialist's delivery ends in VFS; takt releases each one where the plan sends it (phase verification, consolidation or a correction) before delegating more.
 - Ownership: only Takt owns claims, the DAG, delegation, consolidation and Git.
 
 ## Harness touchpoints

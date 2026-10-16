@@ -195,7 +195,7 @@ func refusedNaming(t *testing.T, what string, err, want error, calls ...string) 
 
 func reassign(t *testing.T, f *vfs.FS, identity vfs.Identity, key vfs.AgentID, scope ...string) {
 	t.Helper()
-	if err := f.ReassignScope(identity, key, scope); err != nil {
+	if _, err := f.ReassignScope(identity, key, scope); err != nil {
 		t.Fatalf("ReassignScope() = %v", err)
 	}
 }
@@ -492,13 +492,13 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 		scope    []string
 		want     error
 	}{
-		"drops a staged path":    {retry, key, []string{"b.go"}, vfs.ErrScopeDenied},
 		"collides on added path": {retry, key, []string{"a.go", "p.go"}, vfs.ErrCollision},
 		"unknown specialist": {
 			vfs.Identity{SessionID: testSession, WorkUnitID: "u", AgentID: "author", Specialist: "ghost"}, key, []string{"a.go"}, vfs.ErrIdentity},
 		"unknown key": {retry, "ghost", []string{"a.go"}, vfs.ErrIdentity},
 	} {
-		refused(t, name+": ReassignScope()", f.ReassignScope(tc.identity, tc.key, tc.scope), tc.want)
+		_, err := f.ReassignScope(tc.identity, tc.key, tc.scope)
+		refused(t, name+": ReassignScope()", err, tc.want)
 	}
 	if ownerOf(f, "spare.go") != key || ownerOf(f, "p.go") != peer {
 		t.Fatal("a refused reassignment changed ownership")
@@ -514,6 +514,109 @@ func TestReassignScopeKeepsTheStagedDelta(t *testing.T) {
 	view := f.InspectDelta(key)
 	if content, _ := stagedContent(f, key, "a.go"); content != "partial" || view.Revision != staged.Revision {
 		t.Fatalf("delta = %+v; want the staged content and revision kept", view)
+	}
+}
+
+func TestReassignScopeHandsOverPartOfTheStagedDelta(t *testing.T) {
+	f, _, _ := newStore(t)
+	key := bind(t, f, "author", "u", "dev", "a.go", "b.go")
+	apply(t, f, applyCase{key, "a", 0, vfs.OpCreate, "a.go", "A"})
+	apply(t, f, applyCase{key, "b", 1, vfs.OpCreate, "b.go", "B"})
+	first, err := f.ReassignScope(ident("fix-a", "fix-a", "fix"), key, []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.ReassignScope(ident("fix-b", "fix-b", "fix"), key, []string{"b.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == key || first == second {
+		t.Fatalf("keys = %q, %q from %q; want each part held under its own key", first, second, key)
+	}
+	for path, holder := range map[string]vfs.AgentID{"a.go": first, "b.go": second} {
+		if content, _ := stagedContent(f, holder, path); ownerOf(f, path) != holder || content != strings.ToUpper(strings.TrimSuffix(path, ".go")) {
+			t.Fatalf("%s: owner %q content %q; want it held by %q with its staged content", path, ownerOf(f, path), content, holder)
+		}
+	}
+	for _, holder := range []vfs.AgentID{first, second} {
+		if err := f.ConsolidateCheckpoint(holder, "cp", f.InspectDelta(holder).Revision, false); err != nil {
+			t.Fatalf("ConsolidateCheckpoint(%q) = %v", holder, err)
+		}
+	}
+}
+
+func TestReassignScopeHandOverRefusalsLeaveTheWorkWhereItIs(t *testing.T) {
+	f, root, _ := newStore(t)
+	if err := os.WriteFile(filepath.Join(root, "x.go"), []byte("x"), diskFileMode); err != nil {
+		t.Fatal(err)
+	}
+	key := bind(t, f, "author", "u", "dev", "a.go", "b.go")
+	apply(t, f, applyCase{key, "a", 0, vfs.OpCreate, "a.go", "A"})
+	apply(t, f, applyCase{key, "b", 1, vfs.OpCreate, "b.go", "B"})
+	peer := bind(t, f, "peer", "other", "dev", "p.go")
+	restore := unreadable(t, root, "x.go")
+	defer restore()
+	complete := ident("fix", "fix-u", "fix")
+	for name, tc := range map[string]struct {
+		identity vfs.Identity
+		scope    []string
+	}{
+		"added path owned by a peer":     {complete, []string{"a.go", "p.go"}},
+		"added path outside the root":    {complete, []string{"a.go", "../outside.go"}},
+		"identity without a unit":        {vfs.Identity{SessionID: testSession, AgentID: "fix", Specialist: "fix"}, []string{"a.go"}},
+		"added path that cannot be read": {complete, []string{"a.go", "x.go"}},
+	} {
+		if next, err := f.ReassignScope(tc.identity, key, tc.scope); err == nil {
+			t.Errorf("%s: ReassignScope() = %q; want a refusal", name, next)
+		}
+	}
+	if got := scopeOf(f, key); !slices.Equal(slices.Sorted(slices.Values(got)), []string{"a.go", "b.go"}) || ownerOf(f, "p.go") != peer {
+		t.Fatalf("scope = %v, p.go owner %q; want a refused hand-over to change no ownership", got, ownerOf(f, "p.go"))
+	}
+	if _, staged := stagedContent(f, key, "a.go"); !staged {
+		t.Fatal("a refused hand-over moved the staged content")
+	}
+}
+
+func TestReassignScopeHandOverMovesOwnedPathsWithoutStagedContent(t *testing.T) {
+	f, _, _ := newStore(t)
+	key := bind(t, f, "author", "u", "dev", "a.go", "b.go", "idle.go")
+	apply(t, f, applyCase{key, "a", 0, vfs.OpCreate, "a.go", "A"})
+	apply(t, f, applyCase{key, "b", 1, vfs.OpCreate, "b.go", "B"})
+	next, err := f.ReassignScope(ident("fix", "fix-u", "fix"), key, []string{"a.go", "idle.go", "unowned.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"a.go", "idle.go", "unowned.go"} {
+		if ownerOf(f, path) != next {
+			t.Errorf("%s owner = %q; want the new key %q", path, ownerOf(f, path), next)
+		}
+	}
+	if ownerOf(f, "b.go") != key {
+		t.Errorf("b.go owner = %q; want the path left out to stay with %q", ownerOf(f, "b.go"), key)
+	}
+	if _, staged := stagedContent(f, next, "idle.go"); staged {
+		t.Error("idle.go has staged content under the new key; it was never written")
+	}
+}
+
+func TestReassignScopeHandOverLeavesTheSourceVerdictStale(t *testing.T) {
+	f, _, _ := newStore(t)
+	key := bind(t, f, "author", "u", "dev", "a.go", "b.go")
+	apply(t, f, applyCase{key, "a", 0, vfs.OpCreate, "a.go", "A"})
+	staged := apply(t, f, applyCase{key, "b", 1, vfs.OpCreate, "b.go", "B"})
+	judge := bind(t, f, "judge", "u", "verify")
+	if err := f.Verify(judge, key, "ok", staged.Revision, staged.DeltaHash, true, "holds"); err != nil {
+		t.Fatal(err)
+	}
+	if claim, _ := claimOf(f, key); len(claim.Verdicts) != 1 {
+		t.Fatalf("verdicts = %+v; want the judge's verdict current before the hand-over", claim.Verdicts)
+	}
+	if _, err := f.ReassignScope(ident("fix", "fix-u", "fix"), key, []string{"a.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if claim, _ := claimOf(f, key); len(claim.Verdicts) != 0 {
+		t.Fatalf("verdicts = %+v; want a verdict over the whole delta not to describe what is left", claim.Verdicts)
 	}
 }
 

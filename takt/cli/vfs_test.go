@@ -382,6 +382,24 @@ func assertVFSCollisionRefusal(t *testing.T, refused response, err error, ownerA
 	}
 }
 
+func TestVFSAssignWithAuthorKeyAndPartialScopeReturnsTheNewKey(t *testing.T) {
+	fx := newVFSFixture(t)
+	key := fx.delegate(rootA, "u1", "dev", "a.go", "b.go")
+	fx.write(rootA, "u1", "dev", "c1", "a.go", "A")
+	fx.write(rootA, "u1", "dev", "c2", "b.go", "B")
+	handed := fx.must("assign", claimReq(rootA, "u1", "fix", map[string]any{"scope": []string{"a.go"}, "author_key": key}))
+	if handed.Key == "" || handed.Key == key {
+		t.Fatalf("hand-over key = %q; want a new key distinct from %q", handed.Key, key)
+	}
+	byKey := map[string][]string{}
+	for _, claim := range fx.must("claims", orchReq(rootA, nil)).Claims {
+		byKey[string(claim.Key)] = claim.Scope
+	}
+	if !slices.Equal(byKey[handed.Key], []string{"a.go"}) || !slices.Equal(byKey[key], []string{"b.go"}) {
+		t.Fatalf("claims = %+v; want a.go under the new key and b.go left with %s", byKey, key)
+	}
+}
+
 func TestVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T) {
 	fx := newVFSFixture(t)
 	key := fx.delegate(rootA, "u1", "dev", "a.go")

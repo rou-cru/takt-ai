@@ -149,7 +149,7 @@ func addConfigOptions(config map[string]any, request ConfigRequest) {
 
 // vfsToolNames lists every tool the takt-vfs plugin registers so each explicit
 // instance grant can emit a corresponding OpenCode permission rule.
-var vfsToolNames = []string{"vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", vfsConsolidateTool}
+var vfsToolNames = []string{"vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", vfsConsolidateTool, vfsInspectTool}
 
 // claimToolNames are the orchestration-only operations in the VFS capability
 // contract; their native permission rules are projected even when a plugin
@@ -160,6 +160,10 @@ var claimToolNames = []string{"claim_list", "claim_assign", "claim_release"}
 // never expose them; harness-created GC child sessions override these denies
 // with session permissions, and coordinator admission stays authoritative.
 var gcCycleToolNames = []string{"gc_baseline", "gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_delta", "gc_verdict", "gc_acceptance", "gc_no_change"}
+
+// vfsInspectTool reads the recorded journal and execution history; it holds no
+// claim and moves nothing.
+const vfsInspectTool = "vfs_inspect"
 
 // vfsConsolidateTool moves verified staged work into the workspace; only the
 // orchestrator holds it.
@@ -361,6 +365,7 @@ func vfsPermissionRules(capabilities []model.VFSCapability) []permissionRule {
 		model.VFSCapabilityDiscard:      "vfs_discard",
 		model.VFSCapabilityVerify:       "vfs_verify",
 		model.VFSCapabilityConsolidate:  vfsConsolidateTool,
+		model.VFSCapabilityInspect:      vfsInspectTool,
 	}
 	for capability, action := range capabilityActions {
 		if slices.Contains(capabilities, capability) {

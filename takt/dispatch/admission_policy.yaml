@@ -11,6 +11,11 @@ budgets:
   contests: 3
   # PR-HAR-21: consecutive failed recoveries of the same objective.
   recovery_failures: 2
+modules:
+  # Line count above which a file is oversized: catalog prose states the
+  # number through {{policy.max_file_lines}} so each lane words its own duty
+  # while one value defines the limit.
+  max_file_lines: 1000
 recovery:
   # PR-ORQ-13 declares both recovery budgets per recovery, so what is canonical
   # policy data is the admissible ceiling of each declaration, never a default:

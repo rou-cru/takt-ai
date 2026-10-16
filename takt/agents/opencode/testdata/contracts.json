@@ -1,4 +1,5 @@
 {
+  "inspect_page_limit": 500,
   "vfs_bind": {"ok":true,"key":"bind-opaque","attempt_id":"1","invariants_version":"inv1:abc"},
   "memory_record": {"ok":true,"result":{"id":42,"deduplicated":false}},
   "memory_close": {"ok":true,"result":{"end_anchor_id":43,"entries":2}},
