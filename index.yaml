@@ -6,6 +6,34 @@ entries:
         - name: takt-ai
           image: docker.io/roucru/takt-ai
       artifacthub.io/license: AGPL-3.0-or-later
+      takt-ai/opencode-version: 2.0.28
+    apiVersion: v2
+    appVersion: 0.0.31
+    created: "2026-10-16T04:29:26.052417129Z"
+    description: Ephemeral Takt AI and OpenCode v2 workspace
+    digest: 26b60cb3464a1dbecd20ab9f7911d5bda0f890a7d85ecde8539b7c43f198f5be
+    home: https://github.com/rou-cru/takt-ai
+    icon: https://raw.githubusercontent.com/rou-cru/takt-ai/main/docs/assets/brand/takt-ai-banner.png
+    keywords:
+    - ai
+    - coding-agent
+    - opencode
+    - workspace
+    maintainers:
+    - name: Takt AI Contributors
+      url: https://github.com/rou-cru/takt-ai
+    name: takt-ai
+    sources:
+    - https://github.com/rou-cru/takt-ai
+    type: application
+    urls:
+    - https://rou-cru.github.io/takt-ai/takt-ai-0.0.31.tgz
+    version: 0.0.31
+  - annotations:
+      artifacthub.io/images: |
+        - name: takt-ai
+          image: docker.io/roucru/takt-ai
+      artifacthub.io/license: AGPL-3.0-or-later
       takt-ai/opencode-version: 2.0.20
     apiVersion: v2
     appVersion: 0.0.30
@@ -813,4 +841,4 @@ entries:
     urls:
     - https://rou-cru.github.io/takt-ai/takt-ai-0.0.1.tgz
     version: 0.0.1
-generated: "2026-10-13T08:24:10.55282025Z"
+generated: "2026-10-16T04:29:26.051485809Z"
