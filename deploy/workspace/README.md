@@ -26,6 +26,12 @@ OpenCode v2 always requires Basic Auth as user `opencode`. Without `OPENCODE_PAS
 
 On Kubernetes, use the Helm chart: `helm install demo oci://ghcr.io/rou-cru/charts/takt-ai`.
 
+## Coder workspaces
+
+To give each person their own managed workspace through [Coder](https://coder.com), use the [Coder workspace template](../coder/README.md). That template starts the Pod with the Coder agent's command instead of this image's `workspace-entrypoint`, so the HTTP server on port `4096` and its generated password are not used, and you run `opencode` in the workspace terminal.
+
+Overriding the entrypoint does not change the image: OpenCode and the Takt setup baked under `/home/takt` at build time stay installed, and nothing reruns or removes them at startup.
+
 ## Verify
 
 ```sh
