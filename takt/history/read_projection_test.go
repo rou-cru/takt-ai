@@ -100,3 +100,35 @@ func TestReadPageFiltersAndBoundsTheRecordedOrder(t *testing.T) {
 		t.Fatalf("absent history = %+v, %v", got, err)
 	}
 }
+
+func TestReadPageClampsALimitBelowOne(t *testing.T) {
+	state := t.TempDir()
+	h, err := history.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range []int{0, -5} {
+		if got, err := history.ReadPage(state, "", "", -1, limit); err != nil || len(got) != 1 {
+			t.Fatalf("limit %d: ReadPage = %+v, %v; want exactly one entry", limit, got, err)
+		}
+	}
+}
+
+func TestReadPageFailsOnUnreadableHistory(t *testing.T) {
+	state := t.TempDir()
+	body := strings.Repeat(foreignFileBody, foreignFileReps)
+	if err := os.WriteFile(filepath.Join(state, storeFile), []byte(body), privateFileMode); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := history.ReadPage(state, "", "", -1, 10); err == nil {
+		t.Fatalf("ReadPage of a foreign store = %+v; want an error", got)
+	}
+}

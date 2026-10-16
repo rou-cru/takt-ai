@@ -64,6 +64,10 @@ type AdmissionPolicy struct {
 		Contests         int `yaml:"contests"`
 		RecoveryFailures int `yaml:"recovery_failures"`
 	} `yaml:"budgets"`
+	// Modules holds the size limit catalog prose cites for module layout.
+	Modules struct {
+		MaxFileLines int `yaml:"max_file_lines"`
+	} `yaml:"modules"`
 	// Recovery holds the admissible ceilings of the two budgets the orchestrator
 	// declares per recovery (PR-ORQ-13).
 	Recovery struct {
@@ -88,8 +92,8 @@ func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	if p.Recovery.MaxActions <= 0 || p.Recovery.MaxAttempts <= 0 {
 		return AdmissionPolicy{}, errors.New("admission policy: every declared recovery budget needs a positive ceiling")
 	}
-	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 {
-		return AdmissionPolicy{}, errors.New("admission policy: every ceiling and budget must be positive")
+	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Modules.MaxFileLines <= 0 {
+		return AdmissionPolicy{}, errors.New("admission policy: every ceiling, budget and size limit must be positive")
 	}
 	return p, nil
 }

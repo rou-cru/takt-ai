@@ -43,7 +43,7 @@ const (
 )
 
 // MaxJournalPageSize bounds the number of entries JournalPage returns.
-const MaxJournalPageSize = 500
+const MaxJournalPageSize = history.MaxPageSize
 
 type storedDelta struct {
 	Files map[string][]byte

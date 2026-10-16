@@ -41,6 +41,7 @@ func ResolvePolicyPlaceholders(content []byte) ([]byte, error) {
 		"unplanned_units":        p.Budgets.UnplannedUnits,
 		"contests":               p.Budgets.Contests,
 		"recovery_failures":      p.Budgets.RecoveryFailures,
+		"max_file_lines":         p.Modules.MaxFileLines,
 		"recovery_max_actions":   p.Recovery.MaxActions,
 		"recovery_max_attempts":  p.Recovery.MaxAttempts,
 	}

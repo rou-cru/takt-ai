@@ -331,6 +331,10 @@ type AdmissionPolicy struct {
         Contests         int `yaml:"contests"`
         RecoveryFailures int `yaml:"recovery_failures"`
     }   `yaml:"budgets"`
+    // Modules holds the size limit catalog prose cites for module layout.
+    Modules struct {
+        MaxFileLines int `yaml:"max_file_lines"`
+    }   `yaml:"modules"`
     // Recovery holds the admissible ceilings of the two budgets the orchestrator
     // declares per recovery (PR-ORQ-13).
     Recovery struct {

@@ -59,7 +59,7 @@ func unmarshalJSONObject(raw []byte) (map[string]any, error) {
 		return object, nil
 	}
 
-	normalized := normalizeJSON(raw)
+	normalized := NormalizeJSON(raw)
 	if err := json.Unmarshal(normalized, &object); err != nil {
 		return nil, err
 	}
@@ -67,7 +67,9 @@ func unmarshalJSONObject(raw []byte) (map[string]any, error) {
 	return object, nil
 }
 
-func normalizeJSON(raw []byte) []byte {
+// NormalizeJSON strips comments and trailing commas, so a user-edited JSONC
+// file parses with encoding/json.
+func NormalizeJSON(raw []byte) []byte {
 	withoutComments := stripJSONComments(raw)
 	return stripTrailingCommas(withoutComments)
 }

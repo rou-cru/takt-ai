@@ -127,7 +127,7 @@ func TestResumedChildRejectsPriorInvocationIdentity(t *testing.T) {
 	}
 	shellRun(t, plan, "0", writeProjected(t, "file.txt", "late shell"))
 	settle(t, state, testSession, "unit", "1")
-	if err := f.ReassignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "unit", AgentID: "dev", Specialist: "dev"}, key, []string{"file.txt"}); err != nil {
+	if _, err := f.ReassignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "unit", AgentID: "dev", Specialist: "dev"}, key, []string{"file.txt"}); err != nil {
 		t.Fatal(err)
 	}
 	admit(t, state, testSession, "unit", "2")

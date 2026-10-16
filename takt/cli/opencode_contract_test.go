@@ -9,6 +9,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 func TestOpenCodeContracts(t *testing.T) {
@@ -36,6 +37,7 @@ func TestOpenCodeContracts(t *testing.T) {
 		Result any    `json:"result,omitempty"`
 		Error  string `json:"error,omitempty"`
 	}
+	check("inspect_page_limit", vfs.MaxJournalPageSize)
 	check("vfs_bind", response{OK: true, Key: "bind-opaque", AttemptID: "1", InvariantsVersion: "inv1:abc"})
 	check("memory_record", memoryEnvelope{OK: true, Result: memory.RecordResult{ID: 42, Deduplicated: false}})
 	check("memory_close", memoryEnvelope{OK: true, Result: memory.CloseResult{EndAnchorID: 43, Entries: 2}})

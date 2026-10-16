@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
@@ -63,9 +66,9 @@ func TestParseVFSOfflineValidation(t *testing.T) {
 	}{
 		"missing state":       {[]string{"journal", "--workspace", "w"}, "--workspace and --state are required"},
 		"positional argument": {append(append([]string{}, base...), "extra"), "no positional arguments"},
-		"zero limit":          {append(append([]string{}, base...), "--limit", "0"), "invalid pagination"},
-		"oversized limit":     {append(append([]string{}, base...), "--limit", strconv.Itoa(tooManyEntries)), "invalid pagination"},
-		"cursor below -1":     {append(append([]string{}, base...), "--after", "-2"), "invalid pagination"},
+		"zero limit":          {append(append([]string{}, base...), "--limit", "0"), "--limit between 1 and"},
+		"oversized limit":     {append(append([]string{}, base...), "--limit", strconv.Itoa(tooManyEntries)), "--limit between 1 and"},
+		"cursor below -1":     {append(append([]string{}, base...), "--after", "-2"), "--limit between 1 and"},
 		"recover no restore":  {[]string{"recover", "--workspace", "w", "--state", "s"}, "explicit --restore"},
 		"journal restore":     {append(append([]string{}, base...), "--restore"), "--restore applies only to recover"},
 	}
@@ -181,5 +184,58 @@ func TestRunVFSMutateRejectsUnknownCommand(t *testing.T) {
 	})
 	if _, err := runVFSMutate(fs, "journal", "", request{}, vfs.Caller{}); err == nil || !strings.Contains(err.Error(), `unsupported command "journal"`) {
 		t.Fatalf("runVFSMutate() error = %v", err)
+	}
+}
+
+// TestVFSOfflineServesTheExecutionHistory verifies the history source pages the recorded order of an existing store.
+func TestVFSOfflineServesTheExecutionHistory(t *testing.T) {
+	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
+	fs, err := vfs.Open(root, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h, err := history.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range []string{"root-a", "root-b"} {
+		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: session, WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runVFS([]string{"history", "--workspace", root, "--state", state, "--session", "root-b"}, strings.NewReader(""), &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var page []history.Entry
+	if err := json.Unmarshal(out.Bytes(), &page); err != nil || len(page) != 1 || page[0].SessionID != "root-b" {
+		t.Fatalf("history page = %+v, %v; want the one entry of root-b", page, err)
+	}
+}
+
+// TestVFSOfflineRefusesAnUnreadableRecord verifies a malformed record is an error, not an empty page.
+func TestVFSOfflineRefusesAnUnreadableRecord(t *testing.T) {
+	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
+	fs, err := vfs.Open(root, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []byte(strings.Repeat("not a sqlite database, only text; ", 100))
+	for source, file := range map[string]string{"journal": "vfs.sqlite", "history": "history.sqlite"} {
+		if err := os.WriteFile(filepath.Join(state, file), foreign, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := runVFS([]string{source, "--workspace", root, "--state", state}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+			t.Fatalf("%s: runVFS succeeded on a malformed record", source)
+		}
 	}
 }

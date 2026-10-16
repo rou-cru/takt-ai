@@ -267,7 +267,7 @@ func TestAnotherRootsStagedWorkClosesOnceAssignedToThisRoot(t *testing.T) {
 	if err := f.DiscardAs(orchestrator(otherSession), author); !errors.Is(err, vfs.ErrIdentity) {
 		t.Fatalf("discard from another root = %v; want ErrIdentity", err)
 	}
-	if err := f.ReassignScope(vfs.Identity{SessionID: otherSession, WorkUnitID: "u", AgentID: "dev", Specialist: "dev"}, author, []string{"a.go"}); err != nil {
+	if _, err := f.ReassignScope(vfs.Identity{SessionID: otherSession, WorkUnitID: "u", AgentID: "dev", Specialist: "dev"}, author, []string{"a.go"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.DiscardAs(orchestrator(otherSession), author); err != nil {

@@ -83,7 +83,7 @@ func validateVFSOffline(o vfsOffline, positional int) error {
 		return errors.New("vfs: --workspace and --state are required; no positional arguments")
 	}
 	if o.after < -1 || o.limit < 1 || o.limit > vfs.MaxJournalPageSize {
-		return errors.New("vfs: invalid pagination")
+		return fmt.Errorf("vfs: --after must be at least -1 and --limit between 1 and %d", vfs.MaxJournalPageSize)
 	}
 	return validateVFSRecoveryFlags(o.command, o.restore)
 }
@@ -392,7 +392,7 @@ func assignClaim(fs *vfs.FS, req request, stdout io.Writer) error {
 	key := vfs.AgentID(req.AuthorKey)
 	var assignErr error
 	if key != "" {
-		assignErr = fs.ReassignScope(identity, key, req.Scope)
+		key, assignErr = fs.ReassignScope(identity, key, req.Scope)
 	} else {
 		key, assignErr = fs.AssignScope(identity, req.Scope)
 	}

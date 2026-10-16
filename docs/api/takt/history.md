@@ -159,6 +159,12 @@ const (
 const LeaseTTL = 90 * time.Second
 ```
 
+<a name="MaxPageSize"></a>MaxPageSize bounds the entries one page of the recorded order holds; the VFS journal pages by the same bound.
+
+```go
+const MaxPageSize = 500
+```
+
 <a name="SnapshotSchemaVersion"></a>SnapshotSchemaVersion is the wire shape version every snapshot reports, so a future breaking change to the contract is visible to a caller instead of silently changing shape under it.
 
 ```go
@@ -457,7 +463,7 @@ ReadEntries reads the recorded order read\-only, without creating a store or sch
 func ReadPage(stateDir, sessionID, unitID string, after, limit int) ([]Entry, error)
 ```
 
-ReadPage pages the recorded order read\-only, oldest first: entries after the exclusive cursor, optionally of one session and unit, at most limit of them.
+ReadPage pages the recorded order read\-only, oldest first: entries after the exclusive cursor, optionally of one session and unit, at most limit of them \(clamped to 1..MaxPageSize\).
 
 <a name="Execution"></a>
 ## type Execution

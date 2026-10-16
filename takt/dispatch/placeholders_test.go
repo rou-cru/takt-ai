@@ -13,32 +13,34 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package dispatch
+package dispatch_test
 
 import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/rou-cru/takt-ai/takt/dispatch"
 )
 
 func TestResolvePolicyPlaceholders(t *testing.T) {
-	p, err := LoadAdmissionPolicy()
+	p, err := dispatch.LoadAdmissionPolicy()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolvePolicyPlaceholders([]byte("at most {{policy.concurrent_specialists}} and {{policy.unplanned_units}}"))
+	got, err := dispatch.ResolvePolicyPlaceholders([]byte("at most {{policy.concurrent_specialists}} and {{policy.unplanned_units}} under {{policy.max_file_lines}}"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "at most " + strconv.Itoa(p.Concurrency.Specialists) + " and " + strconv.Itoa(p.Budgets.UnplannedUnits)
+	want := "at most " + strconv.Itoa(p.Concurrency.Specialists) + " and " + strconv.Itoa(p.Budgets.UnplannedUnits) + " under " + strconv.Itoa(p.Modules.MaxFileLines)
 	if string(got) != want {
 		t.Fatalf("resolved = %q; want %q", got, want)
 	}
-	plain, err := ResolvePolicyPlaceholders([]byte("no markers"))
+	plain, err := dispatch.ResolvePolicyPlaceholders([]byte("no markers"))
 	if err != nil || string(plain) != "no markers" {
 		t.Fatalf("plain = %q, %v", plain, err)
 	}
-	if _, err = ResolvePolicyPlaceholders([]byte("{{policy.unknown}}")); err == nil || !strings.Contains(err.Error(), "unresolved") {
+	if _, err = dispatch.ResolvePolicyPlaceholders([]byte("{{policy.unknown}}")); err == nil || !strings.Contains(err.Error(), "unresolved") {
 		t.Fatalf("unknown marker = %v; want unresolved error", err)
 	}
 }

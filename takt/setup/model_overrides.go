@@ -18,7 +18,9 @@ package setup
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/rou-cru/takt-ai/takt/model"
 )
@@ -47,7 +49,19 @@ func ApplyModelOverrideChanges(ctx context.Context, rootDir string, changes map[
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	preserve := unchangedPaths(managedPaths, changedArtifactPathSet(before, after))
+	changed := changedArtifactPathSet(before, after)
+	preserve := unchangedPaths(managedPaths, changed)
+
+	// A reassignment changes only the models asked for. When the user edited
+	// the config since Takt wrote it, patch just those models in place instead
+	// of redeploying the rendered file over the edits.
+	patch, err := planEditedConfigPatch(rootDir, after, changed, slices.Sorted(maps.Keys(changes)))
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	if patch != nil {
+		preserve = append(preserve, patch.path)
+	}
 
 	result, err := ApplyContext(ctx, rootDir, after, runtime, preserve...)
 	if err != nil {
@@ -55,6 +69,15 @@ func ApplyModelOverrideChanges(ctx context.Context, rootDir string, changes map[
 			return result, err
 		}
 		return DeploymentResult{}, err
+	}
+	if patch != nil {
+		// The patch was computed from the bytes planned above; apply backs those
+		// bytes up first, so an edit landing in between stays recoverable.
+		if err := patch.apply(rootDir); err != nil {
+			return DeploymentResult{}, fmt.Errorf("the rest of the deployment is applied but the edited config was not patched; repeat the reassignment: %w", err)
+		}
+		result.Unchanged = slices.DeleteFunc(result.Unchanged, func(path string) bool { return path == patch.path })
+		result.Changed = append(result.Changed, patch.path)
 	}
 	if err := SaveInstalledConfig(rootDir, request); err != nil {
 		return DeploymentResult{}, err

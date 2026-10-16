@@ -18,7 +18,7 @@
     },
     {
       "id": "fix",
-      "label": "Spot fix"
+      "label": "Correction"
     },
     {
       "id": "exits",
@@ -124,7 +124,7 @@
     {
       "id": "spotfix",
       "type": "active",
-      "label": "Spot fix",
+      "label": "Correction",
       "sublabel": "claim_assign with author_key",
       "lane": "fix",
       "col": 3,
@@ -140,7 +140,7 @@
       "id": "discarded",
       "type": "neutral",
       "label": "Discarded",
-      "sublabel": "only if a spot fix cannot reach",
+      "sublabel": "only if correction cannot reach",
       "lane": "exits",
       "col": 3,
       "sources": [
@@ -226,7 +226,7 @@
     {
       "from": "failed",
       "to": "discarded",
-      "label": "spot fix cannot reach",
+      "label": "correction cannot reach",
       "variant": "dashed"
     },
     {

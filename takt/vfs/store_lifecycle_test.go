@@ -387,3 +387,22 @@ func TestReadJournalOfAbsentStoreCreatesNothing(t *testing.T) {
 		t.Fatalf("ReadJournal created the state directory: %v", err)
 	}
 }
+
+func TestReadJournalFailsOnAnUnreadableStore(t *testing.T) {
+	foreign := t.TempDir()
+	if err := os.WriteFile(filepath.Join(foreign, "vfs.sqlite"), []byte(strings.Repeat(foreignFileBody, foreignFileReps)), vfs.StateFileMode); err != nil {
+		t.Fatal(err)
+	}
+	notDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(notDir, "file"), []byte("x"), vfs.StateFileMode); err != nil {
+		t.Fatal(err)
+	}
+	for name, state := range map[string]string{
+		"foreign store":    foreign,
+		"state under file": filepath.Join(notDir, "file", "state"),
+	} {
+		if got, err := vfs.ReadJournal(state, "", "", -1, vfs.MaxJournalPageSize); err == nil {
+			t.Fatalf("%s: ReadJournal = %+v; want an error", name, got)
+		}
+	}
+}
