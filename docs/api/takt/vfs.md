@@ -20,6 +20,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
 - [func SpecialistRole\(instance string\) \(model.RoleClass, error\)](<#SpecialistRole>)
 - [func StateHash\(value any\) string](<#StateHash>)
+- [func ValidateReads\(selectors \[\]string\) error](<#ValidateReads>)
 - [type AdoptedGate](<#AdoptedGate>)
 - [type AgentID](<#AgentID>)
 - [type BindResult](<#BindResult>)
@@ -105,6 +106,17 @@ Package vfs implements the Virtual File System, the transactional execution laye
 
 
 ## Constants
+
+<a name="ReadAll"></a>Read selectors an assignment may state. Anything else is an exact path.
+
+```go
+const (
+    // ReadAll covers every path; it is refused while another unit in flight holds one.
+    ReadAll = "all"
+    // ReadFree covers every path except those another unit in flight holds.
+    ReadFree = "free"
+)
+```
 
 <a name="ShellAllow"></a>Shell decisions. PR\-HAR\-8 resolves every governed action to exactly one of them, and PR\-HAR\-11 routes shell execution through the same three.
 
@@ -315,6 +327,15 @@ func StateHash(value any) string
 ```
 
 StateHash is the hex sha256 of value's JSON encoding: the exact state a repair approval names.
+
+<a name="ValidateReads"></a>
+## func ValidateReads
+
+```go
+func ValidateReads(selectors []string) error
+```
+
+ValidateReads rejects a selector that names nothing it can match.
 
 <a name="AdoptedGate"></a>
 ## type AdoptedGate
@@ -1004,6 +1025,9 @@ type Identity struct {
     JudgedRevision uint64   `json:",omitempty"`
     JudgedHash     string   `json:",omitempty"`
     JudgedPaths    []string `json:",omitempty"`
+    // Reads are the selectors the orchestrator stated for what this unit may
+    // read beyond its own claim; empty means its own claim only.
+    Reads []string `json:",omitempty"`
 }
 ```
 
