@@ -1498,16 +1498,17 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. To continue, retry, or correct staged work, pass its author_key with the new exact file set: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. To continue, retry, or correct staged work, pass its author_key with the new exact file set: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
         author_key: str("The author_key of this unit's existing staged work to keep; omit for new work"),
+        reads: { type: "array", items: str(), description: "What the unit may read beyond its scope: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit for its scope only" },
       }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
         const unit = asString(args.work_unit_id, "").trim()
-        return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, author_key: args.author_key })) }
+        return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, reads: args.reads, author_key: args.author_key })) }
       } })
       editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)

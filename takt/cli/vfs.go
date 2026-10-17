@@ -165,6 +165,9 @@ type request struct {
 	CycleID      string   `json:"cycle_id,omitempty"`
 	MandateClass string   `json:"mandate_class,omitempty"`
 	Scope        []string `json:"scope,omitempty"`
+	// Reads are the selectors an assignment states for what its target may read
+	// beyond its own claim.
+	Reads []string `json:"reads,omitempty"`
 	// op, verify, shell-prepare, shell-complete
 	CallID     string   `json:"call_id,omitempty"`
 	Resources  []string `json:"resources,omitempty"`
@@ -385,7 +388,7 @@ func assignClaim(fs *vfs.FS, req request, stdout io.Writer) error {
 	}
 	// The target's identity is the harness's; it carries no attempt until the
 	// execution history issues one when the target binds.
-	identity := vfs.Identity{SessionID: req.SessionID, WorkUnitID: req.WorkUnitID, AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist}
+	identity := vfs.Identity{SessionID: req.SessionID, WorkUnitID: req.WorkUnitID, AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist, Reads: req.Reads}
 	for _, id := range consumed {
 		identity.Invariants = append(identity.Invariants, vfs.EngramInvariant(id))
 	}

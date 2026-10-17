@@ -389,6 +389,7 @@ func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool)
 	if err := f.validatePath(rel); err != nil {
 		return nil, err
 	}
+	source := agent
 	if !authorizedStagedView {
 		identity, ok := f.bindings[agent]
 		if !ok {
@@ -397,13 +398,17 @@ func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool)
 		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityRead); err != nil {
 			return nil, err
 		}
-		if err := f.checkOwnership(agent, rel); err != nil {
-			f.appendJournalLocked(JournalEntry{Agent: agent, Path: rel, Operation: OpRead, Outcome: "denied"})
-			return nil, err
+		view, granted := f.readViewLocked(agent, rel)
+		if !granted {
+			if err := f.checkOwnership(agent, rel); err != nil {
+				f.appendJournalLocked(JournalEntry{Agent: agent, Path: rel, Operation: OpRead, Outcome: "denied"})
+				return nil, err
+			}
 		}
+		source = view
 	}
 
-	content, ok, err := f.readMergedLocked(agent, rel)
+	content, ok, err := f.readMergedLocked(source, rel)
 	if err != nil {
 		f.appendJournalLocked(JournalEntry{Agent: agent, Path: rel, Operation: OpRead, Outcome: "failed"})
 		return nil, err

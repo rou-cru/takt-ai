@@ -114,6 +114,9 @@ type Identity struct {
 	JudgedRevision uint64   `json:",omitempty"`
 	JudgedHash     string   `json:",omitempty"`
 	JudgedPaths    []string `json:",omitempty"`
+	// Reads are the selectors the orchestrator stated for what this unit may
+	// read beyond its own claim; empty means its own claim only.
+	Reads []string `json:",omitempty"`
 }
 
 // Caller is the harness-delivered identity of the process running one VFS
@@ -257,6 +260,12 @@ func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err er
 		if _, err = f.physical(path); err != nil {
 			return "", err
 		}
+	}
+	if err = f.admitReadsLocked(identity); err != nil {
+		return "", err
+	}
+	if err = f.guardReadersLocked(identity, scope); err != nil {
+		return "", err
 	}
 	for _, path := range scope {
 		for claimed, owner := range f.owners {
@@ -559,6 +568,12 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next
 	if err := f.guardInspectionClaimLocked(identity, key, scope); err != nil {
 		return "", err
 	}
+	if err := f.admitReadsLocked(identity); err != nil {
+		return "", err
+	}
+	if err := f.guardReadersLocked(identity, scope); err != nil {
+		return "", err
+	}
 	owned := f.ownedScopeLocked(key)
 	added := slices.DeleteFunc(slices.Clone(scope), func(path string) bool { return slices.Contains(owned, path) })
 	if d := f.staged[key]; d != nil && slices.ContainsFunc(slices.Collect(maps.Keys(d.files)), func(path string) bool { return !slices.Contains(scope, path) }) {
@@ -582,6 +597,7 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next
 	// The work awaits adoption again: no attempt until the history admits the
 	// unit and its target binds, and no holder until then.
 	held.AttemptID, held.Invariants, held.InvariantsHash, held.Prelaunch, held.HostSession = "", identity.Invariants, hash, true, ""
+	held.Reads = identity.Reads
 	f.bindings[key] = held
 	f.releaseOwnershipLocked(key)
 	for _, path := range scope {
@@ -602,6 +618,12 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next
 // it leaves out stay with key; a verdict over key no longer matches its delta.
 func (f *FS) handOverLocked(identity Identity, key AgentID, scope, added []string) (AgentID, error) {
 	if err := f.checkClaimScope(identity, added); err != nil {
+		return "", err
+	}
+	if err := f.admitReadsLocked(identity); err != nil {
+		return "", err
+	}
+	if err := f.guardReadersLocked(identity, added); err != nil {
 		return "", err
 	}
 	// Like any assignment, the claim awaits adoption by its target.
@@ -789,7 +811,7 @@ func (f *FS) heldBindingLocked(identity Identity, scope []string) (AgentID, bool
 				return "", true, err
 			}
 		}
-		if !sameScope(f.ownedScopeLocked(key), scope) {
+		if !sameScope(f.ownedScopeLocked(key), scope) || !sameScope(existing.Reads, identity.Reads) {
 			return "", true, fmt.Errorf("%w: unit %q already holds %q for this attempt with another scope; reassign it with claim_assign and that author_key", ErrScopeDenied, identity.WorkUnitID, key)
 		}
 		return key, true, nil
