@@ -393,6 +393,10 @@ export default Plugin.define({
     async function callState(d: Delegation): Promise<"gone" | "error" | "completed" | "open"> {
       try {
         const call = await nativeCall(d)
+        // A compaction drops older calls from the caller's context. A background
+        // launch whose child is attached already returned, so the missing call is
+        // not an open one: the child's idle or deletion is its termination.
+        if (call === undefined && d.background && d.child) return "completed"
         return call?.type === "tool" && (call.state.status === "error" || call.state.status === "completed") ? call.state.status : "open"
       } catch (error) {
         if (notFound(error)) return "gone"
@@ -524,12 +528,6 @@ export default Plugin.define({
       const holder: unknown = await dispatchAction({ action: "interlocutor", session: root })
       return isResponseObject(holder) && holder.holder === session
     }
-    // offlineCommand is the exact takt-ai invocation the user can run outside
-    // the session to take a decision the session could not ask for.
-    const offlineCommand = (verb: string[], request: Request) => {
-      const quote = (s: string) => `'${s.replaceAll("'", QUOTED_QUOTE)}'`
-      return `${TAKT_AI} ${verb.join(" ")} --workspace ${quote(workspace)} --state ${quote(stateDir())} --request ${quote(JSON.stringify(request))}`
-    }
     async function repairOperation<T>(run: () => Promise<T>, resume: (approval: Request) => Promise<T>, c: Caller): Promise<T> {
       try { return await run() }
       catch (error) {
@@ -543,10 +541,7 @@ export default Plugin.define({
           throw new VFSRefusal(`${diagnostic}; ${c.agent === ORCHESTRATOR_ID ? "call claim_list" : "make your next Takt tool call"} to ask the user for this repair, then retry`, (error as VFSRefusal).response)
         }
         const approval = { kind: repair.kind, id: repair.id, state: repair.state, preserve: repair.preserve }
-        const offline = repair.kind === "cycle"
-          ? offlineCommand(["gc", "coordinate"], { action: "abort", event: repair.id, evidence: "repair approved by the user", repair: approval })
-          : offlineCommand(["dispatch"], { action: "tick", session: await rootSession(c.sessionID), repair: approval })
-        await confirmWithUser(`vfs_repair_${repair.kind}`, repair.id, { reason: repair.reason, author: repair.author, files: repair.paths.join(", "), state: repair.state, preserve_current_files: String(repair.preserve) }, { sessionID:c.sessionID, agent:c.agent, id:c.id, messageID:c.messageID }, `ask the user to run: ${offline}`)
+        await confirmWithUser(`vfs_repair_${repair.kind}`, repair.id, { reason: repair.reason, author: repair.author, files: repair.paths.join(", "), state: repair.state, preserve_current_files: String(repair.preserve) }, { sessionID:c.sessionID, agent:c.agent, id:c.id, messageID:c.messageID })
         // Re-entry evaluates the original operation; this consent covers no
         // ownership, verification, failing-verdict or native shell decision.
         return resume(approval)
@@ -1277,11 +1272,12 @@ export default Plugin.define({
       }
     }
     // confirmWithUser asks the user through OpenCode and throws on a refusal.
-    // fallback names how to proceed when the user cannot be asked here.
-    async function confirmWithUser(action: string, resource: string, metadata: Record<string, string>, c: { sessionID: string; agent: string; messageID: string; id: string }, fallback: string) {
+    // fallback names a real tool call that proceeds when the user cannot be asked
+    // here. Without one, the failure to ask is the harness's own error, reported as is.
+    async function confirmWithUser(action: string, resource: string, metadata: Record<string, string>, c: { sessionID: string; agent: string; messageID: string; id: string }, fallback?: string) {
       try { await askUser(action, resource, metadata, c) }
       catch (error) {
-        if (error instanceof Error && !error.message.startsWith("Permission denied")) error.message += `; the user could not be asked here: ${fallback}`
+        if (fallback && error instanceof Error && !error.message.startsWith("Permission denied")) error.message += `; the user could not be asked here: ${fallback}`
         throw error
       }
     }
@@ -1295,7 +1291,8 @@ export default Plugin.define({
       }
       startEvents()
       if (disposed) throw new Error("VFS plugin stopped; no approval was granted")
-      const id = randomUUID()
+      // The permission service accepts only its own `per` identifier prefix.
+      const id = `per_${randomUUID()}`
       const controller = new AbortController()
       const reply = new Promise<string>((resolve, reject) => pendingReplies.set(id, { session: c.sessionID, controller, resolve, reject }))
       void reply.catch(() => undefined)
@@ -1584,8 +1581,7 @@ export default Plugin.define({
           if (!d || d.cycle) throw new Error(`dispatch ${args.dispatch} names no ordinary delegation; use a dispatch exactly as a refusal reported it`)
           if (d.settled) return { content: `Dispatch ${d.dispatch} already returned` }
           const request = { action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit }
-          await confirmWithUser("dispatch_abandon", d.dispatch, { unit: d.unit, agent: d.agent, root: d.root, session: d.child ?? d.caller }, c,
-            `ask the user to stop session ${d.child ?? d.caller} and run: ${offlineCommand(["dispatch"], request)}`)
+          await confirmWithUser("dispatch_abandon", d.dispatch, { unit: d.unit, agent: d.agent, root: d.root, session: d.child ?? d.caller }, c)
           // The user's decision stands even when the host cannot confirm the stop.
           const unstopped = d.child ? await stopChild(d.child).then(() => "", error => `; its session ${d.child} could not be confirmed stopped: ${error instanceof Error ? error.message : error}`) : ""
           await governed(c, request)

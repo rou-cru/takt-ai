@@ -211,6 +211,9 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "allow"})
 		}
+		// Crew dispatch and GC coordination are the orchestrator's own to run:
+		// the blanket denial every other agent keeps never binds it.
+		rules = append(rules, permissionRule{"shell", "*takt-ai dispatch*", "allow"}, permissionRule{"shell", "*takt-ai gc*", "allow"})
 	} else {
 		// Verification and quality assurance never write the project; their
 		// output goes outside it through the shell.

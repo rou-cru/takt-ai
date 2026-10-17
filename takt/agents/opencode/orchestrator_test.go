@@ -103,9 +103,14 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 			t.Errorf("%s permission = %q", action, effectOf(agent.Permissions, action, "*"))
 		}
 	}
-	for _, action := range []string{"read", "shell"} {
-		if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == action }) {
-			t.Errorf("orchestrator overrides inherited %s protections", action)
+	if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == "read" }) {
+		t.Errorf("orchestrator overrides inherited read protections")
+	}
+	// Only crew dispatch and GC coordination, which are its own to run, lift the
+	// inherited shell denial; every other shell protection stays.
+	for _, r := range agent.Permissions {
+		if r.Action == "shell" && r.Resource != "*takt-ai dispatch*" && r.Resource != "*takt-ai gc*" {
+			t.Errorf("orchestrator overrides inherited shell protection %q", r.Resource)
 		}
 	}
 	for _, tc := range []struct{ action, resource, want string }{
