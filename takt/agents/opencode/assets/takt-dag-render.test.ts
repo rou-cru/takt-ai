@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import realSession from "../testdata/dag-real-session.json"
 import { testRender } from "@opentui/solid"
 import {
   activityBoxWidth,
@@ -96,7 +97,7 @@ describe("graph layout", () => {
     expect([...layout.nodes.keys()]).toEqual(["a", "b", "c", "d"])
     expect(layout.nodes.get("a")?.depth).toBe(0)
     expect(layout.nodes.get("c")?.depth).toBe(2)
-    expect(layout.paths.map((path) => path.length)).toEqual([3, 4, 8, 3])
+    expect(layout.paths.map((path) => path.length)).toEqual([3, 3, 8, 3])
     expect(layout.width).toBeGreaterThan(0)
     expect(layout.height).toBeGreaterThan(0)
     expect(edgeRows(layout).join("\n")).toContain("─")
@@ -183,6 +184,50 @@ describe("graph layout", () => {
     expect(layout.bands).toBeGreaterThan(1)
     expect(edgePorts(layout)).toHaveLength(5)
     expect(edgeRows(layout).every((row) => row.length === layout.width)).toBe(true)
+  })
+
+  // Every cell each edge occupies, with whether the edge runs straight through it.
+  const edgeCells = (layout: ReturnType<typeof computeLayout>) => {
+    const boxes = [...layout.nodes.values()]
+    const beside = (x: number, y: number) => boxes.find((n) => n.y + 1 === y && (n.x + n.width === x || n.x - 1 === x))?.id
+    const cells = new Map<string, { edge: string; through: boolean; across: boolean }[]>()
+    const edges = layout.paths.map((path, i) => {
+      const edge = `${beside(...path[0])}->${beside(layout.heads[i].x, layout.heads[i].y)}`
+      path.slice(1).forEach(([bx, by], j) => {
+        const [ax, ay] = path[j]
+        const steps = Math.abs(bx - ax) + Math.abs(by - ay)
+        for (let k = 0; k <= steps; k++) {
+          const key = `${ax + Math.sign(bx - ax) * k},${ay + Math.sign(by - ay) * k}`
+          cells.set(key, [...(cells.get(key) ?? []), { edge, through: k > 0 && k < steps, across: ay === by }])
+        }
+      })
+      return edge
+    })
+    return { boxes, cells, edges: new Set(edges) }
+  }
+
+  test("routes the real session without passing through boxes or joining unrelated edges", () => {
+    for (const viewport of [{ width: 400, height: 1000 }, { width: 200, height: 1000 }, { width: 150, height: 60 }, { width: 120, height: 50 }]) {
+      const { boxes, cells, edges } = edgeCells(computeLayout(realSession as never, undefined, viewport))
+      for (const [key, owners] of cells) {
+        const [x, y] = key.split(",").map(Number)
+        expect(boxes.some((n) => x >= n.x && x < n.x + n.width && y >= n.y && y < n.y + 3)).toBe(false)
+        for (const a of owners) for (const b of owners) {
+          const [[af, at], [bf, bt]] = [a.edge.split("->"), b.edge.split("->")]
+          // Edges may share a cell when every source drawn there reaches every target drawn there.
+          const related = af === bf || at === bt || (edges.has(`${af}->${bt}`) && edges.has(`${bf}->${at}`))
+          if (!related) expect(a.through && b.through && a.across !== b.across).toBe(true)
+        }
+      }
+    }
+  })
+
+  test("in one band every edge bends only where it leaves and where it arrives", () => {
+    const layout = computeLayout(realSession as never)
+    expect(layout.bands).toBe(1)
+    const turns = (path: readonly (readonly [number, number])[]) =>
+      path.slice(2).filter(([x], i) => (path[i][0] === path[i + 1][0]) !== (path[i + 1][0] === x)).length
+    for (const path of layout.paths) expect(turns(path)).toBeLessThanOrEqual(4)
   })
 
   test("handles an empty graph and a graph without edges", () => {
