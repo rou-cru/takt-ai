@@ -1,20 +1,29 @@
 # Implementation Progress
 
-| Documento | Avance | Lo que falta |
-|---|---|---|
-| PRD_ORCHESTRATION | 67% | Judgment layered on real mechanism (recovery decisions, milestone calibration, resuming after handoff) stays prompt-only, capped below complete<br>PR-ORQ-23's edge-logic difference between planning skills is not integrated by either lever<br>PR-ORQ-29..32's multi-framework selection and bounded routes are catalog prompt content with no deterministic check that the right route was chosen |
-| PRD_DAG | 71% | Verification verdicts never enter the execution history (author declared, never used)<br>Plan revision records no rationale (PR-DAG-MUT-5), and `takt-sdd-workflow` does not mention tactical/strategic classification<br>No voluntary backtracking, and a settled unit stays settled between retry attempts — only forced budget-exhaustion backtracking is wired<br>Contest (PR-DAG-TMP-7) records the contest and its allowance but the harness does not invoke the verifier; the orchestrator delegates the verification |
-| PIRS_ORCHESTRATION | 70% | Deterministic confirmation before switch/handoff has no programmatic hook in OpenCode v2<br>Evidentiary judgment inside `Result`/`Outraged` precedence and lent-session opening/artifact conduct stay prompt-only<br>User environment customization as a direct, low-effort operation has no lever in this document's own scope |
-| PRD_HARNESS | 80% | Configuration-mutation custody tied to the active interlocutor holder<br>Idempotency key for switch/handoff/abort (distinct from admission's)<br>Durable, isolated recording of an `Outraged` result outside any agent's reach<br>`dispatch_switch` creates the incoming session before the harness validates the switch |
-| PRD_VFS | 93% | Consolidation not gated on unresolved recovery<br>Verdict does not record the evaluated unit or attempt; journal not exposed to orchestrator/verifier |
-| ARCH_CONTEXT | 70% | No ephemeral-noise pruning mechanism (REC-1)<br>No fluency/precision check for context reductions (CTX-2)<br>Skill visibility not scoped per agent at deploy, only validated at load (SSOT-4)<br>CTX-5/6/7 paragraph cap, emptiness declaration, tool-call ceiling are prompt-only |
-| ARCH_MEMORY | 64% | No Dreaming/consolidation specialist or skill exists anywhere in the catalog<br>No local semantic representation of entries (MEM-RET-7)<br>Retrieval currency, ordering, and relation lookup depend on the external Engram service, not Takt's own code<br>Tier-leakage prevention is a code-fence/directory heuristic, and several typology rules live only in skill prose |
-| PRD_CREW | 78% | No harness check that the orchestrator never absorbs a specialist's lane<br>No isolation, identity-hiding, or admissibility gating for the blind judge-pair review<br>No dreaming-cycle implementation exists at all (GC half is complete, dreaming half is absent) |
-| PRD_GC | 83% | No analyzer covers magic values or defensive-check smells (PR-MNT-13)<br>Docstring-quality correction and fix minimality/localization are judged by prompt only (PR-MNT-27/28)<br>No detector tells a single architectural/voluminous finding apart from ordinary accumulation (PR-MNT-30) |
-| PRD_DREAMING | 2% | Dispatch of Simple/Deep/Macro Dream<br>Base local capabilities, candidate generation, operation validation, injection screening and optional acceleration (PR-DRM-16..21)<br>Phase scheduling/isolation<br>Deference/fast-path logic<br>Diary/report writing<br>Invariant enforcement<br>(no agent/skill exists — explicitly out of scope) |
-| PRD_QA | 100% | — |
-| PRD_OBSERVABILITY | 46% | No declarative policy tables (PR-OBS-DET-1/2/3)<br>THROTTLE/ROLLBACK/GATE typed but never invoked<br>No external export or stream-liveness event |
-| PRD_SETUP | 92% | Base local inference assets of dreaming not installed; no hardware-conditional capability (PR-SET-34)<br>Only context7 is omittable — no optional skill or workflow catalog yet |
-| PRD_INSTALLATION | 92% | The sync route does not read back the recorded choices<br>Recovery information is reported only after a cancellation; restore does not check for later edits<br>Uninstall leaves some installed dependencies behind unreported |
-| PRD_TUI | 95% | No flow adjusts admission limits (PR-TUI-25) |
-| VDS_TUI | 95% | No ASCII variant of `✓`/`✗`/`┃`/panel borders, and the animation-free mode (`TAKT_NO_ANIMATION`) is undocumented (PR-UX-6)<br>Capability reconciliation shows only in the review, never when toggling, and no manifest dependency triggers it (PR-UX-21)<br>PgUp/PgDn scrolling missing in uninstall and models (PR-UX-29)<br>Below 60×20 the notice names no alternative |
+Static recount: **2026-10-18**, `ec9616a0`. [Scoring](INDEX.md#implementation-audit). Confirmed corrections only; other classifications are retained. Gaps live in the linked headers.
+
+| Document | Progress | Complete | Partial | Not integrated | Unverified manual | Own units |
+|---|---:|---:|---:|---:|---:|---:|
+| [PRD_ORCHESTRATION](meta-harness/orchestration/PRD_ORCHESTRATION.md) | 67% | 11 | 22 | 0 | 0 | 33 |
+| [PRD_DAG](meta-harness/orchestration/PRD_DAG.md) | 71% | 13 | 11 | 2 | 0 | 26 |
+| [PIRS_ORCHESTRATION](meta-harness/orchestration/PIRS_ORCHESTRATION.md) | 70% | 11 | 17 | 0 | 0 | 28 |
+| [PRD_HARNESS](meta-harness/harness/PRD_HARNESS.md) | 80% | 18 | 9 | 1 | 0 | 28 |
+| [PRD_VFS](meta-harness/harness/PRD_VFS.md) | 90% | 25 | 6 | 0 | 0 | 31 |
+| [ARCH_CONTEXT](meta-harness/context/ARCH_CONTEXT.md) | 70% | 11 | 10 | 2 | 0 | 23 |
+| [ARCH_MEMORY](meta-harness/context/ARCH_MEMORY.md) | 64% | 17 | 12 | 7 | 0 | 36 |
+| [PRD_CREW](meta-harness/crew/PRD_CREW.md) | 76% | 10 | 9 | 0 | 0 | 19 |
+| [PRD_GC](meta-harness/maintenance/PRD_GC.md) | 83% | 13 | 7 | 0 | 0 | 20 |
+| [PRD_DREAMING](meta-harness/maintenance/PRD_DREAMING.md) | 2% | 0 | 1 | 22 | 0 | 23 |
+| [PRD_QA](meta-harness/quality/PRD_QA.md) | Unverified | — | — | — | — | 20 |
+| [PRD_OBSERVABILITY](meta-harness/observability/PRD_OBSERVABILITY.md) | 46% | 4 | 24 | 7 | 0 | 35 |
+| [PRD_SETUP](app/PRD_SETUP.md) | 91% | 27 | 4 | 1 | 0 | 32 |
+| [PRD_INSTALLATION](app/installation/PRD_INSTALLATION.md) | 92% | 39 | 7 | 0 | 0 | 46 |
+| [PRD_TUI](app/tui/PRD_TUI.md) | 95% | 20 | 0 | 1 | 0 | 21 |
+| [VDS_TUI](app/tui/VDS_TUI.md) | 95% | 25 | 3 | 0 | 0 | 28 |
+| [PRD_PLATFORMS](meta-harness/platforms/PRD_PLATFORMS.md) | 77% | 7 | 6 | 0 | 0 | 13 |
+| [PRD_RELEASE_VALIDATION](app/PRD_RELEASE_VALIDATION.md) | 43% | 3 | 6 | 1 | 4 | 14 |
+| [CONSTITUTION](governance/CONSTITUTION.md) | 50% | 0 | 12 | 0 | 0 | 12 articles |
+| [DOCTRINE](governance/DOCTRINE.md) | 56% | 2 | 14 | 0 | 0 | 16 |
+| [brand](brand.md) | 77% | 7 | 6 | 0 | 0 | 13 blocks |
+
+Unverified: QA's requirement-level score, installation's full reclassification, runtime/visual/platform acceptance, manual evidence and staged VFS work. No tests or independent review underpin this recount.

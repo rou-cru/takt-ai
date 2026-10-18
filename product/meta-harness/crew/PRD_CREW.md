@@ -1,6 +1,6 @@
 # PRD: Crew Role Classes and Permission Profiles
 
-**Actual implementation progress: 78%** — 18 own requirements: 10 complete, 8 partial, 0 not integrated. Gaps: the orchestrator's refusal to absorb a reachable lane, the crew-shape fallback and the blind judge-pair review with its harness dispatch rest on prompt with no gating by the harness, as does the authoring conduct of interlocutors and planning authors; the dreaming half of the maintenance class has no implementation.
+**Actual implementation progress: 76%** — 19 requirements: 10 complete, 9 partial. Gaps: role conduct and blind review depend on instructions; dreaming is absent. PR-CRW-19 is partial: QA permissions exist, but shell non-mutation and reporting remain conduct rules.
 
 ## 1. Problem
 

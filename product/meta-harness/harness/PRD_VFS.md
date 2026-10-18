@@ -1,6 +1,6 @@
 # PRD: Virtual File System (VFS) and Action Journaling
 
-**Actual implementation progress: 93%** — 31 own requirements: 27 complete, 4 partial, 0 not integrated. Partial: PR-VFS-STG-6 (nothing prevents consolidating a scope's deltas while its recovery is unresolved), STG-8 (releasing an idle claim in the current root session asks for user confirmation), CSL-7 (the verdict does not record the evaluated unit or attempt), JRN-3 (the journal is readable only offline or by the harness, not by the orchestrator or verifier).
+**Actual implementation progress: 90%** — 31 requirements: 25 complete, 6 partial. Partial: STG-6 (recovery consolidation gate), STG-7/COL-4 (automatic cross-root discard), STG-8 (idle release confirmation), CSL-7 (verdict scope), JRN-3 (orchestrator/verifier inspection grants).
 
 ## 1. Problem
 

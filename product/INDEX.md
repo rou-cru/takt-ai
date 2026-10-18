@@ -4,7 +4,7 @@
 
 ## Implementation audit
 
-The progress percentages included in each document are a static integration audit, as of **2026-09-23**; they are not effort estimates or release statements. For PRD/ARCH/PIRS/VDS documents their own requirements are counted (not cross-references); for documents without IDs, the articles, rules, or numbered blocks that do express obligations are counted. **Complete = 1 point** only if the behavior reaches the official supported flow through a production path; **partial = 0.5** if it is connected but does not satisfy the full acceptance; **absent/not integrated = 0**, including helpers, mocks, isolated tests, declarative content without enforcement where deterministic behavior is required, and manual-validation requirements without recorded evidence. The percentage is `(complete + partial × 0.5) / own units × 100`, rounded to the nearest integer. A purely structural or vocabulary document, with no behavioral obligations, states N/A instead of fabricating a denominator.
+Static recount: **2026-10-18**, summarized in [PROGRESS](PROGRESS.md); unchanged classifications are retained, not recertified. Count each document's own requirements, or obligatory articles/blocks where IDs are absent. Score production-integrated completion as 1, partial integration as 0.5, and absent integration or manual validation without recorded evidence as 0. Divide by all counted units and round half up. Missing classifications are unverified; documents without behavioral obligations are N/A. These figures are not release certification.
 
 This document is the Single Source of Truth for the structure and responsibility boundaries of the Takt AI product corpus, and defines the resolution hierarchy for normative conflicts.
 

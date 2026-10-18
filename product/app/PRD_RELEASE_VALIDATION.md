@@ -1,6 +1,6 @@
 # PRD: Release Experience Validation
 
-**Actual implementation progress: 60%** — 14 own requirements: 3 complete, 6 partial, 1 not integrated, 4 manual external evidence (PR-REL-5/7/11/12, excluded from the percentage). There is no first-use image for manual trial, no encoded manual gate, no native macOS/ARM64 or arm64 test evidence, and no separation of expected-target results.
+**Actual implementation progress: 43%** — 14 requirements: 3 complete, 6 partial, 1 absent, 4 manual requirements without recorded evidence (PR-REL-5/7/11/12, counted at zero). Gaps: first-use image, manual gate, native-platform evidence and separate compatibility results.
 
 ## 1. Problem
 

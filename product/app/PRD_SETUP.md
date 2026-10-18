@@ -1,6 +1,6 @@
 # PRD: Setup Experience and Stack Selection
 
-**Actual implementation progress: 92%** — 32 own requirements: 28 complete, 3 partial, 1 not integrated. Gaps: only one capability is omittable and the manifest does not declare supporting managed assets; the base local inference assets of dreaming are not installed, and no capability declares or is gated by a hardware requirement.
+**Actual implementation progress: 91%** — 32 requirements: 27 complete, 4 partial, 1 absent. Partial: PR-SET-12 (dreaming assets), 13 (optional skills/workflows), 17 (reconciliation explanation), 31 (supporting-asset declarations). Absent: PR-SET-34 (hardware gating).
 
 ## 1. Problem
 

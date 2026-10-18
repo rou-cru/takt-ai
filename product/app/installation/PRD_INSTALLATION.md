@@ -1,6 +1,6 @@
 # PRD: Installation Experience
 
-**Actual implementation progress: 92%** — 46 own requirements: 39 complete, 7 partial, 0 not integrated. Gaps: the sync route does not read back the recorded choices; recovery information is reported only after a cancellation, restore does not check for later edits, and uninstall leaves some installed dependencies behind unreported.
+**Actual implementation progress: 92%** — retained estimate: 46 requirements, 39 complete, 7 partial; full reclassification is unverified. Gaps: upgrade executes as install; restore lacks authorization, edit protection and text output; recovery and uninstall reporting are incomplete. Interactive setup does reload recorded choices.
 
 ## 1. Problem
 
