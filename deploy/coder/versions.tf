@@ -5,7 +5,7 @@
 # a change made to make a plan or a test pass.
 
 terraform {
-  required_version = ">= 1.9.0, < 2.0.0"
+  required_version = ">= 1.11.0, < 2.0.0"
 
   required_providers {
     coder = {

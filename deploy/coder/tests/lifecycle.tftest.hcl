@@ -141,7 +141,7 @@ run "stopped_allows_missing_backstage_reference" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid"
+    backstage_url   = "https://backstage.example.invalid"
   }
 
   override_data {
@@ -181,7 +181,7 @@ run "running_requires_actual_owner_backstage_reference" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid"
+    backstage_url   = "https://backstage.example.invalid"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
         BACKSTAGE_TOKEN = { name = "takt-owner-a-secret", key = "backstage-token" }
@@ -345,8 +345,8 @@ run "explicit_storage_class_and_size" {
   command = plan
 
   variables {
-    namespace       = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace          = "takt-phase-one-test"
+    workspace_image    = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     storage_class_name = "standard"
     storage_size_gib   = 20
   }

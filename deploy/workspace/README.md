@@ -6,6 +6,14 @@ Disposable, ready-to-use [Takt AI](https://github.com/rou-cru/takt-ai) + OpenCod
 - Tags: `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>` (mirrored at `ghcr.io/rou-cru/takt-ai`)
 - Runs as the non-root user `takt` (UID/GID 10001)
 
+## Scope of this directory
+
+This README documents the workspace image, which is a generic product artifact.
+
+The deployment material next to it — `helm.sh`, `namespace.yaml`, and `kaf-control-plane-values.yaml` — is legacy material written for one specific environment. The generic paths do not use it: the Helm chart is documented in [charts/takt-ai/README.md](../../charts/takt-ai/README.md) and the Coder workspace template in [deploy/coder/README.md](../coder/README.md); neither consumes these files or copies them into its examples.
+
+Because these legacy files embed environment-specific values, a literal repository-wide requirement that no infrastructure literals exist does not hold while they remain. Whether that requirement excludes legacy operator material, or the files are removed through separately authorized cleanup, is an open disposition owned by the product owner and the user; this README records the conflict and resolves nothing (acceptance open item OI-01). No environment-specific values are added here.
+
 ## Run
 
 ```sh

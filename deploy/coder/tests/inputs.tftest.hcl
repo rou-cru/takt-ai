@@ -63,8 +63,8 @@ run "accepts_arm64_and_storage_upper_bound" {
   command = plan
 
   variables {
-    namespace       = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace        = "takt-phase-one-test"
+    workspace_image  = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     architecture     = "arm64"
     storage_size_gib = 1024
   }
@@ -100,8 +100,8 @@ run "accepts_storage_lower_bound" {
   command = plan
 
   variables {
-    namespace       = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace        = "takt-phase-one-test"
+    workspace_image  = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     storage_size_gib = 1
   }
 
@@ -138,7 +138,7 @@ run "accepts_backstage_url_and_owner_token_reference" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid"
+    backstage_url   = "https://backstage.example.invalid"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
         BACKSTAGE_TOKEN = { name = "takt-owner-a-secret", key = "backstage-token" }
@@ -177,8 +177,8 @@ run "accepts_repository_url_hint" {
   command = plan
 
   variables {
-    namespace       = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "https://git.example.invalid/team/takt-ai.git"
   }
 
@@ -212,7 +212,7 @@ run "accepts_repository_url_hint" {
 run "reject_namespace_uppercase" {
   command = plan
   variables {
-    namespace = "Takt-Prod"
+    namespace       = "Takt-Prod"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.namespace]
@@ -221,7 +221,7 @@ run "reject_namespace_uppercase" {
 run "reject_namespace_underscore" {
   command = plan
   variables {
-    namespace = "takt_prod"
+    namespace       = "takt_prod"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.namespace]
@@ -230,7 +230,7 @@ run "reject_namespace_underscore" {
 run "reject_namespace_leading_whitespace" {
   command = plan
   variables {
-    namespace = " takt-prod"
+    namespace       = " takt-prod"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.namespace]
@@ -239,7 +239,7 @@ run "reject_namespace_leading_whitespace" {
 run "reject_namespace_over_63_characters" {
   command = plan
   variables {
-    namespace = "takt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    namespace       = "takt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.namespace]
@@ -248,7 +248,7 @@ run "reject_namespace_over_63_characters" {
 run "reject_image_tagged_not_digest_pinned" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai:2.0.28"
   }
   expect_failures = [var.workspace_image]
@@ -257,7 +257,7 @@ run "reject_image_tagged_not_digest_pinned" {
 run "reject_image_with_url_scheme" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "https://registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.workspace_image]
@@ -266,7 +266,7 @@ run "reject_image_with_url_scheme" {
 run "reject_image_with_surrounding_whitespace" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = " registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.workspace_image]
@@ -275,7 +275,7 @@ run "reject_image_with_surrounding_whitespace" {
 run "reject_image_with_short_digest" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
   }
   expect_failures = [var.workspace_image]
@@ -284,7 +284,7 @@ run "reject_image_with_short_digest" {
 run "reject_image_without_repository_path" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
   }
   expect_failures = [var.workspace_image]
@@ -293,9 +293,9 @@ run "reject_image_without_repository_path" {
 run "reject_architecture_not_in_enum" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    architecture = "x86_64"
+    architecture    = "x86_64"
   }
   expect_failures = [var.architecture]
 }
@@ -303,9 +303,9 @@ run "reject_architecture_not_in_enum" {
 run "reject_architecture_with_whitespace" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    architecture = "amd64 "
+    architecture    = "amd64 "
   }
   expect_failures = [var.architecture]
 }
@@ -313,9 +313,9 @@ run "reject_architecture_with_whitespace" {
 run "reject_resources_cpu_request_above_limit" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    resources = { cpu_request_milli = 4000, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 4096, ephemeral_request_mib = 512, ephemeral_limit_mib = 2048 }
+    resources       = { cpu_request_milli = 4000, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 4096, ephemeral_request_mib = 512, ephemeral_limit_mib = 2048 }
   }
   expect_failures = [var.resources]
 }
@@ -323,9 +323,9 @@ run "reject_resources_cpu_request_above_limit" {
 run "reject_resources_non_positive_value" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    resources = { cpu_request_milli = 500, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 0, ephemeral_request_mib = 512, ephemeral_limit_mib = 2048 }
+    resources       = { cpu_request_milli = 500, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 0, ephemeral_request_mib = 512, ephemeral_limit_mib = 2048 }
   }
   expect_failures = [var.resources]
 }
@@ -333,9 +333,9 @@ run "reject_resources_non_positive_value" {
 run "reject_resources_ephemeral_request_above_limit" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    resources = { cpu_request_milli = 500, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 4096, ephemeral_request_mib = 4096, ephemeral_limit_mib = 2048 }
+    resources       = { cpu_request_milli = 500, cpu_limit_milli = 2000, memory_request_mib = 1024, memory_limit_mib = 4096, ephemeral_request_mib = 4096, ephemeral_limit_mib = 2048 }
   }
   expect_failures = [var.resources]
 }
@@ -343,8 +343,8 @@ run "reject_resources_ephemeral_request_above_limit" {
 run "reject_storage_class_empty_string" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace          = "takt-phase-one-test"
+    workspace_image    = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     storage_class_name = ""
   }
   expect_failures = [var.storage_class_name]
@@ -353,8 +353,8 @@ run "reject_storage_class_empty_string" {
 run "reject_storage_size_below_range" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace        = "takt-phase-one-test"
+    workspace_image  = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     storage_size_gib = 0
   }
   expect_failures = [var.storage_size_gib]
@@ -363,8 +363,8 @@ run "reject_storage_size_below_range" {
 run "reject_storage_size_above_range" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace        = "takt-phase-one-test"
+    workspace_image  = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     storage_size_gib = 1025
   }
   expect_failures = [var.storage_size_gib]
@@ -373,8 +373,8 @@ run "reject_storage_size_above_range" {
 run "reject_image_pull_secret_invalid_dns_subdomain" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace          = "takt-phase-one-test"
+    workspace_image    = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     image_pull_secrets = ["Takt_Registry_Pull"]
   }
   expect_failures = [var.image_pull_secrets]
@@ -383,8 +383,8 @@ run "reject_image_pull_secret_invalid_dns_subdomain" {
 run "reject_repository_ssh_url" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "git@git.example.invalid:team/takt-ai.git"
   }
   expect_failures = [var.repository_url_default]
@@ -393,8 +393,8 @@ run "reject_repository_ssh_url" {
 run "reject_repository_plain_http_url" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "http://git.example.invalid/team/takt-ai.git"
   }
   expect_failures = [var.repository_url_default]
@@ -403,8 +403,8 @@ run "reject_repository_plain_http_url" {
 run "reject_repository_embedded_userinfo" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "https://user:password@git.example.invalid/team/takt-ai.git"
   }
   expect_failures = [var.repository_url_default]
@@ -413,8 +413,8 @@ run "reject_repository_embedded_userinfo" {
 run "reject_repository_query_string" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "https://git.example.invalid/team/takt-ai.git?ref=main"
   }
   expect_failures = [var.repository_url_default]
@@ -423,8 +423,8 @@ run "reject_repository_query_string" {
 run "reject_repository_trailing_whitespace" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace              = "takt-phase-one-test"
+    workspace_image        = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     repository_url_default = "https://git.example.invalid/team/takt-ai.git "
   }
   expect_failures = [var.repository_url_default]
@@ -433,9 +433,9 @@ run "reject_repository_trailing_whitespace" {
 run "reject_backstage_url_plain_http" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "http://backstage.example.invalid"
+    backstage_url   = "http://backstage.example.invalid"
   }
   expect_failures = [var.backstage_url]
 }
@@ -443,9 +443,9 @@ run "reject_backstage_url_plain_http" {
 run "reject_backstage_url_embedded_userinfo" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://user:password@backstage.example.invalid"
+    backstage_url   = "https://user:password@backstage.example.invalid"
   }
   expect_failures = [var.backstage_url]
 }
@@ -453,9 +453,9 @@ run "reject_backstage_url_embedded_userinfo" {
 run "reject_backstage_url_query_string" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid/?tenant=team"
+    backstage_url   = "https://backstage.example.invalid/?tenant=team"
   }
   expect_failures = [var.backstage_url]
 }
@@ -463,9 +463,9 @@ run "reject_backstage_url_query_string" {
 run "reject_backstage_url_fragment" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid/#catalog"
+    backstage_url   = "https://backstage.example.invalid/#catalog"
   }
   expect_failures = [var.backstage_url]
 }
@@ -473,7 +473,7 @@ run "reject_backstage_url_fragment" {
 run "reject_owner_env_reserved_home" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -487,7 +487,7 @@ run "reject_owner_env_reserved_home" {
 run "reject_owner_env_coder_prefix" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -501,7 +501,7 @@ run "reject_owner_env_coder_prefix" {
 run "reject_owner_env_takt_prefix" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -515,7 +515,7 @@ run "reject_owner_env_takt_prefix" {
 run "reject_owner_env_opencode_prefix" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -529,7 +529,7 @@ run "reject_owner_env_opencode_prefix" {
 run "reject_owner_env_engram_prefix" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -543,7 +543,7 @@ run "reject_owner_env_engram_prefix" {
 run "reject_owner_env_xdg_prefix" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -557,7 +557,7 @@ run "reject_owner_env_xdg_prefix" {
 run "reject_owner_env_backstage_url_name" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -571,7 +571,7 @@ run "reject_owner_env_backstage_url_name" {
 run "reject_owner_env_lowercase_variable_name" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -585,7 +585,7 @@ run "reject_owner_env_lowercase_variable_name" {
 run "reject_owner_env_uppercase_owner_key" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6B1F9C2E-8A34-4D7B-9F21-0C5E7A1D3B48" = {
@@ -599,7 +599,7 @@ run "reject_owner_env_uppercase_owner_key" {
 run "reject_owner_env_invalid_secret_name" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
@@ -613,7 +613,7 @@ run "reject_owner_env_invalid_secret_name" {
 run "reject_owner_env_invalid_secret_key" {
   command = plan
   variables {
-    namespace = "takt-phase-one-test"
+    namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {

@@ -38,7 +38,7 @@ never certifies T2 or T3.
 
 | Key | Location | Runner | Scope |
 |---|---|---|---|
-| CH | `development/testing/test-coder-chart.sh` | `development/testing/test-coder-chart.sh` | Offline Helm regression: dependency, mode coupling, native env, RBAC, direct gating, retained PVC claim. Exit 0 pass, 1 fail, 3 UNVERIFIED (Coder dependency not pre-resolved). |
+| CH | `development/testing/test-coder-chart.sh` | `development/testing/test-coder-chart.sh` | Offline Helm regression: dependency, mode coupling, native env, RBAC, direct gating, retained PVC claim. Exit 0 pass, 1 fail, 3 no failure but at least one scenario UNVERIFIED: always the whole-repository scan of CW-T1-09 (OI-01), and also a missing helm or unresolved Coder dependency (stops before assertions) or an unavailable git baseline. The UNVERIFIED lines name the cause. |
 | IN | `deploy/coder/tests/inputs.tftest.hcl` | `terraform test -filter=...` in `deploy/coder` | Template input boundaries and rejected values, mock providers only. |
 | WS | `deploy/coder/tests/workspace.tftest.hcl` | `terraform test -filter=...` in `deploy/coder` | Workspace identity, runtime mounts, env, output set, Backstage credential reference, NetworkPolicy, automount. Mock providers only. |
 | LC | `deploy/coder/tests/lifecycle.tftest.hcl` | `terraform test -filter=...` in `deploy/coder` | Start/stop compute gating; PVC always retained at its address. Mock providers only. |

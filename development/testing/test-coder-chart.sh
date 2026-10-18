@@ -12,8 +12,13 @@
 # online preparation step that this script never performs. When it is missing,
 # the script exits 3 (prerequisite not met, UNVERIFIED) rather than passing.
 #
-# Exit codes: 0 all checks passed; 1 at least one check failed; 3 a prerequisite
-# is missing, so the affected checks are UNVERIFIED.
+# Exit codes: 0 all checks passed; 1 at least one check failed; 3 no check
+# failed and at least one scenario is UNVERIFIED. Exit 3 always includes the
+# whole-repository C2 scan of CW-T1-09, which is never certified here (OI-01),
+# so a complete run without failures exits 3. It also covers a missing helm or
+# an unresolved Coder dependency (the script stops before any assertion) and an
+# unavailable git HEAD for the direct baseline. Read the UNVERIFIED lines to
+# tell these cases apart.
 set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -107,8 +112,11 @@ docs_containing() { # docs_containing <file> <word>
 has_kind() { grep -q "^kind: $2\$" "$1"; }
 
 # ------------------------------------------------ CH-01 (CW-T1-01) default
-render "$TMP/direct" && pass "CW-T1-01 default direct chart renders" \
-    || fail "CW-T1-01 default direct chart renders" "helm template failed: $(cat "$TMP/direct.err")"
+if render "$TMP/direct"; then
+    pass "CW-T1-01 default direct chart renders"
+else
+    fail "CW-T1-01 default direct chart renders" "helm template failed: $(cat "$TMP/direct.err")"
+fi
 
 if helm lint "$CHART" >"$TMP/lint.out" 2>&1; then pass "CW-T1-01 helm lint passes"; else fail "CW-T1-01 helm lint passes" "$(cat "$TMP/lint.out")"; fi
 
@@ -128,7 +136,7 @@ else
     fail "CW-T1-01 dependency metadata readable" "helm show chart failed"
 fi
 
-[ -f "$CHART/Chart.lock" ] && pass "CW-T1-01 Chart.lock present" || fail "CW-T1-01 Chart.lock present" "no Chart.lock in $CHART"
+if [ -f "$CHART/Chart.lock" ]; then pass "CW-T1-01 Chart.lock present"; else fail "CW-T1-01 Chart.lock present" "no Chart.lock in $CHART"; fi
 
 if helm show values "$CHART" 2>/dev/null | grep -q '^execution:' ; then
     if helm show values "$CHART" | awk '/^execution:/{f=1;next} /^[^ ]/{f=0} f' | grep -q 'mode: direct' \
@@ -167,8 +175,11 @@ else
 fi
 
 # ------------------------------------------------ CH-02 (CW-T1-02) mode coupling
-render "$TMP/coder" -f "$BASE_VALUES" && pass "CW-T1-03 valid Coder configuration renders" \
-    || fail "CW-T1-03 valid Coder configuration renders" "$(cat "$TMP/coder.err")"
+if render "$TMP/coder" -f "$BASE_VALUES"; then
+    pass "CW-T1-03 valid Coder configuration renders"
+else
+    fail "CW-T1-03 valid Coder configuration renders" "$(cat "$TMP/coder.err")"
+fi
 
 # Direct workload: the default direct render must carry a Deployment selected by
 # app.kubernetes.io/name: takt-ai (positive control), and the coder render must not.
@@ -197,10 +208,12 @@ else
     pass "CW-T1-02 no publisher Job rendered in either mode"
 fi
 
-render "$TMP/direct-keep" --set persistence.retain=true && \
-    docs_containing "$TMP/direct-keep.yaml" 'kind: PersistentVolumeClaim' | grep -q 'helm.sh/resource-policy: keep' \
-    && pass "CW-T1-02 direct mode with persistence.retain=true keeps the claim" \
-    || fail "CW-T1-02 direct retain" "persistence.retain=true does not add keep"
+if render "$TMP/direct-keep" --set persistence.retain=true \
+    && docs_containing "$TMP/direct-keep.yaml" 'kind: PersistentVolumeClaim' | grep -q 'helm.sh/resource-policy: keep'; then
+    pass "CW-T1-02 direct mode with persistence.retain=true keeps the claim"
+else
+    fail "CW-T1-02 direct retain" "persistence.retain=true does not add keep"
+fi
 
 for args in "--set coder.enabled=false" "--set execution.mode=direct --set coder.enabled=true" "--set execution.mode=bogus" "--set coder.enabled=yes"; do
     # shellcheck disable=SC2086
@@ -216,20 +229,28 @@ done
 # ------------------------------------------------ CH-03 (CW-T1-03) native env
 env_block() { grep -A4 -- "- name: $1\$" "$2" || true; }
 if [ -f "$TMP/coder.yaml" ]; then
-    env_block CODER_PG_CONNECTION_URL "$TMP/coder.yaml" | grep -q secretKeyRef && ! env_block CODER_PG_CONNECTION_URL "$TMP/coder.yaml" | grep -q '^ *value:' \
-        && pass "CW-T1-03 CODER_PG_CONNECTION_URL is a secretKeyRef, not a literal" \
-        || fail "CW-T1-03 CODER_PG_CONNECTION_URL" "not an explicit secretKeyRef"
-    env_block CODER_OIDC_CLIENT_SECRET "$TMP/coder.yaml" | grep -q secretKeyRef && ! env_block CODER_OIDC_CLIENT_SECRET "$TMP/coder.yaml" | grep -q '^ *value:' \
-        && pass "CW-T1-03 CODER_OIDC_CLIENT_SECRET is a secretKeyRef, not a literal" \
-        || fail "CW-T1-03 CODER_OIDC_CLIENT_SECRET" "not an explicit secretKeyRef"
+    if env_block CODER_PG_CONNECTION_URL "$TMP/coder.yaml" | grep -q secretKeyRef && ! env_block CODER_PG_CONNECTION_URL "$TMP/coder.yaml" | grep -q '^ *value:'; then
+        pass "CW-T1-03 CODER_PG_CONNECTION_URL is a secretKeyRef, not a literal"
+    else
+        fail "CW-T1-03 CODER_PG_CONNECTION_URL" "not an explicit secretKeyRef"
+    fi
+    if env_block CODER_OIDC_CLIENT_SECRET "$TMP/coder.yaml" | grep -q secretKeyRef && ! env_block CODER_OIDC_CLIENT_SECRET "$TMP/coder.yaml" | grep -q '^ *value:'; then
+        pass "CW-T1-03 CODER_OIDC_CLIENT_SECRET is a secretKeyRef, not a literal"
+    else
+        fail "CW-T1-03 CODER_OIDC_CLIENT_SECRET" "not an explicit secretKeyRef"
+    fi
     for flag in CODER_DISABLE_PASSWORD_AUTH CODER_OAUTH2_PROVIDER_ENABLE; do
-        env_block "$flag" "$TMP/coder.yaml" | grep -Eq 'value: "?true"?' \
-            && pass "CW-T1-03 $flag is the string true" \
-            || fail "CW-T1-03 $flag" "not rendered as the string true"
+        if env_block "$flag" "$TMP/coder.yaml" | grep -Eq 'value: "?true"?'; then
+            pass "CW-T1-03 $flag is the string true"
+        else
+            fail "CW-T1-03 $flag" "not rendered as the string true"
+        fi
     done
-    grep -q 'CODER_ACCESS_URL' "$TMP/coder.yaml" && grep -q 'https://coder.example.invalid' "$TMP/coder.yaml" \
-        && pass "CW-T1-03 CODER_ACCESS_URL is the explicit HTTPS access URL" \
-        || fail "CW-T1-03 CODER_ACCESS_URL" "explicit access URL not rendered"
+    if grep -q 'CODER_ACCESS_URL' "$TMP/coder.yaml" && grep -q 'https://coder.example.invalid' "$TMP/coder.yaml"; then
+        pass "CW-T1-03 CODER_ACCESS_URL is the explicit HTTPS access URL"
+    else
+        fail "CW-T1-03 CODER_ACCESS_URL" "explicit access URL not rendered"
+    fi
 fi
 
 # Negative cases (CW-T1-04): each must fail and name its cause.
@@ -261,8 +282,11 @@ if [ -f "$TMP/coder.yaml" ]; then
         for v in get list watch create update patch delete; do
             printf '%s' "$np_doc" | grep -Eq "(^|[^a-z])$v([^a-z]|$)" || verbs_ok=0
         done
-        [ "$verbs_ok" = 1 ] && pass "CW-T1-05 same-namespace Role grants NetworkPolicy get/list/watch/create/update/patch/delete" \
-            || fail "CW-T1-05 same-namespace NetworkPolicy verbs" "a required verb is missing"
+        if [ "$verbs_ok" = 1 ]; then
+            pass "CW-T1-05 same-namespace Role grants NetworkPolicy get/list/watch/create/update/patch/delete"
+        else
+            fail "CW-T1-05 same-namespace NetworkPolicy verbs" "a required verb is missing"
+        fi
     else
         fail "CW-T1-05 same-namespace NetworkPolicy grant" "no namespaced networkpolicies rule in $NS"
     fi

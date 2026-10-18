@@ -352,7 +352,7 @@ run "backstage_reference_uses_actual_owner" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid"
+    backstage_url   = "https://backstage.example.invalid"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
         BACKSTAGE_TOKEN = { name = "takt-owner-a-secret", key = "backstage-token" }
@@ -405,7 +405,7 @@ run "backstage_reject_owner_without_own_token_reference" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    backstage_url = "https://backstage.example.invalid"
+    backstage_url   = "https://backstage.example.invalid"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
         BACKSTAGE_TOKEN = { name = "takt-owner-a-secret", key = "backstage-token" }
@@ -527,11 +527,6 @@ run "backstage_absent_without_url_or_mapping" {
     values = { value = "" }
   }
 
-  override_data {
-    target = data.coder_parameter.persist_workspace
-    values = { value = "false" }
-  }
-
   assert {
     condition     = length([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e if e.name == "BACKSTAGE_URL" || e.name == "BACKSTAGE_TOKEN"]) == 0
     error_message = "With backstage_url empty and no BACKSTAGE_TOKEN mapping, neither BACKSTAGE_URL nor BACKSTAGE_TOKEN may reach the Pod."
@@ -542,8 +537,8 @@ run "pull_secrets_and_arm64_scheduling" {
   command = plan
 
   variables {
-    namespace       = "takt-phase-one-test"
-    workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    namespace          = "takt-phase-one-test"
+    workspace_image    = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     image_pull_secrets = ["takt-registry-pull"]
     architecture       = "arm64"
   }
@@ -642,7 +637,7 @@ run "architecture_arm64_sets_agent_and_output" {
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    architecture = "arm64"
+    architecture    = "arm64"
   }
 
   override_data {
