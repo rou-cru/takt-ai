@@ -56,6 +56,6 @@ func ComposePrompt(def catalog.AgentDefinition, instanceID string) string {
 func MemoryClause(authorID string) string {
 	return "## Memory\n\n" +
 		"Before using memory, read `~/" + engram.ContractSkillPath +
-		"` and `~/" + engram.MemorySkillPath(authorID) +
-		"`; they are the only memory rules that apply to you.\n"
+		"`; before recording, also `~/" + engram.MemorySkillPath(authorID) +
+		"`. They are the only memory rules that apply to you.\n"
 }

@@ -7,7 +7,7 @@ settings, context files, and on-demand skill links; it must not contain prompt p
 OpenCode installs this tree once at `~/.config/opencode/takt/`. Its native JSON
 registers each instance with direct file references in this order:
 BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause naming the
-agent's memory skills. Only undeclared optional files are omitted.
+memory contract and, for recording, the agent's memory skill. Only undeclared optional files are omitted.
 This order does not introduce an authority hierarchy. Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
 discovers them; they are not injected into initial prompts. Resource bytes are

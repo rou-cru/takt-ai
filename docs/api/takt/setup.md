@@ -22,6 +22,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func InstalledVersion\(rootDir string\) string](<#InstalledVersion>)
 - [func IsCurrentVersion\(installed string\) bool](<#IsCurrentVersion>)
 - [func IsInstalled\(rootDir string\) bool](<#IsInstalled>)
+- [func LoadDeployedModels\(rootDir string\) \(map\[string\]model.ModelAssignment, error\)](<#LoadDeployedModels>)
 - [func RecordInstallation\(rootDir string, request PlanRequest\) error](<#RecordInstallation>)
 - [func RecordRiskAcceptances\(rootDir string, accepted \[\]RiskAcceptance\) error](<#RecordRiskAcceptances>)
 - [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
@@ -266,6 +267,15 @@ func IsInstalled(rootDir string) bool
 ```
 
 IsInstalled reports whether rootDir holds a prior installation; an unreadable record means "nothing installed".
+
+<a name="LoadDeployedModels"></a>
+## func LoadDeployedModels
+
+```go
+func LoadDeployedModels(rootDir string) (map[string]model.ModelAssignment, error)
+```
+
+LoadDeployedModels reads the model each agent actually runs on from the OpenCode config on disk, the sole owner of that fact: the installed record misses every edit made outside Takt. Agents with no model of their own inherit the harness model and are absent from the result.
 
 <a name="RecordInstallation"></a>
 ## func RecordInstallation

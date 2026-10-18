@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "execution": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["direct", "coder"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "coder": {
+      "type": "object",
+      "required": ["enabled", "coder"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "coder": {
+          "type": "object",
+          "properties": {
+            "env": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "mode": {
+                "const": "coder"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "coder": {
+            "properties": {
+              "enabled": {
+                "const": true
+              },
+              "coder": {
+                "properties": {
+                  "env": {
+                    "allOf": [
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "valueFrom"],
+                          "properties": {
+                            "name": { "const": "CODER_PG_CONNECTION_URL" },
+                            "valueFrom": {
+                              "type": "object",
+                              "required": ["secretKeyRef"],
+                              "properties": {
+                                "secretKeyRef": {
+                                  "type": "object",
+                                  "required": ["name", "key"],
+                                  "properties": {
+                                    "name": { "type": "string", "minLength": 1 },
+                                    "key": { "type": "string", "minLength": 1 }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "not": { "required": ["value"] }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "value"],
+                          "properties": {
+                            "name": { "const": "CODER_OIDC_ISSUER_URL" },
+                            "value": {
+                              "type": "string",
+                              "format": "uri",
+                              "pattern": "^https://[^/]+"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "value"],
+                          "properties": {
+                            "name": { "const": "CODER_OIDC_CLIENT_ID" },
+                            "value": { "type": "string", "minLength": 1 }
+                          }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "valueFrom"],
+                          "properties": {
+                            "name": { "const": "CODER_OIDC_CLIENT_SECRET" },
+                            "valueFrom": {
+                              "type": "object",
+                              "required": ["secretKeyRef"],
+                              "properties": {
+                                "secretKeyRef": {
+                                  "type": "object",
+                                  "required": ["name", "key"],
+                                  "properties": {
+                                    "name": { "type": "string", "minLength": 1 },
+                                    "key": { "type": "string", "minLength": 1 }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "not": { "required": ["value"] }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "value"],
+                          "properties": {
+                            "name": { "const": "CODER_DISABLE_PASSWORD_AUTH" },
+                            "value": { "const": "true" }
+                          }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "value"],
+                          "properties": {
+                            "name": { "const": "CODER_OAUTH2_PROVIDER_ENABLE" },
+                            "value": { "const": "true" }
+                          }
+                        }
+                      },
+                      {
+                        "contains": {
+                          "type": "object",
+                          "required": ["name", "value"],
+                          "properties": {
+                            "name": { "const": "CODER_ACCESS_URL" },
+                            "value": {
+                              "type": "string",
+                              "format": "uri",
+                              "pattern": "^https://[^/]+"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "coder": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

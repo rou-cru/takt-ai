@@ -6,6 +6,12 @@ Disposable, ready-to-use [Takt AI](https://github.com/rou-cru/takt-ai) + OpenCod
 - Tags: `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>` (mirrored at `ghcr.io/rou-cru/takt-ai`)
 - Runs as the non-root user `takt` (UID/GID 10001)
 
+## Scope of this directory
+
+This README documents the workspace image, which is a generic product artifact.
+
+The deployment helpers next to it are generic: `helm.sh` wraps `helm install|upgrade|uninstall charts/takt-ai` with a default namespace, and `namespace.yaml` declares a restricted Pod Security Namespace. Neither file names a cluster, account, domain, or any other environment-specific value, and no environment-specific values are added here. The generic paths do not use them: the Helm chart is documented in [charts/takt-ai/README.md](../../charts/takt-ai/README.md) and the Coder workspace template in [deploy/coder/README.md](../coder/README.md); neither consumes these files or copies them into its examples.
+
 ## Run
 
 ```sh

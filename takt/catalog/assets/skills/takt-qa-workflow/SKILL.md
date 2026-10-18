@@ -1,6 +1,6 @@
 ---
 name: takt-qa-workflow
-description: "Selected when an objective assesses, tests or hardens a deliverable, or when a route closes acceptance with QA planned. Governs QA planning, blind test authoring, acceptance, critique, strengthening and reporting as one state machine."
+description: "Selected by the tree when an objective assesses, tests or hardens a deliverable, or as the acceptance tail with QA planned. Governs QA planning, blind test authoring, acceptance, critique, strengthening and reporting as one state machine."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -18,14 +18,12 @@ preserves findings and never infers permission to repair.
 
 ## Entry
 
-| You arrive from | Start at |
+| The selection tree adopted it | Start at |
 | --- | --- |
-| The selection tree, to assess, test or harden an existing deliverable | 1. Assess |
-| `takt-sdd-workflow`, at acceptance with QA planned | 4. Accept |
-| A bounded change covered by a current test plan | 4. Accept, for its matrix rows |
+| To assess, test or harden an existing deliverable | 1. Assess |
+| As the acceptance tail with QA planned | 4. Accept |
 
-The last two entries require the test plan and matrix from invariant planning. Without QA
-planned, use the Definition of Done in force, without manufacturing a test plan.
+The tail requires the test plan and matrix from invariant planning.
 
 ## States
 

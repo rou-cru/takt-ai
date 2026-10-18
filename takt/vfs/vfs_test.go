@@ -24,6 +24,7 @@ package vfs_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -62,6 +63,20 @@ func TestGuardGitMutation_AllNonOrchestratorRolesDenied(t *testing.T) {
 	}
 }
 
+// TestGuardShellGit_RefusalNamesAlternative checks that a refusal names the
+// rejected git subcommand and every read-only one the caller may still run.
+func TestGuardShellGit_RefusalNamesAlternative(t *testing.T) {
+	err := vfs.GuardShellGit("git status; git commit -m x")
+	if !errors.Is(err, vfs.ErrGitMutationDenied) || !strings.Contains(err.Error(), "git commit in ") {
+		t.Fatalf("GuardShellGit = %v; want a refusal naming git commit", err)
+	}
+	for _, sub := range vfs.ReadOnlyGitSubcommands() {
+		if !strings.Contains(err.Error(), sub) {
+			t.Errorf("refusal %q omits read-only subcommand %q", err, sub)
+		}
+	}
+}
+
 func TestGuardShellGit_IndirectionDenied(t *testing.T) {
 	executed := []string{
 		"git commit -m x", "command git commit -m x", "env GIT_DIR=x git reset --hard", "FOO=1 git push",
@@ -81,6 +96,8 @@ func TestGuardShellGit_IndirectionDenied(t *testing.T) {
 		"command git status", "git log -1", "git", "ls", "grep -r git .", `grep -rn "git commit" docs`,
 		"echo git push", "rg 'git reset' && cat .gitignore", `sh -c "git diff"`, "cat git/commit.txt",
 		`bash -lc "git status"`, "bash script.sh -c 'git push'", "if grep -q git x; then :; fi",
+		"git ls-files -- a b", "git rev-parse HEAD",
+		`git ls-files -- a.yaml b.sh; echo "== DIFF =="; git diff --stat HEAD -- a.yaml b.sh; ls -la b.sh; wc -l b.sh`,
 	}
 	for _, command := range notExecuted {
 		if err := vfs.GuardShellGit(command); err != nil {

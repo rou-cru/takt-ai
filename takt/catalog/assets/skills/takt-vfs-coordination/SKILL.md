@@ -18,7 +18,7 @@ collision. To retry or correct work that already has staged changes, or to give 
 paths, call `claim_assign` again with that work's `author_key` and the new exact scope: the
 staged work stays; naming only part of it hands that part over under a new author key.
 
-State `reads` in `claim_assign` when the unit needs more than its claim: `all`, `free`, `dir/`, `dir/**`, `*.ext` or exact paths. Stating it lifts the claims of work no one runs any more, which the unit then reads as staged, and the claims stay. It is refused while work it covers is in flight, and so is a claim over what a unit in flight reads; wait for that work, narrow the paths, or use `free`.
+A unit reads only its claim. State `reads` in `claim_assign` when the unit needs more than its claim: `all`, `free`, `dir/`, `dir/**`, `*.ext` or exact paths. Stating it lifts the claims of work no one runs anymore, which the unit then reads as staged, and the claims stay. It is refused while work it covers is in flight, and so is a claim over what a unit in flight reads; wait for that work, narrow the paths, or use `free`.
 
 Release a claim by its listed key. A claim with no staged work releases directly; one an
 agent is active under in the current session needs the user's explicit yes first, then
@@ -36,3 +36,8 @@ author, and delegating it again replaces its earlier one; verdicts inform you; c
 current failing one needs the user's acceptance, which the harness asks for, and the staged work of an author whose verdict fails is normally
 corrected: whoever corrects it continues that work through `claim_assign` with its author_key. On a physical-base change, keep the affected path frozen and
 report the competing state.
+
+## Across sessions
+
+The root context shows earlier sessions' claims, keys, files, and staging before you delegate. The store is local, `<workspace>/.takt-ai/vfs/`; the former global store is not imported.
+`claim_assign` without `author_key` validates the whole request and replaces matching claims of other whole roots, discarding their staging; it affects no other claim.

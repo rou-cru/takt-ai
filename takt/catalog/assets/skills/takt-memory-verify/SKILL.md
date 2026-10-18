@@ -1,6 +1,6 @@
 ---
 name: takt-memory-verify
-description: "Before using memory as verify. What this role records, when, and what it never records."
+description: "Before recording memory as verify. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt

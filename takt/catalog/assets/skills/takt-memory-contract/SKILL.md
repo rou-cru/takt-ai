@@ -123,7 +123,9 @@ per domain.
 
 ## 7. Reading memory
 
-- Read with `mem_search`, `mem_get_observation`, and `mem_context`.
+- Search with `mem_search` and judge by title; open with `mem_get_observation` only what your
+  work needs now, never an entry you only pass on by ID. Locate with `mem_search`, never with
+  `mem_context`, which returns whole sessions.
 - A delegation arrives with the invariants it consumes, or with the declaration that none
   exists yet. Those entries bind as read-only and prevail over any restatement in the brief;
   with none declared, author from the brief. A session lent to you names them in `requirements`.

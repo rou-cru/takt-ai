@@ -125,7 +125,7 @@ ARG OPENCODE_VERSION=2.0.28
 # the script (docker:S8482). When OpenCode legitimately updates the installer,
 # this check fails closed: re-download, review the diff, refresh the pin.
 ARG OPENCODE_INSTALL_SHA256=6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865
-ENV PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:${PATH}"
+ENV PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:/home/takt/.takt-ai/bin:/home/takt/.takt-ai/codegraph/node_modules/.bin:${PATH}"
 RUN useradd --create-home --uid 10001 --shell /bin/bash takt; \
     install -d -o takt -g takt \
       /workspace \

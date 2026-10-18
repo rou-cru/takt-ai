@@ -47,11 +47,11 @@ release-check:
 release-snapshot:
 	goreleaser release --snapshot --clean
 
-# Autonomous crew benchmark through Harbor (local Docker). The model is pinned
-# for every role, so runs differ only by the takt-ai binary built here.
+# Autonomous crew benchmark through Harbor (local Docker). BENCH_MODEL runs the
+# orchestrator; the specialists are mixed in development/benchmark/takt_agent.py.
 # Defaults cost nothing: a smoke dataset and a free OpenCode Zen model.
 BENCH_DATASET ?= hello-world
-BENCH_MODEL ?= opencode/big-pickle
+BENCH_MODEL ?= opencode/nemotron-3.5-super-vl-free
 BENCH_ARGS ?=
 bench:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/bench/takt-ai ./takt/cli

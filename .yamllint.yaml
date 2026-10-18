@@ -1,0 +1,5 @@
+# Helm templates are Go templates that render to YAML, not YAML themselves;
+# `helm lint` and `helm template` in CI validate them instead.
+extends: relaxed
+ignore: |
+  charts/*/templates/

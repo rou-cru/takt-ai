@@ -408,11 +408,11 @@ var (
 // classify resolves the command to allowed, approval-gated or denied.
 func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string, string) {
 	words := shellWords(command)
-	if gitMutation(command) {
+	if git := gitMutation(command); git != "" {
 		// PR-VFS-GIT-1 denies mutating git outside the orchestrator; PR-VFS-GIT-5
 		// gates the rest of its mutations on approval.
 		if err := GuardGitMutation(f.bindings[key].Role); err != nil {
-			return ShellDeny, err.Error()
+			return ShellDeny, git + " in " + command + ": " + err.Error()
 		}
 		return ShellAsk, "mutating git command: " + command
 	}
@@ -504,18 +504,19 @@ func writesOutside(words []string, rootDir string) bool {
 	return false
 }
 
-// gitMutation reports whether a command the line executes is git with a
-// subcommand outside the read-only set: each chained or piped command, behind
-// wrappers such as `command` or `env`, and the scripts `sh -c`, `eval`, `$(…)`
-// and `find -exec` run. A git that is only an argument, such as a grep
-// pattern, executes nothing and is not a mutation.
-func gitMutation(command string) bool {
+// gitMutation returns the first git invocation, as "git <subcommand>", that a
+// command the line executes runs with a subcommand outside the read-only set,
+// or "" when there is none: each chained or piped command, behind wrappers
+// such as `command` or `env`, and the scripts `sh -c`, `eval`, `$(…)` and
+// `find -exec` run. A git that is only an argument, such as a grep pattern,
+// executes nothing and is not a mutation.
+func gitMutation(command string) string {
 	for _, words := range shellCommands(command) {
-		if executedGitMutation(words) {
-			return true
+		if git := executedGitMutation(words); git != "" {
+			return git
 		}
 	}
-	return false
+	return ""
 }
 
 // gitWrappers run their remaining words as a command.
@@ -539,11 +540,11 @@ var shellReservedWords = []string{"{", "!", "if", "then", "else", "elif", "do", 
 // gitShells run the script that follows -c.
 var gitShells = []string{"sh", "bash", "zsh", "dash", "ksh"}
 
-// executedGitMutation reports whether one simple command, given as its words,
-// runs a mutating git: directly, behind its prefixes, or in the script a
-// shell, eval or find -exec runs. Only prefixes are skipped, so a git that
-// is merely a later argument does not count.
-func executedGitMutation(words []string) bool {
+// executedGitMutation returns the mutating git, as "git <subcommand>", that
+// one simple command, given as its words, runs: directly, behind its
+// prefixes, or in the script a shell, eval or find -exec runs. Only prefixes
+// are skipped, so a git that is merely a later argument does not count.
+func executedGitMutation(words []string) string {
 	// Assignments, reserved words, wrappers and their flags, flag values or
 	// numeric arguments precede the command.
 	wrapper := ""
@@ -563,23 +564,28 @@ prefix:
 		words = words[1:]
 	}
 	if len(words) == 0 {
-		return false
+		return ""
 	}
 	name := words[0]
 	switch {
 	case name == "git" || strings.HasSuffix(name, "/git"):
-		return len(words) > 1 && !slices.Contains(ReadOnlyGitSubcommands(), words[1])
+		if len(words) > 1 && !slices.Contains(readOnlyGitSubcommands, words[1]) {
+			return "git " + words[1]
+		}
+		return ""
 	case name == "eval":
 		return gitMutation(strings.Join(words[1:], " "))
 	case slices.Contains(gitShells, name) || slices.ContainsFunc(gitShells, func(sh string) bool { return strings.HasSuffix(name, "/"+sh) }):
 		return gitMutation(shellScript(words[1:]))
 	}
 	for i, word := range words {
-		if (word == "-exec" || word == "-execdir" || word == "-ok") && executedGitMutation(words[i+1:]) {
-			return true
+		if word == "-exec" || word == "-execdir" || word == "-ok" {
+			if git := executedGitMutation(words[i+1:]); git != "" {
+				return git
+			}
 		}
 	}
-	return false
+	return ""
 }
 
 // shellScript returns the script a shell runs with -c, or "" when it runs
@@ -725,8 +731,8 @@ func substitutions(quoted string) [][]string {
 // that is not the orchestrator and whose shell runs natively, outside any
 // shell plan.
 func GuardShellGit(command string) error {
-	if gitMutation(command) {
-		return fmt.Errorf("%w: %s", ErrGitMutationDenied, command)
+	if git := gitMutation(command); git != "" {
+		return fmt.Errorf("%w: %s in %s; %s", ErrGitMutationDenied, git, command, readOnlyGitHint())
 	}
 	return nil
 }

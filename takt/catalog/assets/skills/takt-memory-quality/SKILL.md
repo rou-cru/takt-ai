@@ -1,6 +1,6 @@
 ---
 name: takt-memory-quality
-description: "Before using memory as quality. What this role records, when, and what it never records."
+description: "Before recording memory as quality. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt

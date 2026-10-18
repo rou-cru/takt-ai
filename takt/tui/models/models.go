@@ -87,14 +87,17 @@ func New(root string) Model {
 
 // loadPicker builds a fresh picker from the installed configuration.
 func (m *Model) loadPicker() {
-	installed, err := setup.LoadInstalledConfig(m.root)
-	switch {
-	case err != nil:
+	if _, err := setup.LoadInstalledConfig(m.root); err != nil {
+		m.loadErr = err
+		return
+	}
+	deployed, err := setup.LoadDeployedModels(m.root)
+	if err != nil {
 		m.loadErr = err
 		return
 	}
 	m.picker = modelpicker.New()
-	m.picker.Preload(installed.OpenCodeModelOverrides)
+	m.picker.Preload(deployed)
 	m.picker.Height = m.height
 	m.picker.Loading = true
 }

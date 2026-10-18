@@ -10,11 +10,12 @@ does not fit. When one appears, control returns to the tree with that evidence.
 | Step | Question | Answer → outcome |
 | --- | --- | --- |
 | 1 | Did the user directly and explicitly request direct work for this phase? | Planning without specialists → `takt-bounded-planning`. Implementation without delegation → `takt-bounded-workflow`. No → step 2. |
-| 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. Invariant planning stands on its own; when SDD follows it, its specifications, and its test plan when QA is planned, feed TPM, SDD's first node. QA is planned when the PRD marks a priority must-not-fail or an acceptance criterion crosses more than one frozen contract; its test plan and traceability matrix are then required invariants. No → step 3. |
-| 3 | Is development still needed? | Yes, as one bounded unit → delegate it to its specialist within the unplanned-delegation limit. Yes, as several lanes or concurrent implementation → `takt-sdd-workflow` once formal, broken-down specifications exist (from Engram or a repository artifact of equivalent rigor); without them → step 2. No, the objective assesses, tests or hardens an existing deliverable → `takt-qa-workflow`. No, nothing else → return the settled result. |
+| 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. Invariant planning stands on its own; when SDD follows it, its specifications, and its test plan when QA is planned, feed TPM, SDD's first node. QA is planned only when acceptance needs the QA workflow rather than individual quality specialists (`PR-QA-4`); its test plan and traceability matrix are then required invariants. No → step 3. |
+| 3 | Is development still needed? | Yes, as one bounded unit → delegate it to its specialist within the unplanned-delegation limit. Yes, as several lanes or concurrent implementation → `takt-sdd-workflow` once formal, broken-down specifications exist (from Engram or a repository artifact of equivalent rigor); without them → step 2; with QA planned, its acceptance tail is `takt-qa-workflow`. No, the objective assesses, tests or hardens an existing deliverable → `takt-qa-workflow`. No, nothing else → return the settled result. |
 
 An instruction for one phase does not constrain the other. Settled invariants are consumed,
-never regenerated. Bounded is never chosen by elimination, convenience, cost, or absence of
+never regenerated; settledness is judged by title and relations, and the consumer checks the
+repository. No text outside this tree requires a workflow. Bounded is never chosen by elimination, convenience, cost, or absence of
 specialists. SDD and bounded never govern the same implementation simultaneously.
 
 ## Return from an adopted route
@@ -48,6 +49,7 @@ flowchart TD
     BP -->|Invariants settled| Start
     BW --> Complete
     Unit --> Complete
+    SDD -->|QA planned: acceptance tail| QA
     SDD --> Complete
 
     BP -.->|Reports misfit| Return
