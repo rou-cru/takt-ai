@@ -40,14 +40,14 @@ Each section lists the tier, the procedure, and the evidence expected.
 - Tier: T1
 - Check location: IN, WS, and contract review of deploy/coder/variables.tf as the executable definition
 - Procedure: Run the IN and WS mock plans. Review the publication-input documentation against variables.tf. Confirm that persist_workspace and persistence_allowed are absent.
-- Evidence: Named invalid variable for each rejected input; parameter inventory showing repository_url as the only human rich parameter.
+- Evidence: Named invalid variable for each rejected input; parameter inventory showing repository_url as the only human-facing rich parameter.
 
 ### CW-T1-07 — Persistent runtime, terminal, and safe outputs
 
 - Tier: T1
 - Check location: WS, LC, BS; SM for local image corroboration only
 - Procedure: Run the WS and LC plans for two owners and a start/stop sequence. Run BS and SM against the built workspace image.
-- Evidence: Mock plan output for the seven-value output set; SM and BS logs without credential values.
+- Evidence: Mock plan output for the eight non-secret outputs (workspace_name, owner_id, pod_name, namespace, image, architecture, persistence_mode, pvc_name); SM and BS logs without credential values.
 
 ### CW-T1-08 — Actual-owner credential reference selection
 
@@ -144,7 +144,7 @@ Each section lists the tier, the procedure, and the evidence expected.
 
 - Tier: T3
 - Check location: AC error and cancellation cases against native dashboard and API
-- Procedure: Exercise cancellation, invalid parameters, inaccessible template, import failure, denied authorization, and build failure. Resolve an uncertain result against the user's workspace list before any new create.
+- Procedure: Exercise cancellation, invalid parameters, inaccessible template, import failure, denied authorization, and build failure. Resolve an uncertain result against the user's workspace list before creating another workspace.
 - Evidence: Native outcomes per case; GET /api/v2/workspaces results for the user; dashboard cross-check of any empty plugin card. A running build without a connected agent is not readiness.
 
 ### CW-T3-03 — Identity tuple and two-account mismatch
