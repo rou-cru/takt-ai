@@ -6,12 +6,16 @@
 - **Intermediate integration checkpoint:** any global build/test before the tail fan-in.
 - **Unscoped applier verification:** an applier running global test suites, whole-repo linters, or broad builds instead of targeted checks, inducing tool, cache, or port collisions across concurrent appliers.
 - **Horizontal cut:** decomposition by layer, producing a chain of layer dependencies.
+- **Convenience bundling:** independently deliverable functional results assigned to one
+  agent merely to avoid planning or because they share a specialty or directory.
 - **Defensive serialization:** an edge added because a conflict was *not ruled out*, rather
   than because a closed serialization reason names it. Rule it out with the Edge Question instead.
 - **Post-failure collapse:** abandoning the plan and folding remaining work into one
   delegation after a failure, instead of freezing the affected subtree and loading `takt-sdd-recovery`.
 
-## Canonical DAG
+## Integrated delivery example
+
+This graph illustrates independent work after contracts settle; it is not a required shape.
 
 ```
                        ┌─────────────────────┐
@@ -44,7 +48,8 @@
                          └─────────────────┘
 ```
 
-Mean width: 5 implementation nodes ÷ 1 wave = 5. Passes the wave-width self-check.
+Five independent nodes are ready; four run and one queues under the default ceiling.
+Capacity does not create a dependency between them.
 
 Three topological readings that matter more than the labels:
 
@@ -57,3 +62,13 @@ Three topological readings that matter more than the labels:
 - **With QA planned, the tail is `takt-qa-workflow`'s.** `V`, `M`, `X`, `Q` and `VC` are its Accept, Critique
   and Close states drawn as nodes; only what the test plan selects appears. `VC` gathers
   reports, not implementation nodes, so it is no second integration fan-in.
+
+## Contrasting cases
+
+| Case | Correct treatment |
+| --- | --- |
+| Two independent functional units with settled contracts | Dispatch both; do not manufacture additional work. |
+| A consumes B's actual generated file and cannot use a settled contract instead | Keep B → A, even if the resulting graph is entirely serial. |
+| Several independent results share one specialty | Separate units; the specialty label does not justify one oversized delegation. |
+| An API signature is settled and producer/consumer scopes are disjoint | Share the signature and remove the implementation wait. |
+| A diagnosis determines what repair is needed | Wait for the diagnosis; do not invent its finding. |

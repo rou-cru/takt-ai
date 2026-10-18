@@ -17,19 +17,16 @@ never decides that choice itself. Direct execution does not relax file disciplin
 directly executed change still respects exclusive ownership over the files it touches, the
 same as a delegated one would.
 
-**Stay inside one bounded unit.** The unit delivers on its own — no other in-flight work
-must land first, and closing it needs no integration step beyond its own boundary. The
-moment it does, it has already stopped being bounded.
+If Takt chose this route, keep OPERATIONS' three triviality tests; a larger unit, another
+lane's judgment or integration with other work returns to the selection tree.
 
-**Recognize when it no longer fits.** The signals are the unit turning out to need
-integration with other work, or its scope growing past what one pass can close. Either one
-means the route no longer matches the work, not that the work needs to be forced smaller to
-keep fitting it.
+An explicit user instruction permits nontrivial, multi-pass implementation within its scope,
+including integration. Complexity alone is not a mismatch. Name any specialist judgment covered;
+OPERATIONS' permissions, ownership, budgets and assurance limits still apply.
 
-**Return control rather than switch automatically.** When any of these signals shows this
-route does not fit, return control to Takt with the reason, evidence, and user constraints
-preserved. Takt returns to the selection tree; this skill does not select its replacement. An explicit direct-work instruction is not permission to ignore these conditions
-or to change the instruction without the user's answer.
+Material uncertainty, new scope or a blocked path returns to the selection tree with evidence
+and user constraints. Do not shrink the objective or unilaterally abandon the user's instruction.
+When delegation is prohibited, report missing independent verification; do not delegate it silently.
 
 **Stay inside implementation.** This skill carries implementation only. Gathering
 invariants belongs to whichever route the selection tree picks for the planning

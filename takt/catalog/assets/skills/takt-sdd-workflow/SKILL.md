@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Plans development work as a dependency DAG biased toward maximum concurrency, converts information dependencies into frozen contracts, dispatches max {{policy.concurrent_specialists}} concurrent specialists, no worktrees. Orchestrator-only guide."
+description: "Coordinates integrated implementation through explicit dependencies and frozen contracts, using ready independent lanes up to {{policy.concurrent_specialists}} concurrent specialists, without a minimum DAG width or worktrees."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,15 +9,15 @@ metadata:
 
 # Takt SDD & DAG Workflow
 
-Orchestrator operational guide: convert an approved plan into a maximally concurrent
-dependency DAG, guarantee that every parallel lane is unlocked by a frozen contract, and
+Orchestrator operational guide: convert an approved plan into a dependency DAG,
+guarantee that every parallel lane is unlocked by a frozen contract, and
 sustain execution with bounded concurrent specialists in a single shared workspace.
 
 > **Target Audience:** Orchestrator agent only. Sub-agents consume individual task
 > contracts, not this skill.
 
-**When this skill applies.** It governs a delivery cycle spanning several lanes or
-concurrent implementation. A simple change, a short investigation, or one obvious action
+**When this skill applies.** It governs several implementation units producing an integrated
+result. A simple change, a short investigation, or one obvious action
 does not need it, and manufacturing a DAG for them is cost with no return. If it was loaded
 and the work turns out not to need it, return control to Takt with the reason and evidence
 for reevaluation: never build the graph to justify having opened it. Likewise return control,
@@ -53,7 +53,6 @@ These terms appear inside rules. They carry exactly these meanings and no others
 | **Edge** | A directed dependency `A → B`: B may not start until A completes. |
 | **Wave** | The set of nodes at equal topological depth from the root. A wave is a *result* of computing the order — never a planned phase, never a synchronization point. |
 | **Width of a wave** | Node count in that wave. |
-| **Mean width** | Implementation nodes ÷ number of waves containing implementation nodes. Excludes the contract root and the integration/verification tail. |
 | **Depth** | Number of waves from root to terminal node, inclusive. |
 | **In-flight** | A dispatched task whose result has not yet been received. |
 | **READY** | Dependencies delivered (consolidated to disk for nodes that read workspace files; author's delivery complete in VFS for verifier nodes) + contract valid + `writable_set` disjoint from every in-flight task. |
@@ -75,14 +74,8 @@ does not own, provided no in-flight task writes it — this section constrains j
 writes, not shared access to settled output. A file an in-flight task is writing is off limits in every mode, reading
 included.
 
-**Generating nothing does not make it a dispatcher.** A dispatcher wastes the agent: it
-introduces leveraged errors, adds process friction, and guarantees no real progress. The
-orchestrator is not a scheduler, but it must **think like one** most of the time: apply the
-rules in this skill to the session at hand.
-
-**No worktrees is a planning rule, not an isolation rule.** Governed staging does not replace correct planning. The orchestrator must face the concurrency risk directly, estimate
-it, and plan with design guarantees — not with trial and error backed by reverts. Leaning
-on a tool to resolve concurrency is abdicating the job.
+**Plan for safe concurrency.** Governed staging does not replace disjoint scopes and frozen
+contracts. Resolve shared access before dispatch rather than relying on reverts after a collision.
 
 **Value over ceremony.** Intermediate artifacts exist strictly to make parallel delegation
 safe. If process completeness conflicts with user value, surface the trade-off, recommend a
@@ -97,11 +90,8 @@ path, and keep moving.
    branches.
 2. **Concurrency Ceiling (Max {{policy.concurrent_specialists}}):** At most {{policy.concurrent_specialists}} specialists run at once, whatever their lane:
    appliers, verifiers and planning lanes share the same slots. Excess READY tasks queue.
-   **{{policy.concurrent_specialists}} is an empirical maximum**, derived from running this
-   method across distinct complex projects with distinct models: fewer forces the very
-   linearity this skill exists to prevent, and more multiplies the cost of a single
-   orchestration error into a random large token burn. Do not negotiate it downward for
-   caution — a narrow DAG is the failure mode, not the safe choice.
+   There is no minimum width or occupancy. Do not lower the ceiling out of caution or leave
+   ready independent work waiting when capacity is available; do not invent work to fill slots.
 3. **Exclusive Writable Ownership:** Every task declares an explicit `writable_set`. Two
    in-flight tasks must NEVER have overlapping writable paths.
 4. **Frozen Contracts Before Dispatch:** A task may run in parallel ONLY IF every type,
@@ -130,22 +120,20 @@ is currently writing. That property is bought by freezing interfaces up front.
 
 Apply this to every candidate dependency. It is the central operation of planning.
 
-> **Is this edge informational or implementational?**
-> - **Informational → it is not an edge.** It is a signature missing from the contract
->   root. Move the signature to the root and delete the edge.
-> - **Implementational → it survives** and must be named as a closed serialization reason.
+> **Can a settled contract remove this wait?**
+> - **Yes:** supply the same contract to producer and consumer and remove the edge.
+> - **No:** name the required output or shared resource under §6.
 
-Apparent linearity is, in the overwhelming majority of cases, uncongealed information. An
-orchestrator that skips this question produces a chain and blames the problem domain.
+A pending planning or diagnostic result is not a settled interface. Keep that dependency;
+never invent the result to manufacture concurrency.
 
 ### 3.2 Symmetric Delivery
 
 A frozen signature goes to the agent that **implements** it *and* to every agent that
 **consumes** it for unrelated work. Both sides receive the identical declaration.
 
-Sending an agent off to "figure out how to do its part" is not delegation. It exports the
-interface decision to {{policy.concurrent_specialists}} agents that cannot talk to each other, and it is precisely the
-negligence that later requires a worktree to contain.
+Resolve consumed interface decisions before parallel dispatch; agents do not independently
+redefine the contract they share.
 
 ### 3.3 What Gets Frozen
 
@@ -182,9 +170,8 @@ grant — it is never assumed from silence.
 
 1. **Validate completeness and execution bounds**: reject incomplete contracts or contracts
    specifying broad/unscoped acceptance commands back to their author.
-2. **Demand more freezing when the DAG comes out narrow.** Width is negotiable upward:
-   one additional frozen signature in the root converts a serialization into two lanes.
-   This is the primary lever on concurrency, and it is the orchestrator's to pull.
+2. **Remove avoidable waits.** Ask the contract owner to settle an interface when that
+   enables independent work; do not demand another artifact merely because the DAG is narrow.
 
 ---
 
@@ -198,53 +185,40 @@ construction and no serialization matrix will save it.
 - **Never cut horizontally, by layer.** "All the types", "the whole API layer", "all the
   storage" forces every downstream task to wait on the layer beneath it.
 
-**Orchestrator action:** a decomposition that admits no concurrency is rejected back to
-TPM, which owns the vertical cut, with the re-cut axis named. Validating contract
-completeness is not enough when the cut itself makes parallelism impossible.
+**Orchestrator action:** return a cut to TPM when it bundles independently deliverable
+functional results that admit disjoint scopes and settled contracts, naming those results.
+Sharing a specialty, directory or agent, or avoiding coordination, does not justify bundling.
+Keep genuinely coupled work coherent; do not create shared files or dependencies to justify
+serializing otherwise independent work.
 
 ---
 
 ## 5. Topology — The Shape Of A Correct DAG
 
-Five properties. Each is checkable by looking at the graph.
-
-1. **Single planning root, and width is its consequence.** Everything descends from one
-   contract node. The first wave does not measure {{policy.concurrent_specialists}} because that many independent tasks were
-   *found*; it measures {{policy.concurrent_specialists}} because the root froze the interfaces those lanes consume. Concurrency is not discovered by
-   inspecting tasks — it is **manufactured** by demanding more freezing at the root.
-2. **Zero edges inside a wave.** Siblings never depend on each other. Any horizontal edge
-   between siblings means the cut was by layer; return to Decomposition and re-cut it.
-3. **Every edge is justified against a named node, never against "what came before".** In
+1. **Contracts precede their consumers.** The graph follows actual dependencies, not a
+   prescribed diamond, depth or width. A genuine serial chain is valid.
+2. **Every edge is justified against a named node, never against "what came before".** In
    the moment waves are treated as phases, implicit barriers appear and cost whole lanes for
    nothing. A test task depends on the one node whose files it reads, not on the wave; a blind
    test-author node consumes only frozen contracts and the traceability matrix, never in-flight
-   implementation, so it shares the wave of the code it tests. The
-   tail fan-in is the sole exception: by Rule 5 it depends on all implementation nodes by
-   definition. No other node may.
-4. **Exactly one fan-in per validated milestone, at its tail.** Global serialization is paid once
+   implementation, so it shares the wave of the code it tests. The integration tail depends
+   on all implementation nodes it validates.
+3. **One global integration fan-in per validated milestone, at its tail.** Global serialization is paid once
    per milestone, in its own phase after the phases it validates. A per-wave integration
    checkpoint is forbidden by Rule 5; a planned phase verification of staged deltas is not one.
-5. **The only admissible linear chain is the tail** (integration → verification), where it
-   costs no concurrency.
-
-**General shape: a diamond.** One neck at the top, maximum widening immediately, one neck
-at the bottom. Reference proportions: depth 4–5 at width {{policy.concurrent_specialists}}.
 
 ### 5.1 Self-Check Before Dispatch
 
-Run both. They are arithmetic, not judgment.
-
-- **First implementation wave must reach {{policy.concurrent_specialists}}**, unless total implementation nodes are fewer
-  than that. If it does not, demand more freezing at the contract root. If it still does not after
-  freezing, every missing lane must be accounted for by a genuine serialization reason named in writing.
-- **Mean width must be ≥ 2.0.** Below that the plan is a chain: rebuild it. A DAG at depth
-  8 and width 2 is wrong even when every single edge is individually defensible — that is
-  exactly how one arrives there, one defensible edge at a time.
+- Independent functional results are not hidden inside one delegation (§4).
+- Siblings in a wave share no edge; a horizontal edge means a layer cut (§4).
+- Every edge names a required output or resource; settled contracts remove avoidable waits.
+- Ready independent nodes use available slots; excess work queues without artificial edges.
+- A narrow graph is accepted when those checks hold, without a minimum-width calculation.
 
 ### 5.2 Reference material
 
 `references/topology-reference.md` holds the named anti-pattern list for diagnosing a DAG
-that came out wrong, and the canonical worked example with its diagram. Read it when a
+that came out wrong, and worked examples with a diagram. Read it when a
 self-check fails or a new case needs a concrete comparison — not before every dispatch.
 
 ---
@@ -253,10 +227,6 @@ self-check fails or a new case needs a concrete comparison — not before every 
 
 **Parallel is the default. Serializing is the exception, and it requires naming a
 condition from the closed list below.** An edge that cannot name one does not exist.
-
-**A fully serialized DAG is a planning failure, not prudence.** It is admissible only with
-specific, exceptionally strong evidence that this particular case genuinely demands it —
-evidence written down, per edge. Absent that, a chain is a bad plan.
 
 ### Parallel — no edge
 
@@ -272,6 +242,7 @@ No reason outside this list justifies an edge.
 
 | Condition | Action | Rationale |
 |---|---|---|
+| A consumes a planning or diagnostic result that B has not established | Serialize A after B | An unknown result cannot be replaced with an invented contract. |
 | A reads a file that in-flight B writes | Serialize A after B | Eliminates read-write races. |
 | A and B write the same file | Chain A → B | Prevents overwrites. |
 | Shared package/lock manifest (`package.json`, `go.mod`, `Cargo.toml`) | Serialize behind the writer | Prevents manifest corruption. |
@@ -281,7 +252,7 @@ No reason outside this list justifies an edge.
 ### Dispatch Logic
 
 1. Collect all READY tasks.
-2. If fewer than {{policy.concurrent_specialists}} specialists are in flight (any lane), dispatch up to the available slots.
+2. Dispatch all READY tasks that fit the available slots under the {{policy.concurrent_specialists}}-specialist ceiling; queue the rest.
 3. When `ready_count > available_slots`, prioritize by **critical path** — longest
    remaining downstream chain first.
 
@@ -315,7 +286,7 @@ The following is an available route, not a procession required of every change:
    DAG exposes, dispatch contract owners concurrently only where their inputs are settled and
    scopes independent. Compare their results and return
    conflicts to the owners before consuming them; escalate changes to intent or authority.
-2. **Validation:** Takt runs the wave-width self-check before `dispatch_commit`, without manufacturing work just to
+2. **Validation:** Takt runs the dependency and decomposition self-check before `dispatch_commit`, without manufacturing work just to
    fill concurrency slots.
 3. **Compilation:** TPM is the first node: it turns the specifications into vertical tasks
    with their hard dependencies. Takt compiles the DAG from its WBS, commits it with

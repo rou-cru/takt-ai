@@ -1,6 +1,6 @@
 ---
 name: takt-qa-workflow
-description: "Selected by the tree when an objective assesses, tests or hardens a deliverable, or as the acceptance tail with QA planned. Governs QA planning, blind test authoring, acceptance, critique, strengthening and reporting as one state machine."
+description: "Selected by the tree when assessment, testing or hardening needs coordinated QA, or as the acceptance tail with QA planned. Governs QA planning, blind test authoring, acceptance, critique, strengthening and reporting as one state machine."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -20,7 +20,7 @@ preserves findings and never infers permission to repair.
 
 | The selection tree adopted it | Start at |
 | --- | --- |
-| To assess, test or harden an existing deliverable | 1. Assess |
+| To assess, test or harden an existing deliverable with QA planned | 1. Assess |
 | As the acceptance tail with QA planned | 4. Accept |
 
 The tail requires the test plan and matrix from invariant planning.
