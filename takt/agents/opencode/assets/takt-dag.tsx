@@ -190,15 +190,17 @@ export function topologyError(snapshot: DagSnapshot): string | undefined {
 // ---------------------------------------------------------------------------
 // Layout — deterministic layered depth (PRD_DAG_TUI.md §5):
 // depth(A) = 0 without prerequisites; depth(B) = max(depth(parent)) + 1.
-// Layers are columns, flowing left to right. A column that would overflow the
-// viewport width starts a new band below, which flows the opposite way, and so
-// on; the edges between two bands run down a gutter at the side where the flow
-// turns. The graph never overflows the width: when its bands do not fit the
-// height, the bands close up and then identities are cut with an ellipsis,
-// down to a floor past which the view scrolls vertically. An edge that skips layers crosses each
-// intermediate column on a one-row pass-through slot, so every edge is a chain
-// of edges between adjacent columns. The edges of one gap share a vertical bus
-// lane when they share an endpoint. Positions and routes depend on topology and
+// Layers are columns, flowing left to right. When the columns overflow the
+// viewport width, the flow snakes: each band ends at the gap with the fewest
+// wires that fits, and the next band below flows the opposite way; the edges
+// between two bands run down a gutter at the side where the flow turns. The
+// graph never overflows the width: when its bands do not fit the height, the
+// bands close up and then identities are cut with an ellipsis, down to a floor
+// past which the view scrolls vertically. Edges that skip layers run along a
+// straight track shared by the origins that skip to the same targets, so every
+// edge is a chain of edges between adjacent columns. The edges of one gap share
+// a vertical bus lane only when they form a complete biclique, and lanes are
+// ordered to keep crossings few. Positions and routes depend on topology and
 // viewport only, so a state-only update never moves a node (the whole Layout
 // is reused).
 // ---------------------------------------------------------------------------
@@ -341,42 +343,55 @@ interface Link {
 interface LaneSeg {
   readonly a: string
   readonly b: string
-  readonly lo: number
-  readonly hi: number
+  readonly from: number
+  readonly to: number
 }
 
-// assignLanes gives every edge of one gap the vertical bus it runs along.
-// Edges sharing an endpoint form one group and share a lane (a fork or a
-// join reads as one trunk); groups whose row spans overlap get lanes of their
-// own, so unrelated edges never merge into one line.
-function assignLanes(segs: readonly LaneSeg[]): { lanes: number[]; count: number } {
-  const parent = new Map<string, string>()
-  const find = (key: string): string => {
-    const up = parent.get(key) ?? key
-    if (up === key) return key
-    const root = find(up)
-    parent.set(key, root)
-    return root
-  }
-  for (const s of segs) parent.set(find(`a:${s.a}`), find(`b:${s.b}`))
-  const groups = new Map<string, { lo: number; hi: number; members: number[] }>()
+interface LaneGroup {
+  lo: number
+  hi: number
+  readonly members: number[]
+}
+
+// assignLanes gives every edge of one gap or gutter the vertical bus it runs
+// along. Sources with the same target set share a lane: a fork reads as one
+// trunk and a complete biclique as one bar, and since every source on a lane
+// reaches every target on it, a shared lane never draws an edge that does not
+// exist. Lanes are ordered so as few horizontals as possible cross a lane they
+// do not belong to; groups share a lane only when a free row separates them.
+// In a gap sources sit before the lanes and targets after them; in a gutter
+// both sit before them.
+function assignLanes(segs: readonly LaneSeg[], gutter: boolean): { lanes: number[]; count: number } {
+  const targets = new Map<string, string[]>()
+  for (const s of segs) targets.set(s.a, [...(targets.get(s.a) ?? []), s.b])
+  const byKey = new Map<string, LaneGroup>()
   segs.forEach((s, index) => {
-    const root = find(`a:${s.a}`)
-    const group = groups.get(root) ?? { lo: s.lo, hi: s.hi, members: [] }
-    group.lo = Math.min(group.lo, s.lo)
-    group.hi = Math.max(group.hi, s.hi)
+    const key = (targets.get(s.a) as string[]).toSorted(ordinal).join("|")
+    const group = byKey.get(key) ?? { lo: Math.min(s.from, s.to), hi: Math.max(s.from, s.to), members: [] }
+    group.lo = Math.min(group.lo, s.from, s.to)
+    group.hi = Math.max(group.hi, s.from, s.to)
     group.members.push(index)
-    groups.set(root, group)
+    byKey.set(key, group)
   })
-  const lanes = new Array<number>(segs.length).fill(0)
-  const ends: number[] = []
-  for (const group of [...groups.values()].sort((x, y) => x.lo - y.lo || x.hi - y.hi)) {
-    let lane = ends.findIndex((end) => end < group.lo)
-    if (lane < 0) lane = ends.length
-    ends[lane] = group.hi
-    for (const index of group.members) lanes[index] = lane
+  const ends = (g: LaneGroup, side: "a" | "b") => new Map(g.members.map((i) => [segs[i][side], side === "a" ? segs[i].from : segs[i].to]))
+  // Horizontals of `far` that cross the lane of `near` when `near` lies closer to the sources.
+  const crossings = (near: LaneGroup, far: LaneGroup) => {
+    const inside = (g: LaneGroup, row: number) => g.lo <= row && row <= g.hi
+    const shared = (g: LaneGroup, node: string) => g.members.some((i) => segs[i].b === node)
+    let count = [...ends(far, "a").values()].filter((row) => inside(near, row)).length
+    for (const [node, row] of ends(gutter ? far : near, "b")) if (inside(gutter ? near : far, row) && !shared(gutter ? near : far, node)) count++
+    return count
   }
-  return { lanes, count: ends.length }
+  const groups = [...byKey.values()].sort((x, y) => crossings(x, y) - crossings(y, x) || x.lo - y.lo || x.hi - y.hi)
+  const lanes = new Array<number>(segs.length).fill(0)
+  const laneOf = new Map<LaneGroup, number>()
+  groups.forEach((group, i) => {
+    const touching = groups.slice(0, i).filter((g) => g.lo <= group.hi + 1 && group.lo <= g.hi + 1)
+    const lane = Math.max(-1, ...touching.map((g) => laneOf.get(g) as number)) + 1
+    laneOf.set(group, lane)
+    for (const index of group.members) lanes[index] = lane
+  })
+  return { lanes, count: Math.max(0, ...laneOf.values()) + (groups.length > 0 ? 1 : 0) }
 }
 
 interface Piece {
@@ -402,12 +417,25 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   const slots = new Map<string, Slot>()
   const slot = (id: string) => slots.get(id) as Slot
   for (const id of members) slots.set(`n:${id}`, { id: `n:${id}`, depth: depthOf(id), node: id, height: NODE_ROWS })
-  // The pass-throughs of one origin are shared by its layer-skipping edges, so
-  // a fork runs as one trunk instead of one slot per edge and column.
+  // Origins whose layer-skipping edges reach the same targets share one track:
+  // one pass-through per skipped column, so they run as one trunk instead of
+  // one slot per edge and column.
+  const skips = (id: string) => edges.filter((e) => e.from === id && depthOf(e.to) > depthOf(id) + 1).map((e) => e.to)
+  const trackOf = new Map<string, string>()
+  const trackSpans = new Map<string, { origins: string[]; targets: Set<string>; first: number; last: number }>()
+  for (const id of members.toSorted((x, y) => depthOf(x) - depthOf(y) || ordinal(x, y))) {
+    const targets = skips(id).toSorted(ordinal)
+    if (targets.length === 0) continue
+    const key = JSON.stringify(targets)
+    const span = trackSpans.get(key) ?? { origins: [], targets: new Set(targets), first: depthOf(id), last: Math.max(...targets.map(depthOf)) }
+    span.origins.push(id)
+    trackSpans.set(key, span)
+    trackOf.set(id, key)
+  }
   const chains = edges.map((e) => {
     const chain = [`n:${e.from}`]
     for (let depth = depthOf(e.from) + 1; depth < depthOf(e.to); depth++) {
-      const id = `p:${e.from}:${depth}`
+      const id = `p:${trackOf.get(e.from)}:${depth}`
       slots.set(id, { id, depth, height: PASS_ROWS })
       chain.push(id)
     }
@@ -448,13 +476,20 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     for (let c = lastDepth - 1; c >= 0; c--) reorder(c, children)
   }
 
-  // Rows: each slot sits on the mean row of its neighbours, pushed down just
-  // enough to clear the slot above it.
+  // Rows: each box sits on the mean row of the boxes it links to, pushed down
+  // just enough to clear the box above it.
+  const nodeLinks = (key: (e: DagEdge) => string, other: (e: DagEdge) => string) => {
+    const linked = new Map<string, string[]>()
+    for (const e of edges) linked.set(`n:${key(e)}`, [...(linked.get(`n:${key(e)}`) ?? []), `n:${other(e)}`])
+    return linked
+  }
+  const nodeParents = nodeLinks((e) => e.to, (e) => e.from)
+  const nodeChildren = nodeLinks((e) => e.from, (e) => e.to)
   const top = new Map<string, number>()
   const centre = (id: string) => (top.get(id) as number) + (slot(id).height - 1) / 2
   const place = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
     let floor = 0
-    for (const id of cols[c]) {
+    for (const id of cols[c].filter((id) => slot(id).node !== undefined)) {
       const height = slot(id).height
       const around = (neighbours.get(id) ?? []).filter((n) => top.has(n))
       const want = around.length === 0 ? (top.get(id) ?? floor) : Math.round(around.reduce((sum, n) => sum + centre(n), 0) / around.length - (height - 1) / 2)
@@ -463,25 +498,54 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
       floor = row + height + SLOT_GAP
     }
   }
-  for (let c = 0; c <= lastDepth; c++) place(c, parents)
-  for (let c = lastDepth - 1; c >= 0; c--) place(c, children)
-  for (let c = 0; c <= lastDepth; c++) place(c, parents)
+  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
+  for (let c = lastDepth - 1; c >= 0; c--) place(c, nodeChildren)
+  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
+
+  // Tracks: each shared track runs along one row through every column it
+  // skips, so its edges bend only where they leave and where they arrive. The
+  // row clears every box it passes, every other track from its first origin's
+  // column to its farthest target's, and the edge rows of the other boxes at
+  // both ends; the first origin's row is tried first, then the nearest rows.
+  const boxRows = cols.map(() => new Set<number>())
+  const edgeRow = cols.map(() => new Map<number, string>())
+  for (const id of members) {
+    const row = top.get(`n:${id}`) as number
+    for (let r = row; r < row + NODE_ROWS; r++) boxRows[depthOf(id)].add(r)
+    edgeRow[depthOf(id)].set(centre(`n:${id}`), id)
+  }
+  const trackRows = cols.map(() => new Set<number>())
+  const spans = [...trackSpans].sort(([kx, x], [ky, y]) => x.last - x.first - (y.last - y.first) || ordinal(kx, ky))
+  for (const [key, { origins, targets, first, last }] of spans) {
+    const free = (r: number) => {
+      for (let c = first; c <= last; c++) {
+        if (trackRows[c].has(r)) return false
+        const owner = edgeRow[c].get(r)
+        if (c === first || c === last) { if (owner !== undefined && !origins.includes(owner) && !targets.has(owner)) return false }
+        else if (boxRows[c].has(r)) return false
+      }
+      return true
+    }
+    const home = centre(`n:${origins[0]}`)
+    let row = home
+    for (let d = 0; !free(row); d++) row = free(home + d) ? home + d : home - d
+    for (let c = first; c <= last; c++) trackRows[c].add(row)
+    for (let c = first + 1; c < last; c++) top.set(`p:${key}:${c}`, row)
+  }
+
 
   // Every box is as wide as the longest identity, so none is shorter for no reason.
   const boxWidth = Math.max(...members.map((id) => Math.min(Bun.stringWidth(id), sizing.cap))) + NODE_CHROME
   const colWidth = cols.map((col) => (col.some((id) => slot(id).node !== undefined) ? boxWidth : PASS_WIDTH))
   const depthOfSlot = (id: string) => slot(id).depth
   const stripRow = (id: string) => (top.get(id) as number) + (slot(id).height - 1) / 2
-  const segOf = (l: Link, row: (id: string) => number): LaneSeg => {
-    const [from, to] = [row(l.a), row(l.b)]
-    return { a: l.a, b: l.b, lo: Math.min(from, to), hi: Math.max(from, to) }
-  }
+  const segOf = (l: Link, row: (id: string) => number): LaneSeg => ({ a: l.a, b: l.b, from: row(l.a), to: row(l.b) })
 
   // Lanes of every gap between adjacent columns, as if the flow never wrapped.
   const laneOf = new Map<Link, number>()
   const gapWidth = Array.from({ length: lastDepth }, (_, c) => {
     const gap = links.filter((l) => depthOfSlot(l.a) === c)
-    const { lanes, count } = assignLanes(gap.map((l) => segOf(l, stripRow)))
+    const { lanes, count } = assignLanes(gap.map((l) => segOf(l, stripRow)), false)
     gap.forEach((l, i) => laneOf.set(l, lanes[i]))
     return Math.max(1, count) + GAP_CHROME
   })
@@ -512,7 +576,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     const wraps = links.filter((l) => bandOf[depthOfSlot(l.a)] !== bandOf[depthOfSlot(l.b)])
     const gutterLanes = (side: number) => {
       const turning = wraps.filter((l) => flow(depthOfSlot(l.a)) === side)
-      const { lanes, count } = assignLanes(turning.map((l) => segOf(l, rowOf)))
+      const { lanes, count } = assignLanes(turning.map((l) => segOf(l, rowOf)), true)
       turning.forEach((l, i) => laneAt.set(l, lanes[i]))
       return count
     }
@@ -581,20 +645,18 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   }
 }
 
-// wrapBands groups the columns into bands no wider than budget: a column that
-// would overflow starts the next band.
+// wrapBands groups the columns into bands no wider than budget. Each band is
+// cut, among the gaps it could end at, at the one with the fewest bus lanes
+// (the farthest on a tie), so the fewest wires turn down a gutter.
 function wrapBands(colWidth: readonly number[], gapWidth: readonly number[], budget: number): number[][] {
-  const bands: number[][] = [[0]]
-  let used = colWidth[0]
-  for (let c = 1; c < colWidth.length; c++) {
-    const need = gapWidth[c - 1] + colWidth[c]
-    if (used + need > budget) {
-      bands.push([c])
-      used = colWidth[c]
-    } else {
-      (bands.at(-1) as number[]).push(c)
-      used += need
-    }
+  const bands: number[][] = []
+  for (let start = 0; start < colWidth.length; ) {
+    let end = start
+    for (let used = colWidth[start]; end + 1 < colWidth.length && used + gapWidth[end] + colWidth[end + 1] <= budget; end++) used += gapWidth[end] + colWidth[end + 1]
+    let cut = end
+    if (end + 1 < colWidth.length) for (let c = end - 1; c >= start; c--) if (gapWidth[c] < gapWidth[cut]) cut = c
+    bands.push(Array.from({ length: cut - start + 1 }, (_, i) => start + i))
+    start = cut + 1
   }
   return bands
 }

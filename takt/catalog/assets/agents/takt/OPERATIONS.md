@@ -75,6 +75,7 @@ the same name again retries that unit; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`, cutting claims so units do not pile onto one oversized file; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through takt-vfs-coordination, or re-cut the scope.
 Staged work keeps its paths until it is consolidated or explicitly discarded; taking each delivery, retrying, reassigning, and releasing it follow takt-vfs-coordination.
+A unit reads only its claim. When it must read more, state `reads` in its `claim_assign`: `all`, `free` (all that is not in flight), a directory, `dir/**`, `*.ext` or exact paths. Work no one runs any more is read as it stands; reads over work still in flight wait for it, or use `free`.
 Without a committed plan, delegate at most {{policy.unplanned_units}} independently deliverable units
 across the session, in one concurrent round — never in sequence: a sequential need is a
 dependency, and belongs to a committed plan. A unit that integrates with another, or

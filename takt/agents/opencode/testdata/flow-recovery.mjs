@@ -172,17 +172,14 @@ try {
  assert.equal(Object.values(readState().Deltas).some(d=>d.Files['b.txt']),true)
 
  // A pending repair met by a plan declaration is asked of the user, and the
- // declaration continues. When the user cannot be asked, the refusal carries
- // the exact command that applies the same approval outside the session.
+ // declaration continues. When the user cannot be asked, the harness's own
+ // error surfaces as is: no invented continuation, no command for the user.
  await inject('candidate')
  beforeApproval=()=>{throw Error('approval service down')}
  const offline=await tools.dispatch_commit.execute({version:'v-repair',plan:[{unit:'planned',contract:'c'}]},root).then(()=>assert.fail('commit ran over a pending repair'),e=>e.message)
- const command=offline.slice(offline.lastIndexOf('run: ')+5)
+ assert.ok(/approval service down/.test(offline)&&!/run:|could not be asked/.test(offline),offline)
  assert.ok(readState().Recovery)
- execFileSync('/bin/sh',['-c',command],{env:process.env})
- assert.equal(readState().Recovery,null)
  beforeApproval=async()=>{}
- await inject('candidate')
  const asked=approvalCount
  await tools.dispatch_commit.execute({version:'v-repair',plan:[{unit:'planned',contract:'c'},{unit:'probe',contract:'c'},{unit:'stuck',contract:'c'}]},root)
  assert.equal(approvalCount,asked+1);assert.equal(readState().Recovery,null)

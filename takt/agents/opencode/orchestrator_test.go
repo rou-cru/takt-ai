@@ -71,9 +71,9 @@ func effectOf(rules []rule, action, resource string) string {
 
 // TestOrchestratorIsSelectableWithNativePermissions proves the orchestrator
 // AgentSpec (built by the caller from the catalog, the same way plan.go does)
-// renders as OpenCode's default, primary agent with edit/subagent permission
-// and no inherited read/shell overrides, while the built-in general/explore
-// agents stay disabled.
+// renders as OpenCode's default, primary agent with edit/subagent permission,
+// no inherited read override and only the asked dispatch/gc shell overrides,
+// while the built-in general/explore agents stay disabled.
 func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
@@ -103,9 +103,19 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 			t.Errorf("%s permission = %q", action, effectOf(agent.Permissions, action, "*"))
 		}
 	}
-	for _, action := range []string{"read", "shell"} {
-		if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == action }) {
-			t.Errorf("orchestrator overrides inherited %s protections", action)
+	if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == "read" }) {
+		t.Errorf("orchestrator overrides inherited read protections")
+	}
+	// Only crew dispatch and GC coordination lift the inherited shell denial,
+	// and only to ask the user; every other shell protection stays.
+	for _, r := range agent.Permissions {
+		if r.Action == "shell" && r.Resource != "*takt-ai dispatch*" && r.Resource != "*takt-ai gc*" {
+			t.Errorf("orchestrator overrides inherited shell protection %q", r.Resource)
+		}
+	}
+	for _, resource := range []string{"*takt-ai dispatch*", "*takt-ai gc*"} {
+		if got := effectOf(agent.Permissions, "shell", resource); got != "ask" {
+			t.Errorf("orchestrator shell %s = %q, want ask", resource, got)
 		}
 	}
 	for _, tc := range []struct{ action, resource, want string }{

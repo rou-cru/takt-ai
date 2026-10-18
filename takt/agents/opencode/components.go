@@ -66,9 +66,10 @@ func permissionsConfig() []permissionRule {
 		// Memory is written only through the takt-memory plugin tools, which inject the harness identity.
 		{"shell", "takt-ai memory*", "deny"},
 		{"shell", "*takt-ai memory*", "deny"},
-		// Crew dispatch and GC coordination are driven only by the takt-vfs
-		// plugin's own hooks, which inject the harness-resolved identity and
-		// session; no agent has a legitimate reason to shell either directly.
+		// Crew dispatch and GC coordination are driven by the takt-vfs plugin's
+		// own hooks, which inject the harness-resolved identity and session.
+		// Agents never shell either directly; the orchestrator may, once the
+		// user approves the command (agentPermissionRules).
 		{"shell", "takt-ai gc*", "deny"},
 		{"shell", "*takt-ai gc*", "deny"},
 		{"shell", "takt-ai dispatch*", "deny"},

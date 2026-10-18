@@ -712,12 +712,13 @@ describe("delegation lifecycle", () => {
       await delegate("unit-a")
       await until(() => vfs.errors.some(([label]) => label === "Takt native delegation reconciliation"))
       expect(vfs.requests("dispatch", "uncertain")).toEqual([])
-      // By the next pass the host no longer has the child: it is reconciled.
+      // By the next pass the host no longer has the child: a background launch
+      // whose call left the caller's context can never go idle, so it settles.
       missing.push("child-r")
       await delegate("unit-b")
-      await until(()=>vfs.log.waits.filter(id=>id==="child-r").length>=2)
-      expect(vfs.requests("dispatch","finish")).toEqual([])
-      expect(activeDispatches(vfs)).toEqual(["old:1","root:call-unit-a","root:call-unit-b"])
+      await until(()=>!!vfs.history.executions["old:1"].settled)
+      expect(vfs.requests("dispatch","finish")).toEqual([{action:"finish",event:"unit-r",dispatch:"old:1",attempt:"1",session:"root"}])
+      expect(activeDispatches(vfs)).toEqual(["root:call-unit-a","root:call-unit-b"])
     } finally { await vfs.stop() }
   })
 
@@ -1936,6 +1937,16 @@ test("a completed background launch with a verified deleted child can compensate
     await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
     await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
     expect(vfs.history.executions["old:call"].settled).toBe(true)
+    expect(vfs.requests("dispatch","finish")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1"}))
+  }finally{await vfs.stop()}
+})
+
+test("a background delegation whose launch call left the caller's context still settles when its child is idle",async()=>{
+  const vfs=await startVfs({history:{executions:saved({"old:call":{unit:"orphan",root:"root",child:"idle",background:true,owner:"expired"}})}})
+  try {
+    await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+    await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
+    await until(()=>!!vfs.history.executions["old:call"].settled)
     expect(vfs.requests("dispatch","finish")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1"}))
   }finally{await vfs.stop()}
 })

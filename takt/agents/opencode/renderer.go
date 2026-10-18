@@ -211,6 +211,10 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "allow"})
 		}
+		// The orchestrator can run crew dispatch and GC coordination itself, but
+		// the shell path skips the plugin's own consent (dispatch_abandon, repair
+		// approval), so the user approves every such command.
+		rules = append(rules, permissionRule{"shell", "*takt-ai dispatch*", "ask"}, permissionRule{"shell", "*takt-ai gc*", "ask"})
 	} else {
 		// Verification and quality assurance never write the project; their
 		// output goes outside it through the shell.
