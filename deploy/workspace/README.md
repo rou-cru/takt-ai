@@ -10,9 +10,7 @@ Disposable, ready-to-use [Takt AI](https://github.com/rou-cru/takt-ai) + OpenCod
 
 This README documents the workspace image, which is a generic product artifact.
 
-The deployment material next to it — `helm.sh`, `namespace.yaml`, and `kaf-control-plane-values.yaml` — is legacy material written for one specific environment. The generic paths do not use it: the Helm chart is documented in [charts/takt-ai/README.md](../../charts/takt-ai/README.md) and the Coder workspace template in [deploy/coder/README.md](../coder/README.md); neither consumes these files or copies them into its examples.
-
-Because these legacy files embed environment-specific values, a literal repository-wide requirement that no infrastructure literals exist does not hold while they remain. Whether that requirement excludes legacy operator material, or the files are removed through separately authorized cleanup, is an open disposition owned by the product owner and the user; this README records the conflict and resolves nothing (acceptance open item OI-01). No environment-specific values are added here.
+The deployment helpers next to it are generic: `helm.sh` wraps `helm install|upgrade|uninstall charts/takt-ai` with a default namespace, and `namespace.yaml` declares a restricted Pod Security Namespace. Neither file names a cluster, account, domain, or any other environment-specific value, and no environment-specific values are added here. The generic paths do not use them: the Helm chart is documented in [charts/takt-ai/README.md](../../charts/takt-ai/README.md) and the Coder workspace template in [deploy/coder/README.md](../coder/README.md); neither consumes these files or copies them into its examples.
 
 ## Run
 

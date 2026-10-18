@@ -59,9 +59,9 @@ Each section lists the tier, the procedure, and the evidence expected.
 ### CW-T1-09 — Generic product and honest operator documentation
 
 - Tier: T1
-- Check location: CH feature-scope scan, plus AC contract and document review
-- Procedure: Run the CH synthetic and default scan. Review the operator documents against #15110 and #15111, listing every prerequisite.
-- Evidence: Scan output; reviewer checklist of prerequisites. OI-01 is recorded separately, not as compliance with the whole-repository scan.
+- Check location: CH whole-repository scan, plus AC contract and document review
+- Procedure: Run the CH scan over the repository's tracked source files. Review the operator documents against #15110 and #15111, listing every prerequisite.
+- Evidence: Scan output; reviewer checklist of prerequisites.
 
 ### CW-T1-10 — Authentication, scope, and assurance claims
 
@@ -188,5 +188,7 @@ Operator-owned prerequisites are external to this repository: an existing
 namespace, storage class, CNI, DNS, TLS and routing, a reachable external
 PostgreSQL, the OIDC registration and callback, image and provider access,
 and the Backstage configuration. These are supplied as external values and
-secret references only. Open items OI-01 through OI-06 remain recorded in the
-acceptance specification and are not closed by this document.
+secret references only. OI-01 is resolved by removal: the repository no longer
+contains the environment-specific legacy values file, and the CH scan covers
+the repository's tracked source files. Open items OI-02 through OI-06 remain
+recorded in the acceptance specification and are not closed by this document.

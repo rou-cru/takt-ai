@@ -13,12 +13,12 @@
 # the script exits 3 (prerequisite not met, UNVERIFIED) rather than passing.
 #
 # Exit codes: 0 all checks passed; 1 at least one check failed; 3 no check
-# failed and at least one scenario is UNVERIFIED. Exit 3 always includes the
-# whole-repository C2 scan of CW-T1-09, which is never certified here (OI-01),
-# so a complete run without failures exits 3. It also covers a missing helm or
-# an unresolved Coder dependency (the script stops before any assertion) and an
-# unavailable git HEAD for the direct baseline. Read the UNVERIFIED lines to
-# tell these cases apart.
+# failed and at least one scenario is UNVERIFIED: a missing helm or git, an
+# unresolved Coder dependency (the script stops before any assertion), or an
+# unavailable git HEAD for the direct baseline. The CW-T1-09 scan for
+# environment-specific literals across the repository's tracked source files
+# is a real check that passes or fails; it never causes exit 3. Read the
+# UNVERIFIED lines to tell the exit-3 cases apart.
 set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -35,6 +35,7 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; FAILURES=$((FAILURES + 1)); }
 unverified() { printf 'UNVERIFIED %s: %s\n' "$1" "$2"; UNVERIFIED=$((UNVERIFIED + 1)); }
 
 command -v helm >/dev/null 2>&1 || { printf 'UNVERIFIED prerequisite: helm is not on PATH\n'; exit 3; }
+command -v git >/dev/null 2>&1 || { printf 'UNVERIFIED prerequisite: git is not on PATH (needed for the direct baseline and the CW-T1-09 scan)\n'; exit 3; }
 [ -f "$CHART/Chart.yaml" ] || { fail chart-present "missing $CHART/Chart.yaml"; exit 1; }
 
 # Prerequisite: the coder dependency archive must be pre-resolved (online step).
@@ -313,19 +314,34 @@ else
     fail "CW-T1-05 dedicated profile renders" "$(head -c 200 "$TMP/dedicated.err")"
 fi
 
-# ------------------------------------------------ CH-05 (CW-T1-09) feature scope
-# Environment-specific literals must not occur in the product scope. The
-# deploy/workspace legacy material is outside this scan (OI-01, reported in
-# ACCEPTANCE.md). A self-check seeds a literal to prove the scan detects it.
+# ------------------------------------------------ CH-05 (CW-T1-09) repository scan
+# C2 (#15105): environment-specific literals must not occur anywhere in the
+# repository's tracked source files. Git metadata, node_modules, the local
+# .takt-ai state, generated lockfiles and this script's own seeded self-check
+# are not product source. A seeded self-check runs the same pipeline to prove
+# the scan detects a literal.
 PATTERN='amazonaws\.com|arn:aws|\b[0-9]{12}\b|\beks\b|\bkaf[-.]|azurecr\.io|gcr\.io'
-scan() { # scan <dir> ; prints matching lines
-    grep -RInE "$PATTERN" "$1" --exclude-dir=tests --exclude-dir=.terraform --exclude='*.lock' --exclude='*.tgz' 2>/dev/null || true
+scan_repo() { # scan_repo <root> ; prints matching lines among <root>'s tracked source files
+    local root="$1"
+    git -C "$root" ls-files -z | while IFS= read -r -d '' f; do
+        case "$f" in
+            .git/*|*/.git/*) continue ;; # git metadata
+            node_modules/*|*/node_modules/*) continue ;; # vendored dependencies
+            .takt-ai/*|*/.takt-ai/*) continue ;; # local tool state
+            go.sum|*/go.sum|*.lock|*.lock.*|*-lock.yaml|*-lock.json) continue ;; # generated lockfiles
+            development/testing/test-coder-chart.sh) continue ;; # this script's own seeded self-check
+        esac
+        printf '%s\0' "$root/$f"
+    done | xargs -0 grep -HIInE "$PATTERN" 2>/dev/null || true
 }
-seed="$TMP/seed"; mkdir -p "$seed"; printf 'host: cluster.amazonaws.com\n' > "$seed/seeded.yaml"
-if [ -n "$(scan "$seed")" ]; then pass "CW-T1-09 scan self-check detects a seeded environment literal"; else fail "CW-T1-09 scan self-check" "seeded literal not detected"; fi
-found=$(scan "$CHART"; scan "$ROOT/deploy/coder")
-if [ -z "$found" ]; then pass "CW-T1-09 no environment-specific literal in chart and deploy/coder product scope"; else fail "CW-T1-09 environment literals" "$(printf '%s' "$found" | head -5)"; fi
-unverified "CW-T1-09 whole-repository C2 scan" "deploy/workspace legacy material is out of scope here (OI-01); literal whole-repository conformance is not certified"
+seedrepo="$TMP/seedrepo"; mkdir -p "$seedrepo"; printf 'host: cluster.amazonaws.com\n' > "$seedrepo/seeded.yaml"
+if git -C "$seedrepo" init -q && git -C "$seedrepo" add seeded.yaml && [ -n "$(scan_repo "$seedrepo")" ]; then
+    pass "CW-T1-09 scan self-check detects a seeded environment literal"
+else
+    fail "CW-T1-09 scan self-check" "seeded literal not detected"
+fi
+found=$(scan_repo "$ROOT")
+if [ -z "$found" ]; then pass "CW-T1-09 no environment-specific literal in the repository's tracked source files"; else fail "CW-T1-09 environment literals" "$(printf '%s' "$found" | head -5)"; fi
 
 echo
 if [ "$FAILURES" -gt 0 ]; then
