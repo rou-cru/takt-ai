@@ -32,3 +32,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- printf "%s:%v" $repository (required "image.tag, image.digest or the chart appVersion must name a published workspace image" (default .Chart.AppVersion .Values.image.tag)) -}}
 {{- end -}}
 {{- end -}}
+{{/* Rejects duplicate names in the coder.coder.env list the Coder control plane
+     consumes; a duplicate would silently replace an earlier entry, including a
+     required one. Renders nothing when names are unique; fails naming the repeated
+     name. Invoked from templates/NOTES.txt, which renders wherever the Coder
+     dependency renders. */}}
+{{- define "takt-ai.coderEnvGuard" -}}
+{{- $seen := dict -}}
+{{- range .Values.coder.coder.env -}}
+{{- if hasKey $seen .name -}}
+{{- fail (printf "duplicate Coder env name %q in coder.coder.env; env names must be unique" .name) -}}
+{{- end -}}
+{{- $_ := set $seen .name true -}}
+{{- end -}}
+{{- end -}}

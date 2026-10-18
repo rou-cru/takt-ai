@@ -98,14 +98,8 @@ variable "resources" {
   }
 }
 
-variable "persistence_allowed" {
-  description = "Whether the operator permits persistent workspace storage for this template. Disabled means every workspace is ephemeral."
-  type        = bool
-  default     = false
-}
-
 variable "storage_class_name" {
-  description = "StorageClass for persistent workspaces. Null uses the cluster default. It may only be set while persistence_allowed is true."
+  description = "StorageClass for the per-workspace persistent claim. Null uses the cluster default."
   type        = string
   default     = null
 
@@ -113,15 +107,10 @@ variable "storage_class_name" {
     condition     = var.storage_class_name == null || (try(length(var.storage_class_name) <= 253, false) && can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", var.storage_class_name)))
     error_message = "storage_class_name must be null or an existing StorageClass DNS-subdomain name of 1 to 253 characters."
   }
-
-  validation {
-    condition     = var.storage_class_name == null || var.persistence_allowed
-    error_message = "storage_class_name is set while persistence_allowed is false; enable persistence_allowed before naming a storage class."
-  }
 }
 
 variable "storage_size_gib" {
-  description = "Requested size of a persistent workspace volume, in GiB. Access mode is fixed to ReadWriteOnce."
+  description = "Requested size of the persistent workspace volume, in GiB. Access mode is fixed to ReadWriteOnce."
   type        = number
   default     = 10
 
@@ -132,7 +121,7 @@ variable "storage_size_gib" {
 }
 
 variable "owner_secret_env" {
-  description = "Optional existing-Secret environment references keyed by owner UUID. Only the matching owner's workspace receives them, and unmapped owners receive none."
+  description = "Optional existing-Secret environment references keyed by owner UUID. Only the matching owner's workspace receives them, and unmapped owners receive none. The BACKSTAGE_TOKEN entry is the per-owner Backstage credential seam: it is the only source of the workspace BACKSTAGE_TOKEN value and is required whenever backstage_url is set."
   type = map(map(object({
     name = string
     key  = string
@@ -150,12 +139,23 @@ variable "owner_secret_env" {
   }
 
   validation {
-    condition     = try(alltrue([for vars in values(var.owner_secret_env) : alltrue([for env_name in keys(vars) : !contains(["HOME", "PATH", "USER", "LOGNAME", "SHELL", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH"], env_name) && !anytrue([for prefix in ["CODER_", "TAKT_", "OPENCODE_", "XDG_", "ENGRAM_"] : startswith(env_name, prefix)])])]), false)
-    error_message = "owner_secret_env must not override reserved names: HOME, PATH, USER, LOGNAME, SHELL, ENV, BASH_ENV, LD_PRELOAD, LD_LIBRARY_PATH, or any CODER_, TAKT_, OPENCODE_, XDG_ or ENGRAM_ name."
+    condition     = try(alltrue([for vars in values(var.owner_secret_env) : alltrue([for env_name in keys(vars) : !contains(["HOME", "PATH", "USER", "LOGNAME", "SHELL", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "BACKSTAGE_URL"], env_name) && !anytrue([for prefix in ["CODER_", "TAKT_", "OPENCODE_", "XDG_", "ENGRAM_"] : startswith(env_name, prefix)])])]), false)
+    error_message = "owner_secret_env must not override reserved names: HOME, PATH, USER, LOGNAME, SHELL, ENV, BASH_ENV, LD_PRELOAD, LD_LIBRARY_PATH, BACKSTAGE_URL, or any CODER_, TAKT_, OPENCODE_, XDG_ or ENGRAM_ name."
   }
 
   validation {
     condition     = try(alltrue([for vars in values(var.owner_secret_env) : alltrue([for ref in values(vars) : can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", ref.name)) && try(length(ref.name) <= 253, false) && can(regex("^[A-Za-z0-9._-]+$", ref.key)) && try(length(ref.key) <= 253, false)])]), false)
     error_message = "owner_secret_env entries must reference an existing Secret DNS-subdomain name and a key matching [A-Za-z0-9._-]+, each of 1 to 253 characters."
+  }
+}
+
+variable "backstage_url" {
+  description = "Base URL of the operator's Backstage deployment, for example https://backstage.example.com. Empty disables BACKSTAGE_URL injection and the token requirement; it does not remove a BACKSTAGE_TOKEN explicitly mapped in owner_secret_env. A nonempty value reaches the workspace as BACKSTAGE_URL and requires every starting owner to have a BACKSTAGE_TOKEN Secret reference in owner_secret_env. The URL itself never carries credentials."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.backstage_url == "" || (length(var.backstage_url) <= 2048 && can(regex("^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]*)*$", var.backstage_url)))
+    error_message = "backstage_url must be empty or an absolute https:// base URL of at most 2048 characters with no userinfo, query, fragment or whitespace."
   }
 }

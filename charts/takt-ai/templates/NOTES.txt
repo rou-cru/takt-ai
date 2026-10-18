@@ -1,4 +1,14 @@
+{{- if eq .Values.execution.mode "coder" }}
+{{- include "takt-ai.coderEnvGuard" . }}
+Coder mode is selected. This chart renders the Coder control plane and retains the Takt PVC; it does not create or verify a workspace template or launch a Takt workspace.
+
+Configure Coder OIDC sign-in and its external PostgreSQL connection through the supplied issuer, client ID, and secret references. Coder's password-auth disable setting does not disable the Owner password sign-in exception.
+
+Operator prerequisites outside Helm: complete Coder's first-user bootstrap, then publish the workspace template from this release's deploy/coder directory with 'coder templates push'. Workspace settings and the owner-keyed Backstage credential contract (BACKSTAGE_URL and BACKSTAGE_TOKEN from owner_secret_env) are template publication inputs, not chart values. Helm release readiness is not workspace readiness; check the Coder deployment and authentication, then separately launch a workspace and verify Takt runtime readiness.
+{{- else }}
 Workspace release {{ .Release.Name }} is installed in namespace {{ .Release.Namespace }}.
 OpenCode v2 listens on Service {{ include "takt-ai.fullname" . }}:{{ .Values.service.port }}.
+Direct mode keeps OpenCode's existing BasicAuth authentication; no OAuth/OIDC sign-in is provided.
 If HTTPRoute is enabled, verify its Accepted/ResolvedRefs conditions in the target Gateway controller.
 The release PVC is removed on uninstall unless persistence.retain is set; PV data behavior follows its StorageClass reclaim policy.
+{{- end }}

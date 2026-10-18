@@ -22,6 +22,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -50,6 +51,21 @@ func ApplyModelOverrideChanges(ctx context.Context, rootDir string, changes map[
 		return DeploymentResult{}, err
 	}
 	changed := changedArtifactPathSet(before, after)
+	// The installed record can disagree with the file (edits made outside
+	// Takt), so a request the record already satisfies may still change it.
+	deployed, err := LoadDeployedModels(rootDir)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	for id := range changes {
+		wanted, ok := request.OpenCodeModelOverrides[id]
+		if !ok {
+			wanted = model.ModelAssignment{Model: request.OpenCode.Model}
+		}
+		if deployed[id].Model != wanted.Model {
+			changed[opencode.ConfigPath()] = true
+		}
+	}
 	preserve := unchangedPaths(managedPaths, changed)
 
 	// A reassignment changes only the models asked for. When the user edited

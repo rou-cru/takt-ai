@@ -1,9 +1,10 @@
 # Single provisioning graph for one human's Coder workspace on Kubernetes.
 #
 # Every resource derives from the Coder workspace and owner identity, never from
-# free-text input. One workspace maps to one Pod, one optional
+# free-text input. One workspace maps to one Pod, one persistent per-workspace
 # PersistentVolumeClaim, one workspace-scoped NetworkPolicy and one Coder agent.
-# The workspace Pod receives no cluster identity and mounts no host path.
+# Only compute is gated on start_count; the claim survives stop and resume. The
+# workspace Pod receives no cluster identity and mounts no host path.
 
 data "coder_workspace" "me" {}
 
@@ -23,15 +24,6 @@ data "coder_parameter" "repository_url" {
   }
 }
 
-data "coder_parameter" "persist_workspace" {
-  name         = "persist_workspace"
-  display_name = "Persist workspace storage"
-  description  = "Request a PersistentVolumeClaim for /workspace and the Takt runtime directories. Disabled workspaces are ephemeral and lose local commits, dirty files and runtime data when stopped. Enabled workspaces keep them across stop and resume and lose them on workspace deletion."
-  type         = "bool"
-  default      = false
-  mutable      = false
-}
-
 locals {
   # Full workspace and owner UUIDs keep names collision-free without exposing an
   # email or a mutable username. Names, labels and identity live here only.
@@ -42,9 +34,6 @@ locals {
     "takt.ai/workspace-id"   = data.coder_workspace.me.id
     "takt.ai/owner-id"       = data.coder_workspace_owner.me.id
   }
-
-  # The Coder provider renders a bool parameter as the string "true" or "false".
-  persist = data.coder_parameter.persist_workspace.value == "true"
 
   # Constant init-container source: no setup, network access or interpolation.
   prepare_runtime_script = "mkdir -p /mnt/runtime/workspace /mnt/runtime/data /mnt/runtime/state /mnt/runtime/cache"
@@ -66,6 +55,11 @@ locals {
 
   # Only the matching owner's existing Secret references reach this workspace.
   owner_secret_env = lookup(var.owner_secret_env, data.coder_workspace_owner.me.id, {})
+
+  # The owner's BACKSTAGE_TOKEN Secret reference, present only when the operator
+  # mapped it to this exact owner. It is the sole BACKSTAGE_TOKEN source and the
+  # value checked by the workspace Pod precondition.
+  backstage_token_ref = lookup(local.owner_secret_env, "BACKSTAGE_TOKEN", null)
 }
 
 # The agent, its terminal app and the ingress policy exist for the whole
@@ -99,6 +93,7 @@ resource "coder_app" "opencode" {
   slug         = "opencode"
   display_name = "OpenCode"
   command      = "cd /workspace && exec opencode"
+  share        = "owner"
 }
 
 # Ingress-only policy for this one workspace Pod; egress stays available for
@@ -121,14 +116,21 @@ resource "kubernetes_network_policy_v1" "workspace" {
   }
 }
 
+# One persistent claim per workspace, kept for the workspace's whole lifetime:
+# stop removes compute only and start reuses the same claim. The explicit count
+# keeps the historical workspace[0] resource address stable across template
+# versions. wait_until_bound follows the upstream Kubernetes example so
+# WaitForFirstConsumer storage does not block creation of the consuming Pod.
 resource "kubernetes_persistent_volume_claim_v1" "workspace" {
-  count = local.persist ? 1 : 0
+  count = 1
 
   metadata {
     name      = local.resource_name
     namespace = var.namespace
     labels    = local.labels
   }
+
+  wait_until_bound = false
 
   spec {
     access_modes       = ["ReadWriteOnce"]
@@ -138,15 +140,6 @@ resource "kubernetes_persistent_volume_claim_v1" "workspace" {
       requests = {
         storage = "${var.storage_size_gib}Gi"
       }
-    }
-  }
-
-  # A human can only opt in once the operator has enabled persistence for this
-  # template; the plan fails before any claim is written.
-  lifecycle {
-    precondition {
-      condition     = var.persistence_allowed
-      error_message = "persist_workspace was requested while persistence_allowed is false; the operator must enable persistence_allowed before persistent workspace storage can be claimed."
     }
   }
 }
@@ -229,6 +222,42 @@ resource "kubernetes_pod_v1" "workspace" {
         value = "/home/takt"
       }
 
+      # Explicit runtime environment selects the persistent subpaths of the
+      # workspace claim; agent sessions and tools inherit the Pod environment.
+      # ENGRAM_DATA_DIR keeps Engram data on the persisted share subpath.
+      env {
+        name  = "XDG_DATA_HOME"
+        value = "/home/takt/.local/share"
+      }
+
+      env {
+        name  = "XDG_STATE_HOME"
+        value = "/home/takt/.local/state"
+      }
+
+      env {
+        name  = "XDG_CACHE_HOME"
+        value = "/home/takt/.cache"
+      }
+
+      env {
+        name  = "ENGRAM_DATA_DIR"
+        value = "/home/takt/.local/share/engram"
+      }
+
+      # The Backstage endpoint comes solely from the operator variable. The
+      # owner's BACKSTAGE_TOKEN Secret reference is injected from
+      # owner_secret_env by the dynamic block below and required by the
+      # precondition on this resource.
+      dynamic "env" {
+        for_each = var.backstage_url != "" ? [1] : []
+
+        content {
+          name  = "BACKSTAGE_URL"
+          value = var.backstage_url
+        }
+      }
+
       dynamic "env" {
         for_each = local.owner_secret_env
 
@@ -287,23 +316,13 @@ resource "kubernetes_pod_v1" "workspace" {
       }
     }
 
-    # One runtime volume: the opt-in claim across stop and resume, or an
-    # emptyDir that survives only for the life of this Pod.
+    # One runtime volume: the per-workspace claim, mounted at every persisted
+    # path. /tmp stays an emptyDir for the life of this Pod.
     volume {
       name = "runtime"
 
-      dynamic "empty_dir" {
-        for_each = local.persist ? [] : [1]
-
-        content {}
-      }
-
-      dynamic "persistent_volume_claim" {
-        for_each = local.persist ? [1] : []
-
-        content {
-          claim_name = kubernetes_persistent_volume_claim_v1.workspace[0].metadata[0].name
-        }
+      persistent_volume_claim {
+        claim_name = kubernetes_persistent_volume_claim_v1.workspace[0].metadata[0].name
       }
     }
 
@@ -311,6 +330,17 @@ resource "kubernetes_pod_v1" "workspace" {
       name = "tmp"
 
       empty_dir {}
+    }
+  }
+
+  # Backstage credential seam: a starting workspace whose operator configured a
+  # Backstage endpoint must carry that exact owner's BACKSTAGE_TOKEN Secret
+  # reference. Stopping is never blocked by the credential: with start_count 0
+  # no Pod instance is planned and the precondition has nothing to evaluate.
+  lifecycle {
+    precondition {
+      condition     = var.backstage_url == "" || local.backstage_token_ref != null
+      error_message = "backstage_url is set but owner_secret_env has no BACKSTAGE_TOKEN Secret reference for this workspace owner; add owner_secret_env[<owner UUID>].BACKSTAGE_TOKEN or leave backstage_url empty."
     }
   }
 }

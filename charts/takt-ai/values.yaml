@@ -37,6 +37,55 @@ runtime:
   env: []
   envFrom: []
 
+execution:
+  mode: direct
+coder:
+  enabled: false
+  coder:
+    service:
+      type: ClusterIP
+    envUseClusterAccessURL: false
+    serviceAccount:
+      workspacePerms: true
+      enableDeployments: false
+      extraRules:
+        - apiGroups:
+            - networking.k8s.io
+          resources:
+            - networkpolicies
+          verbs:
+            - get
+            - list
+            - watch
+            - create
+            - update
+            - patch
+            - delete
+    env:
+      - name: CODER_PG_CONNECTION_URL
+        valueFrom:
+          secretKeyRef:
+            name: ""
+            key: ""
+      - name: CODER_OIDC_ISSUER_URL
+        value: ""
+      - name: CODER_OIDC_CLIENT_ID
+        value: ""
+      - name: CODER_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: ""
+            key: ""
+      - name: CODER_DISABLE_PASSWORD_AUTH
+        value: "true"
+      - name: CODER_OAUTH2_PROVIDER_ENABLE
+        value: "true"
+      - name: CODER_ACCESS_URL
+        value: ""
+
+# Direct-mode workspace configuration. In Coder mode, workspace settings
+# (namespace, image, storage, resources, owner credentials) are publication
+# inputs defined in deploy/coder/variables.tf, not chart values.
 workspace:
   mountPath: /workspace
   repository:

@@ -1,5 +1,5 @@
 {{- $pvcAnnotations := deepCopy .Values.persistence.annotations -}}
-{{- if .Values.persistence.retain -}}
+{{- if or .Values.persistence.retain (eq .Values.execution.mode "coder") -}}
 {{- $_ := set $pvcAnnotations "helm.sh/resource-policy" "keep" -}}
 {{- end -}}
 apiVersion: v1

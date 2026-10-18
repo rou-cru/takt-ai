@@ -230,7 +230,7 @@ jobs:
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.22.0
+          version: v4.3.1
       - name: Validate and render chart
         run: |
           # Placeholder digest exercises the digest-pinned image path; a
@@ -239,6 +239,10 @@ jobs:
                 --set image.repository=example.invalid/takt-ai
                 --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000)
           mkdir -p "$RUNNER_TEMP/rendered"
+          # Chart.yaml declares a dependency that is not vendored under
+          # charts/; fetch it, or lint and template fail on the missing chart.
+          helm repo add coder https://helm.coder.com/v2
+          helm dependency build charts/takt-ai
           helm lint charts/takt-ai "${args[@]}"
           helm template takt-ai charts/takt-ai "${args[@]}" > "$RUNNER_TEMP/rendered/default.yaml"
           # Defaults alone must render: the published image at the chart's appVersion.

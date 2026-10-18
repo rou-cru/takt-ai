@@ -340,16 +340,18 @@ func (adapter Adapter) ScanDrift(rootDir string) ([]setup.ConflictEntry, error) 
 
 // executeReassignModels applies every changed assignment in one redeploy so untouched agents keep running.
 func (adapter Adapter) executeReassignModels(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	installed, err := setup.LoadInstalledConfig(request.RootDir)
-	if err != nil {
+	if _, err := setup.LoadInstalledConfig(request.RootDir); err != nil {
 		return ActionResult{}, err
 	}
-	before := installed.OpenCodeModelOverrides
 	end, err := setup.BeginOperation(request.RootDir, string(request.Action))
 	if err != nil {
 		return ActionResult{}, err
 	}
 	defer end()
+	before, err := setup.LoadDeployedModels(request.RootDir)
+	if err != nil {
+		return ActionResult{}, err
+	}
 
 	out := ActionResult{Action: ActionReassignModels}
 	ids := changedOverrideIDs(before, request.ReassignOverrides)

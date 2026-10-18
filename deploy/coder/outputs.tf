@@ -32,11 +32,11 @@ output "architecture" {
 }
 
 output "persistence_mode" {
-  value       = length(kubernetes_persistent_volume_claim_v1.workspace) > 0 ? "workspace-pvc" : "ephemeral"
-  description = "Workspace storage mode: workspace-pvc when a claim exists, ephemeral otherwise."
+  value       = "workspace-pvc"
+  description = "Workspace storage mode: one persistent claim per workspace, retained across stop and resume."
 }
 
 output "pvc_name" {
-  value       = length(kubernetes_persistent_volume_claim_v1.workspace) > 0 ? kubernetes_persistent_volume_claim_v1.workspace[0].metadata[0].name : null
-  description = "Name of the persistent workspace claim, or null when storage is ephemeral."
+  value       = kubernetes_persistent_volume_claim_v1.workspace[0].metadata[0].name
+  description = "Name of the persistent workspace claim, present for the whole workspace lifetime including while stopped."
 }

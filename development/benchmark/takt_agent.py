@@ -4,6 +4,7 @@ Reuses Harbor's OpenCode agent (run, trajectory, cost parsing) and only swaps
 the install and the OpenCode v2 command line.
 """
 
+import json
 import shlex
 from pathlib import Path
 from typing import override
@@ -20,6 +21,30 @@ OPENCODE_INSTALL_SHA256 = "6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4
 TAKT_BINARY = Path(__file__).resolve().parents[2] / "dist" / "bench" / "takt-ai"
 # bubblewrap + socat back the VFS sandbox on Linux; nodejs/npm back codegraph.
 APT_PACKAGES = "ca-certificates curl jq nodejs npm bubblewrap socat ripgrep"
+# Free-tier mix: the crew is spread over six model families so no single
+# free quota carries it. `takt` runs on the -m model (nemotron), which holds as
+# few specialists as possible so the orchestrator's bias is not shared with the
+# roles that check its work; the judge pair is split across families too.
+CAT_JAM, LONGCAT, NEMOTRON, SPACE_BUNNY, MUSE_SPARK, LL_ALPHA = (
+    f"opencode/{m}"
+    for m in (
+        "cat-jam-free",
+        "longcat-2.5-preview-free",
+        "nemotron-3.5-super-vl-free",
+        "space-bunny-free",
+        "muse-spark-1.3-contributor-free",
+        "ll-alpha-free",
+    )
+)
+MODEL_MIX = {
+    CAT_JAM: ["spec", "explorer", "test"],
+    LONGCAT: ["dev", "pm", "judge-a"],
+    NEMOTRON: ["product-designer"],
+    SPACE_BUNNY: ["verify", "simplify", "qa"],
+    MUSE_SPARK: ["mutation", "fix", "judge-b"],
+    LL_ALPHA: ["analyst", "tpm", "quality", "architect"],
+}
+OVERRIDES = json.dumps({role: {"Model": m} for m, roles in MODEL_MIX.items() for role in roles})
 
 
 class TaktOpenCode(OpenCode):
@@ -40,7 +65,8 @@ class TaktOpenCode(OpenCode):
             "curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o /tmp/opencode-install.sh https://opencode.ai/v2/install; "
             f"echo '{OPENCODE_INSTALL_SHA256}  /tmp/opencode-install.sh' | sha256sum -c -; "
             f"bash /tmp/opencode-install.sh --no-modify-path --version {OPENCODE_VERSION}; "
-            f"takt-ai setup default-request | jq --arg m {model} '.opencode.model=$m' "
+            f"takt-ai setup default-request | jq --arg m {model} --argjson o {shlex.quote(OVERRIDES)} "
+            "'.opencode.model=$m | .opencode_model_overrides=$o' "
             "| takt-ai setup image --root \"$HOME\" --yes --json; "
             "mkdir -p \"$HOME/.config/opencode/skills\"; "
             "cp -a \"$HOME/.config/opencode/takt/skills/.\" \"$HOME/.config/opencode/skills/\"; "
