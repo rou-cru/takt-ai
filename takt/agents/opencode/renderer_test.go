@@ -172,7 +172,8 @@ func TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole(t *testing.
 		t.Fatal(err)
 	}
 	rules := decodeConfig(t, artifact.Content).Agents["dev"].Permissions
-	if effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "git diff") != "allow" || effectOf(rules, "shell", "git diff *") != "allow" {
+	if effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "git diff") != "allow" || effectOf(rules, "shell", "git diff *") != "allow" ||
+		effectOf(rules, "shell", "git ls-files *") != "allow" {
 		t.Errorf("dev shell rules = %v", rules)
 	}
 	// The broad deny must come first so the read-only allows win as last match.

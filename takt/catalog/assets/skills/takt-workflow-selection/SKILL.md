@@ -27,17 +27,20 @@ reason and evidence, in view.
      updated evidence. Invariant planning stands on its own; when SDD follows it, its
      specifications, and its test plan when QA is planned, feed TPM, SDD's first node.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
-     Engram entry holds it and agrees with the repository; it is missing when no such entry
-     exists, and to refine when the objective changes what the entry holds. A specification is
-     also settled when a repository artifact of equivalent rigor holds it. QA is planned when
-     the PRD marks a priority must-not-fail, or an acceptance criterion of the specification
-     crosses more than one frozen contract; its test plan and traceability matrix are then
-     required invariants too.
+     Engram entry holds it, judged by title and relations, not body; it is missing when no such
+     entry exists, and to refine when the objective changes what the entry holds. A specification is
+     also settled when a repository artifact of equivalent rigor holds it. QA is planned, as the
+     exception, only when acceptance needs the QA workflow rather than individual quality
+     specialists. Signals, in any phase: a must-not-fail priority, a criterion crossing several frozen
+     contracts, abundant tests that add no value, complexity needing hard guarantees, a drastic earlier failure, a
+     legacy refactor, or the user's request. If unclear, ask `qa`, or `architect` for complexity.
+     Its test plan and traceability matrix are then required invariants too.
 3. **Is development still needed?**
    - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
      to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.
    - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow` once formal,
      broken-down specifications exist; without them they are required invariants: go to 2.
+     With QA planned, its acceptance tail is `takt-qa-workflow`.
    - No, the objective assesses, tests or hardens a deliverable that exists → adopt
      `takt-qa-workflow`.
    - No, nothing else → deliver the settled result; no implementation route is needed.

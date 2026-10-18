@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -487,12 +488,23 @@ func (f *FS) verdictRequiredLocked(agent AgentID) bool {
 // execute mutating git commands; only model.RoleOrchestrator is.
 func GuardGitMutation(role model.RoleClass) error {
 	if role != model.RoleOrchestrator {
-		return fmt.Errorf("%w: role %q cannot issue mutating git commands", ErrGitMutationDenied, role)
+		return fmt.Errorf("%w: role %q cannot issue mutating git commands; %s", ErrGitMutationDenied, role, readOnlyGitHint())
 	}
 	return nil
 }
 
-var readOnlyGitSubcommands = []string{"diff", "log", "show", "blame", "status", "ls-tree"}
+// readOnlyGitSubcommands never write to the repository, whatever their
+// arguments; subcommands that list or mutate by argument (branch, tag, stash,
+// reflog, config, remote, worktree) stay out.
+var readOnlyGitSubcommands = []string{
+	"diff", "log", "show", "blame", "status", "ls-tree", "ls-files", "rev-parse", "cat-file", "grep",
+	"shortlog", "describe", "merge-base", "rev-list", "for-each-ref", "check-ignore", "name-rev",
+}
+
+// readOnlyGitHint names the git a denied caller may still run.
+func readOnlyGitHint() string {
+	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ")
+}
 
 // ReadOnlyGitSubcommands returns the read-only git subcommands.
 func ReadOnlyGitSubcommands() []string {

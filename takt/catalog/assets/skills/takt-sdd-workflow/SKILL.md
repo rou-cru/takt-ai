@@ -330,7 +330,7 @@ The following is an available route, not a procession required of every change:
    to each author key of the phase, and Takt consolidates a passing author's work with
    `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
    left dead; it runs no checks. Executable acceptance runs in a Verify unit on the
-   materialized workspace after writers finish; with a test plan, that acceptance and the
+   materialized workspace after writers finish; with QA planned, that acceptance and the
    tail after it follow `takt-qa-workflow` from its Accept state.
    Check the integrated outcome, not merely completed nodes.
 

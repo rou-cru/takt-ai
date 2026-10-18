@@ -1,6 +1,6 @@
 ---
 name: takt-memory-test
-description: "Before using memory as test. What this role records, when, and what it never records."
+description: "Before recording memory as test. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt

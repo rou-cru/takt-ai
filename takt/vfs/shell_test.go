@@ -248,6 +248,7 @@ func TestShellDecisions(t *testing.T) {
 		{"unquoted redirect after a quoted span", verifier, `echo "a" > data.txt`, vfs.ShellDeny},
 		{"mutating git denied for execution", scoped, "git commit -m wip", vfs.ShellDeny},
 		{"read-only git allowed", scoped, "git log --oneline", vfs.ShellAllow},
+		{"listing tracked files is read-only git", scoped, "git ls-files -- data.txt", vfs.ShellAllow},
 		{"privilege escalation is approval-gated", scoped, "sudo tee /etc/hosts", vfs.ShellAsk},
 		{"host-wide install is approval-gated", scoped, "brew install jq", vfs.ShellAsk},
 		{"global toolchain operation is approval-gated", scoped, "npm install -g takt", vfs.ShellAsk},

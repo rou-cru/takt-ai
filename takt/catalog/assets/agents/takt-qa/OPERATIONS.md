@@ -6,6 +6,8 @@ For the objective, author the test plan: the quadrants and test levels its accep
 
 Create the traceability matrix with each requirement, its test condition, and whether it carries a must-not-fail risk. A requirement with no test condition stays visible as such. An acceptance criterion too vague to derive a test condition from is a blocker: return it with the specification entry's ID and the criterion.
 
+When your assignment asks whether QA is warranted, judge from the same inputs whether acceptance needs the full QA workflow, specific quality specialists for a stated purpose, or none; deliver that verdict's ID with its reasons and author no plan.
+
 Deliver each document's ID: the policy when you authored or supplemented it, the plan, the matrix, and the environment requirements when authored.
 
 When a missing prerequisite or ambiguous criterion prevents a coherent plan, record and deliver the diagnostic blocker with the missing input and its owner. It is a real result, not an incomplete plan presented as finished.
