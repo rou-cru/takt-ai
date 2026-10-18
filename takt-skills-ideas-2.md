@@ -8,7 +8,7 @@ A diferencia del catálogo base del sistema (que gestiona invariantes internas d
 
 ## 1. Principios de Arquitectura para Skills en Takt AI
 
-1. **Cero impacto en frío (*Zero cold-start token overhead*):** Las skills no se inyectan en los prompts permanentes (`BASELINE`, `PERSONA`, `SOUL` u `OPERATIONS.md`) ni alteran `agent.yaml`. Se instalan en el directorio de skills del host (`~/.opencode/skills/`), donde se descubren mediante sus metadatos frontmatter y se leen únicamente cuando la tarea lo requiere.
+1. **Carga del contenido bajo demanda (*On-demand skill body loading*):** Las skills no alteran `BASELINE`, `PERSONA`, `SOUL`, `OPERATIONS.md` ni `agent.yaml`. OpenCode puede incluir sus identificadores, nombres y descripciones en el contexto inicial. El contenido completo de cada `SKILL.md` se lee únicamente cuando la tarea lo requiere.
 2. **Preservación estricta de invariantes y contratos:** Una skill nunca amplía permisos de VFS, no autoriza bypasses de validación ni altera la soberanía de los roles. Complementa el *cómo razonar o estructurar el trabajo*, no el *qué está permitido hacer*.
 3. **Activación contextual justificada:** Si el problema no exige la habilidad, la skill permanece inactiva. Cada propuesta define criterios explícitos de activación y salida.
 
@@ -22,7 +22,7 @@ A diferencia del catálogo base del sistema (que gestiona invariantes internas d
 | **`takt-technical-writing`** | `Spec`, `Architect`, `QA`, `TPM` | Redacción técnica rigurosa de especificaciones, ADRs e invariantes. | Asegura precisión, contratos unívocos y separación entre hechos, requisitos y contexto sin prosa innecesaria. |
 | **`takt-decision-clarification`** | `PM`, `Architect` | Entrevista estructurada para desambiguar requerimientos (técnica *Grilling* adaptada). | Separa hechos investigables en el código de decisiones de producto; desactiva el "ping-pong" superficial de preguntas. |
 | **`takt-differential-review`** | `Judge` (`judge-a`, `judge-b`), `Verify` | Revisión adversarial diferencial enfocada en riesgos, regresiones y seguridad. | Proporciona un marco metódico para evaluar superficies de impacto y deduplicar hallazgos por severidad demostrable. |
-| **`takt-data-contracts`** | Futuro agente de Data/Analytics, `Architect`, `QA` | Calidad, contratos e invariantes de datos (grano, nulabilidad, frescura). | Habilita flujos analíticos y ETL/ELT verificables; previene la trampa de falsos positivos en tests unitarios tradicionales. |
+| **`takt-data-contracts`** | Futuro agente de Data/Analytics, `Architect`, `QA` | Calidad, contratos e invariantes de datos (grano, nulabilidad, frescura). | Habilita flujos analíticos y ETL/ELT verificables; previene la falsa confianza de los tests unitarios tradicionales, que dejan anomalías de datos reales sin detectar. |
 | **`takt-k6-performance`** | `QA`, `Quality` | Pruebas de rendimiento, estrés y carga verificable no funcional. | Permite diseñar y ejecutar pruebas de carga realistas con umbrales medibles en entornos autorizados. |
 
 ---
