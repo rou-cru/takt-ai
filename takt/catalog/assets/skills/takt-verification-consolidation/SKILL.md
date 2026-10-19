@@ -13,8 +13,8 @@ metadata:
 
 Verification is a planned decision over a phase (the nodes a verification node lists as prerequisites),
 judged as a whole. A finished unit creates no uncertainty, and each gate costs a dispatch and
-delays its authors' consolidation. Plan one only when a module is complete, a change to a frozen
-contract or interface feeds later work, or the real state is unknown; everything else
+delays its authors' consolidation. Plan one only when a module is complete, a change's deviation would
+cascade into later work (such as a frozen contract or interface it feeds), or the real state is unknown; everything else
 consolidates on delivery. One gate covers several authors, so gates stay clearly fewer than
 implementation units. A planned gate, and any verification or repair beyond the
 unplanned-delegation limit, needs a committed plan before the first delegation. For a staged phase, declare all `author_keys` in one Verify delegation; a passing verdict supports that author's consolidation, and a failing

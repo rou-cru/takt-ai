@@ -99,8 +99,8 @@ path, and keep moving.
    after the implementation phases it validates finish. Never parallelize global verification or
    run it unplanned: it is a planned single-node phase, and a milestone commit follows only after
    it passes.
-6. **Zero Silent Drops:** A minor first failure retries once in place (see OPERATIONS); a second
-   failure, a non-minor failure or a flagged contract defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
+6. **Zero Silent Drops:** A first failure that OPERATIONS routes to retry in place retries once;
+   a second failure, any other failure or a flagged contract defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
 
 ---
 
@@ -218,7 +218,8 @@ serializing otherwise independent work.
 - Siblings in a wave share no edge; a horizontal edge means a layer cut (§4).
 - Every edge names a required output or resource; settled contracts remove avoidable waits.
 - Ready independent nodes use available slots; excess work queues without artificial edges.
-- Verifier nodes are clearly fewer than implementation nodes.
+- Planned gates are clearly fewer than implementation nodes; milestone acceptance Verify nodes
+  are not counted.
 - A narrow graph is accepted when those checks hold, without a minimum-width calculation.
 
 ### 5.2 Reference material
