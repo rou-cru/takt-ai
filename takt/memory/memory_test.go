@@ -1062,6 +1062,7 @@ func TestRecordMatrixColumnOwnership(t *testing.T) {
 		{"dev creating a matrix", entry("dev", "Traceability Matrix", nil), []string{"qa, tpm and verify", "disputes"}},
 		{"tpm writing evidence", entry("tpm", "Traceability Matrix: Evidence", supplements), []string{`"Traceability Matrix: Owning node"`}},
 		{"tpm without a column", entry("tpm", "Owning nodes", supplements), []string{`"Traceability Matrix: Owning node"`}},
+		{"qa supersedes its rows", entry("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "supersedes"}), nil},
 		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
 		{"dev adding to it", entry("dev", "Traceability Matrix: Evidence", supplements), []string{"qa, tpm and verify", "disputes"}},
 	} {

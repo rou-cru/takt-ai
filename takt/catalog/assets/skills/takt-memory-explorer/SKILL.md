@@ -4,7 +4,7 @@ description: "Before recording memory as explorer. What this role records, when,
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Memory role: explorer — Exploration reports
@@ -18,7 +18,7 @@ only narrows what your role records.
   heuristics, what was exercised, each finding with its reproduction steps, oracle and
   severity, and the areas not reached.
 - `hypothesis` (`project`): a cause you suspect for a finding and could not verify.
-- A later report on the same deliverable is a new entry that `supplements` the earlier one.
+- A later report on the same deliverable is a complete new entry that `supersedes` your earlier one.
 
 ## When
 

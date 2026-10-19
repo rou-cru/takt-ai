@@ -4,7 +4,7 @@ description: "Before using memory. The single content guide for every Takt agent
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "2.0"
+  version: "2.1"
 ---
 
 # Takt Memory Contract
@@ -78,12 +78,15 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
 
 | `relation` | Use when |
 |---|---|
-| `corrects` | The earlier entry was wrong |
-| `supersedes` | The earlier entry was valid and no longer governs |
-| `supplements` | Adds to the earlier entry without changing it |
+| `corrects` | The earlier entry was wrong; yours is the complete new version |
+| `supersedes` | The earlier entry was valid and no longer governs; yours is the complete new version |
+| `supplements` | A distinct artifact that adds to the earlier entry without changing it: the next part of a split artifact, or another author's matrix column |
 | `exception-to` | The earlier entry still governs except in a stated scope |
 | `disputes` | You disagree and nobody with authority has settled it |
 
+- A revision of an artifact (a correction, a refinement, a later report) is the whole
+  current artifact, readable alone, so readers need only its `#id`. Never record a diff, a
+  patch, the changed sections, or "the rest stands", and never `supplements` your own artifact.
 - Only user approval or verified evidence can `correct` or `supersede`. A later entry or a
   different role never settles a disagreement: without that authority, use `disputes`.
 - Before declaring a relation, search memory (`mem_search`, then `mem_get_observation`) to
@@ -102,7 +105,7 @@ per domain.
   finishes**, before you return your result, not after every step. Keep entries concise.
   A brief never waives this; if it does, follow the contract.
 - A specialist holding the chat with the user records its artifact progressively: each draft
-  is a `hypothesis` entry that `supplements` the previous draft, and the version the user
+  is a complete `hypothesis` entry that `supersedes` the previous draft, and the version the user
   accepts is a new entry that `supersedes` the last draft with that accept as `evidence`.
   Only the accepted entry reaches other agents; drafts stay in memory.
 - For invariant results, the complete-result rule in §1 takes precedence over concision;

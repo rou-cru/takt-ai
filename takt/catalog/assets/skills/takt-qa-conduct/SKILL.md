@@ -4,7 +4,7 @@ description: "Use when assigned mutation, exploration or quality analysis of a d
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Quality assurance conduct
@@ -50,7 +50,6 @@ name the file in your report.
 - One entry with `memory_record` before you return, in the shape your memory role skill
   states: every finding with what reproduces it, and what you could not reach, with the
   reason.
-- A later report on the same deliverable is a new entry that `supplements` the earlier one.
 - Deliver the entry's ID as `takt-result-handoff` states.
 - State evidence only. Whoever delegated you decides what follows.
 

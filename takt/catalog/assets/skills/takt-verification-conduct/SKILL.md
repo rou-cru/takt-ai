@@ -4,7 +4,7 @@ description: "Use when assigned to verify, review, or judge work you did not aut
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Verification conduct
@@ -48,8 +48,6 @@ If a command modified a project file anyway, such as a cache a tool offered no w
   scope, and anything your tools or permissions prevented you from checking.
 - For staged work, give each finding's `author_key`, file path and line, so whoever acts on
   it finds the exact place.
-- A later report on the same code, such as one prompted by new evidence, is a new entry that
-  `supplements` the earlier one. Never rewrite the earlier report.
 - Deliver the entry's ID with `deliver_result`.
 - State evidence only. Whoever delegated you decides what follows.
 - When something blocks you, end your turn stating the blocker; whoever delegated you receives it and can resume you.
