@@ -1048,6 +1048,10 @@ func TestRecordMatrixColumnOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	supplements := &memory.RelatesTo{ID: matrix.ID, Relation: "supplements"}
+	requirements, err := memory.Record(ctx, cfg, entry("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "supersedes"}))
+	if err != nil {
+		t.Fatalf("qa superseding the matrix with its rows: %v", err)
+	}
 	for _, tc := range []struct {
 		name      string
 		req       memory.RecordRequest
@@ -1062,7 +1066,7 @@ func TestRecordMatrixColumnOwnership(t *testing.T) {
 		{"dev creating a matrix", entry("dev", "Traceability Matrix", nil), []string{"qa, tpm and verify", "disputes"}},
 		{"tpm writing evidence", entry("tpm", "Traceability Matrix: Evidence", supplements), []string{`"Traceability Matrix: Owning node"`}},
 		{"tpm without a column", entry("tpm", "Owning nodes", supplements), []string{`"Traceability Matrix: Owning node"`}},
-		{"qa supersedes its rows", entry("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "supersedes"}), nil},
+		{"qa supersedes its latest rows", entry("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: requirements.ID, Relation: "supersedes"}), nil},
 		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
 		{"dev adding to it", entry("dev", "Traceability Matrix: Evidence", supplements), []string{"qa, tpm and verify", "disputes"}},
 	} {
