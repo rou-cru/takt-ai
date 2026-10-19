@@ -247,8 +247,8 @@
       "dot": "cyan",
       "title": "Verification is planned",
       "items": [
-        "A phase at the verification floor needs a committed plan: concurrent implementers at the ceiling, or a critical change",
-        "Below the floor it is planned when the confidence outweighs the cost; with none planned the delivery goes straight to consolidation"
+        "A gate is planned only for a completed module, a change to a frozen contract or interface that feeds later work, or an unknown state",
+        "One gate covers several authors; any other delivery goes straight to consolidation"
       ]
     },
     {

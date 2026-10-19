@@ -213,6 +213,7 @@ serializing otherwise independent work.
 - Siblings in a wave share no edge; a horizontal edge means a layer cut (§4).
 - Every edge names a required output or resource; settled contracts remove avoidable waits.
 - Ready independent nodes use available slots; excess work queues without artificial edges.
+- Verifier nodes are clearly fewer than implementation nodes.
 - A narrow graph is accepted when those checks hold, without a minimum-width calculation.
 
 ### 5.2 Reference material
@@ -296,9 +297,9 @@ The following is an available route, not a procession required of every change:
    node's committed unit identity. A returned delivery is complete in VFS and nothing more:
    take it where its contract sends it (a verifier, consolidation, or straight to disk). Work left staged has not been delivered. Ordinary handoffs reuse approvals; new final designs or scope
    decisions obtain the required user approval.
-5. **Integration and acceptance:** preserve the single tail fan-in. The independent gate
-   assesses a phase's staged deltas together before consolidation: one verifier node, preassigned
-   to each author key of the phase, and Takt consolidates a passing author's work with
+5. **Integration and acceptance:** preserve the single tail fan-in. When a phase calls for a gate,
+   it assesses the phase's staged deltas together before consolidation: one verifier node, preassigned
+   to all its author keys, and Takt consolidates a passing author's work with
    `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
    left dead; it runs no checks. Executable acceptance runs in a Verify unit on the
    materialized workspace after writers finish; with QA planned, that acceptance and the

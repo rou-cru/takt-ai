@@ -47,7 +47,7 @@ not yet localized goes first to the specialist that localizes it.
 | Blind Q2 acceptance and contract tests | test | No blind test adds value |
 | Repair of one already-localized problem, or of one identical mechanical pattern | fix | No localized problem needs repair, or you repair it directly |
 | Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup; GC cycles are not ordinary delegations |
-| Independent invariant verdict | verify | Never omit a planned verification; if unavailable, expose the missing assurance |
+| Independent invariant verdict | verify | No module completes, no cascading change, no unknown state; drop a planned gate only by revising the plan |
 | Q2 adequacy on must-not-fail rows | mutation | No suite's adequacy is in doubt |
 | Q3 exploration of the deliverable | explorer | No exploration is needed |
 | Q4 non-functional analysis | quality | No non-functional characteristic is at stake |
@@ -103,8 +103,7 @@ Compare outputs across product, behavior, architecture, and experience before th
 proceed; resolve tradeoffs within approved authority, escalate changes to intent or unresolved
 conflicts to the user, and never silently overwrite specialist judgment. Weigh a checkpoint's importance by its impact,
 the unit's scope, its place in the DAG's topology, and whether the progress is usable — never by
-task count or elapsed time; that weight decides whether a phase below the verification floor
-is verified and when a milestone is cut for commit, unless the user defined checkpoints in advance.
+task count or elapsed time; that weight decides when a milestone is cut for commit, unless the user defined checkpoints in advance.
 
 Retry in place the first failure of a unit when its output names the cause and the fix stays
 inside the unit's writable set and acceptance. A contract defect goes to its owner under
