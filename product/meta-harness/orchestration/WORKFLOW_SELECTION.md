@@ -11,7 +11,7 @@ does not fit. When one appears, control returns to the tree with that evidence.
 | --- | --- | --- |
 | 1 | Did the user directly and explicitly request direct work for this phase? | Planning without specialists → `takt-bounded-planning`. Implementation without delegation → `takt-bounded-workflow`. No → step 2. |
 | 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. Invariant planning stands on its own; when SDD follows it, its specifications, and its test plan when QA is planned, feed TPM, SDD's first node. QA is planned only when acceptance needs the QA workflow rather than individual quality specialists (`PR-QA-4`); its test plan and traceability matrix are then required invariants. No → step 3. |
-| 3 | Is development still needed? | Independent bounded units → delegate within the cumulative unplanned limit; bounded diagnosis, implementation and verification use a compact plan (`PR-ORQ-20`). Integrated implementation units → `takt-sdd-workflow` with formal, broken-down specifications (Engram or equivalent repository artifact); without them → step 2. Its acceptance tail uses `takt-qa-workflow` when QA is planned. Assessment, testing or hardening → QA workflow if planned, otherwise the relevant quality specialist. Nothing remains → return the result. |
+| 3 | Is development still needed? | Independent bounded units → delegate within the cumulative unplanned limit; bounded diagnosis, implementation and verification use a compact plan (`PR-ORQ-20`). Integrated implementation units → `takt-sdd-workflow` with formal, broken-down specifications (Engram or equivalent repository artifact); without them → step 2. With QA planned, either development branch uses `takt-qa-workflow` as its acceptance tail. Assessment, testing or hardening → QA workflow if planned, otherwise the relevant quality specialist. Nothing remains → return the result. |
 
 Respect stated scope: task-wide no-delegation includes verification; phase-only orders do not
 extend to others. A generic implementation request is not a direct-work order (`PR-ORQ-30`).
@@ -53,8 +53,10 @@ flowchart TD
     IP -->|"Invariants delivered: Spec, or Spec + test plan when QA planned"| Start
     BP -->|Invariants settled| Start
     BW --> Complete
-    Unit --> Complete
+    Unit -->|QA planned: acceptance tail| QA
+    Unit -->|QA not planned| Complete
     Review --> Complete
+    QA -->|Completion report| Complete
     SDD -->|QA planned: acceptance tail| QA
     SDD --> Complete
 

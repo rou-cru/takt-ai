@@ -44,7 +44,8 @@ reason and evidence, in view.
      and commitment rules; no route is adopted.
    - Yes, as several implementation units producing an integrated result → adopt `takt-sdd-workflow` once formal,
      broken-down specifications exist; without them they are required invariants: go to 2.
-     With QA planned, its acceptance tail is `takt-qa-workflow`.
+   - With QA planned, either development branch above ends in `takt-qa-workflow` as its
+     acceptance tail.
    - No, the objective assesses, tests or hardens an existing deliverable → adopt `takt-qa-workflow`
      only when QA is planned under step 2; otherwise delegate the focused assessment to the
      relevant quality specialist with its scope and criteria. Do not omit committed checks;
