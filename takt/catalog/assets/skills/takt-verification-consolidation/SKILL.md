@@ -12,10 +12,12 @@ metadata:
 ## Verification
 
 Verification is a planned decision over a phase (the nodes a verification node lists as prerequisites),
-judged as a whole. A phase that reaches the verification floor, and any verification or repair beyond the unplanned-delegation limit, needs a committed plan before the first delegation. Plan it in the DAG when the round reaches {{policy.concurrent_specialists}} concurrent implementers or a
-change is critical (it alters a frozen contract or interface); below that floor, plan it when
-the confidence it restores outweighs its cost, and skip it for documentation or minor
-adjustments, which consolidate without a gate of their own. For a staged phase, declare all `author_keys` in one Verify delegation; a passing verdict supports that author's consolidation, and a failing
+judged as a whole. A finished unit creates no uncertainty, and each gate costs a dispatch and
+delays its authors' consolidation. Plan one only when a module is complete, a change's deviation would
+cascade into later work (such as a frozen contract or interface it feeds), or the real state is unknown; everything else
+consolidates on delivery. One gate covers several authors, so gates stay clearly fewer than
+implementation units. A planned gate, and any verification or repair beyond the
+unplanned-delegation limit, needs a committed plan before the first delegation. For a staged phase, declare all `author_keys` in one Verify delegation; a passing verdict supports that author's consolidation, and a failing
 verdict is corrected, never discarded: route each of its findings by your OPERATIONS' owner table; after the correction,
 delegate Verify again with that author key, and consolidate only when a
 verdict covers the staged revision. Build,
@@ -23,7 +25,7 @@ lint and full suites run in Verify units; checks on the materialized workspace a
 
 ## Consolidation and commit
 
-Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node, commit it only after that node passes with no problems found, and
+Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node per milestone, commit it only after that node passes with no problems found, and
 load takt-git-commit before writing the message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if
