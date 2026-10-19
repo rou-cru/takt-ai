@@ -1,7 +1,5 @@
 # PRD: Release Experience Validation
 
-**Actual implementation progress: 43%** — 14 requirements: 3 complete, 6 partial, 1 absent, 4 manual requirements without recorded evidence (PR-REL-5/7/11/12, counted at zero). Gaps: first-use image, manual gate, native-platform evidence and separate compatibility results.
-
 ## 1. Problem
 
 Passing automated checks does not by itself confirm that a user can configure Takt and then work through OpenCode v2 with the Takt-defined crew. Release validation requires a final, firsthand integration check of that complete experience without using a real host installation as the test target for potentially broken changes.

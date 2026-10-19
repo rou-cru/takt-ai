@@ -1,7 +1,5 @@
 # Architecture Standard: Agent Long-Term Memory (LTM)
 
-**Actual implementation progress: 64%** — 36 own requirements: 17 complete, 12 partial, 7 not integrated. Gaps: tier-leakage prevention is heuristic; entry concision, timing and no-future-content rules, the authority needed to correct or supersede, repository precedence and chronological retrieval order rest on skills; current applicability is derived only within the closing session's narrative and is not queryable across sessions, and retrieval has no status filter; the consolidation and Dreaming cycle (grouping, Deep Dream, playbooks) and the local semantic representation of entries have no implementation.
-
 ## 1. Problem & Principles
 
 Context windows are ephemeral and bound to active sessions. Without long-term memory, multi-agent crews re-explain the same preferences and constraints every session, overwrite each other's context with no attribution, and accumulate raw operational noise that degrades retrieval precision over weeks and months.

@@ -1,7 +1,5 @@
 # PRD: Takt Projection into OpenCode v2
 
-**Actual implementation progress: 77%** — 13 own requirements: 7 complete, 6 partial, 0 not integrated. Gaps: artifact validity is only checked after deployment and covers a subset of deployed artifacts, and proactive maintenance (dreaming) is not delivered through the OpenCode integration.
-
 ## 1. Problem
 
 OpenCode v2 is Takt's only official harness. Takt defines its own canonical agents, capabilities, and behavior; OpenCode v2 supplies the runtime and native integration mechanisms that host them. The product must project that canonical definition without replacing Takt's roster with OpenCode's generic agents or maintaining parallel implementations.

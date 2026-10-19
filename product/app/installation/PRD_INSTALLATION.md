@@ -1,7 +1,5 @@
 # PRD: Installation Experience
 
-**Actual implementation progress: 92%** — retained estimate: 46 requirements, 39 complete, 7 partial; full reclassification is unverified. Gaps: upgrade executes as install; restore lacks authorization, edit protection and text output; recovery and uninstall reporting are incomplete. Interactive setup does reload recorded choices.
-
 ## 1. Problem
 
 Installation damages trust when it expands beyond the destination the user selected, changes an environment before the intended result is visible, or leaves an ambiguous partial state after a failure. Takt requires a bounded, reviewable, and recoverable installation, explicit about its result.

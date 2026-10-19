@@ -1,7 +1,5 @@
 # PRD: TUI Architecture and State Machines
 
-**Actual implementation progress: 95%** — 21 own requirements: 20 complete, 0 partial, 1 not integrated. Gap: PR-TUI-25, no flow adjusts admission limits.
-
 ## 1. Problem
 
 Terminal navigation logic typically degrades into monolithic architectures where screen routing, message dispatch, input capture, and side-effect emission are mixed into large `switch` blocks and ad-hoc «back» mechanisms. Transitions become implicit, so adding a screen or event type does not mechanically surface unhandled combinations; and adding independent screens or sub-flows creates rigid coupling points and fragmented conventions.

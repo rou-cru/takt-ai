@@ -1,7 +1,5 @@
 # Takt AI — Brand Identity and Design Foundations
 
-**Actual implementation progress: 77%** — assessment of 13 numbered blocks that apply to the surfaces the product has (the brand does not use requirement IDs): 7 complete blocks, 6 partial, 0 not integrated. Gaps: sustained-capital group labels, the repository README departing from the stated descriptor and making an unevidenced claim, no documented alternative route for terminals below the minimum size, and the palette check not running automatically with the surface contract incomplete.
-
 **Version:** 3.0 · **Reference language:** English
 
 **Nature:** normative identity and design specification. It defines the target that implementations must conform to.

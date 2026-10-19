@@ -1,7 +1,5 @@
 # PRD: Setup Experience and Stack Selection
 
-**Actual implementation progress: 91%** — 32 requirements: 27 complete, 4 partial, 1 absent. Partial: PR-SET-12 (dreaming assets), 13 (optional skills/workflows), 17 (reconciliation explanation), 31 (supporting-asset declarations). Absent: PR-SET-34 (hardware gating).
-
 ## 1. Problem
 
 Users should be able to open Takt, prepare OpenCode v2 with a coherent Takt-defined stack, and begin working without designing or administering that stack themselves. Deliberate customization remains available within the same setup flow.

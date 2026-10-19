@@ -1,7 +1,5 @@
 # VDS: TUI Surface Profile — Takt AI
 
-**Actual implementation progress: 95%** — 28 own requirements: 25 complete, 3 partial, 0 not integrated. Partial: PR-UX-6 (no ASCII variant of the status glyphs, field bar, panel borders or progress bar), PR-UX-21 (reconciliation reaches the review but not the toggle), PR-UX-29 (page scrolling missing in uninstall and models). The notice below 60×20 asks to resize but names no alternative.
-
 **Surface/version:** installation and configuration TUI/CLI, profile 3.0.
 
 ## 1. Purpose and extension contract

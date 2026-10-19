@@ -1,7 +1,5 @@
 # Constitution of Takt AI
 
-**Actual implementation progress: 50%** — 12 authority articles assessed: 0 complete, 12 partial, 0 without verifiable integration. Gaps: all twelve articles rest on explicit agent instruction, with deterministic support only for Git and secret-file permissions, confirmations for destructive actions and installed-file ownership; value, loyalty, disagreement, goal direction, the one-time exception rule and the orchestrator not performing an available specialty's judgment are enforced by prompt alone, as is the agent's conduct toward the user's environment.
-
 This document is the project's user-authority and collaboration standard. It decides conflicts in that domain.
 
 ## 1. Identity

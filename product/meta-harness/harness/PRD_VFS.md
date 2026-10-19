@@ -1,7 +1,5 @@
 # PRD: Virtual File System (VFS) and Action Journaling
 
-**Actual implementation progress: 90%** — 31 requirements: 25 complete, 6 partial. Partial: STG-6 (recovery consolidation gate), STG-7/COL-4 (automatic cross-root discard), STG-8 (idle release confirmation), CSL-7 (verdict scope), JRN-3 (orchestrator/verifier inspection grants).
-
 ## 1. Problem
 
 Direct physical disk mutation, combined with routine use of destructive Git commands, introduces severe failure modes in multi-agent work: a hallucinating agent can wipe out uncommitted user work, unplanned overlapping writes corrupt the workspace immediately, and physical mutations preserve no granular record of which agent changed what and why.

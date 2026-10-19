@@ -1,16 +1,10 @@
 # Product Master Index and Authoritative Map
 
-**Actual implementation progress: N/A — this index defines documentary authority and boundaries, not executable behavior (0 own requirements).**
-
-## Implementation audit
-
-Static recount: **2026-10-18**, summarized in [PROGRESS](PROGRESS.md); unchanged classifications are retained, not recertified. Count each document's own requirements, or obligatory articles/blocks where IDs are absent. Score production-integrated completion as 1, partial integration as 0.5, and absent integration or manual validation without recorded evidence as 0. Divide by all counted units and round half up. Missing classifications are unverified; documents without behavioral obligations are N/A. These figures are not release certification.
-
 This document is the Single Source of Truth for the structure and responsibility boundaries of the Takt AI product corpus, and defines the resolution hierarchy for normative conflicts.
 
 ## Corpus contract
 
-This corpus defines approved product requirements, technical invariants, shared vocabulary, design contracts, release scope, and acceptance criteria. Definitions and examples belong here when they disambiguate those contracts. Implementation details and operational reports belong outside this corpus. A reported limitation does not waive a requirement.
+This corpus defines approved product requirements, technical invariants, shared vocabulary, design contracts, release scope, and acceptance criteria. Definitions and examples belong here when they disambiguate those contracts. Implementation details and operational reports belong outside this corpus; implementation status is reported in [PROGRESS](PROGRESS.md). A reported limitation does not waive a requirement.
 
 ## Reading path
 

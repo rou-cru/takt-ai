@@ -1,7 +1,5 @@
 # Engineering Doctrine of Takt AI
 
-**Actual implementation progress: 56%** — 16 clauses: 2 complete, 14 partial. STR-4/15/16 have production integration through memory validation and serialized VFS ownership checks, not product-wide enforcement. Other gaps concern skill structure and crew conduct.
-
 This document is the project's engineering standard. It decides conflicts about the shape of implementation.
 
 ## 1. Scope

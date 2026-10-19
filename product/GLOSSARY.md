@@ -1,7 +1,5 @@
 # Product Glossary
 
-**Actual implementation progress: N/A (this glossary is explicitly non-normative; it defines no functional requirements of its own).**
-
 Shared vocabulary for the Takt product corpus. Terms defined here carry their
 defined meaning in every document; documents do not redefine them locally.
 

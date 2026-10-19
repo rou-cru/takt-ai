@@ -1,7 +1,5 @@
 # PRD: Orchestration and Crew Direction
 
-**Actual implementation progress: 67%** — 33 own requirements: 11 complete, 22 partial, 0 not integrated. Gaps: orchestrator judgment (goal supervision, decomposition, escalation, milestone calibration, route selection and resumption after a lent session) rests on prompt with no harness gating; recovery does not block consolidating the scope's deltas before its result is demonstrated; and a fresh claim replaces another root session's overlapping claim and discards its staged work instead of requiring explicit revocation.
-
 ## 1. Problem
 
 Orchestration coordinates specialist work toward the user’s goal, manages dependencies and concurrent execution, and escalates decisions outside its delegated scope.

@@ -1,7 +1,5 @@
 # PRD: Crew Role Classes and Permission Profiles
 
-**Actual implementation progress: 76%** — 19 requirements: 10 complete, 9 partial. Gaps: role conduct and blind review depend on instructions; dreaming is absent. PR-CRW-19 is partial: QA permissions exist, but shell non-mutation and reporting remain conduct rules.
-
 ## 1. Problem
 
 OpenCode v2 governs capabilities per instance and its assigned role; its projection must preserve the specialist definitions Takt owns, and orchestration dispatches work to named participants. Takt requires a fixed set of role classes, each with a permission profile that OpenCode v2 can enforce deterministically.

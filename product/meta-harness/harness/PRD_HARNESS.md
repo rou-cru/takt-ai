@@ -1,7 +1,5 @@
 # PRD: Harness, Security, and Customization
 
-**Actual implementation progress: 80%** — 28 own requirements: 18 complete, 9 partial, 1 not integrated. Gaps: configuration custody is granted by static role rather than following the interlocutor-stack holder. Interlocutor transitions have no idempotency key, an agent-invoked abort is stamped as user-originated, envelope validation covers shape only, a failed activation can leave a partial transition, and an Outraged result has no isolated durable record.
-
 ## 1. Problem
 
 Relying exclusively on semantic instructions in natural language leaves the system vulnerable to attention degradation, hallucinations, or misinterpretation. Takt requires a deterministic technical harness that guarantees no agent exceeds its authorized capabilities, while protecting user customizations and configurations without restriction.
