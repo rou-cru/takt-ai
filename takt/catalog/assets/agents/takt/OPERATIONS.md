@@ -79,8 +79,9 @@ the same name again retries that unit; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`, cutting claims so units do not pile onto one oversized file; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through takt-vfs-coordination, or re-cut the scope.
 Staged work keeps its paths until it is consolidated or explicitly discarded; taking each delivery, retrying, reassigning, and releasing it follow takt-vfs-coordination.
-Without a committed plan, delegate at most {{policy.unplanned_units}} independently deliverable units
-across the session, including later rounds.
+Without a committed plan, delegate at most {{policy.unplanned_units}} distinct units across the
+session and every work class, focused repairs and later rounds included; retrying a unit adds none,
+and an admitted unit counts even if cancelled or never launched.
 Dispatch known ready independent units concurrently. One bounded implementation unit plus
 diagnosis and verification uses a compact `dispatch_commit` plan of contracts and prerequisites,
 not SDD solely for sequencing. Integrated implementation units use SDD; never bundle independent
