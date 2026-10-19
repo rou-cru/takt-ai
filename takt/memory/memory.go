@@ -541,6 +541,10 @@ func isMatrixTitle(title string) bool {
 // only qa creates the matrix, and an entry that adds to or revises it must be
 // its author's own column, declared in its title. A dispute stays open to any
 // author, as the way to state a contradiction.
+//
+// Column entries must relate to the matrix or their own column; tpm and verify
+// must use supplements when targeting the matrix itself. Requests unrelated to
+// the matrix and disputes return nil. Violations return a *ValidationError.
 func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
 	// A dispute records disagreement, never an authorized column evolution.
 	if req.RelatesTo != nil && req.RelatesTo.Relation == "disputes" {
