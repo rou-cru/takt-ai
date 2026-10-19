@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Coordinates integrated implementation through explicit dependencies and frozen contracts, using ready independent lanes up to {{policy.concurrent_specialists}} concurrent specialists, without a minimum DAG width or worktrees."
+description: "Several implementation units must deliver one integrated result from formal specifications: compiling and running the dependency DAG through frozen contracts, with up to {{policy.concurrent_specialists}} concurrent specialists in one shared workspace."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,9 +12,6 @@ metadata:
 Orchestrator operational guide: convert an approved plan into a dependency DAG,
 guarantee that every parallel lane is unlocked by a frozen contract, and
 sustain execution with bounded concurrent specialists in a single shared workspace.
-
-> **Target Audience:** Orchestrator agent only. Sub-agents consume individual task
-> contracts, not this skill.
 
 **When this skill applies.** It governs several implementation units producing an integrated
 result. A simple change, a short investigation, or one obvious action
@@ -71,8 +68,7 @@ revised mid-execution is not itself drift; only a changed objective or a blocked
 Direct execution never skips the DAG's collision discipline: a directly executed change
 still declares and respects `writable_set` like any node would. A unit may read any file it
 does not own, provided no in-flight task writes it — this section constrains judgment and
-writes, not shared access to settled output. A file an in-flight task is writing is off limits in every mode, reading
-included.
+writes, not shared access to settled output.
 
 **Plan for safe concurrency.** Governed staging does not replace disjoint scopes and frozen
 contracts. Resolve shared access before dispatch rather than relying on reverts after a collision.
@@ -93,8 +89,8 @@ path, and keep moving.
    There is no minimum width or occupancy. Do not lower the ceiling out of caution or leave
    ready independent work waiting when capacity is available; do not invent work to fill slots.
 3. **Exclusive Writable Ownership:** Every task declares an explicit `writable_set`. Two
-   in-flight tasks must NEVER have overlapping writable paths.
-4. **Frozen Contracts Before Dispatch:** A task may run in parallel ONLY IF every type,
+   in-flight tasks never have overlapping writable paths.
+4. **Frozen Contracts Before Dispatch:** A task may run in parallel only if every type,
    signature, schema, and public interface it consumes is frozen in its contract.
 5. **Single Integration Gate:** Appliers run no checks against staged work and never
    invoke global test runners, full workspace builds, or whole-repo linters, as this causes
@@ -154,8 +150,17 @@ contract must declare (TPM's WBS names them Writable files, Consumed contracts, 
   concurrently in-flight task.
 - **`acceptance_check`**: A deterministic, bounded command that the Verify unit runs on the
   materialized workspace to prove task completion (e.g., targeting a specific unit test
-  file/function). Must NEVER run global suites,
-  whole-workspace test commands, or full builds.
+  file/function); never a global suite, whole-workspace test command or full build (Rule 5).
+
+Example of a complete contract:
+
+```
+writable_set:        internal/config/parse.go, internal/config/parse_test.go
+consumed_interfaces: func Parse(r io.Reader) (Config, error)  // ErrInvalid on malformed input
+                     type Config struct { Port int; Hosts []string }
+allowed_reads:       internal/config/types.go
+acceptance_check:    go test ./internal/config -run TestParse
+```
 
 Extending an owner's `writable_set` after dispatch follows the same validation as the original
 grant — it is never assumed from silence.

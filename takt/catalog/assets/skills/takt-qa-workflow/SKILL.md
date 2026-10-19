@@ -9,10 +9,7 @@ metadata:
 
 # Takt QA Workflow
 
-> **Target Audience:** Orchestrator only. Specialists consume assignments, not this flow.
-
-Declare each assignment's inputs with `dispatch_inputs` by Engram ID, including applicable
-supplements. Briefs name the purpose and scope, never restate consumed artifacts. Distinguish
+Each assignment's `dispatch_inputs` includes applicable supplements. Distinguish
 an objective that delivers or hardens code from an audit that only assesses it: an audit
 preserves findings and never infers permission to repair.
 

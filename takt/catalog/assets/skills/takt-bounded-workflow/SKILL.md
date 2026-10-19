@@ -9,8 +9,6 @@ metadata:
 
 # Takt Bounded Workflow
 
-> **Target Audience:** Orchestrator agent only.
-
 Governs how the orchestrator carries an implementation unit itself, with native tools,
 after the workflow-selection tree has selected this route for the implementation phase; it
 never decides that choice itself. Direct execution does not relax file discipline: a

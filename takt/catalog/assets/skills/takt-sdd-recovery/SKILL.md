@@ -35,8 +35,8 @@ which retries in place without this protocol.
    Replanning Circuit instead.
 2. **Freeze subtree** (the DAG's backtracking step): on a second failure, or when an
    applier flags a contract defect, mark the task `BLOCKED` and freeze its downstream
-   dependents. **Do NOT stop independent parallel lanes** — tasks with disjoint write sets
-   and unrelated dependencies keep running. When two in-flight tasks produced conflicting
+   dependents. **Keep independent parallel lanes running**: tasks with disjoint write sets
+   and unrelated dependencies are unaffected. When two in-flight tasks produced conflicting
    deltas rather than one simply failing, freeze both and escalate the conflict to the
    owner of the contract they share, keeping both deltas staged so neither is silently
    dropped.

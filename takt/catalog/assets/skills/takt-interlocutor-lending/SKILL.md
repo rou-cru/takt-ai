@@ -9,8 +9,6 @@ metadata:
 
 # Takt Interlocutor Lending
 
-> **Target Audience:** Orchestrator agent only.
-
 Governs lending the chat interface to pm, architect or product-designer, and resuming after
 it returns.
 

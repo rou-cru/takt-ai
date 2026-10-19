@@ -9,8 +9,6 @@ metadata:
 
 # Takt Bounded Planning
 
-> **Target Audience:** Orchestrator agent only.
-
 Governs how the orchestrator settles the invariants a phase still needs by itself,
 after the workflow-selection tree has selected this route for the planning phase; it never decides
 that choice itself. It applies only to what is missing — whatever is already settled,
