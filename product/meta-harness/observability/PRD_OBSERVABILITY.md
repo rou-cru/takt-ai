@@ -1,7 +1,5 @@
 # PRD: Observability — Session Feedback Control Plane
 
-**Actual implementation progress: 46%** — 35 own requirements: 4 complete, 24 partial, 7 not integrated. Gaps: the envelope, bus and store are recorded end to end and GC uses OBSERVE, CONTAIN and ESCALATE, but THROTTLE, ROLLBACK and GATE are never invoked; the only detector is the GC mandate-reversion check, with a fixed threshold and no baseline. The detector policy tables, problem-rate recording, external export and the stream-liveness class do not exist, and escalation carries no analyzed alternatives.
-
 ## 1. Problem
 
 OpenCode v2 emits telemetry designed for external monitoring; without a Takt-owned consumer, that data leaves the system while the runtime remains blind. Bounded progress budgets (`PR-ORQ-13`, `PR-HAR-6`) require a defined progress measure and an authoritative count of the work consumed against them, deviation detection "in time" (`PR-ORQ-5`) requires a sensor, and cost containment requires visibility into execution economics.

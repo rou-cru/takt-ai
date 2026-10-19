@@ -1,7 +1,5 @@
 # PRD: Installation Experience
 
-**Actual implementation progress: 92%** — 46 own requirements: 39 complete, 7 partial, 0 not integrated. Gaps: the sync route does not read back the recorded choices; recovery information is reported only after a cancellation, restore does not check for later edits, and uninstall leaves some installed dependencies behind unreported.
-
 ## 1. Problem
 
 Installation damages trust when it expands beyond the destination the user selected, changes an environment before the intended result is visible, or leaves an ambiguous partial state after a failure. Takt requires a bounded, reviewable, and recoverable installation, explicit about its result.

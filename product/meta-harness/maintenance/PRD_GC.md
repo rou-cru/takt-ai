@@ -1,7 +1,5 @@
 # PRD: Garbage Collection Cycles
 
-**Actual implementation progress: 83%** — 20 own requirements: 13 complete, 7 partial, 0 not integrated. Gaps: managed cycles declare their scope from the session delta alone without following code-graph reachability; magic-value, defensive-check, docstring-quality, minimal-fix and single-architectural-finding judgments, and the later removal of tests left failing by a dead-code removal, rest on collector judgment with no tool gate; the demotion of a mandate class lives only in process memory and does not survive a restart.
-
 ## 1. Problem
 
 GC preserves workspace structure without changing behavior. It is a permanent, harness-controlled component, not an optional optimization or an ordinary orchestrator work unit.

@@ -1,7 +1,5 @@
 # Context Architecture: Principles and SSOT
 
-**Actual implementation progress: 70%** — 23 own requirements: 11 complete, 10 partial, 2 not integrated. Gaps: the tool-call ceiling, one-paragraph cap, explicit emptiness and always-present client context for a convened specialist, conflict resolution between instructions, skill load-failure reporting and context-reduction quality rest on prompt judgment; ephemeral noise is not pruned, and no check validates that a context reduction preserved fluency or precision.
-
 This document is Takt's context architecture standard. A design, projection, or harness configuration is correct if it satisfies these requirements and incorrect if it violates them.
 
 ## 1. Scope

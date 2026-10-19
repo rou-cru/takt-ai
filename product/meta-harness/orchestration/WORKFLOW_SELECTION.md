@@ -11,10 +11,14 @@ does not fit. When one appears, control returns to the tree with that evidence.
 | --- | --- | --- |
 | 1 | Did the user directly and explicitly request direct work for this phase? | Planning without specialists → `takt-bounded-planning`. Implementation without delegation → `takt-bounded-workflow`. No → step 2. |
 | 2 | Are required invariants missing or in need of refinement? | Yes → `takt-invariant-planning`; once invariants are delivered, back to step 1 with the updated evidence. Invariant planning stands on its own; when SDD follows it, its specifications, and its test plan when QA is planned, feed TPM, SDD's first node. QA is planned only when acceptance needs the QA workflow rather than individual quality specialists (`PR-QA-4`); its test plan and traceability matrix are then required invariants. No → step 3. |
-| 3 | Is development still needed? | Yes, as one bounded unit → delegate it to its specialist within the unplanned-delegation limit. Yes, as several lanes or concurrent implementation → `takt-sdd-workflow` once formal, broken-down specifications exist (from Engram or a repository artifact of equivalent rigor); without them → step 2; with QA planned, its acceptance tail is `takt-qa-workflow`. No, the objective assesses, tests or hardens an existing deliverable → `takt-qa-workflow`. No, nothing else → return the settled result. |
+| 3 | Is development still needed? | Independent bounded units → delegate within the cumulative unplanned limit; bounded diagnosis, implementation and verification use a compact plan (`PR-ORQ-20`). Integrated implementation units → `takt-sdd-workflow` with formal, broken-down specifications (Engram or equivalent repository artifact); without them → step 2. With QA planned, either development branch uses `takt-qa-workflow` as its acceptance tail. Assessment, testing or hardening → QA workflow if planned, otherwise the relevant quality specialist. Nothing remains → return the result. |
 
-An instruction for one phase does not constrain the other. Settled invariants are consumed,
-never regenerated; settledness is judged by title and relations, and the consumer checks the
+Respect stated scope: task-wide no-delegation includes verification; phase-only orders do not
+extend to others. A generic implementation request is not a direct-work order (`PR-ORQ-30`).
+Judge QA against the whole objective under `PR-QA-4`, consulting QA when unclear; a focused
+review alone does not activate it. Keep committed checks; findings authorize neither repair nor certification.
+
+Settled invariants are consumed, never regenerated; settledness is judged by title and relations, and the consumer checks the
 repository. No text outside this tree requires a workflow. Bounded is never chosen by elimination, convenience, cost, or absence of
 specialists. SDD and bounded never govern the same implementation simultaneously.
 
@@ -39,16 +43,20 @@ flowchart TD
     Order -->|No| Gaps{"2. Invariants missing or to refine?"}
     Gaps -->|Yes| IP["Invariant planning"]
     Gaps -->|No| Dev{"3. Development remains?"}
-    Dev -->|One bounded unit| Unit["Delegate to its specialist"]
-    Dev -->|Several lanes or concurrent, formal specs exist| SDD["SDD, starting with TPM"]
-    Dev -->|Several lanes or concurrent, no formal specs| IP
-    Dev -->|"No: assess, test or harden a deliverable"| QA["QA workflow"]
-    Dev -->|No| Complete["Return settled result"]
+    Dev -->|Independent bounded units| Unit["Delegate; compact plan for bounded diagnosis/implementation/verification"]
+    Dev -->|Integrated implementation units, formal specs exist| SDD["SDD, starting with TPM"]
+    Dev -->|Integrated implementation units, no formal specs| IP
+    Dev -->|"No: assess, test or harden, QA planned"| QA["QA workflow"]
+    Dev -->|"No: focused assessment, QA not planned"| Review["Relevant quality specialist"]
+    Dev -->|No work remains| Complete["Return settled result"]
 
     IP -->|"Invariants delivered: Spec, or Spec + test plan when QA planned"| Start
     BP -->|Invariants settled| Start
     BW --> Complete
-    Unit --> Complete
+    Unit -->|QA planned: acceptance tail| QA
+    Unit -->|QA not planned| Complete
+    Review --> Complete
+    QA -->|Completion report| Complete
     SDD -->|QA planned: acceptance tail| QA
     SDD --> Complete
 

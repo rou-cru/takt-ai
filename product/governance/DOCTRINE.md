@@ -1,7 +1,5 @@
 # Engineering Doctrine of Takt AI
 
-**Actual implementation progress: 54%** — 14 structural clauses (STR-1..14): 2 complete, 11 partial, 1 without verifiable integration. Gaps: only the no-orphan-skill clause is checked deterministically, and the canonical source, policy values and invariant IDs hold single definitions only for the harness's own artifacts; skill segmentation, cross-reference direction and the prohibition-states-its-alternative rule rest on authoring convention, the norms on reuse, simplicity, fail-fast and contracts reach the crew only as scattered fragments of agent instruction, and validation at acquisition (STR-4) has no integration at all. The figure measures incorporation into the product, not the document's normative quality.
-
 This document is the project's engineering standard. It decides conflicts about the shape of implementation.
 
 ## 1. Scope

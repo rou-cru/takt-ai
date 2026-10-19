@@ -1,7 +1,5 @@
 # PRD: Crew Role Classes and Permission Profiles
 
-**Actual implementation progress: 78%** — 18 own requirements: 10 complete, 8 partial, 0 not integrated. Gaps: the orchestrator's refusal to absorb a reachable lane, the crew-shape fallback and the blind judge-pair review with its harness dispatch rest on prompt with no gating by the harness, as does the authoring conduct of interlocutors and planning authors; the dreaming half of the maintenance class has no implementation.
-
 ## 1. Problem
 
 OpenCode v2 governs capabilities per instance and its assigned role; its projection must preserve the specialist definitions Takt owns, and orchestration dispatches work to named participants. Takt requires a fixed set of role classes, each with a permission profile that OpenCode v2 can enforce deterministically.

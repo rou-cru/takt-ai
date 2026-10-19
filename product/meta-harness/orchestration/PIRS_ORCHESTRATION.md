@@ -1,7 +1,5 @@
 # Interaction Requirements Specification (PIRS)
 
-**Actual implementation progress: 70%** — 28 own requirements: 11 complete, 17 partial, 0 not integrated. Gaps: confirmation of switches and handoffs, the choice of Result and its evidence, escalation judgment, and the opening and conduct of a lent session rest on agent instruction because OpenCode v2 exposes no programmatic hook; the handoff envelope is not validated against the four-field contract and the convening agent can emit an abortion; customizing the user environment at low effort is limited to the setup menu's configuration and model assignment.
-
 ## 1. Scope
 
 This document specifies the interaction between the user and the agent crew: who speaks to whom, how the chat interface is lent and returned, when Takt becomes visible, how a decision is escalated, and how interaction is managed when configuration conflicts arise. It is the crew interaction standard: voice stays calm and precise, confirmation is contextual, and recovery explains actual state and next steps without blame; approved choices are not re-litigated without new consequences.

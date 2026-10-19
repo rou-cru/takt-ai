@@ -1,7 +1,5 @@
 # PRD: Execution History and DAG Projection
 
-**Actual implementation progress: 71%** — 26 own requirements: 13 complete, 11 partial, 2 not integrated. Gaps: no verification verdict, acceptance result, consolidation or session closure enters the execution history, so cross-author precedence, contest verdicts and contract satisfaction are not readable from the projection; plan revision records no rationale or user authority and an invalid first baseline is rejected without a record; ordinary termination never yields a failed outcome, only forced backtracking exists, and causal associations and execution-history continuity are missing.
-
 ## 1. Problem
 
 The execution DAG represents the orchestrator's strategy during execution, including changes to planned work and the observed results.

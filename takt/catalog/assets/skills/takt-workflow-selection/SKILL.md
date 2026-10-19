@@ -20,7 +20,8 @@ reason and evidence, in view.
 1. **Did the user directly and explicitly request direct work for this phase?**
    - Yes, planning without specialists → adopt `takt-bounded-planning`.
    - Yes, implementation without delegation → adopt `takt-bounded-workflow`.
-   - No → go to 2. An instruction for one phase does not constrain the other.
+   - No → go to 2. Respect the instruction's stated scope: a task-wide no-delegation order
+     covers its phases, including verification; a phase-only order does not extend to others.
 2. **Are required invariants missing or in need of refinement?**
    - Yes → adopt `takt-invariant-planning` to generate or refine them through their owners.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
@@ -34,15 +35,21 @@ reason and evidence, in view.
      specialists. Signals, in any phase: a must-not-fail priority, a criterion crossing several frozen
      contracts, abundant tests that add no value, complexity needing hard guarantees, a drastic earlier failure, a
      legacy refactor, or the user's request. If unclear, ask `qa`, or `architect` for complexity.
-     Its test plan and traceability matrix are then required invariants too.
+     Its test plan and traceability matrix are then required invariants too. Judge the whole
+     objective: a focused review alone does not activate QA; do not relabel integrated acceptance
+     to avoid it or manufacture QA artifacts when the focused brief suffices.
 3. **Is development still needed?**
-   - Yes, as one bounded unit (a single lane that integrates with no other work) → delegate it
-     to its specialist within OPERATIONS' unplanned-delegation limit; no route is adopted.
-   - Yes, as several lanes or concurrent implementation → adopt `takt-sdd-workflow` once formal,
+   - Yes, as bounded units — independent ones, or one implementation unit with its diagnosis and
+     verification → delegate to the needed specialists under OPERATIONS' unplanned-delegation limit
+     and commitment rules; no route is adopted.
+   - Yes, as several implementation units producing an integrated result → adopt `takt-sdd-workflow` once formal,
      broken-down specifications exist; without them they are required invariants: go to 2.
-     With QA planned, its acceptance tail is `takt-qa-workflow`.
-   - No, the objective assesses, tests or hardens a deliverable that exists → adopt
-     `takt-qa-workflow`.
+   - With QA planned, either development branch above ends in `takt-qa-workflow` as its
+     acceptance tail.
+   - No, the objective assesses, tests or hardens an existing deliverable → adopt `takt-qa-workflow`
+     only when QA is planned under step 2; otherwise delegate the focused assessment to the
+     relevant quality specialist with its scope and criteria. Do not omit committed checks;
+     findings do not authorize repairs or certify the product.
    - No, nothing else → deliver the settled result; no implementation route is needed.
 
 Bounded is never chosen by elimination, convenience, dispatch cost, or absence of

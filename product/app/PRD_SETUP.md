@@ -1,7 +1,5 @@
 # PRD: Setup Experience and Stack Selection
 
-**Actual implementation progress: 92%** — 32 own requirements: 28 complete, 3 partial, 1 not integrated. Gaps: only one capability is omittable and the manifest does not declare supporting managed assets; the base local inference assets of dreaming are not installed, and no capability declares or is gated by a hardware requirement.
-
 ## 1. Problem
 
 Users should be able to open Takt, prepare OpenCode v2 with a coherent Takt-defined stack, and begin working without designing or administering that stack themselves. Deliberate customization remains available within the same setup flow.

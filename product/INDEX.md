@@ -1,16 +1,10 @@
 # Product Master Index and Authoritative Map
 
-**Actual implementation progress: N/A — this index defines documentary authority and boundaries, not executable behavior (0 own requirements).**
-
-## Implementation audit
-
-The progress percentages included in each document are a static integration audit, as of **2026-09-23**; they are not effort estimates or release statements. For PRD/ARCH/PIRS/VDS documents their own requirements are counted (not cross-references); for documents without IDs, the articles, rules, or numbered blocks that do express obligations are counted. **Complete = 1 point** only if the behavior reaches the official supported flow through a production path; **partial = 0.5** if it is connected but does not satisfy the full acceptance; **absent/not integrated = 0**, including helpers, mocks, isolated tests, declarative content without enforcement where deterministic behavior is required, and manual-validation requirements without recorded evidence. The percentage is `(complete + partial × 0.5) / own units × 100`, rounded to the nearest integer. A purely structural or vocabulary document, with no behavioral obligations, states N/A instead of fabricating a denominator.
-
 This document is the Single Source of Truth for the structure and responsibility boundaries of the Takt AI product corpus, and defines the resolution hierarchy for normative conflicts.
 
 ## Corpus contract
 
-This corpus defines approved product requirements, technical invariants, shared vocabulary, design contracts, release scope, and acceptance criteria. Definitions and examples belong here when they disambiguate those contracts. Implementation details and operational reports belong outside this corpus. A reported limitation does not waive a requirement.
+This corpus defines approved product requirements, technical invariants, shared vocabulary, design contracts, release scope, and acceptance criteria. Definitions and examples belong here when they disambiguate those contracts. Implementation details and operational reports belong outside this corpus; implementation status is reported in [PROGRESS](PROGRESS.md). A reported limitation does not waive a requirement.
 
 ## Reading path
 

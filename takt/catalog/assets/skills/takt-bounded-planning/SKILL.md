@@ -16,20 +16,15 @@ after the workflow-selection tree has selected this route for the planning phase
 that choice itself. It applies only to what is missing — whatever is already settled,
 existing, or approved needs no gathering at all.
 
-**Gather only what's missing, directly.** Establish the fact or confirm the decision the
-work is waiting on, and move on. The moment settling it needs more than one bounded pass,
-it has already stopped being bounded.
+Gather only missing facts and decisions. If Takt chose this route, keep OPERATIONS' three
+triviality tests; specialist judgment or larger scope returns to the selection tree.
 
-**Recognize when it no longer fits.** The signals are two or more genuinely different kinds
-of judgment being needed at once (an architecture call and an experience call, for
-instance), or what's missing turning out to need a specialist's own judgment rather than a
-fact the orchestrator can establish itself. Either one means the route no longer matches
-the gap, not that the gap needs to be narrowed to keep fitting it.
+An explicit user instruction permits nontrivial, multi-pass planning within its scope.
+Complexity alone is not a mismatch. Name the specialties covered and evidence used;
+OPERATIONS' permissions, ownership, budgets and assurance limits still apply.
 
-**Return control rather than switch automatically.** When any of these signals shows this
-route does not fit, return control to Takt with the reason, evidence, and user constraints
-preserved. Takt returns to the selection tree; this skill does not select its replacement. An explicit direct-work instruction is not permission to ignore these conditions
-or to change the instruction without the user's answer.
+Material uncertainty, new scope or a blocked path returns to the selection tree with evidence
+and user constraints. Do not shrink the objective or unilaterally abandon the user's instruction.
 
 **Stay inside planning.** This skill carries planning only. Implementation belongs to
 whichever route the selection tree picks for that phase — never this skill's

@@ -1,7 +1,5 @@
 # PRD: Dreaming
 
-**Actual implementation progress: 2%** — 23 own requirements: 0 complete, 1 partial, 22 not integrated. No production path schedules, isolates or dispatches Simple, Deep or Macro Dream, applies deference or the fast path, writes the cycle report and diary, or enforces its invariants; no local inference capability, candidate generation or operation validation exists; only the maintenance role class's refusal of orchestrator dispatch exists.
-
 ## 1. Problem
 
 Without consolidation, memory decays over an operating horizon in three ways: raw entries accumulate without bound and degrade recall precision; no higher-level insight is ever synthesized from repeated sessions; and knowledge stays trapped in the Workspace where it was written, so an organization's other repositories, services, and past pitfalls never inform new work. Dreaming organizes long-term memory against this decay without losing content or provenance. It is a permanent, harness-controlled maintenance process with its own modalities and obligations, independent of [GC](PRD_GC.md): sharing the maintenance role class (`PR-CRW-16`) carries none of GC's own obligations.
