@@ -4,7 +4,7 @@ description: "Before recording memory as judge-a / judge-b. What this role recor
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Memory role: judge-a / judge-b — Review reports
@@ -15,7 +15,7 @@ only narrows what your role records.
 ## Records
 
 - `observation` (`project`): the review report — ranked findings with file, line, defect and evidence, and what you examined, did not examine, and left uncertain. For staged work, each finding names its author_key.
-- A later report on the same code is a new entry that `supplements` your own earlier one, never the other judge's.
+- A later report on the same code is a complete new entry that `supersedes` your own earlier one, never the other judge's.
 - A finding that contradicts an entry already in memory is related to it with `corrects` when evidence settles it or `disputes` when it does not.
 
 ## When

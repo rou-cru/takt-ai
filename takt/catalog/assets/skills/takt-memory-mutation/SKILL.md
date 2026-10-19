@@ -4,7 +4,7 @@ description: "Before recording memory as mutation. What this role records, when,
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Memory role: mutation — Mutation reports
@@ -17,7 +17,7 @@ only narrows what your role records.
 - `observation` (`project`): the mutation report — per must-not-fail matrix row, the mutants
   generated, killed and surviving; each survivor's file, line, change and the required
   behavior left unchecked; each equivalent mutant discarded and why; what could not be run.
-- A later report on the same suite is a new entry that `supplements` the earlier one.
+- A later report on the same suite is a complete new entry that `supersedes` your earlier one.
 
 ## When
 

@@ -541,6 +541,10 @@ func isMatrixTitle(title string) bool {
 // only qa creates the matrix, and an entry that adds to or revises it must be
 // its author's own column, declared in its title. A dispute stays open to any
 // author, as the way to state a contradiction.
+//
+// Column entries must relate to the matrix or their own column; tpm and verify
+// must use supplements when targeting the matrix itself. Requests unrelated to
+// the matrix and disputes return nil. Violations return a *ValidationError.
 func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
 	// A dispute records disagreement, never an authorized column evolution.
 	if req.RelatesTo != nil && req.RelatesTo.Relation == "disputes" {
@@ -557,8 +561,11 @@ func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
 	switch {
 	case own == "":
 		return reject("only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction")
-	case declaredColumn(req.Title) != own:
+	case declaredColumn(req.Title) != own && !related:
 		return reject("your traceability matrix column is %s; record the entry with supplements titled %q", own, columnTitle(own))
+	// A revision keeps its relation: only the title is wrong.
+	case declaredColumn(req.Title) != own:
+		return reject("your traceability matrix column is %s; record the entry titled %q", own, columnTitle(own))
 	case related && declaredColumn(target.title) != "" && declaredColumn(target.title) != own:
 		return reject("the related entry writes %s; only %s may evolve that column, without changing it by title; use disputes to state a contradiction", declaredColumn(target.title), matrixColumns[declaredColumn(target.title)])
 	// Only qa revises the matrix itself; another column only adds to it.

@@ -4,7 +4,7 @@ description: "Before recording memory as qa. What this role records, when, and w
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Memory role: qa — Test planning
@@ -17,9 +17,9 @@ only narrows what your role records.
 - Standard results: the test policy, the test plan, the environment requirements and the
   traceability matrix, each in its own `project` entry; the matrix is titled
   `Traceability Matrix`.
-- The test policy once per workspace; a later refinement is a new entry that `supplements` it.
-- Your later additions to the matrix are entries that `supplements` it, titled
-  `Traceability Matrix: Requirements`.
+- The test policy once per workspace; a later refinement is the complete policy in a new entry that `supersedes` it.
+- A later change to your rows is the complete matrix in a new entry titled
+  `Traceability Matrix: Requirements` that `supersedes` your latest version.
 - `observation` (`project`): a repository testing fact the policy rests on — test tooling, CI
   checks, a convention — with the file or command as evidence.
 
