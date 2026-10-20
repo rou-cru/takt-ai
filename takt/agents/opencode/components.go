@@ -225,7 +225,7 @@ func TaktSandboxAdapterArtifact() Artifact {
 // SandboxRuntimeVersion is the @anthropic-ai/sandbox-runtime version pinned
 // in takt/runtime/sandbox/package.json — the same dependency the adapter's
 // probe test runs against.
-const SandboxRuntimeVersion = "0.0.76"
+const SandboxRuntimeVersion = "0.0.80"
 
 // sandboxPluginsDir is the absolute directory the sandbox adapter and its
 // node_modules/ sibling deploy into, so a bare `from

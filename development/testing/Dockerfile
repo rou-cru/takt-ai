@@ -1,5 +1,5 @@
 # Dedicated test runtime: Node executes the rendered OpenCode TypeScript plugin.
-FROM node:26-bookworm-slim AS node
+FROM node:24-bookworm-slim AS node
 # Real codegraph for the E2E-C tests (dead-code findings over fixture workspaces).
 # 1.6.1 is the release the gc adapter's JSON surface was verified against; the
 # product itself resolves any release at or above takt/codegraph.CodegraphVersion.
@@ -7,7 +7,7 @@ ARG CODEGRAPH_VERSION=1.6.1
 RUN npm install -g --prefix /opt/codegraph --no-fund --no-audit --loglevel=error --ignore-scripts \
       "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 
-FROM golang:1.27.2
+FROM golang:1.27.3
 # deadcode's version is pinned by the module's own `tool` directive
 # (go.mod) and its checksum by go.sum — no separate ARG to drift from it.
 WORKDIR /tmp/takt-module

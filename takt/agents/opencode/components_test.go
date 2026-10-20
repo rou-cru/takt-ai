@@ -313,6 +313,24 @@ func TestOpenCodePluginPackageArtifact(t *testing.T) {
 	}
 }
 
+// The installer pin must match the manifest the adapter's probe test runs
+// against; Dependabot bumps only the manifest.
+func TestSandboxRuntimeVersionMatchesAdapterManifest(t *testing.T) {
+	content, err := os.ReadFile("../../runtime/sandbox/package.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("invalid sandbox manifest: %v", err)
+	}
+	if got := manifest.Dependencies["@anthropic-ai/sandbox-runtime"]; got != opencode.SandboxRuntimeVersion {
+		t.Errorf("takt/runtime/sandbox/package.json pins sandbox-runtime %q, SandboxRuntimeVersion is %q", got, opencode.SandboxRuntimeVersion)
+	}
+}
+
 func withoutOrchestrator(t *testing.T, content []byte) []byte {
 	t.Helper()
 	var config map[string]any

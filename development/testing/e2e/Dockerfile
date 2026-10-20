@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.27.2-bookworm AS builder
+FROM golang:1.27.3-bookworm AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /usr/local/bin/takt-ai ./takt/cli
 
 # Node stays in the runtime: `takt-ai setup install` provisions CodeGraph via npm.
-FROM node:26-bookworm-slim
+FROM node:24-bookworm-slim
 # Takt requires the OpenCode v2 API (`opencode api`), which is not published to
 # npm; install the same pinned release, through the same checksum-verified
 # installer, as deploy/images/Dockerfile. Keep both pins in sync.
