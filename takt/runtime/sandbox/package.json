@@ -6,7 +6,7 @@
     "test": "node --test probe.test.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "0.0.78"
+    "@anthropic-ai/sandbox-runtime": "0.0.80"
   },
   "packageManager": "pnpm@11.17.0"
 }
