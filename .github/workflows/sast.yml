@@ -39,7 +39,7 @@ jobs:
               --config p/github-actions \
               --config p/dockerfile \
               --sarif-output=semgrep.sarif
-      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         if: ${{ !cancelled() && hashFiles('semgrep.sarif') != '' }}
         with:
           sarif_file: semgrep.sarif
