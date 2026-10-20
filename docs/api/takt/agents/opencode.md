@@ -42,7 +42,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 <a name="SandboxRuntimeVersion"></a>SandboxRuntimeVersion is the @anthropic\-ai/sandbox\-runtime version pinned in takt/runtime/sandbox/package.json — the same dependency the adapter's probe test runs against.
 
 ```go
-const SandboxRuntimeVersion = "0.0.76"
+const SandboxRuntimeVersion = "0.0.80"
 ```
 
 ## Variables
