@@ -303,6 +303,41 @@ func TestValidateResultIDsRejectsNonPositiveAndUnreachable(t *testing.T) {
 	}
 }
 
+// TestEntryIDsByCallerNamesWhatOneHostSessionRecorded covers the record the
+// pm-recycling refusal reads (PR-CRW-20): the entries one agent session
+// recorded, apart from another session of the same agent.
+func TestEntryIDsByCallerNamesWhatOneHostSessionRecorded(t *testing.T) {
+	ids, err := memory.EntryIDsByCaller(t.TempDir(), "ses_none", "pm-stories")
+	if err != nil || ids == nil || len(ids) != 0 {
+		t.Fatalf("memory.EntryIDsByCaller(no index) = %v, %v; want an empty non-nil slice", ids, err)
+	}
+
+	_, cfg := newFake(t)
+	ctx := context.Background()
+	stories := base()
+	stories.Author, stories.CallerSession = "pm", "pm-stories"
+	story, err := memory.Record(ctx, cfg, stories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := base()
+	docs.Author, docs.Title, docs.CallerSession = "pm", "Business document", "pm-docs"
+	if _, err := memory.Record(ctx, cfg, docs); err != nil {
+		t.Fatal(err)
+	}
+	got, err := memory.EntryIDsByCaller(cfg.Root, "ses_1", "pm-stories")
+	if err != nil || !slices.Equal(got, []int64{story.ID}) {
+		t.Fatalf("memory.EntryIDsByCaller(pm-stories) = %v, %v; want [%d]", got, err, story.ID)
+	}
+	if none, _ := memory.EntryIDsByCaller(cfg.Root, "ses_1", ""); len(none) != 0 {
+		t.Errorf("memory.EntryIDsByCaller(no caller) = %v, want none", none)
+	}
+	writeIndex(t, cfg.Root, "ses_bad", "{ not json")
+	if _, err := memory.EntryIDsByCaller(cfg.Root, "ses_bad", "pm-stories"); err == nil {
+		t.Error("a corrupt index produced no error")
+	}
+}
+
 func TestEntryIDsByAuthorFiltersAndDefaultsEmpty(t *testing.T) {
 	ids, err := memory.EntryIDsByAuthor(t.TempDir(), "ses_none", "dev")
 	if err != nil || ids == nil || len(ids) != 0 {

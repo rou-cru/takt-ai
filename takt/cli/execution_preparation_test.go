@@ -290,3 +290,33 @@ func TestPrepareRefusesResumingPMOnItsOwnInvariant(t *testing.T) {
 		t.Fatalf("fresh pm: %v %v", got, err)
 	}
 }
+
+// TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant: only the session that
+// recorded the invariant is barred; resuming another pm session is admitted.
+func TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant(t *testing.T) {
+	fakeEngramServer(t)
+	home, _ := os.UserHomeDir()
+	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVFSFixture(t)
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "", ResultIDs: []int64{7}}); err == nil {
+		t.Fatal("inputs declared for no unit")
+	}
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
+		t.Fatal(err)
+	}
+	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-docs", Caller: rootA, Agent: "pm", Child: "pm-docs"}
+	if got, err := executionRequest(t, fx, r); err != nil || got["launchable"] != true {
+		t.Fatalf("resumed formalizing pm: %v %v", got, err)
+	}
+}

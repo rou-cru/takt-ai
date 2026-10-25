@@ -1219,6 +1219,28 @@ describe("claims and consolidation", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a limit exception is recorded only once the user accepts it", async () => {
+    const created: Array<Record<string, unknown>> = []
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({
+      OpenCode: { make: () => ({ permission: { create: async (request: Record<string, unknown>) => {
+        created.push(request)
+        return { effect: created.length === 1 ? "allow" : "deny", id: request.id }
+      } } }) },
+    }))
+    const vfs = await startVfs({ sessions: unitSessions })
+    const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
+    const exception = { bound: "budget/unplanned-units", allowance: 1, evidence: "four units are pending" }
+    try {
+      await vfs.run("dispatch_exception", exception, caller)
+      expect(created[0]).toMatchObject({ sessionID: "root", action: "dispatch_exception", metadata: { bound: "budget/unplanned-units", allowance: "1", evidence: "four units are pending" } })
+      expect(vfs.requests("dispatch", "exception")).toEqual([expect.objectContaining({ action: "exception", bound: "budget/unplanned-units", allowance: 1 })])
+      await expect(vfs.run("dispatch_exception", exception, caller)).rejects.toThrow("Permission denied: dispatch_exception")
+      expect(vfs.requests("dispatch", "exception")).toHaveLength(1)
+      await expect(vfs.run("dispatch_exception", exception, { sessionID: "dispatch", agent: ORCHESTRATOR })).rejects.toThrow("dispatch_exception belongs to the root orchestrator")
+    } finally { await vfs.stop() }
+  })
+
   test("claim_assign with an author key asks to keep the staged work", async () => {
     const vfs = await startVfs()
     try {
