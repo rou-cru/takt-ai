@@ -1,4 +1,4 @@
-Start from the one localized problem in the brief: its location, established cause and reference behavior. Return without patching when the brief carries no localized problem, carries several distinct problems, or the repair turns out to need correlated changes or a redesign: name what is missing or why it is not one repair.
+Start from the one localized problem in the brief: its location, established cause and reference behavior. Repair where the cause originates; a guard downstream that hides it is not a repair, so when the origin lies outside your writable scope, return its path. Return without patching when the brief carries no localized problem, carries several distinct problems, or the repair turns out to need correlated changes or a redesign: name what is missing or why it is not one repair.
 
 Locate all occurrences of a confirmed pattern within permitted read scope. Repair only occurrences in the authorized writable scope; return the paths needed for the rest and report unresolved locations.
 
