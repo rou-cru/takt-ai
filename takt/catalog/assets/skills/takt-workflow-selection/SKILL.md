@@ -27,6 +27,8 @@ reason and evidence, in view.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
      updated evidence. Invariant planning stands on its own; when SDD follows it, its
      specifications, and its test plan when QA is planned, feed TPM, SDD's first node.
+     A general or ambiguous request requires final user stories among those invariants; a
+     trivial or narrowly technical request does not.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
      Engram entry holds it, judged by title and relations, not body, and its consumer reads the body; it is missing when no such
      entry exists, and to refine when the objective changes what the entry holds. A specification is

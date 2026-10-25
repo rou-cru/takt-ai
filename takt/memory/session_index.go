@@ -51,8 +51,11 @@ type sessionIndex struct {
 }
 
 type sessionIndexEntry struct {
-	ID       int64  `json:"id"`
-	Author   string `json:"author"`
+	ID     int64  `json:"id"`
+	Author string `json:"author"`
+	// Caller is the host session that recorded the entry: the exact agent
+	// session, distinct across delegations of one instance.
+	Caller   string `json:"caller,omitempty"`
 	Nature   string `json:"nature"`
 	Scope    string `json:"scope"`
 	Title    string `json:"title"`
@@ -164,6 +167,22 @@ func EntryIDsByAuthor(root, session, author string) ([]int64, error) {
 	ids := []int64{}
 	for _, e := range l.Entries {
 		if e.Author == author {
+			ids = append(ids, e.ID)
+		}
+	}
+	return ids, nil
+}
+
+// EntryIDsByCaller returns the ids of the entries recorded within session
+// from the host session caller: what that exact agent session authored.
+func EntryIDsByCaller(root, session, caller string) ([]int64, error) {
+	l, err := loadSessionIndex(root, session)
+	if err != nil || l == nil {
+		return []int64{}, err
+	}
+	ids := []int64{}
+	for _, e := range l.Entries {
+		if caller != "" && e.Caller == caller {
 			ids = append(ids, e.ID)
 		}
 	}

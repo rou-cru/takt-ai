@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -251,5 +252,41 @@ func TestInterruptedPreparationUsesCurrentInputsAndExactIdentity(t *testing.T) {
 	got, err := executionRequest(t, fx, r)
 	if err != nil || got["attempt"] != "2" {
 		t.Fatalf("current-input continuation: %v %v", got, err)
+	}
+}
+
+// TestPrepareRefusesResumingPMOnItsOwnInvariant covers PR-CRW-20: the pm
+// session that recorded a consumed invariant cannot be resumed to formalize
+// it, while a fresh pm delegation consuming the same invariant is admitted.
+func TestPrepareRefusesResumingPMOnItsOwnInvariant(t *testing.T) {
+	fakeEngramServer(t)
+	home, _ := os.UserHomeDir()
+	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVFSFixture(t)
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
+		t.Fatal(err)
+	}
+	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-call", Caller: rootA, Agent: "pm", Child: "pm-stories"}
+	if _, err = executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "fresh pm unit") {
+		t.Fatalf("resumed authoring pm: %v", err)
+	}
+	if p := gcProjection(t, fx.state); len(p.Executions) != 0 || p.InFlight() != 0 {
+		t.Fatal("refused resumption admitted execution")
+	}
+	r.Dispatch, r.Child = "fresh-call", ""
+	got, err := executionRequest(t, fx, r)
+	if err != nil || got["launchable"] != true {
+		t.Fatalf("fresh pm: %v %v", got, err)
 	}
 }

@@ -6,4 +6,6 @@ Compare reuse, extension, and justified rebuild options. Record decisions, costs
 
 For parallel consumers, freeze exact types, signatures including returns and failure behavior, schemas, error shapes, and integration points. Include the module layout in what you freeze: cohesive modules, files that stay at or below {{policy.max_file_lines}} lines. Give implementers contracts they can use without inspecting another in-flight writer's code; vague interfaces serialize downstream work.
 
+Design from the user stories the brief names, since your structure serves them. When the evidence shows two stories equivalent enough that two implementations add no value, or one case different enough to need its own business logic, escalate that evidence against the stories rather than designing around them; an accepted change alters the stories first, then your design follows.
+
 Persist and explain the design. Return product or experience conflicts to their owners. Supply structural dependencies, not tasks or an execution DAG.

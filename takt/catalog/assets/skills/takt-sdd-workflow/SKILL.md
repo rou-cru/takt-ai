@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Several implementation units must deliver one integrated result from formal specifications: compiling and running the dependency DAG through frozen contracts, with up to {{policy.concurrent_specialists}} concurrent specialists in one shared workspace."
+description: "Several implementation units must deliver user stories as integrated vertical slices from formal specifications: compiling and running the dependency DAG through frozen contracts, with up to {{policy.concurrent_specialists}} concurrent specialists in one shared workspace."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -56,6 +56,8 @@ These terms appear inside rules. They carry exactly these meanings and no others
 | **Information edge** | The consumer needs to *know* a signature, type, schema, or error shape that the other node produces. |
 | **Implementation edge** | The consumer needs the other node's file content written to disk, or shares mutable state with it. |
 | **Critical path** | The longest remaining downstream chain from a node to the terminal node, measured in nodes. |
+| **Vertical slice** | Everything one user story, or one split of it, needs across the layers, ending in a functional result its independent test demonstrates. |
+| **Sub-objective** | The fragment of one layer a slice needs; one node, delegated to one agent. |
 
 ---
 
@@ -92,13 +94,13 @@ path, and keep moving.
    in-flight tasks never have overlapping writable paths.
 4. **Frozen Contracts Before Dispatch:** A task may run in parallel only if every type,
    signature, schema, and public interface it consumes is frozen in its contract.
-5. **Single Integration Gate:** Appliers run no checks against staged work and never
+5. **One Integration Gate per Slice:** Appliers run no checks against staged work and never
    invoke global test runners, full workspace builds, or whole-repo linters, as this causes
    tool, cache, and artifact collisions in a shared workspace. Full build, lint, and
-   end-to-end tests run exclusively in a single Verify unit on the materialized workspace
-   after the implementation phases it validates finish. Never parallelize global verification or
-   run it unplanned: it is a planned single-node phase, and a milestone commit follows only after
-   it passes.
+   end-to-end tests run exclusively in one Verify unit per vertical slice, on the materialized
+   workspace after that slice's writers finish, and it runs the slice's story independent test.
+   Never parallelize global verification, run it per wave or node, or run it unplanned. A
+   milestone commit is a separate decision and follows only after an acceptance passes.
 6. **Zero Silent Drops:** A first failure that OPERATIONS routes to retry in place retries once;
    a second failure, any other failure or a flagged contract defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
 
@@ -180,15 +182,19 @@ grant — it is never assumed from silence.
 
 ---
 
-## 4. Decomposition — Cutting For Concurrency
+## 4. Decomposition — Cutting By Story
 
-This lever operates before deciding which edges must serialize. If the decomposition is cut wrong, the DAG is serial by
-construction and no serialization matrix will save it.
+This lever operates before deciding which edges must serialize. A wrong cut delays value and,
+when it is by layer, makes the DAG serial by construction; no serialization matrix will save it.
 
-- **Cut vertically, by sub-objective.** Each task owns its own slice of files across
-  layers.
-- **Never cut horizontally, by layer.** "All the types", "the whole API layer", "all the
-  storage" forces every downstream task to wait on the layer beneath it.
+- **Cut into vertical slices, one per user story.** A story needing more than one slice gets
+  more than one, each ending in something functional; a story is never forced into one
+  overloaded slice, and no slice is called complete while its result does not work.
+- **Cut each slice into sub-objectives, one layer fragment per agent.** A large slice gains
+  agents, never larger sub-objectives. Disjoint fragments run concurrently; a strong
+  dependency between them stays an edge (§6).
+- **Never cut a layer across stories.** "All the types", "the whole API layer", "all the
+  storage" delivers nothing until every layer is done; cut it into each story's fragment.
 
 **Orchestrator action:** return a cut to TPM when it bundles independently deliverable
 functional results that admit disjoint scopes and settled contracts, naming those results.
@@ -208,17 +214,19 @@ serializing otherwise independent work.
    test-author node consumes only frozen contracts and the traceability matrix, never in-flight
    implementation, so it shares the wave of the code it tests. The integration tail depends
    on all implementation nodes it validates.
-3. **One global integration fan-in per validated milestone, at its tail.** Global serialization is paid once
-   per milestone, in its own phase after the phases it validates. A per-wave integration
-   checkpoint is forbidden by Rule 5; a planned phase verification of staged deltas is not one.
+3. **One global integration fan-in per vertical slice, at its tail.** Global serialization is paid once
+   per slice, after the nodes it validates, whether the slice took one phase or several. A
+   per-wave integration checkpoint is forbidden by Rule 5; a planned phase verification of
+   staged deltas is not one.
 
 ### 5.1 Self-Check Before Dispatch
 
+- Every node traces to one story's slice; no node builds a layer for several stories (§4).
 - Independent functional results are not hidden inside one delegation (§4).
 - Siblings in a wave share no edge; a horizontal edge means a layer cut (§4).
 - Every edge names a required output or resource; settled contracts remove avoidable waits.
 - Ready independent nodes use available slots; excess work queues without artificial edges.
-- Planned gates are clearly fewer than implementation nodes; milestone acceptance Verify nodes
+- Planned gates are clearly fewer than implementation nodes; slice acceptance Verify nodes
   are not counted.
 - A narrow graph is accepted when those checks hold, without a minimum-width calculation.
 
@@ -303,7 +311,7 @@ The following is an available route, not a procession required of every change:
    node's committed unit identity. A returned delivery is complete in VFS and nothing more:
    take it where its contract sends it (a verifier, consolidation, or straight to disk). Work left staged has not been delivered. Ordinary handoffs reuse approvals; new final designs or scope
    decisions obtain the required user approval.
-5. **Integration and acceptance:** preserve the single tail fan-in. When a phase calls for a gate,
+5. **Integration and acceptance:** preserve one tail fan-in per slice. When a phase calls for a gate,
    it assesses the phase's staged deltas together before consolidation: one verifier node, preassigned
    to all its author keys, and Takt consolidates a passing author's work with
    `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
@@ -311,6 +319,17 @@ The following is an available route, not a procession required of every change:
    materialized workspace after writers finish; with QA planned, that acceptance and the
    tail after it follow `takt-qa-workflow` from its Accept state.
    Check the integrated outcome, not merely completed nodes.
+6. **Slice control point:** once a slice is accepted, evaluate what happened and where the
+   work goes next before the next slice. When the user participates, tell them how to try the
+   result and ask whether to refine or change it or to continue. Working autonomously, act on
+   the evaluation: drop work the result shows unnecessary, add a prerequisite it reveals, or
+   route a refactor it calls for (duplication, a missing single source of truth, speculative
+   generality). A change alters the story first, the invariants derived from it realign, and
+   then you commit the plan revision.
+
+Deliver one story's slice before starting another's, unless each story is simple, its work
+mechanical, their scopes disjoint and repairing both at once unlikely; then their slices may run
+together. A user instruction on story concurrency prevails.
 
 ---
 

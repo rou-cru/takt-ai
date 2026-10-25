@@ -435,7 +435,7 @@ func (s *openSession) recordLinks(ctx context.Context, cfg Config, req RecordReq
 	if err := c.link(ctx, id, l.StartAnchor, "related", "takt:in-session", req.Author); err != nil {
 		return err
 	}
-	entry := sessionIndexEntry{ID: id, Author: req.Author, Nature: req.Nature, Scope: req.Scope, Title: req.Title, At: now(cfg)}
+	entry := sessionIndexEntry{ID: id, Author: req.Author, Caller: req.CallerSession, Nature: req.Nature, Scope: req.Scope, Title: req.Title, At: now(cfg)}
 	if rel := req.RelatesTo; rel != nil {
 		if err := c.link(ctx, id, rel.ID, relationEdges[rel.Relation], "takt:"+rel.Relation, req.Author); err != nil {
 			return err

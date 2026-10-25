@@ -25,7 +25,7 @@ lint and full suites run in Verify units; checks on the materialized workspace a
 
 ## Consolidation and commit
 
-Consolidating is not a Git commit: validate a milestone in a final phase of one global Verify node per milestone, commit it only after that node passes with no problems found, and
+Consolidating is not a Git commit: accept each vertical slice with one global Verify node after its writers finish; commit a milestone only after such a node passes with no problems found, and
 load takt-git-commit before writing the message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if

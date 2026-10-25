@@ -16,6 +16,7 @@ func TestPlanningDocumentTemplates(t *testing.T) {
 	for _, tc := range []struct {
 		skill, file, title string
 	}{
+		{"takt-memory-pm", "user-story", "User Story"},
 		{"takt-memory-pm", "brief", "Brief"},
 		{"takt-memory-pm", "prd", "PRD"},
 		{"takt-memory-architect", "adr-madr", "ADR — MADR"},

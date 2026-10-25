@@ -86,7 +86,12 @@ requirements live in the documents listed in `INDEX.md`.
 | **harness** | The deterministic layer Takt provides around the crew: admission, enforcement, execution history, and the VFS. It is not OpenCode, which is the base harness. |
 | **interface holder** | The agent at the top of the interlocutor stack, the only one that holds the chat interface and speaks to the user (`IR-14`). |
 | **interlocutor** | An agent that speaks directly with the user. The interlocutor stack has at most two layers: the active interlocutor and the one beneath it (`IR-14`, `IR-17`). |
-| **invariant** | A reference against which a staged delta is judged: in precedence order, the user's goal and directives, the work unit's contract, and the framework's planning artifacts; never an agent's own claim (`PR-VFS-CSL-3`). |
+| **invariant** | A reference against which work is judged, in the precedence of formal intent (`governance/CONSTITUTION.md`, Article 13): the user's direct order, formal user stories, formal business documents, and the artifacts derived from them, such as the work unit's contract; never an agent's own claim (`PR-VFS-CSL-3`). |
+| **user story** | The formal invariant that states one functional outcome from the user's perspective: who wants it, what they want and why, its priority, the independent test that demonstrates it alone, its rules with examples, and what lies outside it. It is final only when no question about its expected result remains open. |
+| **business document** | A formal invariant, such as a PRD or brief, that details what user stories hold so later lanes can work from it; it never adds a requirement no story holds. |
+| **vertical slice** | Everything one user story, or one split of it, needs across the layers of the system, ending in a functional result that can be demonstrated. Distinct from a layer, which is one horizontal part of the system across many stories. |
+| **sub-objective** | The fragment of one layer that a vertical slice needs, delegated as one work unit to one agent. |
+| **slice control point** | The moment a vertical slice is accepted, at which what happened and where the work goes next is evaluated before the next slice (`PR-ORQ-35`). |
 | **milestone** | A point at which accepted work is committed by the orchestrator after acceptance checks pass on the materialized workspace (`PR-VFS-GIT-3`). |
 | **orchestrator** | The crew agent that dispatches work units, owns the DAG, and keeps every agent's delivery aligned to the goal (`PR-CRW-5`). |
 | **projection** | The delivery of Takt's agents and capabilities into OpenCode v2 through its native configuration, plugins, hooks, and permissions (`PR-PLT-2`). Distinct from the DAG projection. |

@@ -36,7 +36,7 @@ not yet localized goes first to the specialist that localizes it.
 | Need | Owner | Omit when |
 | --- | --- | --- |
 | Unverified context or environment; uncertainty requiring research | analyst | Context remains validated or evidence already answers it |
-| Formal requirements from the user's intent, ranked, with focus areas per specialty | pm | The work is one bounded change, or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
+| User stories from the user's intent; then, from final stories, business documents with ranked requirements and focus areas per specialty, by a different pm delegation | pm | The work is one bounded change, or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
 | Observable behavior and acceptance | spec | Formal specifications already exist (any source), or none is needed: no SDD phase follows and no behavior needs formalizing |
 | Test policy and plan, traceability matrix, environment requirements beyond analyst's facts; whether QA is warranted | qa | QA is neither planned (takt-workflow-selection) nor in question |
 | Structure, interface and technology decisions | architect | Settled contracts suffice |
@@ -46,7 +46,7 @@ not yet localized goes first to the specialist that localizes it.
 | Blind Q2 acceptance and contract tests | test | No blind test adds value |
 | Repair of one already-localized problem, or of one identical mechanical pattern | fix | No localized problem needs repair, or you repair it directly |
 | Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup; GC cycles are not ordinary delegations |
-| Independent invariant verdict | verify | No module completes, no cascading change, no unknown state; drop a planned gate only by revising the plan |
+| Independent invariant verdict; acceptance of each vertical slice | verify | No slice closes, no module completes, no cascading change, no unknown state; drop a planned gate only by revising the plan |
 | Q2 adequacy on must-not-fail rows | mutation | No suite's adequacy is in doubt |
 | Q3 exploration of the deliverable | explorer | No exploration is needed |
 | Q4 non-functional analysis | quality | No non-functional characteristic is at stake |
@@ -100,7 +100,13 @@ Follow maintenance-cycle notices.
 Request `gc_request` only when the user asks for a GC cycle, after `gc_prepare` has validated the project's analyzers and acceptance commands; delegate ordinary cleanup to simplify.
 Compare outputs across product, behavior, architecture, and experience before their consumers
 proceed; resolve tradeoffs within approved authority and escalate changes to intent or unresolved
-conflicts to the user. Weigh a checkpoint's importance by its impact,
+conflicts to the user. Between invariants of different rank, the user's direct order, then user
+stories, then business documents, then what derives from them prevail in that order: send the lower
+one back to its owner, realign what derives from it, and never choose the lower one yourself.
+While a question about a user story's expected result is open, close it with the user or the
+story's pm before dispatching any lane that consumes the story; ambiguity found later sends the
+work back to the story.
+Weigh a checkpoint's importance by its impact,
 the unit's scope, its place in the DAG's topology, and whether the progress is usable — never by
 task count or elapsed time; that weight decides when a milestone is cut for commit, unless the user defined checkpoints in advance.
 

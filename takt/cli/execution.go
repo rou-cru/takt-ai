@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -47,6 +48,9 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, consumed); err != nil {
 			return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
 		}
+	}
+	if err := refuseRecycledProductManager(r, consumed); err != nil {
+		return nil, err
 	}
 	u, _ := h.Project().Unit(r.Session, r.Event)
 	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
@@ -229,4 +233,39 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 	}
 	slices.Sort(orphaned)
 	return map[string]any{"executions": p.Executions, "orphaned": orphaned}
+}
+
+// productManagerID names the catalog definition whose sessions author user
+// stories; another session of it formalizes them (PR-CRW-20).
+const productManagerID = "takt-pm"
+
+// refuseRecycledProductManager refuses resuming a pm session to consume an
+// invariant that same session recorded. A fresh delegation is always admitted.
+func refuseRecycledProductManager(r coordinationRequest, consumed []int64) error {
+	if r.Child == "" || len(consumed) == 0 || !isProductManager(r.Agent) {
+		return nil
+	}
+	own, err := memory.EntryIDsByCaller(memoryRoot(), r.Session, r.Child)
+	if err != nil {
+		return err
+	}
+	for _, id := range consumed {
+		if slices.Contains(own, id) {
+			return fmt.Errorf("launch refused: pm session %s recorded consumed invariant #%d; delegate a fresh pm unit to formalize it", r.Child, id)
+		}
+	}
+	return nil
+}
+
+func isProductManager(agent string) bool {
+	packages, err := catalog.LoadPackages()
+	if err != nil {
+		return false
+	}
+	for _, def := range packages.Agents {
+		if def.ID == productManagerID {
+			return slices.Contains(def.Instances, agent)
+		}
+	}
+	return false
 }

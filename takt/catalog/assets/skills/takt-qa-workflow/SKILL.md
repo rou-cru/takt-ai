@@ -20,7 +20,9 @@ preserves findings and never infers permission to repair.
 | To assess, test or harden an existing deliverable with QA planned | 1. Assess |
 | As the acceptance tail with QA planned | 4. Accept |
 
-The tail requires the test plan and matrix from invariant planning.
+The tail requires the test plan and matrix from invariant planning. Inside SDD, Accept runs for each vertical slice
+with that slice's story; Critique, Strengthen and Close run for must-not-fail stories or at the
+objective's close.
 
 ## States
 
