@@ -53,7 +53,7 @@ async function launch(p,root,unit,agent,id,extra={}){
 async function done(p,e){await p.fire('execute.after',{...e,status:'completed',result:{content:'done'}})}
 const authors=[]
 for(const [i,unit] of units.entries()){
- await a.tools.dispatch_inputs.execute({work_unit_id:unit,none:true},rootA)
+ await a.tools.dispatch_inputs.execute({work_unit_id:unit,result_ids:[]},rootA)
  const claim=JSON.parse((await a.tools.claim_assign.execute({work_unit_id:unit,agent:'dev',scope:[`${i}.txt`]},rootA)).content)
  const e=await launch(a,rootA,unit,'dev',`write-${i}`)
  const child=`dev-${i}`;sessions.set(child,{id:child,parentID:'root-a',title:unit,time:{created:Date.now()}})
@@ -68,11 +68,11 @@ for(const [i,unit] of units.entries()){
 const b=await start()
 await b.tools.dispatch_commit.execute({version:'b',plan:[...units.map(unit=>({unit,contract:'continue'})),{unit:'review',contract:'judge four authors'}]},rootB)
 for(const [i,unit]of units.entries()){
- await b.tools.dispatch_inputs.execute({work_unit_id:unit,none:true},rootB)
+ await b.tools.dispatch_inputs.execute({work_unit_id:unit,result_ids:[]},rootB)
  const r=JSON.parse((await b.tools.claim_assign.execute({work_unit_id:unit,agent:'dev',scope:[`${i}.txt`],author_key:authors[i]},rootB)).content)
  assert.equal(r.key,authors[i])
 }
-await b.tools.dispatch_inputs.execute({work_unit_id:'review',none:true},rootB)
+await b.tools.dispatch_inputs.execute({work_unit_id:'review',result_ids:[]},rootB)
 const review=await launch(b,rootB,'review','verify','review-1',{author_keys:authors})
 sessions.set('judge',{id:'judge',parentID:'root-b',title:'review',time:{created:Date.now()}})
 const context=await b.context('judge','verify')
@@ -102,7 +102,7 @@ await done(c,retry)
 // A terminal record of that exact native call does, allowing the existing retry.
 const rootC={sessionID:'root-c',agent:'takt'}
 await c.tools.dispatch_commit.execute({version:'c',plan:[{unit:'transport',contract:'recover interrupted native launch'}]},rootC)
-await c.tools.dispatch_inputs.execute({work_unit_id:'transport',none:true},rootC)
+await c.tools.dispatch_inputs.execute({work_unit_id:'transport',result_ids:[]},rootC)
 await launch(c,rootC,'transport','pm','orphan')
 const restarted=await start()
 const hostCall=status=>[{type:'assistant',content:[{type:'tool',id:'orphan',name:'subagent',state:{status}}]}]

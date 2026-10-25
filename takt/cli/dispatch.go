@@ -37,7 +37,6 @@ type coordinationRequest struct {
 	Attempt           string           `json:"attempt"`
 	Objective         string           `json:"objective"`
 	Result            string           `json:"result"`
-	Point             string           `json:"point"`
 	Scope             []string         `json:"scope"`
 	Actions           int              `json:"actions"`
 	Attempts          int              `json:"attempts"`
@@ -60,7 +59,6 @@ type coordinationRequest struct {
 	// AuthorKeys distinguishes an absent list (no gates) from an empty one,
 	// which a verifier preparation refuses.
 	AuthorKeys []vfs.AgentID `json:"author_keys,omitempty"`
-	None       bool          `json:"none,omitempty"`
 	Phase      string        `json:"phase,omitempty"`
 	// Owner is the harness instance issuing the request, for execution
 	// ownership and lease renewal.
@@ -446,7 +444,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 				return nil, e
 			}
 			return c, protocol.DeclareRecovery(h, p, ref, r.Event, r.Session, gc.RecoveryDeclaration{
-				Objective: r.Objective, Result: r.Result, Point: r.Point,
+				Objective: r.Objective, Result: r.Result,
 				Scope: r.Scope, Actions: r.Actions, Attempts: r.Attempts,
 			})
 		},

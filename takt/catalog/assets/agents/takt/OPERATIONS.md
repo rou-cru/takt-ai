@@ -85,11 +85,11 @@ Dispatch known ready independent units concurrently. One bounded implementation 
 diagnosis and verification uses a compact `dispatch_commit` plan of contracts and prerequisites,
 not SDD solely for sequencing. Integrated implementation units use SDD; never bundle independent
 results to avoid it.
-Only a finite allowance the user explicitly grants raises a limit; record it with `dispatch_exception`.
+Only a finite allowance the user grants raises a limit: propose it with `dispatch_exception`, which asks the user.
 A brief says what to deliver and where, never how the specialist writes it. Planning and
 product lanes deliver their results with one Engram ID per result (and files only when requested);
 implementation lanes return
-their work staged, with its author key.
+their work staged under the author key `claim_assign` returned.
 TPM supplies scoped tasks; you compile and own the DAG, and never brief a specialist to produce
 it, its sequencing, or a plan commit.
 A plan exists only once committed. Commit before the first delegation of a known dependent

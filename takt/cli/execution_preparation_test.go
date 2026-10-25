@@ -43,7 +43,7 @@ func TestPrepareInputsAbsenceDoesNotSpendAttempt(t *testing.T) {
 	if len(p.Executions) != 0 || p.InFlight() != 0 {
 		t.Fatal("invalid input declaration admitted execution")
 	}
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "brief", None: true}); err != nil {
+	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "brief"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := executionRequest(t, fx, r)
@@ -60,7 +60,7 @@ func TestPrepareInvalidSecondAuthorDoesNotLeaveFirstGate(t *testing.T) {
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	_, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true})
+	_, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true}); err != nil {
+	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(fx.state, "history.sqlite"))
@@ -148,7 +148,7 @@ func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
 	fx.dispatch("finish", rootA, "writer", "dev")
 	b := fx.delegate(rootA, "writer-b", "dev", "b.txt")
 	fx.dispatch("finish", rootA, "writer-b", "dev")
-	r := coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true}
+	r := coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}
 	if _, err := executionRequest(t, fx, r); err != nil {
 		t.Fatal(err)
 	}

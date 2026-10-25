@@ -257,7 +257,7 @@ func (fx *vfsFixture) adoptGates(root, unit, agent string) ([]vfs.AdoptedGate, e
 // judge prepares the native delegation and adopts its core-issued gates.
 func (fx *vfsFixture) judge(root, unit, agent string, authors ...string) []vfs.AdoptedGate {
 	fx.t.Helper()
-	if _, err := executionRequest(fx.t, fx, coordinationRequest{Action: "inputs", Session: root, Event: unit, None: true}); err != nil {
+	if _, err := executionRequest(fx.t, fx, coordinationRequest{Action: "inputs", Session: root, Event: unit}); err != nil {
 		fx.t.Fatal(err)
 	}
 	fx.dispatches[root+"/"+unit]++
@@ -341,7 +341,7 @@ func TestVFSClaimControlCommands(t *testing.T) {
 	claims, err = fx.mutate("claims", orchReq(rootA, nil))
 	assertVFSActiveClaim(t, claims, err)
 	_, err = fx.mutate("release", orchReq(rootA, map[string]any{"key": assigned.Key}))
-	refusedWith(t, "unconfirmed release of an active claim", err, "claim_release", "confirmed")
+	refusedWith(t, "unconfirmed release of an active claim", err, "the user's agreement", "agent dev")
 	fx.must("release", orchReq(rootB, map[string]any{"key": assigned.Key, "confirmed": true}))
 	if claims = fx.must("claims", orchReq(rootA, nil)); len(claims.Claims) != 0 {
 		t.Fatalf("claims after release = %+v", claims.Claims)
@@ -421,7 +421,7 @@ func TestVerifierPreparationAssignsOnlyValidatedGates(t *testing.T) {
 	author := fx.delegate(rootA, "u1", "dev", "owned.go")
 	_, err := fx.mutate("assign-verifier", claimReq(rootA, "review", "verify", map[string]any{"author_key": author}))
 	refusedWith(t, "the retired standalone gate writer", err, "unknown vfs command")
-	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true}); err != nil {
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

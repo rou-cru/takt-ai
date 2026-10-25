@@ -270,8 +270,8 @@ func TestRecordDecisionFromInterlocutor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.byID(res.ID).Content; !strings.Contains(got, "**Authority**: user — user said so\n") {
-		t.Fatalf("authority not user with evidence:\n%s", got)
+	if got := f.byID(res.ID).Content; !strings.Contains(got, "**Authority**: user, as quoted by architect — user said so\n") {
+		t.Fatalf("authority not the quoted user approval:\n%s", got)
 	}
 }
 
@@ -284,7 +284,7 @@ func TestRecordDecisionFromExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := f.byID(res.ID).Content
-	if !strings.Contains(got, "**Author**: dev\n") || !strings.Contains(got, "**Authority**: user — user: go with option B\n") {
+	if !strings.Contains(got, "**Author**: dev\n") || !strings.Contains(got, "**Authority**: user, as quoted by dev — user: go with option B\n") {
 		t.Fatalf("attribution wrong:\n%s", got)
 	}
 }
@@ -1028,11 +1028,11 @@ func TestCapabilitiesReevaluateOwnershipChanges(t *testing.T) {
 
 // TestRecordMatrixColumnOwnership checks that each traceability matrix column is
 // written only by its author: qa creates the matrix and its rows, tpm the
-// owning node, verify the evidence, each declared in the entry's title; a
-// dispute stays open to anyone, and entries that are not the matrix are
-// unaffected.
+// owning node, verify the evidence, each titled by the harness after its
+// author's column; a dispute stays open to anyone, and entries that are not the
+// matrix are unaffected.
 func TestRecordMatrixColumnOwnership(t *testing.T) {
-	_, cfg := newFake(t)
+	f, cfg := newFake(t)
 	ctx := context.Background()
 	entry := func(author, title string, rel *memory.RelatesTo) memory.RecordRequest {
 		req := base()
@@ -1062,12 +1062,11 @@ func TestRecordMatrixColumnOwnership(t *testing.T) {
 		{"verify adds the evidence", entry("verify", "Traceability Matrix: Evidence", supplements), nil},
 		{"anyone disputes it", entry("dev", "The matrix misses a row", &memory.RelatesTo{ID: matrix.ID, Relation: "disputes"}), nil},
 		{"a non-matrix target is unaffected", entry("dev", "Parser evidence", &memory.RelatesTo{ID: other.ID, Relation: "supplements"}), nil},
-		{"tpm creating a matrix", entry("tpm", "Traceability Matrix", nil), []string{"supplements", `"Traceability Matrix: Owning node"`}},
+		{"tpm creating a matrix", entry("tpm", "Traceability Matrix", nil), []string{"supplements"}},
 		{"dev creating a matrix", entry("dev", "Traceability Matrix", nil), []string{"qa, tpm and verify", "disputes"}},
-		{"tpm writing evidence", entry("tpm", "Traceability Matrix: Evidence", supplements), []string{`"Traceability Matrix: Owning node"`}},
-		{"tpm without a column", entry("tpm", "Owning nodes", supplements), []string{`"Traceability Matrix: Owning node"`}},
+
 		{"qa supersedes its latest rows", entry("qa", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: requirements.ID, Relation: "supersedes"}), nil},
-		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{`"Traceability Matrix: Evidence"`}},
+		{"verify revising rows", entry("verify", "Traceability Matrix: Requirements", &memory.RelatesTo{ID: matrix.ID, Relation: "corrects"}), []string{"qa's", "supplements"}},
 		{"dev adding to it", entry("dev", "Traceability Matrix: Evidence", supplements), []string{"qa, tpm and verify", "disputes"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1085,5 +1084,16 @@ func TestRecordMatrixColumnOwnership(t *testing.T) {
 				}
 			}
 		})
+	}
+	// The column is the author's, so the harness titles it whatever the
+	// author called it.
+	for _, title := range []string{"Traceability Matrix: Evidence", "Owning nodes"} {
+		res, err := memory.Record(ctx, cfg, entry("tpm", title, supplements))
+		if err != nil {
+			t.Fatalf("tpm adding %q: %v", title, err)
+		}
+		if got := f.byID(res.ID).Title; !strings.HasSuffix(got, "Traceability Matrix: Owning node") {
+			t.Errorf("tpm entry %q stored as %q; want its own column's title", title, got)
+		}
 	}
 }

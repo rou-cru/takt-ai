@@ -384,12 +384,12 @@ describe("stateless VFS caller", () => {
       },
     })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-b", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-b", result_ids: [] }, orchestrator)
       await vfs.run("claim_assign", { work_unit_id: "unit-b", agent: "dev", scope: ["src/a.go"], author_key: "old-key" }, orchestrator)
       expect((await vfs.run("vfs_bind", { scope: ["src/a.go"] }, devCtx)).content).toContain("author_key old-key")
       await vfs.run("vfs_write", { path: "src/a.go", content: "continued" }, devCtx)
 
-      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "review", agent: ORCHESTRATOR,
         input: { agent: "verify", description: "gate", author_keys: ["old-key", "other-key"] } })
       const gate = { tools: { vfs_read: {}, vfs_verify: {} }, ...reviewer, system: [] as Array<{ type: string; text: string }> }
@@ -429,7 +429,7 @@ describe("stateless VFS caller", () => {
 
 describe("delegation lifecycle", () => {
   const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-1", input })
-  const declareNone = (vfs: Awaited<ReturnType<typeof startVfs>>, unit: string) => vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+  const declareNone = (vfs: Awaited<ReturnType<typeof startVfs>>, unit: string) => vfs.run("dispatch_inputs", { work_unit_id: unit, result_ids: [] }, orchestrator)
   // acceptInputs lets the harness validate every declared input and result.
   const acceptInputs = (call: Call) => call.kind === "dispatch" && (call.command === "inputs" || call.command === "validate_results") ? { out: "{}" } : undefined
 
@@ -441,14 +441,13 @@ describe("delegation lifecycle", () => {
     } finally { await vfs.stop() }
   })
 
-  test("a declaration names existing invariants or their absence, exactly one", async () => {
+  test("a declaration names the existing invariants a unit consumes, an empty list their absence", async () => {
     const vfs = await startVfs({ respond: acceptInputs })
     try {
-      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a" }, orchestrator)).rejects.toThrow("exactly one of them")
-      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7], none: true }, orchestrator)).rejects.toThrow("exactly one of them")
-      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", none: true }, { sessionID: "child-r", agent: RESULT_AGENT })).rejects.toThrow("dispatch_inputs belongs to the orchestrator")
+      await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, { sessionID: "child-r", agent: RESULT_AGENT })).rejects.toThrow("dispatch_inputs belongs to the orchestrator")
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7, 8] }, orchestrator)
-      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",none:false,result_ids: [7, 8] }])
+      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",result_ids: [] }, { action: "inputs", session: "root",event:"unit-a",result_ids: [7, 8] }])
     } finally { await vfs.stop() }
   })
 
@@ -507,7 +506,7 @@ describe("delegation lifecycle", () => {
 
   const producerSessions = { "child-r": { parentID: "root", title: "unit-r" } }
   const admitProducer = async (vfs: Awaited<ReturnType<typeof startVfs>>, consumed?: number[]) => {
-    await vfs.run("dispatch_inputs", consumed ? { work_unit_id: "unit-r", result_ids: consumed } : { work_unit_id: "unit-r", none: true }, orchestrator)
+    await vfs.run("dispatch_inputs", consumed ? { work_unit_id: "unit-r", result_ids: consumed } : { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
     await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
     const context = { tools: Object.fromEntries(VFS_TOOL_NAMES.map((name) => [name, {}])), sessionID: "child-r", agent: RESULT_AGENT, system: [] }
     await vfs.fire(vfs.session, "context", context)
@@ -582,7 +581,7 @@ describe("delegation lifecycle", () => {
   test("a background producer stays in flight after its launch returns and settles when its child goes idle", async () => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
       await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] })
       const event = finished()
@@ -635,7 +634,7 @@ describe("delegation lifecycle", () => {
   test("a child is learned when the host creates it, so one that dies before its first turn still ends its delegation", async () => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
       await vfs.fire(vfs.tool, "execute.after", finished())
       vfs.publish({ id: "evt-new", created: 1, type: "session.created", data: { sessionID: "child-r", agent: RESULT_AGENT, parentID: "root", title: "unit-r" } } as unknown as OpenCodeEvent)
@@ -658,7 +657,7 @@ describe("delegation lifecycle", () => {
     }
     const vfs = await startVfs({ sessions, respond: acceptInputs })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
       await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-old", agent: RESULT_AGENT, system: [] })
       await expect(vfs.run("deliver_result", { result_ids: [9] }, { sessionID: "child-old", agent: RESULT_AGENT })).rejects.toThrow("nothing was credited")
@@ -683,7 +682,7 @@ describe("delegation lifecycle", () => {
       }) },
     })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-n", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-n", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-n", input: { description: "unit-n", agent: RESULT_AGENT } })
       // The child the host no longer has is reconciled; the running one is not.
       expect(vfs.requests("dispatch", "uncertain")).toEqual([])
@@ -705,7 +704,7 @@ describe("delegation lifecycle", () => {
       history: { executions: saved({ "old:1": { unit: "unit-r", root: "root", agent: RESULT_AGENT, background: true, child: "child-r" } }) },
     })
     const delegate = async (unit: string) => {
-      await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: unit, result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
     }
     try {
@@ -727,7 +726,7 @@ describe("delegation lifecycle", () => {
     try {
       await admitProducer(vfs)
       await vfs.fire(vfs.tool, "execute.after", { ...finished(), status: "error" })
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r-fix", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r-fix", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-fix", input: { description: "unit-r-fix", agent: RESULT_AGENT, sessionID: "child-r" } })
       const context = { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
       await vfs.fire(vfs.session, "context", context)
@@ -780,7 +779,7 @@ describe("delegation lifecycle", () => {
     const missing:string[]=[]
     const vfs = await startVfs({ sessions: producerSessions,missing })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT, background: true } })
       await vfs.fire(vfs.session, "context", { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] })
       await vfs.fire(vfs.tool, "execute.after", finished())
@@ -801,7 +800,7 @@ describe("delegation lifecycle", () => {
     try {
       vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "child-r" } } as OpenCodeEvent)
       await until(() => vfs.requests("dispatch", "finish").length > 0)
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
       expect(vfs.requests("dispatch", "uncertain")).toEqual([])
       expect(vfs.requests("dispatch", "reconcile")).toEqual([])
@@ -812,7 +811,7 @@ describe("delegation lifecycle", () => {
   test("a launch the core refuses is not remembered", async () => {
     const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "prepare" ? { code: 1, err: "unit already settled" } : undefined })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })).rejects.toThrow("unit already settled")
       expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
     } finally { await vfs.stop() }
@@ -883,7 +882,7 @@ describe("maintenance cycle", () => {
   test("a native reconciliation failure keeps its dispatch without blocking unrelated work, and is retried", async () => {
     let failing=true
     const vfs=await startVfs({nativeCalls:{"old:1":"completed"},history:{executions:saved({"old:1":{root:"root",unit:"u-old",child:"old-child",background:true}})},wait:async()=>{if(failing)throw new Error("host unavailable")}})
-    const launch=async(id:string)=>{await vfs.run("dispatch_inputs",{work_unit_id:id,none:true},orchestrator);await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",id,input:{description:id,agent:RESULT_AGENT}})}
+    const launch=async(id:string)=>{await vfs.run("dispatch_inputs",{work_unit_id:id,result_ids:[]},orchestrator);await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",id,input:{description:id,agent:RESULT_AGENT}})}
     try {
       await launch("new-1")
       await until(()=>vfs.errors.length>0)
@@ -900,7 +899,7 @@ describe("maintenance cycle", () => {
     const vfs = await startVfs()
     try {
       for (const unit of ["unit-1", "unit-2"]) {
-        await vfs.run("dispatch_inputs", { work_unit_id: unit, none: true }, orchestrator)
+        await vfs.run("dispatch_inputs", { work_unit_id: unit, result_ids: [] }, orchestrator)
         await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
       }
       expect(vfs.requests("dispatch", "prepare")).toHaveLength(2)
@@ -1194,26 +1193,36 @@ describe("path ownership", () => {
 })
 
 describe("claims and consolidation", () => {
-  test("releasing a claim leaves every decision to the core, carrying the user's confirmation", async () => {
-    const refusal = "claim k-active is held by an active agent; ask the user and call claim_release again with confirmed true"
+  test("releasing an active claim asks the user; the model never supplies the agreement", async () => {
+    const refusal = "vfs: releasing this active claim needs the user's agreement: agent dev works under it on unit u over [a.go]"
+    const created: Array<Record<string, unknown>> = []
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({
+      OpenCode: { make: () => ({ permission: { create: async (request: Record<string, unknown>) => {
+        created.push(request)
+        return { effect: created.length === 1 ? "allow" : "deny", id: request.id }
+      } } }) },
+    }))
     const vfs = await startVfs({
       respond: (call) => call.command === "release" && call.request.confirmed !== true ? json({ ok: false, error: refusal }) : undefined,
     })
+    const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
     try {
-      await expect(vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)).rejects.toThrow(refusal)
-      await vfs.run("claim_release", { claim_key: "k-active", confirmed: true }, orchestrator)
-      await expect(vfs.run("claim_release", { claim_key: "k-active" }, dev)).rejects.toThrow("belongs to the orchestrator")
-      expect(vfs.actions("vfs")).toEqual(["release", "release"])
+      await vfs.run("claim_release", { claim_key: "k-active", confirmed: true }, caller)
+      expect(created[0]).toMatchObject({ sessionID: "root", action: "claim_release", resources: ["k-active"], metadata: { refusal } })
       expect(vfs.requests("vfs", "release")).toEqual([false, true].map(confirmed => ({
         ipc_version: IPC_VERSION, session_id: "root", caller_session: "root", caller_agent: ORCHESTRATOR, key: "k-active", confirmed,
       })))
+      await expect(vfs.run("claim_release", { claim_key: "k-active" }, caller)).rejects.toThrow("Permission denied: claim_release")
+      expect(vfs.actions("vfs")).toEqual(["release", "release", "release"])
+      await expect(vfs.run("claim_release", { claim_key: "k-active" }, dev)).rejects.toThrow("belongs to the orchestrator")
     } finally { await vfs.stop() }
   })
 
   test("claim_assign with an author key asks to keep the staged work", async () => {
     const vfs = await startVfs()
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go", "b.go"], author_key: "author-key" }, orchestrator)
       expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ author_key: "author-key", scope: ["a.go", "b.go"] })])
     } finally { await vfs.stop() }
@@ -1369,7 +1378,7 @@ describe("claims and consolidation", () => {
     try {
       expect(() => vfs.run("claim_assign_verifier", {}, orchestrator)).toThrow("missing tool")
       expect(vfs.nativeSubagent.input).toHaveProperty("properties.author_keys")
-      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", result_ids: [] }, orchestrator)
       for (generation = 1; generation <= 2; generation++) {
         const id = `review-${generation}`
         await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id,
@@ -1398,7 +1407,7 @@ describe("claims and consolidation", () => {
   test.each([[[]], [["a", "a"]], [["a", " "]], ["a"]])("author_keys %j is refused before anything is admitted", async (authorKeys) => {
     const vfs = await startVfs({ permissions: { verify: verifierGrants } })
     try {
-      await vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+      await vfs.run("dispatch_inputs", { work_unit_id: "gate", result_ids: [] }, orchestrator)
       await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "bad",
         input: { agent: "verify", description: "gate", author_keys: authorKeys } })).rejects.toThrow("unique, nonempty staged author keys")
       expect(activeDispatches(vfs)).toEqual([])
@@ -1413,7 +1422,7 @@ describe("claims and consolidation", () => {
       })
       return vfs
     }
-    const delegate = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.run("dispatch_inputs", { work_unit_id: "gate", none: true }, orchestrator)
+    const delegate = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.run("dispatch_inputs", { work_unit_id: "gate", result_ids: [] }, orchestrator)
       .then(() => vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call",
         input: { agent: "verify", description: "gate", author_keys: ["a", "b", "c"] } }))
 
@@ -1836,11 +1845,28 @@ describe("delegated VFS context", () => {
     try {
       const event = contextFor()
       await vfs.fire(vfs.session, "context", event)
-      expect(toolNames(event)).toEqual(["vfs_bind", "vfs_write", "read"])
+      expect(toolNames(event)).toEqual(["vfs_write", "read"])
       expect(JSON.stringify(event.system)).not.toContain("vfs_delete")
       expect(JSON.stringify(event.system)).not.toContain("vfs_read")
       expect(event.system).toContainEqual({ type: "text", text: expect.stringContaining("Work unit unit-a owns exactly these workspace-relative paths: src/a.go, src/b.go.") })
     } finally { await vfs.stop() }
+  })
+
+  test("an author arrives bound to the scope the harness assigned; a refused bind leaves vfs_bind with its reason", async () => {
+    const scope = ["src/a.go", "src/b.go"]
+    for (const refused of [false, true]) {
+      const vfs = await startVfs({ sessions: unitSessions, permissions: { dev: grants }, claims: [claim({ pending: true, scope })],
+        respond: (call) => refused && call.command === "bind" ? json({ ok: false, error: "no admission yet" }) : undefined })
+      try {
+        const event = contextFor()
+        await vfs.fire(vfs.session, "context", event)
+        expect(vfs.requests("vfs", "bind")).toEqual([expect.objectContaining({ work_unit_id: "unit-a", scope })])
+        expect(toolNames(event)).toEqual(refused ? ["vfs_bind", "vfs_write", "read"] : ["vfs_write", "read"])
+        const text = event.system.map(part => part.text).join("\n")
+        expect(text.includes("no admission yet")).toBe(refused)
+        expect(text).not.toContain("author_key")
+      } finally { await vfs.stop() }
+    }
   })
 
   test("a claim naming an author turns the grant into a judging assignment", async () => {
@@ -1920,7 +1946,7 @@ describe("permission responses are outside telemetry's critical path",()=>{
 
 test("a vanished child and an expired owner never prove termination of a running native call",async()=>{
   const vfs=await startVfs({missing:["gone"],nativeCalls:{"old:call":"running"},history:{executions:saved({"old:call":{unit:"orphan",root:"root",child:"gone",owner:"expired"}})}})
-  const launch=async(unit:string)=>{await vfs.run("dispatch_inputs",{work_unit_id:unit,none:true},orchestrator);await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:unit,input:{description:unit,agent:RESULT_AGENT}})}
+  const launch=async(unit:string)=>{await vfs.run("dispatch_inputs",{work_unit_id:unit,result_ids:[]},orchestrator);await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:unit,input:{description:unit,agent:RESULT_AGENT}})}
   try {
     await launch("first")
     await until(()=>vfs.errors.some(e=>e[0]==="Takt native delegation reconciliation"))
@@ -1934,7 +1960,7 @@ test("a vanished child and an expired owner never prove termination of a running
 test("a completed background launch with a verified deleted child can compensate its exact attempt",async()=>{
   const vfs=await startVfs({missing:["gone"],nativeCalls:{"old:call":"completed"},history:{executions:saved({"old:call":{unit:"orphan",root:"root",child:"gone",background:true,owner:"expired"}})}})
   try {
-    await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+    await vfs.run("dispatch_inputs",{work_unit_id:"next",result_ids:[]},orchestrator)
     await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
     expect(vfs.history.executions["old:call"].settled).toBe(true)
     expect(vfs.requests("dispatch","finish")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1"}))
@@ -1944,7 +1970,7 @@ test("a completed background launch with a verified deleted child can compensate
 test("a background delegation whose launch call left the caller's context still settles when its child is idle",async()=>{
   const vfs=await startVfs({history:{executions:saved({"old:call":{unit:"orphan",root:"root",child:"idle",background:true,owner:"expired"}})}})
   try {
-    await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+    await vfs.run("dispatch_inputs",{work_unit_id:"next",result_ids:[]},orchestrator)
     await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
     await until(()=>!!vfs.history.executions["old:call"].settled)
     expect(vfs.requests("dispatch","finish")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1"}))
@@ -1954,7 +1980,7 @@ test("a background delegation whose launch call left the caller's context still 
 test("a failed background child wait is not proof of termination",async()=>{
   const vfs=await startVfs({nativeCalls:{"old:call":"completed"},wait:async()=>{throw Error("host unavailable")},history:{executions:saved({"old:call":{unit:"orphan",root:"root",child:"live",background:true,owner:"expired"}})}})
   try {
-    await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+    await vfs.run("dispatch_inputs",{work_unit_id:"next",result_ids:[]},orchestrator)
     await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
     await until(()=>vfs.errors.some(e=>e[0]==="Takt native delegation reconciliation"))
     expect(vfs.history.executions["old:call"].settled).toBeFalsy()
@@ -2012,7 +2038,7 @@ describe("native inspection lifecycle", () => {
     ]
     const vfs = await startVfs({ missing:["gone"], respond: call => call.command === "native-inspections" ? json({ok:true,inspections}) : undefined })
     try {
-      await vfs.run("dispatch_inputs",{work_unit_id:"next",none:true},orchestrator)
+      await vfs.run("dispatch_inputs",{work_unit_id:"next",result_ids:[]},orchestrator)
       await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
       await until(()=>vfs.requests("vfs","native-inspection-end").length > 0)
       expect(vfs.requests("vfs","native-inspection-end")).toEqual([expect.objectContaining({call_id:"gone-call",caller_session:"gone"})])

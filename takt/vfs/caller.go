@@ -44,9 +44,6 @@ var (
 	errNotThisSession = fmt.Errorf("%w: author_key names no staged work; list claims with claim_list and use a key it reports", ErrIdentity)
 	// errOrchestratorOnly refuses consolidation or discard by any other agent.
 	errOrchestratorOnly = fmt.Errorf("%w: only the orchestrator consolidates or discards staged work; return the author_key to the orchestrator", ErrScopeDenied)
-	// errUnconfirmedRelease refuses releasing an adopted claim of this root
-	// without the user's confirmation.
-	errUnconfirmedRelease = fmt.Errorf("%w: ask the user to confirm releasing this active claim, then call claim_release again with confirmed true", ErrScopeDenied)
 	// errStaleAcceptance refuses an acceptance given for another staged state.
 	errStaleAcceptance = fmt.Errorf("%w: the staged work changed since the user accepted it; call vfs_consolidate again and ask the user about the state it refuses", ErrStaleRevision)
 	// ErrNoAdmission is returned when a delegated unit binds or is given a gate
@@ -63,6 +60,12 @@ func errGateKey(key, author AgentID) error {
 // claim_assign that continues it in the caller's root.
 func errOtherRoot(key AgentID, b Identity, staged []string) error {
 	return fmt.Errorf("%w: author_key %s belongs to root session %s (unit %s, agent %s); continue it in this session with claim_assign naming author_key %s and a scope that keeps its staged paths [%s], then vfs_consolidate or vfs_discard it", ErrIdentity, key, b.SessionID, b.WorkUnitID, b.Specialist, key, strings.Join(staged, ", "))
+}
+
+// errUnconfirmedRelease refuses releasing an adopted claim of this root
+// without the user's confirmation, naming what the user is asked to release.
+func errUnconfirmedRelease(b Identity, owned []string) error {
+	return fmt.Errorf("%w: releasing this active claim needs the user's agreement: agent %s works under it on unit %s over [%s]", ErrScopeDenied, b.Specialist, b.WorkUnitID, strings.Join(owned, ", "))
 }
 
 func errKeyNotHeld(key AgentID) error {
@@ -517,7 +520,7 @@ func (f *FS) ReleaseClaim(session string, key AgentID, confirmed bool) (err erro
 	case !ok:
 		return errNotThisSession
 	case b.SessionID == session && !b.Prelaunch && !b.Superseded && !confirmed && (b.GateAuthorKey != "" || len(f.ownedScopeLocked(key)) > 0):
-		return errUnconfirmedRelease
+		return errUnconfirmedRelease(b, f.ownedScopeLocked(key))
 	case b.SessionID != session && f.stagedLocked(key):
 		return errors.Join(ErrStagedWork, errOtherRoot(key, b, f.stagedPathsLocked(key)))
 	}

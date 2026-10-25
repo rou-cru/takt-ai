@@ -18,15 +18,15 @@ import (
 )
 
 func declareInputs(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
-	if strings.TrimSpace(r.Event) == "" || (len(r.ResultIDs) > 0) == r.None {
-		return nil, errors.New("dispatch_inputs: declare either consumed result_ids or none: true, exactly one of them")
+	if strings.TrimSpace(r.Event) == "" {
+		return nil, errors.New("dispatch_inputs: name the unit the delegation will be named after")
 	}
 	if len(r.ResultIDs) > 0 {
 		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs); err != nil {
 			return nil, err
 		}
 	}
-	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: r.None, Cause: history.CauseNone})
+	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: len(r.ResultIDs) == 0, Cause: history.CauseNone})
 	return map[string]any{"result_ids": r.ResultIDs}, err
 }
 

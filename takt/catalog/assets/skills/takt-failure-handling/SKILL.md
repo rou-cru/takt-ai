@@ -11,7 +11,7 @@ metadata:
 
 A failure that touches a contract, another unit's paths, or the objective is not minor; unless
 it is a contract defect, it goes to a declared recovery: declare with
-`dispatch_declare_recovery` a binary result, scope, a recoverable point, an action budget (at
+`dispatch_declare_recovery` a binary result, scope, an action budget (at
 most {{policy.recovery_max_actions}}) and an attempt budget (at most {{policy.recovery_max_attempts}}) before acting, and close it
 with `dispatch_close_recovery`.
 Reversibility is confined to unconsolidated governed state, never promised for external effects.
@@ -25,10 +25,9 @@ On an escalation trigger:
 4. Report evidence and alternatives.
 5. Await direction.
 
-For an active VFS claim, name the exact active agent and claimed paths in the native user question;
-releasing and discarding follow takt-vfs-coordination.
+For an active VFS claim, releasing and discarding follow takt-vfs-coordination.
 
 ## Exhausted recoveries
 
 After {{policy.recovery_failures}} consecutive failed recoveries of the same objective, escalate (a second failing verdict for the same author key counts as one failed recovery); no further recovery
-is authorized merely by sending the escalation. An exhausted recovery means the real state is unknown: the escalation offers the blind review pair over that objective before any allowance, and an allowance granted afterward is spent on a strategy rebuilt from the pair's findings. The user's decision to continue an abandoned recovery scope is recorded with `dispatch_exception` on that objective's attempts or actions; the decision to drop it, with `dispatch_restore`. After consolidation, repair forward.
+is authorized merely by sending the escalation. An exhausted recovery means the real state is unknown: the escalation offers the blind review pair over that objective before any allowance, and an allowance granted afterward is spent on a strategy rebuilt from the pair's findings. Continuing an abandoned recovery scope is proposed with `dispatch_exception` on that objective's attempts or actions, which asks the user; the decision to drop it, with `dispatch_restore`. After consolidation, repair forward.

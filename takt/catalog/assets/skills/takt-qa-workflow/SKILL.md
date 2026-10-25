@@ -56,8 +56,8 @@ Before **each** round, use `dispatch_commit` with a new version and the standing
 plus `qa_round: { objective, units }`: the stable acceptance objective and that round's test-author
 units only, not gates or mutation. The first admitted author unit consumes one round; siblings,
 retries and later plan revisions do not reset or double-count it. Membership cannot migrate.
-At the bound, continue to Close/Report with residual risk or request the user's finite
-`dispatch_exception` on `budget/qa-strengthening-rounds` for that objective.
+At the bound, continue to Close/Report with residual risk or propose a finite
+`dispatch_exception` on `budget/qa-strengthening-rounds` for that objective, which asks the user.
 
 ## Outcomes
 

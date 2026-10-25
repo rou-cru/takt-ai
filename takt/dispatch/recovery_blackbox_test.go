@@ -75,7 +75,7 @@ func abandonedScope(t *testing.T) (*history.History, dispatch.AdmissionPolicy, *
 		}
 		mustFinish(t, h, unit)
 	}
-	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "both units deliver", Point: "before-retry", Scope: recoveryUnits, Actions: 10, Attempts: 1}
+	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "both units deliver", Scope: recoveryUnits, Actions: 10, Attempts: 1}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); err != nil {
 		t.Fatalf("DeclareRecovery() error = %v", err)
 	}
@@ -109,7 +109,7 @@ func TestAbandonedScopeGuidesToTheUsersDecision(t *testing.T) {
 	if err := admitUnit(t, h, p, "b", "retry-b"); !namesAll(err, exit...) {
 		t.Errorf("Admit() in an abandoned scope error = %v, want it to name %v", err, exit)
 	}
-	declaration := dispatch.RecoveryDeclaration{Objective: "other", Result: "r", Point: "p", Scope: recoveryUnits, Actions: 1, Attempts: 1}
+	declaration := dispatch.RecoveryDeclaration{Objective: "other", Result: "r", Scope: recoveryUnits, Actions: 1, Attempts: 1}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); !namesAll(err, exit...) {
 		t.Errorf("DeclareRecovery() over an abandoned scope error = %v, want it to name %v", err, exit)
 	}
@@ -154,7 +154,7 @@ func TestRestoreRevertsTheStagedWorkOfTheWholeScope(t *testing.T) {
 	if err := dispatch.Restore(h, f, "", recoverySession, recoveryObjective); err == nil {
 		t.Error("Restore() of an already restored recovery error = nil, want an error")
 	}
-	declaration := dispatch.RecoveryDeclaration{Objective: "again", Result: "both units deliver", Point: "after-restore", Scope: recoveryUnits, Actions: 10, Attempts: 2}
+	declaration := dispatch.RecoveryDeclaration{Objective: "again", Result: "both units deliver", Scope: recoveryUnits, Actions: 10, Attempts: 2}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); err != nil {
 		t.Errorf("DeclareRecovery() after the restoration error = %v", err)
 	}
@@ -166,7 +166,7 @@ func TestRestoreNeedsNoStagedWork(t *testing.T) {
 		mustAdmit(t, h, p, unit, "first-"+unit)
 		mustFinish(t, h, unit)
 	}
-	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "r", Point: "p", Scope: recoveryUnits, Actions: 10, Attempts: 1}
+	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "r", Scope: recoveryUnits, Actions: 10, Attempts: 1}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); err != nil {
 		t.Fatalf("DeclareRecovery() error = %v", err)
 	}
@@ -184,7 +184,7 @@ func TestRestoreWaitsForWorkThatCanStillAct(t *testing.T) {
 	h, p, f := newHistory(t), loadPolicy(t), openRecoveryFS(t)
 	mustAdmit(t, h, p, "a", "first-a")
 	mustFinish(t, h, "a")
-	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "r", Point: "p", Scope: recoveryUnits, Actions: 1, Attempts: 2}
+	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "r", Scope: recoveryUnits, Actions: 1, Attempts: 2}
 	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); err != nil {
 		t.Fatalf("DeclareRecovery() error = %v", err)
 	}

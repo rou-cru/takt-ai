@@ -254,7 +254,7 @@ func (f *FS) releaseExitLocked(session string, key AgentID, b Identity) string {
 	case f.stagedLocked(key):
 		return fmt.Sprintf("it holds staged work: vfs_consolidate or vfs_discard author_key %s once its unit returns", key)
 	default:
-		return fmt.Sprintf("it holds no staged work: claim_release claim_key %s (an active claim of this session needs the user's agreement and confirmed true)", key)
+		return fmt.Sprintf("it holds no staged work: claim_release claim_key %s (an active claim of this session is released once the user agrees)", key)
 	}
 }
 

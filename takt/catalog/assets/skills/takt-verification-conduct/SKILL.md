@@ -50,4 +50,4 @@ If a command modified a project file anyway, such as a cache a tool offered no w
   it finds the exact place.
 - Deliver the entry's ID with `deliver_result`.
 - State evidence only. Whoever delegated you decides what follows.
-- When something blocks you, end your turn stating the blocker; whoever delegated you receives it and can resume you.
+- When something blocks you, record the blocker and deliver it as your result; whoever delegated you receives it and can resume you.

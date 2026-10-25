@@ -193,10 +193,10 @@ type Recovery struct {
 	// Unit is the work unit the declaration was recorded against, so a forced
 	// closure names it instead of inventing one.
 	Unit string `json:"unit,omitempty"`
-	// Result, Point and Scope are what the declaration recorded before the
-	// uncertain work began; empty means the declaration was absent.
+	// Result and Scope are what the declaration recorded before the uncertain
+	// work began; empty means the declaration was absent. Cursor is its
+	// recoverable point.
 	Result string   `json:"result,omitempty"`
-	Point  string   `json:"point,omitempty"`
 	Scope  []string `json:"scope,omitempty"`
 	// Actions and Attempts are the declared allowances, Used and Attempted the
 	// consumption derived from recorded facts alone. Neither budget is reset by
@@ -497,7 +497,7 @@ func budgeted(b *Budgets, e Entry) bool {
 		// streak is carried: redeclaring never resets it (PR-HAR-22).
 		b.Recoveries[e.Objective] = Recovery{
 			Open: true, Failures: b.Recoveries[e.Objective].Failures, Unit: e.WorkUnitID,
-			Result: e.Result, Point: e.Point, Scope: e.Scope,
+			Result: e.Result, Scope: e.Scope,
 			Actions: e.Actions, Attempts: e.Attempts,
 			Attempted: map[string]bool{}, Cursor: refSeq(e.JournalRef),
 		}

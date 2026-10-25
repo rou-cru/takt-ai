@@ -63,7 +63,6 @@ type request struct {
 	Pass       bool             `json:"pass,omitempty"`
 	Objective  string           `json:"objective,omitempty"`
 	Result     string           `json:"result,omitempty"`
-	Point      string           `json:"point,omitempty"`
 	Scope      []string         `json:"scope,omitempty"`
 	Actions    int              `json:"actions,omitempty"`
 	Attempts   int              `json:"attempts,omitempty"`
@@ -77,7 +76,6 @@ type request struct {
 	Origin     string           `json:"origin,omitempty"`
 	Caller     string           `json:"caller,omitempty"`
 	Owner      string           `json:"owner,omitempty"`
-	None       bool             `json:"none,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -97,11 +95,11 @@ func retry(unit string) request {
 func tick() request { return request{Action: "tick", Session: rootSession} }
 
 // declaration is a complete recovery declaration: a binary expected result,
-// both budgets, the objective, a recoverable point and the explicit scope.
+// both budgets, the objective and the explicit scope.
 func declaration(unit, objective string, scope []string, actions, attempts int) request {
 	return request{
 		Action: "recovery", Event: unit, Session: rootSession, Objective: objective,
-		Result: "the failing gate passes", Point: "journal/0", Scope: scope,
+		Result: "the failing gate passes", Scope: scope,
 		Actions: actions, Attempts: attempts,
 	}
 }
@@ -725,7 +723,7 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 
 func abandonUnreturnedDelegation(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", None: true})
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief"})
 	prepare := func(dispatch string) request {
 		return request{Action: "prepare", Session: rootSession, Event: "brief", Dispatch: dispatch, Caller: rootSession, Agent: "pm", Owner: "instance"}
 	}
@@ -871,7 +869,6 @@ func recoveryFailureStreak(t *testing.T, bin string) {
 func incompleteDeclaration(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	partial := declaration("unit", "goal", []string{"unit"}, 0, 2)
-	partial.Point = ""
 	s.deniedAs(partial, causeIncomplete)
 	if r := s.recovery("goal"); r.Open || r.Actions != 0 {
 		t.Fatalf("incomplete declaration opened bounded recovery: %+v", r)
@@ -883,7 +880,7 @@ func incompleteDeclaration(t *testing.T, bin string) {
 			continue
 		}
 		recorded++
-		if e.Objective != "goal" || e.Result == "" || e.Attempts != 2 || e.Point != "" || e.Actions != 0 {
+		if e.Objective != "goal" || e.Result == "" || e.Attempts != 2 || e.Actions != 0 {
 			t.Fatalf("declaration not recorded as it arrived: %+v", e)
 		}
 	}
@@ -893,7 +890,7 @@ func incompleteDeclaration(t *testing.T, bin string) {
 	// A declaration beyond the admissible ceiling is denied rather than trimmed.
 	s.deniedAs(declaration("unit", "goal", []string{"unit"}, policy(t).Recovery.MaxActions+1, 1), history.BoundRecoveryActions)
 	s.must(declaration("unit", "goal", []string{"unit"}, 4, 1))
-	if r := s.recovery("goal"); !r.Open || r.Actions != 4 || r.Attempts != 1 || len(r.Scope) != 1 || r.Result == "" || r.Point == "" {
+	if r := s.recovery("goal"); !r.Open || r.Actions != 4 || r.Attempts != 1 || len(r.Scope) != 1 || r.Result == "" {
 		t.Fatalf("complete declaration not recorded: %+v", r)
 	}
 }
