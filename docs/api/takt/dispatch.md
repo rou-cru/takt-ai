@@ -397,13 +397,12 @@ type PlanUnit struct {
 <a name="RecoveryDeclaration"></a>
 ## type RecoveryDeclaration
 
-RecoveryDeclaration is what PR\-ORQ\-13 requires recorded before uncertain work begins: the binary expected result, both budgets, the objective identity, the prior recoverable point, and the explicit scope.
+RecoveryDeclaration is what PR\-ORQ\-13 requires recorded before uncertain work begins: the binary expected result, both budgets, the objective identity and the explicit scope. The prior recoverable point is the harness's own: the journal position the declaration is recorded at.
 
 ```go
 type RecoveryDeclaration struct {
     Objective string   `json:"objective"`
     Result    string   `json:"result"`
-    Point     string   `json:"point"`
     Scope     []string `json:"scope"`
     Actions   int      `json:"actions"`
     Attempts  int      `json:"attempts"`
