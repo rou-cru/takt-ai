@@ -265,8 +265,15 @@ func (d *retentionDirectory) reserve() (string, error) {
 	if d.path != "" {
 		return d.path, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(d.base), RetainedDirectoryMode); err != nil {
+	parent := filepath.Dir(d.base)
+	if err := os.MkdirAll(parent, RetainedDirectoryMode); err != nil {
 		return "", err
+	}
+	// A planted takt-retained symlink would move retained files outside the root.
+	if info, err := os.Lstat(parent); err != nil {
+		return "", err
+	} else if !info.IsDir() {
+		return "", fmt.Errorf("retention directory %q is not a real directory", parent)
 	}
 	for suffix := 0; ; suffix++ {
 		candidate := d.base

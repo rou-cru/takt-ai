@@ -12,7 +12,7 @@ func TestBackupsSince(t *testing.T) {
 	if BackupsSince(root, start) != "" {
 		t.Fatal("no backup dir must report none")
 	}
-	if _, err := backupContent(root, "x.md", []byte("x")); err != nil {
+	if _, err := backupContent(root, "x.md", []byte("x"), ManagedFileMode); err != nil {
 		t.Fatal(err)
 	}
 	if BackupsSince(root, start) == "" || BackupsSince(root, start.Add(time.Hour)) != "" {
@@ -35,7 +35,7 @@ func TestOperationRecordNoticePointsToRestoreWhenBackedUp(t *testing.T) {
 		t.Fatalf("without backups, notice must not point to restore, got %q", notice[1])
 	}
 
-	if _, err := backupContent(root, "x.md", []byte("x")); err != nil {
+	if _, err := backupContent(root, "x.md", []byte("x"), ManagedFileMode); err != nil {
 		t.Fatal(err)
 	}
 

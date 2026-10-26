@@ -787,17 +787,17 @@ func priorStateFor(root string, artifact Artifact, manifest *OwnershipManifest) 
 
 func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorState, error) {
 	state := priorState{preExisting: entry.PreExisting, priorSHA256: entry.PriorSHA256, backupPath: entry.BackupPath, mode: os.FileMode(entry.Mode)}
-	current, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(artifactPath)))
-	if errors.Is(err, os.ErrNotExist) {
-		return state, nil
-	}
+	destination, err := SafeJoin(root, filepath.FromSlash(artifactPath))
 	if err != nil {
 		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifactPath, err)
 	}
-	if hashOf(current) == entry.SHA256 {
-		return state, nil
+	// Only a regular file is read: Deploy refuses a symlink or other non-file,
+	// so no outside content is ever copied into the backups.
+	current, content, err := managedFileState(destination, entry)
+	if err != nil || current != managedChanged {
+		return state, err
 	}
-	edited, err := backedUpState(root, artifactPath, current, state.mode)
+	edited, err := backedUpState(root, artifactPath, content, state.mode)
 	if err != nil {
 		return priorState{}, err
 	}
@@ -810,22 +810,26 @@ func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorSt
 
 func preexistingPriorState(root, artifactPath string) (priorState, error) {
 	state := priorState{mode: ManagedFileMode}
-	destination := filepath.Join(root, filepath.FromSlash(artifactPath))
-	info, err := os.Stat(destination)
+	destination, err := SafeJoin(root, filepath.FromSlash(artifactPath))
+	if err != nil {
+		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifactPath, err)
+	}
+	info, err := os.Lstat(destination)
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
 	}
 	if err != nil {
 		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifactPath, err)
 	}
-	current, err := os.ReadFile(destination)
+	if !info.Mode().IsRegular() {
+		// Nothing is read through a symlink or from a non-file; Deploy refuses it.
+		return state, nil
+	}
+	current, err := filemerge.ReadRegularFile(destination)
 	if err != nil {
 		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifactPath, err)
 	}
-	if info.Mode().IsRegular() {
-		state.mode = info.Mode().Perm()
-	}
-	state, err = backedUpState(root, artifactPath, current, state.mode)
+	state, err = backedUpState(root, artifactPath, current, info.Mode().Perm())
 	if err != nil {
 		return priorState{}, err
 	}
@@ -834,31 +838,48 @@ func preexistingPriorState(root, artifactPath string) (priorState, error) {
 }
 
 func backedUpState(root, artifactPath string, content []byte, mode os.FileMode) (priorState, error) {
-	backup, err := backupContent(root, artifactPath, content)
+	backup, err := backupContent(root, artifactPath, content, mode)
 	if err != nil {
 		return priorState{}, err
 	}
 	return priorState{priorSHA256: hashOf(content), backupPath: backup, mode: mode}, nil
 }
 
+// backupDirectoryMode keeps preserved copies, which may come from owner-only
+// files, out of other users' reach.
+const backupDirectoryMode os.FileMode = 0o700
+
 // backupContent copies content to BackupDir/<artifactPath> beneath root and returns the backup path.
 // An existing backup with other content is never overwritten: the copy gains a hash suffix instead.
-func backupContent(root, artifactPath string, content []byte) (string, error) {
+// The copy keeps the original's mode and is renamed into place, which replaces
+// a planted symlink rather than writing through it.
+func backupContent(root, artifactPath string, content []byte, mode os.FileMode) (string, error) {
 	backupRel := path.Join(BackupDir, artifactPath)
 	backupDest, err := SafeJoin(root, filepath.FromSlash(backupRel))
 	if err != nil {
 		return "", fmt.Errorf("stage backup for %q: %w", artifactPath, err)
 	}
-	if existing, readErr := os.ReadFile(backupDest); readErr == nil && !bytes.Equal(existing, content) {
-		backupRel += "." + hashOf(content)[:8]
-		if backupDest, err = SafeJoin(root, filepath.FromSlash(backupRel)); err != nil {
-			return "", fmt.Errorf("stage backup for %q: %w", artifactPath, err)
+	if _, statErr := os.Lstat(backupDest); statErr == nil {
+		if existing, readErr := filemerge.ReadRegularFile(backupDest); readErr != nil || !bytes.Equal(existing, content) {
+			backupRel += "." + hashOf(content)[:8]
+			if backupDest, err = SafeJoin(root, filepath.FromSlash(backupRel)); err != nil {
+				return "", fmt.Errorf("stage backup for %q: %w", artifactPath, err)
+			}
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(backupDest), ManagedDirectoryMode); err != nil {
+	directory := filepath.Dir(backupDest)
+	if err := os.MkdirAll(directory, backupDirectoryMode); err != nil {
 		return "", fmt.Errorf("stage backup for %q: %w", artifactPath, err)
 	}
-	if err := os.WriteFile(backupDest, content, ManagedFileMode); err != nil {
+	staged, err := stageFile(directory, content, mode)
+	if err != nil {
+		return "", fmt.Errorf("write backup for %q: %w", artifactPath, err)
+	}
+	if err := renameFile(staged, backupDest); err != nil {
+		_ = os.Remove(staged)
+		return "", fmt.Errorf("write backup for %q: %w", artifactPath, err)
+	}
+	if err := syncDir(directory); err != nil {
 		return "", fmt.Errorf("write backup for %q: %w", artifactPath, err)
 	}
 	return backupRel, nil

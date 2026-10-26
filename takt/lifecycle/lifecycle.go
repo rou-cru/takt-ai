@@ -562,10 +562,21 @@ func removeCodegraph(rootDir string) error {
 		return err
 	}
 	marker := filepath.Join(rootDir, filepath.FromSlash(codegraph.ManagedMarkerKey()))
-	if _, err := os.Lstat(marker); errors.Is(err, os.ErrNotExist) {
-		if err := os.RemoveAll(codegraph.ManagedPrefix(rootDir)); err != nil {
-			return fmt.Errorf("remove managed codegraph: %w", err)
-		}
+	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	prefix := codegraph.ManagedPrefix(rootDir)
+	// RemoveAll never follows prefix itself, but it resolves the ancestors: a
+	// symlinked state directory would redirect the deletion outside the root.
+	if info, err := os.Lstat(filepath.Dir(prefix)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("remove managed codegraph: %w", err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("remove managed codegraph: %q is not a real directory", filepath.Dir(prefix))
+	}
+	if err := os.RemoveAll(prefix); err != nil {
+		return fmt.Errorf("remove managed codegraph: %w", err)
 	}
 	return nil
 }

@@ -39,7 +39,7 @@ func removePromptSection(promptPath string, result model.InjectionResult) (model
 	}
 	updated := filemerge.InjectMarkdownSection(existing, model.SectionEngramProtocol, "")
 	if updated != existing {
-		if _, err := filemerge.WriteFileAtomic(promptPath, []byte(updated), filemerge.DefaultFileMode); err != nil {
+		if _, err := filemerge.EditFileAtomic(promptPath, []byte(updated)); err != nil {
 			return model.InjectionResult{}, fmt.Errorf("clean engram protocol from %s: %w", promptPath, err)
 		}
 		result.Changed = true

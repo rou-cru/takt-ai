@@ -284,3 +284,16 @@ func TestRetentionDirectorySkipsEveryExistingCandidate(t *testing.T) {
 		t.Fatalf("collision changed: %q, %v", got, err)
 	}
 }
+
+// TestApplyUninstallRetentionRefusesSymlinkedRetainedDir checks that a planted
+// takt-retained symlink cannot move retained output outside the root.
+func TestApplyUninstallRetentionRefusesSymlinkedRetainedDir(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, RetainedDirName)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ApplyUninstallRetention(context.Background(), root, RetentionChoices{MemoryFrom: engramFixture(t)}, time.Now())
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("retention wrote outside the root: %v (err %v)", entries, err)
+	}
+}

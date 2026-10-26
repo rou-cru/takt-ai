@@ -426,7 +426,7 @@ func TestApplyRejectsUnreadableOrInvalidArtifacts(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": "a"}), ProviderRuntime{})
-		if err == nil || !strings.Contains(err.Error(), "inspect managed file") {
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -440,7 +440,7 @@ func TestApplyRejectsUnreadableOrInvalidArtifacts(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": "a"}), ProviderRuntime{})
-		if err == nil || !strings.Contains(err.Error(), "inspect managed file") {
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
 			t.Errorf("error = %v", err)
 		}
 	})

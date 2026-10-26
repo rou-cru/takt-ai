@@ -565,6 +565,23 @@ func TestRemoveCodegraphClearsManagedTreeOnlyWhenMarkerIsGone(t *testing.T) {
 	}
 }
 
+// TestRemoveCodegraphRefusesSymlinkedStateDir checks that a planted .takt-ai
+// symlink cannot redirect the managed-tree deletion outside the root.
+func TestRemoveCodegraphRefusesSymlinkedStateDir(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	victim := filepath.Join(outside, "codegraph", "keep.txt")
+	writeFile(t, victim, "x")
+	if err := os.Symlink(outside, filepath.Join(root, ".takt-ai")); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeCodegraph(root); err == nil {
+		t.Error("removeCodegraph() through a symlinked state directory succeeded")
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("outside tree deleted: %v", err)
+	}
+}
+
 func TestInstallPlansIncludesSkillsPlan(t *testing.T) {
 	plans, _, err := installPlans(setuputil.TestPlanRequest())
 	if err != nil {

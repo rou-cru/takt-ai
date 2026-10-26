@@ -89,6 +89,18 @@ type WriteResult struct {
 	Changed bool // true when the file content differs from what was on disk
 }
 
+// EditFileAtomic replaces a user-owned file's content atomically, keeping the
+// permission bits it already has: a file the user made owner-only, which may
+// hold credentials, never becomes readable to others. A new file gets
+// DefaultFileMode.
+func EditFileAtomic(path string, content []byte) (WriteResult, error) {
+	perm := DefaultFileMode
+	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
+		perm = info.Mode().Perm()
+	}
+	return WriteFileAtomic(path, content, perm)
+}
+
 // WriteFileAtomic writes content to path atomically using a temporary file
 // and rename; identical content skips the write and reports Changed false.
 func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult, error) {
@@ -96,7 +108,7 @@ func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult
 		perm = DefaultFileMode
 	}
 
-	existing, err := readComparableFile(path)
+	existing, err := ReadRegularFile(path)
 	if err == nil {
 		if bytes.Equal(existing, content) {
 			return WriteResult{}, nil
@@ -135,7 +147,9 @@ func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult
 	return WriteResult{Changed: true}, nil
 }
 
-func readComparableFile(path string) ([]byte, error) {
+// ReadRegularFile reads path without following a symlink at path itself,
+// bounded to the atomic-write size; ancestors are the caller's to confine.
+func ReadRegularFile(path string) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
@@ -191,7 +205,8 @@ func ensureAtomicParentDir(dir, path string) error {
 		return fmt.Errorf("parent path %q for %q is not a directory", dir, path)
 	}
 	if info.Mode().Perm()&0o200 == 0 {
-		if err := os.Chmod(dir, ExecutableDirectoryMode); err != nil {
+		// Add owner write only: group and other access stays as the user set it.
+		if err := os.Chmod(dir, info.Mode().Perm()|0o700); err != nil {
 			return fmt.Errorf("relax parent directory permissions for %q: %w", path, err)
 		}
 	}

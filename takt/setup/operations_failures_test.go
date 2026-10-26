@@ -75,9 +75,11 @@ func TestTakeoverBackupFailures(t *testing.T) {
 		{"backup dir is a regular file", func(t *testing.T, root, _ string) {
 			writeFile(t, filepath.Join(root, BackupDir), "in the way")
 		}, "stage backup"},
-		{"backup target is a directory", func(t *testing.T, root, _ string) {
-			if err := os.MkdirAll(filepath.Join(root, BackupDir, "a.txt"), 0o755); err != nil {
-				t.Fatal(err)
+		{"backup target and its suffixed copy are directories", func(t *testing.T, root, _ string) {
+			for _, name := range []string{"a.txt", "a.txt." + hashOf([]byte("original"))[:8]} {
+				if err := os.MkdirAll(filepath.Join(root, BackupDir, name), 0o755); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}, "write backup"},
 	}
@@ -211,4 +213,57 @@ func TestApplyModelOverrideChangeRejectsUnknownInstalledComponent(t *testing.T) 
 	if err == nil || !strings.Contains(err.Error(), "unknown component") {
 		t.Fatalf("error = %v", err)
 	}
+}
+
+// TestTakeoverNeverFollowsPlantedSymlinks checks that a symlink planted at an
+// artifact or at its backup path neither copies an outside file into the
+// backups nor redirects the backup write outside the root.
+func TestTakeoverNeverFollowsPlantedSymlinks(t *testing.T) {
+	plans := opsPlan("opencode", map[string]string{"a.txt": "takt"})
+	t.Run("artifact links outside", func(t *testing.T) {
+		root, outside := t.TempDir(), filepath.Join(t.TempDir(), "secret")
+		writeFile(t, outside, "private")
+		if err := os.Symlink(outside, filepath.Join(root, "a.txt")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ApplyContext(context.Background(), root, plans, ProviderRuntime{}); err == nil {
+			t.Fatal("deploy over a symlinked artifact succeeded")
+		}
+		if _, err := os.Lstat(filepath.Join(root, BackupDir, "a.txt")); !os.IsNotExist(err) {
+			t.Fatalf("outside content was copied into the backups: %v", err)
+		}
+	})
+	t.Run("backup path links outside", func(t *testing.T) {
+		root, outside := t.TempDir(), filepath.Join(t.TempDir(), "victim")
+		writeFile(t, outside, "untouched")
+		writeFile(t, filepath.Join(root, "a.txt"), "original")
+		if err := os.MkdirAll(filepath.Join(root, BackupDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Both the backup path and its collision suffix lead outside.
+		for _, name := range []string{"a.txt", "a.txt." + hashOf([]byte("original"))[:8]} {
+			if err := os.Symlink(outside, filepath.Join(root, BackupDir, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := ApplyContext(context.Background(), root, plans, ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		if readString(t, outside) != "untouched" {
+			t.Fatal("the backup was written through the planted symlink")
+		}
+	})
+	t.Run("owner-only original keeps its mode", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("original"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ApplyContext(context.Background(), root, plans, ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(root, BackupDir, "a.txt"))
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("backup mode = %v, %v; want 0600", info, err)
+		}
+	})
 }

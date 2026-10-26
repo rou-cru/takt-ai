@@ -17,6 +17,7 @@ package setup
 
 import (
 	"encoding/json"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -48,8 +49,9 @@ func BeginOperation(rootDir, action string) (func(), error) {
 	if err := os.MkdirAll(rootDir, ManagedDirectoryMode); err != nil {
 		return nil, err
 	}
-	// A plain write is enough: a torn record still reads as "an operation did not finish".
-	if err := os.WriteFile(file, data, ManagedFileMode); err != nil {
+	// The atomic write refuses a symlink planted at the record instead of
+	// writing through it outside the root.
+	if _, err := filemerge.WriteFileAtomic(file, data, ManagedFileMode); err != nil {
 		return nil, err
 	}
 	return func() { _ = os.Remove(file) }, nil
