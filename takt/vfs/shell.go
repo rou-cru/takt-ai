@@ -107,6 +107,21 @@ func shellRoot(stateDir, callID string) string {
 	return filepath.Join(filepath.Dir(stateDir), "shell-"+digest[:shellRootHashLen])
 }
 
+// otherShellRoots lists the existing sandbox roots beside stateDir other than
+// own: each may hold a projection of another author's staged files.
+func otherShellRoots(stateDir, own string) []string {
+	parent := filepath.Dir(stateDir)
+	entries, _ := os.ReadDir(parent)
+	var roots []string
+	for _, e := range entries {
+		p := filepath.Join(parent, e.Name())
+		if e.IsDir() && strings.HasPrefix(e.Name(), "shell-") && p != own {
+			roots = append(roots, p)
+		}
+	}
+	return roots
+}
+
 // shellCall is what a prepared command was planned against: the binding it
 // captures into and that binding's staged state at preparation.
 type shellCall struct {
@@ -210,7 +225,8 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	plan := ShellPlan{
 		Decision: decision, Reason: reason,
 		Scratch: filepath.Join(root, "scratch"), Confirm: filepath.Join(root, "confirm"),
-		Private: []string{stateDir}, Capture: decision != ShellDeny && key != "",
+		Private: append([]string{stateDir}, homeSensitivePaths(userHome())...),
+		Capture: decision != ShellDeny && key != "",
 	}
 	if decision == ShellDeny {
 		return ShellPlan{Decision: decision, Reason: reason}, nil
@@ -228,13 +244,18 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	// It also reads in place, so the secrets the native read rules deny are
 	// denied here too; a captured mutation never sees the workspace at all.
 	plan.Cwd, plan.Writable, plan.Protected = f.rootDir, []string{plan.Scratch}, []string{f.rootDir}
-	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, userHome())...)
+	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, "")...)
 	// The workspace event store records every session's activity; it is the
-	// orchestrator's to read, never a specialist's inspection.
+	// orchestrator's to read, never a specialist's inspection. SQLite keeps
+	// recent rows in its sibling journal files, so they are denied with it.
 	store := filepath.Join(f.rootDir, obs.StateDirName, obs.StoreFileName)
-	if _, err := os.Stat(store); err == nil {
-		plan.Private = append(plan.Private, store)
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if _, err := os.Lstat(store + suffix); err == nil {
+			plan.Private = append(plan.Private, store+suffix)
+		}
 	}
+	// Other calls' projections hold copies of their authors' staged files.
+	plan.Private = append(plan.Private, otherShellRoots(stateDir, root)...)
 	if decision == ShellAsk {
 		plan.Writable = []string{everythingWritable}
 	}

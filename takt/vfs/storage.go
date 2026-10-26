@@ -225,7 +225,7 @@ func (f *FS) openStateDB(stateDir string) (err error) {
 	if err = ensurePrivateFile(dbPath); err != nil {
 		return err
 	}
-	if f.db, err = sql.Open("sqlite", dbPath); err != nil {
+	if f.db, err = sql.Open("sqlite", (&url.URL{Scheme: "file", Path: dbPath}).String()); err != nil {
 		return err
 	}
 	f.db.SetMaxOpenConns(1)

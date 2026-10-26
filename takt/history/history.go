@@ -353,7 +353,7 @@ func Open(stateDir string) (*History, error) {
 	if err = file.Close(); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path}).String())
 	if err != nil {
 		return nil, err
 	}

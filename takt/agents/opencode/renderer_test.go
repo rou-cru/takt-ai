@@ -246,7 +246,7 @@ func TestRenderConfigProjectsCanonicalGitRules(t *testing.T) {
 }
 
 // eventStoreGlob is the workspace event store as a permission resource.
-var eventStoreGlob = "**/" + obs.StateDirName + "/" + obs.StoreFileName
+var eventStoreGlob = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
 
 func TestRenderConfigOrchestratorRoleHasEditAndSubagentPermission(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{

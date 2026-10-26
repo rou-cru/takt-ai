@@ -93,7 +93,7 @@ func TestShellMutationIsStagedAndDiskUntouched(t *testing.T) {
 		t.Fatalf("writable = %v; want the projection copy", plan.Writable)
 	}
 	// The real workspace is invisible to the command; only the projection is.
-	if len(plan.Private) != 2 || plan.Private[1] != canonical(t, root) {
+	if plan.Private[0] != state || plan.Private[len(plan.Private)-1] != canonical(t, root) {
 		t.Fatalf("private = %v; want the state directory and the workspace", plan.Private)
 	}
 	shellRun(t, plan, "0", writeProjected(t, "data.txt", "changed\n"))
@@ -290,7 +290,7 @@ func TestShellDecisions(t *testing.T) {
 func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	f, root, state := newStore(t)
 	store := filepath.Join(obs.StateDirName, obs.StoreFileName)
-	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets/token", "src/main.go", "node_modules/pkg/.env", store} {
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets/token", "src/main.go", "node_modules/pkg/.env", store, store + "-wal"} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
@@ -306,7 +306,7 @@ func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	if plan.Decision != vfs.ShellAllow {
 		t.Fatalf("inspection decision = %s (%s)", plan.Decision, plan.Reason)
 	}
-	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets", store} {
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets", store, store + "-wal"} {
 		if !containsCanonicalPath(t, plan.Private, filepath.Join(root, filepath.FromSlash(rel))) {
 			t.Errorf("inspection may read %s; private = %v", rel, plan.Private)
 		}
@@ -328,4 +328,58 @@ func containsCanonicalPath(t *testing.T, paths []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestShellPlansDenyHomeSecretsAndForeignProjections checks that a captured
+// mutation cannot read the user's home credentials, and that an inspection
+// cannot read another call's projection of its author's staged files.
+func TestShellPlansDenyHomeSecretsAndForeignProjections(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f, root, state := newStore(t)
+	if err := os.WriteFile(filepath.Join(root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := delegate(t, f, state, testSession, "dev", "unit", "data.txt")
+	mutation, err := f.PrepareShell(c, "shell-1", "printf x > data.txt", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsCanonicalPath(t, mutation.Private, filepath.Join(home, ".ssh")) {
+		t.Errorf("mutation may read home credentials; private = %v", mutation.Private)
+	}
+	inspection, err := f.PrepareShell(callerOf(testSession, "fix", "u"), "inspect", "cat data.txt", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Dir(mutation.Cwd)
+	if !containsCanonicalPath(t, inspection.Private, foreign) {
+		t.Errorf("inspection may read the foreign projection %s; private = %v", foreign, inspection.Private)
+	}
+	if !containsCanonicalPath(t, inspection.Private, filepath.Join(home, ".ssh")) {
+		t.Errorf("inspection may read home credentials; private = %v", inspection.Private)
+	}
+}
+
+// TestShellInspectionDeniesSecretBelowGlobName checks that a secret whose path
+// the sandbox cannot spell literally is denied through its enclosing directory.
+func TestShellInspectionDeniesSecretBelowGlobName(t *testing.T) {
+	f, root, state := newStore(t)
+	p := filepath.Join(root, "conf", "a[1]", ".env")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := f.PrepareShell(callerOf(testSession, "fix", "u"), "inspect", "cat conf/a?1?/.env", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsCanonicalPath(t, plan.Private, filepath.Join(root, "conf")) {
+		t.Errorf("inspection may read %s; private = %v", p, plan.Private)
+	}
 }

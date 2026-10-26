@@ -9,6 +9,7 @@ package obs_test
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -209,5 +210,65 @@ func TestStoreOperationsFailAfterClose(t *testing.T) {
 	}
 	if _, err := s.CountEvents(testSession, "", 0, 0); err == nil {
 		t.Error("CountEvents succeeded on a closed store")
+	}
+}
+
+func TestOpenStoreRefusesUnsafeExistingFiles(t *testing.T) {
+	for name, plant := range map[string]func(t *testing.T, path string){
+		"symlinked database": func(t *testing.T, path string) {
+			if err := os.Symlink(filepath.Join(t.TempDir(), "outside.db"), path); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"readable database": func(t *testing.T, path string) {
+			if err := os.WriteFile(path, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ws := t.TempDir()
+			path, _ := obs.StorePath(ws)
+			if err := os.MkdirAll(filepath.Dir(path), obs.PrivateTelemetryDirectoryMode); err != nil {
+				t.Fatal(err)
+			}
+			plant(t, path)
+			if s, err := obs.OpenStore(ws); !errors.Is(err, obs.ErrUnsafeStore) {
+				if err == nil {
+					_ = s.Close()
+				}
+				t.Fatalf("OpenStore = %v; want %v", err, obs.ErrUnsafeStore)
+			}
+		})
+	}
+}
+
+func TestOpenStoreRefusesSymlinkedStateDir(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.Symlink(t.TempDir(), filepath.Join(ws, obs.StateDirName)); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := obs.OpenStore(ws); !errors.Is(err, obs.ErrUnsafeStore) {
+		if err == nil {
+			_ = s.Close()
+		}
+		t.Fatalf("OpenStore = %v; want %v", err, obs.ErrUnsafeStore)
+	}
+}
+
+// TestOpenStoreTreatsQueryCharactersAsPath checks that a workspace name is a
+// filename, never connection options for the SQLite driver.
+func TestOpenStoreTreatsQueryCharactersAsPath(t *testing.T) {
+	ws := filepath.Join(t.TempDir(), "ws?_pragma=user_version(7)")
+	openStore(t, ws)
+	path, _ := obs.StorePath(ws)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("store not created at the workspace path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(ws), "ws")); err == nil {
+		t.Fatal("the driver opened a truncated path")
 	}
 }

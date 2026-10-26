@@ -307,7 +307,8 @@ func modelRef(spec AgentSpec) any {
 }
 
 // eventStoreResource is the workspace event store as a permission resource.
-var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName
+// The trailing glob covers SQLite's -wal, -shm and -journal siblings, which hold recent rows.
+var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
 
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.

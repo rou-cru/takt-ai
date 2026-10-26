@@ -19,6 +19,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -103,6 +105,41 @@ func StorePath(workspace string) (string, error) {
 	return filepath.Join(abs, StateDirName, StoreFileName), nil
 }
 
+// ErrUnsafeStore reports a telemetry path that is not a private regular file in
+// a real state directory, such as a symlink planted in the workspace.
+var ErrUnsafeStore = errors.New("telemetry store is not a private regular file")
+
+// ensurePrivateStore creates the database owner-only (modernc would create it
+// 0644), or accepts an existing one only when it is a private regular file in
+// a real directory: the workspace is lower-trust input, so a symlinked state
+// directory or database must not redirect writes outside it.
+func ensurePrivateStore(path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, PrivateTelemetryDirectoryMode); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(dir); err != nil {
+		return err
+	} else if !info.IsDir() {
+		return fmt.Errorf("%w: %s is not a directory", ErrUnsafeStore, dir)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, PrivateTelemetryFileMode)
+	if err == nil {
+		return f.Close()
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&otherAccessBits != 0 {
+		return fmt.Errorf("%w: %s", ErrUnsafeStore, path)
+	}
+	return nil
+}
+
 // OpenStore opens (creating if absent) the workspace event database in WAL mode with a busy timeout, so
 // concurrent invocations wait for each other instead of failing.
 func OpenStore(workspace string) (*Store, error) {
@@ -110,18 +147,10 @@ func OpenStore(workspace string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(filepath.Dir(path), PrivateTelemetryDirectoryMode); err != nil {
+	if err = ensurePrivateStore(path); err != nil {
 		return nil, err
 	}
-	// modernc creates files 0644; pre-create private so telemetry is owner-only like the rest of the state.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, PrivateTelemetryFileMode)
-	if err != nil {
-		return nil, err
-	}
-	if err = f.Close(); err != nil {
-		return nil, err
-	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path}).String())
 	if err != nil {
 		return nil, err
 	}

@@ -317,5 +317,9 @@ func (f *FS) validateInspectionPath(rel string) error {
 	if !filepath.IsLocal(filepath.FromSlash(rel)) || rel == "" || !lexicallyCanonical(rel) {
 		return ErrInvalidPath
 	}
-	return f.validatePathParts(strings.Split(rel, "/"), true)
+	parts := strings.Split(rel, "/")
+	if slices.ContainsFunc(parts, privateStateName) {
+		return fmt.Errorf("%w: %q is Takt private state", ErrScopeDenied, rel)
+	}
+	return f.validatePathParts(parts, true)
 }

@@ -130,6 +130,8 @@ func TestNativeInspectionRefusesSecretsAndNonCanonicalPaths(t *testing.T) {
 		{"grep", ".ssh", vfs.ErrScopeDenied},
 		{"read", ".ssh/id_rsa", vfs.ErrScopeDenied},
 		{"read", "secrets/missing.txt", vfs.ErrScopeDenied},
+		{"read", ".takt-ai/shell-0123456789abcdef/projection/tests.go", vfs.ErrScopeDenied},
+		{"grep", ".takt-ai", vfs.ErrScopeDenied},
 		{"read", "cafe\u0301.go", vfs.ErrInvalidPath},
 	} {
 		if err := f.StartNativeInspection(author, "secret", tt.tool, tt.path); !errors.Is(err, tt.want) {
@@ -247,5 +249,17 @@ func TestCodeGraphShellQueryDefersWhileForeignAuthorsHoldFiles(t *testing.T) {
 	_, _ = delegate(t, f, state, testSession, "dev", "impl", "src/impl.go")
 	if _, err := f.PrepareShell(author, "graph-2", "codegraph explore src", state); !errors.Is(err, vfs.ErrScopeDenied) {
 		t.Fatalf("query beside a foreign claim = %v, want ErrScopeDenied", err)
+	}
+}
+
+// TestVFSPathsRefuseSecrets checks that the secrets native tools deny cannot be
+// claimed, so no specialist reads or stages them through the VFS either.
+func TestVFSPathsRefuseSecrets(t *testing.T) {
+	f, _, _ := newStore(t)
+	for _, rel := range []string{".env", "cmd/.env.local", "deploy/tls.key", "secrets/token", ".ssh/id_rsa"} {
+		_, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "u", AgentID: "dev", Specialist: "dev"}, []string{rel})
+		if !errors.Is(err, vfs.ErrScopeDenied) {
+			t.Errorf("AssignScope(%q) = %v, want %v", rel, err, vfs.ErrScopeDenied)
+		}
 	}
 }
