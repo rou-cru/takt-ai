@@ -134,10 +134,31 @@ func TestOrchestratorNativeRulesGateOnlyPublishRewriteDiscard(t *testing.T) {
 		"git add .": vfs.ShellAllow, "git reset HEAD~1": vfs.ShellAllow, "git status": vfs.ShellAllow,
 		"git commit": vfs.ShellAsk, "git push --force origin trunk": vfs.ShellAsk,
 		"git reset --hard HEAD": vfs.ShellAsk, "git reset HEAD --hard": vfs.ShellAsk,
+		// A leading option must not hide the gated subcommand from the patterns.
+		"git -C . push": vfs.ShellAsk, "git --no-pager commit -m x": vfs.ShellAsk,
+		"git -C . reset --hard": vfs.ShellAsk, "git -C . status": vfs.ShellAllow,
 	}
 	for command, effect := range want {
 		if got := gitEffect(rules, command); got != effect {
 			t.Errorf("orchestrator, %q: native effect = %q; want %q", command, got, effect)
+		}
+	}
+}
+
+// A writing option git accepts clustered with other short flags or by an
+// unambiguous abbreviation is a mutation, whichever read-only subcommand
+// carries it.
+func TestWritingOptionFormsAreMutations(t *testing.T) {
+	for _, command := range []string{"git grep -nOsh pat", "git grep -nO./script pat", "git grep --open=sh pat"} {
+		for _, role := range append([]model.RoleClass{model.RoleOrchestrator}, gitSpecialists...) {
+			if decision, _ := vfs.GitShellDecision(role, command); decision == vfs.ShellAllow {
+				t.Errorf("role %q, %q: decision = %q; want a mutation", role, command, decision)
+			}
+		}
+	}
+	for _, command := range []string{"git grep -n pat", "git grep --count pat"} {
+		if decision, reason := vfs.GitShellDecision(model.RoleExecution, command); decision != vfs.ShellAllow {
+			t.Errorf("%q: decision = %q (%s); want allow", command, decision, reason)
 		}
 	}
 }

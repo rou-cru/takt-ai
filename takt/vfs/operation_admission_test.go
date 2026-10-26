@@ -565,6 +565,7 @@ func TestReassignScopeHandOverRefusalsLeaveTheWorkWhereItIs(t *testing.T) {
 		"added path outside the root":    {complete, []string{"a.go", "../outside.go"}},
 		"identity without a unit":        {vfs.Identity{SessionID: testSession, AgentID: "fix", Specialist: "fix"}, []string{"a.go"}},
 		"added path that cannot be read": {complete, []string{"a.go", "x.go"}},
+		"in place without a unit":        {vfs.Identity{SessionID: testSession, AgentID: "fix", Specialist: "fix"}, []string{"a.go", "b.go"}},
 	} {
 		if next, err := f.ReassignScope(tc.identity, key, tc.scope); err == nil {
 			t.Errorf("%s: ReassignScope() = %q; want a refusal", name, next)
@@ -631,6 +632,20 @@ func TestReassignScopeClearsTheVerdictOfTheOldRevision(t *testing.T) {
 	reassign(t, r.f, ident("author", "u", "dev"), r.author, "a.go")
 	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() after the reassignment = %v; want the old verdict cleared", err)
+	}
+}
+
+// An in-place reassignment onto an agent and unit that already hold a pending
+// claim is refused, so adoption never has two assignments to choose from.
+func TestReassignScopeRefusesATargetHoldingAPendingClaim(t *testing.T) {
+	f, _, _ := newStore(t)
+	key := bind(t, f, "author", "u", "dev", "a.go")
+	target := ident("target", "tu", "dev")
+	if _, err := f.AssignScope(target, []string{"t.go"}); err != nil {
+		t.Fatalf("AssignScope() = %v", err)
+	}
+	if next, err := f.ReassignScope(target, key, []string{"a.go"}); !errors.Is(err, vfs.ErrIdentity) {
+		t.Fatalf("ReassignScope() = %q, %v; want %v", next, err, vfs.ErrIdentity)
 	}
 }
 

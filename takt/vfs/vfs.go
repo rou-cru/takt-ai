@@ -535,9 +535,12 @@ func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
 	if GuardGitMutation(role) == nil {
 		rules := []GitPermissionRule{{"git *", ShellAllow}}
 		for _, sub := range orchestratorGatedGit {
-			rules = append(rules, GitPermissionRule{"git " + sub, ShellAsk}, GitPermissionRule{"git " + sub + " *", ShellAsk})
+			// "git * <sub>" also catches the subcommand behind leading options
+			// such as -C or --no-pager.
+			rules = append(rules, GitPermissionRule{"git " + sub, ShellAsk}, GitPermissionRule{"git " + sub + " *", ShellAsk},
+				GitPermissionRule{"git * " + sub, ShellAsk}, GitPermissionRule{"git * " + sub + " *", ShellAsk})
 		}
-		return append(rules, GitPermissionRule{"git reset *--hard*", ShellAsk})
+		return append(rules, GitPermissionRule{"git reset *--hard*", ShellAsk}, GitPermissionRule{"git *reset *--hard*", ShellAsk})
 	}
 	rules := []GitPermissionRule{{"git *", ShellDeny}}
 	for _, sub := range readOnlyGitSubcommands {

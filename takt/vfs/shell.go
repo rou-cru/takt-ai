@@ -635,14 +635,29 @@ func gitWritingOption(sub string, args []string) string {
 			break
 		}
 		for _, option := range gitWritingOptions[sub] {
-			short := len(option) == 2 && strings.HasPrefix(arg, option)
-			if arg == option || strings.HasPrefix(arg, option+"=") || short {
+			if gitOptionMatches(option, arg) {
 				return "git " + sub + " " + option
 			}
 		}
 	}
 	return ""
 }
+
+// gitOptionMatches reports whether arg is option as git parses it: a short
+// option anywhere in a cluster of short flags (-nOsh), or a long option by any
+// unambiguous prefix, with or without a value (--open=sh). A short flag that
+// is another option's value is flagged too; that fails safe.
+func gitOptionMatches(option, arg string) bool {
+	if len(option) == 2 {
+		return strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.ContainsRune(arg[1:], rune(option[1]))
+	}
+	name, _, _ := strings.Cut(arg, "=")
+	return strings.HasPrefix(name, "--") && len(name) >= minGitLongOptionPrefix && strings.HasPrefix(option, name)
+}
+
+// minGitLongOptionPrefix is the shortest "--" abbreviation matched: "--" plus
+// one letter would match every option that starts with it.
+const minGitLongOptionPrefix = 3
 
 // shellScript returns the script a shell runs with -c, or "" when it runs
 // none. Options come first, short ones possibly clustered as in -lc; the

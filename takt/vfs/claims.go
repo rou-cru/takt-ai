@@ -210,6 +210,15 @@ func (f *FS) ReassignScope(identity Identity, key AgentID, scope []string) (next
 	if len(scope) == 0 {
 		return "", fmt.Errorf("%w: the new scope names at least one path", ErrIdentity)
 	}
+	// Grants are the adoption's to check, but a target that is incomplete or
+	// already holds a pending claim could never be told apart when it arrives.
+	if !completeIdentity(identity) {
+		return "", errIncompleteIdentity
+	}
+	identity.AttemptID, identity.HostSession, identity.Prelaunch = "", "", true
+	if f.duplicateIdentity(identity, key) {
+		return "", fmt.Errorf("%w: agent %q already holds a binding for unit %q", ErrIdentity, identity.AgentID, identity.WorkUnitID)
+	}
 	if err := f.guardInspectionClaimLocked(identity, key, scope); err != nil {
 		return "", err
 	}
