@@ -565,6 +565,7 @@ func TestReassignScopeHandOverRefusalsLeaveTheWorkWhereItIs(t *testing.T) {
 		"added path outside the root":    {complete, []string{"a.go", "../outside.go"}},
 		"identity without a unit":        {vfs.Identity{SessionID: testSession, AgentID: "fix", Specialist: "fix"}, []string{"a.go"}},
 		"added path that cannot be read": {complete, []string{"a.go", "x.go"}},
+		"in place without a unit":        {vfs.Identity{SessionID: testSession, AgentID: "fix", Specialist: "fix"}, []string{"a.go", "b.go"}},
 	} {
 		if next, err := f.ReassignScope(tc.identity, key, tc.scope); err == nil {
 			t.Errorf("%s: ReassignScope() = %q; want a refusal", name, next)
@@ -631,6 +632,20 @@ func TestReassignScopeClearsTheVerdictOfTheOldRevision(t *testing.T) {
 	reassign(t, r.f, ident("author", "u", "dev"), r.author, "a.go")
 	if err := r.f.ConsolidateCheckpoint(r.author, "cp", r.staged.Revision, false); err != nil {
 		t.Fatalf("ConsolidateCheckpoint() after the reassignment = %v; want the old verdict cleared", err)
+	}
+}
+
+// An in-place reassignment onto an agent and unit that already hold a pending
+// claim is refused, so adoption never has two assignments to choose from.
+func TestReassignScopeRefusesATargetHoldingAPendingClaim(t *testing.T) {
+	f, _, _ := newStore(t)
+	key := bind(t, f, "author", "u", "dev", "a.go")
+	target := ident("target", "tu", "dev")
+	if _, err := f.AssignScope(target, []string{"t.go"}); err != nil {
+		t.Fatalf("AssignScope() = %v", err)
+	}
+	if next, err := f.ReassignScope(target, key, []string{"a.go"}); !errors.Is(err, vfs.ErrIdentity) {
+		t.Fatalf("ReassignScope() = %q, %v; want %v", next, err, vfs.ErrIdentity)
 	}
 }
 
@@ -1083,28 +1098,6 @@ func TestAssignScopeAcrossRoots(t *testing.T) {
 		t.Cleanup(func() { _ = reopened.Close() })
 		return rig{reopened, old, peer, same, vfs.Identity{SessionID: "new-root", WorkUnitID: "new-unit", AgentID: "new", Specialist: "dev"}}
 	}
-
-	t.Run("replace", func(t *testing.T) {
-		r := crossRoot(t)
-		key, err := r.f.AssignScope(r.next, []string{"index.html"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, _, staged := r.f.StagedState(r.old); ownerOf(r.f, "index.html") != key || staged {
-			t.Fatal("prior claim not replaced")
-		}
-		if owner := ownerOf(r.f, "extra.html"); owner != "" {
-			t.Fatalf("partial old claim retained by %q", owner)
-		}
-		if ownerOf(r.f, "peer.html") != r.peer || ownerOf(r.f, "same.html") != r.same {
-			t.Fatal("unrelated claim lost")
-		}
-		for _, claim := range r.f.OwnershipClaims("new-root") {
-			if claim.Key == r.old {
-				t.Fatal("discarded claim still pending")
-			}
-		}
-	})
 
 	for name, tc := range map[string]struct {
 		extra string

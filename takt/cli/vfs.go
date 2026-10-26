@@ -192,9 +192,8 @@ type request struct {
 	// shell-prepare: the exact command the plan and any approval identify.
 	Command    string `json:"command,omitempty"`
 	Checkpoint string `json:"checkpoint,omitempty"`
-	// release: the claim and the user's confirmation for an active one.
-	ClaimKey  string `json:"key,omitempty"`
-	Confirmed bool   `json:"confirmed,omitempty"`
+	// release: the claim.
+	ClaimKey string `json:"key,omitempty"`
 }
 
 // response is the JSON shape every mutation subcommand but adopt-gates returns.
@@ -368,7 +367,18 @@ func runVFSClaimControl(workspace, state, command string, req request, stdout io
 	case "assign":
 		return assignClaim(fs, req, stdout)
 	default: // release
-		if err := fs.ReleaseClaim(req.SessionID, vfs.AgentID(req.ClaimKey), req.Confirmed); err != nil {
+		// fs holds the workspace lock until Close, so this history read and
+		// the release decision happen under the same lock.
+		h, openErr := history.Open(state)
+		if openErr != nil {
+			return openErr
+		}
+		defer func() { err = errors.Join(err, h.Close()) }()
+		inFlight := func(b vfs.Identity) (string, bool) {
+			u, _ := h.Project().Unit(b.SessionID, b.WorkUnitID)
+			return u.Dispatch, u.State == history.StateInFlight
+		}
+		if err := fs.ReleaseClaim(req.SessionID, vfs.AgentID(req.ClaimKey), inFlight); err != nil {
 			return err
 		}
 		return json.NewEncoder(stdout).Encode(response{OK: true})

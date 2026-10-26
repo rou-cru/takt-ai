@@ -155,6 +155,11 @@ type VerificationVerdict struct {
 	// VerifierID identifies the verification specialist. Must differ from the
 	// authoring agent.
 	VerifierID AgentID
+	// WorkUnitID and AttemptID are the author's unit and attempt the verdict
+	// evaluated (PR-VFS-CSL-7): a verdict on another attempt never governs
+	// the current one.
+	WorkUnitID string
+	AttemptID  string
 }
 
 // CollisionEvent is emitted when the VFS intercepts a cross-agent write collision.
@@ -388,6 +393,7 @@ func (f *FS) stageLocked(agent AgentID, path string, content []byte) error {
 func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool) ([]byte, error) {
 	rel := filepath.ToSlash(path)
 	if err := f.validatePath(rel); err != nil {
+		f.appendJournalLocked(JournalEntry{Agent: agent, Path: rel, Operation: OpRead, Outcome: "failed"})
 		return nil, err
 	}
 	source := agent
@@ -463,7 +469,7 @@ func (f *FS) maintenanceGateLocked(agent AgentID) error {
 	current := f.currentVerdictsLocked(agent)
 	if len(current) == 0 {
 		if len(f.staged[agent].verdicts) > 0 {
-			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now", ErrInvalidVerdict)
+			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now; re-verify the work as it is now", ErrInvalidVerdict)
 		}
 		return ErrVerificationRequired
 	}
@@ -485,13 +491,73 @@ func (f *FS) verdictRequiredLocked(agent AgentID) bool {
 // ─── Git boundary guard ───────────────────────────────────────────────────────
 
 // GuardGitMutation returns ErrGitMutationDenied if role is not permitted to
-// execute mutating git commands; only model.RoleOrchestrator is.
+// execute mutating git commands; only model.RoleOrchestrator is (PR-CRW-5).
 func GuardGitMutation(role model.RoleClass) error {
 	if role != model.RoleOrchestrator {
 		return fmt.Errorf("%w: role %q cannot issue mutating git commands; %s", ErrGitMutationDenied, role, readOnlyGitHint())
 	}
 	return nil
 }
+
+// GitShellDecision is the disposition of the Git a command runs for role in
+// the VFS shell plan, which serves bound identities. It runs nothing. A
+// command that executes no Git mutation is ShellAllow with an empty reason,
+// so read-only inspection stays available (PR-VFS-GIT-2); any mutating,
+// destructive or unclassifiable Git command is ShellDeny for every role but
+// the orchestrator (PR-VFS-GIT-1). The orchestrator's native shell follows
+// GitPermissionRules instead.
+func GitShellDecision(role model.RoleClass, command string) (decision, reason string) {
+	git := gitMutation(command)
+	if git == "" {
+		return ShellAllow, ""
+	}
+	if err := GuardGitMutation(role); err != nil {
+		return ShellDeny, git + " in " + command + ": " + err.Error()
+	}
+	return ShellAsk, "mutating git command: " + command
+}
+
+// GitPermissionRule is one native shell permission over a Git command
+// pattern, where "*" matches any text.
+type GitPermissionRule struct {
+	Pattern string
+	Effect  string
+}
+
+// GitPermissionRules is role's Git policy as native shell permission
+// patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then
+// allows each read-only subcommand, and a read-only subcommand carrying one
+// of its writing options returns to the deny; a form the patterns cannot tell
+// apart from a mutation keeps the deny. The orchestrator allows git and asks
+// only for the actions in orchestratorGatedGit and for a hard reset
+// (PR-VFS-GIT-5); every other Git mutation is its conduct.
+func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
+	if GuardGitMutation(role) == nil {
+		rules := []GitPermissionRule{{"git *", ShellAllow}}
+		for _, sub := range orchestratorGatedGit {
+			// "git * <sub>" also catches the subcommand behind leading options
+			// such as -C or --no-pager.
+			rules = append(rules, GitPermissionRule{"git " + sub, ShellAsk}, GitPermissionRule{"git " + sub + " *", ShellAsk},
+				GitPermissionRule{"git * " + sub, ShellAsk}, GitPermissionRule{"git * " + sub + " *", ShellAsk})
+		}
+		return append(rules, GitPermissionRule{"git reset *--hard*", ShellAsk}, GitPermissionRule{"git *reset *--hard*", ShellAsk})
+	}
+	rules := []GitPermissionRule{{"git *", ShellDeny}}
+	for _, sub := range readOnlyGitSubcommands {
+		rules = append(rules, GitPermissionRule{"git " + sub, ShellAllow}, GitPermissionRule{"git " + sub + " *", ShellAllow})
+	}
+	for _, sub := range readOnlyGitSubcommands {
+		for _, option := range gitWritingOptions[sub] {
+			rules = append(rules, GitPermissionRule{"git " + sub + " *" + option + "*", ShellDeny})
+		}
+	}
+	return rules
+}
+
+// orchestratorGatedGit are the subcommands whose every use needs the user's
+// approval when the orchestrator runs them: they publish or rewrite history
+// or discard work (PR-VFS-GIT-5). Hard reset is gated by option, not here.
+var orchestratorGatedGit = []string{"commit", "push", "rebase", "clean", "restore"}
 
 // readOnlyGitSubcommands never write to the repository, whatever their
 // arguments; subcommands that list or mutate by argument (branch, tag, stash,
@@ -501,9 +567,19 @@ var readOnlyGitSubcommands = []string{
 	"shortlog", "describe", "merge-base", "rev-list", "for-each-ref", "check-ignore", "name-rev",
 }
 
-// readOnlyGitHint names the git a denied caller may still run.
+// gitWritingOptions are the options that make a read-only subcommand write a
+// file or run a program, so they do not inherit its read-only exemption.
+var gitWritingOptions = map[string][]string{
+	"diff": {"--output"},
+	"log":  {"--output"},
+	"show": {"--output"},
+	"grep": {"-O", "--open-files-in-pager"},
+}
+
+// readOnlyGitHint names the git a denied caller may still run, and where any
+// other git goes.
 func readOnlyGitHint() string {
-	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ")
+	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ") + "; return any other git to the orchestrator in your result"
 }
 
 // ReadOnlyGitSubcommands returns the read-only git subcommands.

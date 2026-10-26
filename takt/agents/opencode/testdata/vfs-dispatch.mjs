@@ -100,25 +100,28 @@ await tools.claim_assign.execute({ work_unit_id: "u1", agent: "dev", scope: ["a.
 assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", work_unit_id: "u1", agent_id: "dev", specialist: "dev", scope: ["a.txt"] })
 
 // Release selects only an exact key listed by claim_list. Claims nobody works
-// under (prior-root, or a current-root reservation not yet launched) need no
-// confirmation; a current-root claim an agent is active under is denied until
-// the orchestrator's native question mechanism obtains the user's yes.
+// under need no confirmation; a claim whose unit is still running is denied
+// until that unit has ended.
 const priorClaim = { ...claim, key: "claim-prior", root_session_id: "prior-root", active: true }
 respond = (call) => call.argv[2] === "claims" ? { stdout: JSON.stringify({ ok: true, claims: [claim, priorClaim] }), stderr: "", code: 0 } : undefined
 let releaseAt = calls.length
 await tools.claim_release.execute({ claim_key: "claim-prior" }, root)
 assert.deepEqual(calls.slice(releaseAt).filter(c=>c.verb==="vfs").map(c => [c.argv[2], c.stdin]), [
-  ["release", { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-prior", confirmed:false }],
+  ["release", { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-prior" }],
 ])
 releaseAt = calls.length
 await tools.claim_release.execute({ claim_key: "claim-current" }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current", confirmed:false })
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current" })
 const activeClaim = { ...claim, active: true }
 coreClaims=[claim,{...claim,work_unit_id:"u2"}]
-respond = (call) => call.argv[2] === "release" && !call.stdin.confirmed ? {stdout:JSON.stringify({ok:false,error:"WARNING: agent dev (instance dev, active) owns [a.txt]"}),stderr:"",code:0}:undefined
+let unitEnded = false
+respond = (call) => call.argv[2] === "release" && !unitEnded ? {stdout:JSON.stringify({ok:false,error:"unit still running"}),stderr:"",code:0}:undefined
 releaseAt = calls.length
-await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current" }, root), /WARNING: agent dev \(instance dev, active\) owns \[a\.txt\]/)
+await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current" }, root))
 assert.deepEqual(released,["claim-prior","claim-current"],"denied active claim was released")
+unitEnded = true
+await tools.claim_release.execute({ claim_key: "claim-current" }, root)
+assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current" })
 
 await tools.dispatch_commit.execute({ version: "v1", plan: [{ unit: "u1", contract: "c1" }] }, root)
 assert.equal(calls.at(-1).verb, "dispatch")

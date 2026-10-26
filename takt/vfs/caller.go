@@ -62,12 +62,6 @@ func errOtherRoot(key AgentID, b Identity, staged []string) error {
 	return fmt.Errorf("%w: author_key %s belongs to root session %s (unit %s, agent %s); continue it in this session with claim_assign naming author_key %s and a scope that keeps its staged paths [%s], then vfs_consolidate or vfs_discard it", ErrIdentity, key, b.SessionID, b.WorkUnitID, b.Specialist, key, strings.Join(staged, ", "))
 }
 
-// errUnconfirmedRelease refuses releasing an adopted claim of this root
-// without the user's confirmation, naming what the user is asked to release.
-func errUnconfirmedRelease(b Identity, owned []string) error {
-	return fmt.Errorf("%w: releasing this active claim needs the user's agreement: agent %s works under it on unit %s over [%s]", ErrScopeDenied, b.Specialist, b.WorkUnitID, strings.Join(owned, ", "))
-}
-
 func errKeyNotHeld(key AgentID) error {
 	return fmt.Errorf("%w: author_key %s is not held by this delegation; use the key your own vfs_bind returned, and when you hold none, return to the orchestrator", ErrIdentity, key)
 }
@@ -506,9 +500,11 @@ func (f *FS) DiscardAs(c Caller, author AgentID) (err error) {
 }
 
 // ReleaseClaim frees the paths claim key holds for session's orchestrator. A
-// claim holding staged work, and an adopted claim of this root the user has
-// not confirmed releasing are refused.
-func (f *FS) ReleaseClaim(session string, key AgentID, confirmed bool) (err error) {
+// claim holding staged work is refused, and so is a claim without staged work
+// whose unit inFlight reports still running: release needs the unit's
+// effective termination. inFlight runs under the FS lock with the claim's own
+// identity and returns the running unit's dispatch, which the refusal names.
+func (f *FS) ReleaseClaim(session string, key AgentID, inFlight func(Identity) (dispatch string, running bool)) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
@@ -516,13 +512,15 @@ func (f *FS) ReleaseClaim(session string, key AgentID, confirmed bool) (err erro
 	}
 	defer f.finishLocked(&err)
 	b, ok := f.bindings[key]
-	switch {
-	case !ok:
+	if !ok {
 		return errNotThisSession
-	case b.SessionID == session && !b.Prelaunch && !b.Superseded && !confirmed && (b.GateAuthorKey != "" || len(f.ownedScopeLocked(key)) > 0):
-		return errUnconfirmedRelease(b, f.ownedScopeLocked(key))
-	case b.SessionID != session && f.stagedLocked(key):
-		return errors.Join(ErrStagedWork, errOtherRoot(key, b, f.stagedPathsLocked(key)))
+	}
+	if f.stagedLocked(key) {
+		if b.SessionID != session {
+			return errors.Join(ErrStagedWork, errOtherRoot(key, b, f.stagedPathsLocked(key)))
+		}
+	} else if dispatch, running := inFlight(b); running {
+		return fmt.Errorf("%w: its unit %s (agent %s, root %s) is still running under dispatch %s; wait for its delivery or end it with dispatch_abandon dispatch %s, then claim_release again", ErrScopeDenied, b.WorkUnitID, b.AgentID, b.SessionID, dispatch, dispatch)
 	}
 	return f.revokeLocked(key)
 }
