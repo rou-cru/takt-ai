@@ -241,7 +241,7 @@ func TestAuthorizedScope(t *testing.T) {
 		{FindingID: "f1", Outcome: "confirmed", Evidence: "traced"},
 	}
 
-	scope, err := gc.AuthorizedScope(plan, findings, investigations)
+	scope, err := gc.AuthorizedScope(plan, findings, investigations, nil)
 	if err != nil {
 		t.Fatalf("AuthorizedScope() error = %v", err)
 	}
@@ -257,7 +257,7 @@ func TestAuthorizedScopeRejectsFindingOutsideClosure(t *testing.T) {
 	}
 	investigations := []gc.Investigation{{FindingID: "f1", Outcome: "confirmed", Evidence: "traced"}}
 
-	if _, err := gc.AuthorizedScope(plan, findings, investigations); err == nil {
+	if _, err := gc.AuthorizedScope(plan, findings, investigations, nil); err == nil {
 		t.Fatal("AuthorizedScope() with an authorized finding outside the closure error = nil, want an error")
 	}
 }

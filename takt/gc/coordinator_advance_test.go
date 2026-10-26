@@ -239,7 +239,7 @@ func TestAuthorizedScopeCapsFindingsAndFiles(t *testing.T) {
 		findings = append(findings, Finding{ID: id, Path: path, Tool: "deadcode", ToolVersion: "1", Rule: "r", Evidence: "e"})
 		investigations = append(investigations, Investigation{FindingID: id, Outcome: "confirmed", Evidence: "traced"})
 	}
-	scope, err := AuthorizedScope(Plan{Closure: closure}, findings, investigations)
+	scope, err := AuthorizedScope(Plan{Closure: closure}, findings, investigations, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,11 +254,11 @@ func TestAuthorizedScopeCapsFindingsAndFiles(t *testing.T) {
 		{ID: "x2", Path: "a.go", Tool: "deadcode", ToolVersion: "1", Rule: "r", Evidence: "e"},
 	}
 	proof := []Investigation{{FindingID: "x1", Outcome: "confirmed", Evidence: "t"}, {FindingID: "x2", Outcome: "confirmed", Evidence: "t"}}
-	scope, err = AuthorizedScope(Plan{Closure: []string{"a.go"}}, same, proof)
+	scope, err = AuthorizedScope(Plan{Closure: []string{"a.go"}}, same, proof, nil)
 	if err != nil || !slices.Equal(scope, []string{"a.go"}) {
 		t.Errorf("AuthorizedScope(same file) = %v, %v; want [a.go] once", scope, err)
 	}
-	if scope, err := AuthorizedScope(Plan{}, nil, nil); err != nil || scope == nil || len(scope) != 0 {
+	if scope, err := AuthorizedScope(Plan{}, nil, nil, nil); err != nil || scope == nil || len(scope) != 0 {
 		t.Errorf("AuthorizedScope(nothing) = %v, %v; want an empty non-nil scope", scope, err)
 	}
 }

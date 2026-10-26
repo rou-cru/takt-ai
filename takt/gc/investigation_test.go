@@ -16,6 +16,7 @@
 package gc
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/obs"
@@ -67,7 +68,6 @@ func eligibleFixture(mandate MandateClass) Finding {
 }
 
 func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) {
-	resetDemotedMandates(t)
 	store, bus, clock := newRateTestBus(t)
 	seedRegisteredWork(t, bus, clock, 20)          // denominator = 20
 	seedReedits(t, bus, clock, MandateDeadCode, 2) // 2/20 = 10%, below the 25% threshold
@@ -82,13 +82,12 @@ func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) 
 	if d.Reversions != 2 || d.RegisteredWork != 22 {
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
-	if !eligibleFinding(eligibleFixture(MandateDeadCode)) {
+	if !eligibleFinding(eligibleFixture(MandateDeadCode), nil) {
 		t.Fatal("finding must stay eligible when the mandate is not demoted")
 	}
 }
 
 func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *testing.T) {
-	resetDemotedMandates(t)
 	store, bus, clock := newRateTestBus(t)
 	seedRegisteredWork(t, bus, clock, 10)             // denominator = 10 registered-work events...
 	seedReedits(t, bus, clock, MandateDuplication, 5) // ...plus 5 reedits = 15 registered, 5/15 = 33%, above 25%
@@ -104,18 +103,28 @@ func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *test
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
 
-	// Subsequent findings of the demoted mandate class must read as ProposalOnly.
-	if eligibleFinding(eligibleFixture(MandateDuplication)) {
-		t.Fatal("demoted mandate class must not stay eligible")
+	// Once the coordinator records it, a later process reads the demotion back
+	// from the persisted state: findings of that class stay proposal-only.
+	var c Coordinator
+	c.Demote(d.Mandate)
+	data, err := json.Marshal(&c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloaded Coordinator
+	if err := json.Unmarshal(data, &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	if eligibleFinding(eligibleFixture(MandateDuplication), reloaded.Demoted) {
+		t.Fatal("demoted mandate class must not stay eligible after a reload")
 	}
 	// Unrelated mandate classes are unaffected.
-	if !eligibleFinding(eligibleFixture(MandateComplexity)) {
+	if !eligibleFinding(eligibleFixture(MandateComplexity), reloaded.Demoted) {
 		t.Fatal("demotion must not leak to other mandate classes")
 	}
 }
 
 func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T) {
-	resetDemotedMandates(t)
 	store, bus, clock := newRateTestBus(t)
 	// Only 2 registered-work events total, both reedits: 100% rate, but far
 	// below minRegisteredWorkForRateDecision, so it must not fire.
@@ -131,7 +140,6 @@ func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T)
 }
 
 func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) {
-	resetDemotedMandates(t)
 	store, bus, clock := newRateTestBus(t)
 	seedRegisteredWork(t, bus, clock, 10)
 	seedReedits(t, bus, clock, MandateComplexity, 5)
@@ -147,13 +155,4 @@ func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) 
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one control-contain effect event, got %d", len(events))
 	}
-}
-
-// resetDemotedMandates clears the package-level demotion state between tests
-// so one test's decision cannot leak into another's.
-func resetDemotedMandates(t *testing.T) {
-	t.Helper()
-	demotedMu.Lock()
-	demotedMandates = map[MandateClass]bool{}
-	demotedMu.Unlock()
 }

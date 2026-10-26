@@ -115,7 +115,9 @@ func readSymbols(ctx context.Context, workspace, path, lang string) ([]SymbolSna
 	}
 	var argv []string
 	if lang == "python" {
-		argv = []string{"./.venv/bin/python", "-c", `import ast,json,sys
+		// -I keeps the workspace off the import path, so no project module
+		// shadows the standard library the parser uses.
+		argv = []string{"./.venv/bin/python", "-I", "-c", `import ast,json,sys
 root=ast.parse(open(sys.argv[1]).read()); out=[]
 def walk(node,prefix=''):
  for child in ast.iter_child_nodes(node):
@@ -124,7 +126,10 @@ def walk(node,prefix=''):
   else: walk(child,prefix)
 walk(root); print(json.dumps(out))`, path}
 	} else {
-		argv = []string{"node", "-e", `const ts=require('./node_modules/typescript'); const fs=require('fs'); const path=process.argv[1]; const f=ts.createSourceFile(path,fs.readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true); if(f.parseDiagnostics.length) throw Error('TypeScript parse failure'); const out=[]; function walk(n,p=''){let name=n.name?.getText(f); if(name&&(ts.isFunctionDeclaration(n)||ts.isMethodDeclaration(n)||ts.isClassDeclaration(n)||ts.isVariableDeclaration(n))){out.push({name:p+name,line:f.getLineAndCharacterOfPosition(n.getStart(f)).line+1,end:f.getLineAndCharacterOfPosition(n.end).line+1,exported:!!n.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword)});p+=name+'.'} ts.forEachChild(n,c=>walk(c,p));} walk(f); console.log(JSON.stringify(out));`, path}
+		// "--" keeps a leading-dash filename a positional argument, never a
+		// Node option. Export status combines the modifiers of the enclosing
+		// statement ("export const") with local "export { x }" lists.
+		argv = []string{"node", "-e", `const ts=require('./node_modules/typescript'); const fs=require('fs'); const path=process.argv[1]; const f=ts.createSourceFile(path,fs.readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true); if(f.parseDiagnostics.length) throw Error('TypeScript parse failure'); const named=new Set(); for(const s of f.statements){if(ts.isExportDeclaration(s)&&!s.moduleSpecifier&&s.exportClause&&ts.isNamedExports(s.exportClause))for(const e of s.exportClause.elements)named.add((e.propertyName??e.name).text); if(ts.isExportAssignment(s)&&ts.isIdentifier(s.expression))named.add(s.expression.text)} const out=[]; function walk(n,p=''){let name=n.name?.getText(f); if(name&&(ts.isFunctionDeclaration(n)||ts.isMethodDeclaration(n)||ts.isClassDeclaration(n)||ts.isVariableDeclaration(n))){out.push({name:p+name,line:f.getLineAndCharacterOfPosition(n.getStart(f)).line+1,end:f.getLineAndCharacterOfPosition(n.end).line+1,exported:(ts.getCombinedModifierFlags(n)&ts.ModifierFlags.Export)!==0||(p===''&&named.has(name))});p+=name+'.'} ts.forEachChild(n,c=>walk(c,p));} walk(f); console.log(JSON.stringify(out));`, "--", path}
 	}
 	ev := runPreparedWithTimeout(ctx, workspace, argv, DefaultASTTimeout)
 	if !ev.Completed || ev.Exit != 0 {

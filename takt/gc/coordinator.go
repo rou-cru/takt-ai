@@ -68,6 +68,17 @@ type Coordinator struct {
 	Session string  `json:"session,omitempty"`
 	Cycle   *Cycle  `json:"cycle,omitempty"`
 	History []Cycle `json:"history,omitempty"`
+	// Demoted lists the mandate classes PR-MNT-32 made proposal-only. It is
+	// the sole durable record authorization reads; no session or cycle
+	// change clears it.
+	Demoted []MandateClass `json:"demoted_mandates,omitempty"`
+}
+
+// Demote records that m lost autonomous mutation (PR-MNT-32).
+func (c *Coordinator) Demote(m MandateClass) {
+	if !slices.Contains(c.Demoted, m) {
+		c.Demoted = append(c.Demoted, m)
+	}
 }
 
 // Specialist identities used by the maintenance cycle. These are catalog
@@ -305,7 +316,7 @@ func (c *Coordinator) Require(session, role string) error {
 }
 
 // AuthorizedScope bounds mutation paths, never truncates causal context.
-func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation) ([]string, error) {
+func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation, demoted []MandateClass) ([]string, error) {
 	p, e := LoadTriggerPolicy()
 	if e != nil {
 		return nil, e
@@ -314,7 +325,7 @@ func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigati
 	seen := make(map[string]struct{}, p.Limits.Files)
 	n := 0
 	for _, f := range findings {
-		if !AuthorizedFinding(f, investigations) {
+		if !AuthorizedFinding(f, investigations, demoted) {
 			continue
 		}
 		if !slices.Contains(plan.Closure, f.Path) {
