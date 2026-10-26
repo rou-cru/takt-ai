@@ -98,7 +98,7 @@ path, and keep moving.
    invoke global test runners, full workspace builds, or whole-repo linters, as this causes
    tool, cache, and artifact collisions in a shared workspace. Full build, lint, and
    end-to-end tests run exclusively in one Verify unit per vertical slice, on the materialized
-   workspace after that slice's writers finish, and it runs the slice's story independent test.
+   workspace after that slice's writers finish, and it runs the slice's independent test, plus the story's own on a split story's last slice.
    Never parallelize global verification, run it per wave or node, or run it unplanned. A
    milestone commit is a separate decision and follows only after an acceptance passes.
 6. **Zero Silent Drops:** A first failure that OPERATIONS routes to retry in place retries once;

@@ -28,8 +28,8 @@ its expected result open. When a story is revised, every invariant derived from 
 
 ## 2. Select
 
-Each invariant to generate or refine has its owner: pm for user stories and, in a separate
-delegation, for requirements formalization, analyst
+Each invariant to generate or refine has its owner: pm for user stories and, in a fresh pm
+unit that never resumes the stories' author session, for requirements formalization, analyst
 for objective facts that are unknown and recoverable, product-designer for experience rules,
 architect for structure and technology, spec for observable behavior when the objective needs
 it formalized, qa for the test policy, test plan, traceability matrix and environment
@@ -84,8 +84,9 @@ every lane of a round in the same response. Ends when every lane has delivered.
 
 When a round returns, compare its documents with each other. On a contradiction between documents of different rank, the higher one stands: the user's
 directive, then user stories, then business documents, then what derives from them. Between equal
-ranks, decide which stands (the one backed by the user's directive or verified facts). Re-dispatch
-only the other lane with its original document, its first result, the standing document and the contradiction.
+ranks, decide which stands (the one backed by the user's directive or verified facts); user stories
+that contradict one another are the user's to settle: ask them, through the stories' pm when that
+lane runs with the user. Re-dispatch only the other lane with its original document, its first result, the standing document and the contradiction.
 Between qa and spec, spec stands for behavior. When neither is backed, the conflict stays disputed: how many lanes consume a document is not
 evidence, so ask the user or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
 of one conflict: escalate. Ends when no contradiction remains open; planning is then complete. Return the delivered invariants to Takt to evaluate development
