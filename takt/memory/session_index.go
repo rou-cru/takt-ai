@@ -55,13 +55,16 @@ type sessionIndexEntry struct {
 	Author string `json:"author"`
 	// Caller is the host session that recorded the entry: the exact agent
 	// session, distinct across delegations of one instance.
-	Caller   string `json:"caller,omitempty"`
-	Nature   string `json:"nature"`
-	Scope    string `json:"scope"`
-	Title    string `json:"title"`
-	Relation string `json:"relation"`
-	Target   int64  `json:"target"`
-	At       string `json:"at"`
+	Caller string `json:"caller,omitempty"`
+	// Callers are the other host sessions whose identical write deduplication
+	// absorbed into this entry: each recorded it as much as Caller did.
+	Callers  []string `json:"callers,omitempty"`
+	Nature   string   `json:"nature"`
+	Scope    string   `json:"scope"`
+	Title    string   `json:"title"`
+	Relation string   `json:"relation"`
+	Target   int64    `json:"target"`
+	At       string   `json:"at"`
 }
 
 func sessionsDir(root string) string {
@@ -182,11 +185,25 @@ func EntryIDsByCaller(root, session, caller string) ([]int64, error) {
 	}
 	ids := []int64{}
 	for _, e := range l.Entries {
-		if caller != "" && e.Caller == caller {
+		if caller != "" && e.recordedBy(caller) {
 			ids = append(ids, e.ID)
 		}
 	}
 	return ids, nil
+}
+
+func (e sessionIndexEntry) recordedBy(caller string) bool {
+	return e.Caller == caller || slices.Contains(e.Callers, caller)
+}
+
+// addCaller indexes caller on the existing entry id, reporting whether it was new.
+func (l *sessionIndex) addCaller(id int64, caller string) bool {
+	i := slices.IndexFunc(l.Entries, func(e sessionIndexEntry) bool { return e.ID == id })
+	if caller == "" || i < 0 || l.Entries[i].recordedBy(caller) {
+		return false
+	}
+	l.Entries[i].Callers = append(l.Entries[i].Callers, caller)
+	return true
 }
 
 func (l *sessionIndex) hasEntry(id int64) bool {

@@ -303,6 +303,19 @@ func TestRecordUserOrderAttribution(t *testing.T) {
 	}
 }
 
+func TestRecordUserOrderedDecisionAttribution(t *testing.T) {
+	f, cfg := newFake(t)
+	req := base()
+	req.Nature, req.Evidence, req.UserOrder = "decision", "user: ship it", true
+	res, err := memory.Record(context.Background(), cfg, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.byID(res.ID).Content; !strings.Contains(got, "**Authority**: user\n") {
+		t.Fatalf("a confirmed user order stamped as a quote:\n%s", got)
+	}
+}
+
 func TestRecordRelatesToMissing(t *testing.T) {
 	f, cfg := newFake(t)
 	req := base()
@@ -522,6 +535,30 @@ func TestRecordDedup(t *testing.T) {
 	}
 	l, _ := readIndex(cfg.Root, "ses_1")
 	if len(l.Entries) != 1 {
+		t.Fatalf("entries = %d", len(l.Entries))
+	}
+}
+
+func TestRecordDedupIndexesEveryCaller(t *testing.T) {
+	_, cfg := newFake(t)
+	ctx := context.Background()
+	first, second := base(), base()
+	first.CallerSession, second.CallerSession = "ses_pm_a", "ses_pm_b"
+	a, err := memory.Record(ctx, cfg, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := memory.Record(ctx, cfg, second)
+	if err != nil || !b.Deduplicated || b.ID != a.ID {
+		t.Fatalf("second write = %+v, %v", b, err)
+	}
+	for _, caller := range []string{"ses_pm_a", "ses_pm_b"} {
+		ids, err := memory.EntryIDsByCaller(cfg.Root, "ses_1", caller)
+		if err != nil || !slices.Equal(ids, []int64{a.ID}) {
+			t.Fatalf("EntryIDsByCaller(%s) = %v, %v", caller, ids, err)
+		}
+	}
+	if l, _ := readIndex(cfg.Root, "ses_1"); len(l.Entries) != 1 {
 		t.Fatalf("entries = %d", len(l.Entries))
 	}
 }

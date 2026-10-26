@@ -423,6 +423,13 @@ func (s *openSession) persistRecord(ctx context.Context, cfg Config, req RecordR
 		return RecordResult{}, err
 	}
 	if l.hasEntry(id) {
+		// A deduplicated write still names its caller, so a session recycled to
+		// consume the entry is recognized; memory stays closed if it was.
+		if l.addCaller(id, req.CallerSession) {
+			if err := saveSessionIndex(cfg.Root, l); err != nil {
+				return RecordResult{}, err
+			}
+		}
 		return RecordResult{ID: id, Deduplicated: true}, nil
 	}
 	if err := s.recordLinks(ctx, cfg, req, id); err != nil {
@@ -673,12 +680,12 @@ func validateRelation(rel *RelatesTo) error {
 func renderEntry(req RecordRequest) string {
 	authority := "author"
 	switch {
-	// The approval is the author's quote, not one the harness saw the user give;
-	// only a confirmed user order is stamped as the user's own.
-	case req.Nature == "decision":
-		authority = "user, as quoted by " + req.Author + " — " + req.Evidence
+	// Only a confirmed user order is stamped as the user's own; a decision's
+	// approval otherwise is the author's quote, not one the harness saw given.
 	case req.UserOrder:
 		authority = "user"
+	case req.Nature == "decision":
+		authority = "user, as quoted by " + req.Author + " — " + req.Evidence
 	case strings.TrimSpace(req.Evidence) != "":
 		authority = "evidence: " + req.Evidence
 	}

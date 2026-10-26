@@ -721,7 +721,7 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 	owner, owned := scopeOwner(budgets, d.Scope)
 	switch {
 	case d.Objective == "" || d.Result == "" || len(d.Scope) == 0 || d.Actions <= 0 || d.Attempts <= 0:
-		deny(causeIncomplete, errors.New("harness: a recovery declares a binary result, both budgets, an objective, a recoverable point and its scope; declare it again with every field set and both budgets above zero"))
+		deny(causeIncomplete, errors.New("harness: a recovery declares a binary result, both budgets, an objective and its scope; declare it again with every field set and both budgets above zero"))
 	case d.Actions > p.Recovery.MaxActions || d.Attempts > p.Recovery.MaxAttempts:
 		deny(history.BoundRecoveryActions, fmt.Errorf("harness: declared budgets exceed the admissible ceiling of %d actions and %d attempts; declare it again within them", p.Recovery.MaxActions, p.Recovery.MaxAttempts))
 	case owner != "":
