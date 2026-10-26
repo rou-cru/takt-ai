@@ -237,7 +237,6 @@ const (
 	TextModelsResultTitle = "Assign models · Result"
 	TextModelsTitle       = TextMenuAssignModels
 	TextModelsLoadFail    = "Could not load the installed configuration: "
-	TextModelsNothingKept = "Nothing was changed. Esc returns to the menu."
 	TextModelsNothing     = "Nothing installed yet. Install Takt AI before assigning models."
 	TextModelsAssignAgain = "Assign another shows the current assignments."
 	TextModelsAssignFail  = "Could not assign models on "

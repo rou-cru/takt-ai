@@ -285,13 +285,19 @@ func (m Model) View() tea.View {
 	return tea.NewView(ui.Shell(frame))
 }
 
-// unavailableFrame explains why nothing is assignable yet.
+// blockedActions is the blocked screen's single labeled return below the
+// panel; Enter activates it and Esc reaches the same menu.
+var blockedActions = []string{ui.TextActionBackToMenu}
+
+// unavailableFrame explains why nothing is assignable yet and offers the
+// labeled return to the menu.
 func (m Model) unavailableFrame() ui.Frame {
+	footer := ui.FooterActions(ui.Actions(blockedActions...), 0, true)
 	if m.loadErr != nil {
-		body := ui.Status(ui.StateFailed, ui.TextModelsLoadFail+m.loadErr.Error()) + "\n\n" + theme.Caption.Render(ui.TextModelsNothingKept)
-		return ui.Frame{Body: body}
+		body := ui.Status(ui.StateFailed, ui.TextModelsLoadFail+m.loadErr.Error()) + "\n\n" + theme.Caption.Render(ui.TextOutcomeNothing)
+		return ui.Frame{Body: body, Footer: footer}
 	}
-	return ui.Frame{Body: theme.Label.Render(ui.TextModelsNothing)}
+	return ui.Frame{Body: theme.Label.Render(ui.TextModelsNothing), Footer: footer}
 }
 
 // resultFrame reports what happened, what changed, when it takes effect,

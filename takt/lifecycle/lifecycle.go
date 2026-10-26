@@ -254,7 +254,14 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, runtime.Progress, preserve...)
 	// Files are written from here on: a later failure still reports them
 	// alongside the error, so callers can show partial work honestly.
-	deployed := LifecycleResult{Changed: result.Changed, Unchanged: result.Unchanged, Actions: result.Actions, NotApplied: result.NotApplied, Outcome: OutcomeCompleted}
+	deployed := LifecycleResult{
+		Changed:    result.Changed,
+		Unchanged:  result.Unchanged,
+		Actions:    result.Actions,
+		NotApplied: result.NotApplied,
+		Incomplete: result.Incomplete,
+		Outcome:    OutcomeCompleted,
+	}
 	if Cancelled(ctx, err) {
 		return recordCancelled(rootDir, request, deployed, started)
 	}
@@ -350,7 +357,7 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 		return removed, nil
 	}
 	if err != nil {
-		return LifecycleResult{}, err
+		return removed, err
 	}
 	if err := removeEngram(rootDir); err != nil {
 		return removed, err
@@ -371,7 +378,7 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 // acquireEngram is the Engram prerequisite seam; tests replace it to avoid PATH and network.
 var acquireEngram = engram.Acquire
 
-// acquireCodegraph is the codegraph prerequisite seam; tests replace it to avoid PATH and network.
+// acquireCodegraph is the CodeGraph prerequisite seam; tests replace it to avoid PATH and network.
 var acquireCodegraph = codegraph.Acquire
 
 // installSandboxDependency is the sandbox adapter's npm dependency seam; tests replace it to avoid PATH and network.

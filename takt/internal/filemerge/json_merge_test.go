@@ -7,17 +7,19 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 //
 // You should have received a copy of the GNU Affero General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package filemerge
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -54,12 +56,12 @@ func TestMergeJSONObjectsRecursively(t *testing.T) {
 
 func TestMergeJSONObjectsSupportsJSONCBase(t *testing.T) {
 	base := []byte(`{
-	  // VS Code-style comments and trailing commas
-	  "editor.fontSize": 14,
-	  "files.exclude": {
-	    "**/.git": true,
-	  },
-	}`)
+  // VS Code-style comments and trailing commas
+  "editor.fontSize": 14,
+  "files.exclude": {
+    "**/.git": true,
+  },
+}`)
 	overlay := []byte(`{"chat.tools.autoApprove": true}`)
 
 	merged, err := MergeJSONObjects(base, overlay)
@@ -82,49 +84,58 @@ func TestMergeJSONObjectsSupportsJSONCBase(t *testing.T) {
 	}
 }
 
-func TestMergeJSONObjectsMalformedBaseReturnsOverlayOnly(t *testing.T) {
-	// Real user machines may have a malformed MCP config file.
-	// The installer should recover by treating the broken base as {} and continuing.
+// TestMergeJSONObjectsMalformedBaseIsRejectedWithPosition checks that a
+// malformed base is rejected as an *InvalidJSONError that locates the failure
+// in the original bytes, never normalized to an empty object a caller could
+// mistake for content safe to replace.
+func TestMergeJSONObjectsMalformedBaseIsRejectedWithPosition(t *testing.T) {
+	// Real user machines may have a malformed MCP config file. The merge
+	// reports the parse failure with its position; the setup layer surfaces
+	// it for a per-file decision instead of silently replacing the bytes.
 	tests := []struct {
 		name    string
 		base    []byte
 		overlay []byte
-		wantKey string
 	}{
 		{
 			name:    "base starting with letter",
 			base:    []byte(`allow: all`),
 			overlay: []byte(`{"mcpServers": {"context7": {"type": "remote"}}}`),
-			wantKey: "mcpServers",
 		},
 		{
 			name:    "unclosed json object",
 			base:    []byte(`{"ok": true`),
 			overlay: []byte(`{"chat.tools.autoApprove": true}`),
-			wantKey: "chat.tools.autoApprove",
 		},
 		{
 			name:    "arbitrary text",
 			base:    []byte(`a`),
 			overlay: []byte(`{"servers": {"engram": {"command": "engram"}}}`),
-			wantKey: "servers",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			merged, err := MergeJSONObjects(tt.base, tt.overlay)
-			if err != nil {
-				t.Fatalf("MergeJSONObjects() error = %v; want nil (malformed base should be treated as {})", err)
+			if err == nil {
+				t.Fatalf("MergeJSONObjects() error = nil; want the malformed base rejected, not treated as {}")
 			}
-
-			var got map[string]any
-			if err := json.Unmarshal(merged, &got); err != nil {
-				t.Fatalf("merged result is not valid JSON: %v", err)
+			if merged != nil {
+				t.Errorf("MergeJSONObjects() = %s alongside the error; want no content", merged)
 			}
-
-			if _, ok := got[tt.wantKey]; !ok {
-				t.Fatalf("merged result missing key %q from overlay; got keys: %v", tt.wantKey, got)
+			if !strings.Contains(err.Error(), "read base json") {
+				t.Errorf("error %v does not identify the base as the unread side", err)
+			}
+			var invalid *InvalidJSONError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("error %v is not an *InvalidJSONError", err)
+			}
+			if invalid.ByteOffset < 0 || invalid.ByteOffset >= int64(len(tt.base)) || invalid.Line < 1 || invalid.Column < 1 {
+				t.Errorf("position = offset %d line %d column %d; want it inside the %d base bytes",
+					invalid.ByteOffset, invalid.Line, invalid.Column, len(tt.base))
+			}
+			if invalid.Reason == "" {
+				t.Error("InvalidJSONError.Reason is empty")
 			}
 		})
 	}
@@ -411,7 +422,7 @@ func TestMergeJSONObjects_Issue278_ReplaceSentinelFixesWildcard(t *testing.T) {
 	t.Logf("CONFIRMED: __replace__ produces exactly %d task keys (no wildcard)", len(task))
 }
 
-// ─── R4: union of plugins/skills arrays (Ola 0) ───────────────────────────────
+// ─── union of plugins/skills arrays (Ola 0) ───────────────────────────────
 
 // TestMergeJSONObjectsUnionsPluginsFromUserCLIConfig proves that a preexisting
 // cli.json with the user's own plugins survives a Takt install: Takt's overlay
@@ -501,6 +512,7 @@ func TestMergeJSONObjectsUnionsSkillsArray(t *testing.T) {
   "skills": ["~/.config/takt-ai/skills", "/home/user/my-skills"],
   "theme": "dracula"
 }`)
+
 	overlay := []byte(`{
   "skills": ["~/.config/takt-ai/skills", "~/.config/takt-ai/skills/default"],
   "theme": "takt"
@@ -542,6 +554,7 @@ func TestMergeJSONObjectsNonUnionArraysStillReplace(t *testing.T) {
   "plugins": ["user-a.ts"],
   "scalar": "old"
 }`)
+
 	overlay := []byte(`{
   "mcp": {"engram": {"args": ["mcp","--new"]}},
   "customArray": ["only-overlay"],

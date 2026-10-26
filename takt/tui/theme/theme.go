@@ -1,12 +1,17 @@
 // Package theme is the single source of visual truth for the TUI: renderers
 // ask for a role (TextPrimary, SuccessFg, Caption), never a hex or palette
 // name. Dark is the only theme; when the terminal cannot render color,
-// every role degrades to plain text while markers and labels carry the semantics.
+// every role degrades to plain text while markers and labels carry the
+// semantics. Glyphs follow the same rule one capability up: when the
+// terminal cannot render Unicode, the central glyph map degrades to ASCII
+// while words and layout keep the meaning, so no screen shows a replacement
+// character (PR-UX-6).
 package theme
 
 import (
 	"image/color"
 	"os"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
@@ -66,6 +71,71 @@ func Mono() bool { return mode == ModeMono }
 // TAKT_NO_ANIMATION to any non-empty value for the documented
 // animation-free mode; the ASCII baseline renders either way.
 func Animation() bool { return os.Getenv("TAKT_NO_ANIMATION") == "" }
+
+// GlyphMode names the glyph capability the surface targets, independent of
+// color and animation.
+type GlyphMode int
+
+// Glyph modes are the closed set of glyph capabilities.
+const (
+	// GlyphUnicode draws box-drawing borders and pictographic markers where
+	// the terminal renders them.
+	GlyphUnicode GlyphMode = iota
+	// GlyphASCII draws every border, marker and bar from plain ASCII, so a
+	// terminal that cannot render Unicode stays legible with no replacement
+	// characters (PR-UX-6).
+	GlyphASCII
+)
+
+// glyphMode is the active glyph capability; the glyph map and the panel
+// border resolve through it.
+var glyphMode = GlyphUnicode
+
+// DetectGlyphMode reads the environment for the documented glyph fallback
+// (PR-UX-6). TERM=dumb is explicit terminal-capability information that
+// proves an ASCII-only surface and prevails over the locale. Otherwise the
+// first set variable of LC_ALL, then LC_CTYPE, then LANG decides, and a
+// locale that does not declare the UTF-8 codeset falls back to ASCII: a
+// wrong Unicode guess draws replacement characters, while a wrong ASCII
+// guess only draws plainer text.
+func DetectGlyphMode() GlyphMode {
+	if os.Getenv("TERM") == "dumb" {
+		return GlyphASCII
+	}
+	for _, name := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if locale := os.Getenv(name); locale != "" {
+			if !localeDeclaresUTF8(locale) {
+				return GlyphASCII
+			}
+			return GlyphUnicode
+		}
+	}
+	return GlyphUnicode
+}
+
+// localeDeclaresUTF8 reports whether a locale names the UTF-8 codeset:
+// either the whole value ("UTF-8", as some terminals set LC_CTYPE) or the
+// codeset after the territory suffix, before any "@" modifier
+// ("en_US.UTF-8", "C.utf8").
+func localeDeclaresUTF8(locale string) bool {
+	codeset := locale
+	if _, after, found := strings.Cut(locale, "."); found {
+		codeset = after
+	}
+	codeset, _, _ = strings.Cut(codeset, "@")
+	switch strings.ToUpper(codeset) {
+	case "UTF-8", "UTF8":
+		return true
+	}
+	return false
+}
+
+// SetGlyphMode switches the glyph capability and rebuilds the glyph map and
+// every style. It is the entrypoint for proven capability: a caller that
+// has proven the terminal ASCII-only sets GlyphASCII, and that proof
+// prevails over the locale-derived mode. No color profile proves glyphs,
+// because NO_COLOR also produces an ASCII color profile.
+func SetGlyphMode(m GlyphMode) { glyphMode = m; resolve() }
 
 // Palette holds one theme's tokens so renderers ask for roles, never hex values.
 type Palette struct {
@@ -168,13 +238,16 @@ func role(c color.Color) color.Color {
 	return c
 }
 
-// init resolves roles and styles so no renderer repeats tokens.
+// init resolves roles, styles and glyphs so no renderer repeats tokens.
 func init() {
 	SetMode(DetectMode())
+	SetGlyphMode(DetectGlyphMode())
 }
 
-// resolve rebuilds every exported role and style from the active palette.
+// resolve rebuilds every exported role, style and glyph from the active
+// palette and glyph set.
 func resolve() {
+	Icon = glyphSet()
 	p := active()
 	Canvas, Surface = role(p.Canvas), role(p.Surface)
 	TextPrimary, TextSecondary, TextMuted = role(p.TextPrimary), role(p.TextSecondary), role(p.TextMuted)
@@ -204,10 +277,7 @@ func resolve() {
 	SuccessText, WarningText, DangerText = text(SuccessFg), text(WarningFg), text(DangerFg)
 	Strong = text(TextPrimary).Bold(bold)
 	Panel = text(TextPrimary).Background(Surface).Padding(0, 1).
-		Border(lipgloss.Border{
-			Top: "─", Bottom: "─", Left: "│", Right: "│",
-			TopLeft: "┌", TopRight: "┐", BottomLeft: "└", BottomRight: "┘",
-		}).BorderForeground(BorderControl)
+		Border(Icon.Border).BorderForeground(BorderControl)
 	Button = text(TextSecondary)
 	ButtonFocus = text(Canvas).Background(FocusRing).Bold(bold)
 	ButtonDanger = text(DangerFg)
@@ -215,20 +285,27 @@ func resolve() {
 	ButtonDisabled = text(DisabledFg).Background(DisabledBg)
 }
 
-// Icon centralizes glyphs so one state never renders as two marks. The
-// baseline vocabulary stays ASCII; FieldBar is a box-drawing bar, not a
-// Nerd Font glyph.
-var Icon = struct {
-	Cursor      string
-	Done        string
-	Failed      string
-	Unchecked   string
-	Chosen      string
-	Unchosen    string
-	CheckboxOn  string
-	CheckboxOff string
-	FieldBar    string
-}{
+// Glyphs is the central glyph map: the one definition of every border,
+// marker and bar character the TUI renders, so one state never renders as
+// two marks and a capability change never edits a screen. Words and layout
+// carry the meaning whenever two glyphs of a set coincide.
+type Glyphs struct {
+	// Cursor is the focus-gutter marker; FieldBar marks a focused text field.
+	Cursor, FieldBar string
+	// Done, Failed and Unchecked mark completed, failed and unverified steps.
+	Done, Failed, Unchecked string
+	// Chosen and Unchosen mark the selected and the unselected value of one
+	// single choice; CheckboxOn and CheckboxOff mark multiple selection.
+	Chosen, Unchosen, CheckboxOn, CheckboxOff string
+	// BarFill and BarEmpty draw a progress bar's completed and open cells.
+	BarFill, BarEmpty rune
+	// Border draws a panel.
+	Border lipgloss.Border
+}
+
+// unicodeGlyphs is the enhancement set: box-drawing borders and
+// pictographic markers, no Nerd Font glyphs.
+var unicodeGlyphs = Glyphs{
 	Cursor:      "> ",
 	Done:        "✓",
 	Failed:      "✗",
@@ -238,4 +315,45 @@ var Icon = struct {
 	CheckboxOn:  "[x]",
 	CheckboxOff: "[ ]",
 	FieldBar:    "┃ ",
+	BarFill:     '█',
+	BarEmpty:    '░',
+	Border: lipgloss.Border{
+		Top: "─", Bottom: "─", Left: "│", Right: "│",
+		TopLeft: "┌", TopRight: "┐", BottomLeft: "└", BottomRight: "┘",
+	},
+}
+
+// asciiGlyphs is the fallback set (PR-UX-6): every character is plain ASCII,
+// on the approved control vocabulary — > focus, [x]/[ ] multiple selection,
+// | field focus, x completed step, * active value — with borders, markers
+// and bars in their legible ASCII forms. Done and Failed keep distinct
+// marks, and the state words stay distinct beside them.
+var asciiGlyphs = Glyphs{
+	Cursor:      "> ",
+	Done:        "x",
+	Failed:      "X",
+	Unchecked:   "?",
+	Chosen:      "* ",
+	Unchosen:    "  ",
+	CheckboxOn:  "[x]",
+	CheckboxOff: "[ ]",
+	FieldBar:    "| ",
+	BarFill:     '#',
+	BarEmpty:    '.',
+	Border: lipgloss.Border{
+		Top: "-", Bottom: "-", Left: "|", Right: "|",
+		TopLeft: "+", TopRight: "+", BottomLeft: "+", BottomRight: "+",
+	},
+}
+
+// Icon is the active glyph map; screens read it at render time, so a glyph
+// mode change reaches every screen without editing it.
+var Icon Glyphs
+
+// glyphSet returns the glyph map of the active glyph mode.
+func glyphSet() Glyphs {
+	if glyphMode == GlyphASCII {
+		return asciiGlyphs
+	}
+	return unicodeGlyphs
 }

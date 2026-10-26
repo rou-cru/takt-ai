@@ -272,9 +272,6 @@ const EXCEPTION_BOUNDS = [
 // FAILING_VERDICT is how the core words a refusal to consolidate over a current
 // failing verdict: only the user's acceptance lets the work through.
 const FAILING_VERDICT = "a current verification verdict failed"
-// UNCONFIRMED_RELEASE is how the core words a refusal to release an active
-// claim the user has not agreed to release.
-const UNCONFIRMED_RELEASE = "releasing this active claim needs the user's agreement"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
@@ -1511,20 +1508,13 @@ export default Plugin.define({
         const unit = asString(args.work_unit_id, "").trim()
         return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, reads: args.reads, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly; one an agent is actively working under in the current root session is released once the user accepts the confirmation this raises.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key") }, ["claim_key"]), async execute(value: unknown, c) {
+      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released once its unit has ended.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key") }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string }>(value)
         orchestratorOnly(c, "VFS claim release")
-        // The core decides under its lock: staged work is refused, and an active
-        // claim of this root is refused until the user agrees, which only the
-        // harness asks and records.
-        const release = (confirmed: boolean) => takt("release", c, { key: args.claim_key, confirmed })
-        try {
-          return { content: JSON.stringify(await release(false)) }
-        } catch (error) {
-          if (!(error instanceof Error) || !error.message.includes(UNCONFIRMED_RELEASE)) throw error
-          await confirmWithUser("claim_release", args.claim_key, { claim_key: args.claim_key, refusal: error.message }, c)
-          return { content: JSON.stringify(await release(true)) }
-        }
+        // The core decides under its lock: staged work and a claim whose unit
+        // is still running are refused there, each naming its exit.
+        const released = await takt("release", c, { key: args.claim_key })
+        return { content: JSON.stringify(released) }
       } })
 
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)

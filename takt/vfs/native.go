@@ -1,3 +1,18 @@
+// Copyright (C) 2025 Takt AI Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package vfs
 
 import (
@@ -105,33 +120,9 @@ func (f *FS) nativeScope(tool, resource string) (nativeInspection, error) {
 	default:
 		return n, fmt.Errorf("%w: unsupported native inspection tool", ErrIdentity)
 	}
-	abs := resource
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(f.rootDir, abs)
-	}
-	abs = filepath.Clean(abs)
-	// Resolve the nearest existing ancestor too: a missing file below an
-	// outside symlink into the workspace still needs an in-workspace reservation.
-	resolved := abs
-	var tail []string
-	for {
-		target, e := filepath.EvalSymlinks(resolved)
-		if e == nil {
-			resolved = target
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
-			}
-			break
-		}
-		if !os.IsNotExist(e) {
-			return n, e
-		}
-		parent := filepath.Dir(resolved)
-		if parent == resolved {
-			break
-		}
-		tail = append(tail, filepath.Base(resolved))
-		resolved = parent
+	resolved, err := f.canonicalPath(resource)
+	if err != nil {
+		return n, err
 	}
 	rel, err := filepath.Rel(f.rootDir, resolved)
 	if err != nil {
@@ -156,6 +147,38 @@ func (f *FS) nativeScope(tool, resource string) (nativeInspection, error) {
 		}
 	}
 	return n, nil
+}
+
+// canonicalPath resolves name, relative to the workspace root when not
+// absolute, with symlinks evaluated as Open evaluates the root, so it compares
+// with the canonical root. The nearest existing ancestor is resolved too: a
+// missing file below a symlinked ancestor still resolves to where it lands.
+func (f *FS) canonicalPath(name string) (string, error) {
+	abs := name
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(f.rootDir, abs)
+	}
+	resolved := filepath.Clean(abs)
+	var tail []string
+	for {
+		target, err := filepath.EvalSymlinks(resolved)
+		if err == nil {
+			resolved = target
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(resolved)
+		if parent == resolved {
+			return resolved, nil
+		}
+		tail = append(tail, filepath.Base(resolved))
+		resolved = parent
+	}
 }
 
 func (f *FS) guardCodeQueryLocked(c Caller) error {
@@ -225,6 +248,11 @@ func (f *FS) GuardNativeEdit(session string, resources []string) error {
 	for _, resource := range resources {
 		path := filepath.Clean(resource)
 		if filepath.IsAbs(path) {
+			// Compare in the canonical root's terms: an alias of the root
+			// through a symlinked ancestor names the same workspace path.
+			if resolved, err := f.canonicalPath(path); err == nil {
+				path = resolved
+			}
 			rel, err := filepath.Rel(f.rootDir, path)
 			if err != nil || !filepath.IsLocal(rel) {
 				continue
@@ -254,7 +282,7 @@ func (f *FS) releaseExitLocked(session string, key AgentID, b Identity) string {
 	case f.stagedLocked(key):
 		return fmt.Sprintf("it holds staged work: vfs_consolidate or vfs_discard author_key %s once its unit returns", key)
 	default:
-		return fmt.Sprintf("it holds no staged work: claim_release claim_key %s (an active claim of this session is released once the user agrees)", key)
+		return fmt.Sprintf("it holds no staged work: claim_release claim_key %s once its unit has ended; a running unit ends first with dispatch_abandon", key)
 	}
 }
 

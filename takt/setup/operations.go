@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	artifactutil "github.com/rou-cru/takt-ai/takt/internal/artifacts"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 )
 
 // loadOrCreateManifest loads the ownership manifest for rootDir, or returns an empty manifest when none exists.
@@ -156,7 +157,8 @@ type ConflictEntry struct {
 	// Path is the artifact's root-relative path, suitable for passing back
 	// into the preserve list of ApplyContext/SyncContext.
 	Path string
-	// Reason is "pre-existing" (unmanaged content Takt would overwrite), "user-edited", or "missing".
+	// Reason is "pre-existing" (unmanaged content Takt would overwrite, including
+	// unmanaged JSON that does not parse as an object), "user-edited", or "missing".
 	Reason string
 	// Impact is ImpactUnrelated, ImpactUncertain or ImpactIncompatible; see
 	// classifyConflict for the rule set.
@@ -172,6 +174,11 @@ type ConflictEntry struct {
 	SHA256 string
 	// Accepted reports the user already kept this exact content with this impact, so it must not be asked again.
 	Accepted bool
+	// ByteOffset, Line and Column locate the parse failure of unmanaged JSON
+	// that Takt cannot merge into; all three are zero for any other conflict.
+	ByteOffset int64
+	Line       int
+	Column     int
 }
 
 // DetectConflicts previews where deploying would overwrite unowned content or
@@ -206,6 +213,9 @@ func detectArtifactConflict(rootDir string, artifact Artifact, manifest *Ownersh
 		return conflict, include, err
 	}
 	classifyConflict(&conflict, artifact, entry, managed, current)
+	if conflict.Line > 0 {
+		conflict.Consequence += fmt.Sprintf(" Its JSON does not parse at line %d, column %d (byte offset %d); Takt cannot merge into it: keeping it leaves its bytes unchanged, and replacing it writes Takt's config after backing the file up.", conflict.Line, conflict.Column, conflict.ByteOffset)
+	}
 	conflict.Accepted = conflictAccepted(conflict, accepted)
 	return conflict, true, nil
 }
@@ -224,8 +234,15 @@ func readConflict(rootDir string, artifact Artifact, entry OwnershipEntry, manag
 		return ConflictEntry{}, nil, false, fmt.Errorf("inspect managed file %q: %w", artifact.Path, readErr)
 	}
 	if !managed {
-		if isMergeableConfig(artifact.Path) || bytes.Equal(current, artifact.Content) {
+		if bytes.Equal(current, artifact.Content) {
 			return ConflictEntry{}, nil, false, nil
+		}
+		if isMergeableConfig(artifact.Path) {
+			invalid := unmergeableJSON(current)
+			if invalid == nil {
+				return ConflictEntry{}, nil, false, nil
+			}
+			conflict.ByteOffset, conflict.Line, conflict.Column = invalid.ByteOffset, invalid.Line, invalid.Column
 		}
 		conflict.Reason, conflict.SHA256 = "pre-existing", hashOf(current)
 		return conflict, current, true, nil
@@ -236,6 +253,17 @@ func readConflict(rootDir string, artifact Artifact, entry OwnershipEntry, manag
 	}
 	conflict.Reason, conflict.SHA256 = "user-edited", digest
 	return conflict, current, true, nil
+}
+
+// unmergeableJSON returns why current cannot be merged as a JSON object, or
+// nil when the merge applies.
+func unmergeableJSON(current []byte) *filemerge.InvalidJSONError {
+	_, err := filemerge.MergeJSONObjects(current, []byte("{}"))
+	var invalid *filemerge.InvalidJSONError
+	if errors.As(err, &invalid) {
+		return invalid
+	}
+	return nil
 }
 
 func conflictAccepted(conflict ConflictEntry, accepted map[string]RiskAcceptance) bool {
@@ -630,6 +658,7 @@ func pruneEmptyDirs(root, directory string) {
 
 // applyPlans deploys the supplied plans, records ownership for deployed artifacts, and saves the ownership manifest.
 // Paths listed in skip are reported as unchanged and are excluded from deployment. If manifest is nil, it is loaded or created.
+// A failure after the deployment commit returns the committed result beside the error.
 func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip map[string]bool, manifest *OwnershipManifest, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	activePaths, activeArtifacts, targetByPath, manifest, err := prepareApply(rootDir, plans, skip, manifest)
 	if err != nil {
@@ -649,8 +678,11 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 
 	result, err := DeployContextProgress(ctx, rootDir, activePaths, activeArtifacts, progress)
 	cancelled := deploymentCancelled(ctx, err)
+	// DeployContextProgress lists what a commit left on disk inside result, so
+	// an error after the commit keeps that inventory beside the error instead
+	// of substituting an empty result.
 	if err != nil && !cancelled {
-		return DeploymentResult{}, err
+		return result, err
 	}
 	markSkippedPaths(&result, skip)
 	if cancelled && len(result.Changed) == 0 {
@@ -658,11 +690,13 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 	}
 	// A cancelled deployment records ownership only for what is on disk now.
 	validated = slices.DeleteFunc(validated, func(entry OwnershipEntry) bool { return slices.Contains(result.NotApplied, entry.Path) })
+	// The deployment is committed: any bookkeeping failure below returns the
+	// committed inventory beside the error.
 	if err := manifest.Add(validated...); err != nil {
-		return DeploymentResult{}, err
+		return result, err
 	}
 	if saveErr := manifest.Save(rootDir); saveErr != nil {
-		return DeploymentResult{}, saveErr
+		return result, saveErr
 	}
 	return result, err
 }

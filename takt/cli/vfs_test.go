@@ -341,8 +341,9 @@ func TestVFSClaimControlCommands(t *testing.T) {
 	claims, err = fx.mutate("claims", orchReq(rootA, nil))
 	assertVFSActiveClaim(t, claims, err)
 	_, err = fx.mutate("release", orchReq(rootA, map[string]any{"key": assigned.Key}))
-	refusedWith(t, "unconfirmed release of an active claim", err, "the user's agreement", "agent dev")
-	fx.must("release", orchReq(rootB, map[string]any{"key": assigned.Key, "confirmed": true}))
+	refusedWith(t, "release of a claim whose unit is running", err, "dispatch_abandon dispatch ", "claim_release")
+	fx.dispatch("abandon", rootA, "u1", "dev")
+	fx.must("release", orchReq(rootB, map[string]any{"key": assigned.Key}))
 	if claims = fx.must("claims", orchReq(rootA, nil)); len(claims.Claims) != 0 {
 		t.Fatalf("claims after release = %+v", claims.Claims)
 	}
@@ -404,7 +405,7 @@ func TestVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T) {
 	fx := newVFSFixture(t)
 	key := fx.delegate(rootA, "u1", "dev", "a.go")
 	fx.write(rootA, "u1", "dev", "c1", "a.go", "partial")
-	_, err := fx.mutate("release", orchReq(rootA, map[string]any{"key": key, "confirmed": true}))
+	_, err := fx.mutate("release", orchReq(rootA, map[string]any{"key": key}))
 	refusedWith(t, "release of staged work", err, vfs.ErrStagedWork.Error())
 	if retry := fx.must("assign", claimReq(rootA, "u1", "dev", map[string]any{"scope": []string{"a.go", "b.go"}, "author_key": key})); retry.Key != key {
 		t.Fatalf("reassign = %s; want the same author key %s", retry.Key, key)

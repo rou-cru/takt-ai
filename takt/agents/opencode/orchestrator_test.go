@@ -3,6 +3,7 @@ package opencode_test
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
@@ -72,8 +73,9 @@ func effectOf(rules []rule, action, resource string) string {
 // TestOrchestratorIsSelectableWithNativePermissions proves the orchestrator
 // AgentSpec (built by the caller from the catalog, the same way plan.go does)
 // renders as OpenCode's default, primary agent with edit/subagent permission,
-// no inherited read override and only the asked dispatch/gc shell overrides,
-// while the built-in general/explore agents stay disabled.
+// no inherited read override, only the asked dispatch/gc shell overrides plus
+// the canonical Git classification, while the built-in general/explore agents
+// stay disabled.
 func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
@@ -106,10 +108,11 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == "read" }) {
 		t.Errorf("orchestrator overrides inherited read protections")
 	}
-	// Only crew dispatch and GC coordination lift the inherited shell denial,
-	// and only to ask the user; every other shell protection stays.
+	// Crew dispatch, GC coordination and Git are the orchestrator's only
+	// shell overrides: dispatch and GC ask the user, and Git carries the
+	// canonical classification. Every other shell protection stays.
 	for _, r := range agent.Permissions {
-		if r.Action == "shell" && r.Resource != "*takt-ai dispatch*" && r.Resource != "*takt-ai gc*" {
+		if r.Action == "shell" && r.Resource != "*takt-ai dispatch*" && r.Resource != "*takt-ai gc*" && !strings.HasPrefix(r.Resource, "git ") {
 			t.Errorf("orchestrator overrides inherited shell protection %q", r.Resource)
 		}
 	}
@@ -130,6 +133,36 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	} {
 		if got := effectOf(config.Permissions, tc.action, tc.resource); got != tc.want {
 			t.Errorf("%s %s = %q, want %q", tc.action, tc.resource, got, tc.want)
+		}
+	}
+}
+
+// TestOrchestratorGitMutationsAskPerCommand proves the orchestrator's Git
+// rules project the canonical classification: only commit, push, rebase,
+// clean, restore and hard reset ask; other Git is the orchestrator's conduct.
+func TestOrchestratorGitMutationsAskPerCommand(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: shared.OrchestratorID, Description: orchestratorDescription(t), Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := decodeConfig(t, artifact.Content).Agents[shared.OrchestratorID].Permissions
+	for _, tc := range []struct{ resource, want string }{
+		{"git *", "allow"},
+		{"git push", "ask"},
+		{"git commit", "ask"},
+		{"git commit *", "ask"},
+		{"git push *", "ask"},
+		{"git rebase *", "ask"},
+		{"git clean *", "ask"},
+		{"git restore *", "ask"},
+		{"git reset *--hard*", "ask"},
+	} {
+		if got := effectOf(rules, "shell", tc.resource); got != tc.want {
+			t.Errorf("orchestrator git %s = %q, want %q", tc.resource, got, tc.want)
 		}
 	}
 }
@@ -174,8 +207,8 @@ func TestMaintenanceAgentKeepsVFSButDeniesMutatingGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := decodeConfig(t, artifact.Content).Agents["takt-gc"].Permissions
-	if effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "git diff") != "allow" {
-		t.Errorf("shell rules = %v, want mutating git denied and git diff allowed", rules)
+	if effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "git diff") != "allow" || effectOf(rules, "shell", "git diff *--output*") != "deny" {
+		t.Errorf("shell rules = %v, want mutating git denied, git diff allowed and its writing options denied", rules)
 	}
 	if effectOf(rules, "shell", "takt-ai vfs*") != "deny" {
 		t.Errorf("shell rules = %v, maintenance drives the VFS only through its tools", rules)

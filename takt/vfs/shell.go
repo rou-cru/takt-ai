@@ -408,13 +408,8 @@ var (
 // classify resolves the command to allowed, approval-gated or denied.
 func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string, string) {
 	words := shellWords(command)
-	if git := gitMutation(command); git != "" {
-		// PR-VFS-GIT-1 denies mutating git outside the orchestrator; PR-VFS-GIT-5
-		// gates the rest of its mutations on approval.
-		if err := GuardGitMutation(f.bindings[key].Role); err != nil {
-			return ShellDeny, git + " in " + command + ": " + err.Error()
-		}
-		return ShellAsk, "mutating git command: " + command
+	if decision, reason := GitShellDecision(f.bindings[key].Role, command); decision != ShellAllow {
+		return decision, reason
 	}
 	if reason, outside := outsideWorkspace(words, mutates, f.rootDir); outside {
 		return ShellAsk, reason + ", which the VFS cannot capture: " + command
@@ -569,10 +564,7 @@ prefix:
 	name := words[0]
 	switch {
 	case name == "git" || strings.HasSuffix(name, "/git"):
-		if len(words) > 1 && !slices.Contains(readOnlyGitSubcommands, words[1]) {
-			return "git " + words[1]
-		}
-		return ""
+		return gitArgsMutation(words[1:])
 	case name == "eval":
 		return gitMutation(strings.Join(words[1:], " "))
 	case slices.Contains(gitShells, name) || slices.ContainsFunc(gitShells, func(sh string) bool { return strings.HasSuffix(name, "/"+sh) }):
@@ -582,6 +574,56 @@ prefix:
 		if word == "-exec" || word == "-execdir" || word == "-ok" {
 			if git := executedGitMutation(words[i+1:]); git != "" {
 				return git
+			}
+		}
+	}
+	return ""
+}
+
+// gitValueOptions are git's global options whose value is the next word.
+var gitValueOptions = []string{"-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--attr-source"}
+
+// gitArgsMutation classifies git's arguments: "" for a read-only invocation,
+// otherwise "git <class>". Global options are skipped to reach the
+// subcommand, so they never hide it. A configuration or executable-path
+// override (-c, --config-env, --exec-path=) can make any subcommand run an
+// arbitrary program and is a mutation class itself. A read-only subcommand
+// stays read-only only without one of its gitWritingOptions before "--".
+// Every other subcommand, unknown ones included, is a mutation.
+func gitArgsMutation(args []string) string {
+	for len(args) > 0 {
+		arg := args[0]
+		switch {
+		case arg == "-c" || arg == "--config-env" || strings.HasPrefix(arg, "--config-env="):
+			return "git " + strings.SplitN(arg, "=", 2)[0]
+		case strings.HasPrefix(arg, "-c"):
+			return "git -c"
+		case strings.HasPrefix(arg, "--exec-path="):
+			return "git --exec-path"
+		case slices.Contains(gitValueOptions, arg):
+			args = args[min(2, len(args)):]
+			continue
+		case strings.HasPrefix(arg, "-"):
+			args = args[1:]
+			continue
+		}
+		break
+	}
+	if len(args) == 0 {
+		return ""
+	}
+	sub := args[0]
+	if !slices.Contains(readOnlyGitSubcommands, sub) {
+		return "git " + sub
+	}
+	for _, arg := range args[1:] {
+		if arg == "--" {
+			break
+		}
+		for _, option := range gitWritingOptions[sub] {
+			short := len(option) == 2 && strings.HasPrefix(arg, option)
+			if arg == option || strings.HasPrefix(arg, option+"=") || short {
+				return "git " + sub + " " + option
 			}
 		}
 	}

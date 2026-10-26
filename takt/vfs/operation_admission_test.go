@@ -1084,25 +1084,25 @@ func TestAssignScopeAcrossRoots(t *testing.T) {
 		return rig{reopened, old, peer, same, vfs.Identity{SessionID: "new-root", WorkUnitID: "new-unit", AgentID: "new", Specialist: "dev"}}
 	}
 
-	t.Run("replace", func(t *testing.T) {
+	t.Run("refuse", func(t *testing.T) {
 		r := crossRoot(t)
 		key, err := r.f.AssignScope(r.next, []string{"index.html"})
-		if err != nil {
-			t.Fatal(err)
+		refused(t, "AssignScope() over another root's staged claim", err, vfs.ErrCollision)
+		if key != "" {
+			t.Fatalf("refused request returned key %q", key)
 		}
-		if _, _, staged := r.f.StagedState(r.old); ownerOf(r.f, "index.html") != key || staged {
-			t.Fatal("prior claim not replaced")
+		if ownerOf(r.f, "index.html") != r.old || ownerOf(r.f, "extra.html") != r.old {
+			t.Fatal("refusal moved a path from the prior owner")
 		}
-		if owner := ownerOf(r.f, "extra.html"); owner != "" {
-			t.Fatalf("partial old claim retained by %q", owner)
+		if content, _ := stagedContent(r.f, r.old, "index.html"); content != "previous" {
+			t.Fatalf("prior staging = %q; want previous", content)
 		}
 		if ownerOf(r.f, "peer.html") != r.peer || ownerOf(r.f, "same.html") != r.same {
 			t.Fatal("unrelated claim lost")
 		}
-		for _, claim := range r.f.OwnershipClaims("new-root") {
-			if claim.Key == r.old {
-				t.Fatal("discarded claim still pending")
-			}
+		prior, ok := claimOf(r.f, r.old)
+		if !ok || !slices.Contains(prior.Scope, "index.html") || !slices.Contains(prior.Scope, "extra.html") {
+			t.Fatalf("prior claim = %+v, %v; want it holding both paths", prior, ok)
 		}
 	})
 

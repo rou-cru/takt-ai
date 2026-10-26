@@ -35,12 +35,11 @@ func TestRenderConfigComponents(t *testing.T) {
 	// marshal matches the deep-merge output of the reference overlays.
 	want := `{
   "$schema": "https://opencode.ai/config.json",
-  "attention": {
-    "enabled": true,
-    "notifications": true
-  },
   "default_agent": "takt",
   "formatter": true,
+  "instructions": [
+    "~/.config/opencode/takt/shared/GUIDELINES.md"
+  ],
   "mcp": {
     "servers": {
       "context7": {
@@ -208,7 +207,7 @@ func TestRenderConfigComponents(t *testing.T) {
       "resource": "*"
     }
   ],
-  "snapshot": true
+  "snapshots": true
 }
 `
 	if !bytes.Equal(withoutOrchestrator(t, artifact.Content), []byte(want)) {
@@ -221,7 +220,7 @@ func TestRenderConfigWithoutComponentsKeepsBaseShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opencode.RenderConfig() error = %v", err)
 	}
-	want := "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"attention\": {\n    \"enabled\": true,\n    \"notifications\": true\n  },\n  \"default_agent\": \"takt\",\n  \"formatter\": true,\n  \"model\": \"openai/gpt-5.6-luna\",\n  \"snapshot\": true\n}\n"
+	want := "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"default_agent\": \"takt\",\n  \"formatter\": true,\n  \"instructions\": [\n    \"~/.config/opencode/takt/shared/GUIDELINES.md\"\n  ],\n  \"model\": \"openai/gpt-5.6-luna\",\n  \"snapshots\": true\n}\n"
 	if !bytes.Equal(withoutOrchestrator(t, artifact.Content), []byte(want)) {
 		t.Fatalf("base config mismatch:\n%s", artifact.Content)
 	}
@@ -389,5 +388,16 @@ func TestPluginToolDescriptionsCarryConductOnly(t *testing.T) {
 				t.Errorf("tool description explains mechanism with %q: %s", term, m[1])
 			}
 		}
+	}
+}
+
+func TestRenderCLIConfigPlacesAttentionInCLIConfig(t *testing.T) {
+	artifact, err := opencode.RenderCLIConfig()
+	if err != nil {
+		t.Fatalf("opencode.RenderCLIConfig() error = %v", err)
+	}
+	want := "{\n  \"$schema\": \"https://opencode.ai/v2/cli.json\",\n  \"attention\": {\n    \"notifications\": true\n  }\n}\n"
+	if artifact.Path != ".config/opencode/cli.json" || string(artifact.Content) != want {
+		t.Fatalf("cli config = %q at %q, want %q at .config/opencode/cli.json", artifact.Content, artifact.Path, want)
 	}
 }

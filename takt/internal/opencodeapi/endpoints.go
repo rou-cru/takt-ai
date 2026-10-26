@@ -156,7 +156,7 @@ func (c *Client) Handshake(ctx context.Context) (Handshake, error) {
 			ErrVersion, info.Version, MinimumMajor,
 		)
 	}
-	// The model routes are the V2 mechanism Takt needs right now (R1/R2).
+	// The model routes are the V2 mechanism Takt needs right now.
 	// Any failure there — unreachable, 503, drift — collapses into
 	// ErrUnavailable so consumers see one story: "not functional yet".
 	if _, err := c.Models(ctx); err != nil {

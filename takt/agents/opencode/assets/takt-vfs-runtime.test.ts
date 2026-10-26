@@ -1193,29 +1193,21 @@ describe("path ownership", () => {
 })
 
 describe("claims and consolidation", () => {
-  test("releasing an active claim asks the user; the model never supplies the agreement", async () => {
-    const refusal = "vfs: releasing this active claim needs the user's agreement: agent dev works under it on unit u over [a.go]"
-    const created: Array<Record<string, unknown>> = []
-    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
-    mock.module("@opencode/client", () => ({
-      OpenCode: { make: () => ({ permission: { create: async (request: Record<string, unknown>) => {
-        created.push(request)
-        return { effect: created.length === 1 ? "allow" : "deny", id: request.id }
-      } } }) },
-    }))
+  test("releasing a claim leaves every decision to the core", async () => {
+    const refusal = "claim k-active: its unit u (agent dev, root root) is still running; wait for its delivery or end it with dispatch_abandon, then claim_release again"
+    let ended = false
     const vfs = await startVfs({
-      respond: (call) => call.command === "release" && call.request.confirmed !== true ? { code: 1, err: refusal } : undefined,
+      respond: (call) => call.command === "release" && !ended ? json({ ok: false, error: refusal }) : undefined,
     })
-    const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
     try {
-      await vfs.run("claim_release", { claim_key: "k-active", confirmed: true }, caller)
-      expect(created[0]).toMatchObject({ sessionID: "root", action: "claim_release", resources: ["k-active"], metadata: { refusal: expect.stringContaining(refusal) } })
-      expect(vfs.requests("vfs", "release")).toEqual([false, true].map(confirmed => ({
-        ipc_version: IPC_VERSION, session_id: "root", caller_session: "root", caller_agent: ORCHESTRATOR, key: "k-active", confirmed,
-      })))
-      await expect(vfs.run("claim_release", { claim_key: "k-active" }, caller)).rejects.toThrow("Permission denied: claim_release")
-      expect(vfs.actions("vfs")).toEqual(["release", "release", "release"])
+      await expect(vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)).rejects.toThrow(refusal)
+      ended = true
+      await vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)
       await expect(vfs.run("claim_release", { claim_key: "k-active" }, dev)).rejects.toThrow("belongs to the orchestrator")
+      expect(vfs.actions("vfs")).toEqual(["release", "release"])
+      expect(vfs.requests("vfs", "release")).toEqual([1, 2].map(() => ({
+        ipc_version: IPC_VERSION, session_id: "root", caller_session: "root", caller_agent: ORCHESTRATOR, key: "k-active",
+      })))
     } finally { await vfs.stop() }
   })
 

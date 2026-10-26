@@ -9,8 +9,8 @@ metadata:
 
 # Memory role: product-designer — Interaction and UX
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
+The general memory contract, loaded before this skill, defines what every entry
+contains. This skill only narrows what your role records.
 
 ## Records
 

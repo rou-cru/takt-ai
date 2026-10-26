@@ -117,6 +117,13 @@ func TestBuildSkillPlanManagesReferenceFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Markdown skill files deploy with admission placeholders resolved
+			// (LoadSkills), so compare against the resolved embedded content.
+			if strings.HasSuffix(name, ".md") {
+				if want, err = dispatch.ResolvePolicyPlaceholders(want); err != nil {
+					t.Fatal(err)
+				}
+			}
 			deployed := ".opencode/skills/" + name
 			if got, ok := artifacts[deployed]; !ok || !bytes.Equal(got, want) {
 				t.Errorf("%s missing or content differs from embedded reference", deployed)
@@ -286,14 +293,17 @@ func TestEveryAuthorHasExactlyOneMemoryRoleSkill(t *testing.T) {
 	}
 }
 
-// TestMemoryRoleSkillsLinkContractWithoutRestatingIt verifies shared rules stay in the contract alone.
-func TestMemoryRoleSkillsLinkContractWithoutRestatingIt(t *testing.T) {
+// TestMemoryRoleSkillsReferenceNoContractAndRestateNothing verifies shared
+// rules stay in the contract alone: a role skill neither references the
+// contract skill (STR-12 forbids the upward reference; agents load the
+// contract through their composed context) nor restates its rules.
+func TestMemoryRoleSkillsReferenceNoContractAndRestateNothing(t *testing.T) {
 	for deployed, content := range memorySkills(t) {
 		assertMemorySkillAsksNoHarnessMetadata(t, deployed, content)
 		if deployed == engram.ContractSkillPath {
 			continue
 		}
-		assertMemorySkillLinksContractWithoutRestating(t, deployed, content)
+		assertMemorySkillReferencesNoContractAndRestatesNothing(t, deployed, content)
 	}
 }
 
@@ -313,13 +323,14 @@ func assertMemorySkillAsksNoHarnessMetadata(t *testing.T, deployed, content stri
 	}
 }
 
-// assertMemorySkillLinksContractWithoutRestating checks that a non-contract
-// memory-role skill links the memory contract skill rather than restating
-// its rules.
-func assertMemorySkillLinksContractWithoutRestating(t *testing.T, deployed, content string) {
+// assertMemorySkillReferencesNoContractAndRestatesNothing checks that a
+// non-contract memory-role skill names no contract skill and restates none of
+// its rules: the composed context loads the contract, so role skills carry
+// only their role's narrowing.
+func assertMemorySkillReferencesNoContractAndRestatesNothing(t *testing.T, deployed, content string) {
 	t.Helper()
-	if !strings.Contains(content, "takt-memory-contract/SKILL.md") {
-		t.Errorf("%s does not link the contract", path.Dir(deployed))
+	if strings.Contains(content, "takt-memory-contract") {
+		t.Errorf("%s names the contract skill; role skills reach it through composed context, not references", path.Dir(deployed))
 	}
 	for _, shared := range []string{"| `proposal` |", "`proposal`, `decision`", "memory_record(", "relates_to", "mem_search", "mem_save", "Memory: ~"} {
 		if strings.Contains(content, shared) {

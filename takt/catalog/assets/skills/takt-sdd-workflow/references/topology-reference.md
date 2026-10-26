@@ -28,7 +28,7 @@ settle; it is not a required shape.
                        └──────────┬──────────┘
           ┌─────────────┬─────────┴───┬─────────────┐
           ▼             ▼             ▼             ▼
-     ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   Wave 1 · width 4 · 4 in flight
+     ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   Wave 1 · width 4 · runs up to the admission limit
      │S1 store │   │ S1 API  │   │ S1 UI   │   │S1 Q2    │
      │fragment │   │fragment │   │fragment │   │ tests   │
      └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘
@@ -47,6 +47,10 @@ settle; it is not a required shape.
                       │ point           │
                       └─────────────────┘
 ```
+
+Four independent nodes are ready; up to {{policy.concurrent_specialists}} run at once under the admission
+limit and any beyond it queue. Fewer ready nodes than the limit leave slots free; no work is
+invented to fill them. Capacity does not create a dependency between them.
 
 Three topological readings that matter more than the labels:
 

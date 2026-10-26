@@ -12,6 +12,7 @@ import (
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
+	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -268,4 +269,15 @@ func isProductManager(agent string) bool {
 		}
 	}
 	return false
+}
+
+// classifySetupOutcome reports the process exit status a completed setup
+// operation owes for result: 1 when the result records unfinished work in
+// Incomplete, 0 otherwise. Fully completed work with acknowledged drift stays
+// a success; readiness warnings are doctor's separate report.
+func classifySetupOutcome(result lifecycle.LifecycleResult) exitCode {
+	if len(result.Incomplete) > 0 {
+		return exitCode(1)
+	}
+	return 0
 }
