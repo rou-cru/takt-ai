@@ -12,8 +12,8 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
-- [func AuthorizedFinding\(f Finding, rs \[\]Investigation\) bool](<#AuthorizedFinding>)
-- [func AuthorizedScope\(plan Plan, findings \[\]Finding, investigations \[\]Investigation\) \(\[\]string, error\)](<#AuthorizedScope>)
+- [func AuthorizedFinding\(f Finding, rs \[\]Investigation, demoted \[\]MandateClass\) bool](<#AuthorizedFinding>)
+- [func AuthorizedScope\(plan Plan, findings \[\]Finding, investigations \[\]Investigation, demoted \[\]MandateClass\) \(\[\]string, error\)](<#AuthorizedScope>)
 - [func ChecksPass\(checks \[\]CheckEvidence\) bool](<#ChecksPass>)
 - [func IsTest\(p string\) bool](<#IsTest>)
 - [func SaveCoordinator\(fs \*vfs.FS, c \*Coordinator\) error](<#SaveCoordinator>)
@@ -43,6 +43,7 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func \(c \*Coordinator\) Advance\(ctx context.Context, fs \*vfs.FS, h \*history.History, entries \[\]vfs.JournalEntry, session string, reach Reach\) \(Decision, BarrierVerdict, error\)](<#Coordinator.Advance>)
   - [func \(c \*Coordinator\) Bind\(session string\)](<#Coordinator.Bind>)
   - [func \(c \*Coordinator\) Close\(reason string\)](<#Coordinator.Close>)
+  - [func \(c \*Coordinator\) Demote\(m MandateClass\)](<#Coordinator.Demote>)
   - [func \(c \*Coordinator\) Held\(\) bool](<#Coordinator.Held>)
   - [func \(c \*Coordinator\) Observe\(entries \[\]vfs.JournalEntry\)](<#Coordinator.Observe>)
   - [func \(c \*Coordinator\) ObserveExecutions\(h \*history.History\)](<#Coordinator.ObserveExecutions>)
@@ -223,16 +224,16 @@ var DeclaredCoverage = Coverage{
 ## func AuthorizedFinding
 
 ```go
-func AuthorizedFinding(f Finding, rs []Investigation) bool
+func AuthorizedFinding(f Finding, rs []Investigation, demoted []MandateClass) bool
 ```
 
-AuthorizedFinding reports whether a confirmed investigation with evidence stands behind f and the finding itself is eligible for mutation. This is the gate between analysis and source edits.
+AuthorizedFinding reports whether a confirmed investigation with evidence stands behind f and the finding itself is eligible for mutation; a finding of a demoted mandate class never is \(PR\-MNT\-32\). This is the gate between analysis and source edits.
 
 <a name="AuthorizedScope"></a>
 ## func AuthorizedScope
 
 ```go
-func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation) ([]string, error)
+func AuthorizedScope(plan Plan, findings []Finding, investigations []Investigation, demoted []MandateClass) ([]string, error)
 ```
 
 AuthorizedScope bounds mutation paths, never truncates causal context.
@@ -545,6 +546,10 @@ type Coordinator struct {
     Session string  `json:"session,omitempty"`
     Cycle   *Cycle  `json:"cycle,omitempty"`
     History []Cycle `json:"history,omitempty"`
+    // Demoted lists the mandate classes PR-MNT-32 made proposal-only. It is
+    // the sole durable record authorization reads; no session or cycle
+    // change clears it.
+    Demoted []MandateClass `json:"demoted_mandates,omitempty"`
     // contains filtered or unexported fields
 }
 ```
@@ -593,6 +598,15 @@ func (c *Coordinator) Close(reason string)
 ```
 
 Close retains closure evidence; rotation advances only for an actual cycle.
+
+<a name="Coordinator.Demote"></a>
+### func \(\*Coordinator\) Demote
+
+```go
+func (c *Coordinator) Demote(m MandateClass)
+```
+
+Demote records that m lost autonomous mutation \(PR\-MNT\-32\).
 
 <a name="Coordinator.Held"></a>
 ### func \(\*Coordinator\) Held
@@ -878,7 +892,7 @@ type MandateRateDecision struct {
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
 ```
 
-EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires.
+EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires; the caller records the demotion in the coordinator.
 
 <a name="MandateReversionRateInput"></a>
 ## type MandateReversionRateInput
