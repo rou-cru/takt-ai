@@ -117,10 +117,8 @@ const activeClaim = { ...claim, active: true }
 coreClaims=[claim,{...claim,work_unit_id:"u2"}]
 respond = (call) => call.argv[2] === "release" && !call.stdin.confirmed ? {stdout:JSON.stringify({ok:false,error:"WARNING: agent dev (instance dev, active) owns [a.txt]"}),stderr:"",code:0}:undefined
 releaseAt = calls.length
-await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current", confirmed: false }, root), /WARNING: agent dev \(instance dev, active\) owns \[a\.txt\]/)
+await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current" }, root), /WARNING: agent dev \(instance dev, active\) owns \[a\.txt\]/)
 assert.deepEqual(released,["claim-prior","claim-current"],"denied active claim was released")
-await tools.claim_release.execute({ claim_key: "claim-current", confirmed: true }, root)
-assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", caller_session: "root", caller_agent: "takt", key: "claim-current", confirmed:true })
 
 await tools.dispatch_commit.execute({ version: "v1", plan: [{ unit: "u1", contract: "c1" }] }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
@@ -142,9 +140,9 @@ assert.deepEqual(requestOf(calls.at(-1)), { action: "restore", session: "root", 
 
 // The exception names its bound exactly as the history records it.
 assert.ok(tools.dispatch_exception.input.properties.bound.enum.includes("budget/unplanned-units"))
-await tools.dispatch_exception.execute({ event: "u1", bound: "budget/unplanned-units", allowance: 1 }, root)
-assert.equal(calls.at(-1).verb, "dispatch")
-assert.deepEqual(requestOf(calls.at(-1)), { action: "exception", session: "root", event: "u1", bound: "budget/unplanned-units", allowance: 1 })
+// Only the user's agreement records it: with no user to ask, nothing is recorded.
+await assert.rejects(tools.dispatch_exception.execute({ event: "u1", bound: "budget/unplanned-units", allowance: 1, evidence: "four units pending" }, root))
+assert.ok(!calls.some(call => call.verb === "dispatch" && requestOf(call).action === "exception"), "an exception was recorded without the user's agreement")
 
 await tools.dispatch_contest.execute({ event: "u1" }, root)
 assert.equal(calls.at(-1).verb, "dispatch")
@@ -159,7 +157,7 @@ assert.equal(calls.slice(before).filter(c=>c.verb==="dispatch" && requestOf(c).a
 // launch and the end of the call all speak for that unit, and the host call
 // identity travels as the dispatch so a retry is told from a repetition.
 const delegate = async (phase, description, id = "call-1", agent = "dev", result = {}) => {
-  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), none: true }, root)
+  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, root)
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
       input: { agent, description, prompt: "p" }, status: "completed", result })

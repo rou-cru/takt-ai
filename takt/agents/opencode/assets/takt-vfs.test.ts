@@ -145,8 +145,8 @@ describe("plugin setup", () => {
       await expect(execute("vfs_consolidate", { author_key: "claim-1", checkpoint: "checkpoint" })).rejects.toThrow("vfs_consolidate belongs to the orchestrator")
       const orchestrator = { sessionID: "root", agent: "__TAKT_ORCHESTRATOR_ID__" }
       expect((await execute("claim_list", {}, orchestrator)).content).toContain("claim-1")
-      await execute("claim_release", { claim_key: "claim-1", confirmed: true }, orchestrator)
-      await execute("dispatch_inputs", { work_unit_id: "unit-b", none: true }, orchestrator)
+      await execute("claim_release", { claim_key: "claim-1" }, orchestrator)
+      await execute("dispatch_inputs", { work_unit_id: "unit-b", result_ids: [] }, orchestrator)
       await execute("claim_assign", { work_unit_id: "unit-b", agent: "test", scope: ["src/new.ts"] }, orchestrator)
       await execute("dispatch_commit", { version: "plan-1", plan: [{ unit: "unit-b", contract: "unit tests" }] }, orchestrator)
       const qaRound = { objective: "acceptance/cart", units: ["unit-b"] }

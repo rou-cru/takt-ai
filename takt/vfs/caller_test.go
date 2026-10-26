@@ -129,7 +129,7 @@ func TestAReleasedKeyNoLongerWorks(t *testing.T) {
 	f, _, state := newStore(t)
 	c, key := delegate(t, f, state, testSession, "dev", "u", "a.go")
 	err := f.ReleaseClaim(testSession, key, false)
-	refusedNaming(t, "unconfirmed release of an active claim", err, vfs.ErrScopeDenied, "claim_release", "confirmed")
+	refusedNaming(t, "unconfirmed release of an active claim", err, vfs.ErrScopeDenied, "the user's agreement", "agent dev", "unit u", "a.go")
 	write(t, f, c, "w", "a.go", "staged")
 	if err := f.ReleaseClaim(testSession, key, true); !errors.Is(err, vfs.ErrStagedWork) {
 		t.Fatalf("release of staged work = %v; want ErrStagedWork", err)

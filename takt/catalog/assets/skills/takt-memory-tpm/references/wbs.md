@@ -3,6 +3,7 @@
 | Field | Holds |
 | --- | --- |
 | Task ID | A stable identifier for this task, unique within the breakdown |
+| Slice | The vertical slice this task belongs to: the user story it delivers, by ID, and the layer fragment this task covers |
 | Scope | What this task does and its boundary — what is explicitly out of scope |
 | Acceptance | The condition that proves this task done, checkable without re-reading the code, as a bounded command |
 | Allowed reads | The files this task may read; none is written by a concurrent task |

@@ -12,7 +12,7 @@ FROM node:24-bookworm-slim
 # npm; install the same pinned release, through the same checksum-verified
 # installer, as deploy/images/Dockerfile. Keep both pins in sync.
 ARG OPENCODE_VERSION=2.0.28
-ARG OPENCODE_INSTALL_SHA256=6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865
+ARG OPENCODE_INSTALL_SHA256=bfa0e5cd55b0447acdb1becbd3be1854277b5f8025742bd23ebf91bc01aa8ee8
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl jq && \
     rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/bash runner

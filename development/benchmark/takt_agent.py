@@ -16,7 +16,7 @@ from harbor.models.agent.context import AgentContext
 
 # Same pins as deploy/images/Dockerfile; OpenCode 2.x is not published on npm.
 OPENCODE_VERSION = "2.0.28"
-OPENCODE_INSTALL_SHA256 = "6ef97e3d5b8782179efc2b04e6ce2e90ced23675df5792c9ea4f4a0465531865"
+OPENCODE_INSTALL_SHA256 = "bfa0e5cd55b0447acdb1becbd3be1854277b5f8025742bd23ebf91bc01aa8ee8"
 # Built by `make bench` from this worktree, so the measured prose is the binary's.
 TAKT_BINARY = Path(__file__).resolve().parents[2] / "dist" / "bench" / "takt-ai"
 # bubblewrap + socat back the VFS sandbox on Linux; nodejs/npm back codegraph.

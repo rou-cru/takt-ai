@@ -6,30 +6,36 @@ invariants are already settled.
 
 ## 1. Greenfield, raw intent
 
-Assessment: intent, facts, experience, structure, and behavior all to generate. Empty
-workspace; the user's request is the only input.
+Assessment: stories, intent, facts, experience, structure, and behavior all to generate.
+Empty workspace; the user's request, general and still ambiguous, is the only input.
 
 ```
                 ┌──────────────┐
-                │ P  pm intent │                Round 1 · width 1
+                │ U  pm stories│                Round 1 · width 1
                 └──────┬───────┘
                        ▼
                 ┌──────────────┐
-                │ A  analyst   │                Round 2 · width 1
+                │ P  pm docs   │                Round 2 · width 1
+                └──────┬───────┘
+                       ▼
+                ┌──────────────┐
+                │ A  analyst   │                Round 3 · width 1
                 │ env + tools  │
                 └──────┬───────┘
               ┌────────┴────────┐
               ▼                 ▼
        ┌────────────┐    ┌────────────┐
-       │ D designer │    │ R architect│       Round 3 · width 2
+       │ D designer │    │ R architect│       Round 4 · width 2
        └─────┬──────┘    └─────┬──────┘
              └────────┬────────┘
                       ▼
                ┌────────────┐
-               │ S  spec    │                 Round 4 · width 1
+               │ S  spec    │                 Round 5 · width 1
                └────────────┘
 ```
 
+- `U → P`: business documents formalize final stories, so `P` starts only once no story
+  question remains open, and it is a different pm delegation from `U`.
 - `P → A`: the analyst investigates what the intent needs (the runtime for *this* product),
   not the environment in general.
 - `A → D`, `A → R`: experience and structure decide against verified facts (available

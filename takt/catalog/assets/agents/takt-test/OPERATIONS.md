@@ -4,4 +4,4 @@ Test observable behavior at the levels the test plan chose, through the interfac
 
 Change test files only; when a test needs production code or files beyond your authorized set, return the paths and why.
 
-Run no checks against your staged work: Verify demonstrates it after consolidation, and your return states that checks were not run. Return the author key, changed files, the matrix rows covered, and each assigned row left uncovered with the reason. Do not delegate.
+Run no checks against your staged work: Verify demonstrates it after consolidation. Return the changed files, the matrix rows covered, and each assigned row left uncovered with the reason. Do not delegate.

@@ -279,12 +279,11 @@ type Entry struct {
 	// additional allowance it grants (PR-HAR-22).
 	Bound     string `json:"bound,omitempty"`
 	Allowance int    `json:"allowance,omitempty"`
-	// Result, Point and Scope are a recovery declaration's binary expected
-	// result, the prior recoverable point it may be restored to, and the explicit
-	// work scope both budgets are measured over. An absent declaration stays
+	// Result and Scope are a recovery declaration's binary expected result and
+	// the explicit work scope both budgets are measured over; its recoverable
+	// point is the declaration's own JournalRef. An absent declaration stays
 	// empty here: it is recorded as missing, never defaulted (PR-DAG-MUT-9).
 	Result string   `json:"result,omitempty"`
-	Point  string   `json:"point,omitempty"`
 	Scope  []string `json:"scope,omitempty"`
 	// Artifact is the workspace-relative path a switch declares its temporary
 	// holder must produce before handoff (PR-HAR-24); set only on

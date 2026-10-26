@@ -55,6 +55,6 @@ name the file in your report.
 
 ## When you are blocked
 
-End your turn with the blocker and the exact datum that unblocks it: the entry ID and
-the item it leaves unsettled, or the command, its output and the environment it ran in.
-Whoever delegated you receives it and can resume you.
+Record the blocker with the exact datum that unblocks it (the entry ID and the item it
+leaves unsettled, or the command, its output and the environment it ran in) and deliver it
+as your result. Whoever delegated you receives it and can resume you.

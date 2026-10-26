@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -17,15 +18,15 @@ import (
 )
 
 func declareInputs(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
-	if strings.TrimSpace(r.Event) == "" || (len(r.ResultIDs) > 0) == r.None {
-		return nil, errors.New("dispatch_inputs: declare either consumed result_ids or none: true, exactly one of them")
+	if strings.TrimSpace(r.Event) == "" {
+		return nil, errors.New("dispatch_inputs: name the unit the delegation will be named after")
 	}
 	if len(r.ResultIDs) > 0 {
 		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs); err != nil {
 			return nil, err
 		}
 	}
-	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: r.None, Cause: history.CauseNone})
+	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: len(r.ResultIDs) == 0, Cause: history.CauseNone})
 	return map[string]any{"result_ids": r.ResultIDs}, err
 }
 
@@ -47,6 +48,9 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, consumed); err != nil {
 			return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
 		}
+	}
+	if err := refuseRecycledProductManager(r, consumed); err != nil {
+		return nil, err
 	}
 	u, _ := h.Project().Unit(r.Session, r.Event)
 	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
@@ -229,4 +233,39 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 	}
 	slices.Sort(orphaned)
 	return map[string]any{"executions": p.Executions, "orphaned": orphaned}
+}
+
+// productManagerID names the catalog definition whose sessions author user
+// stories; another session of it formalizes them (PR-CRW-20).
+const productManagerID = "takt-pm"
+
+// refuseRecycledProductManager refuses resuming a pm session to consume an
+// invariant that same session recorded. A fresh delegation is always admitted.
+func refuseRecycledProductManager(r coordinationRequest, consumed []int64) error {
+	if r.Child == "" || len(consumed) == 0 || !isProductManager(r.Agent) {
+		return nil
+	}
+	own, err := memory.EntryIDsByCaller(memoryRoot(), r.Session, r.Child)
+	if err != nil {
+		return err
+	}
+	for _, id := range consumed {
+		if slices.Contains(own, id) {
+			return fmt.Errorf("launch refused: pm session %s recorded consumed invariant #%d; delegate a fresh pm unit to formalize it", r.Child, id)
+		}
+	}
+	return nil
+}
+
+func isProductManager(agent string) bool {
+	packages, err := catalog.LoadPackages()
+	if err != nil {
+		return false
+	}
+	for _, def := range packages.Agents {
+		if def.ID == productManagerID {
+			return slices.Contains(def.Instances, agent)
+		}
+	}
+	return false
 }

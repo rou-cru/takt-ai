@@ -18,8 +18,8 @@ only narrows what your role records.
   traceability matrix, each in its own `project` entry; the matrix is titled
   `Traceability Matrix`.
 - The test policy once per workspace; a later refinement is the complete policy in a new entry that `supersedes` it.
-- A later change to your rows is the complete matrix in a new entry titled
-  `Traceability Matrix: Requirements` that `supersedes` your latest version.
+- A later change to your rows is the complete matrix in a new entry that `supersedes` your
+  latest version.
 - `observation` (`project`): a repository testing fact the policy rests on — test tooling, CI
   checks, a convention — with the file or command as evidence.
 

@@ -14,6 +14,7 @@ Package memory writes agent memories into Engram with harness\-owned metadata, l
 - [func Capabilities\(req CapabilitiesRequest\) \[\]string](<#Capabilities>)
 - [func Continue\(ctx context.Context, cfg Config, req ContinueRequest\) \(err error\)](<#Continue>)
 - [func EntryIDsByAuthor\(root, session, author string\) \(\[\]int64, error\)](<#EntryIDsByAuthor>)
+- [func EntryIDsByCaller\(root, session, caller string\) \(\[\]int64, error\)](<#EntryIDsByCaller>)
 - [func EntryIDsForSession\(root, session string\) \(\[\]int64, error\)](<#EntryIDsForSession>)
 - [func ResolveProject\(ctx context.Context, cfg Config, dir string\) string](<#ResolveProject>)
 - [func ValidateResultIDs\(ctx context.Context, cfg Config, ids \[\]int64\) error](<#ValidateResultIDs>)
@@ -71,6 +72,15 @@ func EntryIDsByAuthor(root, session, author string) ([]int64, error)
 ```
 
 EntryIDsByAuthor returns the ids of the entries author recorded within session: what that author may present as its own delivered results.
+
+<a name="EntryIDsByCaller"></a>
+## func EntryIDsByCaller
+
+```go
+func EntryIDsByCaller(root, session, caller string) ([]int64, error)
+```
+
+EntryIDsByCaller returns the ids of the entries recorded within session from the host session caller: what that exact agent session authored.
 
 <a name="EntryIDsForSession"></a>
 ## func EntryIDsForSession

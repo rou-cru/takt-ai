@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func TestPrepareInputsAbsenceDoesNotSpendAttempt(t *testing.T) {
 	if len(p.Executions) != 0 || p.InFlight() != 0 {
 		t.Fatal("invalid input declaration admitted execution")
 	}
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "brief", None: true}); err != nil {
+	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "brief"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := executionRequest(t, fx, r)
@@ -59,7 +60,7 @@ func TestPrepareInvalidSecondAuthorDoesNotLeaveFirstGate(t *testing.T) {
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	_, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true})
+	_, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true}); err != nil {
+	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(fx.state, "history.sqlite"))
@@ -147,7 +148,7 @@ func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
 	fx.dispatch("finish", rootA, "writer", "dev")
 	b := fx.delegate(rootA, "writer-b", "dev", "b.txt")
 	fx.dispatch("finish", rootA, "writer-b", "dev")
-	r := coordinationRequest{Action: "inputs", Session: rootA, Event: "review", None: true}
+	r := coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}
 	if _, err := executionRequest(t, fx, r); err != nil {
 		t.Fatal(err)
 	}
@@ -251,5 +252,71 @@ func TestInterruptedPreparationUsesCurrentInputsAndExactIdentity(t *testing.T) {
 	got, err := executionRequest(t, fx, r)
 	if err != nil || got["attempt"] != "2" {
 		t.Fatalf("current-input continuation: %v %v", got, err)
+	}
+}
+
+// TestPrepareRefusesResumingPMOnItsOwnInvariant covers PR-CRW-20: the pm
+// session that recorded a consumed invariant cannot be resumed to formalize
+// it, while a fresh pm delegation consuming the same invariant is admitted.
+func TestPrepareRefusesResumingPMOnItsOwnInvariant(t *testing.T) {
+	fakeEngramServer(t)
+	home, _ := os.UserHomeDir()
+	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVFSFixture(t)
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
+		t.Fatal(err)
+	}
+	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-call", Caller: rootA, Agent: "pm", Child: "pm-stories"}
+	if _, err = executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "fresh pm unit") {
+		t.Fatalf("resumed authoring pm: %v", err)
+	}
+	if p := gcProjection(t, fx.state); len(p.Executions) != 0 || p.InFlight() != 0 {
+		t.Fatal("refused resumption admitted execution")
+	}
+	r.Dispatch, r.Child = "fresh-call", ""
+	got, err := executionRequest(t, fx, r)
+	if err != nil || got["launchable"] != true {
+		t.Fatalf("fresh pm: %v %v", got, err)
+	}
+}
+
+// TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant: only the session that
+// recorded the invariant is barred; resuming another pm session is admitted.
+func TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant(t *testing.T) {
+	fakeEngramServer(t)
+	home, _ := os.UserHomeDir()
+	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVFSFixture(t)
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "", ResultIDs: []int64{7}}); err == nil {
+		t.Fatal("inputs declared for no unit")
+	}
+	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
+		t.Fatal(err)
+	}
+	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-docs", Caller: rootA, Agent: "pm", Child: "pm-docs"}
+	if got, err := executionRequest(t, fx, r); err != nil || got["launchable"] != true {
+		t.Fatalf("resumed formalizing pm: %v %v", got, err)
 	}
 }

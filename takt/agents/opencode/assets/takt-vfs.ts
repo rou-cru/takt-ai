@@ -272,6 +272,9 @@ const EXCEPTION_BOUNDS = [
 // FAILING_VERDICT is how the core words a refusal to consolidate over a current
 // failing verdict: only the user's acceptance lets the work through.
 const FAILING_VERDICT = "a current verification verdict failed"
+// UNCONFIRMED_RELEASE is how the core words a refusal to release an active
+// claim the user has not agreed to release.
+const UNCONFIRMED_RELEASE = "releasing this active claim needs the user's agreement"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 // str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
@@ -1471,22 +1474,20 @@ export default Plugin.define({
 
       editor.add({
         name: "dispatch_inputs",
-        description: "Before delegating a unit, declare the Engram IDs of the invariants it consumes, or declare that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
+        description: "Before delegating a unit, declare the Engram IDs of the invariants it consumes; an empty list declares that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
         input: obj({
           work_unit_id: str("The unit the delegation will be named after"),
-          result_ids: { type: "array", items: { type: "integer" }, description: "Existing Engram entry IDs of the invariants this unit consumes" },
-          none: { type: "boolean", description: "True only when no invariant this unit consumes has been recorded yet" },
-        }, ["work_unit_id"]),
+          result_ids: { type: "array", items: { type: "integer" }, description: "Existing Engram entry IDs of the invariants this unit consumes; empty when none has been recorded yet" },
+        }, ["work_unit_id", "result_ids"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ work_unit_id: string; result_ids?: number[]; none?: boolean }>(value)
+          const args = toolInput<{ work_unit_id: string; result_ids?: number[] }>(value)
           const session = await rootSession(c.sessionID)
           orchestratorOnly(c, "dispatch_inputs")
           if (c.sessionID !== session) throw new Error("dispatch_inputs belongs to the root orchestrator")
           const unit = asString(args.work_unit_id, "").trim()
           const ids = Array.isArray(args.result_ids) ? args.result_ids : []
           if (!unit) throw new Error("Name the unit the delegation will be named after")
-          if ((ids.length > 0) === (args.none === true)) throw new Error("Declare either the consumed result_ids or none: true, exactly one of them")
-          await governed(c, { action: "inputs", session, event: unit, result_ids: ids, none: args.none === true })
+          await governed(c, { action: "inputs", session, event: unit, result_ids: ids })
           return { content: ids.length > 0 ? `Declared ${ids.length} consumed invariant(s) for ${unit}` : `Declared that ${unit} consumes no recorded invariant yet` }
         },
       })
@@ -1510,13 +1511,20 @@ export default Plugin.define({
         const unit = asString(args.work_unit_id, "").trim()
         return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, reads: args.reads, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly, except one an agent is actively working under in the current root session: ask the user through the orchestrator's native question mechanism first.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key"), confirmed: { type: "boolean", description: "Set true once the user agreed to release a claim in this root session" } }, ["claim_key"]), async execute(value: unknown, c) {
-        const args = toolInput<{ claim_key: string; confirmed?: boolean }>(value)
+      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released directly; one an agent is actively working under in the current root session is released once the user accepts the confirmation this raises.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key") }, ["claim_key"]), async execute(value: unknown, c) {
+        const args = toolInput<{ claim_key: string }>(value)
         orchestratorOnly(c, "VFS claim release")
-        // The core decides under its lock: staged work and an active claim of
-        // this root without the user's confirmation are refused there.
-        const released = await takt("release", c, { key: args.claim_key, confirmed: args.confirmed === true })
-        return { content: JSON.stringify(released) }
+        // The core decides under its lock: staged work is refused, and an active
+        // claim of this root is refused until the user agrees, which only the
+        // harness asks and records.
+        const release = (confirmed: boolean) => takt("release", c, { key: args.claim_key, confirmed })
+        try {
+          return { content: JSON.stringify(await release(false)) }
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.includes(UNCONFIRMED_RELEASE)) throw error
+          await confirmWithUser("claim_release", args.claim_key, { claim_key: args.claim_key, refusal: error.message }, c)
+          return { content: JSON.stringify(await release(true)) }
+        }
       } })
 
       dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
@@ -1527,13 +1535,12 @@ export default Plugin.define({
         obj({
           objective: str("Identity of the objective being recovered"),
           result: str("The binary expected result that would demonstrate recovery"),
-          point: str("Reference to the prior recoverable point"),
           scope: { type: "array", items: { type: "string" }, description: "Work unit identities this recovery's scope covers" },
           actions: { type: "number", description: "Action budget: the governed calls, reads included, that the scope's units may make" },
           attempts: { type: "number", description: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one" },
-        }, ["objective", "result", "point", "scope", "actions", "attempts"]),
+        }, ["objective", "result", "scope", "actions", "attempts"]),
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
-        (args: { objective: string; result: string; point: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
+        (args: { objective: string; result: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
       dispatch("dispatch_close_recovery", "Close an open declared recovery. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
@@ -1552,15 +1559,27 @@ export default Plugin.define({
         }, ["objective"]),
         (args: { objective: string }) => ({ objective: args.objective }))
 
-      dispatch("dispatch_exception", "Raise one bound by the finite allowance the user explicitly granted. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
-        "exception",
-        obj({
+      // A limit exception is the user's decision: the harness asks them itself and
+      // records it only on their agreement (PR-HAR-22).
+      editor.add({
+        name: "dispatch_exception",
+        description: "Propose raising one bound by a finite allowance, with the evidence for it; it is recorded only once the user accepts the confirmation this raises. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
+        input: obj({
           event: str("Optional label for the record"),
           bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised; ceiling/concurrent-specialists counts concurrent delegations, budget/unplanned-units counts units delegated without a committed plan" },
           objective: str("Stable objective the exception applies to; required for recovery and QA-strengthening bounds"),
           allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
-        }, ["bound", "allowance"]),
-        (args: { event?: string; bound: string; objective?: string; allowance: number }) => args)
+          evidence: str("Why the bound should be raised, shown to the user"),
+        }, ["bound", "allowance", "evidence"]),
+        async execute(value: unknown, c) {
+          const args = toolInput<{ event?: string; bound: string; objective?: string; allowance: number; evidence: string }>(value)
+          const session = await rootSession(c.sessionID)
+          if (c.sessionID !== session) throw new Error("dispatch_exception belongs to the root orchestrator")
+          await confirmWithUser("dispatch_exception", args.bound, { bound: args.bound, objective: args.objective ?? "", allowance: String(args.allowance), evidence: args.evidence }, c)
+          const result = await governed(c, { action: "exception", session, event: args.event, bound: args.bound, objective: args.objective, allowance: args.allowance })
+          return { content: JSON.stringify(result) }
+        },
+      })
 
       dispatch("dispatch_contest", "Contest the recorded terminal failure of a unit attempt, one that ended without a result: it records the contest and spends one of the contests. Judging the contested work is a Verify delegation of yours.",
         "contest",
@@ -1727,7 +1746,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_bind",
-        description: "Bind to the assignment named in your context, before any other VFS tool.",
+        description: "Bind to the assignment named in your context, only when your context asks you to.",
         input: obj({
           scope: { type: "array", items: { type: "string" }, description: "The exact paths your assignment names" },
         }, ["scope"]),
@@ -1807,16 +1826,16 @@ export default Plugin.define({
         name: "vfs_verify",
         description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, assigned by your delegation to that author_key. The verdict covers exactly the revision staged when you judged it.",
         input: obj({
-          author_key: str("The author_key the author reported"),
+          author_key: str("The author_key your assignment names"),
           pass: { type: "boolean" },
           finding: str("What the verdict rests on; required when pass is false"),
-        }, ["author_key", "pass", "finding"]),
+        }, ["author_key", "pass"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ author_key: string; pass: boolean; finding: string }>(input)
+          const args = toolInput<{ author_key: string; pass: boolean; finding?: string }>(input)
           if (typeof args.author_key !== "string") throw new Error("author_key must be a string")
           // The core judges through the caller's gate over this author, at the
           // state that gate last read.
-          await takt("verify", c, { call_id: randomUUID(), author_key: args.author_key, pass: args.pass, finding: args.finding })
+          await takt("verify", c, { call_id: randomUUID(), author_key: args.author_key, pass: args.pass, finding: args.finding ?? "" })
           return { content: args.pass ? "Verdict: passed" : `Verdict: rejected — ${args.finding}` }
         },
       })
@@ -1960,13 +1979,21 @@ export default Plugin.define({
           event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.${allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""}\n${lines.join("\n")}` })
           return
         }
+        // An author arrives bound too: the harness adopts the claim it assigned,
+        // so the agent never echoes a scope the harness already holds. A refused
+        // adoption leaves vfs_bind to the agent, with the reason.
+        let unbound = ""
+        if (claim.pending && allowed.includes("vfs_bind")) {
+          try { await takt("bind", event, { scope: claim.scope ?? [] }) }
+          catch (error) { unbound = ` The harness could not bind you (${error instanceof Error ? error.message : error}); bind with vfs_bind using exactly this scope.` }
+        }
+        if (!unbound) delete event.tools?.vfs_bind
         const conduct = [
-          allowed.includes("vfs_bind") ? "Bind with vfs_bind using exactly this scope." : "",
           allowed.includes("vfs_write") ? "Stage changes with vfs_write." : "",
           allowed.includes("vfs_delete") ? "Stage deletions with vfs_delete." : "",
           allowed.includes("vfs_read") ? "Read your staged view with vfs_read." : "",
         ].filter(Boolean).join(" ")
-        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}. ${conduct} Return the author_key in your handoff.` })
+        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}.${unbound} ${conduct}` })
       } catch (error) { console.error("Takt delegated VFS context",error); removeVFS() }
     })
 

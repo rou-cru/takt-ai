@@ -50,10 +50,9 @@ interrupted.
 - Start from the state at close, or from the interrupted session's entries.
 - Check the claims the state names against the current workspace and any repository the
   memory names; verified repository state prevails.
-- Confirm with the user, in order: whether the objective still stands, what memory claims
-  that the repositories do not show (or the reverse), open disputes as open, and for an
-  interrupted session whether its last step finished.
-- Continue the work only after that.
+- Present in one message the objective, what memory claims that the repositories do not show
+  (or the reverse), open disputes as open, and for an interrupted session its last step. Ask
+  only what that leaves in conflict or unknown; with nothing open, continue.
 
 ## Anything else
 

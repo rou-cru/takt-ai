@@ -6,4 +6,6 @@ Specify only the needed framing, alternatives, text wireframes, PIRS, design inv
 
 Give implementers decision rules and verifiers observable criteria: described qualities alone are reinvented and lost. Do not prescribe frameworks, libraries, markup, CSS, code components, file structure, or build details; tooling suggestions may demonstrate viability, not mandate a stack.
 
+When the evidence shows a user story asks for an experience it cannot sustain, escalate that evidence against the story rather than designing around it; an accepted change alters the story first, then your rules follow.
+
 Present changes to shared identity or cross-cutting experience for user acceptance (in an autonomous delegation, return them as a blocker); a knowingly accepted simple version is valid. Persist the resulting rules for implementation.

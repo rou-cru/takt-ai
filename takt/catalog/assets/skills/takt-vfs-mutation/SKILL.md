@@ -13,10 +13,9 @@ Governs how an executing specialist changes the workspace, and what counts as a 
 action needing the same confirmation as one.
 
 **Change the workspace only through your VFS assignment.** Stage every change within the
-assigned scope and return the author key in your final answer. Never use native edit or write tools.
+assigned scope; you arrive bound to it. Never use native edit or write tools.
 
-Bind with `vfs_bind` using the exact assigned file scope. Use `vfs_write`/`vfs_delete` to
-stage changes and `vfs_read` for your staged view. Report that checks were not run.
+Use `vfs_write`/`vfs_delete` to stage changes and `vfs_read` for your staged view.
 
 **Stay inside your scope.** When the work needs a file outside it, return that path and why
 instead of reaching it. Read beyond your scope only what your brief allows.

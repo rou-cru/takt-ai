@@ -307,8 +307,9 @@ func (s *openSession) anchorStart(ctx context.Context, cfg Config, session, dire
 }
 
 // fixContinuity links the start anchor to the declared previous session. It
-// runs on the session's first entry: reaching it without the user objecting is
-// what confirms the continuity, so the declaration stays revocable until then.
+// runs on the session's first entry, so the declaration stays revocable until
+// then. Whether the user chose that session is the declaring agent's word; the
+// harness checks only that the session exists and is closed.
 func (s *openSession) fixContinuity(ctx context.Context, cfg Config) error {
 	l := s.index
 	if l.PendingContinues == "" {
@@ -340,7 +341,7 @@ func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordRe
 		return RecordResult{}, err
 	}
 	defer func() { err = errors.Join(err, s.lock.Close()) }()
-	if err := s.prepareRecord(ctx, cfg, req); err != nil {
+	if req, err = s.prepareRecord(ctx, cfg, req); err != nil {
 		return RecordResult{}, err
 	}
 	return s.persistRecord(ctx, cfg, req)
@@ -391,20 +392,20 @@ func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author s
 
 // prepareRecord checks what a write depends on outside the request: the related
 // entry, the matrix column the author may write, and the session start.
-func (s *openSession) prepareRecord(ctx context.Context, cfg Config, req RecordRequest) error {
+func (s *openSession) prepareRecord(ctx context.Context, cfg Config, req RecordRequest) (RecordRequest, error) {
 	if err := s.client.ensureServe(ctx); err != nil {
-		return err
+		return req, err
 	}
 	project := recordProject(req.Scope, s.resolveProject(ctx, req.Directory))
 
 	target, err := checkRelatesTo(ctx, s.client, req.RelatesTo, project)
 	if err != nil {
-		return err
+		return req, err
 	}
-	if err := checkMatrixColumn(req, target); err != nil {
-		return err
+	if req.Title, err = checkMatrixColumn(req, target); err != nil {
+		return req, err
 	}
-	return s.start(ctx, cfg, req.Session, req.Directory)
+	return req, s.start(ctx, cfg, req.Session, req.Directory)
 }
 
 func (s *openSession) persistRecord(ctx context.Context, cfg Config, req RecordRequest) (RecordResult, error) {
@@ -422,6 +423,13 @@ func (s *openSession) persistRecord(ctx context.Context, cfg Config, req RecordR
 		return RecordResult{}, err
 	}
 	if l.hasEntry(id) {
+		// A deduplicated write still names its caller, so a session recycled to
+		// consume the entry is recognized; memory stays closed if it was.
+		if l.addCaller(id, req.CallerSession) {
+			if err := saveSessionIndex(cfg.Root, l); err != nil {
+				return RecordResult{}, err
+			}
+		}
 		return RecordResult{ID: id, Deduplicated: true}, nil
 	}
 	if err := s.recordLinks(ctx, cfg, req, id); err != nil {
@@ -435,7 +443,7 @@ func (s *openSession) recordLinks(ctx context.Context, cfg Config, req RecordReq
 	if err := c.link(ctx, id, l.StartAnchor, "related", "takt:in-session", req.Author); err != nil {
 		return err
 	}
-	entry := sessionIndexEntry{ID: id, Author: req.Author, Nature: req.Nature, Scope: req.Scope, Title: req.Title, At: now(cfg)}
+	entry := sessionIndexEntry{ID: id, Author: req.Author, Caller: req.CallerSession, Nature: req.Nature, Scope: req.Scope, Title: req.Title, At: now(cfg)}
 	if rel := req.RelatesTo; rel != nil {
 		if err := c.link(ctx, id, rel.ID, relationEdges[rel.Relation], "takt:"+rel.Relation, req.Author); err != nil {
 			return err
@@ -537,44 +545,40 @@ func isMatrixTitle(title string) bool {
 	return title == matrixTitle || strings.HasPrefix(title, matrixTitle+":")
 }
 
-// checkMatrixColumn keeps each traceability matrix column to its sole author:
-// only qa creates the matrix, and an entry that adds to or revises it must be
-// its author's own column, declared in its title. A dispute stays open to any
-// author, as the way to state a contradiction.
+// checkMatrixColumn keeps each traceability matrix column to its sole author
+// and returns the title the entry is stored under: only qa creates the matrix,
+// and an entry that adds to or revises it writes its author's own column, which
+// the harness derives from the author and titles itself. A dispute stays open
+// to any author, as the way to state a contradiction.
 //
 // Column entries must relate to the matrix or their own column; tpm and verify
 // must use supplements when targeting the matrix itself. Requests unrelated to
-// the matrix and disputes return nil. Violations return a *ValidationError.
-func checkMatrixColumn(req RecordRequest, target relatedEntry) error {
+// the matrix and disputes keep their title. Violations return a *ValidationError.
+func checkMatrixColumn(req RecordRequest, target relatedEntry) (string, error) {
 	// A dispute records disagreement, never an authorized column evolution.
 	if req.RelatesTo != nil && req.RelatesTo.Relation == "disputes" {
-		return nil
+		return req.Title, nil
 	}
 	own := ownColumn(req.Author)
 	requested, related := isMatrixTitle(req.Title), isMatrixTitle(target.title)
 	if !requested && !related {
-		return nil
+		return req.Title, nil
 	}
 	if matrixEntryTitle(req.Title) == matrixTitle && !related && req.Author == matrixColumns["Requirements"] {
-		return nil
+		return req.Title, nil
 	}
 	switch {
 	case own == "":
-		return reject("only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction")
-	case declaredColumn(req.Title) != own && !related:
-		return reject("your traceability matrix column is %s; record the entry with supplements titled %q", own, columnTitle(own))
-	// A revision keeps its relation: only the title is wrong.
-	case declaredColumn(req.Title) != own:
-		return reject("your traceability matrix column is %s; record the entry titled %q", own, columnTitle(own))
-	case related && declaredColumn(target.title) != "" && declaredColumn(target.title) != own:
-		return reject("the related entry writes %s; only %s may evolve that column, without changing it by title; use disputes to state a contradiction", declaredColumn(target.title), matrixColumns[declaredColumn(target.title)])
-	// Only qa revises the matrix itself; another column only adds to it.
-	case related && matrixEntryTitle(target.title) == matrixTitle && req.Author != matrixColumns["Requirements"] && req.RelatesTo.Relation != "supplements":
-		return reject("the traceability matrix is qa's; relate your column to it with supplements, titled %q", columnTitle(own))
+		return "", reject("only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction")
 	case !related:
-		return reject("a matrix column relates to the matrix or its column entry with supplements; record it titled %q", columnTitle(own))
+		return "", reject("a matrix column relates to the matrix or its column entry with supplements")
+	case declaredColumn(target.title) != "" && declaredColumn(target.title) != own:
+		return "", reject("the related entry writes %s; only %s may evolve that column; use disputes to state a contradiction", declaredColumn(target.title), matrixColumns[declaredColumn(target.title)])
+	// Only qa revises the matrix itself; another column only adds to it.
+	case matrixEntryTitle(target.title) == matrixTitle && req.Author != matrixColumns["Requirements"] && req.RelatesTo.Relation != "supplements":
+		return "", reject("the traceability matrix is qa's; relate your column to it with supplements")
 	}
-	return nil
+	return columnTitle(own), nil
 }
 
 // targetProject reports the project an existing entry is bound to, or "" when it
@@ -676,10 +680,12 @@ func validateRelation(rel *RelatesTo) error {
 func renderEntry(req RecordRequest) string {
 	authority := "author"
 	switch {
-	case req.Nature == "decision":
-		authority = "user — " + req.Evidence
+	// Only a confirmed user order is stamped as the user's own; a decision's
+	// approval otherwise is the author's quote, not one the harness saw given.
 	case req.UserOrder:
 		authority = "user"
+	case req.Nature == "decision":
+		authority = "user, as quoted by " + req.Author + " — " + req.Evidence
 	case strings.TrimSpace(req.Evidence) != "":
 		authority = "evidence: " + req.Evidence
 	}

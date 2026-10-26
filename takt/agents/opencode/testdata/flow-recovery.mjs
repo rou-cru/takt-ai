@@ -48,7 +48,7 @@ const base=content=>({present:true,content:Buffer.from(content).toString('base64
 try {
  // The real CLI issues the attempt, claim, binding, and staged work.
  await writeFile(resolve(workspace,'a.txt'),'base',{mode:0o600})
- await tools.dispatch_inputs.execute({work_unit_id:'author',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'author',result_ids:[]},root)
  const assigned=JSON.parse((await tools.claim_assign.execute({work_unit_id:'author',agent:'dev',scope:['a.txt']},root)).content)
  const key=assigned.key
  await fire('execute.before',{...root,id:'author-call',tool:'subagent',input:{description:'author',agent:'dev'}})
@@ -90,7 +90,7 @@ try {
  writeState(s)
  call(['gc','coordinate'],{action:'attach',event:'audit-cycle',role:'verifier',child:'lane',owner:'test-owner'})
  sessions.set('lane',{})
- await tools.dispatch_inputs.execute({work_unit_id:'next',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'next',result_ids:[]},root)
  const admission={...root,id:'next-call',tool:'subagent',input:{description:'next',agent:'spec'}}
  interruptFails=true
  await assert.rejects(fire('execute.before',admission),/interruption failed/)
@@ -122,11 +122,11 @@ try {
  assert.equal(approvalCount,approved,'durable interrupted closure requested approval again')
  // Native orphan correlation checks the exact call even after its child vanished.
  await fire('execute.after',{...admission,status:'error',result:{content:'cancelled'}})
- await tools.dispatch_inputs.execute({work_unit_id:'orphan',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'orphan',result_ids:[]},root)
  call(['dispatch'],{action:'prepare',event:'orphan',session:'root',agent:'spec',dispatch:'root:orphan-call',caller:'root',owner:'dead',background:false})
  call(['dispatch'],{action:'attach_child',dispatch:'root:orphan-call',child:'deleted-child',agent:'spec'})
  messages.set('root',[{type:'assistant',content:[{type:'tool',name:'subagent',id:'orphan-call',state:{status:'error'}}]}])
- await tools.dispatch_inputs.execute({work_unit_id:'after-orphan',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'after-orphan',result_ids:[]},root)
  await tools.claim_assign.execute({work_unit_id:'after-orphan',agent:'dev',scope:['b.txt']},root)
  await fire('execute.before',{...root,id:'after-orphan',tool:'subagent',input:{description:'after-orphan',agent:'dev'}})
  assert.equal(call(['dispatch'],{action:'execution',dispatch:'root:orphan-call'}).settled,true)
@@ -186,16 +186,16 @@ try {
 
  // A delegation whose calling session is gone can never return: the next
  // reconciliation ends it interrupted and frees its unit.
- call(['dispatch'],{action:'inputs',session:'gone-root',event:'lost',none:true})
+ call(['dispatch'],{action:'inputs',session:'gone-root',event:'lost',result_ids:[]})
  call(['dispatch'],{action:'prepare',event:'lost',session:'gone-root',agent:'spec',dispatch:'gone-root:lost-call',caller:'gone-root',owner:'dead',background:false})
- await tools.dispatch_inputs.execute({work_unit_id:'probe',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'probe',result_ids:[]},root)
  await fire('execute.before',{...root,id:'probe',tool:'subagent',input:{description:'probe',agent:'spec'}})
  assert.equal(call(['dispatch'],{action:'execution',dispatch:'gone-root:lost-call'}).settled,true)
  await fire('execute.after',{...root,id:'probe',tool:'subagent',status:'error',result:{content:'cancelled'}})
 
  // One that will never return although its caller lives is ended on the
  // user's decision; the unit can then be delegated again.
- await tools.dispatch_inputs.execute({work_unit_id:'stuck',none:true},root)
+ await tools.dispatch_inputs.execute({work_unit_id:'stuck',result_ids:[]},root)
  call(['dispatch'],{action:'prepare',event:'stuck',session:'root',agent:'spec',dispatch:'root:stuck-call',caller:'root',owner:'dead',background:false})
  call(['dispatch'],{action:'attach_child',dispatch:'root:stuck-call',child:'stuck-child',agent:'spec'})
  await assert.rejects(fire('execute.before',{...root,id:'stuck-retry',tool:'subagent',input:{description:'stuck',agent:'spec'}}),/root:stuck-call/)

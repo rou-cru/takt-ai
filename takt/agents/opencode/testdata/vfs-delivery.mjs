@@ -89,7 +89,7 @@ await plugin.setup({
 // delegate runs the subagent hooks of one phase for a delegation; extra adds
 // fields to its input, and result is the host's reply the after hooks amend.
 const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result = {}) => {
-  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), none: true }, { sessionID: "root", agent: "takt" })
+  if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, { sessionID: "root", agent: "takt" })
   const event = { tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
     input: { agent, description, prompt: "p", ...extra }, status, result }
   for (const hook of hooks[phase]) await hook(event) // NOSONAR: hooks run in registration order

@@ -14,8 +14,8 @@ only narrows what your role records.
 
 ## Records
 
-- Standard results: product intent, formal requirements, focus areas, scope, priorities, risks
-  and success criteria. For a nonstandard result, define its product implications without
+- Standard results: user stories, product intent, formal requirements, focus areas, scope,
+  priorities, risks and success criteria. For a nonstandard result, define its product implications without
   designing the implementation.
 - `decision` (`project`): scope, priority, and tradeoff choices the user approved.
 - `proposal` (`project`): scope options raised in the question round and not adopted.
@@ -25,6 +25,9 @@ only narrows what your role records.
 
 Pick what fits; none are mandatory, and more than one is normal.
 
+- **User Story** (`references/user-story.md`) — one functional outcome from the user's
+  perspective, one entry per story; recorded only once no question about its expected result
+  remains open.
 - **Brief** (`references/brief.md`) — a narrow, already-clear ask.
 - **PRD** (`references/prd.md`) — scope, priorities and success criteria substantial enough
   to need their own document.
@@ -37,4 +40,5 @@ Pick what fits; none are mandatory, and more than one is normal.
 ## Never records
 
 - Your own assumptions as decisions: an unconfirmed assumption is a `hypothesis`.
-- Roadmaps, milestones, or what will be built later.
+- Roadmaps by date, milestones, or plans of what will be built later; the order of delivery
+  lives in each story's priority.

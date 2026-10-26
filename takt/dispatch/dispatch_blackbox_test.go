@@ -185,7 +185,7 @@ func TestWithdrawRejectsAdmittedUnit(t *testing.T) {
 }
 
 func recoveryDeclaration(objective string) dispatch.RecoveryDeclaration {
-	return dispatch.RecoveryDeclaration{Objective: objective, Result: "the fix works", Point: "before-edit", Scope: []string{"a"}, Actions: 2, Attempts: 2}
+	return dispatch.RecoveryDeclaration{Objective: objective, Result: "the fix works", Scope: []string{"a"}, Actions: 2, Attempts: 2}
 }
 
 func TestDeclareRecoveryAndCloseRecovery(t *testing.T) {
@@ -229,7 +229,7 @@ func TestDeclareRecoveryAndCloseRecovery(t *testing.T) {
 func TestDeclareRecoveryRejectsIncompleteDeclaration(t *testing.T) {
 	h := newHistory(t)
 	p := loadPolicy(t)
-	incomplete := dispatch.RecoveryDeclaration{Objective: "obj1"} // missing Result, Point, Scope, budgets
+	incomplete := dispatch.RecoveryDeclaration{Objective: "obj1"} // missing Result, Scope, budgets
 	if err := dispatch.DeclareRecovery(h, p, "", "recover-a", "s1", incomplete); err == nil {
 		t.Fatal("DeclareRecovery() with an incomplete declaration error = nil, want an error")
 	}
