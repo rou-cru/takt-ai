@@ -1521,7 +1521,7 @@ export default Plugin.define({
         try {
           return { content: JSON.stringify(await release(false)) }
         } catch (error) {
-          if (!(error instanceof VFSRefusal) || !error.message.includes(UNCONFIRMED_RELEASE)) throw error
+          if (!(error instanceof Error) || !error.message.includes(UNCONFIRMED_RELEASE)) throw error
           await confirmWithUser("claim_release", args.claim_key, { claim_key: args.claim_key, refusal: error.message }, c)
           return { content: JSON.stringify(await release(true)) }
         }

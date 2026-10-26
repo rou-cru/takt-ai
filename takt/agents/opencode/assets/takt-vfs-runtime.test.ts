@@ -1204,12 +1204,12 @@ describe("claims and consolidation", () => {
       } } }) },
     }))
     const vfs = await startVfs({
-      respond: (call) => call.command === "release" && call.request.confirmed !== true ? json({ ok: false, error: refusal }) : undefined,
+      respond: (call) => call.command === "release" && call.request.confirmed !== true ? { code: 1, err: refusal } : undefined,
     })
     const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
     try {
       await vfs.run("claim_release", { claim_key: "k-active", confirmed: true }, caller)
-      expect(created[0]).toMatchObject({ sessionID: "root", action: "claim_release", resources: ["k-active"], metadata: { refusal } })
+      expect(created[0]).toMatchObject({ sessionID: "root", action: "claim_release", resources: ["k-active"], metadata: { refusal: expect.stringContaining(refusal) } })
       expect(vfs.requests("vfs", "release")).toEqual([false, true].map(confirmed => ({
         ipc_version: IPC_VERSION, session_id: "root", caller_session: "root", caller_agent: ORCHESTRATOR, key: "k-active", confirmed,
       })))
