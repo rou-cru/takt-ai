@@ -173,6 +173,12 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion,
 			"dispatch: revision declares a stale base version")
 	}
+	for _, u := range adds {
+		if slices.Contains(withdrawals, u.Unit) {
+			return invalidRevision(h, journalRef, session, baseVersion, newVersion,
+				fmt.Sprintf("dispatch: %s is both added and withdrawn in one revision", u.Unit))
+		}
+	}
 	current := currentPlan(projection, session)
 	resulting := reviseUnits(current, adds, withdrawals)
 	if e := validPlan(projection, session, resulting); e != nil {
@@ -182,6 +188,9 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
 	if e := checkAdmittedUnchanged(projection, session, adds); e != nil {
+		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
+	}
+	if e := checkAddedPrerequisitesSettled(projection, session, resulting, adds); e != nil {
 		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
 	entries, err := qaRoundEntries(projection, journalRef, session, newVersion, resulting, qaRound)
@@ -284,6 +293,25 @@ func checkAdmittedUnchanged(p history.Projection, session string, adds []PlanUni
 		}
 		if existing.Contract != u.Contract || !slices.Equal(existing.Prerequisites, u.Prerequisites) {
 			return fmt.Errorf("dispatch: %s is no longer planned; its contract and prerequisites cannot change; omit it from the revision", u.Unit)
+		}
+	}
+	return nil
+}
+
+// checkAddedPrerequisitesSettled rejects a declared unit that depends on work
+// outside the resulting plan which is not settled: a retained unit keeps its
+// reference to withdrawn work visibly unsatisfied (PR-DAG-MUT-6), but new
+// declarations may depend only on executed history.
+func checkAddedPrerequisitesSettled(p history.Projection, session string, resulting []PlanUnit, adds []PlanUnit) error {
+	inPlan := make(map[string]bool, len(resulting))
+	for _, u := range resulting {
+		inPlan[u.Unit] = true
+	}
+	for _, u := range adds {
+		for _, need := range u.Prerequisites {
+			if existing, _ := p.Unit(session, need); !inPlan[need] && existing.State != history.StateSettled {
+				return fmt.Errorf("dispatch: %s depends on %s, which is withdrawn or not settled; a new declaration depends only on planned or settled work", u.Unit, need)
+			}
 		}
 	}
 	return nil

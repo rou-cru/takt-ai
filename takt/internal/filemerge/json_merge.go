@@ -70,12 +70,11 @@ func (e *InvalidJSONError) Error() string {
 // ParseJSONObject reads raw as a JSON object under MergeJSONObjects' rules,
 // returning an *InvalidJSONError when it is not one.
 func ParseJSONObject(raw []byte) (map[string]any, error) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return map[string]any{}, nil
-	}
-
 	// NormalizeJSON keeps every byte offset, so parser positions map to raw.
 	normalized := NormalizeJSON(raw)
+	if len(bytes.TrimSpace(normalized)) == 0 {
+		return map[string]any{}, nil
+	}
 	var root any
 	if err := json.Unmarshal(normalized, &root); err != nil {
 		var syntax *json.SyntaxError

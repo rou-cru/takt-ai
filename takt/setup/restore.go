@@ -53,11 +53,11 @@ type RestoreResult struct {
 	// Restored lists managed paths whose backed-up pre-existing content was put back.
 	Restored []string `json:"restored"`
 	// Preserved lists managed paths whose current bytes stayed in place: files that already held the backup bytes.
-	Preserved []string `json:"preserved"`
+	Preserved []string `json:"preserved,omitempty"`
 	// Conflicts lists managed paths that restore refused to overwrite; their bytes are untouched.
-	Conflicts []FileConflict `json:"conflicts"`
+	Conflicts []FileConflict `json:"conflicts,omitempty"`
 	// Incomplete lists managed paths whose restore could not be carried out; the returned error names each failure.
-	Incomplete []string `json:"incomplete"`
+	Incomplete []string `json:"incomplete,omitempty"`
 }
 
 // restoreDisposition classifies one backed-up entry before any write.

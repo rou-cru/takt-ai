@@ -66,7 +66,7 @@ type DeploymentResult struct {
 	// Incomplete lists committed work the deployment could not finish, such
 	// as a dependency that was not installed, so a caller never mistakes
 	// partial work for full success.
-	Incomplete []string `json:"incomplete"`
+	Incomplete []string `json:"incomplete,omitempty"`
 	// Retained lists planned paths kept as they are: preserved by the user or
 	// edited locally. The operation succeeds, but behavior relying on them is
 	// not guaranteed.

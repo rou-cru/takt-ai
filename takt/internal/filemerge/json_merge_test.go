@@ -608,3 +608,12 @@ func countDuplicateStrings(entries []any) int {
 	}
 	return duplicates
 }
+
+func TestParseJSONObjectReadsACommentOnlyFileAsEmpty(t *testing.T) {
+	for _, raw := range []string{"", "  \n", "// todo\n", "/* todo */"} {
+		object, err := filemerge.ParseJSONObject([]byte(raw))
+		if err != nil || len(object) != 0 {
+			t.Errorf("ParseJSONObject(%q) = %v, %v; want an empty object", raw, object, err)
+		}
+	}
+}

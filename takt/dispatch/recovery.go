@@ -53,6 +53,10 @@ type RecoveryDeclaration struct {
 // PR-ORQ-13 requires: recorded as missing, and no proof of bounded recovery.
 const causeIncomplete = "declaration/recovery-incomplete"
 
+// causeRecoveryOverlap records a recovery declaration whose scope already
+// belongs to an unresolved recovery; no budget is involved.
+const causeRecoveryOverlap = "declaration/recovery-overlap"
+
 // DeclareRecovery admits bounded recovery of an objective. Consecutive failed
 // recoveries close autonomous recovery for it until an enabling user decision
 // is recorded; the objective identity carries that history (PR-HAR-21,
@@ -78,14 +82,21 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 	switch {
 	case d.Objective == "" || d.Result == "" || len(d.Scope) == 0 || d.Actions <= 0 || d.Attempts <= 0:
 		deny(causeIncomplete, errors.New("harness: a recovery declares a binary result, both budgets, an objective and its scope; declare it again with every field set and both budgets above zero"))
-	case d.Actions > p.Recovery.MaxActions || d.Attempts > p.Recovery.MaxAttempts:
-		deny(history.BoundRecoveryActions, fmt.Errorf("harness: declared budgets exceed the admissible ceiling of %d actions and %d attempts; declare it again within them", p.Recovery.MaxActions, p.Recovery.MaxAttempts))
+	case d.Actions > p.Recovery.MaxActions:
+		deny(history.BoundRecoveryActions, ceilingError(p))
+	case d.Attempts > p.Recovery.MaxAttempts:
+		deny(history.BoundRecoveryAttempts, ceilingError(p))
 	case owner != "":
-		deny(history.BoundRecoveryAttempts, overlapError(owner, owned))
+		deny(causeRecoveryOverlap, overlapError(owner, owned))
 	case budgets.Recoveries[d.Objective].Failures >= allowed:
 		deny(history.BoundRecovery, fmt.Errorf("harness: %d consecutive failed recoveries of this objective require escalation; present the evidence and alternatives to the user; to continue, propose dispatch_exception on %s for objective %q, which the harness confirms with them, then declare the recovery again", allowed, history.BoundRecovery, d.Objective))
 	}
 	return errors.Join(h.Append(entry), e)
+}
+
+// ceilingError refuses declared budgets above the admissible ceiling.
+func ceilingError(p AdmissionPolicy) error {
+	return fmt.Errorf("harness: declared budgets exceed the admissible ceiling of %d actions and %d attempts; declare it again within them", p.Recovery.MaxActions, p.Recovery.MaxAttempts)
 }
 
 // scopeOwner names the unresolved recovery a declared scope's work already

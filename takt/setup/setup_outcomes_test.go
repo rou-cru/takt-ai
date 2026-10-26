@@ -2,10 +2,12 @@ package setup_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/setup"
@@ -147,5 +149,24 @@ func TestSyncReportsRetainedDriftAsSuccess(t *testing.T) {
 	}
 	if content, readErr := os.ReadFile(filepath.Join(root, path)); readErr != nil || string(content) != string(edited) {
 		t.Errorf("%s = %q, %v, want the edit kept", path, content, readErr)
+	}
+}
+
+// A result with no incomplete or conflicting work carries no such keys, so a
+// strict --json consumer never meets null where it expects a list.
+func TestResultsOmitEmptyOutcomeLists(t *testing.T) {
+	for name, result := range map[string]any{
+		"deployment": setup.DeploymentResult{Changed: []string{"a.txt"}, Unchanged: []string{}},
+		"restore":    setup.RestoreResult{Restored: []string{"a.txt"}},
+	} {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatalf("%s: Marshal() error = %v", name, err)
+		}
+		for _, key := range []string{"incomplete", "conflicts", "preserved"} {
+			if strings.Contains(string(encoded), `"`+key+`"`) {
+				t.Errorf("%s: %s carries %q for an empty list", name, encoded, key)
+			}
+		}
 	}
 }
