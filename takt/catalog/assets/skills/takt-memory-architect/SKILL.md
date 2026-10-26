@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: architect — Architecture and interface contracts
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard results: architecture, boundaries, interfaces and integration contracts.

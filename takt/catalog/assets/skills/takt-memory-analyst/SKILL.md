@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: analyst — Codebase investigation
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard result: an official investigation report with conclusions and pertinent evidence.

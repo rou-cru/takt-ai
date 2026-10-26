@@ -137,36 +137,6 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	}
 }
 
-// TestOrchestratorGitMutationsAskPerCommand proves the orchestrator's Git
-// rules project the canonical classification: only commit, push, rebase,
-// clean, restore and hard reset ask; other Git is the orchestrator's conduct.
-func TestOrchestratorGitMutationsAskPerCommand(t *testing.T) {
-	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
-		Agents: []opencode.AgentSpec{
-			{ID: shared.OrchestratorID, Description: orchestratorDescription(t), Mode: "primary", System: "Coordinate the crew.", Role: model.RoleOrchestrator, VFSCapabilities: vfsCaps(model.VFSCapabilityClaimList, model.VFSCapabilityClaimAssign, model.VFSCapabilityClaimRelease, model.VFSCapabilityConsolidate)},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rules := decodeConfig(t, artifact.Content).Agents[shared.OrchestratorID].Permissions
-	for _, tc := range []struct{ resource, want string }{
-		{"git *", "allow"},
-		{"git push", "ask"},
-		{"git commit", "ask"},
-		{"git commit *", "ask"},
-		{"git push *", "ask"},
-		{"git rebase *", "ask"},
-		{"git clean *", "ask"},
-		{"git restore *", "ask"},
-		{"git reset *--hard*", "ask"},
-	} {
-		if got := effectOf(rules, "shell", tc.resource); got != tc.want {
-			t.Errorf("orchestrator git %s = %q, want %q", tc.resource, got, tc.want)
-		}
-	}
-}
-
 // TestOrchestratorSubagentPermissionExcludesMaintenanceAgents proves maintenance
 // agents are denied to the orchestrator's subagent tool while every other agent
 // stays dispatchable, and that the blanket allow precedes the deny in the

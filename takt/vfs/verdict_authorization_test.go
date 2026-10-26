@@ -189,34 +189,65 @@ func TestVerdictAuthorizesConsolidationAfterReopen(t *testing.T) {
 	}
 }
 
-// A verdict attached over another attempt never authorizes the current
-// consolidation, even though the delta and its bytes are the same work.
-func TestVerdictForAnotherAttemptDoesNotAuthorizeCurrentConsolidation(t *testing.T) {
-	f, root, _ := verdictStore(t)
-	identity := vfs.Identity{SessionID: verdictSession, WorkUnitID: "rq34-author-unit", AgentID: "rq34-author", Specialist: "dev"}
+// verdictPrelaunched stages content under an assigned, not yet adopted,
+// binding judged by a gate's verdict; adopt moves the binding to attempt 2.
+func verdictPrelaunched(t *testing.T, f *vfs.FS, identity vfs.Identity, pass bool, finding string) (author vfs.AgentID, r vfs.OperationResult, adopt func()) {
+	t.Helper()
 	author, err := f.AssignScope(identity, []string{"rq34.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := verdictCreate(t, f, author, "rq34-create", "rq34.txt", "rq34-content")
-	gate := verdictGate(t, f, "rq34-author-unit", "1", "rq34-judge", author)
-	if err := f.Verify(gate, author, "rq34-verdict", r.Revision, r.DeltaHash, false, "behavior changed"); err != nil {
+	r = verdictCreate(t, f, author, "rq34-create", "rq34.txt", "rq34-content")
+	gate := verdictGate(t, f, identity.WorkUnitID, "1", "rq34-judge", author)
+	verdictJudge(t, f, gate, author)
+	if err := f.Verify(gate, author, "rq34-verdict", r.Revision, r.DeltaHash, pass, finding); err != nil {
 		t.Fatal(err)
 	}
-	// While the binding holds the attempt the verdict evaluated, the failing
-	// verdict refuses the consolidation and asks for acceptance.
-	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, false); !errors.Is(err, vfs.ErrFailingVerdict) {
-		t.Fatalf("current failing verdict = %v", err)
+	return author, r, func() {
+		identity.AttemptID = "2"
+		if adopted, err := f.Bind(identity, nil); err != nil || adopted != author {
+			t.Fatalf("adoption = %q, %v; want %q", adopted, err, author)
+		}
 	}
-	// Adoption moves the binding to attempt 2 under the same key: the verdict
-	// stays what it evaluated, so it describes another attempt's work.
+}
+
+// A failing verdict refuses its own attempt's consolidation until the user
+// accepts it, and stops refusing once the binding moves to another attempt.
+func TestFailingVerdictRefusesItsAttemptUntilAcceptedOrAdopted(t *testing.T) {
+	identity := vfs.Identity{SessionID: verdictSession, WorkUnitID: "rq34-author-unit", AgentID: "rq34-author", Specialist: "dev"}
+	for name, accept := range map[string]bool{"accepted": true, "adopted": false} {
+		t.Run(name, func(t *testing.T) {
+			f, root, _ := verdictStore(t)
+			author, r, adopt := verdictPrelaunched(t, f, identity, false, "behavior changed")
+			if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, false); !errors.Is(err, vfs.ErrFailingVerdict) {
+				t.Fatalf("current failing verdict = %v", err)
+			}
+			if !accept {
+				adopt()
+			}
+			if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, accept); err != nil {
+				t.Fatalf("consolidation = %v", err)
+			}
+			data, err := os.ReadFile(filepath.Join(root, "rq34.txt"))
+			if err != nil || string(data) != "rq34-content" {
+				t.Fatalf("consolidated bytes = %q, %v", data, err)
+			}
+		})
+	}
+}
+
+// A maintenance cycle's binding never moves to another attempt, so its
+// passing verdict keeps describing the attempt that consolidates.
+func TestMaintenanceBindingRefusesAnotherAttempt(t *testing.T) {
+	f, root, _ := verdictStore(t)
+	identity := vfs.Identity{SessionID: verdictSession, WorkUnitID: "rq34-author-unit", AgentID: "rq34-author", Specialist: "simplify", CycleID: "cycle-34", MandateClass: "dead-code"}
+	author, r, _ := verdictPrelaunched(t, f, identity, true, "clean")
 	identity.AttemptID = "2"
-	adopted, err := f.Bind(identity, nil)
-	if err != nil || adopted != author {
-		t.Fatalf("adoption = %q, %v; want %q", adopted, err, author)
+	if adopted, err := f.Bind(identity, nil); !errors.Is(err, vfs.ErrScopeDenied) {
+		t.Fatalf("adoption by another attempt = %q, %v", adopted, err)
 	}
 	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, false); err != nil {
-		t.Fatalf("consolidation over another attempt's verdict = %v", err)
+		t.Fatalf("consolidation over its own verdict = %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "rq34.txt"))
 	if err != nil || string(data) != "rq34-content" {
@@ -240,29 +271,6 @@ func TestMaintenanceVerdictRulesKeepAuthorizing(t *testing.T) {
 	}
 	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, false); err != nil {
 		t.Fatal(err)
-	}
-	data, err := os.ReadFile(filepath.Join(root, "rq34.txt"))
-	if err != nil || string(data) != "rq34-content" {
-		t.Fatalf("consolidated bytes = %q, %v", data, err)
-	}
-}
-
-// The current failing verdict keeps asking for the user's explicit
-// acceptance, unchanged by verdict identity.
-func TestCurrentFailingVerdictAcceptanceUnchanged(t *testing.T) {
-	f, root, _ := verdictStore(t)
-	author := verdictBind(t, f, "rq34-author-unit", "1", "rq34-author",
-		vfs.InvariantSet{vfs.EngramInvariant(15187)}, "rq34.txt")
-	r := verdictCreate(t, f, author, "rq34-create", "rq34.txt", "rq34-content")
-	gate := verdictGate(t, f, "rq34-author-unit", "1", "rq34-judge", author)
-	if err := f.Verify(gate, author, "rq34-verdict", r.Revision, r.DeltaHash, false, "behavior changed"); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, false); !errors.Is(err, vfs.ErrFailingVerdict) {
-		t.Fatalf("current failing verdict = %v", err)
-	}
-	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", r.Revision, true); err != nil {
-		t.Fatalf("accepted failing verdict = %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "rq34.txt"))
 	if err != nil || string(data) != "rq34-content" {
@@ -301,14 +309,12 @@ func TestLegacyVerdictNeverAuthorizes(t *testing.T) {
 	}
 }
 
-// A verdict for another revision does not authorize the current
-// consolidation, even when the restaged bytes hash identically.
+// Restaging, even identical bytes at a new revision, discards the earlier
+// revision's verdict: a maintenance cycle's consolidation asks for a new one.
 func TestVerdictForAnotherRevisionDoesNotAuthorizeIdenticalBytes(t *testing.T) {
-	f, root, state := verdictStore(t)
+	f, _, _ := verdictStore(t)
 	author := verdictMaintainer(t, f, "rq34-author-unit", "1", "rq34-author", "rq34.txt")
-	authorID, _ := f.BindingIdentity(author)
 	gate := verdictGate(t, f, "rq34-author-unit", "1", "rq34-judge", author)
-	gateID, _ := f.BindingIdentity(gate)
 	r := verdictCreate(t, f, author, "rq34-create", "rq34.txt", "rq34-content")
 	verdictJudge(t, f, gate, author)
 	if err := f.Verify(gate, author, "rq34-verdict", r.Revision, r.DeltaHash, true, "clean"); err != nil {
@@ -319,33 +325,10 @@ func TestVerdictForAnotherRevisionDoesNotAuthorizeIdenticalBytes(t *testing.T) {
 	if next.DeltaHash != r.DeltaHash || next.Revision == r.Revision {
 		t.Fatalf("restage = %+v, want identical bytes at a new revision", next)
 	}
-	// Reconstruct a store whose staged work carries the revision-1 verdict
-	// over the revision-2 delta, as an older process would have written it.
-	s, err := f.SavedState()
-	if err != nil {
-		t.Fatal(err)
-	}
-	delta := s.Deltas[author]
-	delta.Verdicts = map[vfs.AgentID]*vfs.VerificationVerdict{gateID.AgentID: &vfs.VerificationVerdict{
-		Pass:           true,
-		Finding:        "clean",
-		VerifierID:     gateID.AgentID,
-		VerifierRole:   gateID.Role,
-		Revision:       r.Revision,
-		DeltaHash:      r.DeltaHash,
-		Invariants:     authorID.Invariants,
-		InvariantsHash: authorID.InvariantsHash,
-		WorkUnitID:     authorID.WorkUnitID,
-		AttemptID:      authorID.AttemptID,
-	}}
-	s.Deltas[author] = delta
-	verdictReplaceState(t, f, s)
-	reopened := verdictReopen(t, f, root, state)
-	err = reopened.ConsolidateCheckpoint(author, "rq34-checkpoint", next.Revision, false)
-	if !errors.Is(err, vfs.ErrInvalidVerdict) {
+	if err := f.ConsolidateCheckpoint(author, "rq34-checkpoint", next.Revision, false); !errors.Is(err, vfs.ErrVerificationRequired) {
 		t.Fatalf("consolidation over another revision's verdict = %v", err)
 	}
-	if n := len(reopened.InspectDelta(author).Files); n != 1 {
+	if n := len(f.InspectDelta(author).Files); n != 1 {
 		t.Fatalf("refused consolidation lost staged work: %d files", n)
 	}
 }

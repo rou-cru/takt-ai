@@ -2,16 +2,12 @@ package setup_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/doctor"
-	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -129,88 +125,27 @@ func TestRetryAfterCancelledDeployReportsCompletedAndRemaining(t *testing.T) {
 	}
 }
 
-// TestProjectionKeepsIncompleteFacts covers the deployment
-// result's projection keeps the incomplete cause, the completed work, and
-// the remaining work.
-func TestProjectionKeepsIncompleteFacts(t *testing.T) {
-	result := setup.DeploymentResult{
-		Changed:    []string{"a.txt"},
-		Unchanged:  []string{"b.txt"},
-		NotApplied: []string{"c.txt"},
-		Incomplete: []string{"sandbox adapter dependency was not installed: npm unavailable"},
+// TestSyncReportsRetainedDriftAsSuccess covers PR-INS-24/25: a locally
+// edited managed file is kept, listed in Retained, and the sync succeeds.
+func TestSyncReportsRetainedDriftAsSuccess(t *testing.T) {
+	root := t.TempDir()
+	plans := simplePlan("deployed")
+	if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err != nil {
+		t.Fatalf("ApplyContext() error = %v", err)
 	}
-	data, err := json.Marshal(result)
+	edited := []byte("edited")
+	path := plans[0].Artifacts[0].Path
+	if err := os.WriteFile(filepath.Join(root, path), edited, setup.ManagedFileMode); err != nil {
+		t.Fatal(err)
+	}
+	result, err := setup.SyncContextProgress(context.Background(), root, plans, setup.ProviderRuntime{}, nil)
 	if err != nil {
-		t.Fatalf("marshal result: %v", err)
+		t.Fatalf("SyncContextProgress() error = %v, want success with retained drift", err)
 	}
-	var projection map[string]json.RawMessage
-	if err := json.Unmarshal(data, &projection); err != nil {
-		t.Fatalf("unmarshal projection: %v", err)
+	if !slices.Equal(result.Retained, []string{path}) {
+		t.Errorf("Retained = %v, want [%s]", result.Retained, path)
 	}
-	for _, key := range []string{"changed", "unchanged", "notApplied", "incomplete"} {
-		if _, ok := projection[key]; !ok {
-			t.Errorf("projection %s lacks key %q", data, key)
-		}
-	}
-	if !strings.Contains(string(projection["incomplete"]), "sandbox adapter dependency was not installed") {
-		t.Errorf("incomplete = %s, want the dependency failure cause kept", projection["incomplete"])
-	}
-	// The keys survive a zero result, so no projection can hide the facts.
-	empty, err := json.Marshal(setup.DeploymentResult{})
-	if err != nil {
-		t.Fatalf("marshal empty result: %v", err)
-	}
-	if !strings.Contains(string(empty), `"incomplete":`) {
-		t.Errorf("empty result %s lacks key %q", empty, "incomplete")
-	}
-}
-
-// TestDoctorWarnsDriftReadinessSeparatelyFromOutcome covers the readiness case:
-// drift on fully deployed work keeps the deployment outcome a pass while
-// readiness warns on its own line.
-func TestDoctorWarnsDriftReadinessSeparatelyFromOutcome(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	// An empty PATH and a dead Engram address keep the unrelated checks
-	// deterministic; only the deployment rows are asserted.
-	t.Setenv("PATH", "")
-	t.Setenv(model.EnvEngramURL, "http://127.0.0.1:1")
-	t.Chdir(t.TempDir())
-
-	manifest := setup.NewOwnershipManifest()
-	deployed := []struct{ path, recorded, onDisk string }{
-		{"opencode/kept.md", "deployed", "deployed"},
-		{"opencode/drifted.md", "deployed", "edited"},
-	}
-	for _, file := range deployed {
-		entry, err := setup.NewOwnershipEntry(file.path, []byte(file.recorded), 0o644, false, "", "", setup.TargetOpenCode)
-		if err != nil {
-			t.Fatalf("ownership entry %s: %v", file.path, err)
-		}
-		if err := manifest.Add(entry); err != nil {
-			t.Fatalf("manifest add %s: %v", file.path, err)
-		}
-		path := filepath.Join(home, filepath.FromSlash(file.path))
-		if err := os.MkdirAll(filepath.Dir(path), setup.ManagedDirectoryMode); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(file.onDisk), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := manifest.Save(home); err != nil {
-		t.Fatalf("manifest save: %v", err)
-	}
-
-	var out strings.Builder
-	// Missing tools make the verdict unhealthy; the deployment rows are
-	// what this run asserts.
-	_ = doctor.Run(&out)
-	report := out.String()
-	if !strings.Contains(report, "[!!]  deployment:readiness") || !strings.Contains(report, "1 of 2 managed files differ from deployed content") {
-		t.Errorf("report lacks the separate readiness warning:\n%s", report)
-	}
-	if !strings.Contains(report, "[ok]  deployment:manifest") || !strings.Contains(report, "2 managed files deployed") {
-		t.Errorf("report lacks the passing deployment outcome:\n%s", report)
+	if content, readErr := os.ReadFile(filepath.Join(root, path)); readErr != nil || string(content) != string(edited) {
+		t.Errorf("%s = %q, %v, want the edit kept", path, content, readErr)
 	}
 }

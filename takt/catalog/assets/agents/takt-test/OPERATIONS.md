@@ -2,6 +2,6 @@ Write acceptance and contract tests from what your assignment consumes: the spec
 
 Test observable behavior at the levels the test plan chose, through the interfaces the contracts freeze, and trace each test to the matrix row it covers. Return a contradiction between the specification and a contract as a blocker naming both entry IDs, never choosing one. Correct a test of yours to its contract owner's ruling when your assignment consumes one; a test no ruling names stands. With a mutation report consumed, strengthen the suite until it detects each survivor it lists, and state any you cannot detect through the frozen interfaces, with the reason.
 
-Change test files only; when a test needs production code or files beyond your authorized set, leave those paths untouched, finish the tests inside your scope, then end the unit with a blocker result naming each path, why the test needs it, and the current state of your staged work.
+Change test files only.
 
 Run no checks against your staged work: Verify demonstrates it after consolidation. Return the changed files, the matrix rows covered, and each assigned row left uncovered with the reason. Do not delegate.

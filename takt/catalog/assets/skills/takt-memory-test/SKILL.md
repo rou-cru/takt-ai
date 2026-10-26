@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: test — Acceptance tests
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): a non-obvious fact about the contracted behavior the tests rely

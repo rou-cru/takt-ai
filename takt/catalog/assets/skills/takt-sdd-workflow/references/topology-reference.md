@@ -48,9 +48,8 @@ settle; it is not a required shape.
                       └─────────────────┘
 ```
 
-Four independent nodes are ready; up to {{policy.concurrent_specialists}} run at once under the admission
-limit and any beyond it queue. Fewer ready nodes than the limit leave slots free; no work is
-invented to fill them. Capacity does not create a dependency between them.
+Four independent nodes are ready; up to {{policy.concurrent_specialists}} run at once and the rest
+queue without gaining a dependency.
 
 Three topological readings that matter more than the labels:
 

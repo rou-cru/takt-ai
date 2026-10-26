@@ -178,7 +178,7 @@ grant — it is never assumed from silence.
 1. **Validate completeness and execution bounds**: reject incomplete contracts or contracts
    specifying broad/unscoped acceptance commands back to their author.
 2. **Remove avoidable waits.** Ask the contract owner to settle an interface when that
-   enables independent work; do not demand another artifact merely because the DAG is narrow.
+   enables independent work.
 
 ---
 

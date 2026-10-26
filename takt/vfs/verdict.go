@@ -41,15 +41,11 @@ func EngramInvariant(id int64) string {
 	return engramInvariantPrefix + strconv.FormatInt(id, 10)
 }
 
-// invariantScheme versions the derivation below, so a version computed by a
-// later scheme can never be mistaken for one computed by this scheme.
-const invariantScheme = "inv1"
-
 // invariantsVersionLocked is the set's version: it changes whenever a declared
 // invariant is added, removed, reordered or, for a path, edited, which is what
 // makes evidence stop governing under PR-VFS-CSL-7.
 func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
-	pinned := []string{invariantScheme}
+	var pinned []string
 	for _, invariant := range set {
 		if strings.HasPrefix(invariant, engramInvariantPrefix) {
 			id, perr := strconv.ParseInt(strings.TrimPrefix(invariant, engramInvariantPrefix), 10, 64)
@@ -65,7 +61,7 @@ func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
 		}
 		pinned = append(pinned, invariant+"\x00"+hashOf(base.Content, base.Present))
 	}
-	return invariantScheme + ":" + hashOf([]byte(strings.Join(pinned, "\n")), true), nil
+	return hashOf([]byte(strings.Join(pinned, "\n")), true), nil
 }
 
 // Verify attaches a verification gate to an exact revision and delta hash.
@@ -95,8 +91,8 @@ func (f *FS) verifyLocked(verifier, author AgentID, callID string, expected uint
 		return err
 	}
 	d := f.staged[author]
-	if !validVerdict(d, expected, f.deltaHashLocked(author), deltaHash, pass, finding) {
-		return ErrInvalidVerdict
+	if err = validVerdict(d, expected, f.deltaHashLocked(author), deltaHash, pass, finding); err != nil {
+		return err
 	}
 	// The verdict names the invariant set it was judged against and the version
 	// of that set as the sources read now, not as they read at bind time
@@ -128,8 +124,20 @@ func (f *FS) verifyLocked(verifier, author AgentID, callID string, expected uint
 	return nil
 }
 
-func validVerdict(d *agentDelta, expected uint64, actualHash, deltaHash string, pass bool, finding string) bool {
-	return d != nil && d.revision == expected && actualHash == deltaHash && (pass || strings.TrimSpace(finding) != "")
+// validVerdict refuses a verdict that does not describe the author's staged
+// work as it is now, naming the call that attaches a valid one.
+func validVerdict(d *agentDelta, expected uint64, actualHash, deltaHash string, pass bool, finding string) error {
+	switch {
+	case d == nil:
+		return fmt.Errorf("%w: the author has no staged work to judge; verify once it stages work", ErrInvalidVerdict)
+	case d.revision != expected:
+		return fmt.Errorf("%w: the verdict names revision %d but the staged work is at revision %d; re-verify at revision %d", ErrInvalidVerdict, expected, d.revision, d.revision)
+	case actualHash != deltaHash:
+		return fmt.Errorf("%w: the verdict names a delta hash the staged work no longer has; re-verify with the current hash", ErrInvalidVerdict)
+	case !pass && strings.TrimSpace(finding) == "":
+		return fmt.Errorf("%w: a failing verdict states its finding; attach it again with the finding", ErrInvalidVerdict)
+	}
+	return nil
 }
 
 // admitVerifierLocked resolves both bindings: the verifier must be the current

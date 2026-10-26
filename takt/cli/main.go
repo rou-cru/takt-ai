@@ -364,9 +364,10 @@ func applySetup(invocation setupInvocation, request setup.PlanRequest, preserve 
 	if err := emit(invocation, stdout, result, func() error { return renderResultText(stdout, invocation.command, result) }); err != nil {
 		return err
 	}
-	// Committed work with unfinished parts is reported, then exits nonzero.
-	if code := classifySetupOutcome(outcome); code != 0 {
-		return code
+	// Committed work with unfinished parts is reported, then exits nonzero;
+	// retained drift alone stays a success.
+	if len(outcome.Incomplete) > 0 {
+		return exitCode(1)
 	}
 	return nil
 }
@@ -507,7 +508,7 @@ func executeSetup(ctx context.Context, command, root string, request setup.PlanR
 		// Image assembly applies the normal managed artifacts, without probing or
 		// reloading an OpenCode process that is not running during a build.
 		result, err := (lifecycle.Runtime{}).Run(ctx, "install", root, request, preserve...)
-		deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete}
+		deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete, Retained: result.Retained}
 		return deployed, result, err
 	}
 	result, err := runLifecycle(ctx, command, root, request, preserve...)
@@ -515,7 +516,7 @@ func executeSetup(ctx context.Context, command, root string, request setup.PlanR
 		out := setup.UninstallResult{Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, NotApplied: result.NotApplied}
 		return out, result, err
 	}
-	deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete}
+	deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete, Retained: result.Retained}
 	if err != nil {
 		return deployed, result, err
 	}

@@ -200,6 +200,11 @@ func renderDeploymentStatus(w io.Writer, command string, r setup.DeploymentResul
 			return err
 		}
 	}
+	for _, path := range r.Retained {
+		if err := writef(w, "  [retained] %s\n", path); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

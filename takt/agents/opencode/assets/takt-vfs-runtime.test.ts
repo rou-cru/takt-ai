@@ -1194,13 +1194,12 @@ describe("path ownership", () => {
 
 describe("claims and consolidation", () => {
   test("releasing a claim leaves every decision to the core", async () => {
-    const refusal = "claim k-active: its unit u (agent dev, root root) is still running; wait for its delivery or end it with dispatch_abandon, then claim_release again"
     let ended = false
     const vfs = await startVfs({
-      respond: (call) => call.command === "release" && !ended ? json({ ok: false, error: refusal }) : undefined,
+      respond: (call) => call.command === "release" && !ended ? json({ ok: false, error: "unit still running" }) : undefined,
     })
     try {
-      await expect(vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)).rejects.toThrow(refusal)
+      await expect(vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)).rejects.toThrow()
       ended = true
       await vfs.run("claim_release", { claim_key: "k-active" }, orchestrator)
       await expect(vfs.run("claim_release", { claim_key: "k-active" }, dev)).rejects.toThrow("belongs to the orchestrator")

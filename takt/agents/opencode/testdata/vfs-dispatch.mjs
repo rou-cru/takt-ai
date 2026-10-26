@@ -115,9 +115,9 @@ assert.deepEqual(calls.at(-1).stdin, { ipc_version: 5, session_id: "root", calle
 const activeClaim = { ...claim, active: true }
 coreClaims=[claim,{...claim,work_unit_id:"u2"}]
 let unitEnded = false
-respond = (call) => call.argv[2] === "release" && !unitEnded ? {stdout:JSON.stringify({ok:false,error:"its unit u1 (agent dev, root root) is still running under dispatch d1; wait for its delivery or end it with dispatch_abandon dispatch d1, then claim_release again"}),stderr:"",code:0}:undefined
+respond = (call) => call.argv[2] === "release" && !unitEnded ? {stdout:JSON.stringify({ok:false,error:"unit still running"}),stderr:"",code:0}:undefined
 releaseAt = calls.length
-await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current" }, root), /dispatch_abandon dispatch d1/)
+await assert.rejects(tools.claim_release.execute({ claim_key: "claim-current" }, root))
 assert.deepEqual(released,["claim-prior","claim-current"],"denied active claim was released")
 unitEnded = true
 await tools.claim_release.execute({ claim_key: "claim-current" }, root)

@@ -89,8 +89,7 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
   patch, the changed sections, or "the rest stands", and never `supplements` your own artifact.
 - Only user approval or verified evidence can `correct` or `supersede`. A later entry or a
   different role never settles a disagreement: without that authority, use `disputes`.
-- Before declaring a relation, confirm the entry and its `#id`: open a known `#id` directly
-  with `mem_get_observation`; otherwise locate it with `mem_search` first. Never guess an `#id`.
+- Before declaring a relation, confirm the entry and its `#id`. Never guess an `#id`.
 - Relations stay inside one tier: `relates_to` names an entry of the same scope, never one
   across the tier boundary.
 - Same fact, same nature, still current: record nothing.

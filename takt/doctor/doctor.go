@@ -20,8 +20,6 @@ package doctor
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -199,8 +197,7 @@ func scanToolCopies(tool string) []string {
 
 // deploymentChecks returns the global manifest check plus one
 // "deployment:<target>" check per seen target, counting missing
-// files per target instead of only globally. Content drift is a
-// separate readiness warning that leaves the outcome rows untouched.
+// files per target instead of only globally.
 func deploymentChecks(home string) []CheckResult {
 	const name = "deployment:manifest"
 	manifest, err := setup.LoadOwnershipManifest(home)
@@ -234,39 +231,24 @@ func deploymentChecks(home string) []CheckResult {
 	for _, target := range targetNames {
 		checks = append(checks, deploymentResult("deployment:"+target, target, byTarget[setup.OwnershipTarget(target)]))
 	}
-	// Readiness is a separate report, not a substitute for the outcome: a
-	// completed deployment whose files drifted from the recorded content
-	// stays deployed, and the drift warns on its own line instead of
-	// failing the deployment checks.
-	if total.diverged > 0 {
-		checks = append(checks, readinessResult(total))
-	}
 	return checks
 }
 
-// deploymentTotals counts manifest entries per deployment state: total
-// entries, missing files, and present files that no longer match the
-// content their entry recorded.
 type deploymentTotals struct {
-	total, missing, diverged int
+	total, missing int
 }
 
 // inspectDeployment preserves the existing classification: any stat error is missing.
-// A present file whose content no longer matches its entry's digest is drift.
 func inspectDeployment(home string, manifest *setup.OwnershipManifest) (deploymentTotals, map[setup.OwnershipTarget]deploymentTotals) {
 	total := deploymentTotals{}
 	byTarget := make(map[setup.OwnershipTarget]deploymentTotals)
 	for entryPath, entry := range manifest.Entries {
-		destination := filepath.Join(home, filepath.FromSlash(entryPath))
-		_, err := os.Stat(destination)
+		_, err := os.Stat(filepath.Join(home, filepath.FromSlash(entryPath)))
 		total.add(err != nil)
 		for _, target := range entry.Targets {
 			counts := byTarget[target]
 			counts.add(err != nil)
 			byTarget[target] = counts
-		}
-		if err == nil && !matchesDeployedContent(destination, entry.SHA256) {
-			total.diverged++
 		}
 	}
 	return total, byTarget
@@ -288,31 +270,6 @@ func deploymentResult(name, label string, totals deploymentTotals) CheckResult {
 		}
 	}
 	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("%d %s files deployed", totals.total, label)}
-}
-
-// matchesDeployedContent reports whether a present managed file still holds
-// the bytes its ownership entry recorded. A file that cannot be read is not
-// verifiably deployed content.
-func matchesDeployedContent(path, expectedDigest string) bool {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	digest := sha256.Sum256(content)
-	return hex.EncodeToString(digest[:]) == expectedDigest
-}
-
-// readinessResult reports content drift separately from the deployment
-// outcome: a completed installation whose files drifted stays deployed with
-// a zero exit, and the drift warns on its own line instead of standing in
-// for the outcome.
-func readinessResult(totals deploymentTotals) CheckResult {
-	return CheckResult{
-		Name:   "deployment:readiness",
-		Status: CheckStatusWarn,
-		Detail: fmt.Sprintf("%d of %d managed files differ from deployed content", totals.diverged, totals.total),
-		Remedy: "Run 'takt-ai setup sync' to review the drifted files",
-	}
 }
 
 // binaryChecks probes one managed binary: whether a compatible copy resolved

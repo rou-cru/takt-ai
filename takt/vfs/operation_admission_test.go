@@ -1084,28 +1084,6 @@ func TestAssignScopeAcrossRoots(t *testing.T) {
 		return rig{reopened, old, peer, same, vfs.Identity{SessionID: "new-root", WorkUnitID: "new-unit", AgentID: "new", Specialist: "dev"}}
 	}
 
-	t.Run("refuse", func(t *testing.T) {
-		r := crossRoot(t)
-		key, err := r.f.AssignScope(r.next, []string{"index.html"})
-		refused(t, "AssignScope() over another root's staged claim", err, vfs.ErrCollision)
-		if key != "" {
-			t.Fatalf("refused request returned key %q", key)
-		}
-		if ownerOf(r.f, "index.html") != r.old || ownerOf(r.f, "extra.html") != r.old {
-			t.Fatal("refusal moved a path from the prior owner")
-		}
-		if content, _ := stagedContent(r.f, r.old, "index.html"); content != "previous" {
-			t.Fatalf("prior staging = %q; want previous", content)
-		}
-		if ownerOf(r.f, "peer.html") != r.peer || ownerOf(r.f, "same.html") != r.same {
-			t.Fatal("unrelated claim lost")
-		}
-		prior, ok := claimOf(r.f, r.old)
-		if !ok || !slices.Contains(prior.Scope, "index.html") || !slices.Contains(prior.Scope, "extra.html") {
-			t.Fatalf("prior claim = %+v, %v; want it holding both paths", prior, ok)
-		}
-	})
-
 	for name, tc := range map[string]struct {
 		extra string
 		want  error

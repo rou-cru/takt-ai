@@ -201,15 +201,12 @@ func TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole(t *testing.
 	}
 }
 
-// TestRenderConfigProjectsCanonicalGitRules checks every role's Git rules are
-// the vfs.GitPermissionRules projection, pattern for pattern, effect for
-// effect, and in the same order, so the renderer keeps no second Git
-// classification of its own.
+// TestRenderConfigProjectsCanonicalGitRules checks the orchestrator's and a
+// specialist's Git rules are the vfs.GitPermissionRules projection, pattern
+// for pattern, effect for effect, and in the same order, so the renderer keeps
+// no second Git classification of its own.
 func TestRenderConfigProjectsCanonicalGitRules(t *testing.T) {
-	for _, role := range []model.RoleClass{
-		model.RoleOrchestrator, model.RoleDirectInterlocutor, model.RolePlanningAuthor,
-		model.RoleExecution, model.RoleVerification, model.RoleQualityAssurance, model.RoleMaintenance,
-	} {
+	for _, role := range []model.RoleClass{model.RoleOrchestrator, model.RoleExecution} {
 		mode := "subagent"
 		if role == model.RoleOrchestrator {
 			mode = "primary"

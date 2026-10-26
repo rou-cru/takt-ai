@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: mutation — Mutation reports
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the mutation report — per must-not-fail matrix row, the mutants

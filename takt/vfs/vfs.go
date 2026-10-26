@@ -469,7 +469,7 @@ func (f *FS) maintenanceGateLocked(agent AgentID) error {
 	current := f.currentVerdictsLocked(agent)
 	if len(current) == 0 {
 		if len(f.staged[agent].verdicts) > 0 {
-			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now", ErrInvalidVerdict)
+			return fmt.Errorf("%w: no verdict describes the staged work and its invariant set as they are now; re-verify the work as it is now", ErrInvalidVerdict)
 		}
 		return ErrVerificationRequired
 	}
@@ -573,9 +573,10 @@ var gitWritingOptions = map[string][]string{
 	"grep": {"-O", "--open-files-in-pager"},
 }
 
-// readOnlyGitHint names the git a denied caller may still run.
+// readOnlyGitHint names the git a denied caller may still run, and where any
+// other git goes.
 func readOnlyGitHint() string {
-	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ")
+	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ") + "; return any other git to the orchestrator in your result"
 }
 
 // ReadOnlyGitSubcommands returns the read-only git subcommands.

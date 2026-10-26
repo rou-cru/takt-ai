@@ -21,10 +21,9 @@ Use `vfs_write`/`vfs_delete` to stage changes and `vfs_read` for your staged vie
 finish the work inside your scope, then end the unit with a blocker result naming each needed
 path and why the work needs it. Read beyond your scope only what your brief allows.
 
-**When bind or write cannot proceed, end the unit.** A refusal whose next action is a corrected
-call is a correction: make that call once. Any other refusal ends the unit with a blocker result
-stating its reason, the paths it names, and what you have already staged, instead of a retry
-loop or another way to change the workspace.
+**When bind or write cannot proceed, end the unit.** A refusal naming a corrected call is a
+correction: make that call once. Any other refusal ends the unit with a blocker result stating
+its reason and the paths it names, instead of a retry loop or another way to change the workspace.
 
 **Treat effects outside the workspace as destructive.** A network call that changes remote
 state, a call to an external service, or a write to another repository is outside your

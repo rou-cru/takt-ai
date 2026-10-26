@@ -67,6 +67,10 @@ type DeploymentResult struct {
 	// as a dependency that was not installed, so a caller never mistakes
 	// partial work for full success.
 	Incomplete []string `json:"incomplete"`
+	// Retained lists planned paths kept as they are: preserved by the user or
+	// edited locally. The operation succeeds, but behavior relying on them is
+	// not guaranteed.
+	Retained []string `json:"retained,omitempty"`
 }
 
 // DeploymentProgress reports one temporary staging or committed artifact.

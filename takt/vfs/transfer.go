@@ -43,7 +43,7 @@ func (f *FS) handOverLocked(identity Identity, key AgentID, scope, added []strin
 		if f.owners[path] != key {
 			continue
 		}
-		transferStagedLocked(from, to, path, path)
+		transferStagedLocked(from, to, path)
 		f.owners[path] = next
 	}
 	return next, nil
@@ -51,18 +51,18 @@ func (f *FS) handOverLocked(identity Identity, key AgentID, scope, added []strin
 
 // transferStagedLocked moves one path's staged work, its content or
 // tombstone with the captured base, between two claims' deltas, keeping the
-// exact bytes under the receiving claim's path spelling. A sender with no
-// delta, or one that never staged the path, leaves the path untouched.
-func transferStagedLocked(from, to *agentDelta, fromPath, toPath string) {
+// exact bytes. A sender with no delta, or one that never staged the path,
+// leaves the path untouched.
+func transferStagedLocked(from, to *agentDelta, path string) {
 	if from == nil {
 		return
 	}
-	if content, staged := from.files[fromPath]; staged {
-		to.files[toPath] = content
-		delete(from.files, fromPath)
+	if content, staged := from.files[path]; staged {
+		to.files[path] = content
+		delete(from.files, path)
 	}
-	if base, captured := from.bases[fromPath]; captured {
-		to.bases[toPath] = base
-		delete(from.bases, fromPath)
+	if base, captured := from.bases[path]; captured {
+		to.bases[path] = base
+		delete(from.bases, path)
 	}
 }

@@ -14,7 +14,6 @@ import (
 	// Required blank import: the embed directive below depends on this package.
 	_ "embed"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 
@@ -64,7 +63,7 @@ func parseCapabilities(data []byte) (Capabilities, error) {
 
 // validateCapabilities rejects a manifest no installer may act on: an
 // unsupported version, empty or duplicate component identities, missing
-// purposes, unknown dependencies and dependency cycles.
+// purposes and unknown dependencies.
 func validateCapabilities(m Capabilities) error {
 	if m.Version != 1 {
 		return fmt.Errorf("capabilities: unsupported version %d", m.Version)
@@ -89,43 +88,17 @@ func validateCapabilities(m Capabilities) error {
 }
 
 // validateDependencyClosure rejects dependencies on components the manifest
-// does not declare, and dependency cycles.
+// does not declare.
 func validateDependencyClosure(m Capabilities) error {
 	declared := make(map[string]bool, len(m.Components))
-	deps := make(map[string][]string, len(m.Components))
 	for _, entry := range m.Components {
 		declared[entry.ID] = true
-		deps[entry.ID] = entry.Deps
 	}
 	for _, entry := range m.Components {
 		for _, dep := range entry.Deps {
 			if !declared[dep] {
 				return fmt.Errorf("capabilities entry %q depends on unknown component %q", entry.ID, dep)
 			}
-		}
-	}
-	const visiting, done = 1, 2
-	state := make(map[string]int, len(m.Components))
-	var visit func(id string, stack []string) error
-	visit = func(id string, stack []string) error {
-		switch state[id] {
-		case done:
-			return nil
-		case visiting:
-			return fmt.Errorf("capabilities: dependency cycle %s", strings.Join(append(stack, id), " -> "))
-		}
-		state[id] = visiting
-		for _, dep := range deps[id] {
-			if err := visit(dep, append(slices.Clone(stack), id)); err != nil {
-				return err
-			}
-		}
-		state[id] = done
-		return nil
-	}
-	for _, entry := range m.Components {
-		if err := visit(entry.ID, nil); err != nil {
-			return err
 		}
 	}
 	return nil

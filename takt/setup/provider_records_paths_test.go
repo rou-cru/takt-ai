@@ -1,4 +1,4 @@
-package setup
+package setup_test
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
 // shortActionTimeout keeps the timeout test fast while far exceeding process start-up jitter.
@@ -16,231 +18,247 @@ const shortActionTimeout = 200 * time.Millisecond
 // longSleepSeconds is far beyond shortActionTimeout so the sleep can only end by cancellation.
 const longSleepSeconds = "30"
 
-func TestProviderActionFieldValidation(t *testing.T) {
-	lookup := func(string) (string, error) { return "/stub", nil }
-	tests := []struct {
-		name    string
-		action  ProviderAction
-		wantErr string
-	}{
-		{"blank ID", ProviderAction{ID: " ", Program: "p"}, "ID is required"},
-		{"padded ID", ProviderAction{ID: " a", Program: "p"}, "is invalid"},
-		{"NUL in ID", ProviderAction{ID: "a\x00", Program: "p"}, "is invalid"},
-		{"blank program", ProviderAction{ID: "a", Program: ""}, "program is required"},
-		{"padded program", ProviderAction{ID: "a", Program: "p "}, "program \"p \" is invalid"},
-		{"NUL in argument", ProviderAction{ID: "a", Program: "p", Args: []string{"ok", "b\x00"}}, "invalid argument"},
+// floodBytes is far larger than any sane capture limit for one action's output.
+const floodBytes = 200000
+
+func actionPlan(actions ...setup.ProviderAction) []setup.TargetPlan {
+	plans := simplePlan("hello")
+	plans[0].Actions = actions
+	return plans
+}
+
+func foundLookup(program string) (string, error) { return "/stub/" + program, nil }
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			plans := []TargetPlan{{Actions: []ProviderAction{tt.action}}}
-			_, err := preflightProviderActions(plans, ProviderRuntime{LookPath: lookup})
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertNoStagedFiles(t *testing.T, root string) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && path != root && strings.HasPrefix(entry.Name(), ".takt-setup-") {
+			t.Errorf("staged file remains: %s", path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestApplyContextRejectsInvalidProviderActionsBeforeWriting(t *testing.T) {
+	tests := map[string]setup.ProviderAction{
+		"blank ID":        {ID: " ", Program: "p"},
+		"padded ID":       {ID: " a", Program: "p"},
+		"NUL in ID":       {ID: "a\x00", Program: "p"},
+		"blank program":   {ID: "a", Program: ""},
+		"padded program":  {ID: "a", Program: "p "},
+		"NUL in argument": {ID: "a", Program: "p", Args: []string{"ok", "b\x00"}},
+	}
+	for name, action := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			_, err := setup.ApplyContext(context.Background(), root, actionPlan(action), setup.ProviderRuntime{LookPath: foundLookup})
+			if err == nil {
+				t.Fatal("invalid action accepted")
+			}
+			if _, statErr := os.Stat(filepath.Join(root, "a.txt")); !os.IsNotExist(statErr) {
+				t.Errorf("files written despite invalid action: %v", statErr)
 			}
 		})
 	}
 }
 
-func TestExecuteProviderActionsReportsProgressAndFailureDetail(t *testing.T) {
-	var events []DeploymentProgress
-	progress := func(event DeploymentProgress) { events = append(events, event) }
+func TestApplyContextReportsActionProgressAndFailureDetail(t *testing.T) {
+	var events []setup.DeploymentProgress
 	failure := errors.New("exit status 3")
-	runtime := ProviderRuntime{Run: func(_ context.Context, program string, _ ...string) ([]byte, error) {
-		if program == "bad" {
-			return []byte("  boom detail\n"), failure
-		}
-		return nil, nil
-	}}
-	actions := []ProviderAction{{ID: "one", Program: "good"}, {ID: "two", Program: "bad"}, {ID: "three", Program: "good"}}
+	runtime := setup.ProviderRuntime{
+		LookPath: foundLookup,
+		Run: func(_ context.Context, program string, _ ...string) ([]byte, error) {
+			if program == "bad" {
+				return []byte("  boom detail\n"), failure
+			}
+			return nil, nil
+		},
+	}
+	actions := []setup.ProviderAction{{ID: "one", Program: "good"}, {ID: "two", Program: "bad"}, {ID: "three", Program: "good"}}
 
-	result, err := executeProviderActions(DeploymentResult{}, actions, runtime, progress)
-	if !errors.Is(err, failure) || !strings.Contains(err.Error(), `"two" failed`) || !strings.HasSuffix(err.Error(), ": boom detail") {
-		t.Fatalf("error = %v, want wrapped failure with trimmed output", err)
+	result, err := setup.ApplyContextProgress(context.Background(), t.TempDir(), actionPlan(actions...), runtime,
+		func(event setup.DeploymentProgress) { events = append(events, event) })
+	if !errors.Is(err, failure) || !strings.HasSuffix(err.Error(), ": boom detail") || !strings.Contains(err.Error(), "two") {
+		t.Fatalf("error = %v, want wrapped failure naming the action with trimmed output", err)
 	}
 	if len(result.Actions) != 1 || result.Actions[0] != "one" {
 		t.Errorf("Actions = %v, want only the completed action", result.Actions)
 	}
-	if len(events) != 2 || events[1].Path != "two" || events[1].Completed != 1 || events[1].Total != len(actions) {
-		t.Errorf("progress events = %+v", events)
+	var twoEvents int
+	for _, event := range events {
+		if event.Path == "two" {
+			twoEvents++
+			if event.Completed != 1 || event.Total != len(actions) {
+				t.Errorf("progress for failing action = %+v", event)
+			}
+		}
+		if event.Path == "three" {
+			t.Errorf("progress reported for an action after the failure: %+v", event)
+		}
+	}
+	if twoEvents != 1 {
+		t.Errorf("progress events for failing action = %d, want 1", twoEvents)
 	}
 }
 
-func TestExecuteProviderActionsFailureWithoutOutput(t *testing.T) {
-	runtime := ProviderRuntime{Run: func(context.Context, string, ...string) ([]byte, error) { return []byte(" \n"), errors.New("nope") }}
-	_, err := executeProviderActions(DeploymentResult{}, []ProviderAction{{ID: "a", Program: "p"}}, runtime, nil)
-	if err == nil || err.Error() != `provider action "a" failed: nope` {
-		t.Fatalf("error = %v", err)
+func TestApplyContextActionFailureWithoutOutput(t *testing.T) {
+	failure := errors.New("nope")
+	runtime := setup.ProviderRuntime{
+		LookPath: foundLookup,
+		Run:      func(context.Context, string, ...string) ([]byte, error) { return []byte(" \n"), failure },
+	}
+	_, err := setup.ApplyContext(context.Background(), t.TempDir(), actionPlan(setup.ProviderAction{ID: "a", Program: "p"}), runtime)
+	if !errors.Is(err, failure) || strings.HasSuffix(err.Error(), ":") || strings.HasSuffix(strings.TrimSpace(err.Error()), ": ") {
+		t.Fatalf("error = %v, want the failure without an output suffix", err)
 	}
 }
 
-func TestRunProviderCommandCapturesOutputAndExitStatus(t *testing.T) {
-	out, err := runProviderCommand(context.Background(), "sh", "-c", "echo out; echo err >&2; exit 3")
+func TestApplyContextDefaultRunnerCapturesOutputAndExitStatus(t *testing.T) {
+	action := setup.ProviderAction{ID: "a", Program: "sh", Args: []string{"-c", "echo out; echo err >&2; exit 3"}}
+	_, err := setup.ApplyContext(context.Background(), t.TempDir(), actionPlan(action), setup.ProviderRuntime{})
 	if err == nil {
 		t.Fatal("non-zero exit reported success")
 	}
-	if got := string(out); !strings.Contains(got, "out") || !strings.Contains(got, "err") {
-		t.Errorf("output = %q, want stdout and stderr", got)
+	for _, want := range []string{"out", "err", "exit status 3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
 	}
 }
 
-func TestRunProviderCommandPrefersContextErrorOnTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), shortActionTimeout)
-	defer cancel()
-	_, err := runProviderCommand(ctx, "sleep", longSleepSeconds)
+func TestApplyContextDefaultRunnerPrefersContextErrorOnTimeout(t *testing.T) {
+	action := setup.ProviderAction{ID: "a", Program: "sleep", Args: []string{longSleepSeconds}}
+	_, err := setup.ApplyContext(context.Background(), t.TempDir(), actionPlan(action), setup.ProviderRuntime{Timeout: shortActionTimeout})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
 	}
 }
 
-func TestBoundedOutputKeepsOnlyFirstBytes(t *testing.T) {
-	const limit = 5
-	output := &boundedOutput{remaining: limit}
-	for _, chunk := range []string{"abc", "defgh", "ij"} {
-		if n, err := output.Write([]byte(chunk)); n != len(chunk) || err != nil {
-			t.Fatalf("Write(%q) = %d, %v; want full acceptance", chunk, n, err)
-		}
+func TestApplyContextBoundsCapturedActionOutput(t *testing.T) {
+	action := setup.ProviderAction{ID: "a", Program: "sh", Args: []string{"-c", "head -c 200000 /dev/zero | tr '\\0' x; exit 1"}}
+	_, err := setup.ApplyContext(context.Background(), t.TempDir(), actionPlan(action), setup.ProviderRuntime{})
+	if err == nil {
+		t.Fatal("failing action reported success")
 	}
-	if string(output.bytes) != "abcde" {
-		t.Errorf("kept %q, want abcde", output.bytes)
+	if !strings.Contains(err.Error(), "xxxx") || len(err.Error()) >= floodBytes/2 {
+		t.Errorf("error length = %d, want a non-empty prefix far below the %d bytes emitted", len(err.Error()), floodBytes)
 	}
 }
 
-func TestRestoreRejectsBadEntries(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, BackupDir, "b"), "old")
-	tests := map[string]struct {
-		entry   OwnershipEntry
-		wantErr string
-	}{
-		"invalid managed path": {OwnershipEntry{Path: "../a", BackupPath: BackupDir + "/b"}, "invalid managed path"},
-		"invalid backup path":  {OwnershipEntry{Path: "a", BackupPath: "../b"}, "invalid backup path"},
-		"backup through link":  {OwnershipEntry{Path: "a", BackupPath: "link/b"}, "resolve backup"},
+func TestManifestSaveFailures(t *testing.T) {
+	manifest := setup.NewOwnershipManifest()
+	if err := manifest.Save(" "); err == nil {
+		t.Error("blank root saved")
 	}
-	outside := t.TempDir()
-	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
-		t.Fatal(err)
-	}
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			err := restoreEntry(root, tt.entry)
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
-			}
-		})
-	}
-
-	t.Run("destination through link", func(t *testing.T) {
-		err := restoreEntry(root, OwnershipEntry{Path: "link/a", BackupPath: BackupDir + "/b"})
-		if err == nil || !strings.Contains(err.Error(), "resolve destination") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-	t.Run("destination directory blocked", func(t *testing.T) {
-		writeFile(t, filepath.Join(root, "file"), "x")
-		err := restoreEntry(root, OwnershipEntry{Path: "file/a", BackupPath: BackupDir + "/b"})
-		if err == nil || !strings.Contains(err.Error(), "prepare destination") {
-			t.Fatalf("error = %v", err)
-		}
-	})
-	t.Run("rename failure removes staged file", func(t *testing.T) {
-		original := renameFile
-		t.Cleanup(func() { renameFile = original })
-		renameFile = func(string, string) error { return errors.New("injected") }
-		err := restoreEntry(root, OwnershipEntry{Path: "restored.txt", BackupPath: BackupDir + "/b"})
-		if err == nil || !strings.Contains(err.Error(), `restore "restored.txt"`) {
-			t.Fatalf("error = %v", err)
-		}
-		assertNoDeploymentTemps(t, root)
-	})
-	t.Run("defaults the mode when unrecorded", func(t *testing.T) {
-		if err := restoreEntry(root, OwnershipEntry{Path: "defaulted.txt", BackupPath: BackupDir + "/b"}); err != nil {
-			t.Fatal(err)
-		}
-		info, err := os.Stat(filepath.Join(root, "defaulted.txt"))
-		if err != nil || info.Mode().Perm() != ManagedFileMode {
-			t.Errorf("mode = %v, %v; want %v", info.Mode().Perm(), err, ManagedFileMode)
-		}
-	})
-}
-
-func TestRestorePropagatesEntryFailure(t *testing.T) {
-	manifest := NewOwnershipManifest()
-	manifest.Entries["a"] = OwnershipEntry{Path: "a", BackupPath: BackupDir + "/missing"}
-	if _, err := Restore(t.TempDir(), manifest); err == nil || !strings.Contains(err.Error(), "read backup") {
-		t.Fatalf("error = %v", err)
-	}
-}
-
-func TestSaveRecordFailures(t *testing.T) {
-	if err := saveRecord(" ", "f.json", "thing", struct{}{}); err == nil || !strings.Contains(err.Error(), "deployment root is required") {
-		t.Errorf("blank root error = %v", err)
-	}
-	if err := saveRecord(t.TempDir(), "f.json", "thing", make(chan int)); err == nil || !strings.Contains(err.Error(), "marshal thing") {
-		t.Errorf("unmarshalable record error = %v", err)
-	}
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "blocker"), "file")
-	if err := saveRecord(filepath.Join(dir, "blocker", "sub"), "f.json", "thing", struct{}{}); err == nil || !strings.Contains(err.Error(), "prepare thing directory") {
-		t.Errorf("blocked directory error = %v", err)
+	blocked := t.TempDir()
+	mustWriteFile(t, filepath.Join(blocked, "blocker"), "file")
+	if err := manifest.Save(filepath.Join(blocked, "blocker", "sub")); err == nil {
+		t.Error("save beneath a regular file succeeded")
 	}
 	t.Run("staging in read-only root", func(t *testing.T) {
-		skipIfRoot(t)
+		if os.Geteuid() == 0 {
+			t.Skip("permission checks do not apply to root")
+		}
 		root := t.TempDir()
 		if err := os.Chmod(root, 0o500); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
-		if err := saveRecord(root, "f.json", "thing", struct{}{}); err == nil || !strings.Contains(err.Error(), "write thing") {
-			t.Errorf("error = %v", err)
+		if err := manifest.Save(root); err == nil {
+			t.Error("save into read-only root succeeded")
 		}
+	})
+	t.Run("rename failure removes the staged file", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Mkdir(filepath.Join(root, setup.OwnershipManifestFilename), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := manifest.Save(root); err == nil {
+			t.Fatal("save over a directory succeeded")
+		}
+		assertNoStagedFiles(t, root)
 	})
 }
 
-func TestRiskAcceptanceRecordIsUpsertedAndSurvivesCorruption(t *testing.T) {
+func conflictsByPath(t *testing.T, root string, plans []setup.TargetPlan) map[string]setup.ConflictEntry {
+	t.Helper()
+	conflicts, err := setup.DetectConflicts(root, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]setup.ConflictEntry{}
+	for _, conflict := range conflicts {
+		byPath[conflict.Path] = conflict
+	}
+	return byPath
+}
+
+func TestRiskAcceptanceIsUpsertedAndSurvivesCorruption(t *testing.T) {
 	root := t.TempDir()
-	first := RiskAcceptance{Path: "b", SHA256: "1", Impact: ImpactUncertain}
-	if err := RecordRiskAcceptances(root, []RiskAcceptance{first, {Path: "a", SHA256: "2", Impact: ImpactUncertain}}); err != nil {
+	mustWriteFile(t, filepath.Join(root, "a.txt"), "kept a")
+	mustWriteFile(t, filepath.Join(root, "b.txt"), "kept b")
+	plans := []setup.TargetPlan{{
+		Target:       "opencode",
+		ManagedPaths: []string{"a.txt", "b.txt"},
+		Artifacts:    []setup.Artifact{{Path: "a.txt", Content: []byte("new a")}, {Path: "b.txt", Content: []byte("new b")}},
+	}}
+	conflicts := conflictsByPath(t, root, plans)
+	accept := func(path string) setup.RiskAcceptance {
+		return setup.RiskAcceptance{Path: path, SHA256: conflicts[path].SHA256, Impact: conflicts[path].Impact}
+	}
+	if err := setup.RecordRiskAcceptances(root, []setup.RiskAcceptance{accept("a.txt")}); err != nil {
 		t.Fatal(err)
 	}
-	updated := RiskAcceptance{Path: "b", SHA256: "3", Impact: ImpactUncertain}
-	if err := RecordRiskAcceptances(root, []RiskAcceptance{updated}); err != nil {
+	if err := setup.RecordRiskAcceptances(root, []setup.RiskAcceptance{accept("b.txt")}); err != nil {
 		t.Fatal(err)
 	}
-	loaded := loadRiskAcceptances(root)
-	if len(loaded) != 2 || loaded["b"] != updated {
-		t.Errorf("loaded = %+v, want b replaced and a kept", loaded)
+	got := conflictsByPath(t, root, plans)
+	if !got["a.txt"].Accepted || !got["b.txt"].Accepted {
+		t.Fatalf("accepted = a:%v b:%v, want a kept after recording b", got["a.txt"].Accepted, got["b.txt"].Accepted)
 	}
-	writeFile(t, filepath.Join(root, RiskAcceptanceFilename), "not json")
-	if got := loadRiskAcceptances(root); len(got) != 0 {
-		t.Errorf("corrupt record yielded %+v, want nothing accepted", got)
+
+	stale := accept("b.txt")
+	stale.SHA256 = "stale"
+	if err := setup.RecordRiskAcceptances(root, []setup.RiskAcceptance{stale}); err != nil {
+		t.Fatal(err)
+	}
+	got = conflictsByPath(t, root, plans)
+	if got["b.txt"].Accepted || !got["a.txt"].Accepted {
+		t.Errorf("accepted = a:%v b:%v, want b replaced and a kept", got["a.txt"].Accepted, got["b.txt"].Accepted)
+	}
+
+	mustWriteFile(t, filepath.Join(root, setup.RiskAcceptanceFilename), "not json")
+	for path, conflict := range conflictsByPath(t, root, plans) {
+		if conflict.Accepted {
+			t.Errorf("%s accepted from a corrupt record", path)
+		}
 	}
 }
 
-func TestRiskAcceptanceWriteFailures(t *testing.T) {
-	if err := RecordRiskAcceptances(filepath.Join(t.TempDir(), "absent"), []RiskAcceptance{{Path: "a"}}); err == nil || !strings.Contains(err.Error(), "write accepted risks") {
-		t.Errorf("missing root error = %v", err)
+func TestRecordRiskAcceptancesWriteFailures(t *testing.T) {
+	accepted := []setup.RiskAcceptance{{Path: "a"}}
+	if err := setup.RecordRiskAcceptances(filepath.Join(t.TempDir(), "absent"), accepted); err == nil {
+		t.Error("missing root recorded")
 	}
 	root := t.TempDir()
-	original := renameFile
-	t.Cleanup(func() { renameFile = original })
-	renameFile = func(string, string) error { return errors.New("injected") }
-	if err := RecordRiskAcceptances(root, []RiskAcceptance{{Path: "a"}}); err == nil || !strings.Contains(err.Error(), "write accepted risks") {
-		t.Errorf("rename failure error = %v", err)
-	}
-	assertNoDeploymentTemps(t, root)
-}
-
-func TestRestoreEntryFailsWhenDestinationDirectoryIsReadOnly(t *testing.T) {
-	skipIfRoot(t)
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, BackupDir, "b"), "old")
-	locked := filepath.Join(root, "locked")
-	if err := os.Mkdir(locked, 0o500); err != nil {
+	if err := os.Mkdir(filepath.Join(root, setup.RiskAcceptanceFilename), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	err := restoreEntry(root, OwnershipEntry{Path: "locked/a.txt", BackupPath: BackupDir + "/b"})
-	if err == nil || !strings.Contains(err.Error(), "stage restore") {
-		t.Fatalf("error = %v", err)
+	if err := setup.RecordRiskAcceptances(root, accepted); err == nil {
+		t.Fatal("record over a directory succeeded")
 	}
+	assertNoStagedFiles(t, root)
 }

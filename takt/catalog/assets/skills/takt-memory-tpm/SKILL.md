@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: tpm — Final task breakdown
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard result: the complete final task list produced by the breakdown, in one dedicated

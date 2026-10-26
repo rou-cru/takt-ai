@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: pm — Product scope
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard results: user stories, product intent, formal requirements, focus areas, scope,

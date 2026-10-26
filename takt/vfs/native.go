@@ -250,9 +250,11 @@ func (f *FS) GuardNativeEdit(session string, resources []string) error {
 		if filepath.IsAbs(path) {
 			// Compare in the canonical root's terms: an alias of the root
 			// through a symlinked ancestor names the same workspace path.
-			if resolved, err := f.canonicalPath(path); err == nil {
-				path = resolved
+			resolved, err := f.canonicalPath(path)
+			if err != nil {
+				return fmt.Errorf("edit refused: cannot resolve %s to check whether a claim holds it: %w; fix the path or its permissions, then retry the edit", resource, err)
 			}
+			path = resolved
 			rel, err := filepath.Rel(f.rootDir, path)
 			if err != nil || !filepath.IsLocal(rel) {
 				continue

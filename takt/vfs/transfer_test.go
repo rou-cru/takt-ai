@@ -69,13 +69,14 @@ func TestFreshCrossRootOverlapIsRefusedAndMovesNothing(t *testing.T) {
 	key, err := f.AssignScope(vfs.Identity{SessionID: "fresh-root", WorkUnitID: "fresh", AgentID: "fresh", Specialist: "dev"}, []string{"kept.go", "gone.go", "free.go"})
 	refused(t, "AssignScope() over another root's staged claim", err, vfs.ErrCollision)
 	var collision *vfs.CollisionError
-	if !errors.As(err, &collision) || collision.OwnerSession != testSession || collision.OwnerUnit != "prior" {
-		t.Fatalf("AssignScope() = %v; want a CollisionError naming the owner session %s and unit prior", err, testSession)
+	if !errors.As(err, &collision) {
+		t.Fatalf("AssignScope() = %v; want a CollisionError", err)
 	}
-	for _, want := range []string{"claim_assign", "author_key " + string(prior), "vfs_consolidate", "vfs_discard"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("refusal %q does not name %q", err, want)
-		}
+	priorID, _ := f.BindingIdentity(prior)
+	if collision.TargetAgent != "fresh" || collision.TargetSession != "fresh-root" || collision.TargetUnit != "fresh" ||
+		collision.OwnerAgent != priorID.AgentID || collision.OwnerSession != testSession || collision.OwnerUnit != "prior" ||
+		ownerOf(f, collision.RequestedPath) != prior {
+		t.Fatalf("collision = %+v; want fresh requester against the prior claim over a path it holds", *collision)
 	}
 	if key != "" {
 		t.Fatalf("refused request returned key %q", key)

@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: explorer — Exploration reports
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the exploration report — per charter, its area, risk and

@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: spec — Requirements
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard results: behavioral requirements, scenarios and acceptance criteria.

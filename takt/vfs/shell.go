@@ -584,30 +584,13 @@ prefix:
 var gitValueOptions = []string{"-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--attr-source"}
 
 // gitArgsMutation classifies git's arguments: "" for a read-only invocation,
-// otherwise "git <class>". Global options are skipped to reach the
-// subcommand, so they never hide it. A configuration or executable-path
-// override (-c, --config-env, --exec-path=) can make any subcommand run an
-// arbitrary program and is a mutation class itself. A read-only subcommand
-// stays read-only only without one of its gitWritingOptions before "--".
-// Every other subcommand, unknown ones included, is a mutation.
+// otherwise "git <class>". A read-only subcommand stays read-only only without
+// one of its gitWritingOptions before "--". Every other subcommand, unknown
+// ones included, is a mutation.
 func gitArgsMutation(args []string) string {
-	for len(args) > 0 {
-		arg := args[0]
-		switch {
-		case arg == "-c" || arg == "--config-env" || strings.HasPrefix(arg, "--config-env="):
-			return "git " + strings.SplitN(arg, "=", 2)[0]
-		case strings.HasPrefix(arg, "-c"):
-			return "git -c"
-		case strings.HasPrefix(arg, "--exec-path="):
-			return "git --exec-path"
-		case slices.Contains(gitValueOptions, arg):
-			args = args[min(2, len(args)):]
-			continue
-		case strings.HasPrefix(arg, "-"):
-			args = args[1:]
-			continue
-		}
-		break
+	args, override := skipGitGlobalOptions(args)
+	if override != "" {
+		return override
 	}
 	if len(args) == 0 {
 		return ""
@@ -616,7 +599,38 @@ func gitArgsMutation(args []string) string {
 	if !slices.Contains(readOnlyGitSubcommands, sub) {
 		return "git " + sub
 	}
-	for _, arg := range args[1:] {
+	return gitWritingOption(sub, args[1:])
+}
+
+// skipGitGlobalOptions drops git's global options to reach the subcommand, so
+// they never hide it. A configuration or executable-path override (-c,
+// --config-env, --exec-path=) can make any subcommand run an arbitrary
+// program, so it is returned as a mutation class itself.
+func skipGitGlobalOptions(args []string) (rest []string, override string) {
+	for len(args) > 0 {
+		arg := args[0]
+		switch {
+		case arg == "-c" || arg == "--config-env" || strings.HasPrefix(arg, "--config-env="):
+			return nil, "git " + strings.SplitN(arg, "=", 2)[0]
+		case strings.HasPrefix(arg, "-c"):
+			return nil, "git -c"
+		case strings.HasPrefix(arg, "--exec-path="):
+			return nil, "git --exec-path"
+		case slices.Contains(gitValueOptions, arg):
+			args = args[min(2, len(args)):]
+		case strings.HasPrefix(arg, "-"):
+			args = args[1:]
+		default:
+			return args, ""
+		}
+	}
+	return nil, ""
+}
+
+// gitWritingOption returns "git <sub> <option>" for the first of sub's
+// gitWritingOptions in args before "--", or "" when there is none.
+func gitWritingOption(sub string, args []string) string {
+	for _, arg := range args {
 		if arg == "--" {
 			break
 		}

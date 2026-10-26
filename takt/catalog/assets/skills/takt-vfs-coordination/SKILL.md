@@ -20,9 +20,9 @@ staged work stays; naming only part of it hands that part over under a new autho
 
 A unit reads only its claim. State `reads` in `claim_assign` when the unit needs more than its claim: `all`, `free`, `dir/`, `dir/**`, `*.ext` or exact paths. Stating it lifts the claims of work no one runs anymore, which the unit then reads as staged, and the claims stay. It is refused while work it covers is in flight, and so is a claim over what a unit in flight reads; wait for that work, narrow the paths, or use `free`.
 
-Release a claim by its listed key. A claim with no staged work releases once its unit has
-ended; while the unit runs, wait for its delivery or end it with `dispatch_abandon`. A claim holding staged work is not released: reassign it, consolidate it,
-or discard it.
+Release a claim by its listed key. Without staged work, release is refused only while its unit
+is in flight: wait for its delivery or end the unit with `dispatch_abandon`. A claim holding
+staged work is not released: reassign, consolidate, or discard it.
 
 Discarding partial work with `vfs_discard` is your decision and never a default: not because
 the work is imperfect, and not because a verifier failed it. A failing verdict is corrected;

@@ -16,27 +16,20 @@
 package setup
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/internal/artifacts"
 )
 
 // FileConflict reasons, one per destination state restore refuses to overwrite.
 const (
-	// ConflictModifiedSinceInstall marks destination bytes that differ from
-	// both the deployed content and the backup: an edit made after the
-	// backup was taken.
-	ConflictModifiedSinceInstall = "modified_since_install"
-	// ConflictUnknownInstalledHash marks an entry whose recorded installed
-	// digest cannot establish that the destination is unchanged; an
-	// unknown hash is never evidence of equality.
-	ConflictUnknownInstalledHash = "unknown_installed_hash"
+	// ConflictUnverifiedSinceInstall marks destination bytes that differ from
+	// the backup and cannot be shown to match the deployed content: edited
+	// after install, or recorded with an unknown installed digest.
+	ConflictUnverifiedSinceInstall = "unverified_since_install"
 	// ConflictDestinationType marks a destination that is not a regular
 	// file, such as a directory or symlink.
 	ConflictDestinationType = "destination_type"
@@ -95,8 +88,8 @@ type restorePlan struct {
 	mode os.FileMode
 	// disposition is the classification before any write.
 	disposition restoreDisposition
-	// conflict carries the per-file conflict when disposition is restoreConflicted.
-	conflict FileConflict
+	// reason is the FileConflict reason when disposition is restoreConflicted.
+	reason string
 }
 
 // Restore restores each entry's backed-up pre-existing content, undoing
@@ -138,7 +131,12 @@ func Restore(rootDir string, manifest *OwnershipManifest) (RestoreResult, error)
 			}
 			result.Restored = append(result.Restored, plan.path)
 		case restoreConflicted:
-			result.Conflicts = append(result.Conflicts, plan.conflict)
+			result.Conflicts = append(result.Conflicts, FileConflict{
+				Path:            plan.path,
+				CurrentHash:     plan.currentHash,
+				ReplacementHash: plan.replacementHash,
+				Reason:          plan.reason,
+			})
 		}
 	}
 	return result, errors.Join(failures...)
@@ -173,13 +171,19 @@ func loadRestorePlan(root string, entry OwnershipEntry) (restorePlan, error) {
 }
 
 // restoreEntry restores a single entry's backed-up content to its managed
-// path. The uninstall flow calls it for entries its own plan already verified.
+// path for uninstall; a destination that is no longer safe to overwrite is an error.
 func restoreEntry(root string, entry OwnershipEntry) error {
-	plan, err := loadRestorePlan(root, entry)
+	plan, err := classifyRestoreEntry(root, entry)
 	if err != nil {
 		return err
 	}
-	return applyRestorePlan(plan)
+	switch plan.disposition {
+	case restoreConflicted:
+		return fmt.Errorf("restore %q: %s", plan.path, plan.reason)
+	case restoreEligible:
+		return applyRestorePlan(plan)
+	}
+	return nil
 }
 
 // classifyRestoreEntry reads one entry's backup and destination and decides
@@ -189,62 +193,24 @@ func classifyRestoreEntry(root string, entry OwnershipEntry) (restorePlan, error
 	if err != nil {
 		return restorePlan{}, err
 	}
-	cleanPath, destination := plan.path, plan.destination
-	info, err := os.Lstat(destination)
+	state, current, err := managedFileState(plan.destination, entry)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// A missing destination cannot lose user content, so it is restorable.
-			plan.disposition = restoreEligible
-			return plan, nil
-		}
-		return restorePlan{}, fmt.Errorf("inspect destination for %q: %w", cleanPath, err)
+		return restorePlan{}, err
 	}
-	if !info.Mode().IsRegular() {
-		// A directory, symlink, or other non-file destination is a type
-		// mismatch; restore never deletes it to put a file in place.
-		plan.disposition = restoreConflicted
-		plan.conflict = FileConflict{
-			Path:            cleanPath,
-			ReplacementHash: plan.replacementHash,
-			Reason:          ConflictDestinationType,
-		}
-		return plan, nil
+	if current != nil {
+		plan.currentHash = hashOf(current)
 	}
-	current, err := os.ReadFile(destination)
-	if err != nil {
-		return restorePlan{}, fmt.Errorf("read destination for %q: %w", cleanPath, err)
-	}
-	plan.currentHash = hashOf(current)
-	if plan.currentHash == plan.replacementHash {
-		// The destination already holds the backup bytes; restoring is a no-op.
+	switch {
+	case state == managedNotRegular:
+		// Restore never deletes a non-file destination to put a file in place.
+		plan.disposition, plan.reason = restoreConflicted, ConflictDestinationType
+	case current != nil && plan.currentHash == plan.replacementHash:
 		plan.disposition = restoreNoop
-		return plan, nil
-	}
-	installed, ok := canonicalHash(entry.SHA256)
-	if !ok {
-		// Without the deployed digest, unchanged content cannot be
-		// established; an unknown hash is never evidence of equality.
-		plan.disposition = restoreConflicted
-		plan.conflict = FileConflict{
-			Path:            cleanPath,
-			CurrentHash:     plan.currentHash,
-			ReplacementHash: plan.replacementHash,
-			Reason:          ConflictUnknownInstalledHash,
-		}
-		return plan, nil
-	}
-	if plan.currentHash == installed {
-		// The destination still holds the content Takt deployed.
+	case state == managedChanged:
+		plan.disposition, plan.reason = restoreConflicted, ConflictUnverifiedSinceInstall
+	default:
+		// Missing or unchanged since install: nothing of the user's is lost.
 		plan.disposition = restoreEligible
-		return plan, nil
-	}
-	// The destination bytes changed after the backup was taken.
-	plan.disposition = restoreConflicted
-	plan.conflict = FileConflict{
-		Path:            cleanPath,
-		CurrentHash:     plan.currentHash,
-		ReplacementHash: plan.replacementHash,
-		Reason:          ConflictModifiedSinceInstall,
 	}
 	return plan, nil
 }
@@ -269,19 +235,6 @@ func applyRestorePlan(plan restorePlan) error {
 		return fmt.Errorf("restore %q: %w", plan.path, err)
 	}
 	return nil
-}
-
-// canonicalHash returns the lowercase digest when raw is a valid SHA-256
-// hex digest, and ok=false when the recorded digest is unknown.
-func canonicalHash(raw string) (digest string, ok bool) {
-	if len(raw) != sha256.Size*2 {
-		return "", false
-	}
-	decoded, err := hex.DecodeString(raw)
-	if err != nil || len(decoded) != sha256.Size {
-		return "", false
-	}
-	return strings.ToLower(raw), true
 }
 
 // restoreMode returns the permission bits a restored file gets, defaulting

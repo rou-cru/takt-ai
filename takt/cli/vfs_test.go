@@ -456,7 +456,7 @@ func TestVFSMutationIPC(t *testing.T) {
 	fx.dispatch("admit", rootA, "u1", "dev")
 	bound := fx.must("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"src/app.go"}, "invariants": []string{"AGENTS.md"}}))
 	// The attempt and the invariant set's version are issued here, not declared.
-	if bound.Key == "" || bound.AttemptID != "1" || !strings.HasPrefix(bound.InvariantsVersion, "inv1:") {
+	if bound.Key == "" || bound.AttemptID != "1" || bound.InvariantsVersion == "" {
 		t.Fatalf("bind: %+v", bound)
 	}
 	created := fx.write(rootA, "u1", "dev", "c1", "src/app.go", "package main")

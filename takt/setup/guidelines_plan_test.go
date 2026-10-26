@@ -15,10 +15,14 @@
 package setup_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"io/fs"
 	"slices"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -31,26 +35,28 @@ func TestOpenCodePlanDeploysGuidelinesAndRegistersThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const deployed = ".config/opencode/takt/shared/GUIDELINES.md"
-	var guidelines, config []byte
-	for _, artifact := range plans[0].Artifacts {
-		switch artifact.Path {
-		case deployed:
-			guidelines = artifact.Content
-		case ".config/opencode/opencode.json":
-			config = artifact.Content
-		}
-	}
-	if len(guidelines) == 0 {
-		t.Fatalf("plan does not deploy %s", deployed)
-	}
-	var decoded struct {
-		Instructions []string `json:"instructions"`
-	}
-	if err := json.Unmarshal(config, &decoded); err != nil {
+	source, err := fs.ReadFile(catalog.AssetFS(), catalog.GuidelinesPath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(decoded.Instructions, "~/"+deployed) {
-		t.Fatalf("instructions = %v, want %q", decoded.Instructions, "~/"+deployed)
+	deployed := opencode.DeployPath(catalog.GuidelinesPath)
+	var guidelines []byte
+	var instructions []string
+	for _, artifact := range plans[0].Artifacts {
+		if artifact.Path == deployed {
+			guidelines = artifact.Content
+		}
+		var decoded struct {
+			Instructions []string `json:"instructions"`
+		}
+		if json.Unmarshal(artifact.Content, &decoded) == nil {
+			instructions = append(instructions, decoded.Instructions...)
+		}
+	}
+	if !bytes.Equal(guidelines, source) {
+		t.Fatalf("plan deploys %s = %q, want the catalog guidelines", deployed, guidelines)
+	}
+	if !slices.Contains(instructions, "~/"+deployed) {
+		t.Fatalf("instructions = %v, want %q", instructions, "~/"+deployed)
 	}
 }

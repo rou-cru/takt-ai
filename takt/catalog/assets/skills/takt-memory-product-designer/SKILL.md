@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: product-designer — Interaction and UX
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - Standard results: interaction rules, experience invariants and observable UX criteria.

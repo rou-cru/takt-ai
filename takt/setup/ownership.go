@@ -19,6 +19,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -198,10 +199,16 @@ func LoadOwnershipManifest(rootDir string) (*OwnershipManifest, error) {
 	// root. A crafted or corrupted manifest with keys like "../victim.txt"
 	// would otherwise let later phases (sync, uninstall) act on files outside
 	// root, since they join the key to root without further checks.
-	for entryPath := range manifest.Entries {
+	for entryPath, entry := range manifest.Entries {
 		if _, err := SafeJoin(rootDir, entryPath); err != nil {
 			return nil, fmt.Errorf("load ownership manifest: entry path %q escapes deployment root: %w", entryPath, err)
 		}
+		// An invalid installed digest is recorded as unknown (empty), never as a value to compare.
+		entry.SHA256 = strings.ToLower(entry.SHA256)
+		if decoded, err := hex.DecodeString(entry.SHA256); err != nil || len(decoded) != sha256.Size {
+			entry.SHA256 = ""
+		}
+		manifest.Entries[entryPath] = entry
 	}
 	return &manifest, nil
 }
@@ -261,4 +268,50 @@ func isWithin(path, root string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// managedState is a managed destination's state relative to the content Takt installed.
+type managedState int
+
+const (
+	managedMissing managedState = iota
+	managedUnchanged
+	// managedChanged includes an unknown installed digest: unknown is never evidence of equality.
+	managedChanged
+	// managedNotRegular is a directory, symlink, or other non-file destination.
+	managedNotRegular
+)
+
+// managedFileState classifies destination against entry's installed digest
+// and returns the current bytes of a regular file.
+func managedFileState(destination string, entry OwnershipEntry) (managedState, []byte, error) {
+	info, err := os.Lstat(destination)
+	if errors.Is(err, os.ErrNotExist) {
+		return managedMissing, nil, nil
+	}
+	if err != nil {
+		return 0, nil, fmt.Errorf("inspect managed file %q: %w", entry.Path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return managedNotRegular, nil, nil
+	}
+	current, err := os.ReadFile(destination)
+	if err != nil {
+		return 0, nil, fmt.Errorf("inspect managed file %q: %w", entry.Path, err)
+	}
+	if entry.SHA256 != "" && hashOf(current) == entry.SHA256 {
+		return managedUnchanged, current, nil
+	}
+	return managedChanged, current, nil
+}
+
+// managedRegularState is managedFileState for callers that cannot act on a
+// non-file destination: a directory or symlink where Takt installed a file
+// fails inspection instead of being classified.
+func managedRegularState(destination string, entry OwnershipEntry) (managedState, []byte, error) {
+	state, current, err := managedFileState(destination, entry)
+	if err == nil && state == managedNotRegular {
+		return 0, nil, fmt.Errorf("inspect managed file %q: destination is not a regular file", entry.Path)
+	}
+	return state, current, err
 }

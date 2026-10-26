@@ -72,45 +72,26 @@ func Mono() bool { return mode == ModeMono }
 // animation-free mode; the ASCII baseline renders either way.
 func Animation() bool { return os.Getenv("TAKT_NO_ANIMATION") == "" }
 
-// GlyphMode names the glyph capability the surface targets, independent of
-// color and animation.
-type GlyphMode int
-
-// Glyph modes are the closed set of glyph capabilities.
-const (
-	// GlyphUnicode draws box-drawing borders and pictographic markers where
-	// the terminal renders them.
-	GlyphUnicode GlyphMode = iota
-	// GlyphASCII draws every border, marker and bar from plain ASCII, so a
-	// terminal that cannot render Unicode stays legible with no replacement
-	// characters (PR-UX-6).
-	GlyphASCII
-)
-
-// glyphMode is the active glyph capability; the glyph map and the panel
-// border resolve through it.
-var glyphMode = GlyphUnicode
-
-// DetectGlyphMode reads the environment for the documented glyph fallback
+// glyphsFromEnvironment picks the glyph map for the documented fallback
 // (PR-UX-6). TERM=dumb is explicit terminal-capability information that
 // proves an ASCII-only surface and prevails over the locale. Otherwise the
 // first set variable of LC_ALL, then LC_CTYPE, then LANG decides, and a
 // locale that does not declare the UTF-8 codeset falls back to ASCII: a
 // wrong Unicode guess draws replacement characters, while a wrong ASCII
-// guess only draws plainer text.
-func DetectGlyphMode() GlyphMode {
+// guess only draws plainer text. NO_COLOR proves nothing about glyphs.
+func glyphsFromEnvironment() Glyphs {
 	if os.Getenv("TERM") == "dumb" {
-		return GlyphASCII
+		return asciiGlyphs
 	}
 	for _, name := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
 		if locale := os.Getenv(name); locale != "" {
 			if !localeDeclaresUTF8(locale) {
-				return GlyphASCII
+				return asciiGlyphs
 			}
-			return GlyphUnicode
+			return unicodeGlyphs
 		}
 	}
-	return GlyphUnicode
+	return unicodeGlyphs
 }
 
 // localeDeclaresUTF8 reports whether a locale names the UTF-8 codeset:
@@ -129,13 +110,6 @@ func localeDeclaresUTF8(locale string) bool {
 	}
 	return false
 }
-
-// SetGlyphMode switches the glyph capability and rebuilds the glyph map and
-// every style. It is the entrypoint for proven capability: a caller that
-// has proven the terminal ASCII-only sets GlyphASCII, and that proof
-// prevails over the locale-derived mode. No color profile proves glyphs,
-// because NO_COLOR also produces an ASCII color profile.
-func SetGlyphMode(m GlyphMode) { glyphMode = m; resolve() }
 
 // Palette holds one theme's tokens so renderers ask for roles, never hex values.
 type Palette struct {
@@ -240,14 +214,12 @@ func role(c color.Color) color.Color {
 
 // init resolves roles, styles and glyphs so no renderer repeats tokens.
 func init() {
+	Icon = glyphsFromEnvironment()
 	SetMode(DetectMode())
-	SetGlyphMode(DetectGlyphMode())
 }
 
-// resolve rebuilds every exported role, style and glyph from the active
-// palette and glyph set.
+// resolve rebuilds every exported role and style from the active palette.
 func resolve() {
-	Icon = glyphSet()
 	p := active()
 	Canvas, Surface = role(p.Canvas), role(p.Surface)
 	TextPrimary, TextSecondary, TextMuted = role(p.TextPrimary), role(p.TextSecondary), role(p.TextMuted)
@@ -346,14 +318,6 @@ var asciiGlyphs = Glyphs{
 	},
 }
 
-// Icon is the active glyph map; screens read it at render time, so a glyph
-// mode change reaches every screen without editing it.
+// Icon is the glyph map init picks from the environment; screens read it at
+// render time.
 var Icon Glyphs
-
-// glyphSet returns the glyph map of the active glyph mode.
-func glyphSet() Glyphs {
-	if glyphMode == GlyphASCII {
-		return asciiGlyphs
-	}
-	return unicodeGlyphs
-}

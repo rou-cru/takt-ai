@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: takt (orchestrator) — Session objective and state
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - The session **objective** and **state at close**, and nothing else of your own. Domain

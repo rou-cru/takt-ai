@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: dev — Implementation facts
 
-The general memory contract, loaded before this skill, defines what every entry
-contains. This skill only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): non-obvious facts the implementation revealed — a hidden constraint, a surprising behavior, a convention the code relies on — with the path or test as evidence.

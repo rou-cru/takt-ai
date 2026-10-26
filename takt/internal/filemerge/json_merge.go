@@ -31,12 +31,12 @@ import (
 // rejected with an *InvalidJSONError and is never coerced to an empty object,
 // so no caller can mistake unreadable user content for content safe to replace.
 func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error) {
-	base, err := unmarshalJSONObject(baseJSON)
+	base, err := ParseJSONObject(baseJSON)
 	if err != nil {
 		return nil, fmt.Errorf("read base json: %w", err)
 	}
 
-	overlay, err := unmarshalJSONObject(overlayJSON)
+	overlay, err := ParseJSONObject(overlayJSON)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal overlay json: %w", err)
 	}
@@ -54,11 +54,9 @@ func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error) {
 // position refers to the original input bytes, comments included, and the
 // error never carries the input's content.
 type InvalidJSONError struct {
-	// ByteOffset is the zero-based offset of the byte where reading failed.
-	ByteOffset int64
-	// Line is the one-based line of ByteOffset.
+	// Line is the one-based line where reading failed.
 	Line int
-	// Column is the one-based byte column of ByteOffset within Line.
+	// Column is the one-based byte column of the failure within Line.
 	Column int
 	// Reason is the parser's explanation, or why the root is not an object.
 	Reason string
@@ -66,10 +64,12 @@ type InvalidJSONError struct {
 
 // Error reports the position and reason of the failure.
 func (e *InvalidJSONError) Error() string {
-	return fmt.Sprintf("invalid JSON at line %d, column %d (byte offset %d): %s", e.Line, e.Column, e.ByteOffset, e.Reason)
+	return fmt.Sprintf("invalid JSON at line %d, column %d: %s", e.Line, e.Column, e.Reason)
 }
 
-func unmarshalJSONObject(raw []byte) (map[string]any, error) {
+// ParseJSONObject reads raw as a JSON object under MergeJSONObjects' rules,
+// returning an *InvalidJSONError when it is not one.
+func ParseJSONObject(raw []byte) (map[string]any, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return map[string]any{}, nil
 	}
@@ -98,7 +98,7 @@ func invalidJSONAt(raw []byte, offset int64, reason string) *InvalidJSONError {
 	before := raw[:offset]
 	line := bytes.Count(before, []byte{'\n'}) + 1
 	column := len(before) - (bytes.LastIndexByte(before, '\n') + 1) + 1
-	return &InvalidJSONError{ByteOffset: offset, Line: line, Column: column, Reason: reason}
+	return &InvalidJSONError{Line: line, Column: column, Reason: reason}
 }
 
 // jsonKind names the JSON type of a decoded root value.
