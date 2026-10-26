@@ -128,30 +128,34 @@ func TestForeignAuthorReadNamesTheUnitsInputs(t *testing.T) {
 func TestAReleasedKeyNoLongerWorks(t *testing.T) {
 	f, _, state := newStore(t)
 	c, key := delegate(t, f, state, testSession, "dev", "u", "a.go")
-	err := f.ReleaseClaim(testSession, key, false)
-	refusedNaming(t, "unconfirmed release of an active claim", err, vfs.ErrScopeDenied, "the user's agreement", "agent dev", "unit u", "a.go")
+	running, ended := func(vfs.Identity) (string, bool) { return "d1", true }, func(vfs.Identity) (string, bool) { return "", false }
+	err := f.ReleaseClaim(testSession, key, running)
+	refusedNaming(t, "release of a claim whose unit is running", err, vfs.ErrScopeDenied, "dispatch_abandon dispatch d1", "claim_release", "unit u")
+	if err := f.ReleaseClaim(otherSession, key, running); !errors.Is(err, vfs.ErrScopeDenied) {
+		t.Fatalf("cross-root release of a running unit's claim = %v; want ErrScopeDenied", err)
+	}
 	write(t, f, c, "w", "a.go", "staged")
-	if err := f.ReleaseClaim(testSession, key, true); !errors.Is(err, vfs.ErrStagedWork) {
+	if err := f.ReleaseClaim(testSession, key, ended); !errors.Is(err, vfs.ErrStagedWork) {
 		t.Fatalf("release of staged work = %v; want ErrStagedWork", err)
 	}
-	if err := f.ReleaseClaim(otherSession, key, false); !errors.Is(err, vfs.ErrStagedWork) {
+	if err := f.ReleaseClaim(otherSession, key, ended); !errors.Is(err, vfs.ErrStagedWork) {
 		t.Fatalf("cross-root release of staged work = %v; want ErrStagedWork", err)
 	}
 	if err := f.DiscardAs(orchestrator(testSession), key); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.ReleaseClaim(otherSession, key, false); err != nil {
-		t.Fatal(err)
+	if err := f.ReleaseClaim(testSession, key, ended); err != nil {
+		t.Fatalf("release once the unit ended = %v; want no confirmation needed", err)
 	}
 	if _, err := f.Operate(c, vfs.CallerOperation{CallID: "late", Action: vfs.OpCreate, Path: "a.go", Content: []byte("x")}); err == nil {
 		t.Fatal("a released key still staged work")
 	}
-	// A pending claim needs no confirmation.
+	// A pending claim holds no running unit.
 	pending, err := f.AssignScope(ident("dev", "w", "dev"), []string{"c.go"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.ReleaseClaim(testSession, pending, false); err != nil {
+	if err := f.ReleaseClaim(testSession, pending, ended); err != nil {
 		t.Fatalf("release of a pending claim = %v", err)
 	}
 }
@@ -495,7 +499,7 @@ func TestANativeEditOnAClaimedPathProceedsOnceTheClaimIsClosed(t *testing.T) {
 			if staged {
 				err = f.DiscardAs(orchestrator(testSession), author)
 			} else {
-				err = f.ReleaseClaim(testSession, author, true)
+				err = f.ReleaseClaim(testSession, author, func(vfs.Identity) (string, bool) { return "", false })
 			}
 			if err != nil {
 				t.Fatal(err)

@@ -94,7 +94,7 @@ func TestInspectionOwnershipIsSerializedThroughCompletion(t *testing.T) {
 	if _, err := f.ReassignScope(other, key, []string{"impl.go", "new.go"}); err == nil {
 		t.Fatal("reassignment introduced an exposed claim")
 	}
-	if err := f.ReleaseClaim(testSession, key, false); err != nil {
+	if err := f.ReleaseClaim(testSession, key, func(vfs.Identity) (string, bool) { return "", false }); err != nil {
 		t.Fatal(err)
 	}
 	// Reclaiming an already denied path cannot introduce a read conflict.

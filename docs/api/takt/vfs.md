@@ -13,6 +13,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func EngramInvariant\(id int64\) string](<#EngramInvariant>)
+- [func GitShellDecision\(role model.RoleClass, command string\) \(decision, reason string\)](<#GitShellDecision>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
 - [func GuardShellGit\(command string\) error](<#GuardShellGit>)
 - [func LockWorkspace\(rootDir string\) \(\*os.File, error\)](<#LockWorkspace>)
@@ -73,7 +74,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) ReassignScope\(identity Identity, key AgentID, scope \[\]string\) \(next AgentID, err error\)](<#FS.ReassignScope>)
   - [func \(f \*FS\) Recover\(\) \(err error\)](<#FS.Recover>)
   - [func \(f \*FS\) RecoveryRepair\(\) \(\*Repair, error\)](<#FS.RecoveryRepair>)
-  - [func \(f \*FS\) ReleaseClaim\(session string, key AgentID, confirmed bool\) \(err error\)](<#FS.ReleaseClaim>)
+  - [func \(f \*FS\) ReleaseClaim\(session string, key AgentID, inFlight func\(Identity\) \(dispatch string, running bool\)\) \(err error\)](<#FS.ReleaseClaim>)
   - [func \(f \*FS\) ReleaseShell\(c Caller, callID string\) \(err error\)](<#FS.ReleaseShell>)
   - [func \(f \*FS\) RepairRecovery\(a RepairApproval\) \(err error\)](<#FS.RepairRecovery>)
   - [func \(f \*FS\) RevokeOwnership\(key AgentID\) \(err error\)](<#FS.RevokeOwnership>)
@@ -86,6 +87,8 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [type FailingVerdictError](<#FailingVerdictError>)
   - [func \(e \*FailingVerdictError\) Error\(\) string](<#FailingVerdictError.Error>)
   - [func \(e \*FailingVerdictError\) Unwrap\(\) error](<#FailingVerdictError.Unwrap>)
+- [type GitPermissionRule](<#GitPermissionRule>)
+  - [func GitPermissionRules\(role model.RoleClass\) \[\]GitPermissionRule](<#GitPermissionRules>)
 - [type Identity](<#Identity>)
 - [type InvariantSet](<#InvariantSet>)
 - [type JournalEntry](<#JournalEntry>)
@@ -265,6 +268,15 @@ func EngramInvariant(id int64) string
 
 EngramInvariant is the invariant that names the Engram entry id.
 
+<a name="GitShellDecision"></a>
+## func GitShellDecision
+
+```go
+func GitShellDecision(role model.RoleClass, command string) (decision, reason string)
+```
+
+GitShellDecision is the disposition of the Git a command runs for role in the VFS shell plan, which serves bound identities. It runs nothing. A command that executes no Git mutation is ShellAllow with an empty reason, so read\-only inspection stays available \(PR\-VFS\-GIT\-2\); any mutating, destructive or unclassifiable Git command is ShellDeny for every role but the orchestrator \(PR\-VFS\-GIT\-1\). The orchestrator's native shell follows GitPermissionRules instead.
+
 <a name="GuardGitMutation"></a>
 ## func GuardGitMutation
 
@@ -272,7 +284,7 @@ EngramInvariant is the invariant that names the Engram entry id.
 func GuardGitMutation(role model.RoleClass) error
 ```
 
-GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is.
+GuardGitMutation returns ErrGitMutationDenied if role is not permitted to execute mutating git commands; only model.RoleOrchestrator is \(PR\-CRW\-5\).
 
 <a name="GuardShellGit"></a>
 ## func GuardShellGit
@@ -514,7 +526,7 @@ Apply validates identity, revision and replay, then persists the result.
 func (f *FS) AssignScope(identity Identity, scope []string) (key AgentID, err error)
 ```
 
-AssignScope atomically reserves explicit exclusive ownership for a target before its VFS session starts. The target instance must have explicit bind and write grants in the catalog; role alone never authorizes an assignment. Valid fresh assignments discard whole overlapping claims from other roots; same\-root collisions and explicit ReassignScope continuity remain unchanged.
+AssignScope atomically reserves explicit exclusive ownership for a target before its VFS session starts. The target instance must have explicit bind and write grants in the catalog; role alone never authorizes an assignment. A fresh assignment never takes a path another claim holds: any overlap, of this root or another, refuses before anything is captured. A refusal over another root's claim names its exit; continuing that work is ReassignScope.
 
 <a name="FS.AssignVerifier"></a>
 ### func \(\*FS\) AssignVerifier
@@ -862,10 +874,10 @@ RecoveryRepair can diagnose an incomplete manifest while ordinary mutations rema
 ### func \(\*FS\) ReleaseClaim
 
 ```go
-func (f *FS) ReleaseClaim(session string, key AgentID, confirmed bool) (err error)
+func (f *FS) ReleaseClaim(session string, key AgentID, inFlight func(Identity) (dispatch string, running bool)) (err error)
 ```
 
-ReleaseClaim frees the paths claim key holds for session's orchestrator. A claim holding staged work, and an adopted claim of this root the user has not confirmed releasing are refused.
+ReleaseClaim frees the paths claim key holds for session's orchestrator. A claim holding staged work is refused, and so is a claim without staged work whose unit inFlight reports still running: release needs the unit's effective termination. inFlight runs under the FS lock with the claim's own identity and returns the running unit's dispatch, which the refusal names.
 
 <a name="FS.ReleaseShell"></a>
 ### func \(\*FS\) ReleaseShell
@@ -977,6 +989,27 @@ func (e *FailingVerdictError) Unwrap() error
 ```
 
 
+
+<a name="GitPermissionRule"></a>
+## type GitPermissionRule
+
+GitPermissionRule is one native shell permission over a Git command pattern, where "\*" matches any text.
+
+```go
+type GitPermissionRule struct {
+    Pattern string
+    Effect  string
+}
+```
+
+<a name="GitPermissionRules"></a>
+### func GitPermissionRules
+
+```go
+func GitPermissionRules(role model.RoleClass) []GitPermissionRule
+```
+
+GitPermissionRules is role's Git policy as native shell permission patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then allows each read\-only subcommand, and a read\-only subcommand carrying one of its writing options returns to the deny; a form the patterns cannot tell apart from a mutation keeps the deny. The orchestrator allows git and asks only for the actions in orchestratorGatedGit and for a hard reset \(PR\-VFS\-GIT\-5\); every other Git mutation is its conduct.
 
 <a name="Identity"></a>
 ## type Identity
@@ -1330,6 +1363,11 @@ type VerificationVerdict struct {
     // VerifierID identifies the verification specialist. Must differ from the
     // authoring agent.
     VerifierID AgentID
+    // WorkUnitID and AttemptID are the author's unit and attempt the verdict
+    // evaluated (PR-VFS-CSL-7): a verdict on another attempt never governs
+    // the current one.
+    WorkUnitID string
+    AttemptID  string
 }
 ```
 
