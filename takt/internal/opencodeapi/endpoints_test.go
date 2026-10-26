@@ -212,7 +212,7 @@ func TestModelsRefsVariantsByID(t *testing.T) {
 
 func TestModelsReportsAnEmptyListWithoutError(t *testing.T) {
 	// "No models" is data the consumer must act on, not an adapter failure:
-	// R1 needs to distinguish an empty picker from a broken installation.
+	// The models route needs to distinguish an empty picker from a broken installation.
 	client, _ := stubClient(map[string]stubResponse{"GET /api/model": {stdout: `{"location":{"directory":"/x"},"data":[]}`}})
 
 	models, err := client.Models(context.Background())
@@ -410,7 +410,7 @@ func TestReloadSurfacesAFailedReloadAsAnError(t *testing.T) {
 		"POST /api/location/reload": {stderr: "HTTP 503 Service Unavailable", err: errors.New("exit status 1")},
 	})
 
-	// A reload that did not happen is a functional failure (R3): it must be
+	// A reload that did not happen is a functional failure: it must be
 	// an error the plan can report as "not verified", never a silent success.
 	if err := client.Reload(context.Background()); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Reload() error = %v, want ErrUnavailable", err)
@@ -511,7 +511,7 @@ func TestHandshakeRejectsAVersionWithoutDigits(t *testing.T) {
 
 func TestHandshakeRejectsAV2BinaryWithoutModelRoutes(t *testing.T) {
 	// Installed is not functional: a v2 server whose experimental model
-	// routes fail must not pass the handshake, or R1 would mutate on a
+	// routes fail must not pass the handshake, or Takt would mutate on a
 	// broken foundation.
 	client, _ := stubClient(map[string]stubResponse{
 		"GET /api/info":  {stdout: infoBody},

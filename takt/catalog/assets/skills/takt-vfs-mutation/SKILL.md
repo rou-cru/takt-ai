@@ -17,13 +17,15 @@ assigned scope; you arrive bound to it. Never use native edit or write tools.
 
 Use `vfs_write`/`vfs_delete` to stage changes and `vfs_read` for your staged view.
 
-**Stay inside your scope.** When the work needs a file outside it, return that path and why
-instead of reaching it. Read beyond your scope only what your brief allows.
+**Stay inside your scope.** When the work needs a file outside it, leave that file untouched,
+finish the work inside your scope, then end the unit with a blocker result naming each needed
+path and why the work needs it. Read beyond your scope only what your brief allows.
 
-**When bind or write cannot proceed, stop.** Return the reason and what you had ready;
-do not retry in a loop, and do not look for another way to change the workspace.
+**When bind or write cannot proceed, end the unit.** A refusal naming a corrected call is a
+correction: make that call once. Any other refusal ends the unit with a blocker result stating
+its reason and the paths it names, instead of a retry loop or another way to change the workspace.
 
 **Treat effects outside the workspace as destructive.** A network call that changes remote
 state, a call to an external service, or a write to another repository is outside your
-assignment unless the brief names it, even when the local diff looks safe: return the need
-to Takt instead of performing it.
+assignment unless the brief names it, even when the local diff looks safe: leave it unperformed
+and end the unit with a blocker result naming the effect and why the work needs it.

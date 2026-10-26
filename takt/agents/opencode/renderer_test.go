@@ -11,6 +11,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 func vfsCaps(capabilities ...model.VFSCapability) []model.VFSCapability {
@@ -162,6 +163,10 @@ func TestRenderConfigValidation(t *testing.T) {
 	}
 }
 
+// TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole checks a
+// specialist's Git rules carry the canonical classification: mutations are
+// denied, read-only subcommands allowed, and a writing option on a read-like
+// form denied again instead of inheriting the read-only allow.
 func TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Agents: []opencode.AgentSpec{
@@ -176,12 +181,67 @@ func TestRenderConfigAppliesGitShellPermissionForNonOrchestratorRole(t *testing.
 		effectOf(rules, "shell", "git ls-files *") != "allow" {
 		t.Errorf("dev shell rules = %v", rules)
 	}
-	// The broad deny must come first so the read-only allows win as last match.
-	if slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git *" }) > slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git diff" }) {
-		t.Errorf("git * deny must precede the read-only allows: %v", rules)
+	// A writing option makes a read-only subcommand write a file or run a
+	// program, so it returns to the broad deny instead of inheriting the
+	// read-only allow.
+	for _, resource := range []string{"git diff *--output*", "git log *--output*", "git show *--output*", "git grep *-O*", "git grep *--open-files-in-pager*"} {
+		if got := effectOf(rules, "shell", resource); got != "deny" {
+			t.Errorf("%s = %q, want deny: a writing option must not inherit the read-only allow", resource, got)
+		}
+	}
+	// The broad deny comes first so the read-only allows win as the last
+	// match, and every writing-option rule follows its subcommand's allow so
+	// it wins the decision back.
+	if slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git *" }) > slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git diff" }) ||
+		slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git diff *" }) > slices.IndexFunc(rules, func(r rule) bool { return r.Resource == "git diff *--output*" }) {
+		t.Errorf("git rule order must keep the last match the effective one: %v", rules)
 	}
 	if effectOf(rules, "read", eventStoreGlob) != "deny" {
 		t.Errorf("dev may read the workspace event store: %v", rules)
+	}
+}
+
+// TestRenderConfigProjectsCanonicalGitRules checks the orchestrator's and a
+// specialist's Git rules are the vfs.GitPermissionRules projection, pattern
+// for pattern, effect for effect, and in the same order, so the renderer keeps
+// no second Git classification of its own.
+func TestRenderConfigProjectsCanonicalGitRules(t *testing.T) {
+	for _, role := range []model.RoleClass{model.RoleOrchestrator, model.RoleExecution} {
+		mode := "subagent"
+		if role == model.RoleOrchestrator {
+			mode = "primary"
+		}
+		artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+			Agents: []opencode.AgentSpec{
+				{ID: "agent", Description: "Agent", Mode: mode, System: "p", Role: role, VFSCapabilities: vfsCaps()},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rules := decodeConfig(t, artifact.Content).Agents["agent"].Permissions
+		var got []rule
+		for _, r := range rules {
+			if r.Action == "shell" && strings.HasPrefix(r.Resource, "git ") {
+				got = append(got, r)
+			}
+		}
+		want := vfs.GitPermissionRules(role)
+		if len(got) != len(want) {
+			t.Fatalf("role %s: git rules = %v, want the %d canonical patterns", role, got, len(want))
+		}
+		for i, canonical := range want {
+			if got[i] != (rule{"shell", canonical.Pattern, canonical.Effect}) {
+				t.Errorf("role %s: git rule %d = %+v, want the canonical %+v", role, i, got[i], rule{"shell", canonical.Pattern, canonical.Effect})
+			}
+		}
+		mutation := "deny"
+		if role == model.RoleOrchestrator {
+			mutation = "allow"
+		}
+		if got := effectOf(rules, "shell", "git *"); got != mutation {
+			t.Errorf("role %s: git * = %q, want %q", role, got, mutation)
+		}
 	}
 }
 
@@ -276,7 +336,7 @@ func TestRenderConfigRejectsDuplicateAgentID(t *testing.T) {
 	spec := opencode.AgentSpec{ID: "dev", Description: "Agent", Mode: "subagent", System: "work", VFSCapabilities: vfsCaps()}
 	_, err := opencode.RenderConfig(opencode.ConfigRequest{Agents: []opencode.AgentSpec{spec, spec}})
 	if err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("opencode.RenderConfig() error = %v, want duplicate agent error", err)
+		t.Fatalf("RenderConfig() error = %v, want duplicate agent error", err)
 	}
 }
 

@@ -11,7 +11,7 @@ display_names:
 instances:
 - takt
 vfs_capabilities:
-  takt: [claim_list, claim_assign, claim_release, discard, consolidate]
+  takt: [claim_list, claim_assign, claim_release, discard, consolidate, inspect]
 role: orchestrator
 skills:
 - takt-invariant-planning

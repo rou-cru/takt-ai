@@ -131,6 +131,9 @@ const SkillFileName = "SKILL.md"
 // BaselinePath is the shared prompt prefix every agent composes on top of.
 const BaselinePath = "shared/BASELINE.md"
 
+// GuidelinesPath is the shared standing guidelines every OpenCode session loads.
+const GuidelinesPath = "shared/GUIDELINES.md"
+
 // LoadPackages loads and validates the embedded declarative catalog.
 func LoadPackages() (Catalog, error) { return LoadFS(AssetFS()) }
 

@@ -178,7 +178,7 @@ grant — it is never assumed from silence.
 1. **Validate completeness and execution bounds**: reject incomplete contracts or contracts
    specifying broad/unscoped acceptance commands back to their author.
 2. **Remove avoidable waits.** Ask the contract owner to settle an interface when that
-   enables independent work; do not demand another artifact merely because the DAG is narrow.
+   enables independent work.
 
 ---
 
@@ -207,7 +207,7 @@ serializing otherwise independent work.
 ## 5. Topology — The Shape Of A Correct DAG
 
 1. **Contracts precede their consumers.** The graph follows actual dependencies, not a
-   prescribed diamond, depth or width. A genuine serial chain is valid.
+   prescribed diamond, depth or width.
 2. **Every edge is justified against a named node, never against "what came before".** In
    the moment waves are treated as phases, implicit barriers appear and cost whole lanes for
    nothing. A test task depends on the one node whose files it reads, not on the wave; a blind
@@ -228,7 +228,8 @@ serializing otherwise independent work.
 - Ready independent nodes use available slots; excess work queues without artificial edges.
 - Planned gates are clearly fewer than implementation nodes; slice acceptance Verify nodes
   are not counted.
-- A narrow graph is accepted when those checks hold, without a minimum-width calculation.
+- **Width never triggers a rebuild.** A narrow or fully serialized graph whose every edge names
+  an admissible §6 reason is valid as recorded; only an edge without such a reason is removed.
 
 ### 5.2 Reference material
 

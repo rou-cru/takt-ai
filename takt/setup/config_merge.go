@@ -238,6 +238,12 @@ func mergePreexistingConfig(rootDir string, artifact Artifact, manifest *Ownersh
 		return artifact, nil
 	}
 	merged, err := filemerge.MergeJSONObjects(existing, artifact.Content)
+	var invalid *filemerge.InvalidJSONError
+	if errors.As(err, &invalid) {
+		// The user chose to replace a file Takt cannot merge into; the
+		// takeover backup keeps its original bytes.
+		return artifact, nil
+	}
 	if err != nil {
 		return Artifact{}, fmt.Errorf("merge config %q: %w", artifact.Path, err)
 	}

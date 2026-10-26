@@ -18,24 +18,25 @@ package filemerge
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
 )
 
 // MergeJSONObjects deep-merges overlayJSON into baseJSON, overlay keys
-// winning on conflicts; a malformed base is treated as an empty object.
+// winning on conflicts. Empty or whitespace-only input reads as an empty
+// object; comments and trailing commas are accepted. Input that does not parse
+// as a JSON object, including a non-object root such as an array or null, is
+// rejected with an *InvalidJSONError and is never coerced to an empty object,
+// so no caller can mistake unreadable user content for content safe to replace.
 func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error) {
-	base, err := unmarshalJSONObject(baseJSON)
+	base, err := ParseJSONObject(baseJSON)
 	if err != nil {
-		// Real user machines may have a malformed or non-JSON mcp.json (e.g. a file
-		// that starts with "a" or contains arbitrary text). The installer backup step
-		// already snapshots the existing file before apply, so proceeding with an
-		// empty base is safe and far preferable to aborting the whole install.
-		base = map[string]any{}
+		return nil, fmt.Errorf("read base json: %w", err)
 	}
 
-	overlay, err := unmarshalJSONObject(overlayJSON)
+	overlay, err := ParseJSONObject(overlayJSON)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal overlay json: %w", err)
 	}
@@ -49,26 +50,75 @@ func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error) {
 	return append(encoded, '\n'), nil
 }
 
-func unmarshalJSONObject(raw []byte) (map[string]any, error) {
-	object := map[string]any{}
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return object, nil
-	}
+// InvalidJSONError locates why input cannot be read as a JSON object. The
+// position refers to the original input bytes, comments included, and the
+// error never carries the input's content.
+type InvalidJSONError struct {
+	// Line is the one-based line where reading failed.
+	Line int
+	// Column is the one-based byte column of the failure within Line.
+	Column int
+	// Reason is the parser's explanation, or why the root is not an object.
+	Reason string
+}
 
-	if err := json.Unmarshal(raw, &object); err == nil {
-		return object, nil
-	}
+// Error reports the position and reason of the failure.
+func (e *InvalidJSONError) Error() string {
+	return fmt.Sprintf("invalid JSON at line %d, column %d: %s", e.Line, e.Column, e.Reason)
+}
 
+// ParseJSONObject reads raw as a JSON object under MergeJSONObjects' rules,
+// returning an *InvalidJSONError when it is not one.
+func ParseJSONObject(raw []byte) (map[string]any, error) {
+	// NormalizeJSON keeps every byte offset, so parser positions map to raw.
 	normalized := NormalizeJSON(raw)
-	if err := json.Unmarshal(normalized, &object); err != nil {
-		return nil, err
+	if len(bytes.TrimSpace(normalized)) == 0 {
+		return map[string]any{}, nil
 	}
-
+	var root any
+	if err := json.Unmarshal(normalized, &root); err != nil {
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			return nil, invalidJSONAt(raw, syntax.Offset-1, syntax.Error())
+		}
+		return nil, invalidJSONAt(raw, 0, err.Error())
+	}
+	object, isObject := root.(map[string]any)
+	if !isObject {
+		start := len(raw) - len(bytes.TrimLeft(normalized, " \t\r\n"))
+		return nil, invalidJSONAt(raw, int64(start), fmt.Sprintf("root is %s, not an object", jsonKind(root)))
+	}
 	return object, nil
 }
 
-// NormalizeJSON strips comments and trailing commas, so a user-edited JSONC
-// file parses with encoding/json.
+// invalidJSONAt builds an InvalidJSONError for offset, clamped into raw.
+func invalidJSONAt(raw []byte, offset int64, reason string) *InvalidJSONError {
+	offset = max(0, min(offset, int64(len(raw))-1))
+	before := raw[:offset]
+	line := bytes.Count(before, []byte{'\n'}) + 1
+	column := len(before) - (bytes.LastIndexByte(before, '\n') + 1) + 1
+	return &InvalidJSONError{Line: line, Column: column, Reason: reason}
+}
+
+// jsonKind names the JSON type of a decoded root value.
+func jsonKind(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case []any:
+		return "an array"
+	case string:
+		return "a string"
+	case bool:
+		return "a boolean"
+	default:
+		return "a number"
+	}
+}
+
+// NormalizeJSON blanks comments and trailing commas with spaces, keeping line
+// breaks and every byte offset, so a user-edited JSONC file parses with
+// encoding/json and parse positions still refer to the original bytes.
 func NormalizeJSON(raw []byte) []byte {
 	withoutComments := stripJSONComments(raw)
 	return stripTrailingCommas(withoutComments)
@@ -111,17 +161,21 @@ func stripJSONComments(raw []byte) []byte {
 		case line:
 			if ch == '\n' {
 				out, line = append(out, ch), false
+			} else {
+				out = append(out, ' ')
 			}
 		case block:
 			if ch == '*' && next == '/' {
-				block, i = false, i+1
+				out, block, i = append(out, ' ', ' '), false, i+1
+			} else {
+				out = append(out, blank(ch))
 			}
 		case str.consume(ch):
 			out = append(out, ch)
 		case ch == '/' && next == '/':
-			line, i = true, i+1
+			out, line, i = append(out, ' ', ' '), true, i+1
 		case ch == '/' && next == '*':
-			block, i = true, i+1
+			out, block, i = append(out, ' ', ' '), true, i+1
 		default:
 			out = append(out, ch)
 		}
@@ -130,12 +184,23 @@ func stripJSONComments(raw []byte) []byte {
 	return out
 }
 
+// blank replaces a removed byte with a space, keeping line breaks so line
+// numbers survive normalization.
+func blank(ch byte) byte {
+	if ch == '\n' || ch == '\r' {
+		return ch
+	}
+	return ' '
+}
+
 func stripTrailingCommas(raw []byte) []byte {
 	out := make([]byte, 0, len(raw))
 	var str jsonString
 	for i, ch := range raw {
 		if str.consume(ch) || ch != ',' || !closesContainer(raw[i+1:]) {
 			out = append(out, ch)
+		} else {
+			out = append(out, ' ')
 		}
 	}
 	return out
@@ -174,15 +239,16 @@ func asSentinel(v any) (any, bool) {
 }
 
 // arrayUnionKeys names the config keys whose array values are user-extensible
-// registries (plugin and skill paths) rather than Takt-owned settings. For
+// registries (plugin, skill and instruction paths) rather than Takt-owned settings. For
 // these keys the overlay must ADD entries instead of replacing the existing
 // array: a user's cli.json may already list their own plugins, and wholesale
 // replacement would silently drop them on every Takt install or upgrade
-// (R4: PR-CFG-1, PR-INS-3, PR-INS-46). Any other array key keeps the
+// (PR-CFG-1, PR-INS-3, PR-INS-46). Any other array key keeps the
 // historical "overlay wins" behavior.
 var arrayUnionKeys = map[string]bool{
-	"plugins": true,
-	"skills":  true,
+	"plugins":      true,
+	"skills":       true,
+	"instructions": true,
 }
 
 // unionArrays returns the base entries first, then the overlay entries not

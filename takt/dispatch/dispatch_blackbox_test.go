@@ -402,3 +402,87 @@ func TestRevisionSeesOnlyItsOwnPlan(t *testing.T) {
 		t.Fatalf("root-a's plan changed: %+v", u)
 	}
 }
+
+// A prerequisite outside the plan must be settled work: a withdrawn unit, or a
+// planned one the same revision withdraws, cannot satisfy it.
+func TestReviseRejectsPrerequisitesThatAreNotSettled(t *testing.T) {
+	h := newHistory(t)
+	units := []dispatch.PlanUnit{{Unit: "a", Contract: "c"}, {Unit: "b", Contract: "c"}}
+	if err := dispatch.Commit(h, "", "s1", "v1", units); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	dependent := dispatch.PlanUnit{Unit: "d", Contract: "c", Prerequisites: []string{"b"}}
+	if err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{dependent}, []string{"b"}); err == nil {
+		t.Fatal("Revise() depending on a unit it withdraws error = nil, want an invalid revision")
+	}
+	if err := dispatch.Revise(h, "", "s1", "v1", "v2", nil, []string{"b"}); err != nil {
+		t.Fatalf("Revise() withdrawing b error = %v", err)
+	}
+	if err := dispatch.Revise(h, "", "s1", "v2", "v3", []dispatch.PlanUnit{dependent}, nil); err == nil {
+		t.Fatal("Revise() depending on a withdrawn unit error = nil, want an invalid revision")
+	}
+}
+
+func TestReviseRejectsAUnitAddedAndWithdrawnTogether(t *testing.T) {
+	h := newHistory(t)
+	if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}, []string{"a"})
+	if err == nil {
+		t.Fatal("Revise() adding and withdrawing a error = nil, want an invalid revision")
+	}
+	if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision {
+		t.Errorf("last entry = %+v, want the invalid revision recorded", last)
+	}
+}
+
+// A refused recovery declaration records the cause that refused it: the
+// exceeded ceiling by name, and an overlap as neither budget.
+func TestDeclareRecoveryRecordsTheRefusingCause(t *testing.T) {
+	p := loadPolicy(t)
+	causeOf := func(t *testing.T, declare func(h *history.History) dispatch.RecoveryDeclaration, prior bool) string {
+		t.Helper()
+		h := newHistory(t)
+		if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: "a", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
+			t.Fatalf("Admit() error = %v", err)
+		}
+		if prior {
+			if err := dispatch.DeclareRecovery(h, p, "", "recover-a", "s1", recoveryDeclaration("obj1")); err != nil {
+				t.Fatalf("DeclareRecovery() error = %v", err)
+			}
+		}
+		if err := dispatch.DeclareRecovery(h, p, "", "recover-b", "s1", declare(h)); err == nil {
+			t.Fatal("DeclareRecovery() error = nil, want a refusal")
+		}
+		last := h.Entries()[len(h.Entries())-1]
+		if last.Kind != history.KindDenied {
+			t.Fatalf("last entry = %+v, want a denial", last)
+		}
+		return last.Cause
+	}
+	tooManyActions := recoveryDeclaration("obj2")
+	tooManyActions.Actions = p.Recovery.MaxActions + 1
+	tooManyAttempts := recoveryDeclaration("obj2")
+	tooManyAttempts.Attempts = p.Recovery.MaxAttempts + 1
+	overlap := recoveryDeclaration("obj2")
+	for name, tc := range map[string]struct {
+		declaration dispatch.RecoveryDeclaration
+		prior       bool
+		want        string
+	}{
+		"actions over the ceiling":  {tooManyActions, false, history.BoundRecoveryActions},
+		"attempts over the ceiling": {tooManyAttempts, false, history.BoundRecoveryAttempts},
+	} {
+		if got := causeOf(t, func(*history.History) dispatch.RecoveryDeclaration { return tc.declaration }, tc.prior); got != tc.want {
+			t.Errorf("%s: cause = %q, want %q", name, got, tc.want)
+		}
+	}
+	got := causeOf(t, func(*history.History) dispatch.RecoveryDeclaration { return overlap }, true)
+	if got == history.BoundRecoveryActions || got == history.BoundRecoveryAttempts {
+		t.Errorf("overlap: cause = %q, want one that names no budget", got)
+	}
+}

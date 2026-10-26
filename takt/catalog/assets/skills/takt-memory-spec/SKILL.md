@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: spec — Requirements
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard results: behavioral requirements, scenarios and acceptance criteria.

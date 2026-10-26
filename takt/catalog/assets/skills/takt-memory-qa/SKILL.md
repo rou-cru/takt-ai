@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: qa — Test planning
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard results: the test policy, the test plan, the environment requirements and the

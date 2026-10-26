@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/tui/theme"
 ```
 
-Package theme is the single source of visual truth for the TUI: renderers ask for a role \(TextPrimary, SuccessFg, Caption\), never a hex or palette name. Dark is the only theme; when the terminal cannot render color, every role degrades to plain text while markers and labels carry the semantics.
+Package theme is the single source of visual truth for the TUI: renderers ask for a role \(TextPrimary, SuccessFg, Caption\), never a hex or palette name. Dark is the only theme; when the terminal cannot render color, every role degrades to plain text while markers and labels carry the semantics. Glyphs follow the same rule one capability up: when the terminal cannot render Unicode, the central glyph map degrades to ASCII while words and layout keep the meaning, so no screen shows a replacement character \(PR\-UX\-6\).
 
 ## Index
 
@@ -14,6 +14,7 @@ Package theme is the single source of visual truth for the TUI: renderers ask fo
 - [func Animation\(\) bool](<#Animation>)
 - [func Mono\(\) bool](<#Mono>)
 - [func SetMode\(m Mode\)](<#SetMode>)
+- [type Glyphs](<#Glyphs>)
 - [type Mode](<#Mode>)
   - [func DetectMode\(\) Mode](<#DetectMode>)
   - [func ModeFor\(profile colorprofile.Profile\) Mode](<#ModeFor>)
@@ -105,32 +106,6 @@ var Dark256 = Palette{
 }
 ```
 
-<a name="Icon"></a>Icon centralizes glyphs so one state never renders as two marks. The baseline vocabulary stays ASCII; FieldBar is a box\-drawing bar, not a Nerd Font glyph.
-
-```go
-var Icon = struct {
-    Cursor      string
-    Done        string
-    Failed      string
-    Unchecked   string
-    Chosen      string
-    Unchosen    string
-    CheckboxOn  string
-    CheckboxOff string
-    FieldBar    string
-}{
-    Cursor:      "> ",
-    Done:        "✓",
-    Failed:      "✗",
-    Unchecked:   "?",
-    Chosen:      "• ",
-    Unchosen:    "  ",
-    CheckboxOn:  "[x]",
-    CheckboxOff: "[ ]",
-    FieldBar:    "┃ ",
-}
-```
-
 <a name="Animation"></a>
 ## func Animation
 
@@ -157,6 +132,33 @@ func SetMode(m Mode)
 ```
 
 SetMode switches the capability and rebuilds every style.
+
+<a name="Glyphs"></a>
+## type Glyphs
+
+Glyphs is the central glyph map: the one definition of every border, marker and bar character the TUI renders, so one state never renders as two marks and a capability change never edits a screen. Words and layout carry the meaning whenever two glyphs of a set coincide.
+
+```go
+type Glyphs struct {
+    // Cursor is the focus-gutter marker; FieldBar marks a focused text field.
+    Cursor, FieldBar string
+    // Done, Failed and Unchecked mark completed, failed and unverified steps.
+    Done, Failed, Unchecked string
+    // Chosen and Unchosen mark the selected and the unselected value of one
+    // single choice; CheckboxOn and CheckboxOff mark multiple selection.
+    Chosen, Unchosen, CheckboxOn, CheckboxOff string
+    // BarFill and BarEmpty draw a progress bar's completed and open cells.
+    BarFill, BarEmpty rune
+    // Border draws a panel.
+    Border lipgloss.Border
+}
+```
+
+<a name="Icon"></a>Icon is the glyph map init picks from the environment; screens read it at render time.
+
+```go
+var Icon Glyphs
+```
 
 <a name="Mode"></a>
 ## type Mode

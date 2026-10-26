@@ -49,32 +49,59 @@ func LoadCapabilities() (Capabilities, error) {
 	return loadCapabilities()
 }
 
-// parseCapabilities rejects unknown fields and bad versions so broken builds fail early.
+// parseCapabilities rejects unknown fields and invalid manifests so broken builds fail early.
 func parseCapabilities(data []byte) (Capabilities, error) {
 	var manifest Capabilities
 	if err := yaml.UnmarshalStrict(data, &manifest); err != nil {
 		return Capabilities{}, fmt.Errorf("capabilities YAML: %w", err)
 	}
-	if manifest.Version != 1 {
-		return Capabilities{}, fmt.Errorf("capabilities: unsupported version %d", manifest.Version)
+	if err := validateCapabilities(manifest); err != nil {
+		return Capabilities{}, err
 	}
-	if len(manifest.Components) == 0 {
-		return Capabilities{}, fmt.Errorf("capabilities: no components")
+	return manifest, nil
+}
+
+// validateCapabilities rejects a manifest no installer may act on: an
+// unsupported version, empty or duplicate component identities, missing
+// purposes and unknown dependencies.
+func validateCapabilities(m Capabilities) error {
+	if m.Version != 1 {
+		return fmt.Errorf("capabilities: unsupported version %d", m.Version)
 	}
-	seen := make(map[string]struct{}, len(manifest.Components))
-	for i, entry := range manifest.Components {
+	if len(m.Components) == 0 {
+		return fmt.Errorf("capabilities: no components")
+	}
+	seen := make(map[string]struct{}, len(m.Components))
+	for i, entry := range m.Components {
 		if strings.TrimSpace(entry.ID) == "" {
-			return Capabilities{}, fmt.Errorf("capabilities entry %d: missing id", i)
+			return fmt.Errorf("capabilities entry %d: missing id", i)
 		}
 		if _, exists := seen[entry.ID]; exists {
-			return Capabilities{}, fmt.Errorf("capabilities entry %d: duplicate id %q", i, entry.ID)
+			return fmt.Errorf("capabilities entry %d: duplicate id %q", i, entry.ID)
 		}
 		seen[entry.ID] = struct{}{}
 		if strings.TrimSpace(entry.Purpose) == "" {
-			return Capabilities{}, fmt.Errorf("capabilities entry %q: missing purpose", entry.ID)
+			return fmt.Errorf("capabilities entry %q: missing purpose", entry.ID)
 		}
 	}
-	return manifest, nil
+	return validateDependencyClosure(m)
+}
+
+// validateDependencyClosure rejects dependencies on components the manifest
+// does not declare.
+func validateDependencyClosure(m Capabilities) error {
+	declared := make(map[string]bool, len(m.Components))
+	for _, entry := range m.Components {
+		declared[entry.ID] = true
+	}
+	for _, entry := range m.Components {
+		for _, dep := range entry.Deps {
+			if !declared[dep] {
+				return fmt.Errorf("capabilities entry %q depends on unknown component %q", entry.ID, dep)
+			}
+		}
+	}
+	return nil
 }
 
 // SelectableOrder lists user-choosable components in manifest order so prompts stay stable.

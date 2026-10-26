@@ -16,6 +16,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [Variables](<#variables>)
 - [func AgentMode\(role model.RoleClass\) string](<#AgentMode>)
 - [func AvailableModels\(ctx context.Context\) \(\[\]opencodeapi.Model, error\)](<#AvailableModels>)
+- [func CLIConfigPath\(\) string](<#CLIConfigPath>)
 - [func ComposePrompt\(def catalog.AgentDefinition, instanceID string\) string](<#ComposePrompt>)
 - [func ConfigDir\(\) string](<#ConfigDir>)
 - [func ConfigPath\(\) string](<#ConfigPath>)
@@ -29,6 +30,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [type AgentSpec](<#AgentSpec>)
 - [type Artifact](<#Artifact>)
   - [func OpenCodePluginPackageArtifact\(\) Artifact](<#OpenCodePluginPackageArtifact>)
+  - [func RenderCLIConfig\(\) \(Artifact, error\)](<#RenderCLIConfig>)
   - [func RenderConfig\(request ConfigRequest\) \(Artifact, error\)](<#RenderConfig>)
   - [func TaktDagPluginArtifact\(taktAIBinary string\) Artifact](<#TaktDagPluginArtifact>)
   - [func TaktMemoryPluginArtifact\(taktAIBinary string\) Artifact](<#TaktMemoryPluginArtifact>)
@@ -70,6 +72,15 @@ func AvailableModels(ctx context.Context) ([]opencodeapi.Model, error)
 ```
 
 AvailableModels returns the models \(reference and display name\) exposed by the local OpenCode V2 API, preserving the server's order.
+
+<a name="CLIConfigPath"></a>
+## func CLIConfigPath
+
+```go
+func CLIConfigPath() string
+```
+
+CLIConfigPath returns the terminal client configuration's home\-relative path.
 
 <a name="ComposePrompt"></a>
 ## func ComposePrompt
@@ -203,6 +214,15 @@ func OpenCodePluginPackageArtifact() Artifact
 ```
 
 OpenCodePluginPackageArtifact returns the shared plugin directory's package manifest. OpenCode resolves bare imports from this root, so SDK dependencies must be declared here.
+
+<a name="RenderCLIConfig"></a>
+### func RenderCLIConfig
+
+```go
+func RenderCLIConfig() (Artifact, error)
+```
+
+RenderCLIConfig returns the terminal client's cli.json artifact. OpenCode V2 reads attention \(system notifications and sounds\) from this file, not from opencode.json.
 
 <a name="RenderConfig"></a>
 ### func RenderConfig

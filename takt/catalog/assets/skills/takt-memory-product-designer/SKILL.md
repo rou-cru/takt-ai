@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: product-designer — Interaction and UX
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard results: interaction rules, experience invariants and observable UX criteria.

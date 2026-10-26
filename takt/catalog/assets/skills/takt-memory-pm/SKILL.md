@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: pm — Product scope
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard results: user stories, product intent, formal requirements, focus areas, scope,

@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: simplify — Structural cleanups
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): a structural finding confirmed after trying to refute it (dead code, duplication, complexity), with the path or analysis output as evidence.

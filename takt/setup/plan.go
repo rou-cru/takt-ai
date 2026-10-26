@@ -107,7 +107,12 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 		return TargetPlan{}, err
 	}
 
-	artifacts := make([]Artifact, 0, len(pack.Files)+len(componentArtifacts)+1)
+	cliConfig, err := opencode.RenderCLIConfig()
+	if err != nil {
+		return TargetPlan{}, err
+	}
+
+	artifacts := make([]Artifact, 0, len(pack.Files)+len(componentArtifacts)+2)
 	generatedPaths := make([]string, 0, len(pack.Files)+len(componentArtifacts))
 	for _, f := range pack.Files {
 		content, err := resolveCatalogContent(f.Path, f.Content)
@@ -117,6 +122,7 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 		artifacts = append(artifacts, Artifact{Path: opencode.DeployPath(f.Path), Content: content})
 	}
 	artifacts = append(artifacts, componentArtifacts...)
+	artifacts = append(artifacts, Artifact{Path: cliConfig.Path, Content: cliConfig.Content})
 	for _, artifact := range artifacts {
 		generatedPaths = append(generatedPaths, artifact.Path)
 	}

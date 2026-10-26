@@ -10,7 +10,7 @@ display_names:
 instances:
 - verify
 vfs_capabilities:
-  verify: [bind, read, verify]
+  verify: [bind, read, verify, inspect]
 role: verification
 skills:
 - takt-memory-contract
