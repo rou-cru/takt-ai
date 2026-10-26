@@ -1,4 +1,4 @@
-# sandbox-runtime declares zod ^3.25.0, but 3.25.0 lacks dist/esm/v3 which it imports;
-# pnpm resolves the range floor where npm resolved 3.25.76.
+# GHSA-mrhx-c7xc-m3w5 is fixed in zod 4.6.6; sandbox-runtime uses zod/v3,
+# which preserves its v3 API under zod 4.
 overrides:
-  zod: ^3.25.76
+  zod: 4.6.6
