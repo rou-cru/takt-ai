@@ -361,7 +361,15 @@ func applySetup(invocation setupInvocation, request setup.PlanRequest, preserve 
 		}
 		return errCancelled
 	}
-	return emit(invocation, stdout, result, func() error { return renderResultText(stdout, invocation.command, result) })
+	if err := emit(invocation, stdout, result, func() error { return renderResultText(stdout, invocation.command, result) }); err != nil {
+		return err
+	}
+	// Committed work with unfinished parts is reported, then exits nonzero;
+	// retained drift alone stays a success.
+	if len(outcome.Incomplete) > 0 {
+		return exitCode(1)
+	}
+	return nil
 }
 
 // emit writes value as one JSON value, or through text when JSON was not asked for.
@@ -406,11 +414,15 @@ func runRestore(args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("load ownership manifest: %w", err)
 	}
+	// A partial restore still reports what it restored, kept and left untouched.
 	result, err := setup.Restore(resolvedRoot, manifest)
+	if encodeErr := json.NewEncoder(stdout).Encode(result); encodeErr != nil {
+		return errors.Join(err, encodeErr)
+	}
 	if err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
-	return json.NewEncoder(stdout).Encode(result)
+	return nil
 }
 
 // setupCommands lists valid setup actions so invalid commands fail with usage.
@@ -496,7 +508,7 @@ func executeSetup(ctx context.Context, command, root string, request setup.PlanR
 		// Image assembly applies the normal managed artifacts, without probing or
 		// reloading an OpenCode process that is not running during a build.
 		result, err := (lifecycle.Runtime{}).Run(ctx, "install", root, request, preserve...)
-		deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied}
+		deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete, Retained: result.Retained}
 		return deployed, result, err
 	}
 	result, err := runLifecycle(ctx, command, root, request, preserve...)
@@ -504,7 +516,7 @@ func executeSetup(ctx context.Context, command, root string, request setup.PlanR
 		out := setup.UninstallResult{Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, NotApplied: result.NotApplied}
 		return out, result, err
 	}
-	deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied}
+	deployed := setup.DeploymentResult{Changed: result.Changed, Unchanged: result.Unchanged, NotApplied: result.NotApplied, Incomplete: result.Incomplete, Retained: result.Retained}
 	if err != nil {
 		return deployed, result, err
 	}

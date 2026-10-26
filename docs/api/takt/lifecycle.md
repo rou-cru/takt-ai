@@ -129,6 +129,8 @@ type LifecycleResult struct {
     // mechanism, reported honestly instead of failing the operation:
     // the uninstall completed, this entry did not.
     Incomplete []string
+    // Retained lists planned paths kept as they are (setup.DeploymentResult.Retained).
+    Retained []string
     // ReloadAttempted and ReloadError describe the post-deployment OpenCode
     // handoff separately from file deployment. A reload failure is functional
     // evidence, not a rollback trigger: the files are already valid on disk.

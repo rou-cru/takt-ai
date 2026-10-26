@@ -15,11 +15,14 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 - [func InjectMarkdownSection\(existing, sectionID, content string\) string](<#InjectMarkdownSection>)
 - [func MergeJSONObjects\(baseJSON, overlayJSON \[\]byte\) \(\[\]byte, error\)](<#MergeJSONObjects>)
 - [func NormalizeJSON\(raw \[\]byte\) \[\]byte](<#NormalizeJSON>)
+- [func ParseJSONObject\(raw \[\]byte\) \(map\[string\]any, error\)](<#ParseJSONObject>)
 - [func ReadFileOrEmpty\(path string\) \(string, error\)](<#ReadFileOrEmpty>)
 - [func RemoveJSONKey\(path string, key string, parents ...string\) \(bool, error\)](<#RemoveJSONKey>)
 - [func RemoveMCPServer\(path, name string\) \(model.InjectionResult, error\)](<#RemoveMCPServer>)
 - [func StageTempFile\(dir, pattern string, content \[\]byte, perm fs.FileMode\) \(\_ string, err error\)](<#StageTempFile>)
 - [func SyncDir\(dir string\) error](<#SyncDir>)
+- [type InvalidJSONError](<#InvalidJSONError>)
+  - [func \(e \*InvalidJSONError\) Error\(\) string](<#InvalidJSONError.Error>)
 - [type WriteResult](<#WriteResult>)
   - [func MergeJSONFile\(path string, overlay \[\]byte\) \(WriteResult, error\)](<#MergeJSONFile>)
   - [func WriteFileAtomic\(path string, content \[\]byte, perm fs.FileMode\) \(WriteResult, error\)](<#WriteFileAtomic>)
@@ -71,7 +74,7 @@ InjectMarkdownSection replaces or appends the section marked with HTML comments 
 func MergeJSONObjects(baseJSON, overlayJSON []byte) ([]byte, error)
 ```
 
-MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on conflicts; a malformed base is treated as an empty object.
+MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on conflicts. Empty or whitespace\-only input reads as an empty object; comments and trailing commas are accepted. Input that does not parse as a JSON object, including a non\-object root such as an array or null, is rejected with an \*InvalidJSONError and is never coerced to an empty object, so no caller can mistake unreadable user content for content safe to replace.
 
 <a name="NormalizeJSON"></a>
 ## func NormalizeJSON
@@ -80,7 +83,16 @@ MergeJSONObjects deep\-merges overlayJSON into baseJSON, overlay keys winning on
 func NormalizeJSON(raw []byte) []byte
 ```
 
-NormalizeJSON strips comments and trailing commas, so a user\-edited JSONC file parses with encoding/json.
+NormalizeJSON blanks comments and trailing commas with spaces, keeping line breaks and every byte offset, so a user\-edited JSONC file parses with encoding/json and parse positions still refer to the original bytes.
+
+<a name="ParseJSONObject"></a>
+## func ParseJSONObject
+
+```go
+func ParseJSONObject(raw []byte) (map[string]any, error)
+```
+
+ParseJSONObject reads raw as a JSON object under MergeJSONObjects' rules, returning an \*InvalidJSONError when it is not one.
 
 <a name="ReadFileOrEmpty"></a>
 ## func ReadFileOrEmpty
@@ -126,6 +138,31 @@ func SyncDir(dir string) error
 ```
 
 SyncDir flushes a directory entry to disk, tolerating filesystems that reject directory synchronization \(EINVAL\).
+
+<a name="InvalidJSONError"></a>
+## type InvalidJSONError
+
+InvalidJSONError locates why input cannot be read as a JSON object. The position refers to the original input bytes, comments included, and the error never carries the input's content.
+
+```go
+type InvalidJSONError struct {
+    // Line is the one-based line where reading failed.
+    Line int
+    // Column is the one-based byte column of the failure within Line.
+    Column int
+    // Reason is the parser's explanation, or why the root is not an object.
+    Reason string
+}
+```
+
+<a name="InvalidJSONError.Error"></a>
+### func \(\*InvalidJSONError\) Error
+
+```go
+func (e *InvalidJSONError) Error() string
+```
+
+Error reports the position and reason of the failure.
 
 <a name="WriteResult"></a>
 ## type WriteResult

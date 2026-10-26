@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: architect — Architecture and interface contracts
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard results: architecture, boundaries, interfaces and integration contracts.

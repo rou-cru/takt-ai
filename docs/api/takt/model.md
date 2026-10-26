@@ -38,6 +38,10 @@ const (
     OpenCodeConfigFile = "opencode.json"
     // OpenCodeConfigRelativePath is the slash-separated manifest path owned by OpenCode.
     OpenCodeConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeConfigFile
+    // OpenCodeCLIConfigFile is the terminal client's configuration filename.
+    OpenCodeCLIConfigFile = "cli.json"
+    // OpenCodeCLIConfigRelativePath is the slash-separated manifest path of the terminal client configuration.
+    OpenCodeCLIConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeCLIConfigFile
     // AgentsPromptFile is OpenCode's global agent prompt file.
     AgentsPromptFile = "AGENTS.md"
 

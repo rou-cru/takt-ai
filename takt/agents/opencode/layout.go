@@ -23,6 +23,9 @@ func ConfigDir() string { return configDir }
 // ConfigPath returns the OpenCode config file path relative to the install root.
 func ConfigPath() string { return model.OpenCodeConfigRelativePath }
 
+// CLIConfigPath returns the terminal client configuration's home-relative path.
+func CLIConfigPath() string { return model.OpenCodeCLIConfigRelativePath }
+
 // DeployPath returns the deployed location of a package file at rel.
 func DeployPath(rel string) string { return path.Join(configDir, packageName, rel) }
 

@@ -45,6 +45,12 @@ Package catalog is the single declarative source of Takt's installable content: 
 const BaselinePath = "shared/BASELINE.md"
 ```
 
+<a name="GuidelinesPath"></a>GuidelinesPath is the shared standing guidelines every OpenCode session loads.
+
+```go
+const GuidelinesPath = "shared/GUIDELINES.md"
+```
+
 <a name="SkillFileName"></a>SkillFileName is the descriptor filename every skill package carries.
 
 ```go

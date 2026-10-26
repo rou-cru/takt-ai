@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-recovery
-description: "An SDD implementation task failed twice, or an applier flagged a contract defect, and the standard takt-sdd-workflow dispatch loop can't carry it further. Explains freezing the affected subtree, escalating to the right contract owner, and resuming without collapsing the rest of the plan."
+description: "An SDD implementation task failed twice, or an applier flagged a contract defect, and the standard SDD workflow dispatch loop can't carry it further. Explains freezing the affected subtree, escalating to the right contract owner, and resuming without collapsing the rest of the plan."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,8 +9,8 @@ metadata:
 
 # Takt SDD Recovery
 
-Failure and replanning protocol for an implementation DAG already built under
-takt-sdd-workflow. It applies once a dispatched task fails a second time, or an applier
+Failure and replanning protocol for an implementation DAG already built under the
+SDD workflow. It applies once a dispatched task fails a second time, or an applier
 flags a contract defect — never for a first failure within authorized recovery bounds,
 which retries in place without this protocol.
 

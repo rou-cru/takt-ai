@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: verify — Verification reports
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the verification report — which requirements held, failed, or stayed unverified — each with the command, test output, or reading that shows it, and for staged work the author_key, file and line it concerns.

@@ -10,7 +10,7 @@ BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause naming
 memory contract and, for recording, the agent's memory skill. Only undeclared optional files are omitted.
 This order does not introduce an authority hierarchy. Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
-discovers them; they are not injected into initial prompts. Resource bytes are
+discovers them; they are not injected into initial prompts. `shared/GUIDELINES.md` is registered in `instructions`, so every session loads it. Resource bytes are
 copied unchanged, except that a double-brace `policy.<name>` marker in Markdown prose is
 replaced at install with the matching value of `takt/dispatch/admission_policy.yaml`;
 an unknown marker fails the install.
@@ -28,12 +28,16 @@ section Engram's wiring places in `~/.config/opencode/AGENTS.md`.
 
 ## VFS by role
 
-| Role | VFS tools | How it changes the workspace |
-| --- | --- | --- |
-| orchestrator | claims, `vfs_discard`, `vfs_consolidate` | native edit outside claimed paths; assigns, discards and consolidates staged work |
-| planning_author, direct_interlocutor | none | native edit outside claimed paths, delivering documents to the paths named |
-| execution (dev, fix, simplify) | bind, write, read, delete | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
-| verification (verify, judge-a, judge-b) | bind, read, verify | none; reads staged work when assigned a gate, including GC deltas; shell and network run natively with native edit denied |
+| Role | How it changes the workspace |
+| --- | --- |
+| orchestrator | native edit outside claimed paths; assigns, discards and consolidates staged work; reads the journal and execution history |
+| planning_author, direct_interlocutor | native edit outside claimed paths, delivering documents to the paths named |
+| execution | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
+| quality_assurance | none; native edit denied |
+| verification | none; reads staged work when assigned a gate, including GC deltas; shell and network run natively with native edit denied |
+
+Each instance's VFS grant is the `vfs_capabilities` list in its `agent.yaml`
+(capability names from `takt/model/vfs_capability.go`); the role does not grant VFS access.
 
 No role reads or writes the secret-bearing paths in `takt/model/sensitive_paths.go`;
 native edits never land on a path an active VFS claim holds, and specialist shell

@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: judge-a / judge-b — Review reports
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the review report — ranked findings with file, line, defect and evidence, and what you examined, did not examine, and left uncertain. For staged work, each finding names its author_key.

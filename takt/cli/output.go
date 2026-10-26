@@ -174,7 +174,11 @@ func renderPartialResultText(w io.Writer, command string, result any, cause erro
 
 // renderDeployment prints changed files so users can confirm what was applied.
 func renderDeployment(w io.Writer, command string, r setup.DeploymentResult) error {
-	return renderDeploymentStatus(w, command, r, "complete")
+	status := "complete"
+	if len(r.Incomplete) > 0 {
+		status = "incomplete"
+	}
+	return renderDeploymentStatus(w, command, r, status)
 }
 
 func renderDeploymentStatus(w io.Writer, command string, r setup.DeploymentResult, status string) error {
@@ -188,6 +192,16 @@ func renderDeploymentStatus(w io.Writer, command string, r setup.DeploymentResul
 	}
 	for _, action := range r.Actions {
 		if err := writef(w, "  [action] %s\n", action); err != nil {
+			return err
+		}
+	}
+	for _, item := range r.Incomplete {
+		if err := writef(w, "  [incomplete] %s\n", item); err != nil {
+			return err
+		}
+	}
+	for _, path := range r.Retained {
+		if err := writef(w, "  [retained] %s\n", path); err != nil {
 			return err
 		}
 	}

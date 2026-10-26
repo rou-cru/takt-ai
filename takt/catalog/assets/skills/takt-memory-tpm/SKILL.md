@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: tpm — Final task breakdown
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard result: the complete final task list produced by the breakdown, in one dedicated

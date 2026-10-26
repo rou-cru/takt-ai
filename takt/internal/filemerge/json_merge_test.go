@@ -13,21 +13,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-package filemerge
+package filemerge_test
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 )
 
 func TestMergeJSONObjectsRecursively(t *testing.T) {
 	base := []byte(`{"plugins":["a"],"settings":{"theme":"default","flags":{"x":true}}}`)
 	overlay := []byte(`{"settings":{"theme":"takt","flags":{"y":true}},"extra":1}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -62,9 +65,9 @@ func TestMergeJSONObjectsSupportsJSONCBase(t *testing.T) {
 	}`)
 	overlay := []byte(`{"chat.tools.autoApprove": true}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -82,49 +85,31 @@ func TestMergeJSONObjectsSupportsJSONCBase(t *testing.T) {
 	}
 }
 
-func TestMergeJSONObjectsMalformedBaseReturnsOverlayOnly(t *testing.T) {
-	// Real user machines may have a malformed MCP config file.
-	// The installer should recover by treating the broken base as {} and continuing.
+// TestMergeJSONObjectsRejectsInvalidBase checks that a base which is not a
+// JSON object is rejected with its position in the original bytes, never
+// treated as an empty object a caller could mistake for content safe to replace.
+func TestMergeJSONObjectsRejectsInvalidBase(t *testing.T) {
+	overlay := []byte(`{"a": 1}`)
 	tests := []struct {
-		name    string
-		base    []byte
-		overlay []byte
-		wantKey string
+		name         string
+		base         string
+		line, column int
 	}{
-		{
-			name:    "base starting with letter",
-			base:    []byte(`allow: all`),
-			overlay: []byte(`{"mcpServers": {"context7": {"type": "remote"}}}`),
-			wantKey: "mcpServers",
-		},
-		{
-			name:    "unclosed json object",
-			base:    []byte(`{"ok": true`),
-			overlay: []byte(`{"chat.tools.autoApprove": true}`),
-			wantKey: "chat.tools.autoApprove",
-		},
-		{
-			name:    "arbitrary text",
-			base:    []byte(`a`),
-			overlay: []byte(`{"servers": {"engram": {"command": "engram"}}}`),
-			wantKey: "servers",
-		},
+		{name: "syntax error", base: "{\n  \"a\": 1,\n  x\n}", line: 3, column: 3},
+		{name: "syntax error after comment", base: "{\n// note\n  \"a\": 1,\n  x\n}", line: 4, column: 3},
+		{name: "array root", base: "[1, 2]", line: 1, column: 1},
+		{name: "null root after whitespace", base: "  null", line: 1, column: 3},
+		{name: "scalar root", base: `"text"`, line: 1, column: 1},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			merged, err := MergeJSONObjects(tt.base, tt.overlay)
-			if err != nil {
-				t.Fatalf("MergeJSONObjects() error = %v; want nil (malformed base should be treated as {})", err)
+			merged, err := filemerge.MergeJSONObjects([]byte(tt.base), overlay)
+			var invalid *filemerge.InvalidJSONError
+			if merged != nil || !errors.As(err, &invalid) {
+				t.Fatalf("MergeJSONObjects() = %s, %v; want no content and an *InvalidJSONError", merged, err)
 			}
-
-			var got map[string]any
-			if err := json.Unmarshal(merged, &got); err != nil {
-				t.Fatalf("merged result is not valid JSON: %v", err)
-			}
-
-			if _, ok := got[tt.wantKey]; !ok {
-				t.Fatalf("merged result missing key %q from overlay; got keys: %v", tt.wantKey, got)
+			if invalid.Line != tt.line || invalid.Column != tt.column {
+				t.Errorf("position = line %d column %d; want line %d column %d", invalid.Line, invalid.Column, tt.line, tt.column)
 			}
 		})
 	}
@@ -136,9 +121,9 @@ func TestMergeJSONObjectsReplaceSentinelErasesBaseKeys(t *testing.T) {
 	base := []byte(`{"mcp":{"engram":{"command":"/opt/homebrew/bin/engram","args":["mcp","--tools=agent"],"type":"local"}}}`)
 	overlay := []byte(`{"mcp":{"engram":{"__replace__":{"command":["/opt/homebrew/bin/engram","mcp","--tools=agent"],"type":"local"}}}}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -171,9 +156,9 @@ func TestMergeJSONObjectsReplaceSentinelNoBaseKey(t *testing.T) {
 	base := []byte(`{}`)
 	overlay := []byte(`{"a":{"__replace__":{"z":3}}}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -197,9 +182,9 @@ func TestMergeJSONObjectsReplaceSentinelPreservesOtherKeys(t *testing.T) {
 	base := []byte(`{"a":{"old":1},"b":"keep"}`)
 	overlay := []byte(`{"a":{"__replace__":{"new":2}}}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -226,9 +211,9 @@ func TestMergeJSONObjectsReplaceSentinelNotInOutput(t *testing.T) {
 	base := []byte(`{"x":{"y":1}}`)
 	overlay := []byte(`{"x":{"__replace__":{"z":2}}}`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	if !json.Valid(merged) {
@@ -297,9 +282,9 @@ func TestMergeJSONObjects_Issue278_WildcardSurvivesDeepMerge(t *testing.T) {
   }
 }`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -371,9 +356,9 @@ func TestMergeJSONObjects_Issue278_ReplaceSentinelFixesWildcard(t *testing.T) {
   }
 }`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -432,9 +417,9 @@ func TestMergeJSONObjectsUnionsPluginsFromUserCLIConfig(t *testing.T) {
   "plugins": ["./tui-plugins/takt-logo.tsx"]
 }`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any
@@ -464,14 +449,14 @@ func TestMergeJSONObjectsPluginsUnionIsIdempotent(t *testing.T) {
 	base := []byte(`{"plugins":["user-a.ts"]}`)
 	overlay := []byte(`{"plugins":["user-a.ts","./tui-plugins/takt-logo.tsx"]}`)
 
-	once, err := MergeJSONObjects(base, overlay)
+	once, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
-	twice, err := MergeJSONObjects(once, overlay)
+	twice, err := filemerge.MergeJSONObjects(once, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() second pass error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() second pass error = %v", err)
 	}
 
 	var first, second map[string]any
@@ -493,40 +478,55 @@ func TestMergeJSONObjectsPluginsUnionIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestMergeJSONObjectsUnionsSkillsArray covers the "skills" key emitted into
-// opencode.json: same union semantics as plugins — user skill paths survive
-// and Takt's paths are appended only when missing.
-func TestMergeJSONObjectsUnionsSkillsArray(t *testing.T) {
-	base := []byte(`{
-  "skills": ["~/.config/takt-ai/skills", "/home/user/my-skills"],
-  "theme": "dracula"
-}`)
-	overlay := []byte(`{
-  "skills": ["~/.config/takt-ai/skills", "~/.config/takt-ai/skills/default"],
-  "theme": "takt"
-}`)
-
-	merged, err := MergeJSONObjects(base, overlay)
-	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+// TestMergeJSONObjectsUnionsUserArrays covers the union keys emitted into
+// opencode.json: user entries survive and Takt's entries are appended only
+// when missing.
+func TestMergeJSONObjectsUnionsUserArrays(t *testing.T) {
+	tests := []struct {
+		key           string
+		user, overlay []any
+		want          []any
+	}{
+		{
+			key:     "skills",
+			user:    []any{"~/.config/takt-ai/skills", "/home/user/my-skills"},
+			overlay: []any{"~/.config/takt-ai/skills", "~/.config/takt-ai/skills/default"},
+			want:    []any{"~/.config/takt-ai/skills", "/home/user/my-skills", "~/.config/takt-ai/skills/default"},
+		},
+		{
+			key:     "instructions",
+			user:    []any{"~/rules/mine.md"},
+			overlay: []any{"~/.config/opencode/takt/shared/GUIDELINES.md"},
+			want:    []any{"~/rules/mine.md", "~/.config/opencode/takt/shared/GUIDELINES.md"},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			base, err := json.Marshal(map[string]any{tt.key: tt.user, "theme": "dracula"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			overlay, err := json.Marshal(map[string]any{tt.key: tt.overlay, "theme": "takt"})
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	var got map[string]any
-	if err := json.Unmarshal(merged, &got); err != nil {
-		t.Fatalf("Unmarshal merged error = %v", err)
-	}
+			merged, err := filemerge.MergeJSONObjects(base, overlay)
+			if err != nil {
+				t.Fatalf("MergeJSONObjects() error = %v", err)
+			}
 
-	want := []any{"~/.config/takt-ai/skills", "/home/user/my-skills", "~/.config/takt-ai/skills/default"}
-	skills, ok := got["skills"].([]any)
-	if !ok {
-		t.Fatalf("skills is not an array; got: %T = %v", got["skills"], got["skills"])
-	}
-	if !reflect.DeepEqual(skills, want) {
-		t.Fatalf("skills = %#v, want %#v", skills, want)
-	}
-
-	if got["theme"] != "takt" {
-		t.Fatalf("theme = %v, want takt", got["theme"])
+			var got map[string]any
+			if err := json.Unmarshal(merged, &got); err != nil {
+				t.Fatalf("Unmarshal merged error = %v", err)
+			}
+			if !reflect.DeepEqual(got[tt.key], tt.want) {
+				t.Fatalf("%s = %#v, want %#v", tt.key, got[tt.key], tt.want)
+			}
+			if got["theme"] != "takt" {
+				t.Fatalf("theme = %v, want takt", got["theme"])
+			}
+		})
 	}
 }
 
@@ -550,9 +550,9 @@ func TestMergeJSONObjectsNonUnionArraysStillReplace(t *testing.T) {
   "scalar": "new"
 }`)
 
-	merged, err := MergeJSONObjects(base, overlay)
+	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
-		t.Fatalf("MergeJSONObjects() error = %v", err)
+		t.Fatalf("filemerge.MergeJSONObjects() error = %v", err)
 	}
 
 	var got map[string]any

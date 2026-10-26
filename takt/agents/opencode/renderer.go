@@ -22,6 +22,7 @@ import (
 	"slices"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -86,11 +87,10 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 		// Enable OpenCode's built-in formatters after file edits and retain
 		// snapshots so changes can be reverted through the native UI.
 		"formatter": true,
-		"snapshot":  true,
-		"attention": map[string]any{
-			"enabled":       true,
-			"notifications": true,
-		},
+		"snapshots": true,
+		// OpenCode resolves a relative entry from the workspace, so the
+		// installed guidelines are named from the home directory.
+		"instructions": []string{"~/" + DeployPath(catalog.GuidelinesPath)},
 	}
 	addConfigOptions(config, request)
 	content, err := json.MarshalIndent(config, "", "  ")
@@ -99,6 +99,26 @@ func RenderConfig(request ConfigRequest) (Artifact, error) {
 	}
 	return Artifact{
 		Path:    ConfigPath(),
+		Content: append(content, '\n'),
+	}, nil
+}
+
+// RenderCLIConfig returns the terminal client's cli.json artifact. OpenCode V2
+// reads attention (system notifications and sounds) from this file, not from
+// opencode.json.
+func RenderCLIConfig() (Artifact, error) {
+	config := map[string]any{
+		"$schema": "https://opencode.ai/v2/cli.json",
+		"attention": map[string]any{
+			"notifications": true,
+		},
+	}
+	content, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return Artifact{}, fmt.Errorf("marshal OpenCode CLI config: %w", err)
+	}
+	return Artifact{
+		Path:    CLIConfigPath(),
 		Content: append(content, '\n'),
 	}, nil
 }
@@ -203,8 +223,9 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 	var rules []permissionRule
 	if spec.Role == model.RoleOrchestrator {
 		// The orchestrator is the trusted coordinator (vfs.Identity's own
-		// doc comment): it keeps full native permissions, no shell overrides.
-		// The VFS grant is projected independently below.
+		// doc comment): it keeps full native permissions; its shell overrides
+		// are only the confirmations and the Git classification below. The
+		// VFS grant is projected independently below.
 		rules = append(rules, permissionRule{"edit", allResources, "allow"})
 		rules = append(rules, sensitiveEditDenies()...)
 		rules = append(rules, subagentRules(maintenance)...)
@@ -215,6 +236,9 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		// the shell path skips the plugin's own consent (dispatch_abandon, repair
 		// approval), so the user approves every such command.
 		rules = append(rules, permissionRule{"shell", "*takt-ai dispatch*", "ask"}, permissionRule{"shell", "*takt-ai gc*", "ask"})
+		// Git asks the user for the actions PR-VFS-GIT-5 gates; every other
+		// Git command is the coordinator's conduct.
+		rules = append(rules, gitRules(spec.Role)...)
 	} else {
 		// Verification and quality assurance never write the project; their
 		// output goes outside it through the shell.
@@ -345,10 +369,11 @@ func skillRules(designed []string) []permissionRule {
 	return rules
 }
 
-// shellRules merges the git-mutation guard and the VFS-CLI guard into one
+// shellRules merges the Git permission rules and the VFS-CLI guard into one
 // ordered rule list. The broad "git *" deny comes first so the read-only
-// subcommand allows that follow can win as the last match. No specialist
-// drives the VFS CLI directly: its tools inject the harness identity.
+// subcommand allows that follow can win as the last match, and the
+// writing-option denies after them catch a read-like form that writes. No specialist drives the VFS CLI
+// directly: its tools inject the harness identity.
 func shellRules(role model.RoleClass) []permissionRule {
 	return append(gitRules(role), vfsShellRules()...)
 }
@@ -391,13 +416,17 @@ func vfsPermissionRules(capabilities []model.VFSCapability) []permissionRule {
 	return rules
 }
 
+// gitRules copies vfs.GitPermissionRules for role into OpenCode's native rule
+// shape, never re-deriving it: every role but the orchestrator (an undeclared
+// one included) denies git except read-only subcommands, and the orchestrator
+// allows git except the PR-VFS-GIT-5 actions it asks the user to approve. GitPermissionRule effects are the
+// native strings and its slice order is the evaluation order for a host
+// where the last matching rule wins, so both are copied exactly.
 func gitRules(role model.RoleClass) []permissionRule {
-	if role == "" || vfs.GuardGitMutation(role) == nil {
-		return nil
-	}
-	rules := []permissionRule{{"shell", "git *", "deny"}}
-	for _, cmd := range vfs.ReadOnlyGitSubcommands() {
-		rules = append(rules, permissionRule{"shell", "git " + cmd, "allow"}, permissionRule{"shell", "git " + cmd + " *", "allow"})
+	projected := vfs.GitPermissionRules(role)
+	rules := make([]permissionRule, 0, len(projected))
+	for _, canonical := range projected {
+		rules = append(rules, permissionRule{"shell", canonical.Pattern, canonical.Effect})
 	}
 	return rules
 }

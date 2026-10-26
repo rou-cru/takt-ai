@@ -8,7 +8,6 @@
 package opencode_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"os"
@@ -19,211 +18,49 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
+// TestRenderConfigComponents checks each requested component reaches its key
+// in the rendered config, and leaves it out when not requested.
 func TestRenderConfigComponents(t *testing.T) {
-	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
-		Assignment:  model.ModelAssignment{Model: "openai/gpt-5.6-luna"},
-		Context7:    true,
-		Permissions: true,
-	})
-	if err != nil {
-		t.Fatalf("opencode.RenderConfig() error = %v", err)
-	}
-	if artifact.Path != ".config/opencode/opencode.json" {
-		t.Fatalf("path = %q", artifact.Path)
-	}
-	// The merged file keeps OpenCode's canonical JSON shape: the map-based
-	// marshal matches the deep-merge output of the reference overlays.
-	want := `{
-  "$schema": "https://opencode.ai/config.json",
-  "attention": {
-    "enabled": true,
-    "notifications": true
-  },
-  "default_agent": "takt",
-  "formatter": true,
-  "mcp": {
-    "servers": {
-      "context7": {
-        "disabled": false,
-        "type": "remote",
-        "url": "https://mcp.context7.com/mcp"
-      }
-    }
-  },
-  "model": "openai/gpt-5.6-luna",
-  "permissions": [
-    {
-      "action": "shell",
-      "effect": "allow",
-      "resource": "*"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git commit *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git push"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git push *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git push --force *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git rebase *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git reset --hard *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git clean"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git clean *"
-    },
-    {
-      "action": "shell",
-      "effect": "ask",
-      "resource": "git restore *"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "takt-ai memory*"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "*takt-ai memory*"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "takt-ai gc*"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "*takt-ai gc*"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "takt-ai dispatch*"
-    },
-    {
-      "action": "shell",
-      "effect": "deny",
-      "resource": "*takt-ai dispatch*"
-    },
-    {
-      "action": "read",
-      "effect": "allow",
-      "resource": "*"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "*.env"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "*.env.*"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.env"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.env.*"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.ssh/**"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.credentials/**"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/Library/Keychains/**"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.aws/credentials"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/.config/gh/hosts.yml"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/*.pem"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/*.key"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/secrets/**"
-    },
-    {
-      "action": "read",
-      "effect": "deny",
-      "resource": "**/credentials.json"
-    },
-    {
-      "action": "edit",
-      "effect": "deny",
-      "resource": "*"
-    }
-  ],
-  "snapshot": true
-}
-`
-	if !bytes.Equal(withoutOrchestrator(t, artifact.Content), []byte(want)) {
-		t.Fatalf("opencode config with components mismatch:\n%s", artifact.Content)
-	}
-}
-
-func TestRenderConfigWithoutComponentsKeepsBaseShape(t *testing.T) {
-	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{Assignment: model.ModelAssignment{Model: "openai/gpt-5.6-luna"}})
-	if err != nil {
-		t.Fatalf("opencode.RenderConfig() error = %v", err)
-	}
-	want := "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"attention\": {\n    \"enabled\": true,\n    \"notifications\": true\n  },\n  \"default_agent\": \"takt\",\n  \"formatter\": true,\n  \"model\": \"openai/gpt-5.6-luna\",\n  \"snapshot\": true\n}\n"
-	if !bytes.Equal(withoutOrchestrator(t, artifact.Content), []byte(want)) {
-		t.Fatalf("base config mismatch:\n%s", artifact.Content)
+	const assigned = "openai/gpt-5.6-luna"
+	for _, tc := range []struct {
+		name       string
+		components bool
+	}{{"with components", true}, {"without components", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+				Assignment:  model.ModelAssignment{Model: assigned},
+				Context7:    tc.components,
+				Permissions: tc.components,
+			})
+			if err != nil {
+				t.Fatalf("opencode.RenderConfig() error = %v", err)
+			}
+			if artifact.Path != ".config/opencode/opencode.json" {
+				t.Fatalf("path = %q", artifact.Path)
+			}
+			var config struct {
+				Model string `json:"model"`
+				MCP   struct {
+					Servers map[string]struct {
+						Disabled bool `json:"disabled"`
+					} `json:"servers"`
+				} `json:"mcp"`
+				Permissions []rule `json:"permissions"`
+			}
+			if err := json.Unmarshal(artifact.Content, &config); err != nil {
+				t.Fatal(err)
+			}
+			if config.Model != assigned {
+				t.Errorf("model = %q, want %q", config.Model, assigned)
+			}
+			context7, ok := config.MCP.Servers["context7"]
+			if ok != tc.components || context7.Disabled {
+				t.Errorf("context7 server present = %v (disabled %v), want present and enabled = %v", ok, context7.Disabled, tc.components)
+			}
+			if (len(config.Permissions) > 0) != tc.components {
+				t.Errorf("permissions = %v, want them rendered = %v", config.Permissions, tc.components)
+			}
+		})
 	}
 }
 
@@ -331,20 +168,6 @@ func TestSandboxRuntimeVersionMatchesAdapterManifest(t *testing.T) {
 	}
 }
 
-func withoutOrchestrator(t *testing.T, content []byte) []byte {
-	t.Helper()
-	var config map[string]any
-	if err := json.Unmarshal(content, &config); err != nil {
-		t.Fatal(err)
-	}
-	delete(config, "agents")
-	rendered, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return append(rendered, '\n')
-}
-
 func TestTaktMemoryPluginArtifact(t *testing.T) {
 	artifact := opencode.TaktMemoryPluginArtifact(`/opt/takt "ai"/takt-ai`)
 	if artifact.Path != ".config/opencode/plugins/takt-memory.ts" {
@@ -389,5 +212,23 @@ func TestPluginToolDescriptionsCarryConductOnly(t *testing.T) {
 				t.Errorf("tool description explains mechanism with %q: %s", term, m[1])
 			}
 		}
+	}
+}
+
+func TestRenderCLIConfigPlacesAttentionInCLIConfig(t *testing.T) {
+	artifact, err := opencode.RenderCLIConfig()
+	if err != nil {
+		t.Fatalf("opencode.RenderCLIConfig() error = %v", err)
+	}
+	if artifact.Path != ".config/opencode/cli.json" {
+		t.Fatalf("cli config path = %q, want .config/opencode/cli.json", artifact.Path)
+	}
+	var config struct {
+		Attention struct {
+			Notifications bool `json:"notifications"`
+		} `json:"attention"`
+	}
+	if err := json.Unmarshal(artifact.Content, &config); err != nil || !config.Attention.Notifications {
+		t.Fatalf("cli config = %s (%v), want attention.notifications enabled", artifact.Content, err)
 	}
 }

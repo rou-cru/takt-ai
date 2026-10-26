@@ -220,8 +220,9 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".config", "opencode", "plugins", "takt-dag", "tui.tsx")); err != nil {
 		t.Errorf("deployed component artifact: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".config", "opencode", "cli.json")); err == nil {
-		t.Error("cli.json was deployed, but Takt has nothing to write there")
+	cli, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "cli.json"))
+	if err != nil || !bytes.Contains(cli, []byte(`"attention"`)) {
+		t.Errorf("cli.json must carry the attention settings OpenCode V2 reads there: %v\n%s", err, cli)
 	}
 }
 
@@ -253,6 +254,14 @@ case "$*" in
 esac
 `
 	if err := os.WriteFile(filepath.Join(bin, "opencode"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// npm install --prefix <dir> …: lay down the package the sandbox adapter
+	// checks for, without the network.
+	npm := `#!/bin/sh
+mkdir -p "$3/node_modules/@anthropic-ai/sandbox-runtime" && echo '{}' > "$3/node_modules/@anthropic-ai/sandbox-runtime/package.json"
+`
+	if err := os.WriteFile(filepath.Join(bin, "npm"), []byte(npm), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

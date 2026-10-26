@@ -42,6 +42,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
   - [func SyncContextProgress\(ctx context.Context, rootDir string, plans \[\]TargetPlan, runtime ProviderRuntime, progress func\(DeploymentProgress\), preserve ...string\) \(DeploymentResult, error\)](<#SyncContextProgress>)
 - [type DriftCorrectionResult](<#DriftCorrectionResult>)
   - [func CorrectDriftContext\(ctx context.Context, rootDir string, plans \[\]TargetPlan, selectedPaths \[\]string, runtime ProviderRuntime\) \(DriftCorrectionResult, error\)](<#CorrectDriftContext>)
+- [type FileConflict](<#FileConflict>)
 - [type OpenCodePlanOptions](<#OpenCodePlanOptions>)
 - [type OperationRecord](<#OperationRecord>)
   - [func IncompleteOperation\(rootDir string\) \(OperationRecord, bool\)](<#IncompleteOperation>)
@@ -96,6 +97,20 @@ const (
     ManagedFileMode os.FileMode = 0o644
     // ManagedDirectoryMode allows traversal of the deployment tree.
     ManagedDirectoryMode os.FileMode = 0o755
+)
+```
+
+<a name="ConflictUnverifiedSinceInstall"></a>FileConflict reasons, one per destination state restore refuses to overwrite.
+
+```go
+const (
+    // ConflictUnverifiedSinceInstall marks destination bytes that differ from
+    // the backup and cannot be shown to match the deployed content: edited
+    // after install, or recorded with an unknown installed digest.
+    ConflictUnverifiedSinceInstall = "unverified_since_install"
+    // ConflictDestinationType marks a destination that is not a regular
+    // file, such as a directory or symlink.
+    ConflictDestinationType = "destination_type"
 )
 ```
 
@@ -364,7 +379,8 @@ type ConflictEntry struct {
     // Path is the artifact's root-relative path, suitable for passing back
     // into the preserve list of ApplyContext/SyncContext.
     Path string
-    // Reason is "pre-existing" (unmanaged content Takt would overwrite), "user-edited", or "missing".
+    // Reason is "pre-existing" (unmanaged content Takt would overwrite, including
+    // unmanaged JSON that does not parse as an object), "user-edited", or "missing".
     Reason string
     // Impact is ImpactUnrelated, ImpactUncertain or ImpactIncompatible; see
     // classifyConflict for the rule set.
@@ -380,6 +396,10 @@ type ConflictEntry struct {
     SHA256 string
     // Accepted reports the user already kept this exact content with this impact, so it must not be asked again.
     Accepted bool
+    // Line and Column locate the parse failure of unmanaged JSON that Takt
+    // cannot merge into; both are zero for any other conflict.
+    Line   int
+    Column int
 }
 ```
 
@@ -422,6 +442,14 @@ type DeploymentResult struct {
     Actions []string `json:"actions,omitempty"`
     // NotApplied lists planned changes a cancellation left unapplied; empty when the deployment completed.
     NotApplied []string `json:"notApplied,omitempty"`
+    // Incomplete lists committed work the deployment could not finish, such
+    // as a dependency that was not installed, so a caller never mistakes
+    // partial work for full success.
+    Incomplete []string `json:"incomplete"`
+    // Retained lists planned paths kept as they are: preserved by the user or
+    // edited locally. The operation succeeds, but behavior relying on them is
+    // not guaranteed.
+    Retained []string `json:"retained,omitempty"`
 }
 ```
 
@@ -491,6 +519,24 @@ func CorrectDriftContext(ctx context.Context, rootDir string, plans []TargetPlan
 ```
 
 CorrectDriftContext is CorrectDrift with cooperative cancellation; cancellation returns restored work with ctx.Err\(\).
+
+<a name="FileConflict"></a>
+## type FileConflict
+
+FileConflict is one managed path restore left untouched because its destination state is not safe to overwrite.
+
+```go
+type FileConflict struct {
+    // Path is the managed path.
+    Path string `json:"path"`
+    // CurrentHash is the digest of the current destination bytes; empty when the destination is not a regular file.
+    CurrentHash string `json:"currentHash"`
+    // ReplacementHash is the digest of the backup content restore would put in place.
+    ReplacementHash string `json:"replacementHash"`
+    // Reason is the FileConflict constant naming why restore left the path alone.
+    Reason string `json:"reason"`
+}
+```
 
 <a name="OpenCodePlanOptions"></a>
 ## type OpenCodePlanOptions
@@ -722,12 +768,18 @@ type ProviderRuntime struct {
 <a name="RestoreResult"></a>
 ## type RestoreResult
 
-RestoreResult reports which managed paths had their pre\-existing content restored from backup.
+RestoreResult reports the per\-file disposition of a restore.
 
 ```go
 type RestoreResult struct {
-    // Restored lists managed paths whose pre-existing content came back from backup.
+    // Restored lists managed paths whose backed-up pre-existing content was put back.
     Restored []string `json:"restored"`
+    // Preserved lists managed paths whose current bytes stayed in place: files that already held the backup bytes.
+    Preserved []string `json:"preserved"`
+    // Conflicts lists managed paths that restore refused to overwrite; their bytes are untouched.
+    Conflicts []FileConflict `json:"conflicts"`
+    // Incomplete lists managed paths whose restore could not be carried out; the returned error names each failure.
+    Incomplete []string `json:"incomplete"`
 }
 ```
 
@@ -738,7 +790,7 @@ type RestoreResult struct {
 func Restore(rootDir string, manifest *OwnershipManifest) (RestoreResult, error)
 ```
 
-Restore writes each entry's backed\-up pre\-existing content back, undoing Takt's takeover. Entries without backups are skipped; crafted paths can never write outside rootDir.
+Restore restores each entry's backed\-up pre\-existing content, undoing Takt's takeover. Entries without backups are skipped; crafted paths can never write outside rootDir. A destination edited after the backup was taken is never overwritten: the edit survives and the file is reported in RestoreResult.Conflicts.
 
 <a name="RetentionChoices"></a>
 ## type RetentionChoices

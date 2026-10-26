@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: analyst — Codebase investigation
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - Standard result: an official investigation report with conclusions and pertinent evidence.

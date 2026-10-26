@@ -63,6 +63,14 @@ type DeploymentResult struct {
 	Actions []string `json:"actions,omitempty"`
 	// NotApplied lists planned changes a cancellation left unapplied; empty when the deployment completed.
 	NotApplied []string `json:"notApplied,omitempty"`
+	// Incomplete lists committed work the deployment could not finish, such
+	// as a dependency that was not installed, so a caller never mistakes
+	// partial work for full success.
+	Incomplete []string `json:"incomplete"`
+	// Retained lists planned paths kept as they are: preserved by the user or
+	// edited locally. The operation succeeds, but behavior relying on them is
+	// not guaranteed.
+	Retained []string `json:"retained,omitempty"`
 }
 
 // DeploymentProgress reports one temporary staging or committed artifact.
@@ -99,11 +107,14 @@ func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []s
 		}
 		return DeploymentResult{}, transaction.abort(err)
 	}
-	if err := transaction.cleanupTemps(); err != nil {
-		return DeploymentResult{}, fmt.Errorf("deployment committed but temporary cleanup failed: %w", err)
-	}
+	// The commit is durable, so the changed paths belong to the result before
+	// best-effort cleanup: a cleanup failure returns the committed work next
+	// to the error instead of substituting an empty result.
 	for _, pendingFile := range pending {
 		result.Changed = append(result.Changed, pendingFile.path)
+	}
+	if err := transaction.cleanupTemps(); err != nil {
+		return result, fmt.Errorf("deployment committed but temporary cleanup failed: %w", err)
 	}
 	return result, nil
 }

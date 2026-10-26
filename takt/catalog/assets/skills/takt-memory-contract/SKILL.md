@@ -89,8 +89,7 @@ whose `relates_to` names the affected entry by its `#id` and one relation:
   patch, the changed sections, or "the rest stands", and never `supplements` your own artifact.
 - Only user approval or verified evidence can `correct` or `supersede`. A later entry or a
   different role never settles a disagreement: without that authority, use `disputes`.
-- Before declaring a relation, search memory (`mem_search`, then `mem_get_observation`) to
-  find the entry and its `#id`. Never guess an `#id`.
+- Before declaring a relation, confirm the entry and its `#id`. Never guess an `#id`.
 - Relations stay inside one tier: `relates_to` names an entry of the same scope, never one
   across the tier boundary.
 - Same fact, same nature, still current: record nothing.
@@ -126,9 +125,12 @@ per domain.
 
 ## 7. Reading memory
 
-- Search with `mem_search` and judge by title; open with `mem_get_observation` only what your
-  work needs now, never an entry you only pass on by ID. Locate with `mem_search`, never with
-  `mem_context`, which returns whole sessions.
+- An entry whose `#id` you already know is retrieved directly with `mem_get_observation`; no
+  prior search is needed. For an unknown topic, search with `mem_search` and judge by title.
+  Open only what your work needs now, never an entry you only pass on by ID. Locate with
+  `mem_search`, never with `mem_context`, which returns whole sessions.
+- When a known `#id` cannot be retrieved, report that `#id` and the actual error; never
+  substitute another entry found by search for it.
 - A delegation arrives with the invariants it consumes, or with the declaration that none
   exists yet. Those entries bind as read-only and prevail over any restatement in the brief;
   with none declared, author from the brief. A session lent to you names them in `requirements`.

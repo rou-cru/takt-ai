@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: fix — Resolved defects
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the problem you resolved and the pattern occurrences you corrected, with the regression test or path as evidence.

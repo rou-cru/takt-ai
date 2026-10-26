@@ -1,7 +1,5 @@
 # PRD: Quality Assurance and Testing
 
-**Implementation evidence:** the canonical QA flow and projected specialist context are tested locally; author ownership, matrix evolution and strengthening rounds have core/plugin regressions. Observable end-to-end QA alignment still requires a real OpenCode session. Catalog presence and unit tests alone do not certify model judgment or complete acceptance.
-
 ## 1. Problem
 
 Testing that is decided per task by whichever agent happens to implement reproduces the implementer's assumptions in its tests: the code and its oracle share one author and one blind spot. Takt requires a single test strategy, adapted once to each workspace, planned per objective, traced from requirement to evidence, and executed by agents whose independence from the implementation is part of the design.

@@ -401,11 +401,12 @@ RecoveryDeclaration is what PR\-ORQ\-13 requires recorded before uncertain work 
 
 ```go
 type RecoveryDeclaration struct {
-    Objective string   `json:"objective"`
-    Result    string   `json:"result"`
-    Scope     []string `json:"scope"`
-    Actions   int      `json:"actions"`
-    Attempts  int      `json:"attempts"`
+    Objective string `json:"objective"`
+    Result    string `json:"result"`
+
+    Scope    []string `json:"scope"`
+    Actions  int      `json:"actions"`
+    Attempts int      `json:"attempts"`
 }
 ```
 

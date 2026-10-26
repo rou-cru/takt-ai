@@ -98,7 +98,8 @@ func BusyFooter(cancelRequested bool) string {
 const progressBarWidth = 40
 
 // progressBar renders real progress only: without a known total the spinner
-// marker carries activity, so no bar pretends to measure anything.
+// marker carries activity, so no bar pretends to measure anything. Its cells
+// come from the active glyph map, so an ASCII surface draws ASCII cells.
 func progressBar(progress Progress) string {
 	if progress.Total <= 0 {
 		return ""
@@ -106,7 +107,7 @@ func progressBar(progress Progress) string {
 	bar := progressbar.New(
 		progressbar.WithWidth(progressBarWidth),
 		progressbar.WithColors(theme.FocusRing),
-		progressbar.WithFillCharacters('█', '░'),
+		progressbar.WithFillCharacters(theme.Icon.BarFill, theme.Icon.BarEmpty),
 	)
 	bar.EmptyColor = theme.BorderSubtle
 	bar.PercentageStyle = theme.Caption

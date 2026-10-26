@@ -9,9 +9,6 @@ metadata:
 
 # Memory role: quality — Non-functional analyses
 
-Follow `../takt-memory-contract/SKILL.md` for what every entry contains. This skill
-only narrows what your role records.
-
 ## Records
 
 - `observation` (`project`): the analysis report — per ISO/IEC 25010 characteristic named,
