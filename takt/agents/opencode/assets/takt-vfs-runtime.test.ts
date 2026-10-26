@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname } from "node:path"
@@ -1000,6 +1000,18 @@ describe("maintenance cycle", () => {
 })
 
 describe("interlocutor switch", () => {
+  // asked records each confirmation the harness raises; answer decides it.
+  let asked: Array<Record<string, unknown>> = []
+  let answer: "allow" | "deny" = "allow"
+  beforeEach(() => {
+    asked = []
+    answer = "allow"
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({ OpenCode: { make: () => ({ permission: { create: async (r: Record<string, unknown>) => {
+      asked.push(r)
+      return { id: r.id, effect: answer }
+    } } }) } }))
+  })
   const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: [3] }
   const request = { target_agent: "dev", objective: "Ship it", requirements: "typed" }
   const lent = { child: { metadata: { takt_switch: "root" } } }
@@ -1075,6 +1087,27 @@ describe("interlocutor switch", () => {
       expect(vfs.requests("dispatch", "abort_switch")).toEqual([{ action: "abort_switch", session: "root", child: "", evidence: "changed course", origin: "user" }])
       expect(vfs.log.interrupts).toEqual(["child"])
       await expect(vfs.run("dispatch_abort_switch", { reason: "again" }, orchestrator)).rejects.toThrow(NO_HOLDER)
+    } finally { await vfs.stop() }
+  })
+
+  test("a switch, abort or handoff the user refuses changes nothing", async () => {
+    const vfs = await startVfs({ sessions: lent, respond: core() })
+    const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
+    try {
+      answer = "deny"
+      await expect(vfs.run("dispatch_switch", request, caller)).rejects.toThrow("Permission denied: interlocutor_switch")
+      expect(asked[0]).toMatchObject({ sessionID: "root", action: "interlocutor_switch", resources: ["dev"], metadata: { objective: "Ship it" } })
+      expect(vfs.log.created).toEqual([])
+      expect(vfs.requests("dispatch", "switch")).toEqual([])
+      answer = "allow"
+      await vfs.run("dispatch_switch", request, caller)
+      answer = "deny"
+      await expect(vfs.run("dispatch_abort_switch", { reason: "model decided" }, caller)).rejects.toThrow("Permission denied: interlocutor_abort")
+      expect(vfs.requests("dispatch", "abort_switch")).toEqual([])
+      const holder = { sessionID: "child", agent: "dev", messageID: "m", id: "t" }
+      await expect(vfs.run("dispatch_handoff", { result: "Standard", additional_context: "done", extra_artifacts: [], result_ids: [3] }, holder)).rejects.toThrow("Permission denied: interlocutor_handoff")
+      expect(vfs.requests("dispatch", "handoff")).toEqual([])
+      expect(vfs.log.interrupts).toEqual([])
     } finally { await vfs.stop() }
   })
 

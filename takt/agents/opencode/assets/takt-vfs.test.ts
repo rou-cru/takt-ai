@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
@@ -33,6 +33,9 @@ const contracts = JSON.parse(readFileSync(resolve(import.meta.dir, "../testdata/
 
 describe("plugin setup", () => {
   test("registers the VFS and dispatch tools and hooks", async () => {
+    // The user accepts every confirmation this flow raises (switch, abort).
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({ OpenCode: { make: () => ({ permission: { create: async (r: Record<string, unknown>) => ({ id: r.id, effect: "allow" }) } }) } }))
     const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
     const originalSpawn = runtime.Bun.spawn
     const tools = new Map<string, { execute?: (...args: never[]) => unknown }>()

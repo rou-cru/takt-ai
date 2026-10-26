@@ -1605,20 +1605,17 @@ export default Plugin.define({
       // factory above unmodified: both need to create or stop the temporary
       // interlocutor's own session around the call to Go, and fields() only
       // ever contributes a plain object into that one call. Each repeats
-      // dispatch()'s own root-only guard instead (IR-19/IR-24: a switch or
-      // its abort is only ever originated by the base or the user, never by
-      // a temporary holder).
+      // dispatch()'s own root-only guard instead (IR-19/IR-24: a switch is
+      // originated by the base, its abort only by the user or the harness,
+      // never by a temporary holder).
       //
-      // OpenCode's plugin context has no programmatic way to raise the native
-      // `question` confirmation (no ctx.question domain, and unlike
-      // ctx.permission, there is no question.create on the local service's
-      // own client either — verified against the installed @opencode/plugin
-      // 2.0.16 and @opencode/client packages). `question` is a tool only the
-      // model itself can invoke, so these descriptions instruct the model to
-      // call it first and only proceed here after an accepted confirmation.
+      // The user's decision is the harness's to obtain, not the model's word
+      // (IR-20, IR-24): each transition asks through the permission service
+      // before anything changes. The confirmation actions are named apart from
+      // the tools, so no tool grant in the agent's rules answers them.
       editor.add({
         name: "dispatch_switch",
-        description: "Switch the active interlocutor role to another specialist for the rest of this conversation. First confirm the target specialist and objective with the user through the native `question` tool; call this only after an accepted confirmation (on rejection or a freeform answer, reevaluate).",
+        description: "Switch the active interlocutor role to another specialist for the rest of this conversation. The user is asked to accept the target specialist and objective before the switch takes effect; on a refusal, reevaluate with the user.",
         input: obj({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
@@ -1630,6 +1627,7 @@ export default Plugin.define({
           const args = toolInput<{ target_agent: string; objective: string; requirements?: string; client?: string; expected_artifact?: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_switch belongs to the root orchestrator")
+          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: args.requirements ?? "", client: args.client ?? "" }, c)
           const text = [
             "You are taking over as the active interlocutor for this workspace.",
             `Objective: ${args.objective}`,
@@ -1664,12 +1662,14 @@ export default Plugin.define({
       })
       editor.add({
         name: "dispatch_abort_switch",
-        description: "Abort the current interlocutor switch and return the interlocutor role to the base. No confirmation required.",
+        description: "Abort the current interlocutor switch and return the interlocutor role to the base. Only the user originates an abort: they are asked to accept it before it takes effect.",
         input: obj({ reason: str("Evidence for aborting the switch") }, ["reason"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ reason: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_abort_switch belongs to the root orchestrator")
+          // The user's acceptance is what makes this a user-originated abort.
+          await confirmWithUser("interlocutor_abort", session, { reason: args.reason }, c)
           // No child is named: the core aborts the current holder or refuses.
           const result = await governed(c, { action: "abort_switch", session, child: "", evidence: args.reason, origin: "user" })
           const aborted = result !== null && "child" in result && typeof result.child === "string" ? result.child : ""
@@ -1679,7 +1679,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "dispatch_handoff",
-        description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. First confirm with the user, through the native `question` tool, what is handed back (result, additional context, extra artifacts); call this only after an accepted confirmation.",
+        description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. The user is asked to accept what is handed back (result, additional context, extra artifacts) before the handoff takes effect.",
         input: obj({
           result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
           additional_context: str("Context to carry back to the base"),
@@ -1691,6 +1691,7 @@ export default Plugin.define({
         async execute(value: unknown, c) {
           const args = toolInput<{ result: string; additional_context: string; extra_artifacts: string[]; result_ids: number[] }>(value)
           const session = await rootSession(c.sessionID)
+          await confirmWithUser("interlocutor_handoff", c.agent, { result: args.result, additional_context: args.additional_context, extra_artifacts: (args.extra_artifacts ?? []).join(", "), result_ids: (args.result_ids ?? []).join(", ") }, c)
           // A refused handoff throws here, and its reason is all the holder
           // receives: it corrects and retries.
           const envelope = await governed(c, {

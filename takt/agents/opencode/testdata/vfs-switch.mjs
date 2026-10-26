@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import plugin from "./takt-vfs.ts"
 import {historyFixture} from "./history-fixture.mjs"
 const owner=historyFixture()
+// The user accepts every transition the harness asks about.
+globalThis.createPermission = async (r) => ({ id: r.id, effect: "allow" })
 
 // order records the true call sequence across session lifecycle and Go IPC,
 // so identity threading can be checked by position, not just by presence.

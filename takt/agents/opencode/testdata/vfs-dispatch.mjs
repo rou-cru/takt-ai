@@ -309,6 +309,9 @@ assert.match((await contextFor("takt", {}))[0], /^The cleanup cycle concluded/)
 assert.deepEqual(await contextFor("takt", {}), [])
 assert.deepEqual(await contextFor("dev", { cycle: { phase: "baseline" } }), [])
 
+// From here the user accepts every transition the harness asks about.
+globalThis.createPermission = async (r) => ({ id: r.id, effect: "allow" })
+
 // A switch registers with Go, carrying the created child session id, before
 // the child is ever prompted; a registration failure stops that
 // never-prompted child instead of leaving it dangling.
