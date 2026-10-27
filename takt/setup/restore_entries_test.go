@@ -112,7 +112,7 @@ func TestRestoreFailsWhenDestinationDirectoryIsReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	err := restoreOne(root, setup.OwnershipEntry{Path: "locked/a.txt", BackupPath: setup.BackupDir + "/b"})
+	err := restoreOne(root, setup.OwnershipEntry{Path: "locked/a.txt", BackupPath: setup.BackupDir + "/b", PriorSHA256: oldSHA256})
 	if err == nil || !strings.Contains(err.Error(), "stage restore") {
 		t.Fatalf("error = %v", err)
 	}
