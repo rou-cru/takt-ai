@@ -122,6 +122,9 @@ func ensurePrivateStore(path string) error {
 		return err
 	} else if !info.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrUnsafeStore, dir)
+	} else if info.Mode().Perm()&0o022 != 0 {
+		// Another user could unlink the database or its journal from a shared directory.
+		return fmt.Errorf("%w: %s is group- or world-writable", ErrUnsafeStore, dir)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, PrivateTelemetryFileMode)
 	if err == nil {

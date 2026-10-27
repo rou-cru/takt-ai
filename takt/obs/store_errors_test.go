@@ -259,6 +259,23 @@ func TestOpenStoreRefusesSymlinkedStateDir(t *testing.T) {
 	}
 }
 
+func TestOpenStoreRefusesWritableStateDir(t *testing.T) {
+	ws := t.TempDir()
+	dir := filepath.Join(ws, obs.StateDirName)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := obs.OpenStore(ws); !errors.Is(err, obs.ErrUnsafeStore) {
+		if err == nil {
+			_ = s.Close()
+		}
+		t.Fatalf("OpenStore = %v; want %v", err, obs.ErrUnsafeStore)
+	}
+}
+
 // TestOpenStoreTreatsQueryCharactersAsPath checks that a workspace name is a
 // filename, never connection options for the SQLite driver.
 func TestOpenStoreTreatsQueryCharactersAsPath(t *testing.T) {
