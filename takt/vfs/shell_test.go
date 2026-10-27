@@ -306,7 +306,9 @@ func TestShellInspectionDeniesReadingSecrets(t *testing.T) {
 	if plan.Decision != vfs.ShellAllow {
 		t.Fatalf("inspection decision = %s (%s)", plan.Decision, plan.Reason)
 	}
-	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets", store, store + "-wal"} {
+	// The store's directory is denied whole, covering journal files SQLite
+	// creates after preparation.
+	for _, rel := range []string{".env", "cmd/app/.env.local", "deploy/tls.key", "secrets", obs.StateDirName} {
 		if !containsCanonicalPath(t, plan.Private, filepath.Join(root, filepath.FromSlash(rel))) {
 			t.Errorf("inspection may read %s; private = %v", rel, plan.Private)
 		}
@@ -344,6 +346,12 @@ func TestShellPlansDenyHomeSecretsAndForeignProjections(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := delegate(t, f, state, testSession, "dev", "unit", "data.txt")
+	// The inspection is prepared first: a projection created after it must
+	// stay unreadable to it.
+	inspection, err := f.PrepareShell(callerOf(testSession, "fix", "u"), "inspect", "cat data.txt", state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mutation, err := f.PrepareShell(c, "shell-1", "printf x > data.txt", state)
 	if err != nil {
 		t.Fatal(err)
@@ -351,13 +359,9 @@ func TestShellPlansDenyHomeSecretsAndForeignProjections(t *testing.T) {
 	if !containsCanonicalPath(t, mutation.Private, filepath.Join(home, ".ssh")) {
 		t.Errorf("mutation may read home credentials; private = %v", mutation.Private)
 	}
-	inspection, err := f.PrepareShell(callerOf(testSession, "fix", "u"), "inspect", "cat data.txt", state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	foreign := filepath.Dir(mutation.Cwd)
+	foreign := filepath.Dir(filepath.Dir(mutation.Cwd))
 	if !containsCanonicalPath(t, inspection.Private, foreign) {
-		t.Errorf("inspection may read the foreign projection %s; private = %v", foreign, inspection.Private)
+		t.Errorf("inspection may read the later projection under %s; private = %v", foreign, inspection.Private)
 	}
 	if !containsCanonicalPath(t, inspection.Private, filepath.Join(home, ".ssh")) {
 		t.Errorf("inspection may read home credentials; private = %v", inspection.Private)
