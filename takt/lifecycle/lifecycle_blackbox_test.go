@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
@@ -173,5 +174,37 @@ func TestRunInstallHandshakeFailurePropagates(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(root, ".config")); !os.IsNotExist(statErr) {
 		t.Error("Run(install) with a failing handshake wrote files, want the root untouched")
+	}
+}
+
+// TestRunUninstallRefusesSymlinkedStateDir checks that a .takt-ai symlink
+// planted after install cannot redirect the managed codegraph deletion
+// outside the root.
+func TestRunUninstallRefusesSymlinkedStateDir(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	request := setuputil.TestPlanRequest()
+	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("Run(install) error = %v", err)
+	}
+	victim := filepath.Join(outside, "codegraph", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(victim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, ".takt-ai")
+	if err := os.RemoveAll(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, state); err != nil {
+		t.Fatal(err)
+	}
+	_, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
+	if err == nil || !strings.Contains(err.Error(), "remove managed codegraph") {
+		t.Errorf("Run(uninstall) through a symlinked state directory = %v; want the codegraph removal refused", err)
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("outside tree deleted: %v", err)
 	}
 }

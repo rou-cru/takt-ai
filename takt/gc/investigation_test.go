@@ -16,7 +16,6 @@
 package gc
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/obs"
@@ -103,25 +102,6 @@ func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *test
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
 
-	// Once the coordinator records it, a later process reads the demotion back
-	// from the persisted state: findings of that class stay proposal-only.
-	var c Coordinator
-	c.Demote(d.Mandate)
-	data, err := json.Marshal(&c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var reloaded Coordinator
-	if err := json.Unmarshal(data, &reloaded); err != nil {
-		t.Fatal(err)
-	}
-	if eligibleFinding(eligibleFixture(MandateDuplication), reloaded.Demoted) {
-		t.Fatal("demoted mandate class must not stay eligible after a reload")
-	}
-	// Unrelated mandate classes are unaffected.
-	if !eligibleFinding(eligibleFixture(MandateComplexity), reloaded.Demoted) {
-		t.Fatal("demotion must not leak to other mandate classes")
-	}
 }
 
 func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T) {

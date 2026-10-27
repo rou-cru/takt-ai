@@ -1,6 +1,7 @@
 package gc_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -132,5 +133,31 @@ func TestAuthorizedFinding(t *testing.T) {
 	}
 	if gc.AuthorizedFinding(base, confirmed, []gc.MandateClass{base.Mandate}) {
 		t.Error("AuthorizedFinding() on a demoted mandate's finding = true, want false (PR-MNT-32)")
+	}
+}
+
+// TestAuthorizedFindingRefusesDemotedMandateAfterReload checks that a demotion
+// the coordinator persisted still refuses a confirmed finding in a later
+// process, and only for that mandate class.
+func TestAuthorizedFindingRefusesDemotedMandateAfterReload(t *testing.T) {
+	var c gc.Coordinator
+	c.Demote(gc.MandateDuplication)
+	data, err := json.Marshal(&c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloaded gc.Coordinator
+	if err := json.Unmarshal(data, &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	finding := func(id string, mandate gc.MandateClass) gc.Finding {
+		return gc.Finding{ID: id, Mandate: mandate, Tool: "vet", ToolVersion: "1", Rule: "r1", Evidence: "e1"}
+	}
+	proof := []gc.Investigation{investigation("dup", "confirmed"), investigation("cx", "confirmed")}
+	if gc.AuthorizedFinding(finding("dup", gc.MandateDuplication), proof, reloaded.Demoted) {
+		t.Error("a demoted mandate class stayed authorized after a reload")
+	}
+	if !gc.AuthorizedFinding(finding("cx", gc.MandateComplexity), proof, reloaded.Demoted) {
+		t.Error("demotion leaked to another mandate class")
 	}
 }
