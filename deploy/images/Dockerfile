@@ -124,7 +124,7 @@ ARG OPENCODE_VERSION=2.0.28
 # so this pin substitutes one and the build verifies it before ever executing
 # the script (docker:S8482). When OpenCode legitimately updates the installer,
 # this check fails closed: re-download, review the diff, refresh the pin.
-ARG OPENCODE_INSTALL_SHA256=bfa0e5cd55b0447acdb1becbd3be1854277b5f8025742bd23ebf91bc01aa8ee8
+ARG OPENCODE_INSTALL_SHA256=1cde9fc3503fd89a2cec67f5f84d7a59e51fc5cdadce06819aa64af573a80136
 ENV PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:/home/takt/.takt-ai/bin:/home/takt/.takt-ai/codegraph/node_modules/.bin:${PATH}"
 RUN useradd --create-home --uid 10001 --shell /bin/bash takt; \
     install -d -o takt -g takt \
@@ -178,7 +178,7 @@ LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
       org.opencontainers.image.title="takt-ai (dev)" \
       org.opencontainers.image.description="Takt AI + OpenCode v2, ready for interactive Go/TS/Python work"
 ARG OPENCODE_VERSION=2.0.28
-ARG OPENCODE_INSTALL_SHA256=bfa0e5cd55b0447acdb1becbd3be1854277b5f8025742bd23ebf91bc01aa8ee8
+ARG OPENCODE_INSTALL_SHA256=1cde9fc3503fd89a2cec67f5f84d7a59e51fc5cdadce06819aa64af573a80136
 ARG DEV_UID=1000
 ARG DEV_GID=1000
 ENV PATH="/usr/local/go/bin:/home/dev/.opencode/bin:/home/dev/.local/bin:${PATH}"
