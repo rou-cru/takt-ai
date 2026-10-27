@@ -295,7 +295,7 @@ neg_case "CODER_DISABLE_PASSWORD_AUTH=false" CODER_DISABLE_PASSWORD_AUTH sed '/C
 neg_case "duplicate CODER_ACCESS_URL" CODER_ACCESS_URL variant_duplicate_access_url
 # A null env removes the inherited list before validation; the required env
 # keeps every authentication check from being skipped.
-neg_case "null coder.coder.env" env sed '/^    env:/,$c\    env: null' "$BASE_VALUES"
+neg_case "null coder.coder.env" env sed "/^    env:/,\$c\\    env: null" "$BASE_VALUES"
 
 # ------------------------------------------------ CH-04 (CW-T1-05) native RBAC
 if [[ -f "$TMP/coder.yaml" ]]; then
