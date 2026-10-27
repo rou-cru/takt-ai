@@ -12,13 +12,13 @@ importers:
   .:
     dependencies:
       '@anthropic-ai/sandbox-runtime':
-        specifier: 0.0.80
-        version: 0.0.80
+        specifier: 0.0.81
+        version: 0.0.81
 
 packages:
 
-  '@anthropic-ai/sandbox-runtime@0.0.80':
-    resolution: {integrity: sha512-WG4P8faU/JDH90I8NLUBPmg7e72zhanlW3AVCD0OF06JCtId9IDFewFgv4YRvHLcnn//h1r6a1AMosBsMLpxnA==}
+  '@anthropic-ai/sandbox-runtime@0.0.81':
+    resolution: {integrity: sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -38,7 +38,7 @@ packages:
 
 snapshots:
 
-  '@anthropic-ai/sandbox-runtime@0.0.80':
+  '@anthropic-ai/sandbox-runtime@0.0.81':
     dependencies:
       '@pondwader/socks5-server': 1.0.10
       commander: 12.1.0
