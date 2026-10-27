@@ -27,7 +27,7 @@ import (
 // empty/absent input), merges overlay into it, and atomically writes the
 // result back to path.
 func MergeJSONFile(path string, overlay []byte) (WriteResult, error) {
-	baseJSON, err := os.ReadFile(path)
+	baseJSON, err := ReadRegularFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			baseJSON = nil
@@ -41,7 +41,7 @@ func MergeJSONFile(path string, overlay []byte) (WriteResult, error) {
 		return WriteResult{}, err
 	}
 
-	return WriteFileAtomic(path, merged, DefaultFileMode)
+	return EditFileAtomic(path, merged)
 }
 
 // ReadFileOrEmpty reads the file at path, returning an empty string instead

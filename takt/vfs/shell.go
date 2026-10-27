@@ -104,7 +104,13 @@ type ShellPlan struct {
 // the projection.
 func shellRoot(stateDir, callID string) string {
 	digest := hashOf([]byte(stateDir+"\x00"+callID), true)
-	return filepath.Join(filepath.Dir(stateDir), "shell-"+digest[:shellRootHashLen])
+	return filepath.Join(shellRoots(stateDir), digest[:shellRootHashLen])
+}
+
+// shellRoots is the one directory beside stateDir holding every sandbox root,
+// so a single read denial covers roots created after a plan is prepared.
+func shellRoots(stateDir string) string {
+	return filepath.Join(filepath.Dir(stateDir), "shells")
 }
 
 // shellCall is what a prepared command was planned against: the binding it
@@ -210,7 +216,8 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	plan := ShellPlan{
 		Decision: decision, Reason: reason,
 		Scratch: filepath.Join(root, "scratch"), Confirm: filepath.Join(root, "confirm"),
-		Private: []string{stateDir}, Capture: decision != ShellDeny && key != "",
+		Private: append([]string{stateDir}, homeSensitivePaths(userHome())...),
+		Capture: decision != ShellDeny && key != "",
 	}
 	if decision == ShellDeny {
 		return ShellPlan{Decision: decision, Reason: reason}, nil
@@ -228,13 +235,19 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	// It also reads in place, so the secrets the native read rules deny are
 	// denied here too; a captured mutation never sees the workspace at all.
 	plan.Cwd, plan.Writable, plan.Protected = f.rootDir, []string{plan.Scratch}, []string{f.rootDir}
-	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, userHome())...)
+	plan.Private = append(plan.Private, sensitivePaths(f.rootDir, "")...)
 	// The workspace event store records every session's activity; it is the
-	// orchestrator's to read, never a specialist's inspection.
-	store := filepath.Join(f.rootDir, obs.StateDirName, obs.StoreFileName)
-	if _, err := os.Stat(store); err == nil {
-		plan.Private = append(plan.Private, store)
+	// orchestrator's to read, never a specialist's inspection. Its directory
+	// is denied whole, so SQLite journal files created later are denied too.
+	// Other calls' projections hold copies of their authors' staged files, so
+	// every sandbox root is denied; the sandbox re-allows this call's scratch.
+	// The sandbox cannot deny a path that does not exist yet, so the store's
+	// directory is created, private, before it is denied.
+	events := filepath.Join(f.rootDir, obs.StateDirName)
+	if err := os.MkdirAll(events, obs.PrivateTelemetryDirectoryMode); err != nil {
+		return ShellPlan{}, err
 	}
+	plan.Private = append(plan.Private, events, shellRoots(stateDir))
 	if decision == ShellAsk {
 		plan.Writable = []string{everythingWritable}
 	}

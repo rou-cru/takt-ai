@@ -307,7 +307,8 @@ func modelRef(spec AgentSpec) any {
 }
 
 // eventStoreResource is the workspace event store as a permission resource.
-var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName
+// The trailing glob covers SQLite's -wal, -shm and -journal siblings, which hold recent rows.
+var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
 
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.
@@ -375,7 +376,17 @@ func skillRules(designed []string) []permissionRule {
 // writing-option denies after them catch a read-like form that writes. No specialist drives the VFS CLI
 // directly: its tools inject the harness identity.
 func shellRules(role model.RoleClass) []permissionRule {
-	return append(gitRules(role), vfsShellRules()...)
+	rules := append(gitRules(role), vfsShellRules()...)
+	if role != model.RolePlanningAuthor && role != model.RoleDirectInterlocutor {
+		return rules
+	}
+	// Their native shell runs unsandboxed and the VFS captures none of its
+	// effects, so the user approves each command (PR-HAR-11). The last match
+	// wins, so the narrower rules after the ask still decide alone: read-only
+	// Git stays allowed, and Git mutation and the harness CLIs stay denied.
+	gated := []permissionRule{{"shell", allResources, "ask"}}
+	gated = append(gated, rules...)
+	return append(gated, harnessCLIShellDenies()...)
 }
 
 // vfsPermissionRules emits an explicit allow or deny for every plugin tool.

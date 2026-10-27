@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -241,7 +242,7 @@ func TestAuthorizedScope(t *testing.T) {
 		{FindingID: "f1", Outcome: "confirmed", Evidence: "traced"},
 	}
 
-	scope, err := gc.AuthorizedScope(plan, findings, investigations)
+	scope, err := gc.AuthorizedScope(plan, findings, investigations, nil)
 	if err != nil {
 		t.Fatalf("AuthorizedScope() error = %v", err)
 	}
@@ -257,7 +258,7 @@ func TestAuthorizedScopeRejectsFindingOutsideClosure(t *testing.T) {
 	}
 	investigations := []gc.Investigation{{FindingID: "f1", Outcome: "confirmed", Evidence: "traced"}}
 
-	if _, err := gc.AuthorizedScope(plan, findings, investigations); err == nil {
+	if _, err := gc.AuthorizedScope(plan, findings, investigations, nil); err == nil {
 		t.Fatal("AuthorizedScope() with an authorized finding outside the closure error = nil, want an error")
 	}
 }
@@ -316,5 +317,45 @@ func TestCoordinatorCycleKeysAndScopeAreNeverPersisted(t *testing.T) {
 	}
 	if loaded.Cycle.AuthorKey != "" || loaded.Cycle.VerifierKey != "" || len(loaded.Cycle.Scope) != 0 || loaded.Cycle.Scope == nil {
 		t.Fatalf("loaded cycle = %q/%q scope %v; want an empty scope and no keys the core did not grant", loaded.Cycle.AuthorKey, loaded.Cycle.VerifierKey, loaded.Cycle.Scope)
+	}
+}
+
+func TestAuthorizedScopeCapsFindingsAndFiles(t *testing.T) {
+	p, err := gc.LoadTriggerPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var closure []string
+	var findings []gc.Finding
+	var investigations []gc.Investigation
+	// One finding per file, more files than the policy authorizes.
+	for i := range p.Limits.Files + 2 {
+		path := string(rune('a'+i)) + ".go"
+		id := "f" + path
+		closure = append(closure, path)
+		findings = append(findings, gc.Finding{ID: id, Path: path, Tool: "deadcode", ToolVersion: "1", Rule: "r", Evidence: "e"})
+		investigations = append(investigations, gc.Investigation{FindingID: id, Outcome: "confirmed", Evidence: "traced"})
+	}
+	scope, err := gc.AuthorizedScope(gc.Plan{Closure: closure}, findings, investigations, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLen := min(p.Limits.Files, p.Limits.Findings)
+	if len(scope) != wantLen || !slices.IsSorted(scope) {
+		t.Errorf("scope = %v, want %d sorted paths", scope, wantLen)
+	}
+
+	// Several findings in one file authorize the file once.
+	same := []gc.Finding{
+		{ID: "x1", Path: "a.go", Tool: "deadcode", ToolVersion: "1", Rule: "r", Evidence: "e"},
+		{ID: "x2", Path: "a.go", Tool: "deadcode", ToolVersion: "1", Rule: "r", Evidence: "e"},
+	}
+	proof := []gc.Investigation{{FindingID: "x1", Outcome: "confirmed", Evidence: "t"}, {FindingID: "x2", Outcome: "confirmed", Evidence: "t"}}
+	scope, err = gc.AuthorizedScope(gc.Plan{Closure: []string{"a.go"}}, same, proof, nil)
+	if err != nil || !slices.Equal(scope, []string{"a.go"}) {
+		t.Errorf("AuthorizedScope(same file) = %v, %v; want [a.go] once", scope, err)
+	}
+	if scope, err := gc.AuthorizedScope(gc.Plan{}, nil, nil, nil); err != nil || scope == nil || len(scope) != 0 {
+		t.Errorf("AuthorizedScope(nothing) = %v, %v; want an empty non-nil scope", scope, err)
 	}
 }

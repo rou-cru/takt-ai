@@ -94,6 +94,12 @@ const StoreFileName = "events.db"
 var ErrContentForbidden = errors.New("obs: envelope must not carry file contents, prompts, responses, or secrets")
 ```
 
+<a name="ErrUnsafeStore"></a>ErrUnsafeStore reports a telemetry path that is not a private regular file in a real state directory, such as a symlink planted in the workspace.
+
+```go
+var ErrUnsafeStore = errors.New("telemetry store is not a private regular file")
+```
+
 <a name="PublishCollisionEvent"></a>
 ## func PublishCollisionEvent
 

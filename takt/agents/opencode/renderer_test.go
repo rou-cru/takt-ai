@@ -246,7 +246,7 @@ func TestRenderConfigProjectsCanonicalGitRules(t *testing.T) {
 }
 
 // eventStoreGlob is the workspace event store as a permission resource.
-var eventStoreGlob = "**/" + obs.StateDirName + "/" + obs.StoreFileName
+var eventStoreGlob = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
 
 func TestRenderConfigOrchestratorRoleHasEditAndSubagentPermission(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
@@ -689,5 +689,34 @@ func TestRenderConfigQualityAssuranceNeverEditsTheProject(t *testing.T) {
 	}
 	if got := effectOf(rules, "vfs_verify", "*"); got != "deny" {
 		t.Errorf("explorer vfs_verify = %q, want deny", got)
+	}
+}
+
+// TestRenderConfigGatesUnsandboxedShellsOnApproval checks PR-HAR-11: a planning
+// author's or interlocutor's native shell is approval-gated, while read-only
+// Git stays allowed and the harness CLIs stay denied; verification keeps its
+// ungated shell.
+func TestRenderConfigGatesUnsandboxedShellsOnApproval(t *testing.T) {
+	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
+		Agents: []opencode.AgentSpec{
+			{ID: "pm", Description: "Product", Mode: "all", System: "s", Model: "openai/gpt-5.6-luna", Role: model.RoleDirectInterlocutor, VFSCapabilities: vfsCaps()},
+			{ID: "spec", Description: "Spec", Mode: "subagent", System: "s", Model: "openai/gpt-5.6-luna", Role: model.RolePlanningAuthor, VFSCapabilities: vfsCaps()},
+			{ID: "verify", Description: "Verify", Mode: "subagent", System: "s", Model: "openai/gpt-5.6-luna", Role: model.RoleVerification, VFSCapabilities: vfsCaps()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents := decodeConfig(t, artifact.Content).Agents
+	for _, id := range []string{"pm", "spec"} {
+		rules := agents[id].Permissions
+		if effectOf(rules, "shell", "*") != "ask" || effectOf(rules, "shell", "git log") != "allow" ||
+			effectOf(rules, "shell", "git *") != "deny" || effectOf(rules, "shell", "*takt-ai dispatch*") != "deny" ||
+			effectOf(rules, "shell", "*takt-ai vfs*") != "deny" {
+			t.Errorf("%s shell rules = %v; want ask with read-only Git and harness CLI denies after it", id, rules)
+		}
+	}
+	if effect := effectOf(agents["verify"].Permissions, "shell", "*"); effect != "" {
+		t.Errorf("verify shell * = %q; want the global allow", effect)
 	}
 }

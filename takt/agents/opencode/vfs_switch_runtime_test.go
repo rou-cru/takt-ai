@@ -40,6 +40,7 @@ func TestTaktVFSPluginSwitchIdentity(t *testing.T) {
 		}
 	}
 	writeHistoryFixture(t, write)
+	writeOpenCodeClient(write)
 	write("package.json", []byte(`{"type":"module"}`))
 	write("takt-vfs.ts", opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
 	write("node_modules/@opencode/plugin/package.json", []byte(`{"type":"module","exports":"./index.js"}`))

@@ -22,13 +22,13 @@ it returns.
 
 ## Lending
 
-1. Invoke the native `question` tool with a single selection naming the specialist and
-   the objective. A reject, a cancel, or a freeform reply means no lending: reevaluate.
-2. Only after an explicit accept, call `dispatch_switch`. Its `requirements` carry the
-   Engram IDs of the invariants the specialist consumes (IDs only, never their content) and the
-   settled decisions that bind it; `client` carries what is known of the user. The specialist
-   starts from `objective`, `requirements` and `client` alone.
-3. If the user asks to cut a lent session short, call `dispatch_abort_switch`.
+1. Call `dispatch_switch` naming the specialist and the objective. The harness asks the user to
+   accept them before the switch takes effect; a refusal means no lending: reevaluate. Its
+   `requirements` carry the Engram IDs of the invariants the specialist consumes (IDs only,
+   never their content) and the settled decisions that bind it; `client` carries what is known
+   of the user. The specialist starts from `objective`, `requirements` and `client` alone.
+2. If the user asks to cut a lent session short, call `dispatch_abort_switch`; the harness asks
+   the user to confirm it.
 
 ## Reading the return
 

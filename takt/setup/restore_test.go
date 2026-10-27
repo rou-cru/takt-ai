@@ -48,7 +48,7 @@ func TestRestorePutsBackBackedUpContent(t *testing.T) {
 	}
 
 	manifest := setup.NewOwnershipManifest()
-	priorSHA := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	priorSHA := "bf573149b23303cac63c2a359b53760d919770c5d070047e76de42e2184f1046" // sha256("original content")
 	entry, err := setup.NewOwnershipEntry("a.txt", []byte("takt content"), 0o644, false, priorSHA, filepath.ToSlash(backupRel), setup.TargetOpenCode)
 	if err != nil {
 		t.Fatalf("NewOwnershipEntry() error = %v", err)

@@ -1,6 +1,7 @@
 package gc_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -89,45 +90,74 @@ func TestAuthorizedFinding(t *testing.T) {
 	base := gc.Finding{ID: "f1", Tool: "deadcode", ToolVersion: "1.0", Rule: "unreachable", Evidence: "e"}
 	confirmed := []gc.Investigation{{FindingID: "f1", Outcome: "confirmed", Evidence: "traced"}}
 
-	if !gc.AuthorizedFinding(base, confirmed) {
+	if !gc.AuthorizedFinding(base, confirmed, nil) {
 		t.Error("AuthorizedFinding() with a confirmed investigation and evidence = false, want true")
 	}
-	if gc.AuthorizedFinding(base, nil) {
+	if gc.AuthorizedFinding(base, nil, nil) {
 		t.Error("AuthorizedFinding() with no investigations = true, want false")
 	}
 
 	proposalOnly := base
 	proposalOnly.ProposalOnly = true
-	if gc.AuthorizedFinding(proposalOnly, confirmed) {
+	if gc.AuthorizedFinding(proposalOnly, confirmed, nil) {
 		t.Error("AuthorizedFinding() on a proposal-only finding = true, want false")
 	}
 
 	introduced := base
 	introduced.Introduced = true
-	if gc.AuthorizedFinding(introduced, confirmed) {
+	if gc.AuthorizedFinding(introduced, confirmed, nil) {
 		t.Error("AuthorizedFinding() on an introduced finding = true, want false")
 	}
 
 	exported := base
 	exported.Exported = true
-	if gc.AuthorizedFinding(exported, confirmed) {
+	if gc.AuthorizedFinding(exported, confirmed, nil) {
 		t.Error("AuthorizedFinding() on an exported finding = true, want false")
 	}
 
 	integrityMandate := base
 	integrityMandate.Mandate = gc.MandateAnalyzerIntegrity
-	if gc.AuthorizedFinding(integrityMandate, confirmed) {
+	if gc.AuthorizedFinding(integrityMandate, confirmed, nil) {
 		t.Error("AuthorizedFinding() on an analyzer-integrity finding = true, want false")
 	}
 
 	pending := base
 	pending.Status = gc.StatusPending
-	if gc.AuthorizedFinding(pending, confirmed) {
+	if gc.AuthorizedFinding(pending, confirmed, nil) {
 		t.Error("AuthorizedFinding() on a pending finding = true, want false")
 	}
 
 	missingMetadata := gc.Finding{ID: "f1"}
-	if gc.AuthorizedFinding(missingMetadata, confirmed) {
+	if gc.AuthorizedFinding(missingMetadata, confirmed, nil) {
 		t.Error("AuthorizedFinding() on a finding missing tool/rule/evidence metadata = true, want false")
+	}
+	if gc.AuthorizedFinding(base, confirmed, []gc.MandateClass{base.Mandate}) {
+		t.Error("AuthorizedFinding() on a demoted mandate's finding = true, want false (PR-MNT-32)")
+	}
+}
+
+// TestAuthorizedFindingRefusesDemotedMandateAfterReload checks that a demotion
+// the coordinator persisted still refuses a confirmed finding in a later
+// process, and only for that mandate class.
+func TestAuthorizedFindingRefusesDemotedMandateAfterReload(t *testing.T) {
+	var c gc.Coordinator
+	c.Demote(gc.MandateDuplication)
+	data, err := json.Marshal(&c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloaded gc.Coordinator
+	if err := json.Unmarshal(data, &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	finding := func(id string, mandate gc.MandateClass) gc.Finding {
+		return gc.Finding{ID: id, Mandate: mandate, Tool: "vet", ToolVersion: "1", Rule: "r1", Evidence: "e1"}
+	}
+	proof := []gc.Investigation{investigation("dup", "confirmed"), investigation("cx", "confirmed")}
+	if gc.AuthorizedFinding(finding("dup", gc.MandateDuplication), proof, reloaded.Demoted) {
+		t.Error("a demoted mandate class stayed authorized after a reload")
+	}
+	if !gc.AuthorizedFinding(finding("cx", gc.MandateComplexity), proof, reloaded.Demoted) {
+		t.Error("demotion leaked to another mandate class")
 	}
 }

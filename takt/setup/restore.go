@@ -18,6 +18,7 @@ package setup
 import (
 	"errors"
 	"fmt"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 	"os"
 	"path/filepath"
 
@@ -153,7 +154,7 @@ func loadRestorePlan(root string, entry OwnershipEntry) (restorePlan, error) {
 	if err != nil {
 		return restorePlan{}, fmt.Errorf("resolve backup for %q: %w", cleanPath, err)
 	}
-	content, err := os.ReadFile(backupSrc)
+	content, err := filemerge.ReadRegularFile(backupSrc)
 	if err != nil {
 		return restorePlan{}, fmt.Errorf("read backup for %q: %w", cleanPath, err)
 	}
@@ -196,6 +197,10 @@ func classifyRestoreEntry(root string, entry OwnershipEntry) (restorePlan, error
 	state, current, err := managedFileState(plan.destination, entry)
 	if err != nil {
 		return restorePlan{}, err
+	}
+	// Only the bytes recorded at takeover are restored, never a substitute.
+	if plan.replacementHash != entry.PriorSHA256 {
+		return restorePlan{}, fmt.Errorf("read backup for %q: content does not match the recorded prior SHA-256", plan.path)
 	}
 	if current != nil {
 		plan.currentHash = hashOf(current)

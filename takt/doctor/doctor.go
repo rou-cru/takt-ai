@@ -30,9 +30,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
@@ -673,6 +675,22 @@ var checkIcons = map[CheckStatus]string{
 	CheckStatusFail: "[xx]",
 }
 
+// terminalText escapes control characters, line breaks included, in text a
+// check carries from outside (Engram responses, error bodies), so it can
+// neither drive the terminal nor forge report lines.
+func terminalText(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			quoted := strconv.QuoteRuneToASCII(r)
+			b.WriteString(quoted[1 : len(quoted)-1])
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // render writes the report in the format established by the validation
 // branch: header, per-check lines with optional remedy lines, summary,
 // and overall status.
@@ -690,9 +708,9 @@ func render(w io.Writer, report DoctorReport) error {
 		case CheckStatusFail:
 			failed++
 		}
-		fmt.Fprintf(&out, "  %s  %-30s %s\n", checkIcons[check.Status], check.Name, check.Detail)
+		fmt.Fprintf(&out, "  %s  %-30s %s\n", checkIcons[check.Status], check.Name, terminalText(check.Detail))
 		if check.Remedy != "" {
-			fmt.Fprintf(&out, "       Remedy: %s\n", check.Remedy)
+			fmt.Fprintf(&out, "       Remedy: %s\n", terminalText(check.Remedy))
 		}
 	}
 

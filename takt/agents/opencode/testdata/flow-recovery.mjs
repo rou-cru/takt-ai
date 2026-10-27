@@ -212,6 +212,7 @@ try {
  await inject('candidate')
  const lentAsked=approvalCount
  await tools.dispatch_handoff.execute({result:'EarlyHandoff',additional_context:'stopping early',extra_artifacts:[],result_ids:[]},{sessionID:'lent',agent:'pm',id:'handoff',messageID:'lent-message'})
- assert.equal(approvalCount,lentAsked+1);assert.equal(readState().Recovery,null)
+ // The user accepts the handoff itself, then the pending repair.
+ assert.equal(approvalCount,lentAsked+2);assert.equal(readState().Recovery,null)
  assert.equal(call(['dispatch'],{action:'interlocutor',session:'root'}).holder,'')
 } finally {cleanup();finished=true;wake?.();await sleep(100)}

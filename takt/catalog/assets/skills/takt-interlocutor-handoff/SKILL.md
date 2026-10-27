@@ -17,11 +17,10 @@ If something falls outside this protocol — a missing document, an ambiguous re
 outside change, unrelated cleanup, or a mid-session specialist swap — load
 `takt-interlocutor-exceptions`.
 
-**Confirm before the interface moves.** Before calling `dispatch_handoff` to return the
-interface, invoke the native `question` tool and let the user decide. The question offers a
-single selection, never a multi-select menu of options to weigh. Only an explicit accept
-performs the transition; a reject, a cancel, or a freeform reply leaves the session exactly
-as it was, so `dispatch_handoff` is not called until that accept comes back.
+**The user decides before the interface moves.** `dispatch_handoff` asks the user to accept
+what is handed back before the interface returns. Only an explicit accept performs the
+transition; a refusal leaves the session exactly as it was, so keep working with the user
+and call `dispatch_handoff` again once they are ready.
 
 **Open a lent session at your specialty, never at zero.** Once the interface has
 been lent to you, read what the convening agent declared under `requirements` and

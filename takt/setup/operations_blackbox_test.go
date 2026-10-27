@@ -2,9 +2,12 @@ package setup_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/setup"
@@ -294,4 +297,153 @@ func TestDetectConflictsUserEditedManagedFile(t *testing.T) {
 	if len(conflicts) != 1 || conflicts[0].Reason != "user-edited" {
 		t.Fatalf("DetectConflicts() = %+v, want one user-edited conflict", conflicts)
 	}
+}
+
+// TestTakeoverNeverFollowsPlantedSymlinks checks that a symlink planted at an
+// artifact or at its backup path neither copies an outside file into the
+// backups nor redirects the backup write outside the root.
+func TestTakeoverNeverFollowsPlantedSymlinks(t *testing.T) {
+	plans := simplePlan("takt")
+	backup := func(root, name string) string { return filepath.Join(root, setup.BackupDir, name) }
+	suffixed := func(content string) string {
+		sum := sha256.Sum256([]byte(content))
+		return "a.txt." + hex.EncodeToString(sum[:])[:8]
+	}
+	t.Run("artifact links outside", func(t *testing.T) {
+		root, outside := t.TempDir(), filepath.Join(t.TempDir(), "secret")
+		writeTestFile(t, outside, "private", 0o644)
+		if err := os.Symlink(outside, filepath.Join(root, "a.txt")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err == nil {
+			t.Fatal("deploy over a symlinked artifact succeeded")
+		}
+		if _, err := os.Lstat(backup(root, "a.txt")); !os.IsNotExist(err) {
+			t.Fatalf("outside content was copied into the backups: %v", err)
+		}
+	})
+	t.Run("backup path links outside", func(t *testing.T) {
+		root, outside := t.TempDir(), filepath.Join(t.TempDir(), "victim")
+		writeTestFile(t, outside, "untouched", 0o644)
+		writeTestFile(t, filepath.Join(root, "a.txt"), "original", 0o644)
+		if err := os.MkdirAll(filepath.Join(root, setup.BackupDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Both the backup path and its collision suffix lead outside.
+		for _, name := range []string{"a.txt", suffixed("original")} {
+			if err := os.Symlink(outside, backup(root, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTestFile(t, outside); got != "untouched" {
+			t.Fatal("the backup was written through the planted symlink")
+		}
+	})
+	t.Run("other backup at the collision suffix is kept", func(t *testing.T) {
+		root := t.TempDir()
+		writeTestFile(t, filepath.Join(root, "a.txt"), "original", 0o644)
+		writeTestFile(t, backup(root, "a.txt"), "first", 0o644)
+		writeTestFile(t, backup(root, suffixed("original")), "second", 0o644)
+		if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err == nil {
+			t.Fatal("deploy replaced an existing backup")
+		}
+		if got := readTestFile(t, backup(root, suffixed("original"))); got != "second" {
+			t.Fatalf("existing backup = %q; want it kept", got)
+		}
+	})
+	t.Run("owner-only original keeps its mode", func(t *testing.T) {
+		root := t.TempDir()
+		writeTestFile(t, filepath.Join(root, "a.txt"), "original", 0o600)
+		if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(backup(root, "a.txt"))
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("backup mode = %v, %v; want 0600", info, err)
+		}
+	})
+	t.Run("edited managed file keeps its current mode", func(t *testing.T) {
+		root := t.TempDir()
+		if _, err := setup.ApplyContext(context.Background(), root, plans, setup.ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(root, "a.txt"), "private edit", 0o600)
+		if _, err := setup.ApplyContext(context.Background(), root, simplePlan("takt v2"), setup.ProviderRuntime{}); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(backup(root, "a.txt"))
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("backup mode = %v, %v; want 0600", info, err)
+		}
+	})
+}
+
+// writeTestFile writes content at path with mode, creating parents and
+// applying the mode regardless of the umask or an earlier file.
+func writeTestFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func TestApplyRejectsUnreadableOrInvalidArtifacts(t *testing.T) {
+	apply := func(root, content string) error {
+		_, err := setup.ApplyContext(context.Background(), root, simplePlan(content), setup.ProviderRuntime{})
+		return err
+	}
+	t.Run("directory in place of a file", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Mkdir(filepath.Join(root, "a.txt"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := apply(root, "a"); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("directory in place of a managed file", func(t *testing.T) {
+		root := t.TempDir()
+		if err := apply(root, "a"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(filepath.Join(root, "a.txt"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := apply(root, "a"); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("empty artifact content", func(t *testing.T) {
+		if err := apply(t.TempDir(), ""); err == nil || !strings.Contains(err.Error(), "requires managed content") {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("corrupt manifest", func(t *testing.T) {
+		root := t.TempDir()
+		writeTestFile(t, filepath.Join(root, setup.OwnershipManifestFilename), "{", 0o644)
+		if err := apply(root, "a"); err == nil {
+			t.Error("corrupt manifest was accepted")
+		}
+	})
 }

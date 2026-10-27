@@ -213,7 +213,9 @@ func nearestExistingAncestor(p string) (string, error) {
 	}
 }
 
-const stateSchema = `PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA;
+// busy_timeout comes first so a write waits, bounded, for another process's
+// reader to release the file instead of failing the store.
+const stateSchema = `PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA;
  CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS journal (seq INTEGER PRIMARY KEY, data BLOB NOT NULL);
  CREATE TRIGGER IF NOT EXISTS journal_no_update BEFORE UPDATE ON journal BEGIN SELECT RAISE(ABORT,'append-only journal'); END;
@@ -225,7 +227,7 @@ func (f *FS) openStateDB(stateDir string) (err error) {
 	if err = ensurePrivateFile(dbPath); err != nil {
 		return err
 	}
-	if f.db, err = sql.Open("sqlite", dbPath); err != nil {
+	if f.db, err = sql.Open("sqlite", (&url.URL{Scheme: "file", Path: dbPath}).String()); err != nil {
 		return err
 	}
 	f.db.SetMaxOpenConns(1)

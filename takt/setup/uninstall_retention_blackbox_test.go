@@ -2,6 +2,7 @@ package setup_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,5 +89,28 @@ func TestApplyUninstallRetentionUnknownPathIsIncomplete(t *testing.T) {
 	}
 	if len(result.Incomplete) != 1 {
 		t.Fatalf("ApplyUninstallRetention() Incomplete = %v, want one entry for the unrecorded path", result.Incomplete)
+	}
+}
+
+// TestApplyUninstallRetentionRefusesSymlinkedRetainedDir checks that a planted
+// takt-retained symlink cannot move retained output outside the root.
+func TestApplyUninstallRetentionRefusesSymlinkedRetainedDir(t *testing.T) {
+	root, outside, memory := t.TempDir(), t.TempDir(), t.TempDir()
+	db, err := sql.Open("sqlite", filepath.Join(memory, setup.EngramDatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE observations (id INTEGER PRIMARY KEY, title TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, setup.RetainedDirName)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = setup.ApplyUninstallRetention(context.Background(), root, setup.RetentionChoices{MemoryFrom: memory}, time.Now())
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("retention wrote outside the root: %v (err %v)", entries, err)
 	}
 }

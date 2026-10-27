@@ -35,8 +35,10 @@
   "allOf": [
     {
       "if": {
+        "required": ["execution"],
         "properties": {
           "execution": {
+            "required": ["mode"],
             "properties": {
               "mode": {
                 "const": "coder"
@@ -46,13 +48,16 @@
         }
       },
       "then": {
+        "required": ["coder"],
         "properties": {
           "coder": {
+            "required": ["enabled", "coder"],
             "properties": {
               "enabled": {
                 "const": true
               },
               "coder": {
+                "required": ["env"],
                 "properties": {
                   "env": {
                     "allOf": [

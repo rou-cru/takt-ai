@@ -48,7 +48,7 @@ func injectPromptSection(promptPath string) (filemerge.WriteResult, error) {
 		return filemerge.WriteResult{}, fmt.Errorf("read prompt file %q: %w", promptPath, err)
 	}
 	updated := filemerge.InjectMarkdownSection(existing, model.SectionEngramProtocol, bootstrapSection())
-	write, err := filemerge.WriteFileAtomic(promptPath, []byte(updated), filemerge.DefaultFileMode)
+	write, err := filemerge.EditFileAtomic(promptPath, []byte(updated))
 	if err != nil {
 		return filemerge.WriteResult{}, fmt.Errorf("write prompt file %q: %w", promptPath, err)
 	}

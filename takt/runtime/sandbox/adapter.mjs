@@ -32,6 +32,9 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
       allowWrite: [...writable, scratch],
       denyWrite: [...protectedPaths, ...privatePaths, ...denyDefaults],
       denyRead: privatePaths,
+      // The call's own scratch may sit inside a denied directory, such as the
+      // one holding every call's sandbox root; it stays readable to its command.
+      allowRead: [scratch],
     },
     // Deliberately absent: network. [] would block network, contrary to product.
   }, undefined, { commandId: callID });

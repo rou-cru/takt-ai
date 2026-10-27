@@ -58,12 +58,39 @@ func TestRestoreRejectsBadEntries(t *testing.T) {
 func TestRestoreDefaultsModeWhenUnrecorded(t *testing.T) {
 	root := t.TempDir()
 	writeRestoreFile(t, filepath.Join(root, setup.BackupDir, "b"), "old")
-	if err := restoreOne(root, setup.OwnershipEntry{Path: "defaulted.txt", BackupPath: setup.BackupDir + "/b"}); err != nil {
+	if err := restoreOne(root, setup.OwnershipEntry{Path: "defaulted.txt", BackupPath: setup.BackupDir + "/b", PriorSHA256: oldSHA256}); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(root, "defaulted.txt"))
 	if err != nil || info.Mode().Perm() != setup.ManagedFileMode {
 		t.Errorf("mode = %v, %v; want %v", info.Mode().Perm(), err, setup.ManagedFileMode)
+	}
+}
+
+// oldSHA256 is the digest of the "old" backup content the tests write.
+const oldSHA256 = "cba06b5736faf67e54b07b561eae94395e774c517a7d910a54369e1263ccfbd4"
+
+// TestRestoreRefusesSubstitutedBackups checks that restore copies back only the
+// bytes recorded at takeover: never a backup swapped for other content, and
+// never a file reached through a symlinked backup.
+func TestRestoreRefusesSubstitutedBackups(t *testing.T) {
+	root := t.TempDir()
+	writeRestoreFile(t, filepath.Join(root, setup.BackupDir, "b"), "tampered")
+	secret := filepath.Join(t.TempDir(), "secret")
+	writeRestoreFile(t, secret, "old")
+	if err := os.Symlink(secret, filepath.Join(root, setup.BackupDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	for name, backup := range map[string]string{"changed content": "b", "symlinked backup": "link"} {
+		t.Run(name, func(t *testing.T) {
+			err := restoreOne(root, setup.OwnershipEntry{Path: "a.txt", BackupPath: setup.BackupDir + "/" + backup, PriorSHA256: oldSHA256})
+			if err == nil || !strings.Contains(err.Error(), "read backup") {
+				t.Fatalf("error = %v, want a refused backup", err)
+			}
+			if _, err := os.Lstat(filepath.Join(root, "a.txt")); !os.IsNotExist(err) {
+				t.Fatalf("a refused backup was restored: %v", err)
+			}
+		})
 	}
 }
 
@@ -85,7 +112,7 @@ func TestRestoreFailsWhenDestinationDirectoryIsReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	err := restoreOne(root, setup.OwnershipEntry{Path: "locked/a.txt", BackupPath: setup.BackupDir + "/b"})
+	err := restoreOne(root, setup.OwnershipEntry{Path: "locked/a.txt", BackupPath: setup.BackupDir + "/b", PriorSHA256: oldSHA256})
 	if err == nil || !strings.Contains(err.Error(), "stage restore") {
 		t.Fatalf("error = %v", err)
 	}

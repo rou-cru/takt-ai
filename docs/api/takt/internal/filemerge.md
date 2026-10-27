@@ -17,6 +17,7 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 - [func NormalizeJSON\(raw \[\]byte\) \[\]byte](<#NormalizeJSON>)
 - [func ParseJSONObject\(raw \[\]byte\) \(map\[string\]any, error\)](<#ParseJSONObject>)
 - [func ReadFileOrEmpty\(path string\) \(string, error\)](<#ReadFileOrEmpty>)
+- [func ReadRegularFile\(path string\) \(\[\]byte, error\)](<#ReadRegularFile>)
 - [func RemoveJSONKey\(path string, key string, parents ...string\) \(bool, error\)](<#RemoveJSONKey>)
 - [func RemoveMCPServer\(path, name string\) \(model.InjectionResult, error\)](<#RemoveMCPServer>)
 - [func StageTempFile\(dir, pattern string, content \[\]byte, perm fs.FileMode\) \(\_ string, err error\)](<#StageTempFile>)
@@ -24,6 +25,7 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 - [type InvalidJSONError](<#InvalidJSONError>)
   - [func \(e \*InvalidJSONError\) Error\(\) string](<#InvalidJSONError.Error>)
 - [type WriteResult](<#WriteResult>)
+  - [func EditFileAtomic\(path string, content \[\]byte\) \(WriteResult, error\)](<#EditFileAtomic>)
   - [func MergeJSONFile\(path string, overlay \[\]byte\) \(WriteResult, error\)](<#MergeJSONFile>)
   - [func WriteFileAtomic\(path string, content \[\]byte, perm fs.FileMode\) \(WriteResult, error\)](<#WriteFileAtomic>)
 
@@ -103,6 +105,15 @@ func ReadFileOrEmpty(path string) (string, error)
 
 ReadFileOrEmpty reads the file at path, returning an empty string instead of an error when the file does not exist.
 
+<a name="ReadRegularFile"></a>
+## func ReadRegularFile
+
+```go
+func ReadRegularFile(path string) ([]byte, error)
+```
+
+ReadRegularFile reads path without following a symlink at path itself, bounded to the atomic\-write size; ancestors are the caller's to confine.
+
 <a name="RemoveJSONKey"></a>
 ## func RemoveJSONKey
 
@@ -174,6 +185,15 @@ type WriteResult struct {
     Changed bool // true when the file content differs from what was on disk
 }
 ```
+
+<a name="EditFileAtomic"></a>
+### func EditFileAtomic
+
+```go
+func EditFileAtomic(path string, content []byte) (WriteResult, error)
+```
+
+EditFileAtomic replaces a user\-owned file's content atomically, keeping the permission bits it already has: a file the user made owner\-only, which may hold credentials, never becomes readable to others. A new file gets DefaultFileMode.
 
 <a name="MergeJSONFile"></a>
 ### func MergeJSONFile

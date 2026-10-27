@@ -209,7 +209,7 @@ func coordinateAuthorization(fs *vfs.FS, h *history.History, c *gc.Coordinator, 
 	if !gc.ChecksPass(c.Cycle.Baseline) {
 		return c, errors.New("gc: failing or missing baseline permits proposals only")
 	}
-	scope, e := gc.AuthorizedScope(c.Cycle.Plan, c.Cycle.Report.Findings, c.Cycle.Investigations)
+	scope, e := gc.AuthorizedScope(c.Cycle.Plan, c.Cycle.Report.Findings, c.Cycle.Investigations, c.Demoted)
 	if e != nil {
 		return nil, e
 	}
@@ -298,7 +298,7 @@ func coordinateAcceptance(ctx context.Context, h *history.History, fs *vfs.FS, w
 	id := c.Cycle.Plan.CycleID
 	closed := c.Cycle
 	c.Close("applied")
-	reportGCTelemetry(evaluateMandateReversionRate(workspace, closed))
+	reportGCTelemetry(evaluateMandateReversionRate(workspace, c, closed))
 	if e = gc.SaveCoordinator(fs, c); e != nil {
 		return nil, e
 	}
@@ -322,7 +322,7 @@ func coordinateNoChange(h *history.History, fs *vfs.FS, workspace string, c *gc.
 	}
 	closed := c.Cycle
 	c.Close(reason)
-	reportGCTelemetry(evaluateMandateReversionRate(workspace, closed))
+	reportGCTelemetry(evaluateMandateReversionRate(workspace, c, closed))
 	return c, nil
 }
 
@@ -383,7 +383,7 @@ func cycleRecord(workspace string, c *gc.Cycle, outcome string) {
 // session history (PR-MNT-9/PR-MNT-11: registered work, never a wall-clock
 // window) — every cycle close is a natural point to re-check whether that
 // mandate class's consolidated work keeps coming back.
-func evaluateMandateReversionRate(workspace string, c *gc.Cycle) error {
+func evaluateMandateReversionRate(workspace string, coord *gc.Coordinator, c *gc.Cycle) (err error) {
 	store, err := obs.OpenStore(workspace)
 	if err != nil {
 		return err
@@ -392,10 +392,15 @@ func evaluateMandateReversionRate(workspace string, c *gc.Cycle) error {
 	clock := obs.NewClock()
 	bus := obs.NewBus(c.Plan.SessionID, clock)
 	bus.AttachStore(store)
-	_, err = gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{
+	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{
 		Agent: harnessAgent, SessionID: c.Plan.SessionID, Mandate: c.Plan.Mandate,
 		AfterID: 0, BeforeID: 0, WorkUnitID: c.Plan.CycleID,
 	})
+	// The decision stands even if publishing its CONTAIN event failed; the
+	// caller persists the coordinator with it.
+	if d.Demoted {
+		coord.Demote(d.Mandate)
+	}
 	return err
 }
 func saveGCCoordinator(fs *vfs.FS, c *gc.Coordinator, action string) error {
@@ -506,7 +511,7 @@ func abortGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 	}
 	c.Close(reason)
 	cycleRecord(workspace, closed, reason)
-	reportGCTelemetry(evaluateMandateReversionRate(workspace, closed))
+	reportGCTelemetry(evaluateMandateReversionRate(workspace, c, closed))
 	return nil
 }
 

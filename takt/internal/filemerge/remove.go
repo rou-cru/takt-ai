@@ -51,7 +51,7 @@ func RemoveJSONKey(path string, key string, parents ...string) (bool, error) {
 		return false, err
 	}
 	encoded = append(encoded, '\n')
-	if _, err := WriteFileAtomic(path, encoded, DefaultFileMode); err != nil {
+	if _, err := EditFileAtomic(path, encoded); err != nil {
 		return false, err
 	}
 	return true, nil

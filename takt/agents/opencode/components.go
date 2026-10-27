@@ -63,21 +63,13 @@ func permissionsConfig() []permissionRule {
 		{"shell", "git clean", "ask"},
 		{"shell", "git clean *", "ask"},
 		{"shell", "git restore *", "ask"},
-		// Memory is written only through the takt-memory plugin tools, which inject the harness identity.
-		{"shell", "takt-ai memory*", "deny"},
-		{"shell", "*takt-ai memory*", "deny"},
-		// Crew dispatch and GC coordination are driven by the takt-vfs plugin's
-		// own hooks, which inject the harness-resolved identity and session.
-		// Agents never shell either directly; the orchestrator may, once the
-		// user approves the command (agentPermissionRules).
-		{"shell", "takt-ai gc*", "deny"},
-		{"shell", "*takt-ai gc*", "deny"},
-		{"shell", "takt-ai dispatch*", "deny"},
-		{"shell", "*takt-ai dispatch*", "deny"},
-		{"read", allResources, "allow"},
-		{"read", "*.env", "deny"},
-		{"read", "*.env.*", "deny"},
 	}
+	rules = append(rules, harnessCLIShellDenies()...)
+	rules = append(rules,
+		permissionRule{"read", allResources, "allow"},
+		permissionRule{"read", "*.env", "deny"},
+		permissionRule{"read", "*.env.*", "deny"},
+	)
 	for _, glob := range model.SensitivePathGlobs {
 		rules = append(rules, permissionRule{"read", "**/" + glob, "deny"})
 	}
@@ -85,6 +77,23 @@ func permissionsConfig() []permissionRule {
 	// through the takt-vfs plugin tools so staging and the verdict gate
 	// cannot be bypassed. V2 folds write and patch into edit.
 	return append(rules, permissionRule{"edit", allResources, "deny"})
+}
+
+// harnessCLIShellDenies keep agents off the harness CLIs the plugins drive.
+// Memory is written only through the takt-memory plugin tools, and crew
+// dispatch and GC coordination through the takt-vfs plugin's own hooks; each
+// injects the harness-resolved identity and session. Agents never shell them
+// directly; the orchestrator may, once the user approves the command
+// (agentPermissionRules).
+func harnessCLIShellDenies() []permissionRule {
+	return []permissionRule{
+		{"shell", "takt-ai memory*", "deny"},
+		{"shell", "*takt-ai memory*", "deny"},
+		{"shell", "takt-ai gc*", "deny"},
+		{"shell", "*takt-ai gc*", "deny"},
+		{"shell", "takt-ai dispatch*", "deny"},
+		{"shell", "*takt-ai dispatch*", "deny"},
+	}
 }
 
 //go:embed assets/takt-memory.ts

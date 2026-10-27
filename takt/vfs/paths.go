@@ -52,7 +52,14 @@ const tempPrefix = ".takt-vfs-"
 // reservedName reports whether a path component is Git metadata or one of
 // Takt's private staging names.
 func reservedName(part string) bool {
-	return strings.EqualFold(part, ".git") || strings.EqualFold(part, ".takt-ai") || strings.HasPrefix(strings.ToLower(part), tempPrefix)
+	return strings.EqualFold(part, ".git") || privateStateName(part)
+}
+
+// privateStateName reports a name holding Takt's own state or staged copies:
+// the workspace state directory, with its shell projections, and in-flight
+// VFS temporaries. No specialist reads it, through VFS or natively.
+func privateStateName(part string) bool {
+	return strings.EqualFold(part, ".takt-ai") || strings.HasPrefix(strings.ToLower(part), tempPrefix)
 }
 
 // validatePath rejects aliases rather than authorizing their target.
@@ -64,6 +71,10 @@ func (f *FS) validatePath(rel string) error {
 	// Lexical, so it holds below directories that do not exist yet.
 	if slices.ContainsFunc(parts, reservedName) {
 		return fmt.Errorf("%w: %q is a protected workspace-relative path", ErrInvalidPath, rel)
+	}
+	// The secrets native tools deny stay out of VFS reads, staging and claims.
+	if sensitiveInspection(rel, false) {
+		return fmt.Errorf("%w: %q is a sensitive path; use declared non-secret inputs", ErrScopeDenied, rel)
 	}
 	return f.validatePathParts(parts, false)
 }

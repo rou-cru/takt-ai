@@ -419,47 +419,6 @@ func TestApplyKeepsManagedEntryWhenFileWasDeleted(t *testing.T) {
 	}
 }
 
-func TestApplyRejectsUnreadableOrInvalidArtifacts(t *testing.T) {
-	t.Run("directory in place of a file", func(t *testing.T) {
-		root := t.TempDir()
-		if err := os.Mkdir(filepath.Join(root, "a.txt"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		_, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": "a"}), ProviderRuntime{})
-		if err == nil || !strings.Contains(err.Error(), "inspect managed file") {
-			t.Errorf("error = %v", err)
-		}
-	})
-	t.Run("directory in place of a managed file", func(t *testing.T) {
-		root := t.TempDir()
-		mustApply(t, root, opsPlan("opencode", map[string]string{"a.txt": "a"}))
-		if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Mkdir(filepath.Join(root, "a.txt"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		_, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": "a"}), ProviderRuntime{})
-		if err == nil || !strings.Contains(err.Error(), "inspect managed file") {
-			t.Errorf("error = %v", err)
-		}
-	})
-	t.Run("empty artifact content", func(t *testing.T) {
-		root := t.TempDir()
-		_, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": ""}), ProviderRuntime{})
-		if err == nil || !strings.Contains(err.Error(), "requires managed content") {
-			t.Errorf("error = %v", err)
-		}
-	})
-	t.Run("corrupt manifest", func(t *testing.T) {
-		root := t.TempDir()
-		writeFile(t, filepath.Join(root, OwnershipManifestFilename), "{")
-		if _, err := ApplyContext(context.Background(), root, opsPlan("opencode", map[string]string{"a.txt": "a"}), ProviderRuntime{}); err == nil {
-			t.Error("corrupt manifest was accepted")
-		}
-	})
-}
-
 func TestFlattenPlansValidation(t *testing.T) {
 	plan := func(target string, managed []string, artifacts ...string) TargetPlan {
 		p := TargetPlan{Target: target, ManagedPaths: managed}

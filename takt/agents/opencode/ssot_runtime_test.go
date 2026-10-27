@@ -86,9 +86,7 @@ func TestRenderedNormalFlowRepairsUseRealCLI(t *testing.T) {
 	write("takt-vfs.ts", opencode.TaktVFSPluginArtifact(bin, true).Content)
 	write("node_modules/@opencode/plugin/package.json", []byte(`{"type":"module","exports":"./index.js"}`))
 	write("node_modules/@opencode/plugin/index.js", []byte(`export const Plugin={define:d=>d}`))
-	write("node_modules/@opencode/client/package.json", []byte(`{"type":"module","exports":{".":"./index.js","./service":"./service.js"}}`))
-	write("node_modules/@opencode/client/index.js", []byte(`export const OpenCode={make:()=>({permission:{create:r=>globalThis.createPermission(r)}})}`))
-	write("node_modules/@opencode/client/service.js", []byte(`export const Service={discover:async()=>({url:"http://fixture"}),headers:()=>({})}`))
+	writeOpenCodeClient(write)
 	data, err := os.ReadFile("testdata/flow-recovery.mjs")
 	if err != nil {
 		t.Fatal(err)

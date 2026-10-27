@@ -3,8 +3,8 @@ package gc
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/obs"
@@ -72,10 +72,11 @@ func checkPrior(prior []Investigation, r Investigation) error {
 }
 
 // AuthorizedFinding reports whether a confirmed investigation with evidence
-// stands behind f and the finding itself is eligible for mutation. This is
-// the gate between analysis and source edits.
-func AuthorizedFinding(f Finding, rs []Investigation) bool {
-	if !eligibleFinding(f) {
+// stands behind f and the finding itself is eligible for mutation; a finding
+// of a demoted mandate class never is (PR-MNT-32). This is the gate between
+// analysis and source edits.
+func AuthorizedFinding(f Finding, rs []Investigation, demoted []MandateClass) bool {
+	if !eligibleFinding(f, demoted) {
 		return false
 	}
 	for _, r := range rs {
@@ -86,8 +87,8 @@ func AuthorizedFinding(f Finding, rs []Investigation) bool {
 	return false
 }
 
-func eligibleFinding(f Finding) bool {
-	if f.ProposalOnly || f.Introduced || f.Exported || f.Mandate == MandateAnalyzerIntegrity || f.Status == StatusPending || mandateDemoted(f.Mandate) {
+func eligibleFinding(f Finding, demoted []MandateClass) bool {
+	if f.ProposalOnly || f.Introduced || f.Exported || f.Mandate == MandateAnalyzerIntegrity || f.Status == StatusPending || slices.Contains(demoted, f.Mandate) {
 		return false
 	}
 	return f.Tool != "" && f.ToolVersion != "" && f.Rule != "" && f.Evidence != ""
@@ -98,28 +99,8 @@ func eligibleFinding(f Finding) bool {
 // A mandate class that keeps having its consolidated work reverted (PR-MNT-31
 // attributes those reversions back to the cycle and mandate class that made
 // them) loses its authority to mutate on its own and drops to proposal-only.
-// demotedMandates is the in-memory record of that loss of autonomy: a cycle
-// checks it via eligibleFinding, and EvaluateMandateReversionRate is what
-// sets it once the rate crosses reversionRateThreshold. It is process-local
-// and reset each run, same as the rest of this package's in-memory state
-// (the durable record of the decision is the control-effect event published
-// on the bus, not this map).
-var (
-	demotedMu       sync.Mutex
-	demotedMandates = map[MandateClass]bool{}
-)
-
-func mandateDemoted(m MandateClass) bool {
-	demotedMu.Lock()
-	defer demotedMu.Unlock()
-	return demotedMandates[m]
-}
-
-func demoteMandate(m MandateClass) {
-	demotedMu.Lock()
-	defer demotedMu.Unlock()
-	demotedMandates[m] = true
-}
+// EvaluateMandateReversionRate decides it; the coordinator records it
+// durably (Coordinator.Demote), so every later authorization reads it.
 
 // reversionRateThreshold is the fraction of registered work (the PR-MNT-9/
 // PR-MNT-11 denominator, never wall time) that a mandate class's attributed
@@ -161,7 +142,8 @@ type MandateReversionRateInput struct {
 // is reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
 // session events in (afterID, beforeID], never elapsed time (PR-MNT-9/11).
 // Above reversionRateThreshold it demotes the mandate to proposal-only
-// (PR-MNT-32) and publishes the CONTAIN effect PR-OBS-CTL-5 requires.
+// (PR-MNT-32) and publishes the CONTAIN effect PR-OBS-CTL-5 requires; the
+// caller records the demotion in the coordinator.
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
 	reedits, err := store.Events(in.SessionID, obs.EventCycleReedit, in.AfterID, in.BeforeID, 0)
 	if err != nil {
@@ -182,7 +164,6 @@ func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clo
 		d.Rate = float64(reversions) / float64(registered)
 	}
 	if registered >= minRegisteredWorkForRateDecision && d.Rate > reversionRateThreshold {
-		demoteMandate(in.Mandate)
 		d.Demoted = true
 		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d) exceeds threshold %.2f",
 			in.Mandate, d.Rate, reversions, registered, reversionRateThreshold)

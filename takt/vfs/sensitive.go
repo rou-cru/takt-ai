@@ -38,18 +38,40 @@ var sensitiveSkipDirs = []string{".git", "node_modules"}
 // secret is denied only once it exists; a directory pattern ("x/**") denies
 // the directory itself.
 func sensitivePaths(root, home string) []string {
-	var found []string
-	seen := map[string]bool{}
-	add := func(p string) {
-		// The sandbox rejects glob metacharacters in a literal path.
-		if !seen[p] && !strings.ContainsAny(p, "*?[]") {
-			seen[p] = true
-			found = append(found, p)
-		}
+	var found literalPaths
+	_ = filepath.WalkDir(root, sensitiveWalkFn(root, found.add))
+	addHomeSensitivePaths(home, found.add)
+	return found.paths
+}
+
+// homeSensitivePaths is the home-relative part of sensitivePaths, for a sandbox
+// that already denies the whole workspace.
+func homeSensitivePaths(home string) []string {
+	var found literalPaths
+	addHomeSensitivePaths(home, found.add)
+	return found.paths
+}
+
+// literalPaths collects distinct paths the sandbox can deny literally.
+type literalPaths struct {
+	seen  map[string]bool
+	paths []string
+}
+
+// add records p, or its nearest ancestor free of glob metacharacters: the
+// sandbox rejects those in a literal path, and denying the enclosing
+// directory keeps the secret unreadable instead of silently dropping it.
+func (l *literalPaths) add(p string) {
+	for strings.ContainsAny(p, "*?[]") {
+		p = filepath.Dir(p)
 	}
-	_ = filepath.WalkDir(root, sensitiveWalkFn(root, add))
-	addHomeSensitivePaths(home, add)
-	return found
+	if l.seen == nil {
+		l.seen = map[string]bool{}
+	}
+	if !l.seen[p] {
+		l.seen[p] = true
+		l.paths = append(l.paths, p)
+	}
 }
 
 // sensitiveWalkFn builds the filepath.WalkDir callback that reports every

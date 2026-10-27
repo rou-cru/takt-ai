@@ -75,9 +75,11 @@ func TestTakeoverBackupFailures(t *testing.T) {
 		{"backup dir is a regular file", func(t *testing.T, root, _ string) {
 			writeFile(t, filepath.Join(root, BackupDir), "in the way")
 		}, "stage backup"},
-		{"backup target is a directory", func(t *testing.T, root, _ string) {
-			if err := os.MkdirAll(filepath.Join(root, BackupDir, "a.txt"), 0o755); err != nil {
-				t.Fatal(err)
+		{"backup target and its suffixed copy are directories", func(t *testing.T, root, _ string) {
+			for _, name := range []string{"a.txt", "a.txt." + hashOf([]byte("original"))[:8]} {
+				if err := os.MkdirAll(filepath.Join(root, BackupDir, name), 0o755); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}, "write backup"},
 	}

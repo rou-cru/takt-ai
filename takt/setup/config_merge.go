@@ -48,7 +48,7 @@ func carryInjectedMCPServers(rootDir string, artifact Artifact) (Artifact, error
 	if artifact.Path != opencode.ConfigPath() {
 		return artifact, nil
 	}
-	existing, err := os.ReadFile(filepath.Join(rootDir, filepath.FromSlash(artifact.Path)))
+	existing, err := filemerge.ReadRegularFile(filepath.Join(rootDir, filepath.FromSlash(artifact.Path)))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return artifact, nil
@@ -174,7 +174,7 @@ func planEditedConfigPatch(rootDir string, after []TargetPlan, changed map[strin
 		return nil, nil
 	}
 	full := filepath.Join(rootDir, filepath.FromSlash(path))
-	current, err := os.ReadFile(full)
+	current, err := filemerge.ReadRegularFile(full)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -210,7 +210,7 @@ func planEditedConfigPatch(rootDir string, after []TargetPlan, changed map[strin
 // ownership entry is left alone so the file stays flagged as user-edited for
 // install, sync and any other flow that must ask before replacing it.
 func (p *configPatch) apply(rootDir string) error {
-	if _, err := backupContent(rootDir, p.path, p.current); err != nil {
+	if _, err := backupContent(rootDir, p.path, p.current, p.mode); err != nil {
 		return err
 	}
 	_, err := filemerge.WriteFileAtomic(filepath.Join(rootDir, filepath.FromSlash(p.path)), p.content, p.mode)
@@ -227,7 +227,7 @@ func mergePreexistingConfig(rootDir string, artifact Artifact, manifest *Ownersh
 	if _, managed := manifest.Entries[artifact.Path]; managed {
 		return artifact, nil
 	}
-	existing, err := os.ReadFile(filepath.Join(rootDir, filepath.FromSlash(artifact.Path)))
+	existing, err := filemerge.ReadRegularFile(filepath.Join(rootDir, filepath.FromSlash(artifact.Path)))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return artifact, nil
