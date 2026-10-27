@@ -797,13 +797,19 @@ func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorSt
 	if err != nil || current != managedChanged {
 		return state, err
 	}
-	edited, err := backedUpState(root, artifactPath, content, state.mode)
+	// The edit is backed up with the mode it has now, which the user may have
+	// tightened since the takeover.
+	info, err := os.Lstat(destination)
+	if err != nil {
+		return priorState{}, fmt.Errorf("inspect managed file %q: %w", artifactPath, err)
+	}
+	edited, err := backedUpState(root, artifactPath, content, info.Mode().Perm())
 	if err != nil {
 		return priorState{}, err
 	}
 	// Uninstall must still restore the original takeover backup, not this edit.
 	if !entry.PreExisting {
-		state.priorSHA256, state.backupPath = edited.priorSHA256, edited.backupPath
+		state.priorSHA256, state.backupPath, state.mode = edited.priorSHA256, edited.backupPath, edited.mode
 	}
 	return state, nil
 }
@@ -865,6 +871,9 @@ func backupContent(root, artifactPath string, content []byte, mode os.FileMode) 
 			if backupDest, err = SafeJoin(root, filepath.FromSlash(backupRel)); err != nil {
 				return "", fmt.Errorf("stage backup for %q: %w", artifactPath, err)
 			}
+			if holdsOtherBackup(backupDest, content) {
+				return "", fmt.Errorf("stage backup for %q: %s already holds other content", artifactPath, backupRel)
+			}
 		}
 	}
 	directory := filepath.Dir(backupDest)
@@ -883,6 +892,18 @@ func backupContent(root, artifactPath string, content []byte, mode os.FileMode) 
 		return "", fmt.Errorf("write backup for %q: %w", artifactPath, err)
 	}
 	return backupRel, nil
+}
+
+// holdsOtherBackup reports whether dest is a regular file with content other
+// than content: an earlier backup that must never be replaced. A symlink is not
+// a backup; the rename replaces the link itself, never its target.
+func holdsOtherBackup(dest string, content []byte) bool {
+	info, err := os.Lstat(dest)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	existing, err := filemerge.ReadRegularFile(dest)
+	return err != nil || !bytes.Equal(existing, content)
 }
 
 // markSkippedPaths reports preserved paths as unchanged so results stay
