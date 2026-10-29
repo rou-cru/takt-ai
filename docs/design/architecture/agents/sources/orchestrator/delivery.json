@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: handling a staged delivery",
@@ -7,23 +7,16 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Delivery"
-    },
-    {
-      "id": "fix",
-      "label": "Correction"
-    },
-    {
-      "id": "exits",
-      "label": "Exceptions"
-    }
+  "mainPath": [
+    "delivered",
+    "verifying",
+    "passed",
+    "consolidating",
+    "consolidated"
   ],
   "states": [
     {
@@ -31,8 +24,6 @@
       "type": "start",
       "label": "Delivery staged",
       "sublabel": "author key returned",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -46,13 +37,16 @@
       "type": "decision",
       "label": "Verifier gate",
       "sublabel": "author_keys declared",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 20,
+          "end_line": 24
+        },
+        {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 132
+          "line": 74,
+          "end_line": 74
         },
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -66,8 +60,6 @@
       "type": "active",
       "label": "Verdict passes",
       "sublabel": "covers the staged revision",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -81,8 +73,6 @@
       "type": "active",
       "label": "Consolidating",
       "sublabel": "vfs_consolidate",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -96,8 +86,6 @@
       "type": "success",
       "label": "Consolidated",
       "sublabel": "released to the workspace",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -111,13 +99,11 @@
       "type": "failure",
       "label": "Verdict fails",
       "sublabel": "staged work untouched",
-      "lane": "fix",
-      "col": 2,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 132
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 20,
+          "end_line": 23
         }
       ]
     },
@@ -126,8 +112,6 @@
       "type": "active",
       "label": "Correction",
       "sublabel": "claim_assign with author_key",
-      "lane": "fix",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -141,8 +125,6 @@
       "type": "neutral",
       "label": "Discarded",
       "sublabel": "only if correction cannot reach",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -161,18 +143,16 @@
       "type": "waiting",
       "label": "Escalated",
       "sublabel": "limit reached or base changed",
-      "lane": "exits",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 114,
-          "end_line": 121
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 33,
+          "end_line": 36
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 129,
-          "end_line": 133
+          "line": 118,
+          "end_line": 118
         }
       ]
     }
@@ -181,29 +161,25 @@
     {
       "from": "delivered",
       "to": "verifying",
-      "label": "verification planned",
-      "variant": "emphasis",
-      "labelDy": -31
+      "label": "planned",
+      "variant": "emphasis"
     },
     {
       "from": "verifying",
       "to": "passed",
-      "label": "pass per key",
-      "labelDy": -31
+      "label": "pass"
     },
     {
       "from": "passed",
       "to": "consolidating",
-      "label": "author passes",
-      "variant": "emphasis",
-      "labelDy": -31
+      "label": "per author",
+      "variant": "emphasis"
     },
     {
       "from": "consolidating",
       "to": "consolidated",
-      "label": "released",
-      "variant": "emphasis",
-      "labelDy": -31
+      "label": "flushed",
+      "variant": "emphasis"
     },
     {
       "from": "verifying",
@@ -214,8 +190,7 @@
     {
       "from": "failed",
       "to": "spotfix",
-      "label": "not a discard",
-      "labelDy": -31
+      "label": "not a discard"
     },
     {
       "from": "spotfix",

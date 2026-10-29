@@ -1,30 +1,28 @@
 # Architecture Standard: Agent Long-Term Memory (LTM)
 
-## 1. Problem & Principles
+## 1. Principles
 
-Context windows are ephemeral and bound to active sessions. Without long-term memory, multi-agent crews re-explain the same preferences and constraints every session, overwrite each other's context with no attribution, and accumulate raw operational noise that degrades retrieval precision over weeks and months.
-
-Takt treats long-term memory as **implicit, persistent context**, governed by the 4R principles (Relevance, Recency, Ranking, Retrieval) and structured around explicit agent authorship and lifecycle consolidation.
+Long-term memory retains durable knowledge beyond an active context window, with explicit authorship and recorded evolution.
 
 ## 2. Scope & Memory Tiering
 
 | ID | Requirement |
 | --- | --- |
 | MEM-SCP-1 | Memory MUST be strictly partitioned into two canonical tiers: **Global Tier** (cross-project, scoped to the user's organization — for a personal user, the organization is the user) and **Workspace Tier** (isolated to the active repository/project). |
-| MEM-SCP-2 | Global Tier knowledge MUST encompass durable user preferences, developer communication habits, universal environment quirks, and cross-repository technical playbooks derived through Macro Consolidation (`MEM-DRM-7`). It MUST NOT ingest raw project-specific business logic, proprietary code snippets, or verbatim Workspace entries; only derived playbook knowledge crosses into this tier. |
+| MEM-SCP-2 | Global Tier knowledge MUST encompass durable user preferences, developer communication habits, universal environment quirks, and cross-repository technical playbooks. It MUST NOT ingest raw project-specific business logic, proprietary code snippets, or verbatim Workspace entries. |
 | MEM-SCP-3 | Workspace Tier knowledge MUST encompass repository-level architectural invariants, technical constraints, and domain models. |
-| MEM-SCP-4 | Crossing tiers MUST be explicit and one-directional at write time: project-level agents MAY read Global Tier context, but MUST NOT write workspace-specific artifacts into the Global Tier. Workspace content enters the Global Tier only as playbooks derived by Macro Consolidation (`MEM-DRM-7`); no other cycle or agent promotes Workspace entries across tiers. |
+| MEM-SCP-4 | Crossing tiers MUST be explicit and one-directional at write time: project-level agents MAY read Global Tier context, but MUST NOT write workspace-specific artifacts into the Global Tier. Workspace content enters the Global Tier only as playbooks derived by macro consolidation; no other cycle or agent promotes Workspace entries across tiers. |
 
 ## 3. Multi-Agent Authorship & Attribution
 
 | ID | Requirement |
 | --- | --- |
-| MEM-AUT-1 | Any active agent role within the crew is authorized to read and write memory entries within its assigned operational scope. |
+| MEM-AUT-1 | Any active agent role within the crew other than maintenance is authorized to read and write memory entries within its assigned operational scope. |
 | MEM-AUT-2 | The specialist that authored an entry is an inseparable part of that entry, together with its session and chronological position. The entry MUST distinguish its writer from the source or authority supporting its content: recording a user's decision does not make the writer its decision-maker. |
 | MEM-AUT-3 | Agents MUST NOT emit anonymous or unattributed memory entries. |
 | MEM-AUT-4 | Entries from different specialists MUST remain individually distinguishable, including inside consolidated groups. Grouping MUST preserve each entry's complete content, authorship, provenance, chronology, nature, and evolution links; it MUST NOT blend different stances into a collective assertion. |
-| MEM-AUT-5 | Retrieval MUST preserve chronological and authorial order, so that reading entries in sequence reconstructs how understanding evolved and where each stance originated. |
-| MEM-AUT-6 | The harness MUST deterministically record which entries each session and author created, without depending on any agent's declaration, so the receiving agent can relate them without searching. |
+| MEM-AUT-5 | Retrieval MUST preserve chronological and authorial order. |
+| MEM-AUT-6 | The harness MUST deterministically record which entries each session and author created, without depending on any agent's declaration. |
 | MEM-AUT-7 | Authorship, session, and entry structure MUST be assigned by the harness from the runtime identity of the writing agent. Agents contribute only the intent and content of an entry; they MUST NOT assert their own authorship or session. |
 
 ## 4. Memory Typology & Ingestion Protocols
@@ -46,15 +44,11 @@ Takt treats long-term memory as **implicit, persistent context**, governed by th
 | --- | --- |
 | MEM-OPS-1 | **Append-Only Operation**: Day-to-day work MUST preserve existing entries intact. Active agents MUST NOT delete or overwrite them, including entries they authored in the current session. |
 | MEM-OPS-2 | Corrections and evolution MUST be recorded as new entries explicitly linked to the affected entries. The relation MUST distinguish an evolution of the linked entry (correcting, superseding, or supplementing it), a scoped exception, and unresolved disagreement. An entry that corrects or supersedes another carries the complete current artifact, readable alone, never a delta of it; supplementing adds a distinct artifact and never evolves the same one. Neither a later timestamp nor a different specialist's assertion alone resolves a disagreement. |
-| MEM-OPS-3 | Session closure does not authorize content loss. Outside user-validated Deep Dream, entries MAY be grouped without loss but MUST retain their full content. Age alone neither invalidates knowledge nor authorizes deletion. |
-| MEM-OPS-4 | At session close, a single session narrative MUST be recorded. The agent holding the user-facing interface contributes only the session objective and its final state; the harness generates the chronology of the entries created during the session, in past tense, and their links by identity and relation. The narrative MUST NOT restate, merge, or promote the linked entries, and MUST NOT carry next steps or future work. No other agent contributes a session narrative. |
-| MEM-OPS-5 | The harness MUST structure each session's memory as a linked graph: every entry links to a session start anchor; the session narrative of `MEM-OPS-4` is the end anchor and links to the start anchor and to every entry of the session. Continuity with a previous session exists only when the agent holding the user-facing interface declares it, and links the current start anchor to the previous session's end anchor. The declaration MUST name a closed session, MAY name one from another workspace, and becomes permanent only with the current session's first new entry; until then it can be replaced or withdrawn. Without that declaration, each session remains an isolated graph. |
+| MEM-OPS-3 | Session closure does not authorize content loss. Outside Deep Dream and the mechanical exception of `MEM-DRM-2`, entries MAY be grouped without loss but MUST retain their full content. Age alone neither invalidates knowledge nor authorizes deletion. |
+| MEM-OPS-4 | At session close, a single session narrative MUST be recorded. The interface holder contributes only the session objective and its final state; the harness generates the chronology of the entries created during the session, in past tense, and their links by identity and relation. The narrative MUST NOT restate, merge, or promote the linked entries, and MUST NOT carry next steps or future work. No other agent contributes a session narrative. |
+| MEM-OPS-5 | The harness MUST structure each session's memory as a linked graph: every entry links to a session start anchor; the session narrative of `MEM-OPS-4` is the end anchor and links to the start anchor and to every entry of the session. Continuity with a previous session exists only when the interface holder declares it, and links the current start anchor to the previous session's end anchor. The declaration MUST name a closed session, MAY name one from another workspace, and becomes permanent only with the current session's first new entry; until then it can be replaced or withdrawn. Without that declaration, each session remains an isolated graph. |
 
-## 6. Consolidation Engine (Dream Lifecycle)
-
-To prevent semantic entropy and memory degradation over long operating horizons, Takt defines a dual-mode consolidation lifecycle (Periodic Simple Mode / Deep Dream), with macro consolidation over closed sessions. Scheduling belongs to `PRD_DREAMING.md`.
-
-## 7. Retrieval & Context Integration
+## 6. Retrieval & Context Integration
 
 | ID | Requirement |
 | --- | --- |
@@ -62,18 +56,17 @@ To prevent semantic entropy and memory degradation over long operating horizons,
 | MEM-RET-3 | In the event of a factual conflict between an older uncompacted memory entry and verified repository source code, the active codebase state prevails. |
 | MEM-RET-4 | Retrieval MUST distinguish currently applicable knowledge, superseded or corrected history, and unresolved positions using scope, supporting authority or evidence, and explicit evolution links. Historical entries MUST NOT be presented as current directives, and unresolved disagreement MUST NOT be silently settled by recency. |
 | MEM-RET-5 | Current applicability MUST be determined from recorded evolution even when consolidation or Deep Dream has not run. An entry may cease to govern without being deleted; relevant history remains retrievable with its original attribution. |
-| MEM-RET-6 | Retrieval across the append-only memory graph MUST scale sub-linearly by evaluating boolean status filters (`active` vs `superseded`) before any targeted lookup, never scanning the full graph. |
-| MEM-RET-7 | Each entry MUST receive a local semantic representation when written, with zero network egress, tagged with the identity of the model that produced it. A model change is resolved by reindexing in a maintenance cycle without touching entry content. Its use is limited to consolidation (`PR-DRM-20`). |
+| MEM-RET-6 | Retrieval across the append-only memory graph MUST scale sub-linearly by evaluating status filters for active and superseded entries before any targeted lookup, never scanning the full graph. |
+| MEM-RET-7 | Each entry MUST receive a local semantic representation when written, with zero network egress, tagged with the identity of the model that produced it. A model change is resolved by reindexing in a maintenance cycle without touching entry content. Its use is limited to consolidation. |
+| MEM-RET-8 | An artifact is retrieved by entry identity, section, and applicable version without loading its entire session or consolidated group; retrieval preserves author, provenance, and evolution links. A session with no durable new knowledge creates no content entry. Execution plans, budget counters, and pending runtime work remain in the execution history, not a second memory authority. |
 
-## 8. Consolidation Requirements
+## 7. Consolidation Requirements
 
 | ID | Requirement |
 | --- | --- |
-| MEM-DRM-1 | Takt MUST support consolidation outside active task execution: user-guided review in Deep Dream, and organization in Periodic Simple Mode that is lossless except for the bounded mechanical exception of `PR-MNT-23`. Both cycles are conducted by the maintenance class and scheduled by the harness (`PR-DRM-1`, `PR-DRM-5`). |
-| MEM-DRM-2 | **User-Directed Deep Mode (Deep Dream)**: A cycle explicitly requested and accompanied by the user is the only mode permitted to delete entries or reduce their retained content on judgment; the bounded mechanical removals of `PR-MNT-23` are the sole exception and never require Deep Dream. The user MUST validate what may be removed; requesting the cycle alone does not authorize every deletion. |
-| MEM-DRM-3 | **Periodic Simple Mode**: When the configured interval has elapsed since the previous cycle and memory has grown, a background cycle MAY group related entries into fewer consolidated units. It MUST preserve every constituent entry's complete content and identity, including duplicates and operational debris already stored; grouping MUST NOT become lossy summarization or deletion. Objective mechanical removal, defined and bounded by `PR-MNT-23`, is the sole exception to this preservation rule and MUST NOT be extended to any case requiring judgment. |
+| MEM-DRM-2 | Deep Dream is the only mode permitted to delete entries or reduce their retained content on judgment; the bounded mechanical removals of `PR-MNT-23` are the sole exception and never require Deep Dream. The user MUST validate what may be removed; requesting the cycle alone does not authorize every deletion. |
+| MEM-DRM-3 | Periodic Simple Mode MAY group related entries into fewer consolidated units. It MUST preserve every constituent entry's complete content and identity, including duplicates and operational debris already stored. Grouping MUST NOT become lossy summarization or deletion. |
 | MEM-DRM-4 | Consolidated groups MUST allow targeted retrieval of their relevant constituent entries without requiring the whole group's history to be loaded. Reducing the number of units MUST NOT obscure provenance or evolution. |
 | MEM-DRM-5 | A superseded preference MUST cease to govern current behavior while remaining available as historical content; Periodic Simple Mode MAY move an entry that no longer governs behavior out of the active retrieval path, fully retrievable with its original attribution. Its removal is permitted only in Deep Dream after user validation; supersession does not itself authorize deletion. |
-| MEM-DRM-7 | **Macro Consolidation (Playbooks)**: On a macro interval across $N$ closed sessions or milestones, consolidation derives procedural playbooks from closed session narratives (`MEM-OPS-4`) and bus outcomes, which include the recorded execution DAG and the mutation classification of `PR-DAG-MUT-4`, so derivation can compare observed execution against the orchestrator's declared rationale rather than relying on that account alone. Playbook rules MUST cite constituent session anchors and MUST NOT alter or delete underlying episodic or declarative entries. This derivation is the only path by which Workspace-tier knowledge reaches the Global Tier (`MEM-SCP-2`, `MEM-SCP-4`). |
-
-Provider mutation, passive capture, and conflict-judgment tools (`mem_update`, `mem_capture_passive`, `mem_judge`) are exposed only within Deep Dream cycles.
+| MEM-DRM-7 | Macro consolidation derives procedural playbooks from closed session narratives and the execution history, including the recorded DAG and its mutation classification, and compares observed execution against the orchestrator's declared rationale. Playbook rules MUST cite constituent session anchors and MUST NOT alter or delete underlying episodic or declarative entries. |
+| MEM-DRM-8 | Tools that mutate provider entries, capture entries passively, or judge conflicts are exposed only within Deep Dream cycles. |

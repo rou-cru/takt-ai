@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "A request to the installed crew, end to end",
+    "output": "docs/design/architecture/interactions/diagrams/request-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    },
+    "column_fit": "spread"
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "OpenCode UI" },
+    { "id": "takt", "type": "backend", "label": "takt", "sublabel": "Orchestrator agent",
+      "sources": [{ "path": "takt/catalog/assets/agents/takt/OPERATIONS.md", "line": 1 }] },
+    { "id": "plugin", "type": "security", "label": "takt-vfs plugin", "sublabel": "OpenCode hooks",
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 1076 }] },
+    { "id": "bin", "type": "backend", "label": "takt-ai", "sublabel": "dispatch, vfs, history",
+      "sources": [
+        { "path": "takt/dispatch/dispatch.go", "line": 62 },
+        { "path": "takt/cli/execution.go", "line": 36 }
+      ] },
+    { "id": "dev", "type": "backend", "label": "dev", "sublabel": "specialist, child session",
+      "sources": [{ "path": "takt/catalog/assets/agents/takt-dev/agent.yaml", "line": 1 }] },
+    { "id": "verify", "type": "backend", "label": "verify", "sublabel": "independent verdict",
+      "sources": [{ "path": "takt/vfs/verdict.go", "line": 68 }] },
+    { "id": "engram", "type": "database", "label": "Engram", "sublabel": "memory store",
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-memory.ts", "line": 179 }] }
+  ],
+  "messages": [
+    { "id": "m01", "from": "user", "to": "takt", "y": 160, "label": "asks the crew to work", "variant": "emphasis" },
+    { "id": "m02", "from": "takt", "to": "bin", "y": 188, "label": "dispatch_commit, dispatch_inputs", "variant": "default" },
+    { "id": "m03", "from": "takt", "to": "bin", "y": 216, "label": "claim_assign: exact file set", "variant": "default" },
+    { "id": "m04", "from": "bin", "to": "takt", "y": 244, "label": "author_key", "variant": "return" },
+    { "id": "m05", "from": "takt", "to": "plugin", "y": 272, "label": "subagent(unit, dev)", "variant": "emphasis" },
+    { "id": "m06", "from": "plugin", "to": "bin", "y": 300, "label": "dispatch prepare: admission", "variant": "security" },
+    { "id": "m07", "from": "bin", "to": "plugin", "y": 328, "label": "admitted, or refusal naming the next call", "variant": "return" },
+    { "id": "m08", "from": "plugin", "to": "dev", "y": 356, "label": "child session, claim bound", "variant": "default" },
+    { "id": "m09", "from": "dev", "to": "plugin", "y": 384, "label": "vfs_write, sandboxed shell", "variant": "default" },
+    { "id": "m10", "from": "plugin", "to": "bin", "y": 412, "label": "stage delta, revision + 1", "variant": "default" },
+    { "id": "m11", "from": "dev", "to": "engram", "y": 440, "label": "memory_record result", "variant": "default" },
+    { "id": "m12", "from": "dev", "to": "plugin", "y": 468, "label": "deliver_result(ids)", "variant": "security" },
+    { "id": "m13", "from": "plugin", "to": "takt", "y": 496, "label": "Delivered results: Engram IDs", "variant": "return" },
+    { "id": "m14", "from": "takt", "to": "verify", "y": 524, "label": "delegate Verify (author_key)", "variant": "emphasis" },
+    { "id": "m15", "from": "verify", "to": "bin", "y": 552, "label": "vfs_verify: pass, bound to revision", "variant": "security" },
+    { "id": "m16", "from": "verify", "to": "engram", "y": 580, "label": "report, delivered by ID", "variant": "default" },
+    { "id": "m17", "from": "takt", "to": "bin", "y": 608, "label": "vfs_consolidate(author_key)", "variant": "security" },
+    { "id": "m18", "from": "takt", "to": "user", "y": 636, "label": "git commit asks the user", "variant": "security" },
+    { "id": "m19", "from": "takt", "to": "engram", "y": 664, "label": "memory_close_session", "variant": "dashed" },
+    { "id": "m20", "from": "takt", "to": "user", "y": 692, "label": "report", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "takt", "from": 160, "to": 696, "type": "backend" },
+    { "participant": "dev", "from": 356, "to": 472, "type": "backend" },
+    { "participant": "verify", "from": 524, "to": 584, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Harness acts",
+      "items": [
+        "Admission, claim, delivery and consolidation are refused or allowed by takt-ai, never by prose",
+        "A refusal names the call that continues the work",
+        "Only the orchestrator consolidates and runs Git"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Agent conduct",
+      "items": [
+        "takt picks the route and the specialists; the plugin only admits",
+        "Specialists stage work and deliver Engram IDs",
+        "Verify is never the author of the delta it judges"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Not drawn",
+      "items": [
+        "Planning lanes before the claim, see agents/flows",
+        "A failing verdict, repair and GC after idle, see runtime/"
+      ]
+    }
+  ]
+}
