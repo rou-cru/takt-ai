@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Control loop: what is wired today and what is not",
+    "output": "docs/design/architecture/interactions/diagrams/control-loop.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    }
+  },
+  "stages": [
+    { "label": "Work" },
+    { "label": "Sensors" },
+    { "label": "Evaluate" },
+    { "label": "Actuators" }
+  ],
+  "nodes": [
+    { "id": "work", "type": "backend", "label": "Crew work", "sublabel": "delegations, tools, VFS", "stage": 0, "row": 1,
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 1076 }] },
+    { "id": "observe", "type": "security", "label": "observe()", "sublabel": "fire and forget, no content", "stage": 1, "row": 0,
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 568 }] },
+    { "id": "history", "type": "database", "label": "Execution history", "sublabel": "units, attempts, journal", "stage": 1, "row": 2,
+      "sources": [{ "path": "takt/history/history.go", "line": 1 }] },
+    { "id": "events", "type": "database", "label": "Event store", "sublabel": "events.db, control_actions", "stage": 2, "row": 0,
+      "sources": [{ "path": "takt/obs/store.go", "line": 1 }] },
+    { "id": "detectors", "type": "backend", "label": "Detectors", "sublabel": "problem rate, yield", "stage": 2, "row": 1, "tag": "not implemented",
+      "sources": [{ "path": "takt/obs/obs.go", "line": 225 }] },
+    { "id": "budgets", "type": "security", "label": "Budgets and bounds", "sublabel": "counted in recorded work", "stage": 2, "row": 2,
+      "sources": [{ "path": "takt/dispatch/admission_policy.yaml", "line": 1 }, { "path": "takt/dispatch/recovery.go", "line": 149 }] },
+    { "id": "throttle", "type": "messagebus", "label": "Throttle, contain", "sublabel": "contain: gc mandate only", "stage": 3, "row": 0, "tag": "partly wired",
+      "sources": [{ "path": "takt/obs/obs.go", "line": 227 }, { "path": "takt/gc/investigation.go", "line": 170 }, { "path": "takt/gc/coordinator.go", "line": 71 }] },
+    { "id": "deny", "type": "messagebus", "label": "Refuse", "sublabel": "names the next call", "stage": 3, "row": 1,
+      "sources": [{ "path": "takt/dispatch/dispatch.go", "line": 84 }] },
+    { "id": "gate", "type": "messagebus", "label": "Gate, escalate", "sublabel": "user confirms, exception", "stage": 3, "row": 2,
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 1277 }] },
+    { "id": "rollback", "type": "messagebus", "label": "Roll back", "sublabel": "restore, discard, virtual", "stage": 3, "row": 3,
+      "sources": [{ "path": "takt/dispatch/recovery.go", "line": 149 }] }
+  ],
+  "flows": [
+    { "id": "f1", "from": "work", "to": "observe", "label": "tool events", "variant": "default" },
+    { "id": "f2", "from": "work", "to": "history", "label": "facts", "variant": "emphasis" },
+    { "id": "f3", "from": "observe", "to": "events", "label": "obs ingest", "variant": "default" },
+    { "id": "f4", "from": "events", "to": "detectors", "label": "planned input", "variant": "dashed" },
+    { "id": "f5", "from": "history", "to": "budgets", "label": "attempts, actions", "variant": "emphasis" },
+    { "id": "f6", "from": "detectors", "to": "throttle", "label": "planned", "variant": "dashed" },
+    { "id": "f7", "from": "budgets", "to": "deny", "label": "bound hit", "variant": "security" },
+    { "id": "f8", "from": "budgets", "to": "gate", "label": "allowance needed", "variant": "security" },
+    { "id": "f9", "from": "budgets", "to": "rollback", "label": "recovery spent", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Works today",
+      "items": [
+        "Static bounds and recorded history drive every refusal",
+        "Telemetry is non-blocking and carries no content",
+        "A demoted mandate stays proposal-only across runs"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Gap with the PRD",
+      "items": [
+        "Detector families and problem-rate derivation have no implementation beyond gc mandate reversion",
+        "Throttle has no producer; contain fires only from gc mandate reversion"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Missing telemetry",
+      "items": [
+        "Absent signals are not treated as agent failure",
+        "The history store, not the event store, authorizes decisions"
+      ]
+    }
+  ]
+}

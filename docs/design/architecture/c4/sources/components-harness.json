@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     }
   },
@@ -168,16 +168,16 @@
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 218
+          "line": 275
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 1173,
-          "end_line": 1182
+          "line": 1412,
+          "end_line": 1421
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 657
+          "line": 785
         }
       ]
     },
@@ -230,7 +230,7 @@
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 287
+          "line": 347
         }
       ]
     }

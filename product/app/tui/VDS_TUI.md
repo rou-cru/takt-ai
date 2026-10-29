@@ -1,33 +1,21 @@
 # VDS: TUI Surface Profile — Takt AI
 
-**Surface/version:** installation and configuration TUI/CLI, profile 3.0.
+**Surface:** installation and configuration TUI/CLI.
 
 ## 1. Purpose and extension contract
 
-Takt prepares the next session in OpenCode v2. The TUI is a reliable point for installing and adjusting that configuration, not a permanent crew monitor or a replacement harness. Users are engineers and power users, not necessarily familiar with Takt internals. The experience expresses calm competence through relevant information, durable choices, and clear recovery.
+The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions.
 
 | Contract field | Surface application |
 | --- | --- |
-| Principles | B01 precision, B02 full capability with optional depth, B03 consistent semantics, B04 contextual confirmation, B05 present identity with clear operation, B06 recovery without reproach, B07 durable intention, B08 honest limits. |
-| Patterns | L03 task menu; L04 focused configuration; L05 dependent first-install preparation; L06 model/capability comparison; L07 external-change conflict; L08 execution; L09 result/recovery. L01/L02 are not primary TUI task patterns. |
+| Principles | B01–B08. |
+| Patterns | L03–L09. L01/L02 are not primary TUI task patterns. |
 | Tokens and native equivalents | Semantic tokens mapped in §3; terminal font and cell spacing, not web typography or pixel geometry. |
-| Navigation and commitment | §2 keyboard and component contracts; §4 task map and §5 state matrix. Flow PRDs own operation semantics. |
-| Language | English TUI/CLI labels in this profile. Additional locales require complete labels/help and expansion tests, not partial translation. Technical identifiers preserve spelling. |
+| Navigation and commitment | §2 keyboard and component contracts; §4 task map and §5 state matrix. |
+| Language | English TUI/CLI labels in this profile. Additional locales require complete labels/help and expansion tests, not partial translation. |
 | Accessibility and environments | §3 capability policy; §6 size/theme/input/output evidence matrix. Terminal accessibility is not certified by web contrast calculations. |
 | Evidence | §6 defines the required acceptance evidence for this surface. |
-| Extensions | Native cell layout, capability fallback and keyboard grammar are local specializations of §§2–3. No additional meaning or palette is introduced beyond what is defined here. The implementation source is the Charm stack (Bubble Tea v2, Bubbles v2, Lip Gloss v2); library defaults such as key bars, list titles, or form chrome MUST NOT override §§2–3. |
-
-### Decision rationale
-
-| Adaptation | Principle | Why |
-| --- | --- | --- |
-| Canonical logo beside the task list on the home screen; compact header and untitled panels elsewhere | B05 | Keep the product recognizable at entry without turning operational screens into ornamental chrome. |
-| One complete dark semantic theme, distinct focus/selection, no faint functional text | B03/B08 | Preserve meaning and verifiable legibility instead of approximating a local aesthetic. |
-| Space selection, Enter submission of selection fields, visible commitment buttons and guarded exits | B01/B04 | Make action effects discoverable and prevent navigation from silently losing work. |
-| Focused edits and durable exclusions | B02/B07 | Offer depth without repeating setup or resetting decisions. |
-| State-based results and honest recovery | B06/B08 | Explain what can actually be done rather than blaming the user or promising undo. |
-
-Apply the owning setup/installation requirement, then this profile, for any new menu or flow. New menus and known flows compose these patterns and states; they do not require a new visual identity. A genuinely new modality needs a documented reason and evidence before extending this profile.
+| Extensions | Native cell layout, capability fallback and keyboard grammar are local specializations of §§2–3. Library defaults such as key bars, list titles, or form chrome MUST NOT override §§2–3. |
 
 ## 2. Visual and Interactive Requirements
 
@@ -37,10 +25,10 @@ Apply the owning setup/installation requirement, then this profile, for any new 
 | --- | --- |
 | PR-UX-1 | Each screen MUST read as a brief header, a dominant task body grouped in panels, and an optional row of action buttons below the panel. No key bar is rendered. Scrolling MUST preserve that reading order and keep focused controls reachable. No full-screen double frame or empty branding band is required. |
 | PR-UX-2 | Operational screens MUST group their body in bordered panels without titles, centered with bounded width. Text inside a panel is left-aligned; the action button row is centered below it. List–detail is permitted only at 100 or more columns with at least 32 columns for list, 48 for detail, and room for margins/separation. Otherwise open detail as a nested view and preserve return context. |
-| PR-UX-2A | The entry (home) screen MUST render the canonical logo (`docs/assets/brand/takt-ai.png`, or an approved terminal representation of it, including ASCII art) beside the task list when width allows, stacked above it otherwise. The home shows no `Takt AI` signature line: the logo alone identifies the product. Its terminal representation keeps the artwork's own colors and both rings, drawn as the artwork itself on a transparent background on terminals that accept the kitty graphics protocol when asked, and with quadrant block characters everywhere else. Support is established by querying the terminal, never by its name, and the mark is never left to font fallback. Operational screens (selection, edit, review, execution, result, conflict) MUST NOT reserve a mandatory logo band; the shell, panel composition, and accent carry continuity instead. |
+| PR-UX-2A | The entry (home) screen MUST render the canonical logo (or an approved terminal representation of it, including ASCII art) beside the task list when width allows, stacked above it otherwise. The home shows no `Takt AI` signature line: the logo alone identifies the product. Its terminal representation keeps the artwork's own colors and both rings, drawn as the artwork itself on a transparent background on terminals that accept the kitty graphics protocol when asked, and with quadrant block characters everywhere else. Support is established by querying the terminal, never by its name, and the mark is never left to font fallback. Operational screens (selection, edit, review, execution, result, conflict) MUST NOT reserve a mandatory logo band; the shell, panel composition, and accent carry continuity instead. |
 | PR-UX-3 | The TUI has a single dark theme. It MUST consume the complete dark semantic token set, including painted canvas and panel backgrounds. There is no light or inherited-color theme. The token mapping in §3 is the only local adaptation; no separate palette or per-screen hex values are permitted. |
-| PR-UX-4 | Color MUST express semantic roles, never decoration alone. Focus, persistent selection, information, success, warning, and failure MUST remain distinct through markers and labels without color. Petroleum identifies brand/orientation and focus, green verified success and checked options, amber uncertainty/warning, and red failure or destructive consequence. |
-| PR-UX-5 | The host controls the monospace font. Use heading (`text.primary`, bold), content (`text.primary`), secondary (`text.secondary`), and supporting text (`text.muted`) roles with spacing and labels. Signature MAY use Petrol `P400` on the terminal canvas (brand.md §5.3); focus is an independent marker, not a heading role. No faint/opacity styling on functional text, imposed font, or simulated font sizes. |
+| PR-UX-4 | Color MUST express semantic roles, never decoration alone. Focus, persistent selection, information, success, warning, and failure MUST remain distinct through markers and labels without color. Petrol identifies brand/orientation and focus, green verified success and checked options, amber uncertainty/warning, and red failure or destructive consequence. |
+| PR-UX-5 | The host controls the monospace font. Use heading (`text.primary`, bold), content (`text.primary`), secondary (`text.secondary`), and supporting text (`text.muted`) roles with spacing and labels. Signature MAY use Petrol `P400` on the terminal canvas; focus is an independent marker, not a heading role. No faint/opacity styling on functional text, imposed font, or simulated font sizes. |
 | PR-UX-26 | Reduced color capability MUST NOT block startup or require a decision. Apply §3 capability policy: verified native mapping when available, otherwise monochrome. Nearest-color conversion alone is not contrast evidence. Preserve semantic names and markers in every mode. |
 | PR-UX-6 | The baseline glyph vocabulary MUST work in ASCII: `>` focus, `[x]`/`[ ]` multi-selection, and the option under `>` as the single selection. The focused form field carries a vertical bar on its left (`┃`, ASCII `|`). Execution steps mark done with `✓` (ASCII `x`), the current step with a spinner (ASCII `*`; an animated spinner MAY supplement it where supported and disabled on request) and pending steps with no marker. Results state what happened in a sentence colored by its semantic role. Unicode glyphs MUST NOT replace labels or require Nerd Fonts. |
 
@@ -83,24 +71,24 @@ Apply the owning setup/installation requirement, then this profile, for any new 
 
 | ID | Requirement |
 | --- | --- |
-| PR-UX-22 | Relevant external modification MUST carry a discreet textual indication, not color alone. Takt-managed choices are not drift. Drift unrelated to the operation MUST NOT interrupt it. |
-| PR-UX-23 | A conflict view MUST explain source, affected scope and known versus uncertain compatibility before offering feasible retention/restoration choices with neutral decision hierarchy. Known deterministic incompatibility blocks the invalid composition and explains an alternative; unusual preference alone does not. A full diff is secondary, but decisive risk stays visible. |
-| PR-UX-27 | Under `Capabilities`, list each capability assessed by PR-SET-32 once, by its user-facing name (memory, code navigation, library docs, Takt orchestrator, default model, skills, plugins, OpenCode reload), never by its check identifier. A marker that reads without color states the result: `✓` verified (success), `✗` not working (danger, a failed check), `?` not checked (warning, inability to assess); only the last two add their textual state and explanation. One verdict line precedes the list and is never repeated: not ready when a capability failed, unconfirmed when checks could not run. When every check passed, one line states what was not tested. Lack of evidence MUST NOT be presented as either verified success or a failed check. |
+| PR-UX-22 | Relevant external modification MUST carry a discreet textual indication, not color alone. |
+| PR-UX-23 | A conflict view MUST show source, affected scope, and known versus uncertain compatibility before the feasible choices. Present those choices with neutral decision hierarchy. A full diff is secondary, but decisive risk stays visible. |
+| PR-UX-27 | Under `Capabilities`, list each capability assessed by PR-SET-32 once, by its user-facing name, never by its check identifier. A marker that reads without color states the result: `✓` verified (success), `✗` not verified, labeled not working (danger, a failed check), `?` not verifiable, labeled not checked (warning, inability to assess); only the last two add their textual state and explanation. One verdict line precedes the list and is never repeated: not ready when a capability failed, unconfirmed when checks could not run. When every check passed, one line states what was not tested. Lack of evidence MUST NOT be presented as either verified success or a failed check. |
 | PR-UX-24 | Results MUST distinguish changes applied from functional readiness. Completed changes with acknowledged uncertainty show operation success and a separate functional warning, not unqualified readiness or an invented execution failure. State when changes take effect without promising a live-session reload that is not supported. |
 
 ### 2.7 Cancellation Feedback
 
 | ID | Requirement |
 | --- | --- |
-| PR-UX-25 | `Ctrl+C` during execution MUST request cooperative interruption. Show `Cancellation requested` and any phase that must finish until a typed result confirms stopped, partial, or already complete. A pending request is not a cancelled result. Offer retention and only supported recovery with scope and complete/partial/unavailable status; never imply automatic undo or promise a missing rollback. |
+| PR-UX-25 | `Ctrl+C` during execution MUST request cooperative interruption. Show `Cancellation requested` and any phase that MUST finish until a typed result confirms stopped, partial, or already complete. A pending request is not a canceled result. Offer retention and only supported recovery with scope and complete/partial/unavailable status; never imply automatic undo or promise a missing rollback. |
 
 ## 3. Native token and capability mapping
 
-This table maps terminal roles to the shared semantic token names; it does not define a second light/dark palette.
+This table maps terminal roles to the shared semantic token names.
 
 | Terminal use | Token(s) | Non-color equivalent |
 | --- | --- | --- |
-| Painted canvas and panels | `#0d0d0d` for the terminal canvas (neutral black, the TUI's native canvas — darker than `bg.canvas`); `bg.surface` (`N900`) inside panels; `border.control` for the panel border | Untitled panels; no shadows |
+| Painted canvas and panels | `#0D0D0D` for the terminal canvas; `bg.surface` (`N900`) inside panels; `border.control` for the panel border | Untitled panels; no shadows |
 | Heading/content/help | `text.primary`, `text.secondary`, `text.muted` | Order, bold when supported, explicit labels |
 | Home logo | The canonical artwork's own flat colors on the canvas; logo beside the task list, per PR-UX-2A | Canonical logo per PR-UX-2A; no signature line on the home |
 | Focus | `focus.ring` for `>` and the focused field bar | `>` beside the focused option; bar beside the focused field |
@@ -116,17 +104,17 @@ Hover and pointer behavior are not required in this keyboard profile. If added, 
 
 ### Capability selection policy
 
-1. A non-TTY or redirected invocation uses the non-interactive linear CLI contract (PR-INS-42–44), never an alternate-screen renderer. It fails before mutation if required decisions cannot be supplied through that supported interface.
-2. An explicit user choice of linear output takes priority over interactive rendering. That route must be documented; this profile does not invent command flags. An undocumented route is not an available recovery claim.
+1. A non-TTY or redirected invocation uses the non-interactive linear CLI contract, never an alternate-screen renderer. It fails before mutation if required decisions cannot be supplied through that supported interface.
+2. An explicit user choice of linear output takes priority over interactive rendering. That route MUST be documented. An undocumented route is not an available recovery claim.
 3. In an interactive TTY the TUI renders its single dark theme. Respect `NO_COLOR` for no-color rendering and provide an explicit monochrome choice.
-4. The dark theme requires true-color capability and paints the owned backgrounds with the full theme. Capability hints such as `TERM`/`COLORTERM` are fallible; the controller takes the color profile the terminal reports through the event loop instead of certifying contrast from hints, and `NO_COLOR` (any non-empty value) and `TERM=dumb` select the monochrome mode over any reported profile. The terminal background is not queried and never selects a theme or palette: the single dark theme stands regardless. Record the reported configuration in tests, fixing color profile and window size with explicit program options.
+4. The dark theme requires true-color capability and paints the owned backgrounds with the full theme. Capability hints such as `TERM`/`COLORTERM` are fallible; the controller takes the color profile the terminal reports through the event loop instead of certifying contrast from hints, and `NO_COLOR` (any non-empty value) and `TERM=dumb` select the monochrome mode over any reported profile. The terminal background is not queried and never selects a theme or palette: the single dark theme stands regardless. Record the reported configuration in tests.
 5. Limited-color mode preserves roles through a tested mapping on declared terminals. Unverified mappings fall back to monochrome/native default text, not approximate colors declared compliant by distance. User-controlled colors require actual environment validation for a contrast claim.
    Declared matrix: the color profile reported by the event loop selects the mode. True color renders the full theme (iTerm2, Ghostty, Kitty, WezTerm). 256-color renders a declared token-to-xterm-256 table whose every pair verified in brand §5.4 is recomputed on the mapped values (macOS Terminal.app). 16-color and below render monochrome.
-6. ASCII and nonanimated textual progress must remain available and is the baseline: terminal-native progress indicators and animated spinners MAY supplement it when the terminal supports them, with a documented animation-free mode. No-color mode must preserve hierarchy, focus, selection, warnings, and recovery. Linear output never emits spinners, cursor movement, or ANSI styling; it does not claim interactive tasks requiring TUI-only risk decisions are automatically accessible.
+6. ASCII and nonanimated textual progress MUST remain available and is the baseline: terminal-native progress indicators and animated spinners MAY supplement it when the terminal supports them, with a documented animation-free mode. No-color mode MUST preserve hierarchy, focus, selection, warnings, and recovery. Linear output never emits spinners, cursor movement, or ANSI styling; it does not claim interactive tasks requiring TUI-only risk decisions are automatically accessible.
 
 ## 4. Task composition and semantic prototypes
 
-These examples illustrate the required design. Brackets denote illustrative content. Boxes denote untitled panels. `█ Label █` is the focused, filled button and `░ Label ░` another button. No key bar is shown.
+Brackets denote illustrative content. Boxes denote untitled panels. `█ Label █` is the focused, filled button and `░ Label ░` another button. No key bar is shown.
 
 | Task | Pattern and commitment | Return/context |
 | --- | --- | --- |
@@ -191,13 +179,13 @@ Review states what the install sets up in the user's terms, never as file catego
   │   Orchestrator          [model name]                 │
   │   ───────────────────────────────────────            │
   │ > Analyst               [model name]                 │
-  │   Product-Manager     • [newly chosen model name]    │
+  │   PM                  • [newly chosen model name]    │
   │   ───────────────────────────────────────            │
   │   Developer             Default                      │
   │   ───────────────────────────────────────            │
-  │   Test-Planner          Default                      │
+  │   Test author           Default                      │
   │   ───────────────────────────────────────            │
-  │   Judge-A               Default                      │
+  │   Judge                 Default                      │
   └──────────────────────────────────────────────────────┘
 
                    ░ Apply changes ░
@@ -221,7 +209,7 @@ Agents carry the catalog's role names, not their ids, and sit in logical blocks 
                        █ Cancel █
 ```
 
-Finished phases carry `✓`; the current phase carries the activity marker and, when its total is known, a bar with the real percentage and the file in progress. Unknown future phases are not invented. `Cancel` is the action while work runs; once requested it stays visible but unavailable, saying the current phase must finish.
+Finished phases carry `✓`; the current phase carries the activity marker and, when its total is known, a bar with the real percentage and the file in progress. Unknown future phases are not invented. `Cancel` is the action while work runs; once requested it stays visible but unavailable, saying the current phase MUST finish.
 
 ### Conflict and partial result
 
@@ -238,7 +226,7 @@ Finished phases carry `✓`; the current phase carries the activity marker and, 
   └──────────────────────────────────────────────────────┘
 ```
 
-Selection of a conflict choice updates the plan; if that row is itself the commitment action, its full scope and consequence must already be displayed. Do not add a second confirmation merely to repeat an acceptance.
+Selection of a conflict choice updates the plan; if that row is itself the commitment action, its full scope and consequence MUST already be displayed. Do not add a second confirmation merely to repeat an acceptance.
 
 ```text
   Takt AI                                           Result
@@ -266,13 +254,13 @@ Selection of a conflict choice updates the plan; if that row is itself the commi
   └──────────────────────────────────────────────────────┘
 ```
 
-The verdict line appears once, above the capabilities (PR-UX-27). The take-effect sentence appears only when OpenCode was not reloaded. Diagnostics shows the same block and adds `Repair`, which opens the configure flow, when a capability failed its check.
+The verdict line appears once, above the capabilities (PR-UX-27). The take-effect sentence appears only when OpenCode v2 was not reloaded. Diagnostics shows the same block and adds `Repair`, which opens the configure flow, when a capability failed its check.
 
 Result text follows what happened → what changed → what can be done. Do not call `Restore` an undo, hide partial work behind an error, or show a rollback action without its implementation guarantee.
 
 ## 5. Component state contract
 
-N/A states below must not be fabricated to fill a catalog.
+N/A states below MUST NOT be fabricated to fill a catalog.
 
 | Component/view | Required states and behavior | Not applicable in baseline |
 | --- | --- | --- |
@@ -284,23 +272,23 @@ N/A states below must not be fabricated to fill a catalog.
 | Progress | Progress bar and step list with done, current and pending steps; pending; cancellation requested; stable stop or actual completion; readable nonanimated equivalent; terminal-native indicator only as a supplement where available | Selection and hover; percentage without denominator |
 | Result/diagnostic | Success, partial, failed, unavailable verification; actual recovery; diagnostic loading/error/no entries where applicable; no secret values in default output | Automatic timed dismissal |
 
-Unavailable references never silently substitute a newer canonical version. Loading does not erase choices, and background updates never steal focus. Long paths/identifiers wrap or have a reachable full-value detail; decisive differences cannot be hidden behind truncation. Diagnostic disclosure must state what is shown or copied and must not promise redaction that is not performed.
+Unavailable references never silently substitute a newer canonical version. Loading does not erase choices, and background updates never steal focus. Long paths/identifiers wrap or have a reachable full-value detail; decisive differences cannot be hidden behind truncation. Diagnostic disclosure MUST state what is shown or copied and MUST NOT promise redaction that is not performed.
 
 ## 6. Verification and release evidence
 
-For every test record build/revision, OS/architecture, terminal/version, font/glyph mode, capability hints/overrides, theme, dimensions, input sequence, observed state, and evidence location. Render captures are committed fixtures with color profile and window size fixed by program options, not ad-hoc dumps. The matrix below declares required validation profiles.
+For every test record build/revision, OS/architecture, terminal/version, font/glyph mode, capability hints/overrides, theme, dimensions, input sequence, observed state, and evidence location. Render captures are reproducible fixtures with a fixed color profile and window size. The matrix below declares required validation profiles.
 
-Fixtures live in each package's `testdata/` as golden files, one per screen state, size (120×32, 80×24, 60×20, 160×24) and mode (true color, 256-color, monochrome). A regenerated fixture is reviewed visually before it is committed.
+Fixtures are golden files, one per screen state, size (120×32, 80×24, 60×20, 160×24) and mode (true color, 256-color, monochrome). A regenerated fixture is reviewed visually before it is accepted.
 
 | Axis | Minimum evidence |
 | --- | --- |
 | Dimensions | 120×32, 80×24, 60×20; resize during editing/execution; below 60×20 readable size notice and documented alternative, no layout-triggered mutation |
 | Layout | Single column at reduced width; list–detail only with the stated thresholds; long names/paths and expanded labels; scroll reaches every risk/action/recovery item |
-| Color | Dark theme with true color; queried terminal background/version recorded; declared 256/16-color mappings or verified monochrome fallback; `NO_COLOR`; no ANSI in redirected output |
+| Color | Dark theme with true color; reported terminal color profile and terminal version recorded; declared 256-color mapping or monochrome fallback; `NO_COLOR`; no ANSI in redirected output |
 | Glyph/motion | ASCII without Nerd Fonts; optional Unicode only on tested configurations; progress with animation disabled; animated supplements only with a documented disable |
 | Keyboard | Arrows, Space, Enter, Tab/Shift+Tab, Esc, Ctrl+C; text containing shortcut letters; paste entry; dirty exits, busy interruption, repeated interrupt and completion race |
 | Accessibility | Keyboard-only task completion; actual terminal/screen-reader combination and linear-output exercise; distinguish accessible task coverage from TUI-only decisions still lacking an accessible route |
-| Environment | Required OS/architecture scope of PR-SET-26 in isolated environments; record actual terminal versions. No macOS claim from a Linux container run |
+| Environment | Required OS/architecture scope of PR-SET-26 in isolated environments; record actual terminal versions |
 
 ### Acceptance criteria mapping
 
@@ -310,12 +298,12 @@ Fixtures live in each package's `testdata/` as golden files, one per screen stat
 | Token, contrast, and no-color conformity | Token review, palette validation, real-render contrast, monochrome focus/selection/state captures |
 | Keyboard and assistive completion | Keyboard and assistive task runs on real terminals; captures in each minimum size and long-text fixtures; verify one shared back message and a controller-owned pending-change guard across Esc/Ctrl+B/Ctrl+C, including dirty exits, repeated interrupt, completion races, and paste entry |
 | Confirmation matches uncertainty and consequence | First-install review, scoped custom apply, canonical upgrade without repeated approval, new external-conflict decision; upgrade cases are evidenced, not passed over |
-| Managed choices survive upgrade | Before/after managed choices and exclusions on upgrade; required when upgrade ships, not a screenshot test |
+| Managed choices survive upgrade | Before/after managed choices and exclusions on a real upgrade, not a screenshot test |
 | Uncertain risk vs. deterministic incompatibility | Separate feasible uncertainty acceptance from deterministic incompatibility block |
 | Partial failure and recovery honesty | Injected failure/partial cancellation; actual state, scoped restore and honest recovery limits |
 | Component state coverage | Component fixtures for the applicable states in §5, with justified N/A states |
 | Editorial honesty | Editorial review of name, sentence case, restrained signature, honest capability claims and nonblaming recovery |
 
-Run the applicable release scenarios: default install; personalize/return; single-specialist edit; canonical upgrade; managed-choice upgrade; external-change decision; known incompatibility; partial recovery; scoped restoration; reduced/no-color repeat. Upgrade scenarios are first-release evidence under PR-INS-46. Full surface conformity requires every applicable criterion and a documented disposition of gaps, not merely a palette calculation or passing unit tests.
+Full surface conformity requires every applicable criterion and a documented disposition of gaps, not merely a palette calculation or passing unit tests.
 
-A new flow within the existing patterns supplies its state fixtures and applicable acceptance evidence. Record implementation gaps outside this specification, with scope and supporting evidence; a limitation does not change the acceptance criteria.
+A new flow within the existing patterns supplies its state fixtures and applicable acceptance evidence. A limitation does not change the acceptance criteria; gaps are recorded with scope and supporting evidence.
