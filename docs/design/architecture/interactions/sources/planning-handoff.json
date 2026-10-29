@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Planning handoff: artifacts pass by Engram ID, never by content",
+    "output": "docs/design/architecture/interactions/diagrams/planning-handoff.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "Orchestrator",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "pm",
+      "type": "backend",
+      "label": "pm",
+      "sublabel": "lent, then delegated",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-pm/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "arch",
+      "type": "backend",
+      "label": "architect",
+      "sublabel": "contracts",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-architect/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "spec",
+      "type": "backend",
+      "label": "spec",
+      "sublabel": "behavior",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-spec/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "qa",
+      "type": "backend",
+      "label": "qa",
+      "sublabel": "test strategy",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-qa/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "tpm",
+      "type": "backend",
+      "label": "tpm",
+      "sublabel": "task breakdown",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-tpm/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "engram",
+      "type": "database",
+      "label": "Engram",
+      "sublabel": "entries by ID",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-memory-contract/SKILL.md",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m01",
+      "from": "takt",
+      "to": "pm",
+      "y": 160,
+      "label": "lend: dispatch_switch + requirements",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m02",
+      "from": "pm",
+      "to": "engram",
+      "y": 188,
+      "label": "record each story",
+      "variant": "default"
+    },
+    {
+      "id": "m03",
+      "from": "pm",
+      "to": "takt",
+      "y": 216,
+      "label": "dispatch_handoff: Standard + story IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m04",
+      "from": "takt",
+      "to": "pm",
+      "y": 244,
+      "label": "new unit: story IDs, business docs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m05",
+      "from": "pm",
+      "to": "engram",
+      "y": 272,
+      "label": "record doc; supersedes on change",
+      "variant": "default"
+    },
+    {
+      "id": "m06",
+      "from": "pm",
+      "to": "takt",
+      "y": 300,
+      "label": "deliver_result: doc ID",
+      "variant": "return"
+    },
+    {
+      "id": "m07",
+      "from": "takt",
+      "to": "arch",
+      "y": 328,
+      "label": "dispatch_inputs: story, doc IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m08",
+      "from": "arch",
+      "to": "engram",
+      "y": 356,
+      "label": "read bodies by ID",
+      "variant": "default"
+    },
+    {
+      "id": "m09",
+      "from": "arch",
+      "to": "engram",
+      "y": 384,
+      "label": "record ADR, C4, contracts",
+      "variant": "default"
+    },
+    {
+      "id": "m10",
+      "from": "arch",
+      "to": "takt",
+      "y": 412,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m11",
+      "from": "takt",
+      "to": "spec",
+      "y": 440,
+      "label": "dispatch_inputs: stories, docs, contracts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m12",
+      "from": "spec",
+      "to": "engram",
+      "y": 468,
+      "label": "read bodies, record spec",
+      "variant": "default"
+    },
+    {
+      "id": "m13",
+      "from": "spec",
+      "to": "takt",
+      "y": 496,
+      "label": "deliver_result: spec ID",
+      "variant": "return"
+    },
+    {
+      "id": "m14",
+      "from": "takt",
+      "to": "qa",
+      "y": 524,
+      "label": "dispatch_inputs: spec, contracts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m15",
+      "from": "qa",
+      "to": "engram",
+      "y": 552,
+      "label": "record policy, plan, matrix",
+      "variant": "default"
+    },
+    {
+      "id": "m16",
+      "from": "qa",
+      "to": "takt",
+      "y": 580,
+      "label": "deliver_result: IDs",
+      "variant": "return"
+    },
+    {
+      "id": "m17",
+      "from": "takt",
+      "to": "tpm",
+      "y": 608,
+      "label": "dispatch_inputs: spec, contracts, matrix",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m18",
+      "from": "tpm",
+      "to": "engram",
+      "y": 636,
+      "label": "record WBS; supplements matrix",
+      "variant": "default"
+    },
+    {
+      "id": "m19",
+      "from": "tpm",
+      "to": "takt",
+      "y": 664,
+      "label": "deliver_result: WBS ID",
+      "variant": "return"
+    },
+    {
+      "id": "m20",
+      "from": "takt",
+      "to": "engram",
+      "y": 692,
+      "label": "coherence: rank conflicts by precedence",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What travels",
+      "items": [
+        "takt declares IDs with dispatch_inputs; bodies never enter the brief",
+        "The consumer reads bodies itself and records one entry per artifact",
+        "Results come back as IDs through deliver_result"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Relations",
+      "items": [
+        "supersedes replaces a whole artifact; supplements adds a matrix column",
+        "disputes stays open until someone with authority settles it"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Coherence",
+      "items": [
+        "Precedence: user order, stories, business docs, derived artifacts",
+        "Only the lane holding the lower-ranked document is re-dispatched",
+        "Two failed alignments escalate to the user"
+      ]
+    }
+  ]
+}

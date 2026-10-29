@@ -1,0 +1,525 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Who takt delegates to, and what comes back",
+    "output": "docs/design/architecture/interactions/diagrams/delegation-map.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "takt",
+      "type": "backend",
+      "label": "takt",
+      "sublabel": "Orchestrator: routes, briefs, owns DAG",
+      "pos": [
+        480,
+        40
+      ],
+      "size": [
+        190,
+        660
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "pm",
+      "type": "backend",
+      "label": "pm",
+      "sublabel": "stories, business docs",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "analyst",
+      "type": "backend",
+      "label": "analyst",
+      "sublabel": "investigation, env facts",
+      "pos": [
+        40,
+        132
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "designer",
+      "type": "backend",
+      "label": "product-designer",
+      "sublabel": "experience rules, tokens",
+      "pos": [
+        40,
+        224
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "architect",
+      "type": "backend",
+      "label": "architect",
+      "sublabel": "ADR, C4, contracts",
+      "pos": [
+        40,
+        316
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "spec",
+      "type": "backend",
+      "label": "spec",
+      "sublabel": "BDD spec or FRD",
+      "pos": [
+        40,
+        408
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "qa",
+      "type": "backend",
+      "label": "qa",
+      "sublabel": "policy, plan, matrix",
+      "pos": [
+        40,
+        500
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-qa/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "tpm",
+      "type": "backend",
+      "label": "tpm",
+      "sublabel": "WBS by vertical slice",
+      "pos": [
+        40,
+        592
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "dev",
+      "type": "backend",
+      "label": "dev",
+      "sublabel": "staged code, Q1 tests",
+      "pos": [
+        940,
+        40
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "type": "backend",
+      "label": "fix",
+      "sublabel": "staged fix, regression test",
+      "pos": [
+        940,
+        106
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "simplify",
+      "type": "backend",
+      "label": "simplify",
+      "sublabel": "staged cleanup",
+      "pos": [
+        940,
+        172
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-simplify/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "type": "backend",
+      "label": "test",
+      "sublabel": "staged Q2 tests",
+      "pos": [
+        940,
+        304
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-test/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "security",
+      "label": "verify",
+      "sublabel": "verdicts, reports",
+      "pos": [
+        940,
+        238
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "judgea",
+      "type": "security",
+      "label": "judge-a",
+      "sublabel": "blind ranked findings",
+      "pos": [
+        940,
+        370
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "judgeb",
+      "type": "security",
+      "label": "judge-b",
+      "sublabel": "blind ranked findings",
+      "pos": [
+        940,
+        436
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mutation",
+      "type": "backend",
+      "label": "mutation",
+      "sublabel": "mutants per matrix row",
+      "pos": [
+        940,
+        502
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-mutation/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "explorer",
+      "type": "backend",
+      "label": "explorer",
+      "sublabel": "charter report (Q3)",
+      "pos": [
+        940,
+        568
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-explorer/agent.yaml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "type": "backend",
+      "label": "quality",
+      "sublabel": "ISO 25010 report (Q4)",
+      "pos": [
+        940,
+        634
+      ],
+      "size": [
+        170,
+        54
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-quality/agent.yaml",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c-pm",
+      "from": "takt",
+      "to": "pm",
+      "label": "ambiguous intent, lent",
+      "variant": "default"
+    },
+    {
+      "id": "c-analyst",
+      "from": "takt",
+      "to": "analyst",
+      "label": "unverified context",
+      "variant": "default"
+    },
+    {
+      "id": "c-designer",
+      "from": "takt",
+      "to": "designer",
+      "label": "UI, UX, DX or identity",
+      "variant": "default"
+    },
+    {
+      "id": "c-architect",
+      "from": "takt",
+      "to": "architect",
+      "label": "structure, technology",
+      "variant": "default"
+    },
+    {
+      "id": "c-spec",
+      "from": "takt",
+      "to": "spec",
+      "label": "behavior and acceptance",
+      "variant": "default"
+    },
+    {
+      "id": "c-qa",
+      "from": "takt",
+      "to": "qa",
+      "label": "QA planned or in doubt",
+      "variant": "default"
+    },
+    {
+      "id": "c-tpm",
+      "from": "takt",
+      "to": "tpm",
+      "label": "SDD phase follows",
+      "variant": "default"
+    },
+    {
+      "id": "c-dev",
+      "from": "takt",
+      "to": "dev",
+      "label": "implementation",
+      "variant": "default"
+    },
+    {
+      "id": "c-fix",
+      "from": "takt",
+      "to": "fix",
+      "label": "one localized defect",
+      "variant": "default"
+    },
+    {
+      "id": "c-simplify",
+      "from": "takt",
+      "to": "simplify",
+      "label": "cleanup (not GC)",
+      "variant": "default"
+    },
+    {
+      "id": "c-verify",
+      "from": "takt",
+      "to": "verify",
+      "label": "slice, phase, acceptance",
+      "variant": "security"
+    },
+    {
+      "id": "c-test",
+      "from": "takt",
+      "to": "test",
+      "label": "blind tests planned",
+      "variant": "default"
+    },
+    {
+      "id": "c-judgea",
+      "from": "takt",
+      "to": "judgea",
+      "label": "pair: unknown-origin damage",
+      "variant": "security"
+    },
+    {
+      "id": "c-judgeb",
+      "from": "takt",
+      "to": "judgeb",
+      "label": "pair: same brief",
+      "variant": "security"
+    },
+    {
+      "id": "c-mutation",
+      "from": "takt",
+      "to": "mutation",
+      "label": "suite adequacy in doubt",
+      "variant": "default"
+    },
+    {
+      "id": "c-explorer",
+      "from": "takt",
+      "to": "explorer",
+      "label": "exploration planned",
+      "variant": "default"
+    },
+    {
+      "id": "c-quality",
+      "from": "takt",
+      "to": "quality",
+      "label": "non-functional analysis",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Edge = trigger, node = artifact",
+      "items": [
+        "Each edge names the need that makes takt delegate",
+        "Each node names what the specialist hands back",
+        "Planning results are Engram IDs; execution results are staged work"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Omit when settled",
+      "items": [
+        "A lane is skipped when an artifact of equal rigor exists",
+        "Verify is never omitted from a planned verification",
+        "takt works directly only on one file, one concern, no contract change"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Judge pair",
+      "items": [
+        "Only on user request, unknown-origin damage, exhausted recovery, or two phases at the ceiling",
+        "Findings both report are critical; findings from one show confusion"
+      ]
+    }
+  ]
+}
