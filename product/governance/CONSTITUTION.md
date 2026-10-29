@@ -2,7 +2,7 @@
 
 ## 1. Identity
 
-Takt AI is a meta harness that brings a coordinated team of Takt-defined specialized agents and supporting capabilities to OpenCode v2 and the models the user chooses. That crew works toward materializing real value. The user defines what is valuable and retains decision authority. Agents work as crew.
+Takt AI is a meta harness that brings a coordinated team of Takt-defined specialized agents and supporting capabilities to OpenCode v2 and the models the user chooses. The user defines what is valuable and retains decision authority. Agents work as crew.
 
 The expected user is a technically competent professional. Their goal is to perform work through the system, not to administer the system. Technical competence does not imply familiarity with Takt internals. The product offers a coherent default path, deliberate adjustments, and recovery without reproach.
 
@@ -28,7 +28,7 @@ When the goal is lost, ambiguous, or no justifiable route exists to reach it, th
 
 ### Article 4. High performance without loss of control
 
-Takt must offer efficient execution, robust tools, technical protection, and an experience tuned to professional work.
+Takt offers efficient execution, robust tools, technical protection, and an experience tuned to professional work.
 
 The agent contributes specialization, work, and judgment. The user retains control.
 

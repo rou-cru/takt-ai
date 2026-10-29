@@ -58,7 +58,7 @@ Long-term memory retains durable knowledge beyond an active context window, with
 | MEM-RET-5 | Current applicability MUST be determined from recorded evolution even when consolidation or Deep Dream has not run. An entry may cease to govern without being deleted; relevant history remains retrievable with its original attribution. |
 | MEM-RET-6 | Retrieval across the append-only memory graph MUST scale sub-linearly by evaluating status filters for active and superseded entries before any targeted lookup, never scanning the full graph. |
 | MEM-RET-7 | Each entry MUST receive a local semantic representation when written, with zero network egress, tagged with the identity of the model that produced it. A model change is resolved by reindexing in a maintenance cycle without touching entry content. Its use is limited to consolidation. |
-| MEM-RET-8 | Retrieve an artifact by entry identity, section, and applicable version without loading its entire session or consolidated group. Preserve author, provenance, and evolution links. A session with no durable new knowledge creates no content entry. Execution plans, budget counters, and pending runtime work remain in the execution history, not a second memory authority. |
+| MEM-RET-8 | An artifact is retrieved by entry identity, section, and applicable version without loading its entire session or consolidated group; retrieval preserves author, provenance, and evolution links. A session with no durable new knowledge creates no content entry. Execution plans, budget counters, and pending runtime work remain in the execution history, not a second memory authority. |
 
 ## 7. Consolidation Requirements
 

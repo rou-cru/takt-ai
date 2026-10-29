@@ -23,7 +23,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-REL-8 | Release validation MUST cover the required support targets defined in PR-SET-26. A Linux container result alone MUST NOT be treated as evidence of native macOS compatibility. Validation MUST preserve the prohibition on using the host's real installation as the target for potentially broken setup changes. |
+| PR-REL-8 | Release validation MUST cover the required support targets defined in PR-SET-26. A Linux container result alone MUST NOT be treated as evidence of native macOS compatibility. |
 | PR-REL-9 | Results for the expected compatibility targets defined in PR-SET-26 MUST remain distinct from evidence for the required targets, and MUST NOT, by themselves, block release. |
 | PR-REL-10 | Project tests and CI MUST NOT require a developer's real host installation or personal working configuration as a test target. Validation for supported operating systems and architectures MUST be designed around isolated test environments rather than depend on personal host use. |
 
@@ -31,7 +31,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-REL-11 | Release evidence MUST evaluate the applicable acceptance criteria of [VDS_TUI §§5–6](tui/VDS_TUI.md) using its task, state, and environment matrix. Record actual build, terminal/capability profile, dimensions, steps and results. Open gaps MUST be explicit, and upgrade scenarios MUST be evidenced. |
+| PR-REL-11 | Release evidence MUST evaluate the applicable acceptance criteria of [VDS_TUI §§5–6](tui/VDS_TUI.md) using its task, state, and environment matrix. Evidence records actual build, terminal/capability profile, dimensions, steps and results. Open gaps MUST be explicit, and upgrade scenarios MUST be evidenced. |
 | PR-REL-12 | Validation MUST include default installation and personalization/return, a focused model adjustment, feasible external-change uncertainty versus a known incompatible composition, scoped restoration, and injected partial failure/cancellation with actual recovery limits. Repeat pertinent journeys without color, with long text, in 120×32, 80×24 and 60×20 terminals, and verify below-minimum handling and linear output. Hidden risk, silent loss of intent, impossible configurations presented as valid, inaccessible exits, illegible functional text, or advertised but absent recovery MUST block approval. |
 
 ### 1.5 Test Image Reuse and Public Image
@@ -45,5 +45,5 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-REL-15 | Automated reference scenarios cover a bounded change and a new 2D-platformer MVP using two model families. Record reproducible control-bus-derived metrics: tokens per task, orchestrator context per dispatch, interactive requests per session, computationally validated features, deferred E2E failures, stagnation events, and DAG nodes per delivered feature. Pin scenario inputs, model identities, policy, and evidence scope. |
+| PR-REL-15 | Automated reference scenarios cover a bounded change and a new 2D-platformer MVP using two model families. Scenarios record reproducible control-bus-derived metrics: tokens per task, orchestrator context per dispatch, interactive requests per session, computationally validated features, deferred E2E failures, stagnation events, and DAG nodes per delivered feature. Scenario inputs, model identities, policy, and evidence scope are pinned. |
 | PR-REL-16 | Reference scenarios verify that dispatch payload size does not grow with GC history, executable units have result evidence, unverified criteria never count as accepted, corrections terminate within configured bounds, and work inside the execution boundary requests no interaction. Report nodes per feature and actions to the first executable slice with raw counts and denominators. |

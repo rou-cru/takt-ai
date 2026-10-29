@@ -10,7 +10,7 @@
 | PR-TUI-2 | Opening an independent screen pushes a new model onto the stack, sizes it to the current terminal, and makes it the foreground model for rendering and input. |
 | PR-TUI-3 | Returning from or closing an independent screen pops the active model via a uniform mechanism, restoring the immediately lower model; popping the last model restores the main menu. |
 | PR-TUI-4 | Independent models communicate with the controller exclusively through typed navigation messages (such as back or open another flow) handled by the stack mechanism, with no direct references to sibling models or direct access to foreign internal structures. |
-| PR-TUI-5 | Navigation between independent screens assumes no prior knowledge of destination or origin, enabling reuse and orthogonal composition. |
+| PR-TUI-5 | Navigation between independent screens assumes no prior knowledge of destination or origin. |
 | PR-TUI-18 | A cross-flow jump, such as opening model assignment from the installation result, replaces the stack with the destination flow instead of pushing it, so closing the destination returns to the main menu rather than to the finished origin flow. |
 
 ### 1.2 Per-Flow Finite State Machines (FSM)
@@ -35,7 +35,6 @@
 | PR-TUI-22 | Before commitment, edits remain draft state. Back from a nested editor preserves its parent context; leaving an unapplied edit scope offers keep editing or discard. Exit/close/interrupt paths MUST use this same guard. Discard MUST NOT mutate persistent installation state. |
 | PR-TUI-23 | Terminal resize and rendering-mode changes MUST preserve draft values, focus, filters, and operation state. Insufficient display space MUST NOT authorize or cancel an operation implicitly. |
 | PR-TUI-21 | A flow receiving an action result MUST confirm that it matches its own pending request and MUST ignore any result it did not request. |
-| PR-TUI-25 | Every limit of the canonical admission policy MUST be adjustable from the TUI with the same override pattern as model assignments. |
 
 ## 2. Failure and Anomalous Event Behavior
 

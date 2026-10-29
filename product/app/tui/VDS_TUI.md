@@ -4,18 +4,18 @@
 
 ## 1. Purpose and extension contract
 
-The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions. It is not a crew monitor or a replacement harness.
+The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions.
 
 | Contract field | Surface application |
 | --- | --- |
-| Principles | B01 precision, B02 full capability with optional depth, B03 consistent semantics, B04 contextual confirmation, B05 present identity with clear operation, B06 recovery without reproach, B07 durable intention, B08 honest limits. |
-| Patterns | L03 task menu; L04 focused configuration; L05 dependent first-install preparation; L06 model/capability comparison; L07 external-change conflict; L08 execution; L09 result/recovery. L01/L02 are not primary TUI task patterns. |
+| Principles | B01–B08. |
+| Patterns | L03–L09. L01/L02 are not primary TUI task patterns. |
 | Tokens and native equivalents | Semantic tokens mapped in §3; terminal font and cell spacing, not web typography or pixel geometry. |
 | Navigation and commitment | §2 keyboard and component contracts; §4 task map and §5 state matrix. |
-| Language | English TUI/CLI labels in this profile. Additional locales require complete labels/help and expansion tests, not partial translation. Technical identifiers preserve spelling. |
+| Language | English TUI/CLI labels in this profile. Additional locales require complete labels/help and expansion tests, not partial translation. |
 | Accessibility and environments | §3 capability policy; §6 size/theme/input/output evidence matrix. Terminal accessibility is not certified by web contrast calculations. |
 | Evidence | §6 defines the required acceptance evidence for this surface. |
-| Extensions | Native cell layout, capability fallback and keyboard grammar are local specializations of §§2–3. No additional meaning or palette is introduced beyond what is defined here. Library defaults such as key bars, list titles, or form chrome MUST NOT override §§2–3. |
+| Extensions | Native cell layout, capability fallback and keyboard grammar are local specializations of §§2–3. Library defaults such as key bars, list titles, or form chrome MUST NOT override §§2–3. |
 
 ## 2. Visual and Interactive Requirements
 
@@ -71,8 +71,8 @@ The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions. It
 
 | ID | Requirement |
 | --- | --- |
-| PR-UX-22 | Relevant external modification MUST carry a discreet textual indication, not color alone. Classify and scope it under PR-INS-17 through PR-INS-22. |
-| PR-UX-23 | A conflict view MUST show source, affected scope, and known versus uncertain compatibility before the feasible choices determined under PR-INS-22. Present those choices with neutral decision hierarchy. A full diff is secondary, but decisive risk stays visible. |
+| PR-UX-22 | Relevant external modification MUST carry a discreet textual indication, not color alone. |
+| PR-UX-23 | A conflict view MUST show source, affected scope, and known versus uncertain compatibility before the feasible choices. Present those choices with neutral decision hierarchy. A full diff is secondary, but decisive risk stays visible. |
 | PR-UX-27 | Under `Capabilities`, list each capability assessed by PR-SET-32 once, by its user-facing name, never by its check identifier. A marker that reads without color states the result: `✓` verified (success), `✗` not verified, labeled not working (danger, a failed check), `?` not verifiable, labeled not checked (warning, inability to assess); only the last two add their textual state and explanation. One verdict line precedes the list and is never repeated: not ready when a capability failed, unconfirmed when checks could not run. When every check passed, one line states what was not tested. Lack of evidence MUST NOT be presented as either verified success or a failed check. |
 | PR-UX-24 | Results MUST distinguish changes applied from functional readiness. Completed changes with acknowledged uncertainty show operation success and a separate functional warning, not unqualified readiness or an invented execution failure. State when changes take effect without promising a live-session reload that is not supported. |
 
@@ -80,7 +80,7 @@ The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions. It
 
 | ID | Requirement |
 | --- | --- |
-| PR-UX-25 | `Ctrl+C` during execution MUST request cooperative interruption. Show `Cancellation requested` and any phase that must finish until a typed result confirms stopped, partial, or already complete. A pending request is not a canceled result. Offer retention and only supported recovery with scope and complete/partial/unavailable status; never imply automatic undo or promise a missing rollback. |
+| PR-UX-25 | `Ctrl+C` during execution MUST request cooperative interruption. Show `Cancellation requested` and any phase that MUST finish until a typed result confirms stopped, partial, or already complete. A pending request is not a canceled result. Offer retention and only supported recovery with scope and complete/partial/unavailable status; never imply automatic undo or promise a missing rollback. |
 
 ## 3. Native token and capability mapping
 
@@ -104,13 +104,13 @@ Hover and pointer behavior are not required in this keyboard profile. If added, 
 
 ### Capability selection policy
 
-1. A non-TTY or redirected invocation uses the non-interactive linear CLI contract (PR-INS-42–44), never an alternate-screen renderer. It fails before mutation if required decisions cannot be supplied through that supported interface.
-2. An explicit user choice of linear output takes priority over interactive rendering. That route must be documented. An undocumented route is not an available recovery claim.
+1. A non-TTY or redirected invocation uses the non-interactive linear CLI contract, never an alternate-screen renderer. It fails before mutation if required decisions cannot be supplied through that supported interface.
+2. An explicit user choice of linear output takes priority over interactive rendering. That route MUST be documented. An undocumented route is not an available recovery claim.
 3. In an interactive TTY the TUI renders its single dark theme. Respect `NO_COLOR` for no-color rendering and provide an explicit monochrome choice.
 4. The dark theme requires true-color capability and paints the owned backgrounds with the full theme. Capability hints such as `TERM`/`COLORTERM` are fallible; the controller takes the color profile the terminal reports through the event loop instead of certifying contrast from hints, and `NO_COLOR` (any non-empty value) and `TERM=dumb` select the monochrome mode over any reported profile. The terminal background is not queried and never selects a theme or palette: the single dark theme stands regardless. Record the reported configuration in tests.
 5. Limited-color mode preserves roles through a tested mapping on declared terminals. Unverified mappings fall back to monochrome/native default text, not approximate colors declared compliant by distance. User-controlled colors require actual environment validation for a contrast claim.
    Declared matrix: the color profile reported by the event loop selects the mode. True color renders the full theme (iTerm2, Ghostty, Kitty, WezTerm). 256-color renders a declared token-to-xterm-256 table whose every pair verified in brand §5.4 is recomputed on the mapped values (macOS Terminal.app). 16-color and below render monochrome.
-6. ASCII and nonanimated textual progress must remain available and is the baseline: terminal-native progress indicators and animated spinners MAY supplement it when the terminal supports them, with a documented animation-free mode. No-color mode must preserve hierarchy, focus, selection, warnings, and recovery. Linear output never emits spinners, cursor movement, or ANSI styling; it does not claim interactive tasks requiring TUI-only risk decisions are automatically accessible.
+6. ASCII and nonanimated textual progress MUST remain available and is the baseline: terminal-native progress indicators and animated spinners MAY supplement it when the terminal supports them, with a documented animation-free mode. No-color mode MUST preserve hierarchy, focus, selection, warnings, and recovery. Linear output never emits spinners, cursor movement, or ANSI styling; it does not claim interactive tasks requiring TUI-only risk decisions are automatically accessible.
 
 ## 4. Task composition and semantic prototypes
 
@@ -209,7 +209,7 @@ Agents carry the catalog's role names, not their ids, and sit in logical blocks 
                        █ Cancel █
 ```
 
-Finished phases carry `✓`; the current phase carries the activity marker and, when its total is known, a bar with the real percentage and the file in progress. Unknown future phases are not invented. `Cancel` is the action while work runs; once requested it stays visible but unavailable, saying the current phase must finish.
+Finished phases carry `✓`; the current phase carries the activity marker and, when its total is known, a bar with the real percentage and the file in progress. Unknown future phases are not invented. `Cancel` is the action while work runs; once requested it stays visible but unavailable, saying the current phase MUST finish.
 
 ### Conflict and partial result
 
@@ -226,7 +226,7 @@ Finished phases carry `✓`; the current phase carries the activity marker and, 
   └──────────────────────────────────────────────────────┘
 ```
 
-Selection of a conflict choice updates the plan; if that row is itself the commitment action, its full scope and consequence must already be displayed. Do not add a second confirmation merely to repeat an acceptance.
+Selection of a conflict choice updates the plan; if that row is itself the commitment action, its full scope and consequence MUST already be displayed. Do not add a second confirmation merely to repeat an acceptance.
 
 ```text
   Takt AI                                           Result
@@ -260,7 +260,7 @@ Result text follows what happened → what changed → what can be done. Do not 
 
 ## 5. Component state contract
 
-N/A states below must not be fabricated to fill a catalog.
+N/A states below MUST NOT be fabricated to fill a catalog.
 
 | Component/view | Required states and behavior | Not applicable in baseline |
 | --- | --- | --- |
@@ -272,7 +272,7 @@ N/A states below must not be fabricated to fill a catalog.
 | Progress | Progress bar and step list with done, current and pending steps; pending; cancellation requested; stable stop or actual completion; readable nonanimated equivalent; terminal-native indicator only as a supplement where available | Selection and hover; percentage without denominator |
 | Result/diagnostic | Success, partial, failed, unavailable verification; actual recovery; diagnostic loading/error/no entries where applicable; no secret values in default output | Automatic timed dismissal |
 
-Unavailable references never silently substitute a newer canonical version. Loading does not erase choices, and background updates never steal focus. Long paths/identifiers wrap or have a reachable full-value detail; decisive differences cannot be hidden behind truncation. Diagnostic disclosure must state what is shown or copied and must not promise redaction that is not performed.
+Unavailable references never silently substitute a newer canonical version. Loading does not erase choices, and background updates never steal focus. Long paths/identifiers wrap or have a reachable full-value detail; decisive differences cannot be hidden behind truncation. Diagnostic disclosure MUST state what is shown or copied and MUST NOT promise redaction that is not performed.
 
 ## 6. Verification and release evidence
 

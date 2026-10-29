@@ -22,7 +22,7 @@
 | --- | --- |
 | PR-DRM-5 | Periodic Simple Mode uses a dynamic cadence proportional to implementation pace (work units dispatched and workspace mutation throughput), not the problem rate. It requires a configured minimum elapsed interval since the previous cycle and unconsolidated memory growth. Cadence parameters are policy data. |
 | PR-DRM-6 | Periodic Simple Mode and macro consolidation cycles MUST be schedulable without the user present. Their only permitted network egress is to the provider of the model assigned to the dreaming specialist, carrying only memory entries of the declared scope; indexing, candidate generation, and scoring run locally with zero egress. When that provider is unreachable, the cycle completes its local phases and records the judgment work as pending for a subsequent cycle; it is not a failure and never falls back to a lossy path. |
-| PR-MNT-23 | Periodic Simple Mode MAY remove, without user presence or per-item validation, only three objective mechanical cases: byte-identical duplicates, semantic duplicates above a fixed high-confidence threshold (policy data), and orphaned links with no ambiguous relinking candidate. Semantic duplication is decided by the base local capabilities, never by the specialist's generation or by an acceleration capability alone. No other removal, reduction, or judgment call MAY occur outside Deep Dream. |
+| PR-MNT-23 | Periodic Simple Mode MAY remove, without user presence or per-item validation, only three objective mechanical cases: byte-identical duplicates, semantic duplicates above a fixed high-confidence threshold (policy data), and orphaned links with no ambiguous relinking candidate. Semantic duplication is decided by the base local capabilities, never by the specialist's generation or by an acceleration capability alone. |
 | PR-MNT-22 | The harness triggers macro consolidation every policy-defined number of closed sessions or milestone objectives. |
 
 ### 1.4 Isolated Phased Execution
@@ -38,13 +38,13 @@
 | ID | Requirement |
 | --- | --- |
 | PR-DRM-10 | The harness MAY defer a scheduled background cycle while the user is active within the policy quiet window. Deference is a recorded skip with its reason, never orchestrator suppression; it leaves the scheduled cadence unaffected. The quiet-window length is policy data. |
-| PR-DRM-11 | When the scope check finds no unconsolidated growth, the cycle MUST exit through a fast path at a fraction of a full pass's cost; the skip is still recorded. On such a skip the harness MAY surface one previously stored entry as a recall reminder; surfacing is relayed through the interface holder and performs no consolidation. |
+| PR-DRM-11 | When the scope check finds no unconsolidated growth, the cycle MUST exit through a fast path; the skip is still recorded. On such a skip the harness MAY surface one previously stored entry as a recall reminder; surfacing is relayed through the interface holder and performs no consolidation. |
 
 ### 1.6 Cycle Safety Invariants
 
 | ID | Requirement |
 | --- | --- |
-| PR-DRM-12 | Before any cycle whose declared scope exceeds the policy change threshold, the harness MUST record a restore point. The cycle reads memory entries only, and MUST NOT carry file contents, prompts, model responses, or secrets beyond the content-free envelope posture. The cycle leaves no trace in memory beyond the links and relocations it applies: its own record lives on the control bus, never as memory sessions or entries. |
+| PR-DRM-12 | Before any cycle whose declared scope exceeds the policy change threshold, the harness MUST record a restore point. The cycle reads memory entries only, and MUST NOT carry file contents, prompts, model responses, or secrets. The cycle leaves no trace in memory beyond the links and relocations it applies: its own record lives on the control bus, never as memory sessions or entries. |
 
 ### 1.7 Cycle Report and Diary
 

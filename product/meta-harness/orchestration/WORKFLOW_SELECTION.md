@@ -1,20 +1,22 @@
 # Workflow selection
 
-At each planning or implementation boundary, select the route using the following tree. Re-evaluate only when the goal, required inputs, or route-fit evidence changes.
+## 1. Decision tree
 
-## Decision tree
+**PR-WFS-1.** At each planning or implementation boundary, the orchestrator selects the route through the following tree, and re-evaluates it only when the goal, required inputs, or route-fit evidence changes.
 
 | Step | Question | Answer → outcome |
 | --- | --- | --- |
 | 1 | Did the user directly and explicitly request direct work for this phase? | Planning without specialists → bounded planning. Implementation without delegation → bounded workflow. No → step 2. |
 | 2 | Are invariants needed for the next executable slice missing or invalid? | Yes → invariant planning; once the slice invariants are delivered, back to step 1 with the updated evidence. A general or ambiguous request requires final user stories among the required invariants; a trivial or narrowly technical one does not. Invariant planning stands on its own; when SDD follows it, its specifications, and its test plan when QA is planned, feed TPM, SDD's first node. With QA planned, its applicable test-plan section and traceability rows are required inputs. No → step 3. |
-| 3 | Is development still needed? | Independent bounded units → delegate within the cumulative unplanned limit; bounded diagnosis, implementation and verification use a compact plan. Integrated implementation units → the SDD workflow with slice-scoped specifications and acceptance criteria (memory or equivalent repository artifact); without them → step 2. With QA planned, either development branch uses the QA workflow as its acceptance tail. Assessment, testing or hardening → QA workflow if planned, otherwise the relevant quality specialist. Nothing remains → return the result. |
+| 3 | Is development still needed? | Independent bounded units → delegate within the cumulative unplanned limit; bounded diagnosis, implementation and verification use a compact plan. Integrated implementation units → the SDD workflow with slice-scoped specifications and acceptance criteria (memory or equivalent repository artifact); without them → step 2. With QA planned, either development branch uses the QA workflow as its acceptance tail. Assessment, testing or hardening → QA workflow if planned, otherwise the relevant quality-assurance specialist. Nothing remains → return the result. |
 
-Phase-only direct-work orders do not extend to other phases. Judge QA planning against the whole objective, consulting the QA lead when unclear; a focused review alone does not activate it. Keep committed checks; findings authorize neither repair nor certification.
+**PR-WFS-2.** Phase-only direct-work orders do not extend to other phases. QA planning is judged against the whole objective, consulting the QA lead when unclear; a focused review alone does not activate it. Keep committed checks; findings authorize neither repair nor certification.
 
-Applicable invariants are consumed, not regenerated; resolve their recorded version and evolution before use. Bounded is never chosen by elimination, convenience, cost, or absence of specialists. SDD and bounded never govern the same implementation simultaneously.
+**PR-WFS-3.** Applicable invariants are consumed, not regenerated; their recorded version and evolution are resolved before use. Bounded is never chosen by elimination, convenience, cost, or absence of specialists. SDD and bounded never govern the same implementation simultaneously.
 
-## Return from an adopted route
+## 2. Return from an adopted route
+
+**PR-WFS-4.** On return from an adopted route, the orchestrator proceeds as follows.
 
 | Situation | Outcome |
 | --- | --- |

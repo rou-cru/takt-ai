@@ -2,13 +2,11 @@
 
 Shared vocabulary for the Takt product corpus. Terms defined here carry their defined meaning in every document. This glossary creates no obligations.
 
-“Takt AI” is the formal name; “Takt” is the contextual short form. Technical identifiers retain their actual spelling.
-
 ## 1. Systems and Destinations
 
 | Term | Definition |
 | :--- | :--- |
-| **meta harness** | Takt’s layer of coordinated specialists and supporting capabilities over OpenCode v2 and user-chosen inference; not a replacement harness or a promise of identical model results. |
+| **meta harness** | Takt’s layer of coordinated specialists and supporting capabilities over OpenCode v2 and user-chosen inference; not a replacement harness. |
 | **model** | The inference assigned to an agent, distinct from its provider and from the base harness. |
 | **base harness** | OpenCode v2, which Takt extends with its canonical agents and supporting capabilities. |
 | **platform** | The OpenCode v2 integration destination of the Takt application. |
@@ -25,13 +23,13 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **user-managed configuration** | OpenCode v2 configuration owned by the user, outside the assets installed and managed by Takt. |
 | **Takt default stack** | The complete prepared capability selection offered by default setup. |
 | **mandatory core** | The set of capabilities that custom setup cannot omit. A strict subset of the Takt default stack. |
-| **hardware-conditional capability** | An optional capability that is installed only when the host meets its declared hardware requirement. |
+| **hardware-conditional capability** | An optional capability that declares a hardware requirement. |
 
 ## 3. Installation State
 
 | Term | Definition |
 | :--- | :--- |
-| **Takt-managed choice** | An explicit configuration decision made through Takt, including model assignments and exclusions; part of the expected configuration, not an external conflict. |
+| **Takt-managed choice** | An explicit configuration decision made through Takt, including model assignments and exclusions; part of the expected configuration. |
 | **Takt configuration** | The set of installation and behavior decisions managed by Takt, including model assignments and exclusions. |
 | **external modification** | A change made outside Takt’s configuration mechanisms; its origin does not imply fault or incompatibility. |
 | **canonical version** | The reference definition distributed by Takt for an identified version. |
@@ -47,17 +45,17 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 
 | Term | Definition |
 | :--- | :--- |
-| **specialist** | A crew agent with a canonical specialty; its active-session instances each carry one assigned role. Specialty and instance are distinct. |
+| **specialist** | A crew agent with a canonical specialty. |
 | **specialty** | The canonical focus and expertise of a specialist, with a declared set of admitted roles; not itself a permission profile. |
 | **instance** | A concrete agent created for an assignment with one admitted role and its corresponding permissions; distinct from the reusable specialty. |
 | **role class** | An instance's assigned responsibility, fixing its permissions and interaction class. |
-| **Takt operation** | A mutation the product performs by its own deterministic design: installation, update, projection, and harness enforcement. Attributed to Takt. |
+| **Takt operation** | A mutation the product performs by its own deterministic design: installation, update, projection, and harness enforcement. |
 | **memory nature** | The kind of assertion a memory entry records, distinct from whether it currently applies. |
 | **entry ID** | The persistent identifier of a memory entry, by which artifacts, evidence, and results are passed and retrieved. |
 | **Global Tier / Workspace Tier** | The two memory partitions: Global holds cross-project user preferences and environment quirks; Workspace holds the active repository's invariants, constraints, and domain knowledge. |
 | **session anchor** | A harness-created record delimiting a session's memory graph at its start or end. |
 | **session narrative** | The end-of-session account of its objective, final state, and linked memory chronology. |
-| **maintenance cycle** | A bounded harness-controlled run outside active task execution, not an orchestrator work unit: GC over the workspace or dreaming over memory. |
+| **maintenance cycle** | A bounded harness-controlled run outside active task execution: GC over the workspace or dreaming over memory. |
 | **collector** | The simplification instance participating in a GC cycle, realigning the workspace to declared norms with bounded, behavior-preserving deltas. Not the name of every ordinary simplification assignment. |
 | **structural doctrine** | The engineering standard for the structure of work, distinct from functional requirements or authority to change it. |
 | **mandate class** | A family of work in a GC collector's mandate. |
@@ -65,15 +63,15 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **masked dead code** | Code whose only callers are tests: the test establishes no use, it hides the code's death from analysis. |
 | **dreaming** | The long-term memory consolidation lifecycle: Periodic Simple Mode, Deep Dream, and macro consolidation. Distinct from workspace GC. |
 | **Periodic Simple Mode** | The lossless background dreaming cycle that runs without the user. |
-| **Deep Dream** | The dreaming cycle run with the user present, applying only user-validated changes. |
+| **Deep Dream** | The dreaming cycle run with the user present. |
 | **macro consolidation** | The dreaming cycle over closed sessions that derives Global Tier knowledge from Workspace Tier entries. |
-| **dreaming operation** | A typed change the dreaming specialist proposes and the harness validates before applying: group, link, relocate, propose removal, or attach a derived label. Distinct from VFS consolidation. |
+| **dreaming operation** | A typed change the dreaming specialist proposes: group, link, relocate, propose removal, or attach a derived label. Distinct from VFS consolidation. |
 | **candidate set** | The reproducible set of groups, pairs, relinks, and signals the harness prepares for the dreaming specialist to judge. |
 | **action** | The work-counting unit of the control plane, distinct from elapsed time. |
 | **problem rate** | The incidence of deterministic problem signals relative to recorded work, distinct from elapsed time or an agent assessment. |
 | **abortion** | The interface transition that ends a temporary holder's layer without handoff, negotiation, or artifact. |
 | **acceptance entity** | The persisted identity of a story or slice acceptance scope to which attempts, evidence, and budgets bind. |
-| **Action Journal** | The immutable, append-only record of every operation performed against the VFS. |
+| **Action Journal** | The append-only record of operations performed against the VFS. |
 | **claim** | The VFS record granting one instance write ownership of a file scope. |
 | **consolidation** | The deterministic flush of staged VFS state onto the physical filesystem, distinct from committing. |
 | **control bus** | The local, ordered event stream of the control plane, carrying normalized OpenCode v2 and Takt events and result events. |
@@ -81,15 +79,15 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **contest** | The orchestrator's request to verify an identified harness terminal failure against its preexisting applicable invariants. |
 | **convening agent** | The agent that holds the interface and proposes a switch to lend it to a specialist. |
 | **DAG** | The directed acyclic graph of work units whose route the orchestrator decides, shown as a projection of the execution history. |
-| **DAG projection** | The graph state derived deterministically from the execution history; never a mutable model of its own. Distinct from the platform projection of Takt into OpenCode v2. |
+| **DAG projection** | The graph state derived deterministically from the execution history. Distinct from the platform projection of Takt into OpenCode v2. |
 | **envelope** | The structured outcome a temporary holder returns to the convening agent on handoff. |
 | **execution boundary** | The isolation perimeter around crew execution: authorized workspace, scratch paths, network destinations, and external effects. |
-| **execution history** | The append-only record of observed execution, written and sequenced only by the harness. |
+| **execution history** | The append-only record of observed execution. |
 | **gate** | A point at which work proceeds only if a condition holds: passing check evidence or a verification verdict before consolidation or acceptance, or user approval before an action. |
 | **goal card** | The fixed-structure orientation summary of objective, current slice, feature checklist, and remaining budgets. |
 | **handoff** | The negotiated return of the interface: the temporary holder proposes it and delivers its envelope to the convening agent. |
 | **harness** | The deterministic layer Takt provides around the crew: admission, enforcement, execution history, and the VFS. Distinct from the base harness. |
-| **interface holder** | The agent at the top of the interlocutor stack, the only one that holds the chat interface and speaks to the user. |
+| **interface holder** | The agent at the top of the interlocutor stack, which holds the chat interface. |
 | **interlocutor** | An agent that speaks directly with the user. |
 | **interlocutor stack** | The ordered layers of interlocutors: the interface holder on top and, while the interface is lent, the convening agent beneath it. |
 | **invariant** | An authoritative reference against which work is judged, rather than an agent's claim about its own work. |
@@ -112,6 +110,27 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **verdict** | The judgment a verification instance issues on a staged delta, bound to the evaluated revision and applicable invariants. |
 | **VFS** | The virtual file system that stages agents' file mutations, enforces exclusive ownership, and consolidates onto disk. |
 | **work unit** | The unit of work the orchestrator dispatches to an agent under a contract, and the unit the DAG and the execution history record. |
+| **admission policy** | The canonical policy data that sets the finite limits admission enforces. |
+| **backlog** | The work accepted for later slices that no current slice carries. |
+| **canonical definition** | The single source from which Takt projects agents, permissions, skills, and policies. |
+| **capture uncertainty** | The recorded state in which the harness cannot establish whether execution occurred or ended. |
+| **checkpoint** | A local commit on the authorized working branch marking an accepted feature. |
+| **compaction** | The reduction of an agent's active context while preserving its goal, invariants, and evidence references. |
+| **direct work** | Work the orchestrator performs itself instead of delegating it. |
+| **effective termination** | The recorded fact that an execution has ended or can no longer act. |
+| **escalation** | Carrying a decision to the user through the interface holder. |
+| **execution specialist** | An instance of the execution role class: dev, fix, test author, or ordinary simplification. |
+| **feature checklist** | The list of features of the objective with their acceptance state. |
+| **lent session** | The session in which a temporary holder holds the interface. |
+| **permission profile** | The set of actions a role class allows, denies, or gates. |
+| **policy data** | Thresholds, limits, and tables held as declared data rather than code paths. |
+| **root session** | The session in which an objective's execution history is rooted. |
+| **self-check** | A check an author runs on its own work; never independent acceptance. |
+| **skill** | A unit of procedural guidance loaded on demand by an agent. |
+| **staged delta** | A file mutation held in the VFS before consolidation. |
+| **standard artifact** | The document a temporary holder's specialty produces as the result of a lent session. |
+| **unplanned delegation** | Delegation of a work unit that no committed plan covers. |
+| **work breakdown** | The scoped, traceable decomposition of a slice into work units. |
 
 ## 5. Specialties and Routes
 
@@ -147,8 +166,8 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **blind test authorship** | Writing acceptance and contract tests (Q2) from the specification, frozen contracts, and traceability matrix, never from the implementation. |
 | **Definition of Done (DoD)** | The acceptance conditions for an objective to count as complete. |
 | **environment requirements** | The services, data, configuration, and platforms a test plan needs beyond what the repository already runs. |
-| **mutant** | A deliberate small fault introduced into a copy of the code to check whether the tests detect it. A **surviving mutant** is one no test detects; an **equivalent mutant** behaves identically to the original and is discarded. |
-| **QA planned** | An objective whose acceptance uses the QA workflow rather than individual quality specialists. |
+| **mutant** | A deliberate small fault introduced into a copy of the code to check whether the tests detect it. A **surviving mutant** is one no test detects; an **equivalent mutant** behaves identically to the original. |
+| **QA planned** | An objective whose acceptance uses the QA workflow rather than individual quality-assurance specialists. |
 | **QA workflow** | The orchestrator's state machine for an objective's testing: a route for assessing an existing deliverable and the acceptance tail of a route with QA planned. |
 | **quality assurance (role class)** | The class of the mutation analyst, explorer, and quality analyst, which critique the materialized product without mutating it. |
 | **organizational test strategy** | Takt AI's common testing standard across workspaces, distinct from a workspace's test policy or an objective's test plan. |

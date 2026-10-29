@@ -38,7 +38,7 @@ Visual simplification does not justify erasing identity, hiding necessary inform
 - Technical descriptor: **Meta harness for agent teams**.
 - First-contact explanation: "Takt coordinates specialized agents and working capabilities on top of OpenCode v2 and the models you choose."
 
-In the TUI, no slogans, welcomes, descriptors, or closing messages are added just to reinforce identity. The brand is expressed through the logo and the visual system; every additional text must contribute information useful to the task. This does not prevent identifying Takt AI where needed to understand context.
+In the TUI, no slogans, welcomes, descriptors, or closing messages are added just to reinforce identity. The brand is expressed through the logo and the visual system; every additional text MUST contribute information useful to the task. This does not prevent identifying Takt AI where needed to understand context.
 
 ### 3.2 Voice and tone
 
@@ -60,7 +60,7 @@ A message MUST match what the system knows and guarantees. "Your changes are sav
 1. Use concrete verbs and objects: "Apply changes," "Restore agent," "Keep my version." Avoid "OK," "Process," or "Continue" when they hide an important consequence.
 2. Reserve "Continue" for advancing without applying changes. "Save" means persisting; "Apply" means making the configuration effective in the stated scope.
 3. Use sentence case. Do not use sustained capitals, routine exclamations, emojis, or celebratory language for ordinary tasks.
-4. One main sentence per message; technical details in a second layer. Brevity must not remove the affected object, the risk, or the recovery.
+4. One main sentence per message; technical details in a second layer. Brevity MUST NOT remove the affected object, the risk, or the recovery.
 5. Errors: **what happened → what changed or did not change → what you can do**. Cause and diagnostics expandable when extensive.
 6. Do not blame the user. Even if they ignored a warning, the next interaction starts by helping.
 7. Do not hide a critical consequence in a tooltip, truncated text, external link, or closed panel.
@@ -76,7 +76,7 @@ Each surface MUST declare the languages it supports. Do not mix languages in lab
 
 The canonical logo is the distributed brand asset. It MUST be preserved and MUST NOT be substituted by its source artwork or by running text. Changing it requires an explicit identity decision evaluated against recognition and every affected surface.
 
-**The logo MUST be visible and prominent on the TUI home. It is not mandatory to repeat it on every screen.** In selection, editing, review, execution, and recovery it may be omitted to use the workspace. Continuity is kept through the shell, composition, and shared tokens. Compact or monochrome logo variants must keep recognition; adapting the home does not authorize replacing it with running text.
+**The logo MUST be visible and prominent on the TUI home. It is not mandatory to repeat it on every screen.** In selection, editing, review, execution, and recovery it may be omitted to use the workspace. Continuity is kept through the shell, composition, and shared tokens. Compact or monochrome logo variants MUST keep recognition; adapting the home does not authorize replacing it with running text.
 
 The **Takt AI** wordmark identifies the product where appropriate, including an operating header without a logo; it does not replace the logo on the home. Its graphic reproduction follows these rules:
 
@@ -87,7 +87,7 @@ The **Takt AI** wordmark identifies the product where appropriate, including an 
 - Minimum graphic signature size on screen: 20 CSS px of font; in print, 12 pt. If it does not fit, use the name as normal text of the context, not an illegible shrunken graphic.
 - In terminal, the textual signature uses the native font. The logo may span several rows through its terminal representation, including ASCII art; no font is imposed on the user.
 
-The surface profile identifies the canonical asset and the variants it uses, with visual evidence. Distinct symbols must not be improvised per surface.
+The surface profile identifies the canonical asset and the variants it uses, with visual evidence. Distinct symbols MUST NOT be improvised per surface.
 
 ### 4.2 Distinctive elements
 
@@ -176,8 +176,8 @@ Application rules:
 - The web focus outline is 2 px with a 2 px gap from the control. The gap exposes the neutral background; it is not evaluated against the button fill alone.
 - A disabled action keeps an accessible explanation. Do not use global opacity or faint color as the only signal of unavailability.
 - Brand color may identify the logo, header, and structural regions of the product, not only commercial presentations. Its extent answers to composition and does not hide states or content. A validated text pair is required, e.g. `P100` on `P900`.
-- Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use must be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
-- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas; `brand.ink` keeps its shared value. `P300` stays the `focus.ring` value and is not used for the signature. The TUI has a single dark theme.
+- Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use MUST be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
+- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas; `brand.ink` keeps its shared value. `P300` stays the `focus.ring` value and is not used for the signature.
 
 ### 5.4 Verified contrast and limits
 
@@ -203,16 +203,16 @@ Values use sRGB relative luminance, shown rounded to two decimals; approval uses
 
 Informative text reaches **4.5:1**, including headlines, without the large-text exception.
 
-Necessary control boundaries and graphic indicators must reach at least 3:1 against the pertinent adjacent colors. Color does not replace labels, shapes, or markers.
+Necessary control boundaries and graphic indicators MUST reach at least 3:1 against the pertinent adjacent colors. Color does not replace labels, shapes, or markers.
 
 These tests do not certify a real screen or terminal: transparencies, composite states, native selection, and external themes can change the result. No transparency is applied to text, controls, or semantic backgrounds without recomputing their combinations.
 
 ### 5.5 Themes, print, and degradation
 
 - On web, light and dark are equivalent brand expressions; follow system preference and allow persistent choice; do not impose dark for being a technical tool.
-- In terminal, respect the environment's color capability; the theme is never selected from the terminal background. Do not assume an ANSI palette equals these hexadecimals.
+- In terminal, respect the environment's color capability. Do not assume an ANSI palette equals these hexadecimals.
 - Print: white background, dark text, no unnecessary background blocks. States keep words or symbols and remain distinguishable in grays.
-- The brand MUST remain recognizable without color, keeping the logo on the home and composition in every context. Removing color must not obscure focus, state, action, or hierarchy.
+- The brand MUST remain recognizable without color, keeping the logo on the home and composition in every context. Removing color MUST NOT obscure focus, state, action, or hierarchy.
 
 ## 6. Typography, shape, and rhythm
 
@@ -222,7 +222,7 @@ These tests do not certify a real screen or terminal: transparencies, composite 
 
 Web stacks: IBM Plex Sans with system-ui, -apple-system, Segoe UI and sans-serif fallbacks; IBM Plex Mono with ui-monospace, SFMono-Regular, Consolas and monospace fallbacks.
 
-Self-host the needed files, keep their license, and load only used weights/languages. Do not turn a remote font into a requirement for reading or using the product. The fallback must keep a functional layout. In TUI the user's font rules; these stacks are not imposed.
+Self-host the needed files, keep their license, and load only used weights/languages. Do not turn a remote font into a requirement for reading or using the product. The fallback MUST keep a functional layout. In TUI the user's font rules; these stacks are not imposed.
 
 ### 6.2 Web type scale
 
@@ -279,7 +279,7 @@ Every operating view MUST answer, in this reading order:
 
 "One primary intent" does not force highlighting a button where there is no action; a reading page may have none. If two actions have truly equal rank, present a neutral choice, not an arbitrary highlight of Takt's preferred one.
 
-Visual, assistive-reading, and keyboard order MUST coincide. Identity frames location and task; it is not a mandatory vertical region or a prior step. This reading order does not require stacking everything in one column. Brand, global navigation, and aids must not hide decisive content or controls. Composition may center groups, distribute panels, and reserve the logo for the home.
+Visual, assistive-reading, and keyboard order MUST coincide. Identity frames location and task; it is not a mandatory vertical region or a prior step. This reading order does not require stacking everything in one column. Brand, global navigation, and aids MUST NOT hide decisive content or controls. Composition may center groups, distribute panels, and reserve the logo for the home.
 
 ### 7.2 Pattern selection by situation
 
@@ -316,7 +316,7 @@ Base breakpoints: 640, 1024, and 1280 CSS px. Used for composition changes, not 
 - From 1280 px: documentation may show navigation, article, and index if all three fit without narrowing reading.
 - When collapsing: preserve task, actions, and recognizable identity; adapt the logo and move index, navigation, and diagnostics to accessible controls. Do not erase decisive information.
 - Tables and code blocks may have their own horizontal scroll when their structure requires it; do not cause whole-page horizontal scroll.
-- Fixed bars only if they add continuity; they must reserve space and not hide content or focus.
+- Fixed bars only if they add continuity; they MUST reserve space and not hide content or focus.
 
 ### 7.4 Density, grouping, and progressive disclosure
 
@@ -339,7 +339,7 @@ Three information layers:
 
 ### 7.5 Action placement
 
-Actions sit after content. On LTR web, the final group may align to the right end, secondary before primary; on narrow layouts preserve reading order and priority. A pinned primary button must not hide that unreviewed changes remain.
+Actions sit after content. On LTR web, the final group may align to the right end, secondary before primary; on narrow layouts preserve reading order and priority. A pinned primary button MUST NOT hide that unreviewed changes remain.
 
 ## 8. Interaction and trust contract
 
@@ -360,10 +360,10 @@ These are responsibilities, not five mandatory screens. Confirmation is justifie
 
 ### 8.3 Changes, exits, and recovery
 
-- Before the commitment point, canceling must not modify persistent state. If an operation needs preparation with effects, it must declare them first; do not call it a harmless preview.
+- Before the commitment point, canceling MUST NOT modify persistent state. If an operation needs preparation with effects, it MUST declare them first; do not call it a harmless preview.
 - Pending changes are identified locally and in the application scope. Exiting with no changes needs no confirmation; exiting with unapplied changes offers continuing to edit or discarding them.
-- During execution, "Cancel" appears only if the system knows how to stop with an explainable result. Otherwise report that the phase must finish; do not fake cancellation.
-- A partial result is distinguished from total success and failure: what was applied, what was not, and how to continue. Retrying must not hide possible repeated effects.
+- During execution, "Cancel" appears only if the system knows how to stop with an explainable result. Otherwise report that the phase MUST finish; do not fake cancellation.
+- A partial result is distinguished from total success and failure: what was applied, what was not, and how to continue. Retrying MUST NOT hide possible repeated effects.
 - Recovery requires explaining scope and consequences. Restoring the canonical is not the same as undoing exactly the last operation; do not swap those labels.
 - Never promise backup, rollback, or reversibility outside the scope defined on the surface.
 - When an action finishes, return to the pertinent context keeping selection and filters when still valid. Do not always send back to start.
@@ -372,7 +372,7 @@ These are responsibilities, not five mandatory screens. Confirmation is justifie
 
 - A concept keeps name, relative location, and behavior in all its uses.
 - Back returns to the previous level; cancel abandons the current operation; exit abandons the application. Do not confuse them.
-- Menus navigate; selectors change values; buttons execute actions. Their appearance and semantics must not mix.
+- Menus navigate; selectors change values; buttons execute actions. Their appearance and semantics MUST NOT mix.
 - Shortcuts accelerate visible or findable actions; they are not the only way to discover a capability.
 - Navigating to detail preserves the return context. Search, filters, and pagination do not replace an understandable architecture.
 - If a surface shows keyboard aids, they are contextual: the pertinent ones, not the full catalog on every screen.
@@ -403,7 +403,7 @@ Each surface MUST map these contracts to its native controls or accessible equiv
 
 Every interactive component specifies: rest, hover where it exists, focus, active/pressed, selected where applicable, disabled with reason, loading, and error. Not all states apply to every component; non-applicable ones are marked, not invented.
 
-Every data view specifies: initial loading, content, initial empty, no filter results, failure, partial result when possible, and ongoing update. An empty state is not an error: it must explain what is missing and how to start, with no mandatory decorative illustrations.
+Every data view specifies: initial loading, content, initial empty, no filter results, failure, partial result when possible, and ongoing update. An empty state is not an error: it MUST explain what is missing and how to start, with no mandatory decorative illustrations.
 
 If a new pattern does not define its states, it is not yet complete. No screen may resolve them with local styles foreign to these contracts.
 
@@ -416,7 +416,7 @@ If a new pattern does not define its states, it is not yet complete. No screen m
 - States with icons also include word or textual meaning. Do not assume a triangle or a color is interpreted equally in every environment.
 - Avoid emojis as functional iconography: style, width, and rendering depend on the environment.
 - Commercial photographs and illustrations show real work, structure, or understandable results. Do not use robots, brains, glowing networks, or hardware photos as a substitute for explaining Takt.
-- Captures must be legible, representative, and free of private information. Fictional demonstrations are identified as such. Do not present nonexistent features as available product.
+- Captures MUST be legible, representative, and free of private information. Fictional demonstrations are identified as such. Do not present nonexistent features as available product.
 
 ### 10.2 Diagrams and data
 
@@ -447,7 +447,7 @@ Respect reduced motion: remove displacements and nonessential animations, keep s
 
 - Text and controls meet the contrast contracts of §5.4 in all their states.
 - Every web operation can be completed with keyboard, with visible focus, logical order, and no traps. Use native semantics before reproducing controls with generic elements.
-- Labels, errors, selection, and progress must be understandable with assistive technology. Announce relevant changes without reading every log line or moving focus for background updates.
+- Labels, errors, selection, and progress MUST be understandable with assistive technology. Announce relevant changes without reading every log line or moving focus for background updates.
 - Standalone pointer controls have a 44 × 44 CSS px target area, even if the drawing is smaller. That box is not required for links inside prose.
 - Test web reflow at 320 CSS px width and 200% text zoom. Necessary two-dimensional structures, like some tables, are evaluated with their exceptions, not by forcing the whole page to overflow.
 - States are distinguished without color; controls do not depend on hover; important information does not depend on animation nor disappear on a timer before it can be read.
@@ -465,7 +465,7 @@ Base sequence L01: concrete value → brief explanation → example or evidence 
 
 One predominant commercial intent per section. Do not repeat the CTA on every card. It may have more space and type scale than product, but no unevidenced claims, fictional testimonials, invented compatibility, third-party logos implying endorsement, or animations delaying reading.
 
-The brand may lead at the entrance; when explaining details, the content leads, without losing product identification. This prominence is not web-exclusive: it also belongs to the TUI entrance. Captures must demonstrate clarity, not be used as illegible texture.
+The brand may lead at the entrance; when explaining details, the content leads, without losing product identification. This prominence is not web-exclusive: it also belongs to the TUI entrance. Captures MUST demonstrate clarity, not be used as illegible texture.
 
 ### 12.2 Technical documentation
 
@@ -495,7 +495,7 @@ Do not duplicate the palette to keep a local variant. Reference the source and m
 
 ### 13.3 Changes and exceptions
 
-A local exception may not redefine state meanings, hide data loss, justify inaccessibility, or contradict intent preservation. If it needs to, the common contract must be reviewed, not a local component override.
+A local exception may not redefine state meanings, hide data loss, justify inaccessibility, or contradict intent preservation. If it needs to, the common contract MUST be reviewed, not a local component override.
 
 Chromatic or typographic values do not change for an isolated screen. A token change is evaluated on light, dark, monochrome, and every affected surface.
 
