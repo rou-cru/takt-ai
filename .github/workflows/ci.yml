@@ -181,7 +181,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: TruffleHog
-        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        uses: trufflesecurity/trufflehog@31ce31ee1abbcc7dc8eee5764c17121c3044c8b2 # v3.99.7
         with:
           version: 3.97.9
           extra_args: --only-verified
@@ -216,7 +216,7 @@ jobs:
           severity-cutoff: high
           only-fixed: true
           output-format: sarif
-      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         if: ${{ !cancelled() && steps.grype.outputs.sarif != '' }}
         with:
           sarif_file: ${{ steps.grype.outputs.sarif }}
