@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Admission: what a delegation needs and how a refusal guides",
+    "output": "docs/design/architecture/interactions/diagrams/admission-refusals.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    { "id": "orch", "label": "Orchestrator conduct" },
+    { "id": "gate", "label": "Admission in takt-ai" },
+    { "id": "refuse", "label": "Refusal names the next call", "variant": "exception" }
+  ],
+  "mainPath": ["inputs", "claim", "delegate", "prepare", "admitted", "launched"],
+  "nodes": [
+    { "id": "inputs", "lane": "orch", "col": 0, "type": "backend", "label": "Declare inputs", "sublabel": "dispatch_inputs",
+      "sources": [{ "path": "takt/cli/execution.go", "line": 36 }] },
+    { "id": "claim", "lane": "orch", "col": 1, "type": "backend", "label": "Assign claim", "sublabel": "claim_assign",
+      "sources": [{ "path": "takt/vfs/claims.go", "line": 34 }] },
+    { "id": "delegate", "lane": "orch", "col": 2, "type": "backend", "label": "Delegate", "sublabel": "subagent(unit, agent)",
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 1076 }] },
+    { "id": "prepare", "lane": "gate", "col": 3, "type": "security", "label": "Prepare", "sublabel": "dispatch prepare",
+      "sources": [{ "path": "takt/cli/execution.go", "line": 36 }, { "path": "takt/dispatch/dispatch.go", "line": 62 }] },
+    { "id": "admitted", "lane": "gate", "col": 4, "type": "security", "label": "Admitted", "sublabel": "slot reserved, recorded",
+      "sources": [{ "path": "takt/dispatch/dispatch.go", "line": 84 }] },
+    { "id": "launched", "lane": "gate", "col": 5, "type": "backend", "label": "Child session", "sublabel": "claim bound at first turn",
+      "sources": [{ "path": "takt/agents/opencode/assets/takt-vfs.ts", "line": 1076 }] },
+    { "id": "noinputs", "lane": "refuse", "col": 2, "type": "messagebus", "label": "No inputs", "sublabel": "dispatch_inputs, same call" },
+    { "id": "ceiling", "lane": "refuse", "col": 3, "type": "messagebus", "label": "Ceiling or in flight", "sublabel": "dispatch_abandon, user asked" },
+    { "id": "unplanned", "lane": "refuse", "col": 4, "type": "messagebus", "label": "Unplanned bound", "sublabel": "dispatch_commit" },
+    { "id": "exhausted", "lane": "refuse", "col": 5, "type": "messagebus", "label": "Budget spent", "sublabel": "dispatch_exception, user finite grant" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "inputs", "to": "claim", "variant": "default" },
+    { "id": "e2", "from": "claim", "to": "delegate", "variant": "default" },
+    { "id": "e3", "from": "delegate", "to": "prepare", "label": "execute.before", "variant": "emphasis" },
+    { "id": "e4", "from": "prepare", "to": "admitted", "label": "all hold", "variant": "emphasis" },
+    { "id": "e5", "from": "admitted", "to": "launched", "variant": "emphasis" },
+    { "id": "e6", "from": "prepare", "to": "noinputs", "label": "not declared", "variant": "security", "role": "error" },
+    { "id": "e7", "from": "prepare", "to": "ceiling", "label": "full", "variant": "security", "role": "error" },
+    { "id": "e8", "from": "prepare", "to": "unplanned", "label": "over bound", "variant": "security", "role": "error" },
+    { "id": "e9", "from": "prepare", "to": "exhausted", "label": "recovery spent", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Refusal changes nothing",
+      "items": [
+        "A denial is recorded and leaves state as it was",
+        "It never latches; the next valid call proceeds"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Limits are data",
+      "items": [
+        "Ceiling 4, unplanned units 4, contests 3, failed recoveries 2",
+        "Only a user-granted finite allowance raises a bound"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Idempotent",
+      "items": [
+        "Preparation is keyed by the host call, so a repeat does not relaunch",
+        "A failed preparation is compensated and retried with a new call"
+      ]
+    }
+  ]
+}

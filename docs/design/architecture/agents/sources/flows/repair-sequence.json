@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },

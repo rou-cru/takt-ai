@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: invariant-planning states",
@@ -7,52 +7,29 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Planning states"
-    },
-    {
-      "id": "exits",
-      "label": "Exits"
-    },
-    {
-      "id": "waiting",
-      "label": "User"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "assess",
+    "plan",
+    "dispatch",
+    "coherence",
+    "complete"
   ],
   "states": [
     {
       "id": "assess",
       "type": "active",
-      "label": "Assess",
-      "sublabel": "classify each invariant",
-      "lane": "main",
-      "col": 0,
+      "label": "Assess and select",
+      "sublabel": "classify, one lane each",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
           "line": 17,
           "end_line": 23
-        }
-      ]
-    },
-    {
-      "id": "select",
-      "type": "active",
-      "label": "Select",
-      "sublabel": "one lane per invariant",
-      "lane": "main",
-      "col": 1,
-      "sources": [
+        },
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
           "line": 24,
@@ -65,8 +42,6 @@
       "type": "active",
       "label": "Plan",
       "sublabel": "edges by consumption",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -80,8 +55,6 @@
       "type": "active",
       "label": "Dispatch",
       "sublabel": "lane starts when inputs exist",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -95,8 +68,6 @@
       "type": "decision",
       "label": "Coherence",
       "sublabel": "compare delivered documents",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -110,8 +81,6 @@
       "type": "neutral",
       "label": "Control returned",
       "sublabel": "single lane, or misfit",
-      "lane": "exits",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -125,8 +94,6 @@
       "type": "waiting",
       "label": "Lane blocked",
       "sublabel": "specialist unavailable",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -140,8 +107,6 @@
       "type": "waiting",
       "label": "Ask the user",
       "sublabel": "disputed or not converging",
-      "lane": "waiting",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -155,8 +120,6 @@
       "type": "success",
       "label": "Planning complete",
       "sublabel": "invariants delivered",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
@@ -169,18 +132,11 @@
   "transitions": [
     {
       "from": "assess",
-      "to": "select",
-      "label": "all classified",
-      "labelDy": -31
-    },
-    {
-      "from": "select",
       "to": "plan",
-      "label": "lane set fixed",
-      "labelDy": -31
+      "label": "fixed"
     },
     {
-      "from": "select",
+      "from": "assess",
       "to": "returned",
       "label": "one lane, or misfit",
       "variant": "dashed"
@@ -188,15 +144,13 @@
     {
       "from": "plan",
       "to": "dispatch",
-      "label": "plan committed",
-      "variant": "emphasis",
-      "labelDy": -31
+      "label": "committed",
+      "variant": "emphasis"
     },
     {
       "from": "dispatch",
       "to": "coherence",
-      "label": "every lane delivered",
-      "labelDy": -31
+      "label": "delivered"
     },
     {
       "from": "dispatch",
@@ -214,8 +168,7 @@
       "from": "coherence",
       "to": "dispatch",
       "label": "contradiction",
-      "variant": "security",
-      "labelDy": 57
+      "variant": "security"
     },
     {
       "from": "coherence",
@@ -232,7 +185,7 @@
     {
       "from": "coherence",
       "to": "complete",
-      "label": "no contradiction open",
+      "label": "clean",
       "variant": "emphasis"
     }
   ],

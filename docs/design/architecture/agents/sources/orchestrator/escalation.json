@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: escalation conduct",
@@ -7,23 +7,16 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Containment"
-    },
-    {
-      "id": "closing",
-      "label": "Reporting"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "trigger",
+    "freeze",
+    "restore",
+    "report",
+    "await"
   ],
   "states": [
     {
@@ -31,8 +24,6 @@
       "type": "start",
       "label": "Trigger",
       "sublabel": "scope, budget, discovery",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -44,25 +35,13 @@
     {
       "id": "freeze",
       "type": "active",
-      "label": "Path frozen",
-      "sublabel": "affected path only",
-      "lane": "main",
-      "col": 1,
+      "label": "Frozen and stopped",
+      "sublabel": "affected path, work stopped",
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 110
-        }
-      ]
-    },
-    {
-      "id": "terminate",
-      "type": "active",
-      "label": "Termination confirmed",
-      "sublabel": "active work stopped",
-      "lane": "main",
-      "col": 2,
-      "sources": [
+        },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 111
@@ -72,25 +51,13 @@
     {
       "id": "restore",
       "type": "active",
-      "label": "Scope restored",
-      "sublabel": "abandoned scope only",
-      "lane": "main",
-      "col": 3,
+      "label": "Restored",
+      "sublabel": "abandoned scope, rest kept",
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 111
-        }
-      ]
-    },
-    {
-      "id": "preserve",
-      "type": "active",
-      "label": "Progress preserved",
-      "sublabel": "unrelated work kept",
-      "lane": "main",
-      "col": 4,
-      "sources": [
+        },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 112
@@ -102,8 +69,6 @@
       "type": "active",
       "label": "Report",
       "sublabel": "evidence and alternatives",
-      "lane": "closing",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -116,8 +81,6 @@
       "type": "waiting",
       "label": "Awaiting direction",
       "sublabel": "no further recovery",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -135,18 +98,10 @@
     },
     {
       "from": "freeze",
-      "to": "terminate"
-    },
-    {
-      "from": "terminate",
       "to": "restore"
     },
     {
       "from": "restore",
-      "to": "preserve"
-    },
-    {
-      "from": "preserve",
       "to": "report"
     },
     {

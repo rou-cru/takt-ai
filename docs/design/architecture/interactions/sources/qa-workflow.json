@@ -1,0 +1,220 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "QA workflow: states, who acts and what each hands on",
+    "output": "docs/design/architecture/interactions/diagrams/qa-workflow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:rou-cru/takt-ai.git",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "link_mode": "local-only"
+    }
+  },
+  "mainPath": [
+    "plan",
+    "author",
+    "accept",
+    "critique",
+    "close"
+  ],
+  "states": [
+    {
+      "id": "assess",
+      "type": "start",
+      "label": "Assess",
+      "sublabel": "takt reads entries",
+      "tag": "takt",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "01"
+    },
+    {
+      "id": "plan",
+      "type": "active",
+      "label": "Plan",
+      "sublabel": "policy, plan, matrix",
+      "tag": "qa",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "02"
+    },
+    {
+      "id": "author",
+      "type": "active",
+      "label": "Author",
+      "sublabel": "rows to nodes; Q2 tests",
+      "tag": "tpm, test",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "03"
+    },
+    {
+      "id": "accept",
+      "type": "decision",
+      "label": "Accept",
+      "sublabel": "materialized workspace",
+      "tag": "verify",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "04"
+    },
+    {
+      "id": "critique",
+      "type": "active",
+      "label": "Critique",
+      "sublabel": "mutation, Q3, Q4 in parallel",
+      "tag": "mutation, explorer, quality",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "05"
+    },
+    {
+      "id": "strengthen",
+      "type": "waiting",
+      "label": "Strengthen",
+      "sublabel": "tests for survivors, gated",
+      "tag": "test, verify",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "06"
+    },
+    {
+      "id": "close",
+      "type": "active",
+      "label": "Close",
+      "sublabel": "completion report",
+      "tag": "verify",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "07"
+    },
+    {
+      "id": "report",
+      "type": "success",
+      "label": "Report",
+      "sublabel": "takt consumes report ID",
+      "tag": "takt",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-qa-workflow/SKILL.md",
+          "line": 1
+        }
+      ],
+      "step": "08"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t0",
+      "from": "assess",
+      "to": "plan",
+      "label": "QA on",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t1",
+      "from": "plan",
+      "to": "author",
+      "label": "IDs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t2",
+      "from": "author",
+      "to": "accept",
+      "label": "merged",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t3",
+      "from": "accept",
+      "to": "critique",
+      "label": "ID",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t4",
+      "from": "critique",
+      "to": "strengthen",
+      "label": "mutants survive",
+      "variant": "security"
+    },
+    {
+      "id": "t5",
+      "from": "strengthen",
+      "to": "critique",
+      "label": "re-mutate",
+      "variant": "dashed"
+    },
+    {
+      "id": "t6",
+      "from": "critique",
+      "to": "close",
+      "label": "done",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t7",
+      "from": "close",
+      "to": "report",
+      "label": "ID",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Matrix ownership",
+      "items": [
+        "qa writes requirement, condition and must-not-fail",
+        "tpm adds the owning node; verify adds evidence",
+        "Each column is a supplements entry"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Routing survivors",
+      "items": [
+        "Surviving mutants go to test, never to dev or fix",
+        "Strengthening is bounded by the qa_round budget"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "When QA runs",
+      "items": [
+        "Only on a must-not-fail priority, cross-contract criteria, legacy refactor, a drastic earlier failure, or user request",
+        "A focused review alone does not activate QA"
+      ]
+    }
+  ]
+}
