@@ -1,20 +1,6 @@
 # Takt AI — Brand Identity and Design Foundations
 
-**Version:** 3.0 · **Reference language:** English
-
-**Nature:** normative identity and design specification. It defines the target that implementations must conform to.
-
-> **Precision without friction.**
->
-> Takt lets you focus on the work, not on operating the tool. Its identity is that of a precise, sober, and reliable engineering tool: it resolves the routine, lets you control the particular, and helps you recover when the result is not useful.
-
-**Takt MUST be recognizable and have its own character.** Logo, composition, and color are part of the TUI's visual contract; they require no added text foreign to the task.
-
-## 0. How to use this document
-
-This document is the common source for branding, the product website, documentation, graphical interfaces, terminal, and product communications. It is not a moodboard or a collection of screens. It establishes reusable decisions, their reasons, and how to verify them.
-
-### 0.1 Authority and scope
+## 0. Normative keywords
 
 - **MUST / MUST NOT:** requirement. Failure to comply prevents declaring conformity with this identity.
 - **SHOULD:** default criterion. An exception needs a documented reason and evidence that it preserves the purpose.
@@ -22,51 +8,9 @@ This document is the common source for branding, the product website, documentat
 - Numeric values in tables are the normative base, unless identified as indicative.
 - Message examples illustrate design contracts; they do not fix definitive command names.
 
-Authority order:
+## 1. Product identity
 
-1. This identity and its common requirements.
-2. A surface specification, which applies or extends those requirements.
-3. Implementation components, patterns, and tokens.
-4. Concrete screens and flows.
-
-**Everything concerning TUI design in `product/` MUST be an application or extension of this document.** It may not introduce another identity, reassign chromatic meanings, or contradict its interaction contracts. In case of conflict over shared identity and design contracts, this document prevails; local presentation is governed by the relevant VDS (`INDEX.md` rules 6–7).
-
-The file is portable. When moved, dependent specifications must update their reference and keep the identity version they implement. Its authority does not depend on being at the root of this repository.
-
-### 0.2 Quick path by task
-
-| Need | Sections to consult |
-|---|---|
-| Explain what Takt is | 1–3: strategy, character, and voice |
-| Create a brand piece | 3–6 and 10: verbal expression, signature, color, typography, and images |
-| Design a page or screen | 5–9: tokens, composition, behavior, and components |
-| Add a known menu or flow | 7–9 and 13: pick a pattern, compose, and verify; do not reinvent |
-| Adapt to web, documentation, or TUI | 11–12: accessibility and surface contracts |
-| Review an implementation | 13–14: governance, criteria, and reproducible validation |
-
-## 1. Product and brand strategy
-
-### 1.1 What Takt AI is
-
-Takt AI is a **meta harness**: it mounts on top of OpenCode v2 and the inference the user chooses. It contributes a team of specialized agents, a proactive orchestrator, and complementary capabilities such as persistent memory, documentation access, project navigation, skills, and deterministic reaction to events.
-
-Its purpose is to produce a relatively consistent working experience across compatible models in OpenCode v2, without erasing their useful differences or promising identical results across models.
-
-### 1.2 Who it exists for
-
-For power users and engineers who know the value of a good tool and want results with agents without continuously administering the complexity around them.
-
-They are not assumed to know Takt's implementation, its internal conventions, or its module names. Technical experience does not equal prior knowledge of the product or willingness to tolerate friction.
-
-### 1.3 Positioning
-
-Takt offers a complete default configuration and lets the user adjust the tools it comprises.
-
-### 1.4 Promise and evidence
-
-**Central promise:** "Your attention, on the work."
-
-The promise MUST be sustained with adequate initial values, preservation of decisions, understandable consequences, pertinent information, accessible recovery, and explicit limits. Claims such as "never fails," "100% safe," or "works with any model" must not be used without a scope and evidence that truly sustain them.
+Takt AI's identity is precise, sober, recognizable, and consistent across surfaces. Claims describe observable capability without promising identical model results. Claims such as "never fails," "100% safe," or "works with any model" are not used without a scope and evidence that sustain them.
 
 ## 2. Character and operating principles
 
@@ -83,7 +27,7 @@ The promise MUST be sustained with adequate initial values, preservation of deci
 | B07 | Durable intention | An explicit decision does not disappear because of an upgrade. | Reinstalling something the user had excluded. |
 | B08 | Functional honesty | Distinguish viable, uncertain, and unfeasible. | Offering a known-feasible configuration as impossible. |
 
-Visual simplification does not justify erasing identity, hiding necessary information, reducing contrast, omitting labels, or turning a direct flow into a mysterious gesture. Visual presence is not excess by itself: restrictions must answer concrete interferences with reading, navigation, or execution.
+Visual simplification does not justify erasing identity, hiding necessary information, reducing contrast, omitting labels, or turning a direct flow into a mysterious gesture. Restrictions on visual presence answer concrete interferences with reading, navigation, or execution.
 
 ## 3. Verbal identity
 
@@ -93,12 +37,8 @@ Visual simplification does not justify erasing identity, hiding necessary inform
 - Do not alternate with "TAKT," "Takt.ai," or "TaktAI" in prose. Technical identifiers keep their real spelling.
 - Technical descriptor: **Meta harness for agent teams**.
 - First-contact explanation: "Takt coordinates specialized agents and working capabilities on top of OpenCode v2 and the models you choose."
-- Positioning line: **Precision without friction.**
-- Benefit line: **Your attention, on the work.**
 
-The two lines must not be repeated together on every surface. They are communication resources, not mandatory product headers. Their use implies no commercial exclusivity or trademark registration.
-
-In the TUI, no slogans, welcomes, descriptors, or closing messages will be added just to reinforce identity. The brand is expressed through the logo and the visual system; every additional text must contribute information useful to the task. This does not prevent identifying Takt AI where needed to understand context.
+In the TUI, no slogans, welcomes, descriptors, or closing messages are added just to reinforce identity. The brand is expressed through the logo and the visual system; every additional text must contribute information useful to the task. This does not prevent identifying Takt AI where needed to understand context.
 
 ### 3.2 Voice and tone
 
@@ -128,15 +68,13 @@ A message MUST match what the system knows and guarantees. "Your changes are sav
 
 ### 3.4 Vocabulary and localization
 
-`product/GLOSSARY.md` is the single source of truth for shared product vocabulary. This document does not redefine those terms; it specifies only how each surface presents them:
-
 Each surface MUST declare the languages it supports. Do not mix languages in labels of the same experience except proper names, code, and technical terms with no useful translation. Documentation may introduce "restore (`sync`)" to connect human language and command, without inventing syntax. Translations preserve intent, not literal length; layout admits text expansion.
 
 ## 4. Signature and recognition
 
 ### 4.1 Logo and wordmark
 
-The canonical asset indicated by product is `docs/assets/brand/takt-ai.png`. It MUST be preserved; `takt-ai-logo-source.png` is not its substitute. It must not be silently replaced by running text or treated as a future isotype. Changing it requires an explicit identity decision, with evaluation of recognition and of the affected surfaces.
+The canonical logo is the distributed brand asset. It MUST be preserved and MUST NOT be substituted by its source artwork or by running text. Changing it requires an explicit identity decision evaluated against recognition and every affected surface.
 
 **The logo MUST be visible and prominent on the TUI home. It is not mandatory to repeat it on every screen.** In selection, editing, review, execution, and recovery it may be omitted to use the workspace. Continuity is kept through the shell, composition, and shared tokens. Compact or monochrome logo variants must keep recognition; adapting the home does not authorize replacing it with running text.
 
@@ -147,9 +85,9 @@ The **Takt AI** wordmark identifies the product where appropriate, including an 
 - Single color: `text.primary` or `brand.ink`. On photographic backgrounds, first use an opaque and legible surface.
 - Minimum clear space around: the height of the "T" in the signature. Do not include this margin inside a foreign button or control.
 - Minimum graphic signature size on screen: 20 CSS px of font; in print, 12 pt. If it does not fit, use the name as normal text of the context, not an illegible shrunken graphic.
-- In terminal, the textual signature uses the native font. The logo may span several rows through its terminal representation, including ASCII art; no font will be imposed on the user.
+- In terminal, the textual signature uses the native font. The logo may span several rows through its terminal representation, including ASCII art; no font is imposed on the user.
 
-Graphic assets, the implemented site, and the component library are out of scope of this specification. This definition does not create a vector file. The surface profile identifies the canonical asset and the variants it uses, with visual evidence. Distinct symbols must not be improvised per surface.
+The surface profile identifies the canonical asset and the variants it uses, with visual evidence. Distinct symbols must not be improvised per surface.
 
 ### 4.2 Distinctive elements
 
@@ -164,8 +102,6 @@ Brand expression is not reserved to the commercial web. Each surface MUST docume
 ### 5.1 Foundation
 
 The palette has a **petrol-blue brand family**, a **mineral neutral family**, and three functional families: success, warning, and error. Information uses petrol, not a sixth chromatic personality.
-
-Petrol is chosen for its restrained character and visual distance from technological neon. Slightly cool neutrals keep kinship without turning every surface blue. Green, amber, and red provide functional discrimination; they are not presented as universal laws of color psychology.
 
 Levels 50–950 order each family from light to dark. They are canonical sRGB values, not a promise of perceptually identical intervals. Their relative luminance strictly decreases. Components consume **semantic tokens**, never pick a tone that "looks good" on their own.
 
@@ -185,11 +121,11 @@ Levels 50–950 order each family from light to dark. They are canonical sRGB va
 | 900 | `#18262C` | `#1E3B46` | `#064E3B` | `#78350F` | `#7F1D1D` |
 | 950 | `#101B20` | `#102630` | `#022C22` | `#451A03` | `#450A0A` |
 
-Auxiliaries: `white = #FFFFFF`, `black = #000000`. White is an intended surface and inverse text color; black is reserved for monochrome reproduction or accessibility adaptations, not a replacement for the default mineral background.
+Auxiliaries: `white = #FFFFFF`, `black = #000000`. White is an intended surface and inverse text color; black is reserved for monochrome reproduction or accessibility adaptations, not a replacement for the default mineral background. The TUI canvas `#0D0D0D` is the only terminal-specific value; its signature pair is verified in §5.4.
 
 ### 5.3 Semantic tokens: light and dark themes
 
-`N900` means Mineral level 900. The semantic name is the stable contract; the primitive reference defines this version of the theme.
+`N900` means Mineral level 900. The semantic name is the stable contract; the primitive reference defines its theme value.
 
 | Token | Light | Dark |
 |---|---|---|
@@ -241,11 +177,11 @@ Application rules:
 - A disabled action keeps an accessible explanation. Do not use global opacity or faint color as the only signal of unavailability.
 - Brand color may identify the logo, header, and structural regions of the product, not only commercial presentations. Its extent answers to composition and does not hide states or content. A validated text pair is required, e.g. `P100` on `P900`.
 - Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use must be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
-- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas (6.63:1); `brand.ink` keeps its shared value because `P400` falls below 4.5:1 on `N800`. `P300` stays the `focus.ring` value and is not used for the signature, so brand is not confused with focus. Single dark theme; no light variant exists.
+- In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas; `brand.ink` keeps its shared value. `P300` stays the `focus.ring` value and is not used for the signature. The TUI has a single dark theme.
 
 ### 5.4 Verified contrast and limits
 
-The following values were computed with sRGB relative luminance; they are shown rounded to two decimals, but approval uses the unrounded value.
+Values use sRGB relative luminance, shown rounded to two decimals; approval uses the unrounded value.
 
 | Foreground / background | Ratio | Use |
 |---|---|---|
@@ -265,24 +201,24 @@ The following values were computed with sRGB relative luminance; they are shown 
 | `R700` / `R50` | 5.91:1 | Light error |
 | `R300` / `R950` | 8.51:1 | Dark error |
 
-The internal target is **4.5:1 for all informative text**, without using the large-text exception to weaken headlines. WCAG 2.2 AA sets 4.5:1 for normal text and 3:1 for large text, with specific exceptions. [W3C reference: text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html).
+Informative text reaches **4.5:1**, including headlines, without the large-text exception.
 
-Necessary control boundaries and graphic indicators must reach at least 3:1 against the pertinent adjacent colors. Color does not replace labels, shapes, or markers. [W3C reference: non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+Necessary control boundaries and graphic indicators must reach at least 3:1 against the pertinent adjacent colors. Color does not replace labels, shapes, or markers.
 
-These tests do not certify a real screen or terminal: transparencies, composite states, native selection, and external themes can change the result. No transparencies will be added to text, controls, or semantic backgrounds without recomputing their combinations.
+These tests do not certify a real screen or terminal: transparencies, composite states, native selection, and external themes can change the result. No transparency is applied to text, controls, or semantic backgrounds without recomputing their combinations.
 
 ### 5.5 Themes, print, and degradation
 
-- On web, light and dark are equivalent brand expressions (the TUI is a single dark theme, `PR-UX-3`); follow system preference and allow persistent choice; do not impose dark for being a technical tool.
-- In terminal, respect the environment's capabilities and preferences per §12.3. Do not assume an ANSI palette equals these hexadecimals.
+- On web, light and dark are equivalent brand expressions; follow system preference and allow persistent choice; do not impose dark for being a technical tool.
+- In terminal, respect the environment's color capability; the theme is never selected from the terminal background. Do not assume an ANSI palette equals these hexadecimals.
 - Print: white background, dark text, no unnecessary background blocks. States keep words or symbols and remain distinguishable in grays.
-- The brand MUST remain recognizable without color, keeping the logo on the home and composition in every context. Removing it must not prevent knowing focus, state, action, or hierarchy either.
+- The brand MUST remain recognizable without color, keeping the logo on the home and composition in every context. Removing color must not obscure focus, state, action, or hierarchy.
 
 ## 6. Typography, shape, and rhythm
 
 ### 6.1 Type family
 
-**IBM Plex Sans** for brand, navigation, titles, and reading. **IBM Plex Mono** for code, commands, paths, identifiers, and values where alignment matters. Sharing a family brings coherence without turning the whole experience into code. Families and their distribution are consulted in the [official IBM Plex repository](https://github.com/IBM/plex).
+**IBM Plex Sans** for brand, navigation, titles, and reading. **IBM Plex Mono** for code, commands, paths, identifiers, and values where alignment matters. Font assets come from the official IBM Plex distribution.
 
 Web stacks: IBM Plex Sans with system-ui, -apple-system, Segoe UI and sans-serif fallbacks; IBM Plex Mono with ui-monospace, SFMono-Regular, Consolas and monospace fallbacks.
 
@@ -328,7 +264,7 @@ Separation between groups MUST exceed internal separation. Do not introduce arbi
 - Borders: 1 px; focus: 2 px. Do not nest more than two levels of visible container; prefer headers and space before adding another box.
 - Shadows: only for real overlay. Light: `0 8px 24px rgb(16 27 32 / 12%)`; dark: `0 8px 24px rgb(0 0 0 / 24%)`. Accompany with border; do not use them as the only functional boundary.
 - No glassmorphism, glow, bevels, metallic textures, or decorative gradients in operating interfaces.
-- No pixel value translates literally to terminal cells; §12.3 defines the adaptation.
+- No pixel value translates literally to terminal cells.
 
 ## 7. Layout grammar
 
@@ -401,23 +337,7 @@ Three information layers:
 
 "Personalize" opens depth without replacing the flow with an incompatible one. Prepared values stay present. Do not use labels like "expert mode" to implicitly warn that changing something is improper.
 
-### 7.5 Composition sketches
-
-Sketches show conceptual grouping, not a mandatory vertical layout or definitive text. For terminal, §12.3 and the surface wireframes define horizontal compositions and adaptations.
-
-```text
-Object configuration              Set preparation
-
-Shared compact context            Shared compact context
-Title + scope                     Title + current stage
-Indispensable context             Current decision
-                                  Prepared values
-Field group                       [Personalize]
-Field group
-[Additional settings]             Final summary:
-                                  added / changed / kept / removed
-[Cancel] [Apply changes]          [Back] [Install]
-```
+### 7.5 Action placement
 
 Actions sit after content. On LTR web, the final group may align to the right end, secondary before primary; on narrow layouts preserve reading order and priority. A pinned primary button must not hide that unreviewed changes remain.
 
@@ -427,17 +347,7 @@ Actions sit after content. On LTR web, the final group may align to the right en
 
 **Prepare → review when appropriate → apply → report result → allow recovery.**
 
-These are responsibilities, not five mandatory screens. Confirmation is justified by a pending decision or new consequence, not by habit.
-
-| Operation | Preparation and confirmation | What is preserved |
-|---|---|---|
-| First install | Detect, preselect, allow granularity; show resulting setup and confirm before executing. Habitual target path: 2–3 significant decisions or confirmations, not empty steps. | Explicit choices made during the flow. |
-| Later adjustment | Edit the chosen scope and apply once. Report when it takes effect; do not restart the whole onboarding. | Configuration outside the edited scope. |
-| Canonical upgrade | The request already authorizes the ordinary upgrade. Do not ask redundant confirmation if no new consequences appear. | Takt-managed configuration and explicit exclusions. |
-| Upgrade with external changes | Show relevant differences, scope, and known or uncertain compatibility; ask how to proceed before replacing or preserving under uncertainty. | What the user decides to keep; do not promise compatibility without evidence. |
-| Restore / sync | State which objects and which canonical version will be recovered. If it replaces personalizations, show it before commitment. | Everything outside the confirmed scope. |
-
-The first install also presents the product through the logo and composition of the same functional view. That presence is not an "empty step": it adds no confirmations, identity texts, or a screen to pass through before working.
+These are responsibilities, not five mandatory screens. Confirmation is justified by a pending decision or new consequence, not by habit. Surface design exposes application decisions without adding confirmations or installation authority.
 
 ### 8.2 Autonomy and limits
 
@@ -465,11 +375,11 @@ The first install also presents the product through the logo and composition of 
 - Menus navigate; selectors change values; buttons execute actions. Their appearance and semantics must not mix.
 - Shortcuts accelerate visible or findable actions; they are not the only way to discover a capability.
 - Navigating to detail preserves the return context. Search, filters, and pagination do not replace an understandable architecture.
-- If a surface shows keyboard aids, they are contextual: the pertinent ones, not the full catalog on every screen. The TUI shows no key help bar.
+- If a surface shows keyboard aids, they are contextual: the pertinent ones, not the full catalog on every screen.
 
 ## 9. Reusable component contracts
 
-This section specifies behavior, not a library or framework. Each surface MUST map these contracts to its native controls or accessible equivalents.
+Each surface MUST map these contracts to its native controls or accessible equivalents.
 
 | Component | Mandatory anatomy and behavior |
 |---|---|
@@ -533,13 +443,13 @@ Respect reduced motion: remove displacements and nonessential animations, keep s
 
 ## 11. Accessibility and perceptual resilience
 
-Accessibility is a quality requirement, not an optional visual topic. **The target for web surfaces is full WCAG 2.2 AA**; this document defines foundations and critical tests, not a substitute for evaluating every applicable criterion.
+**Web surfaces meet full WCAG 2.2 AA**, evaluated on every applicable criterion.
 
 - Text and controls meet the contrast contracts of §5.4 in all their states.
 - Every web operation can be completed with keyboard, with visible focus, logical order, and no traps. Use native semantics before reproducing controls with generic elements.
 - Labels, errors, selection, and progress must be understandable with assistive technology. Announce relevant changes without reading every log line or moving focus for background updates.
-- Internal target for standalone pointer controls: a 44 × 44 CSS px area, even if the drawing is smaller. That box is not required for links inside prose. WCAG 2.2 AA defines a 24 × 24 CSS px minimum with exceptions; the 44 px rule is a stricter Takt decision, not a quote of the AA minimum. [W3C reference: target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
-- Test web reflow at 320 CSS px width and 200% text zoom. Necessary two-dimensional structures, like some tables, are evaluated with their exceptions, not by forcing the whole page to overflow. [W3C reference: reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html).
+- Standalone pointer controls have a 44 × 44 CSS px target area, even if the drawing is smaller. That box is not required for links inside prose.
+- Test web reflow at 320 CSS px width and 200% text zoom. Necessary two-dimensional structures, like some tables, are evaluated with their exceptions, not by forcing the whole page to overflow.
 - States are distinguished without color; controls do not depend on hover; important information does not depend on animation nor disappear on a timer before it can be read.
 - Test long names, expanded translations, paths, Unicode characters, and absence of special icons. Truncate only if an accessible way exists to obtain the full value.
 - Credentials and secrets are not shown in summaries, captures, errors, or logs by default. Copying a diagnostic requires knowing what is copied; do not promise redaction that is not performed.
@@ -551,7 +461,7 @@ Accessibility is a quality requirement, not an optional visual topic. **The targ
 
 **Main job:** understand Takt, judge whether it fits, and find a real next step.
 
-Base sequence L01: concrete promise → brief explanation → example or evidence → how it fits the user's tools → scope and limits → access to installation or documentation.
+Base sequence L01: concrete value → brief explanation → example or evidence → how it fits the user's tools → scope and limits → access to installation or documentation.
 
 One predominant commercial intent per section. Do not repeat the CTA on every card. It may have more space and type scale than product, but no unevidenced claims, fictional testimonials, invented compatibility, third-party logos implying endorsement, or animations delaying reading.
 
@@ -565,94 +475,29 @@ L02 pattern with navigation by user tasks and concepts. Each page identifies pur
 
 Code is copyable, contains no real secrets, and distinguishes commands from output. Navigation and search complement each other. Side index only for pages needing it; do not narrow the article to show an empty column. Notices are reserved for relevant consequences, not for decorating every paragraph.
 
-### 12.3 TUI and CLI
+### 12.3 Other surfaces
 
-The TUI installs and adjusts the Takt AI configuration. Its visual identity must accompany both first installation and later use. It is not a permanent swarm monitor or a harness replacement.
-
-#### Brand presence and composition
-
-The main context is a tool on PC/laptop, normally with horizontal space. A wide composition is designed first; adaptation uses the terminal's **real width and height**, not the monitor or an assumption about the device. A half-screen terminal may need another composition.
-
-| Context | Composition |
-|---|---|
-| Wide home | Canonical logo on one side and action group on the other; balanced whole in the available area, no splash or presentation texts. |
-| Narrow home | Logo above actions when they do not fit side by side; centered grouping, without turning the adaptation into the universal layout. |
-| Selection and comparison | List and detail/summary in panels when useful space exists; visible selection and focus. When narrow, nested detail with preserved return. |
-| Edit and review | Fields, values, and changes grouped spatially; differentiated actions. Do not write the setup as a paragraph report. |
-| Execution and result | Execution: progress bar with real percentage and list of finished, running, and pending steps. Result: state sentence with its semantic color and next-action buttons. No logo required, no repeated known context. |
-| Conflict and error | Focused comparison or decision; clear consequence and exit. No mandatory logo band. |
-
-Continuity is expressed through shell, panels, selection, accent, and consistent alignments. The operating header shows the `Takt AI` signature on the left and the current step on the right; the body groups into borderless-titled panels, and actions go in a centered button row below the panel. Aligning text inside a control does not require left-aligning the whole screen. Centering a control group does not imply centering its paragraphs. The TUI profile MUST provide wide, medium, and narrow wireframes with cell budgets, actions, and focus state. Do not add texts just to give personality.
-
-#### Visual adaptation
-
-- Use the capabilities of Bubble Tea, Bubbles, and Lip Gloss: horizontal/vertical composition, bordered panels, semantic fills, tables, controls, action bars, and viewports. Do not mimic web shadows or font sizes; nor reduce the interface to a prose list by default.
-- Each region has a function: pick, inspect, edit, review, or execute. Distribute space among them; do not add metrics or filler content to occupy width.
-- Spacing base: one column between associated items; two or more between groups; one row between vertical groups. The shell may center a width-bounded composition. Avoid both piling everything in one corner and stretching text to fill the screen.
-- The home uses a side logo if logo, actions, and separation fit without clipping; its threshold differs from a list–detail one. For lists, from 100 columns list–detail may be used with at least 32 columns of list, 48 of detail, plus margins/separation. With less space, open nested detail preserving focus and choices.
-- Validate at minimum 120×32, 80×24, and 60×20, plus a wide low-height terminal. When narrow, adapt controls and paginate/scroll content without hiding actions, risks, or recovery. On the home, keep a recognizable logo variant. Below 60×20, legible notice and documented alternative route without mutating state.
-- In operation there is no mandatorily reserved logo space. Use brief context and structured data; no key help bar is shown. Show indispensable risks; leave logs, extensive explanation, and diagnostics on demand. Brevity does not mean hiding consequences.
-- Do not require Nerd Fonts, ligatures, or pictograms. ASCII fallback: focus `>`, multiple selection `[x]`/`[ ]`; in single selection the value is the option with `>`. The focused field carries a vertical bar on its left and the focused button goes filled with the focus color. Each option shows its name and, if helpful, a dim description on the next line. Unicode borders, `✓`, and spinner are verifiable enhancements, not dependencies.
-
-#### Chromatic and accessible adaptation
-
-- The TUI has a single theme: dark, with its complete tokens and painted backgrounds (canvas and panels). No light or inherited theme exists.
-- With limited colors, map roles to available capabilities and verify the declared terminal matrix. Semantic identity prevails over hexadecimals.
-- Support absence of color keeping the recognizable logo on the home and states on every view. Offer accessible linear output with textual Takt AI identification when graphic rendering is not accessible. In non-interactive CLI or redirected output, do not emit animations, decorative art, or control sequences contaminating content.
-- The surface profile must define how to detect capabilities and pick alternative output; do not invent "reliable" detection without tests.
-
-#### Interaction adaptation
-
-- Arrows to traverse options, `Enter` to open or activate, `Space` for multiple selection, and `Tab`/`Shift+Tab` to switch region or field are the discoverability base. Additional shortcuts may accelerate, not replace it.
-- `Esc` goes back or cancels the current context per its state; with pending changes, §8.3 applies. It does not silently exit the whole application with modifications.
-- `Ctrl+C` means interruption: before applying, it cancels safely; during application, it requests interruption and communicates the possible result. No implicit reversion is promised. Detailed semantics and non-interruptible points are documented in the TUI profile.
-- In text fields, printable keys write; a global shortcut like `q` cannot close the application while typing.
-- Selection fields submit with `Enter`, with no `Continue` button. Review, result, and blocked screens expose visible buttons with concrete verbs. The base keys (arrows, `Enter`, `Space`, `Esc`) suffice to discover interaction with no help bar.
-- Wizard for first install or dependent decisions; focused editing for customization; conflict resolution when uncertainty appears. Do not turn every task into a wizard.
-
-These rules are the normative base. `product/` defines the complete navigation, state, capability, and component map without contradicting them.
-
-### 12.4 Other surfaces
-
-An editor extension, GUI, or printed material keeps recognizable identity, promise, voice, meanings, and hierarchy, but uses its environment's native conventions. Equivalence is conceptual, not a literal reproduction of pixels or keys. Adapting does not equal making the surface anonymous.
+An editor extension, GUI, or printed material keeps recognizable identity, voice, meanings, and hierarchy, but uses its environment's native conventions. Equivalence is conceptual, not a literal reproduction of pixels or keys. Adapting does not equal making the surface anonymous.
 
 ## 13. Governance and verification
 
 ### 13.1 What requires new design
 
-**Needs no new design definition:** another L03 menu, another L04 form, an L06 table, or a flow composing already described patterns and states. It requires implementation and verification, not aesthetic improvisation.
+**Needs no new design definition:** another L03 menu, another L04 form, an L06 table, or a flow composing already described patterns and states. It requires implementation and verification.
 
 **Extending the system is required for:** a new interaction modality, a nonexistent semantic meaning, a task fitting no pattern, or an accessibility requirement demanding another contract. Before extending, demonstrate why the available composition does not serve.
 
 ### 13.2 Surface extension contract
 
-Each derived specification MUST declare:
+Each derived surface profile MUST declare: surface; tasks and users; canonical brand assets and approved variants; entry, operation, and reduced-size compositions; applied principles (Bxx); used patterns (Lxx); tokens and native equivalents; navigation, states, and commitment points; accessibility, sizes, and supported environments; tests and evidence; declared gaps; and proposed extensions, if any.
 
-```text
-Surface and version:
-Base identity: Takt AI / brand.md / 3.0
-Tasks and users:
-Canonical brand assets and approved variants:
-Entry, operation, and reduced-size compositions:
-Applied principles: Bxx
-Used patterns: Lxx
-Tokens and native equivalents:
-Navigation, states, and commitment points:
-Accessibility, sizes, and supported environments:
-Tests and evidence:
-Declared gaps:
-Proposed extensions, if any:
-```
-
-Do not duplicate the palette to keep a local variant. Reference the source and map tokens. If a technical limitation prevents meeting a rule, record it as a gap with scope, mitigation, and closing condition; do not declare that the limitation redefines the brand.
+Do not duplicate the palette to keep a local variant. Reference the source and map tokens. If a technical limitation prevents meeting a rule, record it as a gap with scope, mitigation, and closing condition; the limitation does not redefine the brand.
 
 ### 13.3 Changes and exceptions
 
-The product/design owner approves changes to the common contract. Every modification records: problem, affected rule, chosen alternative, reason, impacted surfaces, and evidence. An incompatible change in meanings or behavior raises a major version; a compatible extension, a minor one; an editorial fix with no contract change, a patch.
+A local exception may not redefine state meanings, hide data loss, justify inaccessibility, or contradict intent preservation. If it needs to, the common contract must be reviewed, not a local component override.
 
-A local exception may not redefine state meanings, hide data loss, justify inaccessibility, or contradict intent preservation. If it needs to, the common contract must be reviewed, not the change hidden in a component.
-
-Chromatic or typographic values are not changed to "refresh" an isolated screen. A token change is evaluated on light, dark, monochrome, and every affected surface.
+Chromatic or typographic values do not change for an isolated screen. A token change is evaluated on light, dark, monochrome, and every affected surface.
 
 ### 13.4 Acceptance matrix
 
@@ -676,29 +521,12 @@ Chromatic or typographic values are not changed to "refresh" an isolated screen.
 | V16 | The person recognizes Takt AI as a product, distinct from the base harness; composition keeps continuity across views. | Recognition test at entry and in operation with target audience; record attribution confusions. |
 | V17 | The brand hides no actions, hinders no reading, and imposes no waits, steps, or texts added only for identity. | Functional walkthrough and visual/editorial review of entry, operation, and reduced size. |
 
-For new functionality inside an existing pattern, review V01–V07, preservation of the approved brand composition, and the applicable behavior criteria. Do not demand new brand research per menu: recognition evidence may be reused while the approved pattern is kept. To declare a surface conformant, evaluate the full applicable matrix and justify the non-applicable; V15 fixes the home logo, it does not require repeating it on operating views.
+For new functionality inside an existing pattern, review V01–V07, preservation of the approved brand composition, and the applicable behavior criteria. Recognition evidence is reused while the approved pattern is kept. To declare a surface conformant, evaluate the full applicable matrix and justify the non-applicable; V15 fixes the home logo, it does not require repeating it on operating views.
 
-**Exit gate:** do not approve silent loss of intent, hidden risks, combinations known to be unfeasible, navigation with no exit, illegible functional text, or announced-but-missing recovery. Nor an anonymous home, an unrecognizable adaptation, a narrow composition imposed on every size, or a presence obstructing work.
-
-### 13.5 Minimum scenarios for the first TUI derivation
-
-1. Install with available detection and defaults, no personalization, reviewing the result before applying.
-2. Personalize from that same flow and return to the summary without losing choices.
-3. Change one specialist's model without redoing foreign configuration.
-4. Update a canonical installation with no redundant confirmation.
-5. Update with managed exclusions and customizations, preserving them.
-6. Resolve an external change by preserving it under informed uncertainty or restoring the canonical.
-7. Reject a deterministically incompatible combination explaining how to make it viable.
-8. Recover from a partial application with no blaming diagnostics or additional silent loss.
-9. Restore an experimental agent with clear scope and return to work.
-10. Repeat the pertinent tasks without color, with long text, and on a reduced terminal.
-11. Check horizontal home with the canonical logo, narrow-terminal adaptation, and shell continuity in operation without repeating the logo; include resize and wide low-height terminal.
-12. Verify Takt AI is recognized without adding slogans, welcomes, or presentation steps, and that the brand hides no decisive controls or information.
-
-These scenarios guide design and verification.
+**Exit gate:** do not approve an anonymous home, an unrecognizable adaptation, a narrow composition imposed on every size, or a presence obstructing work.
 
 ## 14. Reproducible palette validation
 
-The check lives in `development/quality/validate-palette.py`. It uses only standard Python and reads the normative tables of this file, so the palette is never duplicated into another source of truth. It verifies that each of the five ramps decreases in luminance; that text, brand ink and link tokens reach 4.5:1 on every background they appear on; that borders and the focus ring reach 3:1; that action and state foreground and background pairs reach 4.5:1; and that the selection border and focus ring reach 3:1 on the selection background.
+A reproducible check reads the normative tables of this document, without duplicating the palette, and verifies that each of the five ramps decreases in luminance; that text, brand ink and link tokens reach 4.5:1 on every background they appear on; that borders and the focus ring reach 3:1; that action and state foreground and background pairs reach 4.5:1; and that the selection border and focus ring reach 3:1 on the selection background.
 
 The check excludes decorative separators and does not authorize arbitrary combinations of primitives. To add a new semantic pair or place controls on a colored background, extend its test cases. Categorical data combinations additionally require evaluating distinction by shape, label, and context on the real chart.
