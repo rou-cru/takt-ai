@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -38,7 +38,7 @@
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 14,
-          "end_line": 15
+          "end_line": 19
         }
       ]
     },
@@ -53,8 +53,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 13,
-          "end_line": 15
+          "line": 14,
+          "end_line": 19
         }
       ]
     },
@@ -69,8 +69,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 15,
-          "end_line": 17
+          "line": 14,
+          "end_line": 22
         }
       ]
     },
@@ -85,8 +85,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 15
+          "line": 16,
+          "end_line": 18
         }
       ]
     },
@@ -102,7 +102,7 @@
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 22,
-          "end_line": 24
+          "end_line": 26
         }
       ]
     },
@@ -117,8 +117,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 25,
-          "end_line": 26
+          "line": 26,
+          "end_line": 28
         }
       ]
     },
@@ -133,13 +133,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 12,
-          "end_line": 19
+          "line": 14,
+          "end_line": 28
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 35,
-          "end_line": 54
+          "line": 33,
+          "end_line": 47
         }
       ]
     }

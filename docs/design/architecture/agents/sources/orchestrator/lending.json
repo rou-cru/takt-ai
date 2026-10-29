@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -51,8 +51,8 @@
       "lane": "decide",
       "col": 1,
       "type": "security",
-      "label": "Propose the lend",
-      "sublabel": "dispatch_switch call",
+      "label": "Ask: lend?",
+      "sublabel": "native question tool",
       "width": 180,
       "sources": [
         {
@@ -67,8 +67,8 @@
       "lane": "decide",
       "col": 2,
       "type": "security",
-      "label": "User accepts?",
-      "sublabel": "harness asks; refusal: no lend",
+      "label": "Explicit accept?",
+      "sublabel": "reject or freeform: no lend",
       "width": 180,
       "sources": [
         {
@@ -121,8 +121,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 25,
-          "end_line": 29
+          "line": 30,
+          "end_line": 34
         }
       ]
     },
@@ -282,7 +282,7 @@
       "title": "Lending",
       "items": [
         "requirements carry Engram IDs only, never their content, and name what is genuinely unknown",
-        "The user can cut a lent session short with dispatch_abort_switch; the harness asks them to confirm"
+        "The user can cut a lent session short with dispatch_abort_switch"
       ]
     },
     {

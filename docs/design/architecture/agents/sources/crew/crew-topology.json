@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 19
+          "line": 21
         }
       ]
     },
@@ -69,7 +69,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 15
+          "line": 12
         }
       ]
     },
@@ -89,7 +89,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
-          "line": 14
+          "line": 11
         }
       ]
     },
@@ -109,7 +109,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
-          "line": 13
+          "line": 10
         }
       ]
     },
@@ -129,7 +129,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
-          "line": 13
+          "line": 10
         }
       ]
     },
@@ -149,7 +149,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
-          "line": 15
+          "line": 12
         }
       ]
     },
@@ -169,7 +169,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
-          "line": 16
+          "line": 13
         }
       ]
     },
@@ -189,7 +189,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
-          "line": 15
+          "line": 12
         }
       ]
     },
@@ -209,7 +209,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
-          "line": 13
+          "line": 10
         }
       ]
     },
@@ -229,7 +229,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
-          "line": 13
+          "line": 10
         }
       ]
     },
@@ -249,7 +249,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-simplify/agent.yaml",
-          "line": 14
+          "line": 11
         }
       ]
     },
@@ -269,7 +269,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
-          "line": 14
+          "line": 11
         }
       ]
     },
@@ -289,7 +289,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
-          "line": 17
+          "line": 13
         }
       ]
     },

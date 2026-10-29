@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 2,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "VFS staged revision lifecycle",
@@ -7,16 +7,27 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
-  "mainPath": [
-    "unbound",
-    "bound",
-    "staged",
-    "consolidating",
-    "consolidated"
+  "lanes": [
+    {
+      "id": "claims",
+      "label": "Claims"
+    },
+    {
+      "id": "main",
+      "label": "Staging"
+    },
+    {
+      "id": "gate",
+      "label": "Gate and recovery"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcome"
+    }
   ],
   "states": [
     {
@@ -24,11 +35,13 @@
       "type": "start",
       "label": "Unbound",
       "sublabel": "no claim",
+      "lane": "claims",
+      "col": 0,
       "sources": [
         {
-          "path": "takt/vfs/claims.go",
-          "line": 96,
-          "end_line": 116
+          "path": "takt/vfs/operation.go",
+          "line": 124,
+          "end_line": 275
         }
       ]
     },
@@ -37,16 +50,18 @@
       "type": "waiting",
       "label": "Bound prelaunch",
       "sublabel": "scope assigned",
+      "lane": "claims",
+      "col": 1,
       "sources": [
         {
-          "path": "takt/vfs/claims.go",
-          "line": 96,
-          "end_line": 116
+          "path": "takt/vfs/operation.go",
+          "line": 151,
+          "end_line": 211
         },
         {
-          "path": "takt/vfs/bindings.go",
-          "line": 155,
-          "end_line": 190
+          "path": "takt/vfs/operation.go",
+          "line": 376,
+          "end_line": 466
         }
       ]
     },
@@ -55,11 +70,13 @@
       "type": "active",
       "label": "Bound",
       "sublabel": "base captured",
+      "lane": "main",
+      "col": 1,
       "sources": [
         {
-          "path": "takt/vfs/bindings.go",
-          "line": 127,
-          "end_line": 153
+          "path": "takt/vfs/operation.go",
+          "line": 124,
+          "end_line": 275
         }
       ]
     },
@@ -68,11 +85,18 @@
       "type": "active",
       "label": "Staged",
       "sublabel": "revision++, verdict cleared",
+      "lane": "main",
+      "col": 2,
       "sources": [
         {
           "path": "takt/vfs/vfs.go",
-          "line": 338,
-          "end_line": 389
+          "line": 304,
+          "end_line": 354
+        },
+        {
+          "path": "takt/vfs/shell.go",
+          "line": 212,
+          "end_line": 215
         }
       ]
     },
@@ -80,20 +104,23 @@
       "id": "passed",
       "type": "decision",
       "label": "Verdict passed",
-      "sublabel": "revision + hash",
+      "sublabel": "bound to revision + hash",
+      "lane": "main",
+      "col": 3,
       "sources": [
         {
-          "path": "takt/vfs/verdict.go",
-          "line": 127,
-          "end_line": 141
+          "path": "takt/vfs/operation.go",
+          "line": 875
         }
       ]
     },
     {
       "id": "consolidating",
       "type": "active",
-      "label": "Flushing",
-      "sublabel": "consolidation in progress",
+      "label": "Consolidating",
+      "sublabel": "flush in progress",
+      "lane": "main",
+      "col": 4,
       "sources": [
         {
           "path": "takt/vfs/vfs.go",
@@ -106,12 +133,14 @@
       "id": "gate",
       "type": "waiting",
       "label": "Verifier gate bound",
-      "sublabel": "from author_keys",
+      "sublabel": "prepared from author_keys",
+      "lane": "gate",
+      "col": 2,
       "sources": [
         {
-          "path": "takt/vfs/bindings.go",
-          "line": 224,
-          "end_line": 253
+          "path": "takt/vfs/operation.go",
+          "line": 277,
+          "end_line": 316
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
@@ -125,11 +154,12 @@
       "type": "failure",
       "label": "Verdict rejected",
       "sublabel": "author re-stages",
+      "lane": "gate",
+      "col": 3,
       "sources": [
         {
-          "path": "takt/vfs/verdict.go",
-          "line": 216,
-          "end_line": 229
+          "path": "takt/vfs/operation.go",
+          "line": 875
         }
       ]
     },
@@ -138,11 +168,12 @@
       "type": "waiting",
       "label": "Recovery required",
       "sublabel": "partial flush",
+      "lane": "gate",
+      "col": 4,
       "sources": [
         {
           "path": "takt/vfs/storage.go",
-          "line": 377,
-          "end_line": 384
+          "line": 310
         },
         {
           "path": "takt/vfs/recovery.go",
@@ -154,12 +185,14 @@
       "id": "rolledback",
       "type": "neutral",
       "label": "Rolled back",
-      "sublabel": "staged delta dropped",
+      "sublabel": "staged delta discarded",
+      "lane": "terminal",
+      "col": 1,
       "sources": [
         {
-          "path": "takt/vfs/staged.go",
-          "line": 48,
-          "end_line": 60
+          "path": "takt/vfs/operation.go",
+          "line": 861,
+          "end_line": 873
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
@@ -172,7 +205,9 @@
       "id": "cyclediscarded",
       "type": "neutral",
       "label": "Cycle discarded",
-      "sublabel": "pre-cycle restored",
+      "sublabel": "pre-cycle state restored",
+      "lane": "terminal",
+      "col": 3,
       "sources": [
         {
           "path": "takt/vfs/cycle.go",
@@ -185,7 +220,9 @@
       "id": "consolidated",
       "type": "success",
       "label": "Consolidated",
-      "sublabel": "delta, ownership released",
+      "sublabel": "delta and ownership released",
+      "lane": "terminal",
+      "col": 4,
       "sources": [
         {
           "path": "takt/vfs/recovery.go",
@@ -215,13 +252,13 @@
     {
       "from": "bound",
       "to": "staged",
-      "label": "stage",
+      "label": "write, delete, shell",
       "variant": "emphasis"
     },
     {
       "from": "staged",
       "to": "gate",
-      "label": "author_keys"
+      "label": "delegate with author_keys"
     },
     {
       "from": "gate",
@@ -242,13 +279,14 @@
     {
       "from": "staged",
       "to": "consolidating",
-      "label": "plain",
-      "variant": "dashed"
+      "label": "ordinary delta",
+      "variant": "dashed",
+      "route": "top-channel"
     },
     {
       "from": "consolidating",
       "to": "consolidated",
-      "label": "done",
+      "label": "flush verified",
       "variant": "emphasis"
     },
     {
@@ -260,12 +298,24 @@
     {
       "from": "recovery",
       "to": "bound",
-      "label": "restore"
+      "label": "recover --restore"
     },
     {
       "from": "staged",
       "to": "rolledback",
-      "label": "vfs_discard",
+      "label": "vfs_discard (orchestrator)",
+      "variant": "dashed"
+    },
+    {
+      "from": "staged",
+      "to": "prelaunch",
+      "label": "reassign, delta kept",
+      "variant": "dashed"
+    },
+    {
+      "from": "prelaunch",
+      "to": "unbound",
+      "label": "revoke",
       "variant": "dashed"
     },
     {
@@ -282,7 +332,7 @@
       "items": [
         "Verifier gates are prepared bound at delegation from author_keys; the verifier needs the verify grant and cannot verify its own work",
         "A verdict binds to one revision and delta hash; any new write clears it",
-        "Staging by write, delete or shell: shell-prepare projects the scope, shell-import stages the captured result"
+        "Shell staging: shell-prepare projects the scope, shell-import stages the captured result"
       ]
     },
     {

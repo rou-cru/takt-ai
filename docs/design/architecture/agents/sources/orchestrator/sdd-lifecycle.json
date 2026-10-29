@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 2,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: SDD workflow lifecycle",
@@ -7,16 +7,27 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
-  "mainPath": [
-    "planning",
-    "validating",
-    "executing",
-    "accepting",
-    "committed"
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Planning"
+    },
+    {
+      "id": "execution",
+      "label": "Execution"
+    },
+    {
+      "id": "exceptions",
+      "label": "Exceptions"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcome"
+    }
   ],
   "states": [
     {
@@ -24,6 +35,8 @@
       "type": "active",
       "label": "Planning",
       "sublabel": "owners freeze contracts",
+      "lane": "main",
+      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -37,6 +50,8 @@
       "type": "decision",
       "label": "Validating",
       "sublabel": "width self-check",
+      "lane": "main",
+      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -51,10 +66,27 @@
       ]
     },
     {
+      "id": "compiling",
+      "type": "active",
+      "label": "Compiling",
+      "sublabel": "dispatch_commit",
+      "lane": "main",
+      "col": 2,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 297,
+          "end_line": 341
+        }
+      ]
+    },
+    {
       "id": "executing",
       "type": "active",
       "label": "Executing",
-      "sublabel": "commit plan, dispatch READY",
+      "sublabel": "dispatch READY nodes",
+      "lane": "execution",
+      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -68,16 +100,33 @@
       "type": "decision",
       "label": "Phase gate",
       "sublabel": "one verifier, author keys",
+      "lane": "execution",
+      "col": 3,
       "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 14,
-          "end_line": 24
-        },
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
           "line": 326,
           "end_line": 329
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 122,
+          "end_line": 130
+        }
+      ]
+    },
+    {
+      "id": "integrating",
+      "type": "active",
+      "label": "Integrating",
+      "sublabel": "loose ends, no checks",
+      "lane": "execution",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 329,
+          "end_line": 330
         }
       ]
     },
@@ -85,13 +134,10 @@
       "id": "accepting",
       "type": "active",
       "label": "Accepting",
-      "sublabel": "integrate, global Verify",
+      "sublabel": "global Verify",
+      "lane": "terminal",
+      "col": 3,
       "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 329,
-          "end_line": 330
-        },
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
           "line": 297,
@@ -104,6 +150,8 @@
       "type": "waiting",
       "label": "Returned to owner",
       "sublabel": "incomplete or too narrow",
+      "lane": "exceptions",
+      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -117,6 +165,8 @@
       "type": "waiting",
       "label": "Recovery",
       "sublabel": "see recovery view",
+      "lane": "exceptions",
+      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -130,11 +180,13 @@
       "type": "success",
       "label": "Milestone committed",
       "sublabel": "Verify passed, no problems",
+      "lane": "terminal",
+      "col": 4,
       "sources": [
         {
-          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 28,
-          "end_line": 29
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 121,
+          "end_line": 132
         }
       ]
     }
@@ -143,59 +195,74 @@
     {
       "from": "planning",
       "to": "validating",
-      "label": "ok"
+      "label": "contracts and tasks in",
+      "labelDy": -31
     },
     {
       "from": "validating",
-      "to": "executing",
-      "label": "ok",
-      "variant": "emphasis"
+      "to": "compiling",
+      "label": "self-check passes",
+      "variant": "emphasis",
+      "labelDy": -31
     },
     {
       "from": "validating",
       "to": "rejected",
-      "label": "too narrow",
+      "label": "incomplete, unbounded or serial",
       "variant": "security"
     },
     {
       "from": "rejected",
       "to": "planning",
-      "label": "owner re-cuts",
+      "label": "owner re-cuts or freezes more",
       "variant": "dashed"
+    },
+    {
+      "from": "compiling",
+      "to": "executing",
+      "label": "plan committed",
+      "variant": "emphasis"
     },
     {
       "from": "executing",
       "to": "phasegate",
-      "label": "gate planned"
+      "label": "phase verification planned",
+      "labelDy": -31
     },
     {
       "from": "phasegate",
-      "to": "accepting",
-      "label": "pass"
+      "to": "integrating",
+      "label": "verdicts pass, consolidated",
+      "labelDy": -31
     },
     {
       "from": "accepting",
       "to": "committed",
-      "label": "ok",
+      "label": "global Verify passes",
       "variant": "emphasis"
     },
     {
       "from": "executing",
       "to": "recovery",
-      "label": "2nd failure, defect",
+      "label": "second failure or contract defect",
       "variant": "security"
     },
     {
       "from": "recovery",
       "to": "executing",
-      "label": "redispatch",
+      "label": "unfreeze, redispatch",
       "variant": "dashed"
     },
     {
       "from": "executing",
-      "to": "accepting",
-      "label": "skip",
+      "to": "integrating",
+      "label": "no verification planned, consolidated",
       "variant": "dashed"
+    },
+    {
+      "from": "integrating",
+      "to": "accepting",
+      "label": "integration read"
     }
   ],
   "cards": [
@@ -212,9 +279,7 @@
       "title": "Rules",
       "items": [
         "Exclusive writable sets, frozen contracts before dispatch, no checks on staged work",
-        "Global build, lint and tests run only in one Verify node on the materialized workspace",
-        "Without a planned verification, executing goes straight to integrating once consolidated",
-        "The milestone is committed only when the global Verify passes"
+        "Global build, lint and tests run only in one Verify node on the materialized workspace"
       ]
     },
     {

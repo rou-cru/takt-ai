@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 2,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: session lifecycle",
@@ -7,23 +7,36 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
-  "mainPath": [
-    "framed",
-    "selecting",
-    "implementing",
-    "milestone",
-    "reporting"
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Session"
+    },
+    {
+      "id": "phases",
+      "label": "Phases"
+    },
+    {
+      "id": "waiting",
+      "label": "User"
+    },
+    {
+      "id": "terminal",
+      "label": "Closing"
+    }
   ],
   "states": [
     {
-      "id": "framed",
+      "id": "start",
       "type": "start",
-      "label": "Framed",
-      "sublabel": "new or continued, constraints",
+      "label": "Session start",
+      "sublabel": "new or continued work",
+      "lane": "main",
+      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -34,7 +47,17 @@
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
           "line": 10,
           "end_line": 22
-        },
+        }
+      ]
+    },
+    {
+      "id": "framed",
+      "type": "active",
+      "label": "Objective framed",
+      "sublabel": "constraints, acceptance",
+      "lane": "main",
+      "col": 1,
+      "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 1,
@@ -45,8 +68,10 @@
     {
       "id": "selecting",
       "type": "decision",
-      "label": "Route",
-      "sublabel": "selection tree",
+      "label": "Selecting a route",
+      "sublabel": "workflow-selection tree",
+      "lane": "main",
+      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
@@ -59,7 +84,9 @@
       "id": "planning",
       "type": "active",
       "label": "Planning",
-      "sublabel": "invariant or bounded",
+      "sublabel": "invariant or bounded route",
+      "lane": "phases",
+      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
@@ -72,7 +99,9 @@
       "id": "implementing",
       "type": "active",
       "label": "Implementing",
-      "sublabel": "SDD, bounded, unit",
+      "sublabel": "SDD, bounded or one unit",
+      "lane": "phases",
+      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
@@ -85,7 +114,9 @@
       "id": "awaiting",
       "type": "waiting",
       "label": "Awaiting the user",
-      "sublabel": "consult, approve",
+      "sublabel": "consult, approve, lend",
+      "lane": "waiting",
+      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -99,11 +130,13 @@
       "type": "active",
       "label": "Milestone",
       "sublabel": "global Verify, then commit",
+      "lane": "terminal",
+      "col": 3,
       "sources": [
         {
-          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 28,
-          "end_line": 29
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 121,
+          "end_line": 132
         }
       ]
     },
@@ -112,7 +145,14 @@
       "type": "success",
       "label": "Reported and closed",
       "sublabel": "memory_close_session",
+      "lane": "terminal",
+      "col": 4,
       "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 144,
+          "end_line": 147
+        },
         {
           "path": "takt/catalog/assets/skills/takt-memory-orchestrator/SKILL.md",
           "line": 24,
@@ -123,9 +163,14 @@
   ],
   "transitions": [
     {
+      "from": "start",
+      "to": "framed",
+      "label": "brief and approvals"
+    },
+    {
       "from": "framed",
       "to": "selecting",
-      "label": "phase",
+      "label": "each phase",
       "variant": "emphasis"
     },
     {
@@ -142,7 +187,7 @@
     {
       "from": "selecting",
       "to": "implementing",
-      "label": "dev"
+      "label": "development"
     },
     {
       "from": "implementing",
@@ -177,13 +222,13 @@
     {
       "from": "implementing",
       "to": "milestone",
-      "label": "ready",
+      "label": "phases verified",
       "variant": "emphasis"
     },
     {
       "from": "milestone",
       "to": "reporting",
-      "label": "done",
+      "label": "Verify passes, commit",
       "variant": "emphasis"
     },
     {
@@ -199,9 +244,7 @@
       "title": "Loop",
       "items": [
         "The selection tree runs before every planning or implementation phase",
-        "Invariant planning returns to the tree once its invariants are delivered",
-        "A milestone is committed only after Verify passes, then the session is reported and closed",
-        "The brief and its approvals open each session"
+        "Invariant planning returns to the tree once its invariants are delivered"
       ]
     },
     {

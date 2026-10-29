@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 2,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Dispatched work unit lifecycle",
@@ -7,15 +7,23 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
-  "mainPath": [
-    "planned",
-    "pending",
-    "running",
-    "settled"
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Unit progress"
+    },
+    {
+      "id": "side",
+      "label": "In flight: held or unknown"
+    },
+    {
+      "id": "terminal",
+      "label": "Never admitted"
+    }
   ],
   "states": [
     {
@@ -23,6 +31,8 @@
       "type": "start",
       "label": "Planned",
       "sublabel": "declared, not admitted",
+      "lane": "main",
+      "col": 0,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -36,6 +46,8 @@
       "type": "active",
       "label": "Pending launch",
       "sublabel": "in flight, slot reserved",
+      "lane": "main",
+      "col": 1,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -49,6 +61,8 @@
       "type": "active",
       "label": "Running",
       "sublabel": "in flight, observed",
+      "lane": "main",
+      "col": 2,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -62,6 +76,8 @@
       "type": "success",
       "label": "Settled",
       "sublabel": "outcome recorded",
+      "lane": "main",
+      "col": 4,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -75,6 +91,8 @@
       "type": "waiting",
       "label": "Launch uncertain",
       "sublabel": "in flight, unestablished",
+      "lane": "side",
+      "col": 1,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -88,6 +106,8 @@
       "type": "waiting",
       "label": "Suspended",
       "sublabel": "in flight, held",
+      "lane": "side",
+      "col": 2,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -101,6 +121,8 @@
       "type": "waiting",
       "label": "Cancellation pending",
       "sublabel": "in flight, not yet effective",
+      "lane": "side",
+      "col": 3,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -114,6 +136,8 @@
       "type": "neutral",
       "label": "Withdrawn",
       "sublabel": "revoked while planned",
+      "lane": "terminal",
+      "col": 0,
       "sources": [
         {
           "path": "takt/history/projection.go",
@@ -179,7 +203,8 @@
       "from": "settled",
       "to": "pending",
       "label": "admitted: next attempt",
-      "variant": "dashed"
+      "variant": "dashed",
+      "route": "top-channel"
     },
     {
       "from": "planned",

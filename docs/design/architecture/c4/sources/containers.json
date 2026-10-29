@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -18,8 +18,8 @@
       "label": "Developer",
       "sublabel": "terminal user",
       "pos": [
-        535,
-        60
+        40,
+        190
       ],
       "size": [
         130,
@@ -32,8 +32,8 @@
       "label": "OpenCode configuration",
       "sublabel": "opencode.json, AGENTS.md, plugins/, takt/, skills",
       "pos": [
-        260,
-        430
+        290,
+        30
       ],
       "size": [
         280,
@@ -61,8 +61,8 @@
       "label": "takt-ai binary",
       "sublabel": "Go CLI + TUI, embedded catalog",
       "pos": [
-        520,
-        250
+        300,
+        190
       ],
       "size": [
         180,
@@ -85,8 +85,8 @@
       "label": "Workspace image + Helm chart",
       "sublabel": "opencode + takt-ai",
       "pos": [
-        600,
-        560
+        900,
+        340
       ],
       "size": [
         200,
@@ -105,8 +105,8 @@
       "label": "OpenCode v2",
       "sublabel": "host runtime",
       "pos": [
-        600,
-        430
+        620,
+        190
       ],
       "size": [
         150,
@@ -125,8 +125,8 @@
       "label": "OpenCode plugins",
       "sublabel": "vfs, dag, memory (TS)",
       "pos": [
-        740,
-        250
+        590,
+        340
       ],
       "size": [
         210,
@@ -150,7 +150,7 @@
       "sublabel": "history.sqlite, events.db, vfs",
       "pos": [
         280,
-        250
+        340
       ],
       "size": [
         200,
@@ -163,8 +163,8 @@
         },
         {
           "path": "takt/obs/store.go",
-          "line": 41,
-          "end_line": 44
+          "line": 39,
+          "end_line": 42
         }
       ]
     },
@@ -174,8 +174,8 @@
       "label": "Managed MCP servers",
       "sublabel": "Engram, CodeGraph",
       "pos": [
-        800,
-        430
+        640,
+        30
       ],
       "size": [
         170,

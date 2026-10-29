@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -29,12 +29,17 @@
       "type": "security",
       "label": "Plan applies?",
       "sublabel": "several rounds, floor, critical",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
-          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 14,
-          "end_line": 20
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 86,
+          "end_line": 90
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 121,
+          "end_line": 128
         }
       ]
     },
@@ -45,7 +50,7 @@
       "type": "security",
       "label": "Within limit?",
       "sublabel": "unplanned-unit limit",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -61,7 +66,7 @@
       "type": "security",
       "label": "Implementation lane?",
       "sublabel": "needs a file set",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -77,7 +82,7 @@
       "type": "security",
       "label": "Scope collides?",
       "sublabel": "same root; claim_list inspects",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -93,7 +98,7 @@
       "type": "backend",
       "label": "dispatch_commit",
       "sublabel": "revision names its base",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -109,7 +114,7 @@
       "type": "backend",
       "label": "Route via selection",
       "sublabel": "not bounded work any more",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -125,7 +130,7 @@
       "type": "backend",
       "label": "dispatch_inputs",
       "sublabel": "consumed Engram IDs",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -141,7 +146,7 @@
       "type": "backend",
       "label": "claim_assign",
       "sublabel": "exact file set",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -162,7 +167,7 @@
       "type": "backend",
       "label": "Resolve collision",
       "sublabel": "queue, continue, re-cut",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -178,7 +183,7 @@
       "type": "backend",
       "label": "Delegate",
       "sublabel": "named by its unit",
-      "width": 160,
+      "width": 170,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",

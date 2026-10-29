@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -90,26 +90,26 @@
     {
       "id": "m02",
       "from": "takt",
-      "to": "harness",
-      "y": 188,
-      "label": "dispatch_switch: requirements, client",
-      "variant": "security"
-    },
-    {
-      "id": "m03",
-      "from": "harness",
       "to": "user",
-      "y": 216,
+      "y": 188,
       "label": "ask: lend takt-pm?",
       "variant": "default"
     },
     {
-      "id": "m04",
+      "id": "m03",
       "from": "user",
+      "to": "takt",
+      "y": 216,
+      "label": "consent",
+      "variant": "return"
+    },
+    {
+      "id": "m04",
+      "from": "takt",
       "to": "harness",
       "y": 244,
-      "label": "accept",
-      "variant": "return"
+      "label": "dispatch_switch: requirements, client",
+      "variant": "security"
     },
     {
       "id": "m05",
@@ -189,7 +189,7 @@
       "dot": "cyan",
       "title": "Lend",
       "items": [
-        "The harness asks the user before the interface is lent",
+        "The user consents before the interface is lent",
         "Drafts are hypotheses; the accepted version supersedes them with the approval as evidence"
       ]
     },

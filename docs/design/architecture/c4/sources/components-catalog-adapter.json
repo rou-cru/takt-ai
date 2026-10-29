@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
@@ -129,16 +129,16 @@
       "sources": [
         {
           "path": "takt/agents/opencode/components.go",
-          "line": 105
+          "line": 96
         },
         {
           "path": "takt/agents/opencode/components.go",
-          "line": 239,
-          "end_line": 245
+          "line": 232,
+          "end_line": 236
         },
         {
           "path": "takt/agents/opencode/components.go",
-          "line": 287
+          "line": 294
         }
       ]
     },

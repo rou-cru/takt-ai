@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,8 +25,8 @@
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-memory.ts",
-          "line": 53,
-          "end_line": 69
+          "line": 35,
+          "end_line": 51
         }
       ]
     },
@@ -38,8 +38,8 @@
       "sources": [
         {
           "path": "takt/cli/memory.go",
-          "line": 56,
-          "end_line": 127
+          "line": 54,
+          "end_line": 87
         }
       ]
     },
@@ -51,7 +51,7 @@
       "sources": [
         {
           "path": "takt/memory/memory.go",
-          "line": 332
+          "line": 313
         }
       ]
     },
@@ -63,8 +63,8 @@
       "sources": [
         {
           "path": "takt/memory/session_index.go",
-          "line": 41,
-          "end_line": 68
+          "line": 39,
+          "end_line": 60
         }
       ]
     },

@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 2,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "GC cycle lifecycle",
@@ -7,24 +7,36 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
+      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
       "link_mode": "local-only"
     }
   },
-  "mainPath": [
-    "idle",
-    "investigate",
-    "collect",
-    "verify",
-    "acceptance",
-    "closed"
+  "lanes": [
+    {
+      "id": "trigger",
+      "label": "Trigger"
+    },
+    {
+      "id": "main",
+      "label": "Cycle phases"
+    },
+    {
+      "id": "closing",
+      "label": "Acceptance and abort"
+    },
+    {
+      "id": "terminal",
+      "label": "Terminal"
+    }
   ],
   "states": [
     {
       "id": "idle",
       "type": "start",
       "label": "Idle",
-      "sublabel": "counters grow",
+      "sublabel": "counters accumulate",
+      "lane": "trigger",
+      "col": 0,
       "sources": [
         {
           "path": "takt/gc/trigger.go",
@@ -42,7 +54,9 @@
       "id": "held",
       "type": "waiting",
       "label": "Held",
-      "sublabel": "barrier holds",
+      "sublabel": "barrier, ESCALATE record",
+      "lane": "trigger",
+      "col": 1,
       "sources": [
         {
           "path": "takt/gc/barrier.go",
@@ -55,7 +69,9 @@
       "id": "prepared",
       "type": "neutral",
       "label": "Prepared",
-      "sublabel": "inputs frozen",
+      "sublabel": "config, locks, analyzers frozen",
+      "lane": "trigger",
+      "col": 2,
       "sources": [
         {
           "path": "takt/gc/preparation.go",
@@ -70,16 +86,28 @@
       ]
     },
     {
-      "id": "investigate",
-      "type": "decision",
-      "label": "examine",
-      "sublabel": "refute, confirm",
+      "id": "baseline",
+      "type": "active",
+      "label": "baseline",
+      "sublabel": "prepared checks + analyzers",
+      "lane": "main",
+      "col": 0,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
           "line": 131,
           "end_line": 151
-        },
+        }
+      ]
+    },
+    {
+      "id": "investigate",
+      "type": "decision",
+      "label": "investigate",
+      "sublabel": "collector: refute or confirm",
+      "lane": "main",
+      "col": 1,
+      "sources": [
         {
           "path": "takt/gc/investigation.go",
           "line": 50
@@ -90,12 +118,14 @@
       "id": "collect",
       "type": "active",
       "label": "collect",
-      "sublabel": "scoped mutations",
+      "sublabel": "mutations inside scope",
+      "lane": "main",
+      "col": 2,
       "sources": [
         {
-          "path": "takt/vfs/gc_state.go",
-          "line": 30,
-          "end_line": 77
+          "path": "takt/gc/guard.go",
+          "line": 56,
+          "end_line": 69
         }
       ]
     },
@@ -103,7 +133,9 @@
       "id": "verify",
       "type": "decision",
       "label": "verify",
-      "sublabel": "verdict",
+      "sublabel": "verifier verdict",
+      "lane": "main",
+      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
@@ -113,10 +145,27 @@
       ]
     },
     {
+      "id": "consolidating",
+      "type": "active",
+      "label": "consolidating",
+      "sublabel": "checkpoint",
+      "lane": "main",
+      "col": 4,
+      "sources": [
+        {
+          "path": "takt/cli/gc_coordinate.go",
+          "line": 227,
+          "end_line": 253
+        }
+      ]
+    },
+    {
       "id": "aborting",
       "type": "active",
       "label": "aborting",
-      "sublabel": "discard",
+      "sublabel": "discard cycle",
+      "lane": "closing",
+      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
@@ -129,7 +178,9 @@
       "id": "acceptance",
       "type": "decision",
       "label": "acceptance",
-      "sublabel": "checks rerun",
+      "sublabel": "checks run again",
+      "lane": "closing",
+      "col": 4,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
@@ -142,7 +193,9 @@
       "id": "blocked",
       "type": "failure",
       "label": "blocked",
-      "sublabel": "discard failed",
+      "sublabel": "discard failed, barrier held",
+      "lane": "terminal",
+      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
@@ -155,12 +208,14 @@
       "id": "closed",
       "type": "success",
       "label": "closed",
-      "sublabel": "applied or aborted",
+      "sublabel": "applied, aborted or no-change",
+      "lane": "terminal",
+      "col": 4,
       "sources": [
         {
           "path": "takt/gc/coordinator.go",
-          "line": 295,
-          "end_line": 307
+          "line": 239,
+          "end_line": 249
         }
       ]
     }
@@ -169,7 +224,7 @@
     {
       "from": "idle",
       "to": "held",
-      "label": "hold",
+      "label": "barrier holds",
       "variant": "dashed"
     },
     {
@@ -186,28 +241,37 @@
     },
     {
       "from": "idle",
-      "to": "investigate",
-      "label": "due",
+      "to": "baseline",
+      "label": "due, barrier passes",
       "variant": "emphasis"
+    },
+    {
+      "from": "baseline",
+      "to": "investigate"
     },
     {
       "from": "investigate",
       "to": "collect",
-      "label": "scope"
+      "label": "authorize"
     },
     {
       "from": "collect",
       "to": "verify",
-      "label": "done"
+      "label": "collected"
     },
     {
       "from": "verify",
-      "to": "acceptance",
+      "to": "consolidating",
       "label": "pass"
+    },
+    {
+      "from": "consolidating",
+      "to": "acceptance"
     },
     {
       "from": "acceptance",
       "to": "closed",
+      "label": "applied",
       "variant": "emphasis"
     },
     {
@@ -219,7 +283,7 @@
     {
       "from": "acceptance",
       "to": "aborting",
-      "label": "fail",
+      "label": "checks fail",
       "variant": "security"
     },
     {
@@ -254,7 +318,7 @@
       "dot": "rose",
       "title": "Not drawn",
       "items": [
-        "examine to closed when the collector reports no change",
+        "investigate to closed when the collector reports no change",
         "Plugin restart sends recover, which aborts the cycle",
         "Acceptance aborts the cycle when the preparation changed"
       ]
