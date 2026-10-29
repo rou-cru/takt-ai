@@ -13,6 +13,8 @@ A model of the crew as processes that exchange messages, assuming the happy path
 | Repair after a failing verdict (takt-fix) | [repair-sequence.html](diagrams/flows/repair-sequence.html) | Sequence |
 | Blind review by judge-a and judge-b | [judge-sequence.html](diagrams/flows/judge-sequence.html) | Sequence |
 
+Delegation triggers and artifacts for every agent, including qa, test, mutation, explorer, quality and both judges, are in [interactions/](../interactions/README.md).
+
 Role classes appear as containers; each agent is its own node or participant. takt-simplify's cleanup and GC role is shown in the GC cycle view in [runtime](../runtime/README.md) and in the topology, not in a separate sequence.
 
 ## Orchestrator decision trees and state machines
@@ -32,7 +34,7 @@ Everything takt decides is conduct from `OPERATIONS.md` and its skills. These vi
 | Handling a staged delivery | [delivery.html](diagrams/orchestrator/delivery.html) | OPERATIONS, takt-vfs-coordination |
 | Acting directly | [direct-work.html](diagrams/orchestrator/direct-work.html) | OPERATIONS |
 | Lending an interlocutor, reading the return | [lending.html](diagrams/orchestrator/lending.html) | takt-interlocutor-lending |
-| Testing an objective | Not drawn yet; the state table in the skill is normative | takt-qa-workflow |
+| Testing an objective | [qa-workflow.html](../interactions/diagrams/qa-workflow.html) | takt-qa-workflow |
 
 Not drawn as diagrams:
 

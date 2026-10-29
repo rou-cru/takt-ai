@@ -20,6 +20,7 @@ They share patterns (events, state machines, declarative tables) but not a runti
 | [c4/03-components.md](c4/03-components.md) | CLI and setup, harness, TUI, catalog and OpenCode adapter | L3 |
 | [runtime/](runtime/README.md) | Key flows over time: install, VFS, work units, GC, memory; observability and TUI state machines as notes only | Dynamic |
 | [agents/](agents/README.md) | The crew as a deterministic system: topology, orchestrator decision trees and state machines, happy-path flows, harness touchpoints | Dynamic |
+| [interactions/](interactions/README.md) | Layers as one system: projection, end-to-end request, admission, control loop | Dynamic |
 | [reference/data-and-policy.md](reference/data-and-policy.md) | Stores, records, policy files, ownership rules | Supplement |
 | [reference/decisions.md](reference/decisions.md) | Norms behind the structure, and gaps between corpus and code | Supplement |
 

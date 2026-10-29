@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: failure and recovery",
@@ -7,27 +7,14 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "25899d923f5a16de985eebe05bdd6981af4ff92b",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Unit failure"
-    },
-    {
-      "id": "bounded",
-      "label": "Bounded recovery"
-    },
-    {
-      "id": "replan",
-      "label": "Replanning circuit"
-    },
-    {
-      "id": "exits",
-      "label": "Exits"
-    }
+  "mainPath": [
+    "failed",
+    "retry",
+    "resumed"
   ],
   "states": [
     {
@@ -35,8 +22,6 @@
       "type": "start",
       "label": "Unit fails",
       "sublabel": "first failure",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -50,8 +35,6 @@
       "type": "active",
       "label": "Retry once",
       "sublabel": "error output, same scope",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -65,8 +48,6 @@
       "type": "success",
       "label": "Resumed",
       "sublabel": "plan continues",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -80,8 +61,6 @@
       "type": "active",
       "label": "Declared recovery",
       "sublabel": "budgets declared",
-      "lane": "bounded",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -95,8 +74,6 @@
       "type": "waiting",
       "label": "Subtree frozen",
       "sublabel": "task BLOCKED, lanes run on",
-      "lane": "replan",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -110,8 +87,6 @@
       "type": "waiting",
       "label": "Owner escalation",
       "sublabel": "structure, behavior, experience",
-      "lane": "replan",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -125,8 +100,6 @@
       "type": "active",
       "label": "Delta re-indexed",
       "sublabel": "dispatch_commit with base",
-      "lane": "replan",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -140,8 +113,6 @@
       "type": "neutral",
       "label": "Cut reassessed",
       "sublabel": "no third delta",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -155,8 +126,6 @@
       "type": "waiting",
       "label": "Awaiting direction",
       "sublabel": "limit reached",
-      "lane": "exits",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -170,8 +139,7 @@
     {
       "from": "failed",
       "to": "retry",
-      "label": "minor, in bounds",
-      "labelDy": -31
+      "label": "minor, in bounds"
     },
     {
       "from": "failed",
@@ -182,15 +150,14 @@
     {
       "from": "failed",
       "to": "frozen",
-      "label": "contract defect or conflicting deltas",
+      "label": "defect or conflict",
       "variant": "security"
     },
     {
       "from": "retry",
       "to": "resumed",
       "label": "succeeds",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "retry",
@@ -207,14 +174,12 @@
     {
       "from": "frozen",
       "to": "owner",
-      "label": "task, evidence, segment",
-      "labelDy": -31
+      "label": "task, evidence, segment"
     },
     {
       "from": "owner",
       "to": "delta",
-      "label": "owner delta; TPM revises tasks",
-      "labelDy": -31
+      "label": "owner delta; TPM revises tasks"
     },
     {
       "from": "delta",
