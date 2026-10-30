@@ -159,7 +159,7 @@ func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clo
 		d.Demoted = true
 		// The record carries every input the decision read, so replaying the
 		// same events under the same policy reproduces it.
-		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d range=(%d,%d]) exceeds threshold %.2f (policy %s v%d, min_registered_work=%d)",
+		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d range=(%d,%d]) exceeds threshold %g (policy %s v%d, min_registered_work=%d)",
 			in.Mandate, d.Rate, reversions, registered, in.AfterID, in.BeforeID, threshold, TriggerPolicyRef, p.Version, minWork)
 		if err := obs.PublishControlEffectEvent(bus, clock, obs.ActionContain, in.Agent, "gc.mandate-reversion-rate", cond, in.WorkUnitID); err != nil {
 			return d, err

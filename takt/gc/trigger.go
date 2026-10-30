@@ -70,7 +70,8 @@ func parseTriggerPolicy(data []byte) (TriggerPolicy, error) {
 		return TriggerPolicy{}, fmt.Errorf("gc trigger policy: cadence parameters must be positive")
 	}
 	d := p.Demotion
-	if d.ReversionRate <= 0 || d.ReversionRate >= 1 || d.MinRegisteredWork <= 0 {
+	// Written as a positive range check so NaN, which fails every comparison, is rejected too.
+	if !(d.ReversionRate > 0 && d.ReversionRate < 1) || d.MinRegisteredWork <= 0 {
 		return TriggerPolicy{}, fmt.Errorf("gc trigger policy: demotion needs a reversion rate in (0, 1) and a positive minimum registered work")
 	}
 	return p, nil
