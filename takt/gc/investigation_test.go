@@ -107,7 +107,7 @@ func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *test
 func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
 	// Only 2 registered-work events total, both reedits: 100% rate, but far
-	// below minRegisteredWorkForRateDecision, so it must not fire.
+	// below the policy's min_registered_work, so it must not fire.
 	seedReedits(t, bus, clock, MandateDocumentation, 2)
 
 	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDocumentation, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})

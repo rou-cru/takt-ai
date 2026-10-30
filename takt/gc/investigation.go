@@ -102,19 +102,6 @@ func eligibleFinding(f Finding, demoted []MandateClass) bool {
 // EvaluateMandateReversionRate decides it; the coordinator records it
 // durably (Coordinator.Demote), so every later authorization reads it.
 
-// reversionRateThreshold is the fraction of registered work (the PR-MNT-9/
-// PR-MNT-11 denominator, never wall time) that a mandate class's attributed
-// reversions may reach before PR-MNT-32 demotes it. Set at 1/4: up to that,
-// a handful of reverted edits reads as normal review friction; above it,
-// a quarter of the work this class is responsible for is coming back,
-// which is the class's changes failing to stick rather than noise.
-const reversionRateThreshold = 0.25
-
-// minRegisteredWorkForRateDecision keeps a demotion decision from firing off
-// a denominator too small for a rate to mean anything (one reedit out of two
-// units of work is a 50% rate that is pure noise, not a pattern).
-const minRegisteredWorkForRateDecision = 8
-
 // MandateRateDecision is the reversion-rate evaluation for one mandate class
 // over one range of registered work, kept alongside its raw inputs so the
 // rate is never logged or acted on without the counts behind it (PR-MNT-11).
@@ -141,7 +128,7 @@ type MandateReversionRateInput struct {
 // EvaluateMandateReversionRate measures how often mandate's consolidated work
 // is reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
 // session events in (afterID, beforeID], never elapsed time (PR-MNT-9/11).
-// Above reversionRateThreshold it demotes the mandate to proposal-only
+// Above the policy's demotion reversion rate it demotes the mandate to proposal-only
 // (PR-MNT-32) and publishes the CONTAIN effect PR-OBS-CTL-5 requires; the
 // caller records the demotion in the coordinator.
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
@@ -159,14 +146,21 @@ func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clo
 	if err != nil {
 		return MandateRateDecision{}, err
 	}
+	p, err := LoadTriggerPolicy()
+	if err != nil {
+		return MandateRateDecision{}, err
+	}
+	threshold, minWork := p.Demotion.ReversionRate, p.Demotion.MinRegisteredWork
 	d := MandateRateDecision{Mandate: in.Mandate, Reversions: reversions, RegisteredWork: registered}
 	if registered > 0 {
 		d.Rate = float64(reversions) / float64(registered)
 	}
-	if registered >= minRegisteredWorkForRateDecision && d.Rate > reversionRateThreshold {
+	if registered >= minWork && d.Rate > threshold {
 		d.Demoted = true
-		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d) exceeds threshold %.2f",
-			in.Mandate, d.Rate, reversions, registered, reversionRateThreshold)
+		// The record carries every input the decision read, so replaying the
+		// same events under the same policy reproduces it.
+		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d range=(%d,%d]) exceeds threshold %.2f (policy %s v%d, min_registered_work=%d)",
+			in.Mandate, d.Rate, reversions, registered, in.AfterID, in.BeforeID, threshold, TriggerPolicyRef, p.Version, minWork)
 		if err := obs.PublishControlEffectEvent(bus, clock, obs.ActionContain, in.Agent, "gc.mandate-reversion-rate", cond, in.WorkUnitID); err != nil {
 			return d, err
 		}
