@@ -19,7 +19,7 @@ Context explicitly distinguishes between ephemeral information, durable knowledg
 | REC-2 | High-value technical knowledge, explicit user preferences, and empirical evidence about encountered constraints are durably retained. |
 | REC-3 | Intermediate information is evaluated based on the agent's role and workflow evolution. |
 | REC-4 | Takt does not impose universal, rigid retention policies when relevance legitimately depends on dynamic context. |
-| REC-5 | Compaction is a recorded transition at a completed-slice boundary with no unresolved incident requiring immediate context. Compaction the runtime forces mid-slice follows the same procedure. It proceeds in order: mask obsolete observations, hand off structured artifacts by entry ID, and summarize synthetically only what remains. It preserves the goal, applicable invariants, evidence references, current work position, and remaining budgets, and does not increase repeated calls or denials. |
+| REC-5 | Compaction is a recorded transition. Scheduled compaction waits for a completed-slice boundary with no unresolved incident requiring immediate context. Compaction the runtime forces MAY interrupt a slice; it is recorded the same way and follows the same procedure. Either proceeds in order: mask obsolete observations, hand off structured artifacts by entry ID, and summarize synthetically only what remains. It preserves the goal, applicable invariants, evidence references, current work position, and remaining budgets, and does not increase repeated calls or denials. |
 
 ## 3. Ranking
 

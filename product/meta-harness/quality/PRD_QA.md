@@ -30,7 +30,7 @@
 | ID | Requirement |
 | --- | --- |
 | PR-QA-7 | The QA lead authors a logical test plan per objective from the specification, frozen interfaces, and test policy. It is partitioned by story and slice; each unit receives only relevant conditions. It states quadrants, levels, entry and exit criteria, must-not-fail risks, and effective Definition of Done. The next slice's plan is delivered before its test author starts. |
-| PR-QA-8 | The QA lead declares non-trivial environment requirements from analyst facts: services, data, configuration, and platforms. The orchestrator assigns provisioning to an execution unit before the checks that need it. An unverified check opens an environment-provisioning unit in the slice's work breakdown, with an owner and a completion check. |
+| PR-QA-8 | The QA lead declares non-trivial environment requirements from analyst facts: services, data, configuration, and platforms. The orchestrator assigns provisioning to an execution unit before the checks that need it. A check left unverified because its environment is missing or unavailable opens an environment-provisioning unit in the slice's work breakdown, with an owner and a completion check. |
 
 ### 1.4 Requirements Traceability
 
@@ -72,4 +72,4 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-QA-20 | The QA workflow is assess, plan, author, accept, critique, strengthen, close, report. Each state names its specialist, bounded input IDs, exit result, and destination. Slice acceptance applies PR-QA-5. Failed results route to diagnosis or correction; unverified results create environment work under PR-QA-8. Slice close returns to the slice control point, including critical stories. Report closes only the objective. An assessment-only objective reports findings without repairing them and selects no Q2 quadrant. Exhausted work cannot be certified with unmet criteria. Critiques with unmet entry conditions are skipped explicitly. |
+| PR-QA-20 | The QA workflow is assess, plan, author, accept, critique, strengthen, close, report. Each state names its specialist, bounded input IDs, exit result, and destination. Slice acceptance applies PR-QA-5. Failed results route to diagnosis or correction; unverified results caused by a missing environment create environment work under PR-QA-8, and other unverified results route to their owners under PR-QA-18. Slice close returns to the slice control point, including critical stories. Report closes only the objective. An assessment-only objective reports findings without repairing them and selects no Q2 quadrant. Exhausted work cannot be certified with unmet criteria. Critiques with unmet entry conditions are skipped explicitly. |

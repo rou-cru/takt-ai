@@ -73,9 +73,9 @@
 | History position | Position in the execution history the projection reflects. |
 | Session | The root session the projection is scoped to. |
 | Capture | Capture state of the snapshot, current in the nominal case. |
-| Nodes | One record per work unit: identity, kind, temporal state, in-flight condition, session, attempt, launch status, prerequisites, assurance, and agent once the unit is admitted. Assurance identifies the evaluated revision, acceptance status, and evidence references. |
+| Nodes | One record per work unit: identity, kind, temporal state, in-flight condition (`unmonitored` when capture of that execution was lost), session, attempt, launch status, prerequisites, assurance, and agent once the unit is admitted. Assurance identifies the evaluated revision, acceptance status, and evidence references. |
 | Edges | One record per dependency, with source and target unit identities. |
-| Activities | Always present, empty when no activities exist. Each record carries activity identity, kind, state, and the applicable in-flight condition or outcome. |
+| Activities | Always present, empty when no activities exist. Each record carries activity identity, kind, state, and the applicable in-flight condition, including `unmonitored`, or outcome. |
 
 **PR-DTUI-19.** The projection revision MUST be monotonic for a projection scope and advances with every history entry the projection reflects, so every render-visible projection field changes only with the revision. The view's own capture health, stale or unavailable, is local and applies regardless of revision. The TUI MUST replace its snapshot only when the received revision is newer than the displayed revision.
 
@@ -114,7 +114,7 @@
 | Query fails after a valid snapshot | Keep graph; mark it `stale` |
 | Takt cannot provide a projection | Mark `unavailable`; do not infer state |
 | Projection contains uncertain execution | Render the affected node as `uncertain` |
-| Projection contains unmonitored execution | Render the affected node as `unmonitored`, never as hung or failed, and do not attribute it to an agent |
+| Projection contains unmonitored execution | Render the affected node or activity as `unmonitored`, never as hung or failed, and do not attribute it to an agent |
 | Empty valid plan | Render an explicit empty DAG state |
 | Invalid topology | Reject the snapshot and display a projection error; do not render a partial graph |
 | OpenCode v2 event stream is unavailable | Continue from Takt snapshot; do not attribute failure to an agent |

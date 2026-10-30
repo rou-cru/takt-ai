@@ -197,7 +197,7 @@ Un único lazo cerrado. El orquestador decide las siguientes acciones evaluando 
 
 ### 10 Cobertura y absorción de hallazgos
 
-Todos los hallazgos confirmados o plausibles de la auditoría quedan resueltos por los invariantes de los seis planos (P20 y P22 fueron refutados durante la verificación y se excluyen). Ningún hallazgo requiere un parche ad-hoc en la prosa.
+Todos los hallazgos confirmados o plausibles de la auditoría quedan resueltos por los invariantes de los seis planos en el diseño objetivo (P20 y P22 fueron refutados durante la verificación y se excluyen). La absorción describe el contrato objetivo, no el estado implementado: el catálogo y el harness actuales conservan los defectos citados como evidencia hasta la etapa del §12 que los migra. Ningún hallazgo requiere un parche ad-hoc en la prosa.
 
 | PLANO | HALLAZGOS ABSORBIDOS | MECANISMO ESTRUCTURAL DE SUSTITUCIÓN |
 | :--- | :--- | :--- |
@@ -225,7 +225,7 @@ La evidencia técnica identifica alternativas sobre componentes del diseño actu
 
 El orden de implementación responde estrictamente a dependencias funcionales: el control determinista requiere sensores de resultado previos, y la optimización de flujo requiere una línea base de referencia. Cada etapa establece una condición de salida cuantitativa basada en trabajo registrado. Los umbrales son relativos a la línea base E0, se miden sobre sus dos escenarios con ambas familias de modelos y la etapa se acepta solo si se cumplen todas sus condiciones:
 
-*   **E0 - Línea base medible:** Definición de dos escenarios objetivos de referencia (cambio acotado y MVP 2D) evaluados con dos familias de modelos. Métricas: tokens por tarea, ocupación de contexto en el orquestador por dispatch, consultas interactivas por sesión, tasa de características validadas con evidencia computacional, fallos diferidos en E2E, estancamientos y nodos de DAG por característica entregada.
+*   **E0 - Línea base medible:** Definición de dos escenarios objetivos de referencia (cambio acotado y MVP 2D) evaluados con dos familias de modelos. Métricas, cada una agregada por escenario y familia de modelos sobre la sesión completa: tokens por tarea; tokens del prompt estático del orquestador; ocupación de contexto en el orquestador por dispatch; consultas interactivas por sesión, distinguiendo las que corresponden a cruces de frontera; tasa de características validadas con evidencia computacional; falsos completados, contados como nodos cerrados como completados cuya verificación independiente posterior falla o no existe; fallos diferidos en E2E; estancamientos; nodos de DAG por característica entregada; y acciones registradas hasta el primer slice ejecutable, contadas como entradas del historial de ejecución previas a la primera aceptación de slice. Los valores de E0 resultantes son la línea base de las etapas siguientes.
     *   *Condición de salida:* Métricas reproducibles de forma automatizada desde el bus de eventos.
 *   **E1 - Planos 1 y 2: Proyección mínima y eventos tipados de resultado:** Implementación del contrato de proyección en el orquestador y registro de eventos de verificación en el bus y el historial de Go, mitigando la causa primaria de compactación prematura.
     *   *Condición de salida:* La carga por dispatch se independiza del historial de GC y ningún nodo concluye sin resultado computacional asociado.
