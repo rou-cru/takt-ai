@@ -228,6 +228,42 @@ func TestVFSGrantValidationRequiresExactInstanceCoverage(t *testing.T) {
 	}
 }
 
+// TestVFSGrantValidationKeepsEvaluatorsNonMutating checks that verification and
+// quality-assurance instances are refused any grant that could change the
+// deliverable they evaluate, while their read and judgment grants load.
+func TestVFSGrantValidationKeepsEvaluatorsNonMutating(t *testing.T) {
+	for name, tc := range map[string]struct{ role, grant, want string }{
+		"verifier write":       {"verification", "[bind, read, write]", `may not hold VFS capability "write"`},
+		"verifier consolidate": {"verification", "[bind, verify, consolidate]", `may not hold VFS capability "consolidate"`},
+		"qa verify":            {"quality_assurance", "[read, verify]", `may not hold VFS capability "verify"`},
+		"qa discard":           {"quality_assurance", "[discard]", `may not hold VFS capability "discard"`},
+		"verifier allowed":     {"verification", "[bind, read, inspect, verify]", ""},
+		"qa allowed":           {"quality_assurance", "[bind, read, inspect]", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			definition := "id: x\nlabel: x\ngroup: testing\ndisplay_names: {x: X}\ninstances: [x]\ndescription: d\nrole: " + tc.role +
+				"\ncontext: {operations: OPERATIONS.md}\nvfs_capabilities: {x: " + tc.grant + "}\n"
+			fsys := fstest.MapFS{
+				"README.md":              {Data: []byte("r")},
+				catalog.BaselinePath:     {Data: []byte("b")},
+				"skills/s/SKILL.md":      {Data: []byte("---\nname: s\ndescription: d\n---\n")},
+				"agents/x/agent.yaml":    {Data: []byte(definition)},
+				"agents/x/OPERATIONS.md": {Data: []byte("ops")},
+			}
+			_, err := catalog.LoadFS(fsys)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("LoadFS() error = %v, want the evaluator grant accepted", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("LoadFS() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 // TestVFSCapabilitiesUsesExactIDAndExplicitEmpty checks that grants resolve by exact instance ID
 // and that an explicit empty list still counts as declared.
 func TestVFSCapabilitiesUsesExactIDAndExplicitEmpty(t *testing.T) {

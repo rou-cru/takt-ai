@@ -31,6 +31,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func UpgradeAvailable\(installed string\) bool](<#UpgradeAvailable>)
 - [func ValidateComponents\(names \[\]string\) \(\[\]model.ComponentID, error\)](<#ValidateComponents>)
 - [type Artifact](<#Artifact>)
+- [type Backup](<#Backup>)
 - [type ConflictEntry](<#ConflictEntry>)
   - [func DetectConflicts\(rootDir string, plans \[\]TargetPlan\) \(\[\]ConflictEntry, error\)](<#DetectConflicts>)
 - [type DeploymentProgress](<#DeploymentProgress>)
@@ -369,6 +370,21 @@ type Artifact struct {
 }
 ```
 
+<a name="Backup"></a>
+## type Backup
+
+Backup pairs a replaced path with the copy of its earlier content.
+
+```go
+type Backup struct {
+    // Path is the replaced managed path.
+    Path string `json:"path"`
+    // Copy is the root-relative path of the copy under BackupDir, including
+    // any hash suffix that keeps an older copy intact.
+    Copy string `json:"copy"`
+}
+```
+
 <a name="ConflictEntry"></a>
 ## type ConflictEntry
 
@@ -450,6 +466,10 @@ type DeploymentResult struct {
     // edited locally. The operation succeeds, but behavior relying on them is
     // not guaranteed.
     Retained []string `json:"retained,omitempty"`
+    // BackedUp lists changed paths whose content on disk when the deployment
+    // applied, including edits made after the plan was validated, was copied
+    // to BackupDir before being replaced, each with the copy written for it.
+    BackedUp []Backup `json:"backedUp,omitempty"`
 }
 ```
 

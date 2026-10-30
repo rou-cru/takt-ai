@@ -1210,6 +1210,12 @@ const (
     OpFlush OperationType = "flush"
     // OpRollback records the discard of a virtual transaction delta.
     OpRollback OperationType = "rollback"
+    // OpVerdict records an independent verifier's verdict on a staged delta,
+    // or its refusal.
+    OpVerdict OperationType = "verdict"
+    // OpRecovery records the restoration or interruption of staged state
+    // after a failure.
+    OpRecovery OperationType = "recovery"
 )
 ```
 

@@ -64,6 +64,9 @@ type LifecycleResult struct {
 	Incomplete []string
 	// Retained lists planned paths kept as they are (setup.DeploymentResult.Retained).
 	Retained []string
+	// BackedUp lists replaced paths with the copy of their earlier content
+	// under setup.BackupDir (setup.DeploymentResult.BackedUp).
+	BackedUp []setup.Backup
 	// ReloadAttempted and ReloadError describe the post-deployment OpenCode
 	// handoff separately from file deployment. A reload failure is functional
 	// evidence, not a rollback trigger: the files are already valid on disk.
@@ -263,6 +266,7 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 		NotApplied: result.NotApplied,
 		Incomplete: result.Incomplete,
 		Retained:   result.Retained,
+		BackedUp:   result.BackedUp,
 		Outcome:    OutcomeCompleted,
 	}
 	if Cancelled(ctx, err) {

@@ -8,7 +8,7 @@ OpenCode installs this tree once at `~/.config/opencode/takt/`. Its native JSON
 registers each instance with direct file references in this order:
 BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause naming the
 memory contract and, for recording, the agent's memory skill. Only undeclared optional files are omitted.
-This order does not introduce an authority hierarchy. Both judge instances share
+This order does not introduce an authority hierarchy. PERSONA and SOUL carry identity and voice only: every working procedure, contract, and judgment criterion a role needs lives in BASELINE, OPERATIONS, or skills, so a substitute composed without them can hold an unavailable seat (`PR-CRW-13`). Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
 discovers them; they are not injected into initial prompts. `shared/GUIDELINES.md` is registered in `instructions`, so every session loads it. Resource bytes are
 copied unchanged, except that a double-brace `policy.<name>` marker in Markdown prose is

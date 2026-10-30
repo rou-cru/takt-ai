@@ -71,6 +71,19 @@ type DeploymentResult struct {
 	// edited locally. The operation succeeds, but behavior relying on them is
 	// not guaranteed.
 	Retained []string `json:"retained,omitempty"`
+	// BackedUp lists changed paths whose content on disk when the deployment
+	// applied, including edits made after the plan was validated, was copied
+	// to BackupDir before being replaced, each with the copy written for it.
+	BackedUp []Backup `json:"backedUp,omitempty"`
+}
+
+// Backup pairs a replaced path with the copy of its earlier content.
+type Backup struct {
+	// Path is the replaced managed path.
+	Path string `json:"path"`
+	// Copy is the root-relative path of the copy under BackupDir, including
+	// any hash suffix that keeps an older copy intact.
+	Copy string `json:"copy"`
 }
 
 // DeploymentProgress reports one temporary staging or committed artifact.
@@ -88,11 +101,23 @@ type DeploymentProgress struct {
 // staging/commit events: it returns partial results and ctx.Err() without
 // rolling back what is already installed.
 func DeployContextProgress(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, progress func(DeploymentProgress)) (DeploymentResult, error) {
+	return deployObserved(ctx, rootDir, managedPaths, artifacts, nil, progress)
+}
+
+// observedDestinations maps a managed path to the SHA-256 of the content an
+// apply observed and preserved there, or to "" when it observed no file. A
+// path absent from the map carries no expectation.
+type observedDestinations map[string]string
+
+// deployObserved is DeployContextProgress that refuses to replace a
+// destination that no longer holds what observed records: the change is
+// reported and nothing from the batch stays installed.
+func deployObserved(ctx context.Context, rootDir string, managedPaths []string, artifacts []Artifact, observed observedDestinations, progress func(DeploymentProgress)) (DeploymentResult, error) {
 	root, normalized, err := prepareDeployment(rootDir, managedPaths, artifacts)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	result, pending, err := inspectDeployments(root, normalized)
+	result, pending, err := inspectDeployments(root, normalized, observed)
 	if err != nil || len(pending) == 0 {
 		return result, err
 	}
@@ -145,7 +170,7 @@ func prepareDeployment(rootDir string, managedPaths []string, artifacts []Artifa
 
 // inspectDeployments compares every artifact against the filesystem and
 // reports unchanged paths plus the artifacts that still need to be written.
-func inspectDeployments(root string, normalized []Artifact) (DeploymentResult, []pendingDeployment, error) {
+func inspectDeployments(root string, normalized []Artifact, observed observedDestinations) (DeploymentResult, []pendingDeployment, error) {
 	result := DeploymentResult{
 		Changed:   make([]string, 0, len(normalized)),
 		Unchanged: make([]string, 0, len(normalized)),
@@ -155,6 +180,9 @@ func inspectDeployments(root string, normalized []Artifact) (DeploymentResult, [
 		item, unchanged, err := inspectArtifact(root, artifact)
 		if err != nil {
 			return DeploymentResult{}, nil, err
+		}
+		if want, expected := observed[artifact.Path]; expected && !item.holds(want, unchanged, artifact.Content) {
+			return DeploymentResult{}, nil, changedDuringApply(artifact.Path)
 		}
 		if unchanged {
 			result.Unchanged = append(result.Unchanged, artifact.Path)
@@ -230,6 +258,7 @@ func (tx *deploymentTransaction) stage(pending []pendingDeployment, progress fun
 			destination: pendingFile.destination,
 			exists:      pendingFile.exists,
 			mode:        pendingFile.mode,
+			original:    pendingFile.original,
 		}
 		tx.files = append(tx.files, file)
 		if err := tx.stageOne(file, pendingFile); err != nil {
@@ -271,6 +300,25 @@ type pendingDeployment struct {
 	missingDirs []string
 }
 
+// holds reports whether the inspected destination still has the content
+// whose hash is want, or no file when want is empty. An unchanged artifact
+// left no pending item, so its content is the artifact's own.
+func (p pendingDeployment) holds(want string, unchanged bool, content []byte) bool {
+	switch {
+	case unchanged:
+		return want == hashOf(content)
+	case !p.exists:
+		return want == ""
+	default:
+		return want == hashOf(p.original)
+	}
+}
+
+// changedDuringApply reports a destination edited while the apply ran.
+func changedDuringApply(path string) error {
+	return fmt.Errorf("%q changed while the installation was being applied; nothing was replaced, review and apply again", path)
+}
+
 // stagedDeployment is one artifact written to temp files, awaiting rename into place.
 type stagedDeployment struct {
 	path        string
@@ -280,6 +328,21 @@ type stagedDeployment struct {
 	exists      bool
 	mode        os.FileMode
 	installed   bool
+	// original is the content inspected at the destination, nil when absent.
+	original []byte
+}
+
+// unchangedSinceInspection reports whether the destination still holds what
+// inspection saw, so a commit never replaces an edit made after it.
+func (file *stagedDeployment) unchangedSinceInspection() (bool, error) {
+	current, err := os.ReadFile(file.destination)
+	if errors.Is(err, os.ErrNotExist) {
+		return !file.exists, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect managed artifact %q: %w", file.path, err)
+	}
+	return file.exists && bytes.Equal(current, file.original), nil
 }
 
 // deploymentTransaction tracks staged files and created directories for commit, rollback, or cleanup.
@@ -302,6 +365,13 @@ func (tx *deploymentTransaction) commit(ctx context.Context, progress func(Deplo
 	for index, file := range tx.files {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		unchanged, err := file.unchangedSinceInspection()
+		if err != nil {
+			return err
+		}
+		if !unchanged {
+			return changedDuringApply(file.path)
 		}
 		if err := renameFile(file.staged, file.destination); err != nil {
 			return fmt.Errorf("install managed artifact %q: %w", file.path, err)

@@ -904,7 +904,12 @@ func (m Model) resultError(err error) string {
 	case m.configuring:
 		retry = ui.TextRetryApply
 	}
-	return ui.Status(ui.StateFailed, err.Error()) + "\n\n" + theme.Label.Render(retry)
+	body := ui.Status(ui.StateFailed, err.Error())
+	// Work committed before the failure still names its backups.
+	if note := runtime.BackedUpNote(m.outcome.Result); note != "" {
+		body += "\n\n" + note
+	}
+	return body + "\n\n" + theme.Label.Render(retry)
 }
 
 // resultSuccess reports a completed operation: what it set up, what it kept, and what to check
@@ -929,6 +934,11 @@ func (m Model) resultSuccess() string {
 		counts += fmt.Sprintf(ui.TextPreservedFmt, len(result.Preserved))
 	}
 	b.WriteString(theme.Label.Render(counts+".") + "\n\n")
+	// A replacement is never silent: earlier content, including an edit made
+	// after the plan was reviewed, is named with where its copy is.
+	if note := runtime.BackedUpNote(result); note != "" {
+		b.WriteString(note + "\n\n")
+	}
 	if result.Verify != nil {
 		b.WriteString(ui.Verification(*result.Verify) + "\n\n")
 	}

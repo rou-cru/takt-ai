@@ -11,6 +11,7 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
 ## Index
 
 - [Variables](<#variables>)
+- [func BackedUpNote\(result ActionResult\) string](<#BackedUpNote>)
 - [func CancelledBody\(result ActionResult\) string](<#CancelledBody>)
 - [func LateCancelNote\(result ActionResult\) string](<#LateCancelNote>)
 - [func NextID\(\) uint64](<#NextID>)
@@ -61,6 +62,15 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
 ```go
 var ErrVersionMismatch = errors.New("the installed version's definitions are not available in this build")
 ```
+
+<a name="BackedUpNote"></a>
+## func BackedUpNote
+
+```go
+func BackedUpNote(result ActionResult) string
+```
+
+BackedUpNote names every replaced file with the copy of its earlier content, so no replacement is silent whatever the outcome \(PR\-INS\-18\). It is empty when nothing was backed up.
 
 <a name="CancelledBody"></a>
 ## func CancelledBody
@@ -185,6 +195,8 @@ type ActionResult struct {
     // Retained, RetainedDir and Incomplete describe the uninstall handoff so kept files stay findable.
     Retained    []string
     RetainedDir string
+    // BackedUp lists replaced files with the copy an install or sync wrote of their earlier content.
+    BackedUp []setup.Backup
     // RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
     RetainedMemory string
     Incomplete     []string
