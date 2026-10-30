@@ -94,6 +94,11 @@ func readSnapshot(workspace, state, session string) (snap history.Snapshot, err 
 		entries = slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != session })
 	}
 	snap = history.BuildSnapshot(entries)
+	// A requested session that has recorded nothing yet still names itself,
+	// so the response always identifies the root it is scoped to (PR-DTUI-17).
+	if session != "" {
+		snap.SessionID = session
+	}
 	// The wire names each admitted agent by its catalog label, the form the
 	// sidebar shows; an instance the catalog does not know keeps its own name.
 	crew, err := catalog.LoadNativeContent()
