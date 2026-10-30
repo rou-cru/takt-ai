@@ -683,16 +683,15 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 		return DeploymentResult{}, err
 	}
 
-	result, err := DeployContextProgress(ctx, rootDir, activePaths, activeArtifacts, progress)
+	result, err := deployObserved(ctx, rootDir, activePaths, activeArtifacts, observedFrom(priors), progress)
 	cancelled := deploymentCancelled(ctx, err)
-	// DeployContextProgress lists what a commit left on disk inside result, so
-	// an error after the commit keeps that inventory beside the error instead
-	// of substituting an empty result.
+	// The inventory is complete before any return: an error after the
+	// commit keeps what is on disk, and its backups, beside the error.
+	markSkippedPaths(&result, skip, targetByPath)
+	markBackedUpPaths(&result, priors)
 	if err != nil && !cancelled {
 		return result, err
 	}
-	markSkippedPaths(&result, skip, targetByPath)
-	markBackedUpPaths(&result, priors)
 	if cancelled && len(result.Changed) == 0 {
 		return result, err
 	}
@@ -709,6 +708,8 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 	return result, err
 }
 
+// deploymentCancelled reports whether err is ctx's own cancellation, which
+// leaves committed work in place rather than failing the apply.
 func deploymentCancelled(ctx context.Context, err error) bool {
 	return err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err())
 }
@@ -786,6 +787,8 @@ func priorStateFor(root string, artifact Artifact, manifest *OwnershipManifest) 
 	return preexistingPriorState(root, artifact.Path)
 }
 
+// managedPriorState carries a managed path's takeover metadata forward,
+// recording what is on disk now and copying a local edit to BackupDir.
 func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorState, error) {
 	state := priorState{preExisting: entry.PreExisting, priorSHA256: entry.PriorSHA256, backupPath: entry.BackupPath, mode: os.FileMode(entry.Mode)}
 	destination, err := SafeJoin(root, filepath.FromSlash(artifactPath))
@@ -795,8 +798,17 @@ func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorSt
 	// Only a regular file is read: Deploy refuses a symlink or other non-file,
 	// so no outside content is ever copied into the backups.
 	current, content, err := managedFileState(destination, entry)
-	if err != nil || current != managedChanged {
-		return state, err
+	if err != nil {
+		return priorState{}, err
+	}
+	switch current {
+	case managedMissing:
+		state.observed = true
+	case managedUnchanged, managedChanged:
+		state.observed, state.observedSHA256 = true, hashOf(content)
+	}
+	if current != managedChanged {
+		return state, nil
 	}
 	// The edit is backed up with the mode it has now, which the user may have
 	// tightened since the takeover.
@@ -812,10 +824,12 @@ func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorSt
 	if !entry.PreExisting {
 		state.priorSHA256, state.backupPath, state.mode = edited.priorSHA256, edited.backupPath, edited.mode
 	}
-	state.backedUp = true
+	state.copied = edited.backupPath
 	return state, nil
 }
 
+// preexistingPriorState records an unmanaged destination and copies a
+// regular file found there to BackupDir before Takt takes it over.
 func preexistingPriorState(root, artifactPath string) (priorState, error) {
 	state := priorState{mode: ManagedFileMode}
 	destination, err := SafeJoin(root, filepath.FromSlash(artifactPath))
@@ -824,6 +838,7 @@ func preexistingPriorState(root, artifactPath string) (priorState, error) {
 	}
 	info, err := os.Lstat(destination)
 	if errors.Is(err, os.ErrNotExist) {
+		state.observed = true
 		return state, nil
 	}
 	if err != nil {
@@ -842,15 +857,17 @@ func preexistingPriorState(root, artifactPath string) (priorState, error) {
 		return priorState{}, err
 	}
 	state.preExisting = true
+	state.observed, state.observedSHA256 = true, state.priorSHA256
 	return state, nil
 }
 
+// backedUpState copies content to BackupDir and describes that copy.
 func backedUpState(root, artifactPath string, content []byte, mode os.FileMode) (priorState, error) {
 	backup, err := backupContent(root, artifactPath, content, mode)
 	if err != nil {
 		return priorState{}, err
 	}
-	return priorState{priorSHA256: hashOf(content), backupPath: backup, mode: mode, backedUp: true}, nil
+	return priorState{priorSHA256: hashOf(content), backupPath: backup, mode: mode, copied: backup}, nil
 }
 
 // backupDirectoryMode keeps preserved copies, which may come from owner-only
@@ -925,11 +942,23 @@ func markSkippedPaths(result *DeploymentResult, skip map[string]bool, targetByPa
 // copied to BackupDir, so a replacement is never silent (PR-INS-18, PR-INS-47).
 func markBackedUpPaths(result *DeploymentResult, priors map[string]priorState) {
 	for _, changed := range result.Changed {
-		if priors[changed].backedUp {
-			result.BackedUp = append(result.BackedUp, changed)
+		if copied := priors[changed].copied; copied != "" {
+			result.BackedUp = append(result.BackedUp, Backup{Path: changed, Copy: copied})
 		}
 	}
-	slices.Sort(result.BackedUp)
+	slices.SortFunc(result.BackedUp, func(a, b Backup) int { return strings.Compare(a.Path, b.Path) })
+}
+
+// observedFrom hands deployment the destination content each prior state
+// observed, so a later edit is refused instead of replaced unpreserved.
+func observedFrom(priors map[string]priorState) observedDestinations {
+	observed := make(observedDestinations, len(priors))
+	for path, state := range priors {
+		if state.observed {
+			observed[path] = state.observedSHA256
+		}
+	}
+	return observed
 }
 
 // buildOwnershipEntries validates and constructs ownership entries without mutating the manifest.
@@ -957,9 +986,13 @@ type priorState struct {
 	priorSHA256 string
 	backupPath  string
 	mode        os.FileMode
-	// backedUp reports that this run copied the content on disk to BackupDir
-	// before replacing it.
-	backedUp bool
+	// copied is the root-relative copy this run wrote to BackupDir of the
+	// content on disk, empty when it wrote none.
+	copied string
+	// observed reports that this run inspected the destination as a regular
+	// file or as absent; observedSHA256 is that file's hash, empty when absent.
+	observed       bool
+	observedSHA256 string
 }
 
 // flattenPlans normalizes and combines plans' managed paths and artifacts with per-path ownership.

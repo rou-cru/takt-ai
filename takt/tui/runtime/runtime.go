@@ -77,8 +77,8 @@ type ActionResult struct {
 	// Retained, RetainedDir and Incomplete describe the uninstall handoff so kept files stay findable.
 	Retained    []string
 	RetainedDir string
-	// BackedUp lists replaced files whose earlier content an install or sync copied to setup.BackupDir.
-	BackedUp []string
+	// BackedUp lists replaced files with the copy an install or sync wrote of their earlier content.
+	BackedUp []setup.Backup
 	// RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
 	RetainedMemory string
 	Incomplete     []string
