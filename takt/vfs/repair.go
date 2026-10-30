@@ -130,7 +130,7 @@ func (f *FS) RepairRecovery(a RepairApproval) (err error) {
 	}
 	f.interrupted["manifest/"+r.ID] = evidence
 	f.recovery = nil
-	f.appendJournalLocked(JournalEntry{Agent: r.Author, Operation: OperationType("recovery"), Outcome: "interrupted"})
+	f.appendJournalLocked(JournalEntry{Agent: r.Author, Operation: OpRecovery, Outcome: "interrupted"})
 	f.finishLocked(&err)
 	return err
 }
@@ -193,7 +193,7 @@ func (f *FS) PreserveInterruptedCycle(cycle, state string, a RepairApproval) (er
 	}
 	f.interrupted["cycle/"+cycle] = evidence
 	delete(f.cycles, cycle)
-	f.appendJournalLocked(JournalEntry{Agent: r.Author, CycleID: cycle, Operation: OperationType("recovery"), Outcome: "interrupted"})
+	f.appendJournalLocked(JournalEntry{Agent: r.Author, CycleID: cycle, Operation: OpRecovery, Outcome: "interrupted"})
 	f.finishLocked(&err)
 	return err
 }

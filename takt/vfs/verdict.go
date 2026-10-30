@@ -80,7 +80,7 @@ func (f *FS) verifyLocked(verifier, author AgentID, callID string, expected uint
 	start := len(f.journal)
 	defer func() {
 		if err != nil && len(f.journal) == start {
-			f.appendJournalLocked(JournalEntry{Agent: verifier, Operation: OperationType("verdict"), Outcome: "denied"})
+			f.appendJournalLocked(JournalEntry{Agent: verifier, Operation: OpVerdict, Outcome: "denied"})
 		}
 		// The verdict is about the author's staged work: it carries that revision.
 		f.correlateLocked(start, verifier, author, callID)
@@ -118,7 +118,7 @@ func (f *FS) verifyLocked(verifier, author AgentID, callID string, expected uint
 	if pass {
 		outcome = "passed"
 	}
-	f.appendJournalLocked(JournalEntry{Agent: verifier, Operation: OperationType("verdict"), Outcome: outcome, AfterHash: deltaHash})
+	f.appendJournalLocked(JournalEntry{Agent: verifier, Operation: OpVerdict, Outcome: outcome, AfterHash: deltaHash})
 	// A failing ordinary gate retains the delta for correction. A GC gate's
 	// coordinator owns the full-cycle discard after this verdict is recorded.
 	return nil
