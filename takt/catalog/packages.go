@@ -404,10 +404,37 @@ func validateVFSCapabilities(a AgentDefinition) error {
 		if err := validateVFSCapabilityList(instance, capabilities); err != nil {
 			return err
 		}
+		if err := validateEvaluatorVFS(instance, a.Role, capabilities); err != nil {
+			return err
+		}
 	}
 	for _, instance := range a.Instances {
 		if _, ok := a.VFSCapabilities(instance); !ok {
 			return fmt.Errorf("agent instance %q: missing explicit VFS capability", instance)
+		}
+	}
+	return nil
+}
+
+// evaluatorVFS bounds the VFS grants of the role classes that judge or
+// critique work (PR-CRW-9, PR-CRW-19): an evaluator never mutates the
+// deliverable it evaluates, so neither class may hold a write, delete,
+// discard, consolidate, or claim capability.
+var evaluatorVFS = map[model.RoleClass][]model.VFSCapability{
+	model.RoleVerification:     {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityInspect, model.VFSCapabilityVerify},
+	model.RoleQualityAssurance: {model.VFSCapabilityBind, model.VFSCapabilityRead, model.VFSCapabilityInspect},
+}
+
+// validateEvaluatorVFS rejects a grant outside evaluatorVFS for an instance
+// of an evaluating role class; other classes are not bounded here.
+func validateEvaluatorVFS(instance string, role model.RoleClass, capabilities []model.VFSCapability) error {
+	allowed, bounded := evaluatorVFS[role]
+	if !bounded {
+		return nil
+	}
+	for _, capability := range capabilities {
+		if !slices.Contains(allowed, capability) {
+			return fmt.Errorf("agent instance %q: role class %s may not hold VFS capability %q; it may hold only %v", instance, role, capability, allowed)
 		}
 	}
 	return nil
