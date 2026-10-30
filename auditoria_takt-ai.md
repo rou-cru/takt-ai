@@ -2,7 +2,7 @@
 
 Se analizó la sesión completa como un único sistema distribuido: el crew, OpenCode, los plugins de Takt, el harness en Go, los MCP instalados, la guía de skills y los mensajes de bloqueo. Los síntomas observados (crecimiento del DAG sin convergencia, avance sin verificación real, saturación de contexto del orquestador y solicitudes de aprobación humana en modo autónomo) obedecen a causas concretas en el código y en las especificaciones operativas.
 
-*   **Commit:** 25899d9 (trunk)
+*   **Commit base de auditoría:** 25899d9 (trunk)
 *   **Fecha:** 2026-10-29
 *   **Auditoría:** 36 hallazgos verificados (28 confirmados, 8 plausibles)
 *   **Sistema objetivo:** 6 planos invariantes - 37 fuentes empíricas
@@ -202,9 +202,9 @@ Todos los hallazgos confirmados o plausibles de la auditoría quedan resueltos p
 | PLANO | HALLAZGOS ABSORBIDOS | MECANISMO ESTRUCTURAL DE SUSTITUCIÓN |
 | :--- | :--- | :--- |
 | **1 Estado y contexto** | H1, H9, H10, H14, H15, P4, P5, P15 | Contrato de proyección mínima y ficha recitada invariante. Recuperación por ID, carga única de skills y unificación estricta de nombres de herramientas. |
-| **2 Sensores** | P1, P2, P3, P13, P14 | Eventos de resultado tipados en bus/historial y comprobaciones computacionales dentro del bucle interno del ejecutor. |
-| **3 Oráculos** | H6, H7, P7, P8, P9, P17 | Definición de hecho respaldada por ejecución; subagente tester E2E por slice; reclasificación de unverified como tarea de entorno técnica. |
-| **4 Control** | H2 | Identidad ligada a entidades unívocas, ledger con contador de estancamiento, topes de admisión en Go y políticas deterministas de cierre de presupuesto. |
+| **2 Sensores** | H2, P1, P2, P3, P13, P14 | Eventos de resultado tipados en bus/historial, Finish sin éxito por defecto y comprobaciones computacionales dentro del bucle interno del ejecutor. |
+| **3 Oráculos** | P8, P17 | Definición de hecho respaldada por ejecución; enrutamiento único de fallos; par ciego condicionado a evidencia de divergencia; reclasificación de unverified como tarea de entorno técnica. |
+| **4 Control** | H6, H7, P7, P9 | Identidad ligada a entidades unívocas, presupuesto de iteraciones de corrección por slice, topes de admisión en Go y políticas deterministas de cierre de presupuesto sin escalado obligatorio. |
 | **5 Flujo** | H8, H11, H12, P6, P10, P11, P12, P16, P18, P19, P21 | Topología según magnitud, ciclo de slice estandarizado, un escritor por ámbito con asesores de solo lectura, alcance congelado y lecturas no bloqueadas. |
 | **6 Autonomía** | H3, H4, H5, H13, H16 | Confinamiento en sandbox con frontera clara, commit por característica verificada y denegaciones informativas que indican la ruta válida. |
 
@@ -223,35 +223,35 @@ La evidencia técnica identifica alternativas sobre componentes del diseño actu
 
 ## 12 Plan de migración secuencial
 
-El orden de implementación responde estrictamente a dependencias funcionales: el control determinista requiere sensores de resultado previos, y la optimización de flujo requiere una línea base de referencia. Cada etapa establece una condición de salida cuantitativa basada en trabajo registrado:
+El orden de implementación responde estrictamente a dependencias funcionales: el control determinista requiere sensores de resultado previos, y la optimización de flujo requiere una línea base de referencia. Cada etapa establece una condición de salida cuantitativa basada en trabajo registrado. Los umbrales son relativos a la línea base E0, se miden sobre sus dos escenarios con ambas familias de modelos y la etapa se acepta solo si se cumplen todas sus condiciones:
 
 *   **E0 - Línea base medible:** Definición de dos escenarios objetivos de referencia (cambio acotado y MVP 2D) evaluados con dos familias de modelos. Métricas: tokens por tarea, ocupación de contexto en el orquestador por dispatch, consultas interactivas por sesión, tasa de características validadas con evidencia computacional, fallos diferidos en E2E, estancamientos y nodos de DAG por característica entregada.
     *   *Condición de salida:* Métricas reproducibles de forma automatizada desde el bus de eventos.
 *   **E1 - Planos 1 y 2: Proyección mínima y eventos tipados de resultado:** Implementación del contrato de proyección en el orquestador y registro de eventos de verificación en el bus y el historial de Go, mitigando la causa primaria de compactación prematura.
     *   *Condición de salida:* La carga por dispatch se independiza del historial de GC y ningún nodo concluye sin resultado computacional asociado.
 *   **E2 - Planos 3 y 6 en paralelo: Oráculos desacoplados y confinamiento en sandbox:** Aislamiento de tests de aceptación en modo solo lectura, integración de subagente tester E2E y delimitación de sandbox para operaciones de shell, dependencias y git.
-    *   *Condición de salida:* Reducción drástica de falsos completados y limitación de consultas al operador exclusivamente a cruces de frontera.
+    *   *Condición de salida:* Falsos completados a lo sumo el 50% de E0 y cero consultas al operador fuera de cruces de frontera.
 *   **E3 - Plano 4: Control determinista:** Activación de contadores de estancamiento, topes de admisión en Go y políticas deterministas ante presupuestos agotados.
     *   *Condición de salida:* Eliminación de sesiones que excedan cotas nominales y resolución autónoma de agotamiento de presupuesto.
 *   **E4 - Plano 5: Flujo y topología proporcional:** Estandarización de ciclos de vertical slice, asignación de un único escritor por ámbito y congelamiento formal de alcance por slice.
-    *   *Condición de salida:* Reducción del ratio de nodos por característica y aceleración del primer slice ejecutable en número de acciones.
+    *   *Condición de salida:* Nodos por característica entregada a lo sumo el 70% de E0 y menos acciones registradas hasta el primer slice ejecutable que en E0.
 *   **E5 - Poda de catálogo y control avanzado (SMC):** Eliminación sistemática de reglas en prosa cuya observancia haya asumido el harness Go (STR-1) y despliegue de controladores SMC sobre telemetría consolidada.
-    *   *Condición de salida:* Reducción del prompt estático del orquestador sin degradación de los índices de convergencia de E0.
+    *   *Condición de salida:* Tokens del prompt estático del orquestador por debajo de E0 y tasa de características validadas con evidencia computacional no inferior a E0.
 
 ---
 
 ## 13 Fuentes y referencias verificadas
 
-1. **ACAD** Cenri et al., "Why Do Multi-Agent LLM Systems Fail?" (MAST) arxiv.org/abs/2503.1357
+1. **ACAD** Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" (MAST) arxiv.org/abs/2503.13657
 2. **ACAD** Kim et al., "Towards a Science of Scaling Agent Systems", arxiv.org/abs/2512.08296 (SWE-bench evaluado en subconjuntos de 20 instancias)
-3. **ACAD** Fourney et al., "Magentic-One" (Microsoft Research) arxiv.org/abs/2411.044
-4. **ACAD** Liu et al., "Budget-Aware Tool-Use Enables Effective Agent Scaling" (BATS) arxiv.org/abs/2511.17005
-5. **ACAD** Lindenbauer et al. (JetBrains), "The Complexity Trap", arxiv.org/abs/2502.1433. El resumen alarga la trayectoria ~13-15% según el modelo; Qwen3-32B constituye la excepción.
+3. **ACAD** Fourney et al., "Magentic-One" (Microsoft Research) arxiv.org/abs/2411.04468
+4. **ACAD** Liu et al., "Budget-Aware Tool-Use Enables Effective Agent Scaling" (BATS) arxiv.org/abs/2511.17006
+5. **ACAD** Lindenbauer et al. (JetBrains), "The Complexity Trap", arxiv.org/abs/2508.21433. El resumen alarga la trayectoria ~13-15% según el modelo; Qwen3-32B constituye la excepción.
 6. **ACAD** Yang et al., "SWE-agent" arxiv.org/abs/2405.15793. 90.5% corresponde al éxito de edición base, reduciéndose a 57.2% tras edición fallida.
 7. **ACAD** Zhong, Raghunathan, Carlini, "ImpossibleBench", arxiv.org/abs/2510.20270
 8. **ACAD** Xia et al., "Agentless", arxiv.org/abs/2407.01489. 27.0% alcanzado con suite de regresión, la votación aislada obtiene 25.67%.
 9. **ACAD** Cuadron et al., "The Danger of Overthinking" arxiv.org/abs/2502.08235
-10. **ACAD** Gloaguen et al. (ETH), "Evaluating AGENTS.md", arxiv.org/abs/2502.119. No incrementa el éxito estadístico y eleva el coste >20%.
+10. **ACAD** Gloaguen et al. (ETH), "Evaluating AGENTS.md", arxiv.org/abs/2602.11988. No incrementa el éxito estadístico y eleva el coste >20%.
 11. **ACAD** Huang et al., "LLMs Cannot Self-Correct Reasoning Yet" (Google DeepMind), arxiv.org/abs/2310.01798
 12. **ACAD** "R2E-Gym", arxiv.org/abs/2504.07164
 13. **ACAD** Du et al., "Context Length Alone Hurts LLM Performance Despite Perfect Retrieval", arxiv.org/abs/2510.05381
