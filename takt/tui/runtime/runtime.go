@@ -77,6 +77,8 @@ type ActionResult struct {
 	// Retained, RetainedDir and Incomplete describe the uninstall handoff so kept files stay findable.
 	Retained    []string
 	RetainedDir string
+	// BackedUp lists replaced files whose earlier content an install or sync copied to setup.BackupDir.
+	BackedUp []string
 	// RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
 	RetainedMemory string
 	Incomplete     []string
@@ -253,7 +255,7 @@ func (adapter Adapter) planRequest(request ActionRequest) (setup.PlanRequest, er
 }
 
 func actionResult(action Action, result lifecycle.LifecycleResult) ActionResult {
-	return ActionResult{Action: action, Changed: result.Changed, Unchanged: result.Unchanged, Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, Actions: result.Actions, Incomplete: result.Incomplete, Outcome: result.Outcome, NotApplied: result.NotApplied, BackupDir: result.BackupDir, ReloadAttempted: result.ReloadAttempted, ReloadError: result.ReloadError}
+	return ActionResult{Action: action, Changed: result.Changed, Unchanged: result.Unchanged, Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, Actions: result.Actions, Incomplete: result.Incomplete, BackedUp: result.BackedUp, Outcome: result.Outcome, NotApplied: result.NotApplied, BackupDir: result.BackupDir, ReloadAttempted: result.ReloadAttempted, ReloadError: result.ReloadError}
 }
 
 // executeCorrectDrift restores selected paths from the installed record so other paths survive.

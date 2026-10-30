@@ -139,6 +139,7 @@ const (
 	TextUnconfirmed         = "Some checks could not run, so those capabilities are unconfirmed, not failed."
 	TextCannotGuaranteeFmt  = "Takt AI cannot guarantee %s while your versions are kept."
 	TextUseDrift            = "Use Check for drift from the menu to restore these files later."
+	TextBackedUpFmt         = "Replaced files whose earlier content was copied to %s:"
 	TextTakeEffectFmt       = "Changes take effect the next time you start %s."
 
 	TextUninstallModifiedTitle = "Uninstall · Modified files"

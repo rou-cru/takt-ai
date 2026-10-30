@@ -692,6 +692,7 @@ func applyPlans(ctx context.Context, rootDir string, plans []TargetPlan, skip ma
 		return result, err
 	}
 	markSkippedPaths(&result, skip, targetByPath)
+	markBackedUpPaths(&result, priors)
 	if cancelled && len(result.Changed) == 0 {
 		return result, err
 	}
@@ -811,6 +812,7 @@ func managedPriorState(root, artifactPath string, entry OwnershipEntry) (priorSt
 	if !entry.PreExisting {
 		state.priorSHA256, state.backupPath, state.mode = edited.priorSHA256, edited.backupPath, edited.mode
 	}
+	state.backedUp = true
 	return state, nil
 }
 
@@ -848,7 +850,7 @@ func backedUpState(root, artifactPath string, content []byte, mode os.FileMode) 
 	if err != nil {
 		return priorState{}, err
 	}
-	return priorState{priorSHA256: hashOf(content), backupPath: backup, mode: mode}, nil
+	return priorState{priorSHA256: hashOf(content), backupPath: backup, mode: mode, backedUp: true}, nil
 }
 
 // backupDirectoryMode keeps preserved copies, which may come from owner-only
@@ -919,6 +921,17 @@ func markSkippedPaths(result *DeploymentResult, skip map[string]bool, targetByPa
 	slices.Sort(result.Retained)
 }
 
+// markBackedUpPaths reports every replaced path whose earlier content this run
+// copied to BackupDir, so a replacement is never silent (PR-INS-18, PR-INS-47).
+func markBackedUpPaths(result *DeploymentResult, priors map[string]priorState) {
+	for _, changed := range result.Changed {
+		if priors[changed].backedUp {
+			result.BackedUp = append(result.BackedUp, changed)
+		}
+	}
+	slices.Sort(result.BackedUp)
+}
+
 // buildOwnershipEntries validates and constructs ownership entries without mutating the manifest.
 // Callers reject bad input before any artifact reaches disk.
 func buildOwnershipEntries(artifacts []Artifact, targetByPath map[string]string, priors map[string]priorState) ([]OwnershipEntry, error) {
@@ -944,6 +957,9 @@ type priorState struct {
 	priorSHA256 string
 	backupPath  string
 	mode        os.FileMode
+	// backedUp reports that this run copied the content on disk to BackupDir
+	// before replacing it.
+	backedUp bool
 }
 
 // flattenPlans normalizes and combines plans' managed paths and artifacts with per-path ownership.

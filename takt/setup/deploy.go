@@ -71,6 +71,10 @@ type DeploymentResult struct {
 	// edited locally. The operation succeeds, but behavior relying on them is
 	// not guaranteed.
 	Retained []string `json:"retained,omitempty"`
+	// BackedUp lists changed paths whose content on disk when the deployment
+	// applied, including edits made after the plan was validated, was copied
+	// to BackupDir before being replaced.
+	BackedUp []string `json:"backedUp,omitempty"`
 }
 
 // DeploymentProgress reports one temporary staging or committed artifact.

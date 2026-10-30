@@ -929,6 +929,15 @@ func (m Model) resultSuccess() string {
 		counts += fmt.Sprintf(ui.TextPreservedFmt, len(result.Preserved))
 	}
 	b.WriteString(theme.Label.Render(counts+".") + "\n\n")
+	// A replacement is never silent: earlier content, including an edit made
+	// after the plan was reviewed, is named with where its copy is.
+	if len(result.BackedUp) > 0 {
+		b.WriteString(theme.Label.Render(fmt.Sprintf(ui.TextBackedUpFmt, setup.BackupDir)))
+		for _, path := range result.BackedUp {
+			b.WriteString("\n  " + theme.Label.Render(path))
+		}
+		b.WriteString("\n\n")
+	}
 	if result.Verify != nil {
 		b.WriteString(ui.Verification(*result.Verify) + "\n\n")
 	}
