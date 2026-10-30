@@ -12,7 +12,7 @@
 
 ## 3. Entry points
 
-**PR-DTUI-4.** The view is reachable as a full route through a command with an optional key binding, and as a compact graph in the session sidebar. It renders fan-out, fan-in, multiple roots, and parallel branches, and shows the capture states current, stale, unavailable, and uncertain.
+**PR-DTUI-4.** The view is reachable as a full route through a command with an optional key binding, and as a compact graph in the session sidebar. It renders fan-out, fan-in, multiple roots, and parallel branches, and shows the capture states current, empty, stale, unavailable, and uncertain, and marks unmonitored execution.
 
 ## 4. Graph layout
 
@@ -62,7 +62,7 @@
 
 **PR-DTUI-16.** Takt MUST expose a read-only snapshot query that takes the workspace, the private state, the root session, and the output format, and changes nothing.
 
-**PR-DTUI-17.** The root-session parameter scopes the projection to one root session; a session that has recorded nothing yet is an empty DAG, never an earlier session's graph. The TUI passes the root of the session it is showing and drops the displayed graph when that session changes.
+**PR-DTUI-17.** The root-session parameter scopes the projection to one root session; a session that has recorded nothing yet is an empty DAG, never an earlier session's graph. The TUI passes the root of the session it is showing and drops the displayed graph when that session changes. A response scoped to another session is discarded, and the displayed revision resets with the session.
 
 **PR-DTUI-18.** The response MUST contain:
 
@@ -77,7 +77,7 @@
 | Edges | One record per dependency, with source and target unit identities. |
 | Activities | Always present, empty when no activities exist. Each record carries activity identity, kind, state, and the applicable in-flight condition or outcome. |
 
-**PR-DTUI-19.** The projection revision MUST be monotonic for a projection scope. The TUI MUST replace its snapshot only when the received revision is newer than the displayed revision.
+**PR-DTUI-19.** The projection revision MUST be monotonic for a projection scope and advances with every history entry the projection reflects, so every render-visible projection field changes only with the revision. The view's own capture health, stale or unavailable, is local and applies regardless of revision. The TUI MUST replace its snapshot only when the received revision is newer than the displayed revision.
 
 **PR-DTUI-20.** The history position is an ordering and provenance value. It MUST NOT be interpreted as elapsed time or a timeout.
 
@@ -103,6 +103,8 @@
 
 ## 11. Failure behavior
 
+**PR-DTUI-26.** Telemetry or TUI failure MUST NOT interrupt the governed execution path.
+
 **PR-DTUI-27.** Each failure condition has its required display.
 
 | Condition | Required display |
@@ -112,8 +114,7 @@
 | Query fails after a valid snapshot | Keep graph; mark it `stale` |
 | Takt cannot provide a projection | Mark `unavailable`; do not infer state |
 | Projection contains uncertain execution | Render the affected node as `uncertain` |
+| Projection contains unmonitored execution | Render the affected node as `unmonitored`, never as hung or failed, and do not attribute it to an agent |
 | Empty valid plan | Render an explicit empty DAG state |
 | Invalid topology | Reject the snapshot and display a projection error; do not render a partial graph |
 | OpenCode v2 event stream is unavailable | Continue from Takt snapshot; do not attribute failure to an agent |
-
-**PR-DTUI-26.** Telemetry or TUI failure MUST NOT interrupt the governed execution path.

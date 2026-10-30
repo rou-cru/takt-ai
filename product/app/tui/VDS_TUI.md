@@ -8,6 +8,8 @@ The TUI installs and adjusts the Takt configuration for OpenCode v2 sessions.
 
 | Contract field | Surface application |
 | --- | --- |
+| Users and tasks | People who install, configure, and maintain Takt for OpenCode on their own machine; §4 maps their tasks. |
+| Brand assets | The canonical logo of brand §4.1 and its approved terminal representation (`PR-UX-2A`); compact and monochrome variants keep recognition. No other variant is approved for this surface. |
 | Principles | B01–B08. |
 | Patterns | L03–L09. L01/L02 are not primary TUI task patterns. |
 | Tokens and native equivalents | Semantic tokens mapped in §3; terminal font and cell spacing, not web typography or pixel geometry. |

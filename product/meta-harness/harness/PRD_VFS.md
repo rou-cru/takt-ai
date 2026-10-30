@@ -17,7 +17,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-VFS-STG-1 | All file mutation actions (create, update, patch, delete) initiated by VFS-governed execution specialists MUST be captured and applied within the VFS layer prior to any physical disk mutation. The orchestrator's native operations are outside this requirement. |
+| PR-VFS-STG-1 | All file mutation actions (create, update, patch, delete) initiated by VFS-governed execution specialists MUST be captured and applied within the VFS layer before any physical disk mutation. The orchestrator's native operations are outside this requirement. |
 | PR-VFS-STG-2 | For VFS-governed specialist work, the physical filesystem MUST remain untouched during in-flight task execution until explicit consolidation conditions are met. This does not restrict the orchestrator's direct native operations. |
 | PR-VFS-STG-3 | A staged read resolves against an identified physical base overlaid with the authorized staged deltas. The returned view identifies its revision. Concurrent changes do not alter an inspection already in progress. |
 | PR-VFS-STG-4 | Reverting an erroneous agent mutation MUST be performed purely within VFS by discarding the corresponding virtual transaction delta, requiring zero destructive operations on the host filesystem. |
@@ -35,7 +35,7 @@
 | PR-VFS-COL-3 | Concurrency conflicts intercepted by VFS MUST NOT leak partial or corrupted state into the physical filesystem. |
 | PR-VFS-COL-4 | The trusted orchestrator MUST be able to inspect claims (key, target instance, root session, work unit, scope, and pending/active status), atomically assign a requested scope before target binding, and explicitly revoke ownership by key. The harness validates only against existing held/pending claims and refuses conflicts with exact evidence; it does not plan, transfer, expire, or clean up claims automatically. |
 | PR-VFS-COL-5 | Revoking or releasing a claim follows `PR-VFS-STG-8`. Claims MUST persist across closing and reopening the VFS. |
-| PR-VFS-COL-6 | Each VFS operation requires its exact instance capability: bind, claim listing, claim assignment, claim release, read, write, delete, discard, verify, or consolidate. Role classes do not grant VFS capabilities. Assignment requires bind and write; a mutation requires ownership of its path. Read authorization is independent of write ownership. |
+| PR-VFS-COL-6 | Each VFS operation requires its exact instance capability: bind, claim listing, claim assignment, claim release, read, inspect, write, delete, discard, verify, or consolidate. Inspect reads the recorded journal and execution history, which hold no file content. Role classes do not grant VFS capabilities. The orchestrator requires claim assignment to assign a scope; before the scope is reserved, the target instance MUST hold bind and write. A mutation requires ownership of its path. Read authorization is independent of write ownership. |
 | PR-VFS-COL-7 | A unit declares the materialized or staged views its inspection needs. The harness grants those views before dispatch, excluding protected oracle or implementation content for that reader. A request for unavailable content returns the missing scope and the call to request a valid view. It does not impose a read mutex on the workspace. |
 
 ### 1.4 Physical Consolidation (1:1 Materialization)
@@ -54,7 +54,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-VFS-JRN-1 | The harness MUST maintain an immutable, append-only Action Journal recording every operation performed against the VFS. |
-| PR-VFS-JRN-2 | Each journal entry MUST record: timestamp, authoring agent identifier/role, target file path, operation type (read/create/patch/delete/flush/rollback), and cryptographic content hashes (before/after). |
+| PR-VFS-JRN-1 | The harness MUST maintain an immutable, append-only Action Journal recording every operation that reads, changes, judges, or restores VFS content. Bindings and claims are recorded by the claim registry, not the journal. |
+| PR-VFS-JRN-2 | Each journal entry MUST record: timestamp, authoring agent identifier/role, target file path when the operation addresses one file, operation type (read, create, patch, delete, shell, verdict, recovery, flush, or rollback), and cryptographic content hashes (before/after). |
 | PR-VFS-JRN-3 | The Action Journal MUST be accessible for post-mortem analysis, orchestrator replanning, and verification audit without exposing sensitive credentials. |
-| PR-VFS-JRN-4 | Shell journaling records one transaction per command, with its input revision, resulting delta hashes, identity, and command outcome. It does not observe every internal read or system call. A failing command may leave a retained, unverified delta. |
+| PR-VFS-JRN-4 | Shell journaling records one transaction per command, with its input revision, resulting delta hashes, identity, and command outcome, and no single target path: the staged delta its hashes identify carries the per-path changes. It does not observe every internal read or system call. A failing command may leave a retained, unverified delta. |

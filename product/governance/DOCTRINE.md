@@ -31,4 +31,4 @@
 
 ## 4. Resolution of doubts
 
-When two structural norms pull apart, the reading that leaves less structure standing prevails.
+When two structural norms pull apart, the reading that leaves less structure standing prevails, unless it removes a guarantee that a product requirement or `STR-15`/`STR-16` requires; that guarantee stands.

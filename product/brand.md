@@ -176,7 +176,7 @@ Application rules:
 - The web focus outline is 2 px with a 2 px gap from the control. The gap exposes the neutral background; it is not evaluated against the button fill alone.
 - A disabled action keeps an accessible explanation. Do not use global opacity or faint color as the only signal of unavailability.
 - Brand color may identify the logo, header, and structural regions of the product, not only commercial presentations. Its extent answers to composition and does not hide states or content. A validated text pair is required, e.g. `P100` on `P900`.
-- Accent identifies brand as well as intent and orientation; it needs to represent no action to have function. Its structural use MUST be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
+- Accent identifies brand, intent, and orientation. It MAY mark an action's intent, and it has a function without marking one. Its structural use MUST be consistent and distinct from focus and selection. Green is not the general CTA color; red does not mean "an option Takt advises against."
 - In the dark TUI, the signature uses Petrol `P400`, only on the terminal canvas; `brand.ink` keeps its shared value. `P300` stays the `focus.ring` value and is not used for the signature.
 
 ### 5.4 Verified contrast and limits

@@ -31,7 +31,7 @@
 | --- | --- |
 | PR-SET-9 | The ordinary default path MUST let the user review the OpenCode v2 scope, inspect the prepared setup, and authorize installation without choosing every capability. It SHOULD require only 2–3 meaningful decisions or confirmations; screens with no decision MUST NOT add “next” steps. Optional personalization returns to the review with choices intact. |
 | PR-SET-10 | After setup, the application MUST provide a quick route to further configuration or exit to use the installed stack. For OpenCode v2, it MUST also offer immediate optional model assignment. |
-| PR-SET-32 | After applying the plan, setup MUST verify the installed result rather than infer it from the files written: each installed MCP integration MUST be contacted to confirm it responds, and the Takt orchestrator MUST be confirmed selectable as the session agent. The result MUST report each affected capability as verified, not verified, or not verifiable, and MUST NOT present a not-verified result as ready to work. |
+| PR-SET-32 | After applying the plan, setup MUST verify the installed result rather than infer it from the files written: each installed MCP integration MUST be confirmed connected by OpenCode, which requires a completed protocol handshake, not configuration or a running process alone, and the Takt orchestrator MUST be confirmed selectable as the session agent. The result MUST report each affected capability as verified, not verified, or not verifiable, and MUST NOT present a not-verified result as ready to work. |
 | PR-SET-11 | The intended successful OpenCode v2 handoff MUST have the Takt orchestrator selected as the session agent and the installed MCP integrations functional, with no additional Takt setup required. |
 
 ### 1.5 Custom Capability Composition
@@ -52,7 +52,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-SET-19 | The TUI MUST open on the task-selection menu whether or not Takt is already installed. Installation detection MAY change which entries the menu offers under `PR-SET-33`, but MUST NOT replace this entry point with an automatic onboarding or reconfiguration flow. |
+| PR-SET-19 | The TUI MUST open on the task-selection menu whether Takt is already installed or not. Installation detection MAY change which entries the menu offers under `PR-SET-33`, but MUST NOT replace this entry point with an automatic onboarding or reconfiguration flow. |
 | PR-SET-33 | The task-selection menu MUST offer `Install` when no installation exists. For an existing installation its task vocabulary is `Configure installation`, `Assign models`, `Check for drift` (PR-SET-22), `Upgrade`, `Uninstall`, and `Diagnostics`, followed by `Quit`. Tasks that do not apply to the current environment are omitted; a relevant but temporarily unavailable task remains discoverable with its reason. |
 | PR-SET-20 | As the user navigates a configuration flow, the application MUST show the current installation state relevant to that flow and use it as the starting point for adjustments. Returning to configure an existing installation MUST NOT implicitly reset its selections to the Takt default stack. |
 | PR-SET-21 | Adjusting an existing installation MUST start at the chosen object or scope, preserve unrelated configuration, and apply the proposed changes once without repeating onboarding or a redundant confirmation. The result MUST identify when the configuration takes effect in OpenCode v2; returning from a nested edit MUST preserve the parent choices and position. |
@@ -69,7 +69,7 @@
 | --- | --- |
 | PR-SET-23 | The official integration MUST support global installation for the user of OpenCode v2. Project-scoped installation is not supported and MUST NOT be offered as a setup operation. |
 | PR-SET-24 | Working with a repository from the Docker integration environment MUST NOT be represented as support for project-scoped Takt installation. |
-| PR-SET-26 | Takt MUST support ARM64 on macOS and standard Linux distributions, using Ubuntu Server as the Linux reference environment. The minimum supported versions are the most recent Ubuntu LTS and the most recent generally available macOS major release. Support for a newer major release requires its own validation evidence; its publication alone does not establish support. AMD64, other Linux distributions such as Fedora, and WSL are expected compatibility targets, not required release-blocking support targets. Compatibility expectations MUST NOT be presented as verified support. Native Windows is unsupported. |
+| PR-SET-26 | Takt MUST support ARM64 on macOS and standard Linux distributions, using Ubuntu Server as the Linux reference environment. The minimum supported versions are the most recent Ubuntu LTS and the most recent generally available macOS major release that have validation evidence for the release; publication alone does not establish support. AMD64, other Linux distributions such as Fedora, and WSL are expected compatibility targets, not required release-blocking support targets. Compatibility expectations MUST NOT be presented as verified support. Native Windows is unsupported. |
 
 ### 1.9 Acquisition Responsibility
 
@@ -77,7 +77,7 @@
 | --- | --- |
 | PR-SET-28 | Takt MUST acquire and configure the selected MCP integrations and other straightforward supporting assets needed for their OpenCode v2 integration, within the authorized installation plan. The curated capability catalog MUST NOT introduce complex dependency setup or substantial environment changes beyond those required to integrate with OpenCode v2. |
 | PR-SET-29 | Completing Takt TUI operations MUST NOT require the user to provide credentials or API tokens, nor assume that such secrets are already available. Setup MUST NOT introduce a credential-entry or account-provisioning step as a prerequisite for completing those operations. |
-| PR-SET-30 | LLM authentication MUST remain the responsibility of OpenCode v2 when agents are invoked. Takt setup MUST NOT require LLM authentication to be completed in order to configure the stack, and completion of setup MUST NOT be represented as proof that OpenCode v2 has authenticated successfully with an LLM provider. |
+| PR-SET-30 | LLM authentication MUST remain the responsibility of OpenCode v2 when agents are invoked. Takt setup MUST NOT require LLM authentication to be completed to configure the stack, and completion of setup MUST NOT be represented as proof that OpenCode v2 has authenticated successfully with an LLM provider. |
 
 ### 1.10 Execution-Policy Delivery
 
