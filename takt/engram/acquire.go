@@ -66,6 +66,9 @@ var (
 // managedBinaryKey is the manifest slash-path for the managed copy.
 const managedBinaryKey = ".takt-ai/bin/engram"
 
+// ManagedBinaryKey returns the root-relative slash path of the managed copy.
+func ManagedBinaryKey() string { return managedBinaryKey }
+
 // ManagedBinaryPath returns where Takt installs its own engram copy.
 func ManagedBinaryPath(root string) string {
 	return filepath.Join(root, filepath.FromSlash(managedBinaryKey))

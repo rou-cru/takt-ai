@@ -40,7 +40,10 @@ const npmPackage = "@colbymchenry/codegraph"
 
 // managedMarkerKey is a regular file inside the managed install; the ownership manifest tracks it
 // because it holds files, not directories, and the rest of the tree is removed with it.
-const managedMarkerKey = ".takt-ai/codegraph/node_modules/@colbymchenry/codegraph/npm-shim.js"
+const managedMarkerKey = managedPrefixKey + "/node_modules/@colbymchenry/codegraph/npm-shim.js"
+
+// managedPrefixKey is the root-relative slash path of the managed install.
+const managedPrefixKey = ".takt-ai/codegraph"
 
 var (
 	// lookPath finds binaries so tests can swap in a fake path.
@@ -62,9 +65,12 @@ var runCommand = func(ctx context.Context, binary, workspace string, args ...str
 // ManagedMarkerKey returns the ownership-manifest key for the managed install, so tests assert the same slash-path lifecycle records.
 func ManagedMarkerKey() string { return managedMarkerKey }
 
+// ManagedPrefixKey returns the root-relative slash path of the managed install.
+func ManagedPrefixKey() string { return managedPrefixKey }
+
 // ManagedPrefix is where Takt installs its own copy: <root>/.takt-ai/codegraph
 func ManagedPrefix(root string) string {
-	return filepath.Join(root, ".takt-ai", "codegraph")
+	return filepath.Join(root, filepath.FromSlash(managedPrefixKey))
 }
 
 // ManagedBinaryPath is the launcher npm links inside the managed prefix.
