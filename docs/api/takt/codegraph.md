@@ -17,6 +17,7 @@ Package codegraph keeps the codebase\-exploration MCP wiring in one place so eve
 - [func ManagedBinaryPath\(root string\) string](<#ManagedBinaryPath>)
 - [func ManagedMarkerKey\(\) string](<#ManagedMarkerKey>)
 - [func ManagedPrefix\(root string\) string](<#ManagedPrefix>)
+- [func ManagedPrefixKey\(\) string](<#ManagedPrefixKey>)
 - [func Remove\(homeDir string\) \(model.InjectionResult, error\)](<#Remove>)
 - [func Resolve\(root string\) \(string, bool\)](<#Resolve>)
 - [func VerifyVersion\(binary string\) \(string, error\)](<#VerifyVersion>)
@@ -83,6 +84,15 @@ func ManagedPrefix(root string) string
 ```
 
 ManagedPrefix is where Takt installs its own copy: \<root\>/.takt\-ai/codegraph
+
+<a name="ManagedPrefixKey"></a>
+## func ManagedPrefixKey
+
+```go
+func ManagedPrefixKey() string
+```
+
+ManagedPrefixKey returns the root\-relative slash path of the managed install.
 
 <a name="Remove"></a>
 ## func Remove

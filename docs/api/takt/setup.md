@@ -68,6 +68,10 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [type RetentionResult](<#RetentionResult>)
   - [func ApplyUninstallRetention\(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time\) \(RetentionResult, error\)](<#ApplyUninstallRetention>)
 - [type RiskAcceptance](<#RiskAcceptance>)
+- [type SetAsideEntry](<#SetAsideEntry>)
+  - [func SetAside\(root, rel string\) \(SetAsideEntry, error\)](<#SetAside>)
+  - [func \(entry SetAsideEntry\) Backup\(\) Backup](<#SetAsideEntry.Backup>)
+  - [func \(entry SetAsideEntry\) Restore\(\) error](<#SetAsideEntry.Restore>)
 - [type TargetPlan](<#TargetPlan>)
   - [func BuildTargetPlans\(request PlanRequest\) \(\[\]TargetPlan, \[\]catalog.Removal, error\)](<#BuildTargetPlans>)
 - [type UninstallResult](<#UninstallResult>)
@@ -877,6 +881,44 @@ type RiskAcceptance struct {
     Impact string `json:"impact"`
 }
 ```
+
+<a name="SetAsideEntry"></a>
+## type SetAsideEntry
+
+SetAsideEntry is managed content moved into BackupDir before Takt replaces it, so a replacement that does not go ahead can put it back.
+
+```go
+type SetAsideEntry struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="SetAside"></a>
+### func SetAside
+
+```go
+func SetAside(root, rel string) (SetAsideEntry, error)
+```
+
+SetAside moves the file or directory at root/rel into BackupDir with a single rename. An existing backup at that path is never replaced: the copy gains a UTC timestamp suffix instead.
+
+<a name="SetAsideEntry.Backup"></a>
+### func \(SetAsideEntry\) Backup
+
+```go
+func (entry SetAsideEntry) Backup() Backup
+```
+
+Backup reports the set\-aside path with the copy that holds its content.
+
+<a name="SetAsideEntry.Restore"></a>
+### func \(SetAsideEntry\) Restore
+
+```go
+func (entry SetAsideEntry) Restore() error
+```
+
+Restore removes whatever now occupies the set\-aside path, such as a partial replacement, and renames the copy back into place.
 
 <a name="TargetPlan"></a>
 ## type TargetPlan
