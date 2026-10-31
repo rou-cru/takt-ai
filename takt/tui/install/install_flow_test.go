@@ -130,8 +130,10 @@ func TestInstallConflictFlow(t *testing.T) {
 	if m.Run().Busy() {
 		t.Error("model is still busy after the result was consumed")
 	}
-	if got := viewText(m); got == "" {
-		t.Error("result View() is empty")
+	// Replacing the pre-existing file is never silent: the summary names it
+	// and where its earlier content was copied.
+	if got := viewText(m); !strings.Contains(got, conflictPath) || !strings.Contains(got, setup.BackupDir) {
+		t.Errorf("result View() = %q, want it to name the backed-up %q and %q", got, conflictPath, setup.BackupDir)
 	}
 	if !setup.IsInstalled(root) {
 		t.Error("IsInstalled() after a completed install = false, want true")

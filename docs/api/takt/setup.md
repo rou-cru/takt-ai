@@ -31,6 +31,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func UpgradeAvailable\(installed string\) bool](<#UpgradeAvailable>)
 - [func ValidateComponents\(names \[\]string\) \(\[\]model.ComponentID, error\)](<#ValidateComponents>)
 - [type Artifact](<#Artifact>)
+- [type Backup](<#Backup>)
 - [type ConflictEntry](<#ConflictEntry>)
   - [func DetectConflicts\(rootDir string, plans \[\]TargetPlan\) \(\[\]ConflictEntry, error\)](<#DetectConflicts>)
 - [type DeploymentProgress](<#DeploymentProgress>)
@@ -67,6 +68,10 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [type RetentionResult](<#RetentionResult>)
   - [func ApplyUninstallRetention\(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time\) \(RetentionResult, error\)](<#ApplyUninstallRetention>)
 - [type RiskAcceptance](<#RiskAcceptance>)
+- [type SetAsideEntry](<#SetAsideEntry>)
+  - [func SetAside\(root, rel string\) \(SetAsideEntry, error\)](<#SetAside>)
+  - [func \(entry SetAsideEntry\) Backup\(\) Backup](<#SetAsideEntry.Backup>)
+  - [func \(entry SetAsideEntry\) Restore\(\) error](<#SetAsideEntry.Restore>)
 - [type TargetPlan](<#TargetPlan>)
   - [func BuildTargetPlans\(request PlanRequest\) \(\[\]TargetPlan, \[\]catalog.Removal, error\)](<#BuildTargetPlans>)
 - [type UninstallResult](<#UninstallResult>)
@@ -369,6 +374,21 @@ type Artifact struct {
 }
 ```
 
+<a name="Backup"></a>
+## type Backup
+
+Backup pairs a replaced path with the copy of its earlier content.
+
+```go
+type Backup struct {
+    // Path is the replaced managed path.
+    Path string `json:"path"`
+    // Copy is the root-relative path of the copy under BackupDir, including
+    // any hash suffix that keeps an older copy intact.
+    Copy string `json:"copy"`
+}
+```
+
 <a name="ConflictEntry"></a>
 ## type ConflictEntry
 
@@ -450,6 +470,10 @@ type DeploymentResult struct {
     // edited locally. The operation succeeds, but behavior relying on them is
     // not guaranteed.
     Retained []string `json:"retained,omitempty"`
+    // BackedUp lists changed paths whose content on disk when the deployment
+    // applied, including edits made after the plan was validated, was copied
+    // to BackupDir before being replaced, each with the copy written for it.
+    BackedUp []Backup `json:"backedUp,omitempty"`
 }
 ```
 
@@ -857,6 +881,44 @@ type RiskAcceptance struct {
     Impact string `json:"impact"`
 }
 ```
+
+<a name="SetAsideEntry"></a>
+## type SetAsideEntry
+
+SetAsideEntry is managed content moved into BackupDir before Takt replaces it, so a replacement that does not go ahead can put it back.
+
+```go
+type SetAsideEntry struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="SetAside"></a>
+### func SetAside
+
+```go
+func SetAside(root, rel string) (SetAsideEntry, error)
+```
+
+SetAside moves the file or directory at root/rel into BackupDir with a single rename. An existing backup at that path is never replaced: the copy gains a UTC timestamp suffix instead.
+
+<a name="SetAsideEntry.Backup"></a>
+### func \(SetAsideEntry\) Backup
+
+```go
+func (entry SetAsideEntry) Backup() Backup
+```
+
+Backup reports the set\-aside path with the copy that holds its content.
+
+<a name="SetAsideEntry.Restore"></a>
+### func \(SetAsideEntry\) Restore
+
+```go
+func (entry SetAsideEntry) Restore() error
+```
+
+Restore removes whatever now occupies the set\-aside path, such as a partial replacement, and renames the copy back into place.
 
 <a name="TargetPlan"></a>
 ## type TargetPlan

@@ -14,3 +14,13 @@ cadence:
 limits:
   findings: 3
   files: 5
+
+# Automatic demotion (PR-MNT-32). A mandate class whose attributed reversions
+# exceed this fraction of registered work (never wall time) drops to
+# proposal-only. Up to a quarter reads as review friction; above it the
+# class's changes are failing to stick.
+demotion:
+  reversion_rate: 0.25
+  # Registered work below this count is too small a denominator for a rate
+  # to mean anything (one reedit out of two units is noise, not a pattern).
+  min_registered_work: 8

@@ -892,7 +892,7 @@ type MandateRateDecision struct {
 func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
 ```
 
-EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above reversionRateThreshold it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires; the caller records the demotion in the coordinator.
+EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above the policy's demotion reversion rate it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires; the caller records the demotion in the coordinator.
 
 <a name="MandateReversionRateInput"></a>
 ## type MandateReversionRateInput
@@ -1223,6 +1223,15 @@ type TriggerPolicy struct {
         MutationsPerCycle int `yaml:"mutations_per_cycle"`
         MaxDeferrals      int `yaml:"max_deferrals"`
     }   `yaml:"cadence"`
+    // Demotion holds PR-MNT-32's automatic-demotion parameters.
+    Demotion struct {
+        // ReversionRate is the fraction of registered work a mandate class's
+        // attributed reversions may reach before the class is demoted.
+        ReversionRate float64 `yaml:"reversion_rate"`
+        // MinRegisteredWork is the smallest registered-work count a rate
+        // decision may be taken on.
+        MinRegisteredWork int64 `yaml:"min_registered_work"`
+    }   `yaml:"demotion"`
 }
 ```
 

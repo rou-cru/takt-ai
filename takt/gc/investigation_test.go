@@ -13,16 +13,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package gc
+package gc_test
 
 import (
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/obs"
 )
 
 // newRateTestBus opens a workspace-local store and a bus attached to it, so
-// EvaluateMandateReversionRate has real persisted events to read back, the
+// gc.EvaluateMandateReversionRate has real persisted events to read back, the
 // same store/bus wiring the rest of the session uses.
 func newRateTestBus(t *testing.T) (*obs.Store, *obs.Bus, *obs.Clock) {
 	t.Helper()
@@ -53,7 +54,7 @@ func seedRegisteredWork(t *testing.T, bus *obs.Bus, clock *obs.Clock, n int) {
 
 // seedReedits attributes n reversions to mandate, via the same helper N3
 // wired for PR-MNT-31.
-func seedReedits(t *testing.T, bus *obs.Bus, clock *obs.Clock, mandate MandateClass, n int) {
+func seedReedits(t *testing.T, bus *obs.Bus, clock *obs.Clock, mandate gc.MandateClass, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
 		if err := obs.PublishCycleReeditEvent(bus, clock, "agent-a", "cycle-1", string(mandate), "hash-1", "wu-1"); err != nil {
@@ -62,16 +63,19 @@ func seedReedits(t *testing.T, bus *obs.Bus, clock *obs.Clock, mandate MandateCl
 	}
 }
 
-func eligibleFixture(mandate MandateClass) Finding {
-	return Finding{Mandate: mandate, Tool: "vet", ToolVersion: "1", Rule: "r1", Evidence: "e1"}
+func eligibleFixture(mandate gc.MandateClass) gc.Finding {
+	return gc.Finding{ID: "f1", Mandate: mandate, Tool: "vet", ToolVersion: "1", Rule: "r1", Evidence: "e1"}
 }
+
+// confirmedFixture is the confirmed investigation that authorizes eligibleFixture.
+var confirmedFixture = []gc.Investigation{{FindingID: "f1", Outcome: "confirmed", Evidence: "traced the call site"}}
 
 func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
-	seedRegisteredWork(t, bus, clock, 20)          // denominator = 20
-	seedReedits(t, bus, clock, MandateDeadCode, 2) // 2/20 = 10%, below the 25% threshold
+	seedRegisteredWork(t, bus, clock, 20)             // denominator = 20
+	seedReedits(t, bus, clock, gc.MandateDeadCode, 2) // 2/20 = 10%, below the 25% threshold
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDeadCode, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDeadCode, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,17 +85,17 @@ func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) 
 	if d.Reversions != 2 || d.RegisteredWork != 22 {
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
-	if !eligibleFinding(eligibleFixture(MandateDeadCode), nil) {
-		t.Fatal("finding must stay eligible when the mandate is not demoted")
+	if !gc.AuthorizedFinding(eligibleFixture(gc.MandateDeadCode), confirmedFixture, nil) {
+		t.Fatal("a confirmed finding must stay authorized when its mandate is not demoted")
 	}
 }
 
 func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
-	seedRegisteredWork(t, bus, clock, 10)             // denominator = 10 registered-work events...
-	seedReedits(t, bus, clock, MandateDuplication, 5) // ...plus 5 reedits = 15 registered, 5/15 = 33%, above 25%
+	seedRegisteredWork(t, bus, clock, 10)                // denominator = 10 registered-work events...
+	seedReedits(t, bus, clock, gc.MandateDuplication, 5) // ...plus 5 reedits = 15 registered, 5/15 = 33%, above 25%
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDuplication, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDuplication, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +111,10 @@ func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *test
 func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
 	// Only 2 registered-work events total, both reedits: 100% rate, but far
-	// below minRegisteredWorkForRateDecision, so it must not fire.
-	seedReedits(t, bus, clock, MandateDocumentation, 2)
+	// below the policy's min_registered_work, so it must not fire.
+	seedReedits(t, bus, clock, gc.MandateDocumentation, 2)
 
-	d, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateDocumentation, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDocumentation, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,9 +126,9 @@ func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T)
 func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
 	seedRegisteredWork(t, bus, clock, 10)
-	seedReedits(t, bus, clock, MandateComplexity, 5)
+	seedReedits(t, bus, clock, gc.MandateComplexity, 5)
 
-	if _, err := EvaluateMandateReversionRate(store, bus, clock, MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: MandateComplexity, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"}); err != nil {
+	if _, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateComplexity, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"}); err != nil {
 		t.Fatal(err)
 	}
 

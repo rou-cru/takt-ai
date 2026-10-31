@@ -40,6 +40,15 @@ type TriggerPolicy struct {
 		MutationsPerCycle int `yaml:"mutations_per_cycle"`
 		MaxDeferrals      int `yaml:"max_deferrals"`
 	} `yaml:"cadence"`
+	// Demotion holds PR-MNT-32's automatic-demotion parameters.
+	Demotion struct {
+		// ReversionRate is the fraction of registered work a mandate class's
+		// attributed reversions may reach before the class is demoted.
+		ReversionRate float64 `yaml:"reversion_rate"`
+		// MinRegisteredWork is the smallest registered-work count a rate
+		// decision may be taken on.
+		MinRegisteredWork int64 `yaml:"min_registered_work"`
+	} `yaml:"demotion"`
 }
 
 // LoadTriggerPolicy returns the shared embedded policy; callers must not mutate the result.
@@ -59,6 +68,11 @@ func parseTriggerPolicy(data []byte) (TriggerPolicy, error) {
 	c := p.Cadence
 	if c.UnitsPerCycle <= 0 || c.MutationsPerCycle <= 0 || c.MaxDeferrals <= 0 {
 		return TriggerPolicy{}, fmt.Errorf("gc trigger policy: cadence parameters must be positive")
+	}
+	d := p.Demotion
+	// Written as a positive range check so NaN, which fails every comparison, is rejected too.
+	if !(d.ReversionRate > 0 && d.ReversionRate < 1) || d.MinRegisteredWork <= 0 {
+		return TriggerPolicy{}, fmt.Errorf("gc trigger policy: demotion needs a reversion rate in (0, 1) and a positive minimum registered work")
 	}
 	return p, nil
 }

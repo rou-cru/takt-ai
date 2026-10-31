@@ -31,6 +31,24 @@ func CancelledBody(result ActionResult) string {
 		recovery += ui.TextBackupKeptIntro + result.BackupDir + "."
 	}
 	b.WriteString("\n" + theme.Label.Render(recovery))
+	if note := BackedUpNote(result); note != "" {
+		b.WriteString("\n\n" + note)
+	}
+	return b.String()
+}
+
+// BackedUpNote names every replaced file with the copy of its earlier
+// content, so no replacement is silent whatever the outcome (PR-INS-18).
+// It is empty when nothing was backed up.
+func BackedUpNote(result ActionResult) string {
+	if len(result.BackedUp) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(theme.Label.Render(ui.TextBackedUp))
+	for _, backup := range result.BackedUp {
+		b.WriteString("\n  " + theme.Label.Render(backup.Path+" → "+backup.Copy))
+	}
 	return b.String()
 }
 

@@ -313,7 +313,7 @@ func (f *FS) recoverLocked() (err error) {
 		return err
 	}
 	f.recovery = nil
-	f.appendJournalLocked(JournalEntry{Agent: m.Agent, Operation: OperationType("recovery"), Outcome: "restored"})
+	f.appendJournalLocked(JournalEntry{Agent: m.Agent, Operation: OpRecovery, Outcome: "restored"})
 	f.finishLocked(&err)
 	return err
 }

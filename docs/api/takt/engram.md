@@ -14,6 +14,7 @@ Package engram keeps memory\-server wiring in one place so every agent target sh
 - [Variables](<#variables>)
 - [func Acquire\(ctx context.Context, root string\) \(string, error\)](<#Acquire>)
 - [func Inject\(homeDir, engramCommand string\) \(model.InjectionResult, error\)](<#Inject>)
+- [func ManagedBinaryKey\(\) string](<#ManagedBinaryKey>)
 - [func ManagedBinaryPath\(root string\) string](<#ManagedBinaryPath>)
 - [func MemorySkillPath\(authorID string\) string](<#MemorySkillPath>)
 - [func NativePluginFootprints\(homeDir string\) \[\]string](<#NativePluginFootprints>)
@@ -68,6 +69,15 @@ func Inject(homeDir, engramCommand string) (model.InjectionResult, error)
 ```
 
 Inject adds memory support to OpenCode.
+
+<a name="ManagedBinaryKey"></a>
+## func ManagedBinaryKey
+
+```go
+func ManagedBinaryKey() string
+```
+
+ManagedBinaryKey returns the root\-relative slash path of the managed copy.
 
 <a name="ManagedBinaryPath"></a>
 ## func ManagedBinaryPath

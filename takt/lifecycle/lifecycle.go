@@ -64,6 +64,9 @@ type LifecycleResult struct {
 	Incomplete []string
 	// Retained lists planned paths kept as they are (setup.DeploymentResult.Retained).
 	Retained []string
+	// BackedUp lists replaced paths with the copy of their earlier content
+	// under setup.BackupDir (setup.DeploymentResult.BackedUp).
+	BackedUp []setup.Backup
 	// ReloadAttempted and ReloadError describe the post-deployment OpenCode
 	// handoff separately from file deployment. A reload failure is functional
 	// evidence, not a rollback trigger: the files are already valid on disk.
@@ -230,28 +233,39 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err := runtime.handshake(ctx, request); err != nil {
 		return LifecycleResult{}, err
 	}
-	// Engram is acquired before anything is written: a missing prerequisite leaves root untouched.
-	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Engram memory capability"})
-	engramCommand, err := acquireEngram(ctx, rootDir)
-	if Cancelled(ctx, err) {
-		return LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil
-	}
-	if err != nil {
-		return LifecycleResult{}, fmt.Errorf("engram memory capability unavailable: requires the engram binary %s or newer, which is not on PATH and could not be installed: %w", engram.EngramVersion, err)
-	}
-	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking CodeGraph capability"})
-	codegraphCommand, err := acquireCodegraph(ctx, rootDir)
-	if Cancelled(ctx, err) {
-		return LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil
-	}
-	if err != nil {
-		return LifecycleResult{}, fmt.Errorf("codegraph capability unavailable: requires CodeGraph %s or newer, which is not on PATH and could not be installed: %w", codegraph.CodegraphVersion, err)
-	}
 	end, err := setup.BeginOperation(rootDir, action)
 	if err != nil {
 		return LifecycleResult{}, err
 	}
 	defer end()
+	// Acquiring a prerequisite replaces a stale managed copy, so that copy is
+	// set aside into the backups first and restored when nothing is applied.
+	var aside []setup.SetAsideEntry
+	notApplied := func(result LifecycleResult, err error) (LifecycleResult, error) {
+		return result, errors.Join(err, restoreSetAside(aside))
+	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Engram memory capability"})
+	if aside, err = setAsideStale(rootDir, engram.ManagedBinaryKey(), engram.Resolve, aside); err != nil {
+		return notApplied(LifecycleResult{}, err)
+	}
+	engramCommand, err := acquireEngram(ctx, rootDir)
+	if Cancelled(ctx, err) {
+		return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
+	}
+	if err != nil {
+		return notApplied(LifecycleResult{}, fmt.Errorf("engram memory capability unavailable: requires the engram binary %s or newer, which is not on PATH and could not be installed: %w", engram.EngramVersion, err))
+	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking CodeGraph capability"})
+	if aside, err = setAsideStale(rootDir, codegraph.ManagedPrefixKey(), codegraph.Resolve, aside); err != nil {
+		return notApplied(LifecycleResult{}, err)
+	}
+	codegraphCommand, err := acquireCodegraph(ctx, rootDir)
+	if Cancelled(ctx, err) {
+		return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
+	}
+	if err != nil {
+		return notApplied(LifecycleResult{}, fmt.Errorf("codegraph capability unavailable: requires CodeGraph %s or newer, which is not on PATH and could not be installed: %w", codegraph.CodegraphVersion, err))
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Preparing managed files", Total: len(plannedPaths(plans))})
 	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, runtime.Progress, preserve...)
 	// Files are written from here on: a later failure still reports them
@@ -263,15 +277,52 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 		NotApplied: result.NotApplied,
 		Incomplete: result.Incomplete,
 		Retained:   result.Retained,
+		BackedUp:   result.BackedUp,
 		Outcome:    OutcomeCompleted,
 	}
-	if Cancelled(ctx, err) {
+	cancelled := Cancelled(ctx, err)
+	if len(result.Changed) == 0 && (err != nil || cancelled) {
+		if cancelled {
+			return notApplied(recordCancelled(rootDir, request, deployed, started))
+		}
+		return notApplied(deployed, err)
+	}
+	for _, entry := range aside {
+		deployed.BackedUp = append(deployed.BackedUp, entry.Backup())
+	}
+	if cancelled {
 		return recordCancelled(rootDir, request, deployed, started)
 	}
 	if err != nil {
 		return deployed, err
 	}
 	return runtime.finishInstall(ctx, rootDir, request, engramCommand, codegraphCommand, deployed)
+}
+
+// setAsideStale moves the managed prerequisite at rel into the backups when
+// its acquisition is about to replace it: the managed copy exists and no
+// compatible binary resolves. It returns aside with the new entry appended.
+func setAsideStale(rootDir, rel string, resolve func(string) (string, bool), aside []setup.SetAsideEntry) ([]setup.SetAsideEntry, error) {
+	if _, err := os.Lstat(filepath.Join(rootDir, filepath.FromSlash(rel))); err != nil {
+		return aside, nil
+	}
+	if _, found := resolve(rootDir); found {
+		return aside, nil
+	}
+	entry, err := setup.SetAside(rootDir, rel)
+	if err != nil {
+		return aside, err
+	}
+	return append(aside, entry), nil
+}
+
+// restoreSetAside puts every set-aside prerequisite back, latest first.
+func restoreSetAside(aside []setup.SetAsideEntry) error {
+	var errs []error
+	for _, entry := range slices.Backward(aside) {
+		errs = append(errs, entry.Restore())
+	}
+	return errors.Join(errs...)
 }
 
 func (runtime Runtime) handshake(ctx context.Context, request setup.PlanRequest) error {

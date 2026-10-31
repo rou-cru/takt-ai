@@ -138,6 +138,21 @@ func TestCancelledBodyPartialListsAppliedAndNotApplied(t *testing.T) {
 	}
 }
 
+// TestCancelledBodyNamesBackupCopies checks that a partial cancellation names
+// each replaced file with the copy of its earlier content (PR-INS-18).
+func TestCancelledBodyNamesBackupCopies(t *testing.T) {
+	result := runtime.ActionResult{
+		Outcome:    lifecycle.OutcomeCancelledPartial,
+		Changed:    []string{"a.txt"},
+		NotApplied: []string{"b.txt"},
+		BackedUp:   []setup.Backup{{Path: "a.txt", Copy: setup.BackupDir + "/a.txt.1a2b3c4d"}},
+	}
+	got := runtime.CancelledBody(result)
+	if !strings.Contains(got, setup.BackupDir+"/a.txt.1a2b3c4d") {
+		t.Errorf("CancelledBody() = %q, want the copy written for a.txt", got)
+	}
+}
+
 func TestLateCancelNote(t *testing.T) {
 	if got := runtime.LateCancelNote(runtime.ActionResult{}); got != "" {
 		t.Errorf("LateCancelNote() with no cancel requested = %q, want empty", got)
