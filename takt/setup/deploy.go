@@ -316,7 +316,7 @@ func (p pendingDeployment) holds(want string, unchanged bool, content []byte) bo
 
 // changedDuringApply reports a destination edited while the apply ran.
 func changedDuringApply(path string) error {
-	return fmt.Errorf("%q changed while the installation was being applied; nothing was replaced, review and apply again", path)
+	return fmt.Errorf("%q changed while the installation was being applied; the installation was stopped and rolled back, review and apply again", path)
 }
 
 // stagedDeployment is one artifact written to temp files, awaiting rename into place.
@@ -333,7 +333,8 @@ type stagedDeployment struct {
 }
 
 // unchangedSinceInspection reports whether the destination still holds what
-// inspection saw, so a commit never replaces an edit made after it.
+// inspection saw. Detection is best-effort: rename replaces unconditionally, so
+// a write landing between this check and the rename is not detected.
 func (file *stagedDeployment) unchangedSinceInspection() (bool, error) {
 	current, err := os.ReadFile(file.destination)
 	if errors.Is(err, os.ErrNotExist) {
