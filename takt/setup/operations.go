@@ -203,6 +203,25 @@ func DetectConflicts(rootDir string, plans []TargetPlan) ([]ConflictEntry, error
 	return conflicts, nil
 }
 
+// RejectKeptIncompatible refuses an apply that would keep a file which cannot
+// work with it: a conflict of ImpactIncompatible whose on-disk version stays
+// because the caller preserved its path, or, when syncing, because it is a
+// user-edited managed file. The error names the file and the way out; nothing
+// is written. Restoring Takt's version (not preserving) is always applicable.
+func RejectKeptIncompatible(rootDir string, plans []TargetPlan, syncing bool, preserve ...string) error {
+	conflicts, err := DetectConflicts(rootDir, plans)
+	if err != nil {
+		return err
+	}
+	for _, conflict := range conflicts {
+		kept := slices.Contains(preserve, conflict.Path) || (syncing && conflict.Reason == "user-edited")
+		if kept && conflict.Impact == ImpactIncompatible {
+			return fmt.Errorf("keeping %s cannot work with this update: %s %s", conflict.Path, conflict.Consequence, conflict.Alternative)
+		}
+	}
+	return nil
+}
+
 func detectArtifactConflict(rootDir string, artifact Artifact, manifest *OwnershipManifest, accepted map[string]RiskAcceptance) (ConflictEntry, bool, error) {
 	entry, managed := manifest.Entries[artifact.Path]
 	conflict, current, include, err := readConflict(rootDir, artifact, entry, managed)

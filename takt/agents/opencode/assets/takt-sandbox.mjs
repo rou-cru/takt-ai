@@ -1,10 +1,3 @@
-// Takt sandbox adapter — managed by takt-ai; edits are overwritten on sync.
-// This mirrors takt/runtime/sandbox/adapter.mjs byte for byte (go:embed can
-// only reach files inside this package's directory tree, so the canonical
-// source outside it cannot be embedded directly; keep the two in sync by
-// hand until something automates the copy). The canonical copy carries its
-// own test at takt/runtime/sandbox/probe.test.mjs.
-//
 // The Go coordinator supplies private projection paths, never model arguments.
 import { SandboxManager, getDefaultWritePaths } from '@anthropic-ai/sandbox-runtime';
 import { isAbsolute } from 'node:path';
