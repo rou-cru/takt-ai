@@ -14,6 +14,7 @@ describe("shared Go/TypeScript wire contracts", () => {
     expect(contracts.vfs_bind).toMatchObject({ ok: true, key: expect.any(String), attempt_id: expect.any(String), invariants_version: expect.any(String) })
     expect(contracts.memory_record).toMatchObject({ ok: true, result: { id: expect.any(Number), deduplicated: false } })
     expect(contracts.memory_close).toMatchObject({ ok: true, result: { end_anchor_id: expect.any(Number), entries: expect.any(Number) } })
+    expect(contracts.memory_search).toMatchObject({ ok: true, result: { results: expect.any(Array), omitted_superseded: expect.any(Number) } })
     expect(contracts.memory_error).toMatchObject({ ok: false, error: expect.any(String) })
     expect(contracts.coordinator).toMatchObject({ version: expect.any(Number), cycle: { phase: "collect", sessions: { collector: expect.any(String), verifier: expect.any(String) }, plan: { cycle_id: expect.any(String), mandate_class: expect.any(String) } } })
     expect(contracts.handoff).toMatchObject({ result: "Standard", additional_context: expect.any(String), extra_artifacts: expect.any(Array), memory: expect.any(Array) })

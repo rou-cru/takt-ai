@@ -13,9 +13,11 @@ metadata:
 evidence, and constraints. Never re-adopt it under identical evidence. Neither ambiguity nor
 a misfit makes bounded the default.
 
-**Consult when the tree cannot settle the choice.** State what is known, what is unclear,
-and the concrete alternatives and risks. Await the user's answer before starting the
-affected phase. Do not guess or silently choose either route.
+**Resolve technical uncertainty within authority.** Use the competent specialist, or
+investigate directly when the user's instruction covers it. Keep effective budgets and
+ownership limits. Reconsider the tree only with new evidence. If no justifiable route
+remains, or the choice belongs to the user, present evidence and alternatives and await
+direction on that decision.
 
 **Name an instruction conflict; never override it.** A directly requested bounded route that
 reports a misfit is explained to the user, and direction is obtained before relaxing the

@@ -34,8 +34,13 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 // read now, not accepted from a plugin preflight. Native execution is outside
 // this command's lifetime and therefore outside the workspace lock.
 func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
-	if prior, ok := h.Project().Executions[r.Dispatch]; ok && (prior.Ready || prior.Settled) {
-		return map[string]any{"execution": prior, "launchable": false}, nil
+	if prior, ok := h.Project().Executions[r.Dispatch]; ok {
+		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
+			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
+		}
+		if prior.Ready || prior.Settled {
+			return map[string]any{"execution": prior, "launchable": false}, nil
+		}
 	}
 	if r.Dispatch == "" || r.Caller == "" || r.Agent == "" || r.Owner == "" {
 		return nil, errors.New("dispatch: exact host call identity and harness instance required; retry the same subagent call, or run takt-ai setup sync to re-deploy the plugin")
@@ -68,9 +73,6 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		return nil, fmt.Errorf("launch preparation refused for root %s unit %s dispatch %s: %w; %s (use dispatch_inputs or claim_assign to correct a declaration if named)", r.Session, r.Event, r.Dispatch, errors.Join(cause, cleanup, finish), continuation)
 	}
 	if prior, exists := h.Project().Executions[r.Dispatch]; exists {
-		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
-			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
-		}
 		if !slices.Equal(prior.Inputs, consumed) {
 			return compensate(fmt.Errorf("inputs changed during interrupted preparation for unit %s; dispatch_inputs now declares a different set", r.Event))
 		}

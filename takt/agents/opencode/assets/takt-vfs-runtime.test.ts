@@ -930,8 +930,8 @@ describe("maintenance cycle", () => {
       await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This maintenance cycle does not use that tool")
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
-      // The verifier keeps what an ordinary verification uses: web and Engram reads.
-      for (const tool of ["webfetch", "websearch", "engram_mem_search", "engram_mem_get_observation"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
+      // The verifier keeps what an ordinary verification uses: web and memory reads.
+      for (const tool of ["webfetch", "websearch", "memory_search", "engram_mem_get_observation"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
 
       vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "gcv" } } as OpenCodeEvent)
       await sleep(QUIET_MS)

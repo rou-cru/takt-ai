@@ -35,7 +35,7 @@ var everyCheck = []string{
 	"deployment:manifest", "deployment:opencode",
 	"engram:binary", "engram:version", "engram:reachable", "engram:native-plugin", "engram:diagnostics", "engram:needs-review",
 	"codegraph:binary", "codegraph:version",
-	"opencode:version", "opencode:vfs-plugin", "opencode:memory-plugin", "opencode:sandbox-adapter",
+	"opencode:version", "opencode:vfs-plugin", "opencode:memory-plugin", "opencode:sandbox-adapter", "opencode:dag-plugin",
 	"disk:space",
 }
 
@@ -51,8 +51,8 @@ func TestRunHealthyMachinePassesEveryCheck(t *testing.T) {
 	for _, name := range everyCheck {
 		expect(t, checks, name, passMark, "", "")
 	}
-	expect(t, checks, "deployment:manifest", passMark, "3 managed files deployed (opencode)", "")
-	for _, want := range []string{"Summary: 19 passed, 0 failed, 0 warnings", "Status:  healthy"} {
+	expect(t, checks, "deployment:manifest", passMark, "4 managed files deployed (opencode)", "")
+	for _, want := range []string{"Summary: 20 passed, 0 failed, 0 warnings", "Status:  healthy"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report missing %q:\n%s", want, out)
 		}
@@ -331,6 +331,7 @@ func TestRunOpenCodePlugins(t *testing.T) {
 		"opencode:vfs-plugin":      model.VFSPluginFile,
 		"opencode:memory-plugin":   "takt-memory.ts",
 		"opencode:sandbox-adapter": "takt-sandbox.mjs",
+		"opencode:dag-plugin":      "takt-dag/tui.tsx",
 	}
 	t.Run("missing", func(t *testing.T) {
 		h := newHost(t)

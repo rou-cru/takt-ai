@@ -287,3 +287,9 @@ var taktDagPluginSource string
 func TaktDagPluginArtifact(taktAIBinary string) Artifact {
 	return taktPluginArtifact(taktDagPluginSource, "takt-dag/tui.tsx", taktAIBinary)
 }
+
+// TaktPluginIDs lists Takt's required server plugins in /api/plugin.
+// The TUI-only DAG plugin is not exposed by that server inventory.
+func TaktPluginIDs() []string {
+	return []string{"takt.memory", "takt.vfs"}
+}

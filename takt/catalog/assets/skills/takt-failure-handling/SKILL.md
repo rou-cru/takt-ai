@@ -1,10 +1,10 @@
 ---
 name: takt-failure-handling
-description: "A unit failed beyond a minor in-place retry, or an escalation trigger appeared. Explains declared recoveries, the escalation procedure, and what follows exhausted recoveries."
+description: "A failure exceeds an in-place retry, or a recovery or diagnosis signal appears. Bound technical diagnosis and reserve user escalation for value and authority decisions."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt Failure Handling
@@ -16,14 +16,14 @@ most {{policy.recovery_max_actions}}) and an attempt budget (at most {{policy.re
 with `dispatch_close_recovery`.
 Reversibility is confined to unconsolidated governed state, never promised for external effects.
 
-## Escalation
+## Recovery and escalation
 
-On an escalation trigger:
+On a recovery or diagnosis signal:
 1. Freeze the affected path.
 2. Confirm termination of the active work (a delegation that will never return, because its session is gone or will not end, is ended with `dispatch_abandon` on its dispatch); restore (`dispatch_restore` with the objective) only the scope a declared recovery abandoned, and freeze and report any other staged work.
 3. Preserve unrelated progress.
-4. Report evidence and alternatives.
-5. Await direction.
+4. Route technical uncertainty to its competent specialist, or investigate directly when the user's instruction covers it. Keep existing authority, ownership and effective budgets.
+5. Consult the user with evidence and alternatives for value decisions, required authorization, irreversible effects, or no justifiable continuation; await direction only on that decision. Follow any explicit user policy requiring consultation.
 
 For an active VFS claim, releasing and discarding follow takt-vfs-coordination.
 

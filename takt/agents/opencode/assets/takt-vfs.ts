@@ -316,7 +316,7 @@ const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknow
 // collector stages its authorized change.
 const GC_LANE_TOOLS: Record<string, string[]> = {
   collector: ["gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change", "read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record"],
-  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_search", "engram_mem_get_observation", "engram_mem_context", "memory_record"],
+  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_get_observation", "engram_mem_context", "memory_record", "memory_search"],
 }
 
 // gcSessionPermissions is the ruleset a GC child session is created with: only

@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import memoryPlugin, { closeResult, isObject, recordResult } from "./takt-memory"
+import memoryPlugin, { closeResult, isObject, recordResult, renderSearch, searchResult } from "./takt-memory"
 
 const contracts = JSON.parse(readFileSync(resolve(import.meta.dir, "../testdata/contracts.json"), "utf8"))
 type MemoryContextEvent = { agent: string; sessionID: string; tools: Record<string, MemoryTool | undefined>; system: Array<{ type: string; text: string }> }
@@ -21,7 +21,7 @@ describe("plugin setup", () => {
         stdin: { write(value: string) { request = JSON.parse(value) }, end() {} },
         get stdout() {
           requests.push({ command, request })
-          const result = command === "record" ? { id: 42, deduplicated: false } : { end_anchor_id: 43, entries: 1 }
+          const result = command === "record" ? { id: 42, deduplicated: false } : command === "search" ? { results: [], omitted_superseded: 0 } : { end_anchor_id: 43, entries: 1 }
           return JSON.stringify({ ok: true, result })
         },
         stderr: "",
@@ -44,8 +44,10 @@ describe("plugin setup", () => {
       expect((await tools.get("memory_record")!.execute({ nature: "observation", scope: "project", title: "title", content: "content" }, context)).content).toBe("Recorded #42")
       expect((await tools.get("memory_continue_session")!.execute({ previous_session_id: "prior" }, context)).content).toBe("Will continue prior from the first new entry")
       expect((await tools.get("memory_close_session")!.execute({ objective: "objective", state: "done" }, context)).content).toBe("Closed session as #43 with 1 entries")
-      expect(requests.map(({ command }) => command)).toEqual(["record", "continue", "close"])
+      expect((await tools.get("memory_search")!.execute({ query: "cache", scope: "project" }, context)).content).toBe("No memories found")
+      expect(requests.map(({ command }) => command)).toEqual(["record", "continue", "close", "search"])
       expect(requests[0].request).toMatchObject({ author: "takt", caller_session: "root", directory: "/workspace", title: "title" })
+      expect(requests[3].request).toEqual({ query: "cache", scope: "project", directory: "/workspace" })
     } finally {
       runtime.Bun.spawn = originalSpawn
     }
@@ -71,6 +73,32 @@ describe("recordResult", () => {
     expect(() => recordResult({ id: "1", deduplicated: false })).toThrow("takt-ai memory record returned an invalid result")
     expect(() => recordResult({ id: 1, deduplicated: "no" })).toThrow("takt-ai memory record returned an invalid result")
     expect(() => recordResult(null)).toThrow("takt-ai memory record returned an invalid result")
+  })
+})
+
+describe("searchResult", () => {
+  test("matches the real memory_search wire contract", () => {
+    expect(searchResult(contracts.memory_search.result)).toEqual(contracts.memory_search.result)
+  })
+  test("rejects a malformed hit or omitted count", () => {
+    expect(() => searchResult({ results: [{ id: 0, type: "t", title: "t", preview: "p" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
+    expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", disputed: "yes" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
+    expect(() => searchResult({ results: [], omitted_superseded: -1 })).toThrow("takt-ai memory search returned an invalid result")
+    expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", project: 1 }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
+  })
+})
+
+describe("renderSearch", () => {
+  test("renders one marked line per entry and the omitted count", () => {
+    expect(renderSearch(searchResult(contracts.memory_search.result))).toBe(
+      "#42 [decision] [dev] Cache for ten minutes — Cache policy. [disputed] [exception]\n1 superseded entries omitted; pass include_history to see them",
+    )
+  })
+  test("collapses a multi-line preview and marks history", () => {
+    expect(renderSearch({ results: [{ id: 7, type: "proposal", title: "Old", preview: "a\n\nb", superseded: true }], omitted_superseded: 0 })).toBe("#7 [proposal] Old — a b [superseded]")
+  })
+  test("names the workspace of a hit that carries one", () => {
+    expect(renderSearch({ results: [{ id: 9, type: "session_anchor", title: "Session s started", preview: "p", project: "demo" }], omitted_superseded: 0 })).toBe("#9 [session_anchor] (demo) Session s started — p")
   })
 })
 
@@ -379,7 +407,7 @@ describe("effective memory catalog", () => {
     const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
     try {
       const event = await memory.context("spec")
-      expect(Object.keys(event.tools)).toEqual(["memory_record"])
+      expect(Object.keys(event.tools)).toEqual(["memory_record", "memory_search"])
       expect(JSON.stringify(event)).not.toContain("memory_continue_session")
       expect(JSON.stringify(event)).not.toContain("memory_close_session")
       expect(memory.requests[0].request).toEqual({ author: "spec", caller_session: "root", directory: "/workspace" })
@@ -390,7 +418,7 @@ describe("effective memory catalog", () => {
     try {
       for (const [agent, session] of [["simplify", "gcc"], ["verify", "gcv"]]) {
         const event = await memory.context(agent, session)
-        expect(Object.keys(event.tools)).toEqual(["memory_record"])
+        expect(Object.keys(event.tools)).toEqual(["memory_record", "memory_search"])
         expect(event.system).toEqual([])
       }
     } finally { memory.stop() }
@@ -400,20 +428,20 @@ describe("effective memory catalog", () => {
     const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "not-authority" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
     try {
       const granted = await memory.context("architect", "child")
-      expect(Object.keys(granted.tools)).toHaveLength(3)
+      expect(Object.keys(granted.tools)).toHaveLength(4)
       expect(JSON.stringify(granted.system)).toContain("memory_continue_session")
       expect(memory.requests[0].request.caller_session).toBe("child")
       holder = "pm"
       const revoked = await memory.context("architect", "child")
-      expect(Object.keys(revoked.tools)).toEqual(["memory_record"])
+      expect(Object.keys(revoked.tools)).toEqual(["memory_record", "memory_search"])
       expect(revoked.system).toEqual([])
-      expect(Object.keys((await memory.context("pm")).tools)).toHaveLength(3)
+      expect(Object.keys((await memory.context("pm")).tools)).toHaveLength(4)
     } finally { memory.stop() }
   })
   test("uncertain authority fails closed and never widens native grants", async () => {
     for (const reply of [{ code: 1, out: "failure" }, { out: JSON.stringify({ ok: true, result: {} }) }]) {
       const memory = await startMemory({ respond: () => reply })
-      try { expect(Object.keys((await memory.context("takt")).tools)).toEqual(["memory_record"]) } finally { memory.stop() }
+      try { expect(Object.keys((await memory.context("takt")).tools)).toEqual(["memory_record", "memory_search"]) } finally { memory.stop() }
     }
     const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record", "memory_continue_session", "memory_close_session"] }) }) })
     try { expect((await memory.context("takt", "root", ["memory_record"])).system).toEqual([]) } finally { memory.stop() }

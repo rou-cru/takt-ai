@@ -35,7 +35,7 @@ const ContractSkillID = "takt-memory-contract"
 <a name="EngramVersion"></a>EngramVersion is the minimum Engram release Takt configures and the one it installs.
 
 ```go
-const EngramVersion = "2.1.0"
+const EngramVersion = "3.6.0"
 ```
 
 <a name="MemorySkillsDir"></a>MemorySkillsDir is the OpenCode V2 directory where skills deploy.

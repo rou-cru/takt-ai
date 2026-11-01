@@ -41,6 +41,7 @@ func TestOpenCodeContracts(t *testing.T) {
 	check("vfs_bind", response{OK: true, Key: "bind-opaque", AttemptID: "1", InvariantsVersion: "inv1:abc"})
 	check("memory_record", memoryEnvelope{OK: true, Result: memory.RecordResult{ID: 42, Deduplicated: false}})
 	check("memory_close", memoryEnvelope{OK: true, Result: memory.CloseResult{EndAnchorID: 43, Entries: 2}})
+	check("memory_search", memoryEnvelope{OK: true, Result: memory.SearchResult{Results: []memory.SearchHit{{ID: 42, Type: "decision", Title: "[dev] Cache for ten minutes", Preview: "Cache policy.", Disputed: true, Exception: true}}, OmittedSuperseded: 1}})
 	check("memory_error", memoryEnvelope{OK: false, Error: "session is closed"})
 	check("coordinator", gc.Coordinator{Version: 1, Units: 3, Mutations: 1, Cursor: 2, NextMandate: 1, Cycle: &gc.Cycle{Plan: gc.Plan{Request: gc.Request{SessionID: "root-session", CycleID: "cycle-1", Mandate: gc.MandateComplexity}, Delta: []gc.Change{{Path: "src/a.go", Introduced: true}}, Closure: []string{"src/a.go", "src/b.go"}, Reachability: gc.ReachCodegraph}, Phase: "collect", Scope: []string{"src/a.go"}, Sessions: map[string]string{"collector": "session-collector", "verifier": "session-verifier"}}})
 	check("handoff", map[string]any{"result": "Standard", "additional_context": "Implemented the requested change.", "extra_artifacts": []string{"result.md"}, "memory": []int64{42}, "artifact_verified": true, "session_entries": []int64{42, 43}})

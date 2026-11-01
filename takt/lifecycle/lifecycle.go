@@ -238,6 +238,10 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 		return LifecycleResult{}, err
 	}
 	defer end()
+	// Decided under the operation lock, before any prerequisite or file is written.
+	if err := setup.RejectKeptIncompatible(rootDir, plans, action == "sync", preserve...); err != nil {
+		return LifecycleResult{}, err
+	}
 	// Acquiring a prerequisite replaces a stale managed copy, so that copy is
 	// set aside into the backups first and restored when nothing is applied.
 	var aside []setup.SetAsideEntry
