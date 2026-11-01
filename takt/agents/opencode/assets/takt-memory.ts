@@ -30,7 +30,7 @@ const str = (description?: string) => (description ? { type: "string", descripti
 type MemoryResponse = { code: number; ok: boolean; result?: unknown; error?: string }
 type RecordResult = { id: number; deduplicated: boolean }
 type CloseResult = { end_anchor_id: number; entries: number }
-type SearchHit = { id: number; type: string; title: string; preview: string; superseded?: boolean; disputed?: boolean; exception?: boolean }
+type SearchHit = { id: number; type: string; title: string; preview: string; project?: string; superseded?: boolean; disputed?: boolean; exception?: boolean }
 type SearchResult = { results: SearchHit[]; omitted_superseded: number }
 
 export function isObject(value: unknown): value is Record<string, unknown> {
@@ -56,7 +56,7 @@ const isFlag = (value: unknown) => value === undefined || typeof value === "bool
 function isSearchHit(value: unknown): value is SearchHit {
   return isObject(value) && typeof value.id === "number" && Number.isSafeInteger(value.id) && value.id > 0 &&
     typeof value.type === "string" && typeof value.title === "string" && typeof value.preview === "string" &&
-    isFlag(value.superseded) && isFlag(value.disputed) && isFlag(value.exception)
+    (value.project === undefined || typeof value.project === "string") && isFlag(value.superseded) && isFlag(value.disputed) && isFlag(value.exception)
 }
 
 export function searchResult(value: unknown): SearchResult {
@@ -71,7 +71,8 @@ export function searchResult(value: unknown): SearchResult {
 export function renderSearch(result: SearchResult): string {
   const lines = result.results.map(hit => {
     const marks = (["superseded", "disputed", "exception"] as const).filter(mark => hit[mark]).map(mark => ` [${mark}]`).join("")
-    return `#${hit.id} [${hit.type}] ${hit.title} — ${hit.preview.replace(/\s+/g, " ").trim()}${marks}`
+    const project = hit.project ? ` (${hit.project})` : ""
+    return `#${hit.id} [${hit.type}]${project} ${hit.title} — ${hit.preview.replace(/\s+/g, " ").trim()}${marks}`
   })
   if (lines.length === 0) lines.push("No memories found")
   if (result.omitted_superseded > 0) lines.push(`${result.omitted_superseded} superseded entries omitted; pass include_history to see them`)

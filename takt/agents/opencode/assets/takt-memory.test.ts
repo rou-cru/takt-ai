@@ -84,6 +84,7 @@ describe("searchResult", () => {
     expect(() => searchResult({ results: [{ id: 0, type: "t", title: "t", preview: "p" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
     expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", disputed: "yes" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
     expect(() => searchResult({ results: [], omitted_superseded: -1 })).toThrow("takt-ai memory search returned an invalid result")
+    expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", project: 1 }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
   })
 })
 
@@ -95,6 +96,9 @@ describe("renderSearch", () => {
   })
   test("collapses a multi-line preview and marks history", () => {
     expect(renderSearch({ results: [{ id: 7, type: "proposal", title: "Old", preview: "a\n\nb", superseded: true }], omitted_superseded: 0 })).toBe("#7 [proposal] Old — a b [superseded]")
+  })
+  test("names the workspace of a hit that carries one", () => {
+    expect(renderSearch({ results: [{ id: 9, type: "session_anchor", title: "Session s started", preview: "p", project: "demo" }], omitted_superseded: 0 })).toBe("#9 [session_anchor] (demo) Session s started — p")
   })
 })
 

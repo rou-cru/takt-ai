@@ -111,8 +111,22 @@ func TestSearchStaysInsideTheRequestedTier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hits := hitsByID(every); len(hits) != 1 || hits[workspace].ID != workspace {
-		t.Fatalf("all-workspaces search = %+v, want only #%d", every, workspace)
+	if hits := hitsByID(every); len(hits) != 1 || hits[workspace].Project != "demo" {
+		t.Fatalf("all-workspaces search = %+v, want only #%d naming its workspace", every, workspace)
+	}
+}
+
+func TestSearchFillsTheLimitWithGoverningEntries(t *testing.T) {
+	_, cfg := newFake(t)
+	old := recordCachePolicy(t, cfg, "Cache for one hour", nil)
+	current := recordCachePolicy(t, cfg, "Cache for ten minutes", &memory.RelatesTo{ID: old, Relation: "supersedes"})
+
+	res, err := memory.Search(context.Background(), cfg, memory.SearchRequest{Directory: searchDirectory, Query: "cache policy", Scope: "project", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Results) != 1 || res.Results[0].ID != current || res.OmittedSuperseded != 1 {
+		t.Fatalf("limit 1 search = %+v, want #%d after the superseded #%d", res, current, old)
 	}
 }
 

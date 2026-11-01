@@ -186,14 +186,17 @@ func newFake(t *testing.T) (*fakeEngram, memory.Config) {
 	}
 }
 
-// search answers Engram's compact search: a substring match within the
-// requested project, scope and type, each hit carrying its judged relations.
+// search answers Engram's compact search: up to limit substring matches within
+// the requested project, scope and type, each hit carrying its judged relations.
 func (f *fakeEngram) search(q url.Values) []map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	limit, _ := strconv.Atoi(q.Get("limit"))
 	hits := []map[string]any{}
 	for _, o := range f.obs {
 		switch {
+		case len(hits) == limit:
+			return hits
 		case !strings.Contains(strings.ToLower(o.Title+" "+o.Content), strings.ToLower(q.Get("q"))),
 			q.Get("all_projects") != "true" && o.Project != q.Get("project"),
 			o.Scope != q.Get("scope"),
@@ -211,7 +214,7 @@ func (f *fakeEngram) search(q url.Values) []map[string]any {
 			}
 		}
 		hits = append(hits, map[string]any{
-			"id": o.ID, "type": o.Type, "title": o.Title, "preview": o.Content,
+			"id": o.ID, "type": o.Type, "title": o.Title, "preview": o.Content, "project": o.Project,
 			"relations": map[string]any{"as_source": asSource, "as_target": asTarget},
 		})
 	}

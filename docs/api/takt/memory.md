@@ -282,6 +282,7 @@ type SearchHit struct {
     Type       string `json:"type"`
     Title      string `json:"title"`
     Preview    string `json:"preview"`
+    Project    string `json:"project,omitempty"`
     Superseded bool   `json:"superseded,omitempty"`
     Disputed   bool   `json:"disputed,omitempty"`
     Exception  bool   `json:"exception,omitempty"`

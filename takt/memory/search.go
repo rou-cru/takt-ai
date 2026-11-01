@@ -27,6 +27,9 @@ import (
 // judged relation changes whether an entry governs.
 const judged = "judged"
 
+// defaultSearchLimit is the governing-entry count a request without a limit receives.
+const defaultSearchLimit = 10
+
 // SearchRequest is one memory search made on behalf of a crew member.
 type SearchRequest struct {
 	Directory      string `json:"directory"`
@@ -46,6 +49,7 @@ type SearchHit struct {
 	Type       string `json:"type"`
 	Title      string `json:"title"`
 	Preview    string `json:"preview"`
+	Project    string `json:"project,omitempty"`
 	Superseded bool   `json:"superseded,omitempty"`
 	Disputed   bool   `json:"disputed,omitempty"`
 	Exception  bool   `json:"exception,omitempty"`
@@ -70,6 +74,7 @@ type compactHit struct {
 	Type      string `json:"type"`
 	Title     string `json:"title"`
 	Preview   string `json:"preview"`
+	Project   string `json:"project"`
 	Relations struct {
 		AsSource []compactRelation `json:"as_source"`
 		AsTarget []compactRelation `json:"as_target"`
@@ -95,30 +100,47 @@ func Search(ctx context.Context, cfg Config, req SearchRequest) (SearchResult, e
 	if req.Type != "" {
 		query.Set("type", req.Type)
 	}
-	if req.Limit > 0 {
-		query.Set("limit", strconv.Itoa(req.Limit))
+	limit := req.Limit
+	if limit == 0 {
+		limit = defaultSearchLimit
 	}
-	var page struct {
-		Results []compactHit `json:"results"`
+	// Engram applies its limit before Takt knows which hits are superseded:
+	// widen the window by the hits it hid until the limit is met or Engram runs out.
+	for fetch := limit; ; {
+		query.Set("limit", strconv.Itoa(fetch))
+		var page struct {
+			Results []compactHit `json:"results"`
+		}
+		if _, err := c.call(ctx, http.MethodGet, "/search?"+query.Encode(), nil, &page); err != nil {
+			return SearchResult{}, err
+		}
+		out := governing(page.Results, req.IncludeHistory)
+		if len(out.Results) >= limit || len(page.Results) < fetch {
+			out.Results = out.Results[:min(limit, len(out.Results))]
+			return out, nil
+		}
+		fetch += out.OmittedSuperseded
 	}
-	if _, err := c.call(ctx, http.MethodGet, "/search?"+query.Encode(), nil, &page); err != nil {
-		return SearchResult{}, err
-	}
+}
+
+// governing marks each hit's applicability and, unless history is wanted,
+// leaves the superseded ones out and counts them.
+func governing(hits []compactHit, includeHistory bool) SearchResult {
 	out := SearchResult{Results: []SearchHit{}}
-	for _, h := range page.Results {
+	for _, h := range hits {
 		hit := SearchHit{
-			ID: h.ID, Type: h.Type, Title: h.Title, Preview: h.Preview,
+			ID: h.ID, Type: h.Type, Title: h.Title, Preview: h.Preview, Project: h.Project,
 			Superseded: hasJudged(h.Relations.AsTarget, edgeSupersedes),
 			Disputed:   hasJudged(h.Relations.AsSource, edgeConflicts) || hasJudged(h.Relations.AsTarget, edgeConflicts),
 			Exception:  hasJudged(h.Relations.AsTarget, edgeScoped),
 		}
-		if hit.Superseded && !req.IncludeHistory {
+		if hit.Superseded && !includeHistory {
 			out.OmittedSuperseded++
 			continue
 		}
 		out.Results = append(out.Results, hit)
 	}
-	return out, nil
+	return out
 }
 
 func validateSearch(req SearchRequest) error {
