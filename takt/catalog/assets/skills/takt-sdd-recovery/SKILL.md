@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-recovery
-description: "An SDD implementation task failed twice, or an applier flagged a contract defect, and the standard SDD workflow dispatch loop can't carry it further. Explains freezing the affected subtree, escalating to the right contract owner, and resuming without collapsing the rest of the plan."
+description: "Committed SDD work fails twice or exposes a contract discrepancy. Route bounded diagnosis to its owner and resume only the corrected subtree."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -9,51 +9,23 @@ metadata:
 
 # Takt SDD Recovery
 
-Failure and replanning protocol for an implementation DAG already built under the
-SDD workflow. It applies once a dispatched task fails a second time, or an applier
-flags a contract defect — never for a first failure within authorized recovery bounds,
-which retries in place without this protocol.
+Use this route after a second failure or a code–contract discrepancy in committed SDD
+work. A first localized failure within the unit's scope and acceptance retries in place.
 
-```
-[Minor Failure in Bounds] ──▶ [Retry Once with Error Context]
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼ (Success)                   ▼ (Fails 2nd time or Defective Contract)
-              [Resume DAG]               [Trigger Replanning Circuit]
-                                                  │
-                                                  ├── 1. FREEZE downstream dependent subtree
-                                                  ├── 2. KEEP independent parallel lanes running
-                                                  ├── 3. ESCALATE to relevant contract owner
-                                                  ├── 4. OWNER emits delta; TAKT re-indexes DAG
-                                                  └── 5. UNFREEZE & DISPATCH updated nodes
-```
+1. Freeze the affected task and its dependents; keep independent lanes running. For
+   conflicting staged deltas, freeze both and preserve them for diagnosis.
+2. Send the task ID, evidence and contract segment to its owner: structure/interfaces
+   → `architect`; behavior/acceptance → `spec`; experience/identity → `product-designer`.
+   Use PM for scope analysis; reserve changes to user value or intent for the user.
+   A discrepancy requires diagnosis, not an assumption that the contract is wrong.
+3. Consume the owner's correction and revised decomposition where needed. Rebuild only
+   the affected sub-DAG. Commit its revision with `dispatch_commit` and the standing
+   `base_version`; check ownership and ready parallel work before redispatch.
+4. Resume after correction and required approvals, within remaining bounds. Repair
+   consolidated work forward. Exhausted scope requires a user-approved finite allowance;
+   a plan revision or contract delta does not reset consumption.
 
-1. **Initial retry:** for a minor failure within authorized recovery bounds, retry once —
-   reassign its scope with its `author_key`, keeping its staged work, and delegate the same node name again — with
-   the exact error output and stack trace. A contract defect goes directly to its owner.
-   Do not retry an objective-blocking discovery without direction: trigger the
-   Replanning Circuit instead.
-2. **Freeze subtree** (the DAG's backtracking step): on a second failure, or when an
-   applier flags a contract defect, mark the task `BLOCKED` and freeze its downstream
-   dependents. **Keep independent parallel lanes running**: tasks with disjoint write sets
-   and unrelated dependencies are unaffected. When two in-flight tasks produced conflicting
-   deltas rather than one simply failing, freeze both and escalate the conflict to the
-   owner of the contract they share, keeping both deltas staged so neither is silently
-   dropped.
-3. **Escalate:** structural/interface failure → `architect`; behavioral/acceptance
-   failure → `spec`; experience/identity failure → `product-designer`; scope
-   tradeoff → PM and the user. Provide the failed task ID, evidence, and contract segment.
-   With QA planned, testing outcomes go where the outcome table of `takt-qa-workflow` sends them.
-4. **Contract delta & re-index:** the owner emits a contract delta, naming the exact prior
-   version it replaces and what it adds or retires; TPM revises affected task decomposition
-   if needed. Takt alone restructures the sub-DAG, commits the revised plan with
-   `dispatch_commit` naming the standing version as its base, checks file ownership
-   against in-flight work, and re-validates the affected region's wave width and
-   first-wave count before dispatching it again.
-5. **Resume:** re-queue only after correction and any required approval. Budget
-   exhaustion abandons the recovery scope until the user decides (see the escalation
-   rules). Consolidated work requires forward repair.
-
-**Convergence criterion.** If one node has consumed two contract deltas without
-converging, reassess the decomposition cut instead of emitting a third delta. This
-diagnostic rule never overrides recovery bounds or authorizes continuation after failure.
+After two nonconverging contract deltas, reassess the decomposition instead of issuing a
+third. Resolve technical uncertainty within authority; consult the user for value decisions,
+required authorization, irreversible effects, or no justifiable continuation. Follow any
+explicit user policy requiring consultation.

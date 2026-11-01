@@ -84,9 +84,11 @@ const (
 	EventControlEscalate EventClass = "control_escalate"
 )
 
-// allowedAttributes lists the only attribute keys each new class may carry so nested or unexpected content
-// cannot ride along; classes absent here keep the forbidden-key check only.
+// allowedAttributes is exhaustive: every class has a closed, scalar-only
+// attribute contract. Unknown classes fail before anything reaches storage.
 var allowedAttributes = map[EventClass][]string{
+	EventVFSDelta:           {"operation"},
+	EventCollision:          {"owning_agent", "path"},
 	EventDispatch:           {"decision", "specialist", "dispatch_id", "reason_code", "parallelism"},
 	EventUnitLifecycle:      {"transition", "from_state", "to_state", "specialist", "reason_code"},
 	EventToolActivity:       {"platform", "tool", "phase", "outcome", "duration_ms", "path", "path_hash"},
@@ -117,7 +119,7 @@ type CorrelationIDs struct {
 type Envelope struct {
 	// SchemaVersion tags the shape, so readers can reject unknown versions fast.
 	SchemaVersion string `json:"schema_version"`
-	// SessionTimestamp holds session-clock time, so budgets use monotonic time immune to wall-clock jumps.
+	// SessionTimestamp holds elapsed time for analysis, never budget enforcement.
 	SessionTimestamp SessionTime `json:"session_timestamp"`
 	// WallTimestamp holds wall-clock time, so cross-system correlation stays possible.
 	WallTimestamp time.Time `json:"wall_timestamp"`
@@ -151,8 +153,8 @@ var forbiddenAttributeKeys = map[string]bool{
 
 // Validate rejects content leaks and missing owners so bad events fail before reaching the stream.
 func (e *Envelope) Validate() error {
-	if e.SchemaVersion == "" {
-		return errors.New("obs: envelope SchemaVersion is required")
+	if e.SchemaVersion != SchemaVersion {
+		return fmt.Errorf("obs: unsupported envelope SchemaVersion %q; expected %s", e.SchemaVersion, SchemaVersion)
 	}
 	if e.Authority == "" {
 		return errors.New("obs: envelope Authority is required")
@@ -162,17 +164,24 @@ func (e *Envelope) Validate() error {
 			return fmt.Errorf("%w: attribute %q is forbidden", ErrContentForbidden, k)
 		}
 	}
-	if allowed, ok := allowedAttributes[e.EventClass]; ok {
-		for k, v := range e.Attributes {
-			if !slices.Contains(allowed, k) {
-				return fmt.Errorf("obs: attribute %q is not allowed for class %q", k, e.EventClass)
-			}
-			// Scalars only: a nested value would smuggle content past the key check.
-			switch v.(type) {
-			case string, bool, int, int32, int64, uint, uint32, uint64, float32, float64:
-			default:
-				return fmt.Errorf("obs: attribute %q of class %q must be a scalar", k, e.EventClass)
-			}
+	switch e.Source {
+	case PlaneVFS, PlaneOrchestration, PlanePlatform, PlaneLifecycle, PlaneHarness, PlaneControl:
+	default:
+		return fmt.Errorf("obs: unknown source plane %q", e.Source)
+	}
+	allowed, ok := allowedAttributes[e.EventClass]
+	if !ok {
+		return fmt.Errorf("obs: unknown event class %q", e.EventClass)
+	}
+	for k, v := range e.Attributes {
+		if !slices.Contains(allowed, k) {
+			return fmt.Errorf("obs: attribute %q is not allowed for class %q", k, e.EventClass)
+		}
+		// Scalars only: a nested value would smuggle content past the key check.
+		switch v.(type) {
+		case string, bool, int, int32, int64, uint, uint32, uint64, float32, float64:
+		default:
+			return fmt.Errorf("obs: attribute %q of class %q must be a scalar", k, e.EventClass)
 		}
 	}
 	return nil
@@ -191,10 +200,10 @@ func NewEnvelope(clock *Clock, source SourcePlane, agent string) Envelope {
 
 // ─── Session Clock ───────────────────────────────────────────────────────────
 
-// SessionTime counts time since session start so budgets survive wall-clock jumps.
+// SessionTime counts elapsed time for analysis, not action-denominated budgets.
 type SessionTime = time.Duration
 
-// Clock owns monotonic session time so budgets never break on clock adjustments.
+// Clock owns monotonic session time for duration measurements.
 type Clock struct {
 	// start anchors the session, immutable so reads need no lock.
 	start time.Time

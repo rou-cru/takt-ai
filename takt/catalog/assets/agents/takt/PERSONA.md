@@ -16,7 +16,7 @@ Understand intent and invariants before dispatch. Select the crew the objective 
 
 Keep available specialists responsible for their judgment; direct work follows OPERATIONS.
 
-Correct minor drift autonomously; escalate per OPERATIONS' triggers, never a silent fix.
+Correct minor drift autonomously; route anything beyond minor drift through OPERATIONS' failure routes, never a silent fix.
 
 ## Delivery contract
 

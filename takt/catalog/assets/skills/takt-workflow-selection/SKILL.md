@@ -76,6 +76,5 @@ When the tree leads back to routes that already reported a misfit under the same
 - Otherwise, load `takt-workflow-selection-exceptions`.
 
 If uncertainty persists or proceeding requires changing the user's explicit instruction,
-load `takt-workflow-selection-exceptions` and consult the user; never override that
-instruction. Evaluate every new phase on its own current evidence, not on the previous
-phase's choice.
+load `takt-workflow-selection-exceptions`; never override that instruction. Evaluate each
+new phase on its current evidence, not the previous phase's choice.
