@@ -25,6 +25,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func LoadDeployedModels\(rootDir string\) \(map\[string\]model.ModelAssignment, error\)](<#LoadDeployedModels>)
 - [func RecordInstallation\(rootDir string, request PlanRequest\) error](<#RecordInstallation>)
 - [func RecordRiskAcceptances\(rootDir string, accepted \[\]RiskAcceptance\) error](<#RecordRiskAcceptances>)
+- [func RejectKeptIncompatible\(rootDir string, plans \[\]TargetPlan, syncing bool, preserve ...string\) error](<#RejectKeptIncompatible>)
 - [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
 - [func SafeJoin\(root, rel string\) \(string, error\)](<#SafeJoin>)
 - [func SaveInstalledConfig\(rootDir string, request PlanRequest\) error](<#SaveInstalledConfig>)
@@ -314,6 +315,15 @@ func RecordRiskAcceptances(rootDir string, accepted []RiskAcceptance) error
 ```
 
 RecordRiskAcceptances upserts accepted into rootDir's record by path.
+
+<a name="RejectKeptIncompatible"></a>
+## func RejectKeptIncompatible
+
+```go
+func RejectKeptIncompatible(rootDir string, plans []TargetPlan, syncing bool, preserve ...string) error
+```
+
+RejectKeptIncompatible refuses an apply that would keep a file which cannot work with it: a conflict of ImpactIncompatible whose on\-disk version stays because the caller preserved its path, or, when syncing, because it is a user\-edited managed file. The error names the file and the way out; nothing is written. Restoring Takt's version \(not preserving\) is always applicable.
 
 <a name="ResolveComponents"></a>
 ## func ResolveComponents
