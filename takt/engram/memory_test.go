@@ -28,12 +28,12 @@ func TestMCPArgsExcludeWriteTools(t *testing.T) {
 	if strings.Contains(args, "--tools=agent") {
 		t.Fatalf("tools not restricted: %s", args)
 	}
-	for _, forbidden := range []string{"mem_update", "mem_capture_passive", "mem_judge", "mem_delete", "mem_save", "mem_session_summary", "mem_session_start", "mem_session_end"} {
+	for _, forbidden := range []string{"mem_search", "mem_update", "mem_capture_passive", "mem_judge", "mem_delete", "mem_save", "mem_session_summary", "mem_session_start", "mem_session_end"} {
 		if strings.Contains(args, forbidden) {
 			t.Fatalf("forbidden tool %s registered: %s", forbidden, args)
 		}
 	}
-	for _, required := range []string{"mem_current_project", "mem_context", "mem_search", "mem_get_observation"} {
+	for _, required := range []string{"mem_current_project", "mem_context", "mem_get_observation"} {
 		if !strings.Contains(args, required) {
 			t.Fatalf("required read tool %s missing from %s", required, args)
 		}

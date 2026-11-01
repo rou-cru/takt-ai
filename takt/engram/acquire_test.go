@@ -157,7 +157,7 @@ func TestAcquireUnsupportedPlatformFails(t *testing.T) {
 
 func TestResolveReusesCompatibleBinaryOnPath(t *testing.T) {
 	bin := t.TempDir()
-	want := writeFakeEngram(t, bin, "2.1.3")
+	want := writeFakeEngram(t, bin, "3.6.1")
 	isolatePath(t, bin)
 	_, hits := serveRelease(t, fakeEngramScript(EngramVersion))
 	root := t.TempDir()
@@ -175,7 +175,7 @@ func TestResolveReusesCompatibleBinaryOnPath(t *testing.T) {
 }
 
 func TestOldOrDevBinaryOnPathForcesAcquire(t *testing.T) {
-	for _, version := range []string{"2.0.9", "dev"} {
+	for _, version := range []string{"3.5.4", "dev"} {
 		t.Run(version, func(t *testing.T) {
 			bin := t.TempDir()
 			writeFakeEngram(t, bin, version)
@@ -195,9 +195,10 @@ func TestOldOrDevBinaryOnPathForcesAcquire(t *testing.T) {
 
 func TestCompatibleVersion(t *testing.T) {
 	for output, want := range map[string]bool{
-		"engram 2.1.0":  true,
-		"engram v2.1.1": true,
-		"engram 2.0.0":  false,
+		"engram 3.6.0":  true,
+		"engram v3.6.1": true,
+		"engram 3.5.4":  false,
+		"engram 2.1.0":  false,
 		"engram 1.20.1": false,
 		"engram 1.9.99": false,
 		"engram 1.20":   false,

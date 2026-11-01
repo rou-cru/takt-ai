@@ -29,6 +29,10 @@ Package memory writes agent memories into Engram with harness\-owned metadata, l
 - [type RecordResult](<#RecordResult>)
   - [func Record\(ctx context.Context, cfg Config, req RecordRequest\) \(result RecordResult, err error\)](<#Record>)
 - [type RelatesTo](<#RelatesTo>)
+- [type SearchHit](<#SearchHit>)
+- [type SearchRequest](<#SearchRequest>)
+- [type SearchResult](<#SearchResult>)
+  - [func Search\(ctx context.Context, cfg Config, req SearchRequest\) \(SearchResult, error\)](<#Search>)
 - [type ValidationError](<#ValidationError>)
   - [func \(e \*ValidationError\) Error\(\) string](<#ValidationError.Error>)
 
@@ -266,6 +270,62 @@ type RelatesTo struct {
     Relation string `json:"relation"`
 }
 ```
+
+<a name="SearchHit"></a>
+## type SearchHit
+
+SearchHit is one matching entry with the applicability its recorded evolution gives it.
+
+```go
+type SearchHit struct {
+    ID         int64  `json:"id"`
+    Type       string `json:"type"`
+    Title      string `json:"title"`
+    Preview    string `json:"preview"`
+    Superseded bool   `json:"superseded,omitempty"`
+    Disputed   bool   `json:"disputed,omitempty"`
+    Exception  bool   `json:"exception,omitempty"`
+}
+```
+
+<a name="SearchRequest"></a>
+## type SearchRequest
+
+SearchRequest is one memory search made on behalf of a crew member.
+
+```go
+type SearchRequest struct {
+    Directory      string `json:"directory"`
+    Query          string `json:"query"`
+    Scope          string `json:"scope"`
+    Type           string `json:"type,omitempty"`
+    Limit          int    `json:"limit,omitempty"`
+    IncludeHistory bool   `json:"include_history,omitempty"`
+    // AllWorkspaces searches the workspace tier of every project.
+    AllWorkspaces bool `json:"all_workspaces,omitempty"`
+}
+```
+
+<a name="SearchResult"></a>
+## type SearchResult
+
+SearchResult lists the matching entries; superseded entries are left out and counted unless the request asked for history.
+
+```go
+type SearchResult struct {
+    Results           []SearchHit `json:"results"`
+    OmittedSuperseded int         `json:"omitted_superseded"`
+}
+```
+
+<a name="Search"></a>
+### func Search
+
+```go
+func Search(ctx context.Context, cfg Config, req SearchRequest) (SearchResult, error)
+```
+
+Search runs a full\-text memory search in one tier and returns the entries that still govern, marking open disputes and scoped exceptions.
 
 <a name="ValidationError"></a>
 ## type ValidationError

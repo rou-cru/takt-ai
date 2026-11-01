@@ -30,6 +30,8 @@ const str = (description?: string) => (description ? { type: "string", descripti
 type MemoryResponse = { code: number; ok: boolean; result?: unknown; error?: string }
 type RecordResult = { id: number; deduplicated: boolean }
 type CloseResult = { end_anchor_id: number; entries: number }
+type SearchHit = { id: number; type: string; title: string; preview: string; superseded?: boolean; disputed?: boolean; exception?: boolean }
+type SearchResult = { results: SearchHit[]; omitted_superseded: number }
 
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -48,6 +50,32 @@ export function closeResult(value: unknown): CloseResult {
     throw new Error("takt-ai memory close returned an invalid result")
   }
   return { end_anchor_id: value.end_anchor_id, entries: value.entries }
+}
+
+const isFlag = (value: unknown) => value === undefined || typeof value === "boolean"
+function isSearchHit(value: unknown): value is SearchHit {
+  return isObject(value) && typeof value.id === "number" && Number.isSafeInteger(value.id) && value.id > 0 &&
+    typeof value.type === "string" && typeof value.title === "string" && typeof value.preview === "string" &&
+    isFlag(value.superseded) && isFlag(value.disputed) && isFlag(value.exception)
+}
+
+export function searchResult(value: unknown): SearchResult {
+  if (!isObject(value) || !Array.isArray(value.results) || !value.results.every(isSearchHit) ||
+    typeof value.omitted_superseded !== "number" || !Number.isSafeInteger(value.omitted_superseded) || value.omitted_superseded < 0) {
+    throw new Error("takt-ai memory search returned an invalid result")
+  }
+  return { results: value.results, omitted_superseded: value.omitted_superseded }
+}
+
+// One line per entry; markers name what the recorded evolution says about it.
+export function renderSearch(result: SearchResult): string {
+  const lines = result.results.map(hit => {
+    const marks = (["superseded", "disputed", "exception"] as const).filter(mark => hit[mark]).map(mark => ` [${mark}]`).join("")
+    return `#${hit.id} [${hit.type}] ${hit.title} — ${hit.preview.replace(/\s+/g, " ").trim()}${marks}`
+  })
+  if (lines.length === 0) lines.push("No memories found")
+  if (result.omitted_superseded > 0) lines.push(`${result.omitted_superseded} superseded entries omitted; pass include_history to see them`)
+  return lines.join("\n")
 }
 
 async function takt(command: string, request: Record<string, unknown>): Promise<MemoryResponse> {
@@ -239,6 +267,31 @@ export default Plugin.define({
           })
           const result = recordResult(value)
           return { content: result.deduplicated ? `Already recorded #${result.id}` : `Recorded #${result.id}` }
+        },
+      })
+      editor.add({
+        name: "memory_search",
+        description:
+          "Search memory by keywords and get the entries that still govern. Superseded entries are left out unless include_history is set; " +
+          `[disputed] marks an open disagreement and [exception] a scoped exception. Read an entry in full with mem_get_observation. ${CONTRACT}`,
+        input: {
+          type: "object",
+          properties: {
+            query: str("Keywords to search for."),
+            scope: { type: "string", enum: ["project", "personal"], description: "project = workspace tier (this repository); personal = global tier" },
+            type: str("Only entries of this type, such as a nature or session_anchor."),
+            limit: { type: "integer", minimum: 1, description: "Maximum number of entries to return." },
+            include_history: { type: "boolean", description: "Also return superseded entries, marked [superseded]." },
+            all_workspaces: { type: "boolean", description: "With scope project, search every workspace instead of this one." },
+          },
+          required: ["query", "scope"],
+          additionalProperties: false,
+        },
+        async execute(input: unknown) {
+          if (!isObject(input)) throw new Error("memory_search input must be an object")
+          const res = await takt("search", { ...input, directory: pluginDirectory })
+          if (!res.ok) throw new Error(res.error ?? "takt-ai memory search failed")
+          return { content: renderSearch(searchResult(res.result)) }
         },
       })
       editor.add({

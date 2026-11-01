@@ -4,7 +4,7 @@ description: "The user asks about or continues earlier work, with or without a s
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt Session Resume
@@ -25,7 +25,8 @@ With an id, read that session's anchors. Without one, find candidates at the low
 3. A session with a start anchor and no closed anchor was interrupted. Its light
    reconstruction is its entry titles and its last entry: enough to ask, not to resume.
 
-Fetch in steps: search anchors with `mem_search` and a small `limit`, judge from titles and
+Fetch in steps: search anchors with `memory_search`, `type: session_anchor` and a small
+`limit` (`all_workspaces` for another workspace), judge from titles and
 dates, and stop at the first plausible candidate. Present it and ask; open no body before the
 user confirms. Then read one entry at a time, only when the next action needs its content.
 

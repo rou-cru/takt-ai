@@ -264,6 +264,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, permissionRule{"edit", eventStoreResource, "deny"})
 	}
 	rules = append(rules, permissionRule{"memory_record", allResources, "allow"})
+	rules = append(rules, permissionRule{"memory_search", allResources, "allow"})
 	lifecycleEffect := "deny"
 	if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
 		lifecycleEffect = "allow"

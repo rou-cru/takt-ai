@@ -25,6 +25,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -169,6 +170,11 @@ func newFake(t *testing.T) (*fakeEngram, memory.Config) {
 			t.Errorf("write conflict response: %v", err)
 		}
 	})
+	mux.HandleFunc("GET /search", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]any{"results": f.search(r.URL.Query())}); err != nil {
+			t.Errorf("encode search response: %v", err)
+		}
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	clock := time.Date(2026, 9, 13, 15, 0, 0, 0, time.UTC)
@@ -178,6 +184,38 @@ func newFake(t *testing.T) (*fakeEngram, memory.Config) {
 		HTTP:      srv.Client(),
 		Now:       func() time.Time { return clock },
 	}
+}
+
+// search answers Engram's compact search: a substring match within the
+// requested project, scope and type, each hit carrying its judged relations.
+func (f *fakeEngram) search(q url.Values) []map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	hits := []map[string]any{}
+	for _, o := range f.obs {
+		switch {
+		case !strings.Contains(strings.ToLower(o.Title+" "+o.Content), strings.ToLower(q.Get("q"))),
+			q.Get("all_projects") != "true" && o.Project != q.Get("project"),
+			o.Scope != q.Get("scope"),
+			q.Get("type") != "" && o.Type != q.Get("type"):
+			continue
+		}
+		asSource, asTarget := []map[string]string{}, []map[string]string{}
+		for _, e := range f.edges {
+			rel := map[string]string{"relation": e.Relation, "judgment_status": "judged"}
+			if e.A == o.ID {
+				asSource = append(asSource, rel)
+			}
+			if e.B == o.ID {
+				asTarget = append(asTarget, rel)
+			}
+		}
+		hits = append(hits, map[string]any{
+			"id": o.ID, "type": o.Type, "title": o.Title, "preview": o.Content,
+			"relations": map[string]any{"as_source": asSource, "as_target": asTarget},
+		})
+	}
+	return hits
 }
 
 func (f *fakeEngram) byID(id int64) fakeObs {
