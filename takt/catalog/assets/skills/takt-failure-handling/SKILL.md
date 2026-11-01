@@ -1,10 +1,10 @@
 ---
 name: takt-failure-handling
-description: "A failure exceeds an in-place retry, or a recovery signal appears. Bound technical diagnosis and reserve user escalation for value and authority decisions."
+description: "A failure exceeds an in-place retry, or a recovery or diagnosis signal appears. Bound technical diagnosis and reserve user escalation for value and authority decisions."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt Failure Handling

@@ -91,3 +91,19 @@ func TestRejectKeptIncompatibleWithoutConflictsIsNil(t *testing.T) {
 		t.Fatalf("RejectKeptIncompatible() with no conflicts = %v, want nil", err)
 	}
 }
+
+func TestRejectKeptIncompatibleJudgesConfigAsTheMergeReadsIt(t *testing.T) {
+	for edited, wantReject := range map[string]bool{
+		"{ // comment\n}":       false,
+		"{\n// c\n\"a\": 1,\n}": false,
+		"[1]":                   true,
+	} {
+		root := installedWithBrokenConfig(t)
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(incompatibleConfigPath)), []byte(edited), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := setup.RejectKeptIncompatible(root, gatePlans("{\"a\": 2}\n"), true); (err != nil) != wantReject {
+			t.Errorf("keeping %q: RejectKeptIncompatible() = %v, want rejection %v", edited, err, wantReject)
+		}
+	}
+}

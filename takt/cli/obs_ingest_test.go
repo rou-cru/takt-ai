@@ -27,10 +27,10 @@ import (
 )
 
 // obsIngest drives the public CLI entry once, as a separate invocation, and returns the assigned id.
-func obsIngest(t *testing.T, workspace, payload string) (int64, error) {
+func obsIngest(t *testing.T, bin, workspace, payload string) (int64, error) {
 	t.Helper()
 	var out, stderr bytes.Buffer
-	cmd := exec.Command(buildTaktAI(t), "obs", "ingest", "--workspace", workspace)
+	cmd := exec.Command(bin, "obs", "ingest", "--workspace", workspace)
 	cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(payload), &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -65,12 +65,13 @@ func obsEvents(t *testing.T, workspace, session string) []obs.StoredEvent {
 }
 
 func TestObsIngestPersistsAndKeepsOrderAcrossInvocations(t *testing.T) {
+	bin := buildTaktAI(t)
 	ws := t.TempDir()
-	first, err := obsIngest(t, ws, `{"ipc_version":1,"session_id":"s1","work_unit_id":"u1","attempt_id":"a1","agent":"orch","source":"takt.orchestration","event_class":"dispatch","attributes":{"decision":"dispatch","specialist":"dev","parallelism":2}}`)
+	first, err := obsIngest(t, bin, ws, `{"ipc_version":1,"session_id":"s1","work_unit_id":"u1","attempt_id":"a1","agent":"orch","source":"takt.orchestration","event_class":"dispatch","attributes":{"decision":"dispatch","specialist":"dev","parallelism":2}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := obsIngest(t, ws, `{"ipc_version":1,"session_id":"s1","agent":"author","source":"takt.platform","event_class":"tool_activity","attributes":{"platform":"opencode","tool":"bash","phase":"end","duration_ms":12}}`)
+	second, err := obsIngest(t, bin, ws, `{"ipc_version":1,"session_id":"s1","agent":"author","source":"takt.platform","event_class":"tool_activity","attributes":{"platform":"opencode","tool":"bash","phase":"end","duration_ms":12}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +93,7 @@ func TestObsIngestPersistsAndKeepsOrderAcrossInvocations(t *testing.T) {
 }
 
 func TestObsIngestRejectsInvalidWithoutWriting(t *testing.T) {
+	bin := buildTaktAI(t)
 	ws := t.TempDir()
 	base := func(class, source, attrs string) string {
 		return `{"ipc_version":1,"session_id":"s1","agent":"a","source":"` + source + `","event_class":"` + class + `","attributes":` + attrs + `}`
@@ -114,7 +116,7 @@ func TestObsIngestRejectsInvalidWithoutWriting(t *testing.T) {
 		"two values":            base("dispatch", "takt.orchestration", `{}`) + base("dispatch", "takt.orchestration", `{}`),
 	}
 	for name, payload := range cases {
-		if _, err := obsIngest(t, ws, payload); err == nil {
+		if _, err := obsIngest(t, bin, ws, payload); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

@@ -261,10 +261,18 @@ func readConflict(rootDir string, artifact Artifact, entry OwnershipEntry, manag
 }
 
 func readUnmanagedConflict(destination string, artifact Artifact, conflict ConflictEntry) (ConflictEntry, []byte, bool, error) {
-	current, err := os.ReadFile(destination)
+	// Stat before reading: opening a FIFO or device here would block the plan.
+	info, err := os.Stat(destination)
 	if errors.Is(err, os.ErrNotExist) {
 		return ConflictEntry{}, nil, false, nil
 	}
+	if err == nil && !info.Mode().IsRegular() {
+		err = errors.New("destination is not a regular file")
+	}
+	if err != nil {
+		return ConflictEntry{}, nil, false, fmt.Errorf("inspect managed file %q: %w", artifact.Path, err)
+	}
+	current, err := os.ReadFile(destination)
 	if err != nil {
 		return ConflictEntry{}, nil, false, fmt.Errorf("inspect managed file %q: %w", artifact.Path, err)
 	}

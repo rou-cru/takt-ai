@@ -11,7 +11,6 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/engram"
-	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
 )
 
 // Impact values rank what keeping local content means for ConflictEntry.Impact.
@@ -40,7 +39,7 @@ func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry Ownershi
 		conflict.Impact = ImpactIncompatible
 		conflict.Consequence = "Takt memory setup recreates this file, so it cannot stay deleted."
 		conflict.Alternative = "Restore Takt version to recreate it."
-	case artifact.Path == opencode.ConfigPath() && current != nil && !isJSONObject(current):
+	case artifact.Path == opencode.ConfigPath() && current != nil && unmergeableJSON(current) != nil:
 		conflict.Impact = ImpactIncompatible
 		conflict.Consequence = "Your version is not valid JSON, so Takt memory setup would replace its content instead of merging into it."
 		conflict.Alternative = "Restore Takt version, or fix the JSON in " + artifact.Path + " and run this operation again."
@@ -107,25 +106,6 @@ func withoutInjectedMCPServers(raw []byte) (map[string]any, bool) {
 		delete(object, "mcp")
 	}
 	return object, true
-}
-
-// isJSONObject reports whether raw survives filemerge's JSON reading as an
-// object: MergeJSONObjects yields a bare "{}" for unparseable input. A
-// commented-out-only JSONC object ("{ // x }") reads as invalid; harmless, the
-// user is only asked to restore or fix it.
-func isJSONObject(raw []byte) bool {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return true // read as an empty object: nothing to lose
-	}
-	merged, err := filemerge.MergeJSONObjects(raw, []byte("{}"))
-	if err != nil {
-		return false
-	}
-	if strings.TrimSpace(string(merged)) != "{}" {
-		return true
-	}
-	var object map[string]any
-	return json.Unmarshal(raw, &object) == nil
 }
 
 // hashOf returns the hex SHA-256 of content for manifest and conflict comparison.
