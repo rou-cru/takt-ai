@@ -181,7 +181,7 @@ func TestJournalRefAndArtifactCheckWhenNothingDeclared(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if !checkArtifact(h, t.TempDir(), "root") {
-		t.Fatal("checkArtifact() = false with no declared artifact")
+	if got := checkArtifact(h, t.TempDir(), "root"); got != nil {
+		t.Fatalf("checkArtifact() = %+v with no declared document, want no report", got)
 	}
 }

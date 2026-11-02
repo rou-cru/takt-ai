@@ -1014,7 +1014,8 @@ describe("interlocutor switch", () => {
       return { id: r.id, effect: answer }
     } } }) } }))
   })
-  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: [3] }
+  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: { entries: [3] } }
+  const aborted = { ...envelope, result: "Aborted", additional_context: "ended" }
   const request = { target_agent: "dev", objective: "Ship it", requirements: "typed" }
   const lent = { child: { metadata: { takt_switch: "root" } } }
   const NO_HOLDER = "harness: no interlocutor switch is active for this session; nothing to abort"
@@ -1026,18 +1027,18 @@ describe("interlocutor switch", () => {
       if (call.kind !== "dispatch") return undefined
       const body = call.request as { child?: string }
       if (call.command === "switch") { holder = body.child; return { out: "{}" } }
-      if (call.command === "handoff") { holder = undefined; return json(envelope) }
+      if (call.command === "handoff") { holder = undefined; return json({ envelope, artifact: { path: "PRD.md", present: false } }) }
       if (call.command === "session_deleted") {
         if (!holder || body.child !== holder) return json({ aborted: false })
         holder = undefined
-        return json({ ...envelope, result: "Aborted", aborted: true, root: "root", child: body.child })
+        return json({ envelope: aborted, root: "root", child: body.child })
       }
       if (call.command !== "abort_switch") return undefined
       const target = body.child || holder
       if (!holder) return { code: 1, err: NO_HOLDER }
       if (target !== holder) return { code: 1, err: NOT_HOLDER }
       holder = undefined
-      return json({ ...envelope, result: "Aborted", child: target })
+      return json({ envelope: aborted, child: target })
     }
   }
 
@@ -1093,7 +1094,7 @@ describe("interlocutor switch", () => {
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child" })
       expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: typed")
       const result = await vfs.run("dispatch_abort_switch", { reason: "changed course" }, orchestrator)
-      expect(JSON.parse(result.content)).toMatchObject({ result: "Aborted", child: "child" })
+      expect(result.content).toBe(`The interface is back from the aborted lent session. Envelope:\n${JSON.stringify(aborted, null, 2)}`)
       expect(vfs.requests("dispatch", "abort_switch")).toEqual([{ action: "abort_switch", session: "root", child: "", evidence: "changed course", origin: "user" }])
       expect(vfs.log.interrupts).toEqual(["child"])
       await expect(vfs.run("dispatch_abort_switch", { reason: "again" }, orchestrator)).rejects.toThrow(NO_HOLDER)
@@ -1143,7 +1144,7 @@ describe("interlocutor switch", () => {
       expect(vfs.log.synthetics).toHaveLength(1)
       expect(vfs.log.synthetics[0].sessionID).toBe("root")
       expect(vfs.log.synthetics[0].text).toContain("The interface is back from dev.")
-      expect(JSON.parse(vfs.log.synthetics[0].text.split("Envelope:\n")[1])).toEqual(envelope)
+      expect(vfs.log.synthetics[0].text).toBe(`The interface is back from dev. Envelope:\n${JSON.stringify(envelope, null, 2)}\nDeclared standard document PRD.md: absent.`)
       await until(() => vfs.log.interrupts.includes("child"))
       expect(vfs.log.interrupts).toEqual(["child"])
       await expect(vfs.run("dispatch_abort_switch", { reason: "late" }, orchestrator)).rejects.toThrow(NO_HOLDER)

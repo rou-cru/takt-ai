@@ -29,7 +29,7 @@ func TestBuildHandoffEnvelopeAssemblesResultShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildHandoffEnvelope() error = %v", err)
 	}
-	if envelope["result"] != "EarlyHandoff" || envelope["additional_context"] != "context notes" {
+	if envelope.Result != "EarlyHandoff" || envelope.AdditionalContext != "context notes" {
 		t.Errorf("BuildHandoffEnvelope() = %+v, want result=EarlyHandoff and the additional context", envelope)
 	}
 	if h.Project().Budgets("root-1").InterlocutorHolder != "" {
@@ -95,12 +95,17 @@ func TestBuildHandoffEnvelopeEarlyHandoffReturnsActualStateWithoutManufacturedAr
 					t.Errorf("envelope %s lacks field %q; all four fields are always present", raw, key)
 				}
 			}
+			if len(fields) != 4 {
+				t.Errorf("envelope %s has %d fields, want exactly four", raw, len(fields))
+			}
 
 			var got struct {
 				Result            string   `json:"result"`
 				AdditionalContext string   `json:"additional_context"`
 				ExtraArtifacts    []string `json:"extra_artifacts"`
-				Memory            []int64  `json:"memory"`
+				Memory            struct {
+					Entries []int64 `json:"entries"`
+				} `json:"memory"`
 			}
 			if err := json.Unmarshal(raw, &got); err != nil {
 				t.Fatalf("decode envelope fields: %v", err)
@@ -122,7 +127,7 @@ func TestBuildHandoffEnvelopeEarlyHandoffReturnsActualStateWithoutManufacturedAr
 					t.Errorf("extra_artifacts = %v manufactures the undelivered expected artifact %q", got.ExtraArtifacts, expectedArtifact)
 				}
 			}
-			if len(got.Memory) != 0 {
+			if len(got.Memory.Entries) != 0 {
 				t.Errorf("memory = %v, want empty for an unseeded memory root", got.Memory)
 			}
 			if h.Project().Budgets("root-1").InterlocutorHolder != "" {
@@ -139,15 +144,15 @@ func TestBuildAbortEnvelopeAssemblesResultShape(t *testing.T) {
 		t.Fatalf("Switch() error = %v", err)
 	}
 
-	envelope, err := dispatch.BuildAbortEnvelope(h, "", memoryRoot, "root-1", "child-1", "drift detected", "harness")
+	envelope, child, err := dispatch.BuildAbortEnvelope(h, "", memoryRoot, "root-1", "child-1", "drift detected", "harness")
 	if err != nil {
 		t.Fatalf("BuildAbortEnvelope() error = %v", err)
 	}
-	if envelope["result"] != "Aborted" || envelope["additional_context"] != "drift detected" {
-		t.Errorf("BuildAbortEnvelope() = %+v, want result=Aborted and the reason as additional context", envelope)
+	if envelope.Result != "Aborted" || envelope.AdditionalContext != "drift detected" || child != "child-1" {
+		t.Errorf("BuildAbortEnvelope() = %+v, %q, want result=Aborted, the reason as additional context and child-1", envelope, child)
 	}
-	if ids, ok := envelope["memory"].([]int64); !ok || len(ids) != 0 {
-		t.Errorf("BuildAbortEnvelope() memory = %v, want an empty slice for an unseeded memory root", envelope["memory"])
+	if envelope.Memory.Entries == nil || len(envelope.Memory.Entries) != 0 || envelope.Memory.NextAfter != 0 {
+		t.Errorf("BuildAbortEnvelope() memory = %+v, want a complete empty index for an unseeded memory root", envelope.Memory)
 	}
 	if h.Project().Budgets("root-1").InterlocutorHolder != "" {
 		t.Error("BuildAbortEnvelope() did not clear the interlocutor holder")
@@ -160,7 +165,7 @@ func TestBuildAbortEnvelopePropagatesAbortDenial(t *testing.T) {
 	if err := dispatch.Switch(h, "", "root-1", "child-1", interlocutorTestAgent, "artifact.md"); err != nil {
 		t.Fatalf("Switch() error = %v", err)
 	}
-	if _, err := dispatch.BuildAbortEnvelope(h, "", memoryRoot, "root-1", "child-1", "drift", "specialist"); err == nil {
+	if _, _, err := dispatch.BuildAbortEnvelope(h, "", memoryRoot, "root-1", "child-1", "drift", "specialist"); err == nil {
 		t.Fatal("BuildAbortEnvelope() with an invalid origin error = nil, want an error")
 	}
 }

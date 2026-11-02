@@ -13,7 +13,9 @@ import {
   isGCCycle,
   isGCCycleResponse,
   isGCPlan,
+  describeReturn,
   isHandoffEnvelope,
+  isInterlocutorReturn,
   isOptional,
   isResponseObject,
   isStagedView,
@@ -78,6 +80,7 @@ describe("plugin setup", () => {
             const reply=owner.answer("dispatch",String(request.action),request)
             if(reply)return reply.out
           }
+          if (argv[1] === "dispatch" && request.action === "abort_switch") return JSON.stringify({ envelope: contracts.abort.envelope })
           if (command === "claims") return JSON.stringify({ ok: true, claims: [{ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/held.ts"] }] })
           if (argv[1] === "dispatch" && request.action === "switch") return JSON.stringify({ ok: true })
           if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false })
@@ -415,14 +418,27 @@ describe("gc coordination shapes", () => {
   })
 })
 
-describe("isHandoffEnvelope", () => {
+describe("isInterlocutorReturn", () => {
   test("matches the real handoff and abort wire contracts", () => {
-    expect(isHandoffEnvelope(contracts.handoff)).toBe(true)
-    expect(isHandoffEnvelope(contracts.abort)).toBe(true)
+    expect(isInterlocutorReturn(contracts.handoff)).toBe(true)
+    expect(isInterlocutorReturn(contracts.abort)).toBe(true)
   })
-  test("rejects a malformed envelope", () => {
-    expect(isHandoffEnvelope({ result: "Standard", additional_context: "x", extra_artifacts: [1], memory: [] })).toBe(false)
-    expect(isHandoffEnvelope({ result: "Standard", additional_context: "x", extra_artifacts: [], memory: ["not a number"] })).toBe(false)
+  test("rejects an envelope that is not exactly the four IR-22 fields", () => {
+    const envelope = { result: "Standard", additional_context: "x", extra_artifacts: [], memory: { entries: [] } }
+    expect(isHandoffEnvelope(envelope)).toBe(true)
+    expect(isHandoffEnvelope({ ...envelope, extra_artifacts: [1] })).toBe(false)
+    expect(isHandoffEnvelope({ ...envelope, memory: { entries: ["not a number"] } })).toBe(false)
+    expect(isHandoffEnvelope({ ...envelope, artifact_verified: true })).toBe(false)
+    expect(isInterlocutorReturn(envelope)).toBe(false)
+  })
+})
+
+describe("describeReturn", () => {
+  test("reports the declared document and the remaining lent-session entries beside the envelope", () => {
+    const text = describeReturn("pm", { ...contracts.handoff, envelope: { ...contracts.handoff.envelope, memory: { entries: [42], next_after: 42 } } })
+    expect(text).toContain("The interface is back from pm. Envelope:")
+    expect(text).toContain("Declared standard document PRD.md: present.")
+    expect(text).toContain("dispatch_lent_entries from next_after 42")
   })
 })
 
@@ -430,7 +446,7 @@ describe("parseCoordinationResponse", () => {
   test("passes a null response through", () => {
     expect(parseCoordinationResponse(null, ["gc", "coordinate"], "prepare")).toBeNull()
   })
-  test("recognizes a handoff envelope regardless of verb", () => {
+  test("recognizes an interlocutor return regardless of verb", () => {
     expect(parseCoordinationResponse(contracts.handoff, ["dispatch"], "handoff")).toEqual(contracts.handoff)
   })
   test("routes gc coordinate through gcCoordinateResponse", () => {

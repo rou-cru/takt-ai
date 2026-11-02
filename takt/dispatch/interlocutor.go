@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -137,52 +138,103 @@ type HandoffOutcome struct {
 	ResultIDs         []int64
 }
 
+// MemoryIndex is the bounded IR-22 index of the entries a lent session
+// recorded. NextAfter is the last listed entry when more remain, the cursor
+// LentEntries pages from; zero when the index is complete.
+type MemoryIndex struct {
+	Entries   []int64 `json:"entries"`
+	NextAfter int64   `json:"next_after,omitempty"`
+}
+
+// Envelope is the IR-22 output envelope: exactly these four fields.
+type Envelope struct {
+	Result            string      `json:"result"`
+	AdditionalContext string      `json:"additional_context"`
+	ExtraArtifacts    []string    `json:"extra_artifacts"`
+	Memory            MemoryIndex `json:"memory"`
+}
+
 // BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this
 // session for delivered results; extra filesystem artifacts are optional and do
 // not establish a handoff. memoryRoot is where the memory session index lives.
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error) {
+func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (Envelope, error) {
 	if outcome.Result == "Standard" || len(outcome.ResultIDs) > 0 {
 		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, outcome.ResultIDs); e != nil {
-			return nil, e
+			return Envelope{}, e
 		}
 	}
 	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
-		return nil, e
+		return Envelope{}, e
 	}
-	// session_entries is a harness-reported fact (MEM-AUT-6), distinct from
-	// "memory" (outcome.ResultIDs, what the specialist itself declared):
-	// every entry recorded in this session, so the receiving agent relates
-	// them without searching.
-	sessionEntries, e := memory.EntryIDsForSession(memoryRoot, root)
+	index, e := lentIndex(memoryRoot, root, callerSession, 0)
 	if e != nil {
-		return nil, e
+		return Envelope{}, e
 	}
-	return map[string]any{
-		"result": outcome.Result, "additional_context": outcome.AdditionalContext,
-		"extra_artifacts": outcome.ExtraArtifacts, "memory": outcome.ResultIDs,
-		"session_entries": sessionEntries,
-	}, nil
+	extra := outcome.ExtraArtifacts
+	if extra == nil {
+		extra = []string{}
+	}
+	return Envelope{Result: outcome.Result, AdditionalContext: outcome.AdditionalContext, ExtraArtifacts: extra, Memory: index}, nil
 }
 
-// BuildAbortEnvelope ends the temporary holder's turn (IR-24) and assembles the
-// IR-22 envelope shape a handoff produces: no negotiated result, the abort's
-// evidence as additional context, and the memory entries the holder recorded.
-// Those are read from memoryRoot by author before the abort clears the holder.
-func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error) {
-	b := h.Project().Budgets(root)
-	holder, aborted := b.InterlocutorAgent, b.InterlocutorHolder
+// BuildAbortEnvelope ends the temporary holder's turn (IR-24) and synthesizes
+// its envelope: no negotiated result, the abort's evidence as additional
+// context, and the entries the lent session recorded. It also returns the
+// aborted session.
+func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (Envelope, string, error) {
+	aborted := h.Project().Budgets(root).InterlocutorHolder
 	if childSession != "" {
 		aborted = childSession
 	}
 	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
-		return nil, e
+		return Envelope{}, "", e
 	}
-	ids, e := memory.EntryIDsByAuthor(memoryRoot, root, holder)
+	index, e := lentIndex(memoryRoot, root, aborted, 0)
 	if e != nil {
-		return nil, e
+		return Envelope{}, "", e
 	}
-	return map[string]any{
-		"result": "Aborted", "child": aborted, "additional_context": reason,
-		"extra_artifacts": []string{}, "memory": ids,
-	}, nil
+	return Envelope{Result: "Aborted", AdditionalContext: reason, ExtraArtifacts: []string{}, Memory: index}, aborted, nil
+}
+
+// LentEntries pages the memory index of child, a session that held root's
+// interface, from the entry after. Any other session is refused: the index
+// never carries unrelated root-session history (IR-22).
+func LentEntries(h *history.History, memoryRoot, root, child string, after int64) (MemoryIndex, error) {
+	lent := false
+	for _, e := range h.Entries() {
+		if e.Kind == history.KindInterlocutorSwitched && e.SessionID == root && e.WorkUnitID == child {
+			lent = true
+			break
+		}
+	}
+	if !lent {
+		return MemoryIndex{}, fmt.Errorf("harness: session %s never held the interface of %s; page a lent session named by its switch", child, root)
+	}
+	return lentIndex(memoryRoot, root, child, after)
+}
+
+// lentIndex lists one policy page of the entries child recorded in root after
+// the entry after (all from the start when after is zero).
+func lentIndex(memoryRoot, root, child string, after int64) (MemoryIndex, error) {
+	p, e := LoadAdmissionPolicy()
+	if e != nil {
+		return MemoryIndex{}, e
+	}
+	ids, e := memory.EntryIDsByCaller(memoryRoot, root, child)
+	if e != nil {
+		return MemoryIndex{}, e
+	}
+	if after != 0 {
+		i := slices.Index(ids, after)
+		if i < 0 {
+			return MemoryIndex{}, fmt.Errorf("harness: entry #%d is not in the lent session's index; page from its next_after", after)
+		}
+		ids = ids[i+1:]
+	}
+	index := MemoryIndex{Entries: ids}
+	if len(ids) > p.Interlocutor.MemoryPage {
+		index.Entries = ids[:p.Interlocutor.MemoryPage]
+		index.NextAfter = index.Entries[len(index.Entries)-1]
+	}
+	return index, nil
 }
