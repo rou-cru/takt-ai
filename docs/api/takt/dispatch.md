@@ -15,11 +15,10 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Account\(h \*history.History, entries \[\]vfs.JournalEntry\) error](<#Account>)
 - [func Admissible\(h \*history.History, p AdmissionPolicy, req AdmissionRequest\) error](<#Admissible>)
 - [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest\) error](<#Admit>)
-- [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(map\[string\]any, error\)](<#BuildAbortEnvelope>)
-- [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(map\[string\]any, error\)](<#BuildHandoffEnvelope>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
 - [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit, qaRound ...\*history.QARound\) error](<#Commit>)
 - [func Contest\(h \*history.History, p AdmissionPolicy, journalRef, event, session, attempt string\) error](<#Contest>)
+- [func CurrentAgent\(h \*history.History, root string\) string](<#CurrentAgent>)
 - [func CurrentAttempt\(p history.Projection, session, event string\) string](<#CurrentAttempt>)
 - [func CurrentHolder\(h \*history.History, root string\) string](<#CurrentHolder>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Declare>)
@@ -41,7 +40,12 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [type AdmissionPolicy](<#AdmissionPolicy>)
   - [func LoadAdmissionPolicy\(\) \(AdmissionPolicy, error\)](<#LoadAdmissionPolicy>)
 - [type AdmissionRequest](<#AdmissionRequest>)
+- [type Envelope](<#Envelope>)
+  - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(Envelope, string, error\)](<#BuildAbortEnvelope>)
+  - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(Envelope, error\)](<#BuildHandoffEnvelope>)
 - [type HandoffOutcome](<#HandoffOutcome>)
+- [type MemoryIndex](<#MemoryIndex>)
+  - [func LentEntries\(h \*history.History, memoryRoot, root, child string, after int64\) \(MemoryIndex, error\)](<#LentEntries>)
 - [type PlanUnit](<#PlanUnit>)
 - [type RecoveryDeclaration](<#RecoveryDeclaration>)
 
@@ -108,24 +112,6 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 
 Admit is called before the host task tool. It reserves one concurrency slot indivisibly against the projection \(PR\-HAR\-16\); a refusal is recorded and stays visible.
 
-<a name="BuildAbortEnvelope"></a>
-## func BuildAbortEnvelope
-
-```go
-func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error)
-```
-
-BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and assembles the IR\-22 envelope shape a handoff produces: no negotiated result, the abort's evidence as additional context, and the memory entries the holder recorded. Those are read from memoryRoot by author before the abort clears the holder.
-
-<a name="BuildHandoffEnvelope"></a>
-## func BuildHandoffEnvelope
-
-```go
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error)
-```
-
-BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results. When the role's result requires repository persistence \(PR\-CRW\-6/7\), a Standard result persists that document at the declared switch path with content identical to its memory entry, and an EarlyHandoff returns the actual partial or absent result without fabricating a document. Extra filesystem artifacts are optional and do not establish a handoff; missing persistence is not reported as complete. memoryRoot is where the memory session index lives.
-
 <a name="CloseRecovery"></a>
 ## func CloseRecovery
 
@@ -152,6 +138,15 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 ```
 
 Contest records the contest of a unit attempt that ended without a result, admitting at most the policy's distinct contests per session, upheld ones included. Judging the contested work is the orchestrator's Verify delegation. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
+
+<a name="CurrentAgent"></a>
+## func CurrentAgent
+
+```go
+func CurrentAgent(h *history.History, root string) string
+```
+
+CurrentAgent returns the specialist holding root's interlocutor role, read from its owner; empty when no switch is active.
 
 <a name="CurrentAttempt"></a>
 ## func CurrentAttempt
@@ -205,7 +200,7 @@ Except records a scoped user exception before it enables further work: the bound
 func ExpectedArtifact(h *history.History, root string) string
 ```
 
-ExpectedArtifact returns the standard repository artifact path declared by the active switch for root, or "" when the switch declares none. For a role with required repository persistence \(PR\-CRW\-6/7\), a declared path is the required document's destination, not an optional copy; an absent or failed document stays visible as unmet persistence.
+ExpectedArtifact returns the standard document path declared by the active switch for root, or "" when it declares none.
 
 <a name="Finish"></a>
 ## func Finish
@@ -304,7 +299,7 @@ StartActivity records non\-work\-unit orchestrator or maintenance activity. Acti
 func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error
 ```
 
-Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\). When the target role's result requires repository persistence \(PR\-CRW\-6/7\), a declared path is that document's required destination; a missing or failed write leaves persistence visibly unmet, separate from the Engram entry. Extra copies remain optional.
+Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
 
 <a name="Withdraw"></a>
 ## func Withdraw
@@ -341,6 +336,10 @@ type AdmissionPolicy struct {
         MaxActions  int `yaml:"max_actions"`
         MaxAttempts int `yaml:"max_attempts"`
     }   `yaml:"recovery"`
+    // Interlocutor bounds the memory index a returned envelope carries (IR-22).
+    Interlocutor struct {
+        MemoryPage int `yaml:"memory_page"`
+    }   `yaml:"interlocutor"`
 }
 ```
 
@@ -367,6 +366,38 @@ type AdmissionRequest struct {
 }
 ```
 
+<a name="Envelope"></a>
+## type Envelope
+
+Envelope is the IR\-22 output envelope: exactly these four fields.
+
+```go
+type Envelope struct {
+    Result            string      `json:"result"`
+    AdditionalContext string      `json:"additional_context"`
+    ExtraArtifacts    []string    `json:"extra_artifacts"`
+    Memory            MemoryIndex `json:"memory"`
+}
+```
+
+<a name="BuildAbortEnvelope"></a>
+### func BuildAbortEnvelope
+
+```go
+func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (Envelope, string, error)
+```
+
+BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and synthesizes its envelope: no negotiated result, the abort's evidence as additional context, and the entries the lent session recorded. It also returns the aborted session.
+
+<a name="BuildHandoffEnvelope"></a>
+### func BuildHandoffEnvelope
+
+```go
+func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (Envelope, error)
+```
+
+BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; extra filesystem artifacts are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
+
 <a name="HandoffOutcome"></a>
 ## type HandoffOutcome
 
@@ -380,6 +411,27 @@ type HandoffOutcome struct {
     ResultIDs         []int64
 }
 ```
+
+<a name="MemoryIndex"></a>
+## type MemoryIndex
+
+MemoryIndex is the bounded IR\-22 index of the entries a lent session recorded. NextAfter is the last listed entry when more remain, the cursor LentEntries pages from; zero when the index is complete.
+
+```go
+type MemoryIndex struct {
+    Entries   []int64 `json:"entries"`
+    NextAfter int64   `json:"next_after,omitempty"`
+}
+```
+
+<a name="LentEntries"></a>
+### func LentEntries
+
+```go
+func LentEntries(h *history.History, memoryRoot, root, child string, after int64) (MemoryIndex, error)
+```
+
+LentEntries pages the memory index of child, a session that held root's interface, from the entry after. Any other session is refused: the index never carries unrelated root\-session history \(IR\-22\).
 
 <a name="PlanUnit"></a>
 ## type PlanUnit
