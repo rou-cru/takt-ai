@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
@@ -94,12 +95,36 @@ type artifactReport struct {
 
 // interlocutorReturn is what the harness delivers when the interface comes
 // back: the four-field envelope, the declared document's check when a path was
-// declared, and for an abort the session it ended.
+// declared, and for an abort the sessions involved. Notice is the text the
+// convening agent reads, so every host relays the same words.
 type interlocutorReturn struct {
 	Envelope protocol.Envelope `json:"envelope"`
 	Artifact *artifactReport   `json:"artifact,omitempty"`
 	Child    string            `json:"child,omitempty"`
 	Root     string            `json:"root,omitempty"`
+	Notice   string            `json:"notice"`
+}
+
+// withNotice words the return for the convening agent: the envelope, then
+// what travels beside it.
+func (r interlocutorReturn) withNotice(from string) (interlocutorReturn, error) {
+	envelope, e := json.MarshalIndent(r.Envelope, "", "  ")
+	if e != nil {
+		return r, e
+	}
+	lines := []string{fmt.Sprintf("The interface is back from %s. Envelope:\n%s", from, envelope)}
+	if r.Artifact != nil {
+		state := "absent"
+		if r.Artifact.Present {
+			state = "present"
+		}
+		lines = append(lines, fmt.Sprintf("Declared standard document %s: %s.", r.Artifact.Path, state))
+	}
+	if next := r.Envelope.Memory.NextAfter; next != 0 {
+		lines = append(lines, fmt.Sprintf("More entries of the lent session remain: page them with dispatch_lent_entries from next_after %d.", next))
+	}
+	r.Notice = strings.Join(lines, "\n")
+	return r, nil
 }
 
 // checkArtifact reports whether the standard document the active interlocutor
@@ -126,19 +151,29 @@ func handoffReturn(h *history.History, ref, workspace string, r coordinationRequ
 	if e != nil {
 		return nil, e
 	}
-	return interlocutorReturn{Envelope: envelope, Artifact: artifact}, nil
+	return interlocutorReturn{Envelope: envelope, Artifact: artifact}.withNotice(r.Agent)
 }
 
 // abortReturn assembles the synthesized abort envelope: the standard document
 // is never required to abort (PR-HAR-24), but its check still travels beside
-// the envelope so what survived the abandoned switch is known.
+// the envelope so what survived the abandoned switch is known. Without
+// r.Session, r.Child names the session the user is in: a lent session aborts
+// itself, a convening session its current holder.
 func abortReturn(h *history.History, ref, workspace string, r coordinationRequest) (interlocutorReturn, error) {
+	if r.Session == "" {
+		if root, held := h.Project().HeldRoot(r.Child); held {
+			r.Session = root
+		} else {
+			r.Session, r.Child = r.Child, ""
+		}
+	}
 	artifact := checkArtifact(h, workspace, r.Session)
+	holder := protocol.CurrentAgent(h, r.Session)
 	envelope, child, e := protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
 	if e != nil {
 		return interlocutorReturn{}, e
 	}
-	return interlocutorReturn{Envelope: envelope, Artifact: artifact, Child: child}, nil
+	return interlocutorReturn{Envelope: envelope, Artifact: artifact, Child: child, Root: r.Session}.withNotice(holder + ", whose lent session was aborted")
 }
 
 // lentEntries pages the memory index of a session that held r.Session's
@@ -164,7 +199,6 @@ func abortDeletedHolder(h *history.History, ref, workspace string, r coordinatio
 	if e != nil {
 		return nil, e
 	}
-	out.Root = root
 	return out, nil
 }
 

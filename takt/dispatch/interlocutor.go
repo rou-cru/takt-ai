@@ -63,7 +63,7 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 	case h.Project().Budgets(root).InterlocutorHolder != "":
 		held := h.Project().Budgets(root)
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorHeld
-		e = fmt.Errorf("harness: the interlocutor interface is already held by %s (session %s); no chaining; to replace it, ask the user, call dispatch_abort_switch, then dispatch_switch again", held.InterlocutorAgent, held.InterlocutorHolder)
+		e = fmt.Errorf("harness: the interlocutor interface is already held by %s (session %s); no chaining; to replace it, ask the user to run /takt-abort, then call dispatch_switch again", held.InterlocutorAgent, held.InterlocutorHolder)
 	}
 	return errors.Join(h.Append(entry), e)
 }
@@ -120,6 +120,12 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 // switch for root, or "" when it declares none.
 func ExpectedArtifact(h *history.History, root string) string {
 	return h.Project().Budgets(root).InterlocutorArtifact
+}
+
+// CurrentAgent returns the specialist holding root's interlocutor role, read
+// from its owner; empty when no switch is active.
+func CurrentAgent(h *history.History, root string) string {
+	return h.Project().Budgets(root).InterlocutorAgent
 }
 
 // CurrentHolder returns the session holding root's interlocutor role, read

@@ -13,7 +13,6 @@ import {
   isGCCycle,
   isGCCycleResponse,
   isGCPlan,
-  describeReturn,
   isHandoffEnvelope,
   isInterlocutorReturn,
   isOptional,
@@ -80,7 +79,6 @@ describe("plugin setup", () => {
             const reply=owner.answer("dispatch",String(request.action),request)
             if(reply)return reply.out
           }
-          if (argv[1] === "dispatch" && request.action === "abort_switch") return JSON.stringify({ envelope: contracts.abort.envelope })
           if (command === "claims") return JSON.stringify({ ok: true, claims: [{ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/held.ts"] }] })
           if (argv[1] === "dispatch" && request.action === "switch") return JSON.stringify({ ok: true })
           if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false })
@@ -161,7 +159,8 @@ describe("plugin setup", () => {
       await execute("dispatch_activity_start", { activity_id: "activity-1", node_kind: "orchestrator" }, orchestrator)
       await execute("dispatch_close_recovery", { objective: "restore", evidence: "tests pass", demonstrated: true }, orchestrator)
       await execute("dispatch_switch", { target_agent: "dev", objective: "Implement feature", requirements: "typed", client: "review" }, orchestrator)
-      await execute("dispatch_abort_switch", { reason: "handoff not needed" }, orchestrator)
+      // No agent holds an abort (IR-24): the user's /takt-abort command does.
+      expect(tools.has("dispatch_abort_switch")).toBe(false)
       await invokeHook(toolHooks, "execute.before", 0, {
         tool: "subagent", sessionID: "dispatch", id: "delegation-1", input: { agent: "dev", description: "unit-a" },
       })
@@ -433,12 +432,11 @@ describe("isInterlocutorReturn", () => {
   })
 })
 
-describe("describeReturn", () => {
-  test("reports the declared document and the remaining lent-session entries beside the envelope", () => {
-    const text = describeReturn("pm", { ...contracts.handoff, envelope: { ...contracts.handoff.envelope, memory: { entries: [42], next_after: 42 } } })
-    expect(text).toContain("The interface is back from pm. Envelope:")
-    expect(text).toContain("Declared standard document PRD.md: present.")
-    expect(text).toContain("dispatch_lent_entries from next_after 42")
+describe("interlocutor return notice", () => {
+  test("is the core's words, required beside the envelope", () => {
+    expect(contracts.handoff.notice).toContain("Declared standard document PRD.md: present.")
+    const { notice: _notice, ...withoutNotice } = contracts.handoff
+    expect(isInterlocutorReturn(withoutNotice)).toBe(false)
   })
 })
 

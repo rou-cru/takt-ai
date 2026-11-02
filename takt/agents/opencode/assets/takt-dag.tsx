@@ -1262,6 +1262,14 @@ export function SidebarGraph(props: {
 // Snapshot query
 // ---------------------------------------------------------------------------
 
+// AbortReturn is the part of the core's abort reply this plugin relays.
+type AbortReturn = { child: string; root: string; notice: string }
+function isAbortReturn(value: unknown): value is AbortReturn {
+  if (typeof value !== "object" || value === null) return false
+  const reply = value as Record<string, unknown>
+  return typeof reply.child === "string" && typeof reply.root === "string" && typeof reply.notice === "string"
+}
+
 function stateDir(workspace: string): string {
   return resolve(workspace, ".takt-ai", "vfs")
 }
@@ -1436,6 +1444,41 @@ export default Plugin.define({
       )
     }
 
+    // abortLent is the user's own abort of a lent interlocutor session
+    // (IR-24): no agent holds one. Run from the lent session or from the
+    // session that lent it, it confirms, has the core record the abort with
+    // the user as origin, stops the lent session and hands the core's notice
+    // to the convening agent.
+    const abortLent = async () => {
+      const route = context.ui.router.current()
+      if (route.type !== "session") {
+        context.ui.toast.show({ variant: "warning", message: "Open the lent session, or the session that lent it, to abort it." })
+        return
+      }
+      const confirmed = await context.ui.dialog.confirm({
+        title: "Abort the lent session",
+        message: "End the lent specialist's session now and return the interface without a handoff?",
+        label: { confirm: "Abort", cancel: "Keep it" },
+      })
+      if (confirmed !== true) return
+      const request = { action: "abort_switch", child: route.sessionID, evidence: "the user ran /takt-abort", origin: "user" }
+      const proc = Bun.spawn(
+        [TAKT_AI, "dispatch", "--workspace", workspace, "--state", stateDir(workspace), "--request", JSON.stringify(request)],
+        { cwd: workspace, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+      )
+      const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])
+      let reply: unknown
+      try { reply = JSON.parse(out) } catch { reply = undefined }
+      if (code !== 0 || !isAbortReturn(reply)) {
+        const refusal = typeof reply === "object" && reply !== null && typeof (reply as { error?: unknown }).error === "string" ? (reply as { error: string }).error : ""
+        context.ui.toast.show({ variant: "error", message: refusal || (err || out).trim() || `abort exited ${code}` })
+        return
+      }
+      await context.client.session.interrupt({ sessionID: reply.child })
+      await context.client.session.synthetic({ sessionID: reply.root, text: reply.notice })
+      context.ui.toast.show({ variant: "success", message: "Lent session aborted; the interface is back with the convening agent." })
+    }
+
     const unregisterRoute = context.ui.router.register({ name: "takt.dag", render: (input) => <DagView sessionID={input.data?.sessionID} /> })
 
     // A keymap layer belongs to the component that creates it, so the command
@@ -1461,6 +1504,14 @@ export default Plugin.define({
                   data: route.type === "session" ? { sessionID: route.sessionID } : undefined,
                 })
               },
+            },
+            {
+              id: "takt.interlocutor.abort",
+              title: "Abort the lent Takt session",
+              palette: true,
+              slash: { name: "takt-abort" },
+              run: () => void abortLent().catch((error: unknown) =>
+                context.ui.toast.show({ variant: "error", message: error instanceof Error ? error.message : String(error) })),
             },
           ],
         }))

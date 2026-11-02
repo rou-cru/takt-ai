@@ -378,9 +378,10 @@ type returned struct {
 		Path    string `json:"path"`
 		Present bool   `json:"present"`
 	} `json:"artifact"`
-	Child string `json:"child"`
-	Root  string `json:"root"`
-	raw   json.RawMessage
+	Child  string `json:"child"`
+	Root   string `json:"root"`
+	Notice string `json:"notice"`
+	raw    json.RawMessage
 }
 
 func (r *returned) UnmarshalJSON(data []byte) error {
@@ -484,7 +485,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"the user ends a holder's turn", userAbortsSwitch},
 		{"a lent session's memory index pages", lentMemoryPages},
 		{"a deleted holder session is aborted", deletedSessionAbortsHolder},
-		{"an optional filesystem copy never gates a nonstandard handoff", handoffOptionalCopy},
+		{"a declared document's absence never gates a nonstandard handoff", handoffOptionalCopy},
 		{"validate_results against a real engram", validateResultsAgainstRealEngram},
 		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
 	} {
@@ -1259,6 +1260,9 @@ func lentMemoryPages(t *testing.T, bin string) {
 	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
 		t.Fatalf("first page: %+v", resp)
 	}
+	if !strings.Contains(resp.Notice, "page them with dispatch_lent_entries from next_after 50") {
+		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
+	}
 	var page struct {
 		Entries   []int64 `json:"entries"`
 		NextAfter int64   `json:"next_after"`
@@ -1313,6 +1317,17 @@ func userAbortsSwitch(t *testing.T, bin string) {
 		t.Fatalf("abort_switch with no child did not abort the holder: %+v", resp)
 	}
 	s.refused(request{Action: "abort_switch", Session: rootSession, Evidence: "x", Origin: "user"})
+	// /takt-abort names only the session the user is in: the lent session
+	// resolves its root, the convening session its holder.
+	for _, from := range []string{"child-4", rootSession} {
+		s.must(request{Action: "switch", Session: rootSession, Child: "child-4", Agent: "pm"})
+		var user returned
+		s.must(request{Action: "abort_switch", Child: from, Evidence: "the user ran /takt-abort", Origin: "user"}).decode(t, &user)
+		if user.Root != rootSession || user.Child != "child-4" || !strings.HasPrefix(user.Notice, "The interface is back from pm, whose lent session was aborted.") {
+			t.Fatalf("abort from %s: %+v", from, user)
+		}
+	}
+	s.refused(request{Action: "abort_switch", Child: "stranger", Evidence: "x", Origin: "user"})
 }
 
 // deletedSessionAbortsHolder covers session_deleted: only the session that

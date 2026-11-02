@@ -30,8 +30,7 @@ it returns.
    useful reference exists, state `requirements` as empty rather than inventing one. `client`
    carries what is known of the user. The specialist starts from `objective`, `requirements`
    and `client` alone.
-2. If the user asks to cut a lent session short, call `dispatch_abort_switch`; the harness asks
-   the user to confirm it.
+2. Only the user aborts a lent session: if they ask, tell them to run `/takt-abort`.
 
 ## Reading the return
 

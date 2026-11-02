@@ -73,7 +73,7 @@ type MemoryIndex = { entries: number[]; next_after?: number }
 type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: MemoryIndex }
 // What the core delivers when the interface comes back: the envelope, with the
 // declared document's check and the ended session beside it, never inside.
-type InterlocutorReturn = { envelope: HandoffEnvelope; artifact?: { path: string; present: boolean }; child?: string; root?: string }
+type InterlocutorReturn = { envelope: HandoffEnvelope; artifact?: { path: string; present: boolean }; child?: string; root?: string; notice: string }
 type NotHeld = { aborted: false }
 type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string }
 type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | MemoryIndex | NotHeld | Record<string, unknown> | null
@@ -94,15 +94,8 @@ export function isHandoffEnvelope(value: unknown): value is HandoffEnvelope {
     isStringArray(value.extra_artifacts) && isMemoryIndex(value.memory)
 }
 export function isInterlocutorReturn(value: Record<string, unknown>): value is InterlocutorReturn {
-  return isHandoffEnvelope(value.envelope) && isOptional(value.child, isString) && isOptional(value.root, isString) &&
+  return isHandoffEnvelope(value.envelope) && isString(value.notice) && isOptional(value.child, isString) && isOptional(value.root, isString) &&
     isOptional(value.artifact, (a): a is { path: string; present: boolean } => isResponseObject(a) && isString(a.path) && isBoolean(a.present))
-}
-// describeReturn is what the orchestrator reads when the interface comes back.
-export function describeReturn(from: string, ret: InterlocutorReturn): string {
-  const lines = [`The interface is back from ${from}. Envelope:\n${JSON.stringify(ret.envelope, null, 2)}`]
-  if (ret.artifact) lines.push(`Declared standard document ${ret.artifact.path}: ${ret.artifact.present ? "present" : "absent"}.`)
-  if (ret.envelope.memory.next_after) lines.push(`More entries of the lent session remain: page them with dispatch_lent_entries from next_after ${ret.envelope.memory.next_after}.`)
-  return lines.join("\n")
 }
 type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[] }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
@@ -953,10 +946,11 @@ export default Plugin.define({
     async function promptChild(sessionID: string, text: string): Promise<void> {
       await ctx.session.prompt({ sessionID, text }, { signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)]) })
     }
-    // returnInterface hands the interlocutor envelope to the root orchestrator,
-    // which holds the interface again; the lent session gets nothing back.
-    async function returnInterface(root: string, from: string, ret: InterlocutorReturn): Promise<void> {
-      await ctx.session.synthetic({ sessionID: root, text: describeReturn(from, ret) })
+    // returnInterface hands the core's notice of the returned interface to the
+    // root orchestrator, which holds the interface again; the lent session gets
+    // nothing back.
+    async function returnInterface(root: string, ret: InterlocutorReturn): Promise<void> {
+      await ctx.session.synthetic({ sessionID: root, text: ret.notice })
     }
     const restoreGCCycle = once(async () => { await reconcileStoredDelegations() })
     function scheduleGC() {
@@ -1382,7 +1376,7 @@ export default Plugin.define({
       // The core decides from its history whether the session held a root.
       await dispatchAction({ action: "session_deleted", child: sessionID })
         .then(reply => {
-          if (reply !== null && isInterlocutorReturn(reply) && reply.root) return returnInterface(reply.root, "a lent session that ended without a handoff", reply)
+          if (reply !== null && isInterlocutorReturn(reply) && reply.root) return returnInterface(reply.root, reply)
         })
         .catch(error => console.error("Takt session_deleted", error))
     }
@@ -1620,13 +1614,12 @@ export default Plugin.define({
         },
       })
 
-      // dispatch_switch and dispatch_abort_switch cannot ride the dispatch()
-      // factory above unmodified: both need to create or stop the temporary
-      // interlocutor's own session around the call to Go, and fields() only
-      // ever contributes a plain object into that one call. Each repeats
-      // dispatch()'s own root-only guard instead (IR-19/IR-24: a switch is
-      // originated by the base, its abort only by the user or the harness,
-      // never by a temporary holder).
+      // dispatch_switch cannot ride the dispatch() factory above unmodified: it
+      // creates the temporary interlocutor's own session around the call to
+      // Go, and fields() only ever contributes a plain object into that one
+      // call. It repeats dispatch()'s own root-only guard instead (IR-19). No
+      // agent holds an abort: the user's /takt-abort command and the harness
+      // originate one (IR-24).
       //
       // The user's decision is the harness's to obtain, not the model's word
       // (IR-20, IR-24): each transition asks through the permission service
@@ -1681,23 +1674,6 @@ export default Plugin.define({
         },
       })
       editor.add({
-        name: "dispatch_abort_switch",
-        description: "Abort the current interlocutor switch and return the interlocutor role to the base. Only the user originates an abort: they are asked to accept it before it takes effect.",
-        input: obj({ reason: str("Evidence for aborting the switch") }, ["reason"]),
-        async execute(value: unknown, c) {
-          const args = toolInput<{ reason: string }>(value)
-          const session = await rootSession(c.sessionID)
-          if (c.sessionID !== session) throw new Error("dispatch_abort_switch belongs to the root orchestrator")
-          // The user's acceptance is what makes this a user-originated abort.
-          await confirmWithUser("interlocutor_abort", session, { reason: args.reason }, c)
-          // No child is named: the core aborts the current holder or refuses.
-          const result = await governed(c, { action: "abort_switch", session, child: "", evidence: args.reason, origin: "user" })
-          if (result === null || !isInterlocutorReturn(result)) throw new Error("dispatch_abort_switch: the core returned no envelope")
-          if (result.child) await stopChild(result.child)
-          return { content: describeReturn("the aborted lent session", result) }
-        },
-      })
-      editor.add({
         name: "dispatch_lent_entries",
         description: "Page the memory index of a lent session whose returned envelope reports more entries, from its next_after.",
         input: obj({
@@ -1734,7 +1710,7 @@ export default Plugin.define({
             result: args.result, additional_context: args.additional_context, extra_artifacts: args.extra_artifacts, result_ids: args.result_ids,
           })
           if (envelope === null || !isInterlocutorReturn(envelope)) throw new Error("dispatch_handoff: the core returned no envelope")
-          await returnInterface(session, c.agent, envelope)
+          await returnInterface(session, envelope)
           // The holder has no further active work; its turn ends once this call returns.
           const holder = c.sessionID
           setTimeout(() => void stopChild(holder).catch(() => undefined), 0)
