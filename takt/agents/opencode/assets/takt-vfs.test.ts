@@ -435,8 +435,7 @@ describe("isInterlocutorReturn", () => {
 describe("interlocutor return notice", () => {
   test("is the core's words, required beside the envelope", () => {
     expect(contracts.handoff.notice).toContain("Declared standard document PRD.md: present.")
-    const { notice: _notice, ...withoutNotice } = contracts.handoff
-    expect(isInterlocutorReturn(withoutNotice)).toBe(false)
+    expect(isInterlocutorReturn({ ...contracts.handoff, notice: undefined })).toBe(false)
   })
 })
 
