@@ -443,6 +443,11 @@ type Entry struct {
     Phase      string  `json:"phase,omitempty"`
     // Owner is the harness instance an execution or lease belongs to.
     Owner string `json:"owner,omitempty"`
+    // Model is the provider/model an execution runs, or a restored seat's.
+    Model string `json:"model,omitempty"`
+    // Substitute marks a restored seat filled by a non-orchestrating Takt
+    // substitute rather than by its own specialist.
+    Substitute bool `json:"substitute,omitempty"`
 }
 ```
 
@@ -488,6 +493,10 @@ type Execution struct {
     Ready      bool    `json:"ready,omitempty"`
     Terminated bool    `json:"terminated,omitempty"`
     Settled    bool    `json:"settled,omitempty"`
+    // Model is the provider/model the execution runs.
+    Model string `json:"model,omitempty"`
+    // Substitute marks a Takt substitute filling the instance's seat.
+    Substitute bool `json:"substitute,omitempty"`
     // Owner is the harness instance that prepared or attached this execution;
     // empty for one recorded before owners were.
     Owner string `json:"owner,omitempty"`
@@ -709,6 +718,10 @@ const (
     // KindInterlocutorAborted records the harness or user ending the temporary
     // holder's turn without negotiation (IR-24); Result is always "Aborted".
     KindInterlocutorAborted Kind = "interlocutor_aborted"
+    // KindSeatRestored records the orchestrator restoring an unavailable seat
+    // (PR-CRW-13): the instance, the model it now runs, the reason, and
+    // whether a substitute fills it.
+    KindSeatRestored Kind = "seat_restored"
     // KindRevised records a valid plan revision against its expected prior
     // version; Classification is the harness-derived tactical/strategic label
     // (PR-DAG-MUT-4, PR-DAG-MUT-6).

@@ -34,8 +34,11 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
 - [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string\) error](<#Restore>)
 - [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Revise>)
+- [func SeatEntry\(root, unit, attempt string, s Seat\) history.Entry](<#SeatEntry>)
 - [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
+- [func SubstituteIdentity\(agent string\) \(\[\]string, error\)](<#SubstituteIdentity>)
 - [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
+- [func ValidateSeat\(h \*history.History, root string, s Seat\) error](<#ValidateSeat>)
 - [func Withdraw\(h \*history.History, journalRef, event, session string\) error](<#Withdraw>)
 - [type AdmissionPolicy](<#AdmissionPolicy>)
   - [func LoadAdmissionPolicy\(\) \(AdmissionPolicy, error\)](<#LoadAdmissionPolicy>)
@@ -48,6 +51,8 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
   - [func LentEntries\(h \*history.History, memoryRoot, root, child string, after int64\) \(MemoryIndex, error\)](<#LentEntries>)
 - [type PlanUnit](<#PlanUnit>)
 - [type RecoveryDeclaration](<#RecoveryDeclaration>)
+- [type Seat](<#Seat>)
+  - [func \(s Seat\) Restores\(\) bool](<#Seat.Restores>)
 
 
 ## Constants
@@ -74,6 +79,12 @@ const CauseRepetition = "control/unit-in-flight"
 
 ```go
 const CauseWithdrawn = "control/unit-withdrawn"
+```
+
+<a name="UnprovenModelCause"></a>UnprovenModelCause prefixes the refusal of an autonomous reassignment to a model this session has not seen complete work; the user may approve it.
+
+```go
+const UnprovenModelCause = "seat/unproven-model"
 ```
 
 <a name="Abort"></a>
@@ -283,6 +294,15 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 
 Revise records a plan revision against its expected prior valid version \(PR\-DAG\-MUT\-6\). A valid revision is classified strategic or tactical by comparing the old and new plans \(PR\-DAG\-MUT\-4\) and applies as a whole; an invalid one is rejected with its reason recorded, touching no per\-unit state, so the last valid plan is untouched by construction.
 
+<a name="SeatEntry"></a>
+## func SeatEntry
+
+```go
+func SeatEntry(root, unit, attempt string, s Seat) history.Entry
+```
+
+SeatEntry is the execution\-history record of an admitted restoration.
+
 <a name="StartActivity"></a>
 ## func StartActivity
 
@@ -292,6 +312,15 @@ func StartActivity(h *history.History, session, activityID string, nodeKind hist
 
 StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle.
 
+<a name="SubstituteIdentity"></a>
+## func SubstituteIdentity
+
+```go
+func SubstituteIdentity(agent string) ([]string, error)
+```
+
+SubstituteIdentity returns the installed PERSONA and SOUL texts of agent's instance: what a substitute's composed prompt leaves out.
+
 <a name="Switch"></a>
 ## func Switch
 
@@ -300,6 +329,15 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 ```
 
 Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
+
+<a name="ValidateSeat"></a>
+## func ValidateSeat
+
+```go
+func ValidateSeat(h *history.History, root string, s Seat) error
+```
+
+ValidateSeat refuses a restoration PR\-CRW\-13 does not admit, before any admission is spent: the orchestrator seat, a restoration without a reason or model, a substitute before any reassignment of that seat, and, without the user's approval, a model this session has not seen complete work.
 
 <a name="Withdraw"></a>
 ## func Withdraw
@@ -461,5 +499,30 @@ type RecoveryDeclaration struct {
     Attempts int      `json:"attempts"`
 }
 ```
+
+<a name="Seat"></a>
+## type Seat
+
+Seat is what a delegation declares about the seat it fills \(PR\-CRW\-13\): the model it runs, the instance's configured model, and, when it restores an unavailable seat, the reason and whether a substitute fills it.
+
+```go
+type Seat struct {
+    Agent         string
+    Model         string
+    Configured    string
+    Reason        string
+    Substitute    bool
+    UserConfirmed bool
+}
+```
+
+<a name="Seat.Restores"></a>
+### func \(Seat\) Restores
+
+```go
+func (s Seat) Restores() bool
+```
+
+Restores reports whether the delegation restores the seat: another model than the configured one, or a substitute.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
