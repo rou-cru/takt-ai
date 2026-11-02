@@ -4,7 +4,7 @@ description: "Before using memory. The single content guide for every Takt agent
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "2.1"
+  version: "2.2"
 ---
 
 # Takt Memory Contract
@@ -126,9 +126,12 @@ per domain.
 ## 7. Reading memory
 
 - An entry whose `#id` you already know is retrieved directly with `mem_get_observation`; no
-  prior search is needed. For an unknown topic, search with `mem_search` and judge by title.
+  prior search is needed. For an unknown topic, search with `memory_search` and judge by title.
   Open only what your work needs now, never an entry you only pass on by ID. Locate with
-  `mem_search`, never with `mem_context`, which returns whole sessions.
+  `memory_search`, never with `mem_context`, which returns whole sessions.
+- `memory_search` leaves superseded entries out; `include_history` shows them marked
+  `[superseded]`. `[disputed]` marks an open dispute and `[exception]` a scoped exception to the
+  entry: read them before relying on it.
 - When a known `#id` cannot be retrieved, report that `#id` and the actual error; never
   substitute another entry found by search for it.
 - A delegation arrives with the invariants it consumes, or with the declaration that none

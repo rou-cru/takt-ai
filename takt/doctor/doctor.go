@@ -138,7 +138,7 @@ func Run(stdout io.Writer) error {
 	project := memory.ResolveProject(context.Background(), memory.Config{}, workspace)
 	report.Checks = append(report.Checks, engramDiagnosticsCheck(project), engramNeedsReviewCheck(project))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
-	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home))
+	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home), opencodeDAGPluginCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
 	return render(stdout, report)
 }
@@ -565,6 +565,12 @@ func opencodeSandboxAdapterCheck(home string) CheckResult {
 	// deploys and the sibling name the VFS plugin loads it by; no model
 	// constant exists for it (unlike VFSPluginFile).
 	return opencodePluginCheck(home, "opencode:sandbox-adapter", "takt-sandbox.mjs", "Sandbox adapter", "the sandbox adapter used to run captured shell commands")
+}
+
+// opencodeDAGPluginCheck reports whether the DAG view plugin is deployed at its
+// TUI discovery path, so the execution DAG is not silently missing from OpenCode.
+func opencodeDAGPluginCheck(home string) CheckResult {
+	return opencodePluginCheck(home, "opencode:dag-plugin", "takt-dag/tui.tsx", "DAG plugin", "the DAG view plugin")
 }
 
 // opencodePluginCheck verifies one Takt-deployed OpenCode plugin is a regular file, so a

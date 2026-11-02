@@ -11,7 +11,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/skills"
 )
@@ -27,6 +29,7 @@ func nativeOpenCodeChecks(ctx context.Context, root string) []CheckResult {
 	client := nativeOpenCodeClient(root)
 	checks := []CheckResult{
 		nativeOrchestratorCheck(ctx, client),
+		nativeAgentsCheck(ctx, client),
 		nativeDefaultModelCheck(ctx, client),
 		nativeSkillsCheck(ctx, client),
 		nativePluginsCheck(ctx, client),
@@ -46,6 +49,35 @@ func nativeOrchestratorCheck(ctx context.Context, client *opencodeapi.Client) Ch
 		}
 	}
 	return CheckResult{id, NotVerified, "Native OpenCode API does not expose a selectable Takt orchestrator."}
+}
+
+// nativeAgentsCheck verifies every catalog subagent is registered with OpenCode.
+// The orchestrator is excluded here; nativeOrchestratorCheck covers it.
+func nativeAgentsCheck(ctx context.Context, client *opencodeapi.Client) CheckResult {
+	const id = "agents:opencode"
+	expected, err := catalog.LoadNativeContent()
+	if err != nil {
+		return CheckResult{id, NotVerifiable, fmt.Sprintf("Cannot load Takt agent catalog: %v", err)}
+	}
+	agents, err := client.Agents(ctx)
+	if err != nil {
+		return CheckResult{id, NotVerifiable, fmt.Sprintf("Cannot query native OpenCode agent inventory: %v", err)}
+	}
+	seen := make(map[string]bool, len(agents))
+	for _, agent := range agents {
+		seen[agent.ID] = agent.Mode == "subagent" || agent.Mode == "all"
+	}
+	var missing []string
+	for name := range expected {
+		if !seen[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		return CheckResult{id, NotVerified, "Native OpenCode is missing delegatable Takt agents: " + strings.Join(missing, ", ")}
+	}
+	return CheckResult{id, Verified, fmt.Sprintf("Native OpenCode registered all %d Takt subagents.", len(expected))}
 }
 
 func nativeDefaultModelCheck(ctx context.Context, client *opencodeapi.Client) CheckResult {
@@ -111,7 +143,20 @@ func nativePluginsCheck(ctx context.Context, client *opencodeapi.Client) CheckRe
 			return CheckResult{id, NotVerified, "OpenCode reports a failed plugin: " + message}
 		}
 	}
-	return CheckResult{id, Verified, fmt.Sprintf("OpenCode reports %d active plugins and no failed plugin.", len(plugins))}
+	seen := make(map[string]bool, len(plugins))
+	for _, plugin := range plugins {
+		seen[plugin.ID] = true
+	}
+	var missing []string
+	for _, want := range opencode.TaktPluginIDs() {
+		if !seen[want] {
+			missing = append(missing, want)
+		}
+	}
+	if len(missing) > 0 {
+		return CheckResult{id, NotVerified, "OpenCode did not load Takt plugins: " + strings.Join(missing, ", ")}
+	}
+	return CheckResult{id, Verified, fmt.Sprintf("OpenCode reports %d active server plugins, including all Takt server plugins. TUI execution is not exposed by this API.", len(plugins))}
 }
 
 func inventoryEnvironment(root string) []string {

@@ -38,7 +38,6 @@ var ContractSkillPath = path.Join(MemorySkillsDir, ContractSkillID, catalog.Skil
 // mcpTools lists the read-only MCP tools exposed by Engram.
 var mcpTools = []string{
 	"mem_current_project",
-	"mem_search",
 	"mem_get_observation",
 	"mem_context",
 }

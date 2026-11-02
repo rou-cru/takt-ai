@@ -55,7 +55,7 @@ func runMemory(args []string, stdin io.Reader, stdout io.Writer) error {
 
 func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 	if len(args) != 1 {
-		return nil, errors.New("usage: takt-ai memory record|continue|close|capabilities < request.json")
+		return nil, errors.New("usage: takt-ai memory record|search|continue|close|capabilities < request.json")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -77,6 +77,12 @@ func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 			return nil, err
 		}
 		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Record(ctx, cfg, req) })
+	case "search":
+		req, err := decodeMemory[memory.SearchRequest](stdin)
+		if err != nil {
+			return nil, err
+		}
+		return memory.Search(ctx, cfg, req)
 	case "continue":
 		req, err := decodeMemory[memory.ContinueRequest](stdin)
 		if err != nil {
@@ -93,7 +99,7 @@ func dispatchMemory(args []string, stdin io.Reader) (any, error) {
 		}
 		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Close(ctx, cfg, req) })
 	}
-	return nil, fmt.Errorf("unknown memory command %q (valid: record, continue, close, capabilities)", args[0])
+	return nil, fmt.Errorf("unknown memory command %q (valid: record, search, continue, close, capabilities)", args[0])
 }
 
 // underWorkspace runs a memory command under the workspace lock that

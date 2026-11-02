@@ -88,15 +88,11 @@ func TestEnvelope_Validate_ForbiddenAttributes(t *testing.T) {
 }
 
 func TestEnvelope_Validate_SafeAttributes(t *testing.T) {
-	// Safe attributes (path, hash, count) must pass validation.
+	// The content-free attribute a VFS delta carries must pass validation.
 	clock := obs.NewClock()
 	env := obs.NewEnvelope(clock, obs.PlaneVFS, "agent")
 	env.EventClass = obs.EventVFSDelta
-	env.Attributes = map[string]any{
-		"file_path":  "src/main.go",
-		"after_hash": "abc123",
-		"op_count":   42,
-	}
+	env.Attributes = map[string]any{"operation": "write"}
 	if err := env.Validate(); err != nil {
 		t.Errorf("Validate() with safe attributes = %v; want nil", err)
 	}
@@ -124,9 +120,9 @@ func TestBus_Publish_AcceptsValidEnvelopes(t *testing.T) {
 	bus, clock := newBus(t)
 	done := make(chan struct{})
 	go func() {
-		for i := range 5 {
+		for range 5 {
 			env := newEnv(clock, obs.PlaneVFS, "agent-a")
-			env.Attributes = map[string]any{"seq": i}
+			env.Attributes = map[string]any{"operation": "write"}
 			if err := bus.Publish(env); err != nil {
 				t.Errorf("Publish: %v", err)
 			}

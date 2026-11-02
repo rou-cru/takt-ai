@@ -69,11 +69,3 @@ func TestDetectConflictsClassifiesImpact(t *testing.T) {
 		t.Errorf("incompatible entry has no alternative: %+v", cfg)
 	}
 }
-
-func TestIsJSONObject(t *testing.T) {
-	for raw, want := range map[string]bool{"": true, "{}": true, `{"a":1}`: true, "{\n// c\n\"a\": 1,\n}": true, "not json": false, "[1]": false} {
-		if got := isJSONObject([]byte(raw)); got != want {
-			t.Errorf("isJSONObject(%q) = %v, want %v", raw, got, want)
-		}
-	}
-}

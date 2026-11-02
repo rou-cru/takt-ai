@@ -232,7 +232,7 @@ SessionID returns the session identifier for this bus instance.
 <a name="Clock"></a>
 ## type Clock
 
-Clock owns monotonic session time so budgets never break on clock adjustments.
+Clock owns monotonic session time for duration measurements.
 
 ```go
 type Clock struct {
@@ -316,7 +316,7 @@ Envelope carries one normalized event without content so telemetry stays safe to
 type Envelope struct {
     // SchemaVersion tags the shape, so readers can reject unknown versions fast.
     SchemaVersion string `json:"schema_version"`
-    // SessionTimestamp holds session-clock time, so budgets use monotonic time immune to wall-clock jumps.
+    // SessionTimestamp holds elapsed time for analysis, never budget enforcement.
     SessionTimestamp SessionTime `json:"session_timestamp"`
     // WallTimestamp holds wall-clock time, so cross-system correlation stays possible.
     WallTimestamp time.Time `json:"wall_timestamp"`
@@ -398,7 +398,7 @@ const (
 <a name="SessionTime"></a>
 ## type SessionTime
 
-SessionTime counts time since session start so budgets survive wall\-clock jumps.
+SessionTime counts elapsed time for analysis, not action\-denominated budgets.
 
 ```go
 type SessionTime = time.Duration

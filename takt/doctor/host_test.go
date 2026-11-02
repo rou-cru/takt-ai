@@ -91,7 +91,7 @@ func newHost(t *testing.T) *host {
 	h.tool("engram", testutil.FakeEngramScript(engram.EngramVersion))
 	h.tool("codegraph", testutil.FakeCodegraphScript(codegraph.CodegraphVersion))
 	h.tool("opencode", testutil.FakeOpenCodeScript())
-	plugins := []string{model.VFSPluginFile, "takt-memory.ts", "takt-sandbox.mjs"}
+	plugins := []string{model.VFSPluginFile, "takt-memory.ts", "takt-sandbox.mjs", "takt-dag/tui.tsx"}
 	manifest := setup.NewOwnershipManifest()
 	for _, file := range plugins {
 		h.plugin(file)

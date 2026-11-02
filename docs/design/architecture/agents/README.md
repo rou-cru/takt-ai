@@ -89,7 +89,7 @@ Role classes come from `agent.yaml`.
 - Cutting a DAG for concurrency and the width self-check before commit.
 - Comparing outputs across product, behavior, architecture and experience, and returning incompatibilities to their owners.
 - Resuming a session from its anchors and confirming continuity with the user.
-- The escalation triggers and the recovery conduct (freeze, restore only the abandoned scope, report).
+- The recovery and diagnosis signals and the recovery conduct (freeze, restore only the abandoned scope, report).
 
 ## Fidelity notes
 

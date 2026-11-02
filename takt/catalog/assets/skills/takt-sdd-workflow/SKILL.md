@@ -4,7 +4,7 @@ description: "Several implementation units must deliver user stories as integrat
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "4.0"
+  version: "4.1"
 ---
 
 # Takt SDD & DAG Workflow
@@ -102,7 +102,8 @@ path, and keep moving.
    Never parallelize global verification, run it per wave or node, or run it unplanned. A
    milestone commit is a separate decision and follows only after an acceptance passes.
 6. **Zero Silent Drops:** A first failure that OPERATIONS routes to retry in place retries once;
-   a second failure, any other failure or a flagged contract defect loads `takt-sdd-recovery` and follows it. Never drop or skip a task silently.
+   a second failure or a flagged contract defect loads `takt-sdd-recovery` and follows it; any other
+   failure follows its OPERATIONS route. Never drop or skip a task silently.
 
 ---
 

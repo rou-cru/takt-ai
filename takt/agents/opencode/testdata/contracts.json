@@ -3,6 +3,7 @@
   "vfs_bind": {"ok":true,"key":"bind-opaque","attempt_id":"1","invariants_version":"inv1:abc"},
   "memory_record": {"ok":true,"result":{"id":42,"deduplicated":false}},
   "memory_close": {"ok":true,"result":{"end_anchor_id":43,"entries":2}},
+  "memory_search": {"ok":true,"result":{"results":[{"id":42,"type":"decision","title":"[dev] Cache for ten minutes","preview":"Cache policy.","disputed":true,"exception":true}],"omitted_superseded":1}},
   "memory_error": {"ok":false,"error":"session is closed"},
   "coordinator": {"dispatch_after":0,"version":1,"units":3,"mutations":1,"cursor":2,"deferrals":0,"next_mandate":1,"requested":false,"cycle":{"plan":{"session_id":"root-session","cycle_id":"cycle-1","mandate_class":"complexity","delta":[{"path":"src/a.go","introduced":true}],"closure":["src/a.go","src/b.go"],"reachability":"codegraph"},"phase":"collect","scope":["src/a.go"],"sessions":{"collector":"session-collector","verifier":"session-verifier"},"report":{"findings":null,"coverage":null},"started":"0001-01-01T00:00:00Z"}},
   "handoff": {"additional_context":"Implemented the requested change.","artifact_verified":true,"extra_artifacts":["result.md"],"memory":[42],"result":"Standard","session_entries":[42,43]},

@@ -27,6 +27,7 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [func MemoryClause\(authorID string\) string](<#MemoryClause>)
 - [func ProviderNames\(ctx context.Context\) \(map\[string\]string, error\)](<#ProviderNames>)
 - [func Reload\(ctx context.Context\) error](<#Reload>)
+- [func TaktPluginIDs\(\) \[\]string](<#TaktPluginIDs>)
 - [type AgentSpec](<#AgentSpec>)
 - [type Artifact](<#Artifact>)
   - [func OpenCodePluginPackageArtifact\(\) Artifact](<#OpenCodePluginPackageArtifact>)
@@ -171,6 +172,15 @@ func Reload(ctx context.Context) error
 ```
 
 Reload asks the user's OpenCode server to rebuild loaded locations after a deployment, using normal server resolution so the handoff affects the session the user will run.
+
+<a name="TaktPluginIDs"></a>
+## func TaktPluginIDs
+
+```go
+func TaktPluginIDs() []string
+```
+
+TaktPluginIDs lists Takt's required server plugins in /api/plugin. The TUI\-only DAG plugin is not exposed by that server inventory.
 
 <a name="AgentSpec"></a>
 ## type AgentSpec

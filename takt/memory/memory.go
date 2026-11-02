@@ -135,6 +135,7 @@ const (
 	// Engram verbs stored on evolution edges.
 	edgeSupersedes = "supersedes"
 	edgeConflicts  = "conflicts_with"
+	edgeScoped     = "scoped"
 	// Applicability is derived from recorded evolution and never stored on the
 	// entry: nature says what an entry is, applicability whether it still governs.
 	applicabilityCurrent    = "current"
@@ -147,7 +148,7 @@ var relationEdges = map[string]string{
 	"corrects":     edgeSupersedes,
 	"supersedes":   edgeSupersedes,
 	"supplements":  "compatible",
-	"exception-to": "scoped",
+	"exception-to": edgeScoped,
 	"disputes":     edgeConflicts,
 }
 
@@ -617,11 +618,19 @@ func validateShape(req RecordRequest) error {
 	if !natures[req.Nature] {
 		return reject("nature must be one of proposal, decision, observation, hypothesis")
 	}
-	if req.Scope != scopeProject && req.Scope != scopePersonal {
-		return reject("scope must be project or personal")
+	if err := validateScope(req.Scope); err != nil {
+		return err
 	}
 	if strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Content) == "" {
 		return reject("title and content are required")
+	}
+	return nil
+}
+
+// validateScope accepts the two scopes that name the memory tiers.
+func validateScope(scope string) error {
+	if scope != scopeProject && scope != scopePersonal {
+		return reject("scope must be project or personal")
 	}
 	return nil
 }

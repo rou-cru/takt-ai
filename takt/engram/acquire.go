@@ -44,7 +44,7 @@ const (
 )
 
 // EngramVersion is the minimum Engram release Takt configures and the one it installs.
-const EngramVersion = "2.1.0"
+const EngramVersion = "3.6.0"
 
 const (
 	downloadTimeout = 5 * time.Minute
@@ -56,10 +56,10 @@ var (
 	releaseBaseURL = "https://github.com/Gentleman-Programming/engram/releases/download"
 	// releaseSHA256 pins each platform tarball; checksums are never fetched at install time.
 	releaseSHA256 = map[string]string{
-		"darwin_amd64": "2c8f56f36c6779b1c0f5f56bf9339ed121192218272e4fc144a8ad7bed2da22c",
-		"darwin_arm64": "b9167999ba6deca652e367bd7d44766afa33430ab93b01f7cc0be42e6364d806",
-		"linux_amd64":  "3579cf5d92ae9349c6941ff08cde04012b12c9c695d307e71afaee4fb5e4a9c1",
-		"linux_arm64":  "12b84e62a9763290d086efc0332dfbd9ebe2f3ff7461c44ed091c9f946d2f0cc",
+		"darwin_amd64": "41d74d7d61bd8a8929da85a3ed75dbcb16c18f30efff4675ad2f832c8f89898e",
+		"darwin_arm64": "b1e565ad2a2f01beca936030d65ab79075808ecc81e1e16447040e32fa2c0753",
+		"linux_amd64":  "945fb471188826c251160947f8dda9fe148ba0dd095fa3453174fe7ab5c6479e",
+		"linux_arm64":  "00a2d7645aa428e56c32c18b8de8bfa90d4c6e0f68c4d47bc82e3d6e3e77879d",
 	}
 )
 

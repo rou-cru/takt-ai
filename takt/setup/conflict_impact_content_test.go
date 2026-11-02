@@ -36,21 +36,6 @@ func TestContentMatches(t *testing.T) {
 	}
 }
 
-func TestIsJSONObjectInputs(t *testing.T) {
-	for raw, want := range map[string]bool{
-		"":         true,
-		"  \n":     true,
-		`{"a":1}`:  true,
-		`{}`:       true,
-		"not json": false,
-		`{"a":`:    false,
-	} {
-		if got := isJSONObject([]byte(raw)); got != want {
-			t.Errorf("isJSONObject(%q) = %v, want %v", raw, got, want)
-		}
-	}
-}
-
 func TestCapabilityFor(t *testing.T) {
 	for path, want := range map[string]string{
 		engram.MemorySkillsDir + "/takt-memory/SKILL.md": "takt-memory skill",

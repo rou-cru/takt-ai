@@ -113,9 +113,9 @@ task count or elapsed time; that weight decides when a milestone is cut for comm
 | Failure or signal | Route |
 | --- | --- |
 | A unit's first failure whose output names the cause, with the fix inside the unit's writable set and acceptance | Retry in place |
-| A contract defect | Its owner under takt-sdd-recovery; the user only when no owner is reachable or two deltas did not converge |
+| A contract defect or discrepancy with observed code | Its owner for bounded diagnosis; use takt-sdd-recovery for committed SDD work. Keep the user's direct-work instruction when it applies |
 | Any other failure | takt-failure-handling |
-| An escalation trigger: a delivery outside its scope or an unexplained change of workspace state, an expired budget, an objective-blocking discovery, or a contract or spec contradicting the code actually observed | takt-failure-handling |
+| A recovery or diagnosis signal: a delivery outside its scope or an unexplained change of workspace state, an expired budget, an objective-blocking discovery | takt-failure-handling |
 
 Before committing a plan, consolidating, or requesting the blind review pair, load
 takt-verification-consolidation; it governs verification, consolidation, milestone commits and
