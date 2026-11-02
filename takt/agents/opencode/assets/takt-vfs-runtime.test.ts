@@ -240,6 +240,8 @@ async function startVfs(options: Options = {}) {
     actions: (kind: string) => calls.filter((call) => call.kind === kind).map((call) => call.command),
     // schema is the input schema a registered tool advertises to the host.
     schema: (name: string) => (tools.get(name) as { input?: { properties?: Record<string, Record<string, unknown>> } } | undefined)?.input,
+    // description is the text a registered tool advertises to the model.
+    description: (name: string) => (tools.get(name) as { description?: string } | undefined)?.description,
     requests: (kind: string, command: string) => calls.filter((call) => call.kind === kind && call.command === command).map((call) => call.request),
     run(name: string, input: unknown, ctx: Ctx = dev) {
       const execute = tools.get(name)?.execute
@@ -1226,6 +1228,14 @@ describe("path ownership", () => {
 })
 
 describe("claims and consolidation", () => {
+  // An assignment never resolves retained staged work on the side: release,
+  // discard, consolidation and staged edits stay separate owner operations.
+  const SIDE_RESOLUTIONS = ["release", "discard", "consolidate", "op"]
+  const sideResolutions = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.actions("vfs").filter((command) => SIDE_RESOLUTIONS.includes(command))
+  // discardPromises are the sentences that announce a discard without negating
+  // it; naming the explicit vfs_discard tool is not a promise.
+  const discardPromises = (text: string) => text.split(/(?<=[.;!?])\s+|\n+/)
+    .filter((sentence) => /\bdiscard(s|ed|ing)?\b/i.test(sentence) && !/\b(no|not|never|nothing|neither|nor)\b|n't/i.test(sentence))
   test("releasing a claim leaves every decision to the core", async () => {
     let ended = false
     const vfs = await startVfs({
@@ -1271,6 +1281,63 @@ describe("claims and consolidation", () => {
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go", "b.go"], author_key: "author-key" }, orchestrator)
       expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ author_key: "author-key", scope: ["a.go", "b.go"] })])
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("an assignment overlapping nothing goes to the owner alone and leaves other staged work untouched", async () => {
+    const vfs = await startVfs({ claims: [claim({ key: "other", work_unit_id: "unit-b", staged: true, scope: ["src/b.go"] })] })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
+      await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["src/a.go"] }, orchestrator)
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ work_unit_id: "unit-a", scope: ["src/a.go"] })])
+      expect(vfs.requests("vfs", "assign")[0]).not.toHaveProperty("author_key")
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test.each([
+    ["same-root", "root", "unit-b"],
+    ["other-root", "old-root", "unit-old"],
+  ])("a %s overlap without author_key surfaces the owner's refusal, resolves nothing, and the named key continues the work", async (_, root, unit) => {
+    const retained = ["src/a.go", "src/b.go"]
+    const refusal = `assign refused: src/a.go is retained by author_key held of work unit ${unit}; continue it with claim_assign author_key held and scope ${retained.join(", ")}`
+    const vfs = await startVfs({
+      claims: [claim({ key: "held", root_session_id: root, work_unit_id: unit, staged: true, scope: retained })],
+      respond: (call) => call.kind === "vfs" && call.command === "assign" && !call.request.author_key ? { code: 1, err: refusal } : undefined,
+    })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
+      await expect(vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["src/a.go"] }, orchestrator)).rejects.toThrow(refusal)
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ work_unit_id: "unit-a", scope: ["src/a.go"] })])
+      expect(vfs.requests("vfs", "assign")[0]).not.toHaveProperty("author_key")
+      expect(sideResolutions(vfs)).toEqual([])
+
+      await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: retained, author_key: "held" }, orchestrator)
+      expect(vfs.requests("vfs", "assign")[1]).toEqual(expect.objectContaining({ work_unit_id: "unit-a", scope: retained, author_key: "held" }))
+      expect(vfs.requests("vfs", "assign")).toHaveLength(2)
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("claim_assign's description states the overlap refusal and promises no discard", async () => {
+    const vfs = await startVfs()
+    try {
+      const text = vfs.description("claim_assign") ?? ""
+      expect(text).toContain("author_key")
+      expect(text).toMatch(/refus|reject/i)
+      expect(discardPromises(text)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("the orchestrator's context keeps an earlier root's retained claim by key and paths, promising no discard", async () => {
+    const vfs = await startVfs({ claims: [claim({ key: "old-key", root_session_id: "old-root", work_unit_id: "unit-old", staged: true, scope: ["src/a.go", "src/b.go"] })] })
+    try {
+      const event = { tools: Object.fromEntries([...VFS_TOOL_NAMES, "claim_assign"].map((name) => [name, {}])), sessionID: "root", agent: ORCHESTRATOR, system: [] as Array<{ type: string; text: string }> }
+      await vfs.fire(vfs.session, "context", event)
+      const text = event.system.map((part) => part.text).join("\n")
+      for (const fact of ["old-key", "src/a.go", "src/b.go", "author_key"]) expect(text).toContain(fact)
+      expect(discardPromises(text)).toEqual([])
     } finally { await vfs.stop() }
   })
 

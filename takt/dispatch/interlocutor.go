@@ -45,7 +45,11 @@ func interlocutorRole(agent string) (model.RoleClass, error) {
 // targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is
 // eligible (IR-1); a root with an active holder refuses a second one (IR-19: no
 // chaining). expectedArtifact is the standard artifact path this switch
-// declares, fixed here and never renegotiated (PR-HAR-24).
+// declares, fixed here and never renegotiated (PR-HAR-24). When the target
+// role's result requires repository persistence (PR-CRW-6/7), a declared path
+// is that document's required destination; a missing or failed write leaves
+// persistence visibly unmet, separate from the Engram entry. Extra copies
+// remain optional.
 func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error {
 	role, roleErr := interlocutorRole(targetAgent)
 	entry := history.Entry{
@@ -115,8 +119,11 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 	return errors.Join(h.Append(entry), e)
 }
 
-// ExpectedArtifact returns the optional filesystem copy path declared by the
-// active switch for root, or "" if there is none.
+// ExpectedArtifact returns the standard repository artifact path declared by
+// the active switch for root, or "" when the switch declares none. For a role
+// with required repository persistence (PR-CRW-6/7), a declared path is the
+// required document's destination, not an optional copy; an absent or failed
+// document stays visible as unmet persistence.
 func ExpectedArtifact(h *history.History, root string) string {
 	return h.Project().Budgets(root).InterlocutorArtifact
 }
@@ -138,8 +145,14 @@ type HandoffOutcome struct {
 }
 
 // BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this
-// session for delivered results; filesystem copies are optional and do not
-// establish a handoff. memoryRoot is where the memory session index lives.
+// session for delivered results. When the role's result requires repository
+// persistence (PR-CRW-6/7), a Standard result persists that document at the
+// declared switch path with content identical to its memory entry, and an
+// EarlyHandoff returns the actual partial or absent result without fabricating
+// a document.
+// Extra filesystem artifacts are optional and do not establish a handoff;
+// missing persistence is not reported as complete. memoryRoot is where the
+// memory session index lives.
 func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error) {
 	if outcome.Result == "Standard" || len(outcome.ResultIDs) > 0 {
 		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, outcome.ResultIDs); e != nil {

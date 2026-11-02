@@ -17,12 +17,6 @@ metadata:
 - The evidence for each traceability matrix row you verified, naming the evaluated scope, as an
   entry that `supplements` the matrix.
 
-## Recognized documents
-
-- **Test Completion Report** (`references/test-completion-report.md`) — at the node that closes
-  an objective's acceptance, when the objective has a test plan, consuming by ID the mutation,
-  exploration and quality reports that ran.
-
 ## When
 
 - When verification finishes, before you return your result.

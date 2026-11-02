@@ -39,10 +39,13 @@ as a note or a provisional artifact, and its existence and location are reported
 
 **Completed work requires a standard Engram result.** Record the specialty's document on
 its official template and return its IDs through `dispatch_handoff`; chat or a filesystem
-copy alone is not a completed delivery. A filesystem copy is optional and never gates the
-handoff. For an early close or failure, return the actual outcome and any results produced;
-do not manufacture an artifact when no output coherently exists, or present partial work
-as finished.
+copy alone is not a completed delivery. When your standard artifact requires a repository
+document, that document and the complete memory entry have identical content, and missing
+persistence is reported as unmet or unverified, never as complete persistence compliance;
+`takt-memory-contract` owns this role-dependent rule. Any other filesystem copy is optional
+and never gates the handoff. For an early close or failure, return the actual outcome and any
+results produced; do not manufacture an artifact when no output coherently exists, or present
+partial work as finished.
 
 **A new final deliverable needs the user's own approval.** Presenting it as settled requires
 an explicit accept from the user. Only reusing an already-approved deliverable without

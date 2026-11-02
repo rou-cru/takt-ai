@@ -195,12 +195,6 @@ export default Plugin.define({
       for (const name of ["memory_continue_session", "memory_close_session"]) {
         if (!authorized.includes(name)) delete event.tools?.[name]
       }
-      if (event.tools?.memory_continue_session && authorized.includes("memory_continue_session")) {
-        event.system.push({ type: "text", text: "When resuming earlier work, memory_continue_session declares a closed previous session after the user gives its id or confirms the candidate. Before the first new memory entry, replace a mistaken declaration or withdraw it with an empty id. The first entry fixes the link. Interrupted sessions cannot be linked. Resuming never waits on this declaration; if rejected, resume without retrying." })
-      }
-      if (event.tools?.memory_close_session && authorized.includes("memory_close_session")) {
-        event.system.push({ type: "text", text: "When the user ends the session or the requested work is reported, call memory_close_session once with its objective and present state. Compaction is not a session close. New recorded work resumes the same conversation without deleting earlier close anchors." })
-      }
     })
 
     await ctx.tool.transform((editor) => {
@@ -299,9 +293,9 @@ export default Plugin.define({
         name: "memory_continue_session",
         description:
           "Declare the closed previous session this session's work continues, so the memory narrative stays unbroken. " +
-          "The link becomes permanent with this session's first new memory entry; until then a new call replaces the declaration. " +
-          "Only a closed session can be declared, from any workspace, and only before this session's first entry. " +
-          `Resuming previous work never depends on this link. ${CONTRACT}`,
+          "Use the session the user gave or confirmed. The link becomes permanent with this session's first new memory entry; until then a new call replaces the declaration or withdraws it with an empty id. " +
+          "Any closed session, from any workspace, can be declared, but only before this session's first entry; interrupted sessions cannot be linked. " +
+          `Resuming never waits on this declaration; if it is refused, resume without retrying. ${CONTRACT}`,
         input: {
           type: "object",
           properties: {
@@ -323,7 +317,7 @@ export default Plugin.define({
       editor.add({
         name: "memory_close_session",
         description:
-          "Close this session's memory with its objective and state when the user ends the session or the requested work is reported. " +
+          "Close this session's memory once, with its objective and present state, when the user ends the session or the requested work is reported. " +
           "New recorded work resumes the same conversation without deleting earlier close anchors. " +
           `A context compaction is not a session close. ${CONTRACT}`,
         input: {

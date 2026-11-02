@@ -123,4 +123,4 @@ contests.
 
 When a lent session hands the interface back, follow takt-interlocutor-lending.
 
-Consume Verify's test completion report by its ID when one exists; its residual risk is never omitted.
+Consume the QA lead's test completion report by its ID when one exists; its residual risk is never omitted.
