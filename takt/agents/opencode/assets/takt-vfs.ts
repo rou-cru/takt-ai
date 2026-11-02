@@ -75,7 +75,21 @@ type HandoffEnvelope = { result: string; additional_context: string; extra_artif
 // declared document's check and the ended session beside it, never inside.
 type InterlocutorReturn = { envelope: HandoffEnvelope; artifact?: { path: string; present: boolean }; child?: string; root?: string; notice: string }
 type NotHeld = { aborted: false }
-type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string }
+type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
+// SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
+// a model this session has not seen complete work; the user may approve it.
+const SEAT_UNPROVEN = "seat/unproven-model"
+// modelName is a model reference as the core records it: provider/model.
+export function modelName(value: unknown): string | undefined {
+  if (typeof value === "string" && value) return value
+  if (isResponseObject(value) && typeof value.providerID === "string" && typeof value.id === "string") return `${value.providerID}/${value.id}`
+  return undefined
+}
+// withoutIdentity removes a substitute's PERSONA and SOUL texts from its
+// composed system prompt: it holds the seat without its identity or voice.
+export function withoutIdentity<Part extends { type: string; text: string }>(system: Part[], identity: string[]): Part[] {
+  return system.map(part => ({ ...part, text: identity.reduce((text, block) => text.split(block).join(""), part.text) }))
+}
 type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | MemoryIndex | NotHeld | Record<string, unknown> | null
 const delegationOf = (value: unknown): Delegation | undefined =>
   value && isResponseObject(value) && typeof value.dispatch === "string" && typeof value.attempt === "string" && typeof value.root === "string" && typeof value.unit === "string" && typeof value.agent === "string" ? value as Delegation : undefined
@@ -1097,6 +1111,8 @@ export default Plugin.define({
       // host call identity tells a transport repetition apart from a retry.
       const unit = asString(input.description, "").trim()
       const specialist = asString(input.agent, "")
+      const configured = specialist ? modelName((await ctx.agent.get({ agentID: specialist })).data.model) : undefined
+      const model = modelName(input.model) ?? configured
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
@@ -1104,10 +1120,19 @@ export default Plugin.define({
         const request: Request = { action: "prepare", event: unit, dispatch: delegation, session: root,
           agent: specialist, caller: event.sessionID, background: input.background === true, owner: INSTANCE,
           ...(typeof input.sessionID === "string" && input.sessionID ? { child: input.sessionID } : {}),
-          ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }) }
-        const prepare = async () => {
+          ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }),
+          ...(model ? { model } : {}), ...(configured ? { configured_model: configured } : {}),
+          ...(typeof input.seat_reason === "string" && input.seat_reason ? { seat_reason: input.seat_reason } : {}),
+          ...(input.seat_substitute === true ? { substitute: true } : {}) }
+        const prepare = async (): Promise<DispatchResponse> => {
           try { return await dispatchAction(request) }
           catch (error) {
+            // PR-CRW-13: an unproven model restores the seat only with the user's approval.
+            if (error instanceof Error && error.message.includes(SEAT_UNPROVEN) && request.user_confirmed !== true) {
+              await confirmWithUser("seat_restore", specialist, { model: model ?? "", reason: asString(input.seat_reason, ""), substitute: String(input.seat_substitute === true) }, event)
+              request.user_confirmed = true
+              return prepare()
+            }
             const stop = error instanceof VFSRefusal ? error.response.stop_cycle : undefined
             if (!stop) throw error
             // Only an otherwise admissible operation asks to yield these lanes.
@@ -1400,6 +1425,8 @@ export default Plugin.define({
             ...toolInput(schema.properties),
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
               description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
+            seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),
+            seat_substitute: { type: "boolean", description: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity" },
           } }
         })
       }
@@ -1953,6 +1980,7 @@ export default Plugin.define({
         if (!info.parentID) return
         // Learned first: nothing this context does later may keep it from its delegation.
         const delegation = await adoptChild(event.sessionID, event.agent)
+        if (delegation?.identity?.length) event.system = withoutIdentity(event.system, delegation.identity)
         const agent = await ctx.agent.get({ agentID: event.agent })
         const rules = agent.data.permissions
         const explicitlyAllows = (toolName: string) => {

@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { dirname } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
 import { Schema } from "effect"
-import vfsPlugin from "./takt-vfs"
+import vfsPlugin, { withoutIdentity } from "./takt-vfs"
 import { historyFixture, type FixtureExecution } from "../testdata/history-fixture.mjs"
 
 const contracts = JSON.parse(readFileSync(new URL("../testdata/contracts.json", import.meta.url), "utf8"))
@@ -50,6 +50,8 @@ type Options = {
   sessions?: Record<string, SessionInfo>
   storage?: Record<string, unknown>
   permissions?: Record<string, unknown[]>
+  // models names an agent's configured model, as OpenCode reports it.
+  models?: Record<string, { providerID: string; id: string }>
   promptError?: string
   home?: boolean
   nativeRead?: (input:unknown)=>Promise<unknown>
@@ -214,7 +216,7 @@ async function startVfs(options: Options = {}) {
       },
       agent: { async get({ agentID }: { agentID: string }) {
         if (agentID === BROKEN_AGENT) throw new Error("agent lookup failed")
-        return { data: { id: agentID, permissions: options.permissions?.[agentID] ?? [] } }
+        return { data: { id: agentID, permissions: options.permissions?.[agentID] ?? [], ...(options.models?.[agentID] ? { model: options.models[agentID] } : {}) } }
       } },
       permission: { hook: register(permissionHooks) },
       shell: { hook: register(shellHooks) },
@@ -998,6 +1000,52 @@ describe("maintenance cycle", () => {
       state = { code: 1, err: "status unavailable" }
       expect(await notified()).toEqual([])
     } finally { await vfs.stop() }
+  })
+})
+
+describe("seat restoration", () => {
+  let asked: Array<Record<string, unknown>> = []
+  beforeEach(() => {
+    asked = []
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({ OpenCode: { make: () => ({ permission: { create: async (r: Record<string, unknown>) => {
+      asked.push(r)
+      return { id: r.id, effect: "allow" }
+    } } }) } }))
+  })
+  const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-s", agent: ORCHESTRATOR, messageID: "m", input })
+  const models = { [RESULT_AGENT]: { providerID: "p", id: "a" } }
+
+  test("every delegation reports the model it runs and the instance's configured one", async () => {
+    const vfs = await startVfs({ models })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-s", result_ids: [] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-s", agent: RESULT_AGENT }))
+      expect(vfs.requests("dispatch", "prepare")[0]).toMatchObject({ model: "p/a", configured_model: "p/a" })
+      expect(vfs.requests("dispatch", "prepare")[0]).not.toHaveProperty("seat_reason")
+    } finally { await vfs.stop() }
+  })
+
+  test("an unproven model restores the seat only after the user approves it", async () => {
+    const vfs = await startVfs({ models,
+      respond: (call) => call.kind === "dispatch" && call.command === "prepare" && !(call.request as { user_confirmed?: boolean }).user_confirmed
+        ? { code: 1, err: "seat/unproven-model: model p/b has completed no work in this session; with the user present, their approval admits it" } : undefined })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-s", result_ids: [] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-s", agent: RESULT_AGENT, model: { providerID: "p", id: "b" }, seat_reason: "the instance timed out twice" }))
+      expect(asked).toHaveLength(1)
+      expect(asked[0]).toMatchObject({ action: "seat_restore", resources: [RESULT_AGENT], metadata: { model: "p/b", reason: "the instance timed out twice" } })
+      const prepared = vfs.requests("dispatch", "prepare")
+      expect(prepared).toHaveLength(2)
+      expect(prepared[1]).toMatchObject({ model: "p/b", configured_model: "p/a", seat_reason: "the instance timed out twice", user_confirmed: true })
+    } finally { await vfs.stop() }
+  })
+})
+
+describe("withoutIdentity", () => {
+  test("leaves a substitute's composed prompt without its persona and soul", () => {
+    const system = [{ type: "text", text: "BASELINE\n\nI am the architect.\n\nMy voice.\n\nOPERATIONS" }, { type: "text", text: "Work unit u." }]
+    expect(withoutIdentity(system, ["I am the architect.", "My voice."]).map(part => part.text)).toEqual(["BASELINE\n\n\n\n\n\nOPERATIONS", "Work unit u."])
   })
 })
 

@@ -141,6 +141,10 @@ const (
 	// KindInterlocutorAborted records the harness or user ending the temporary
 	// holder's turn without negotiation (IR-24); Result is always "Aborted".
 	KindInterlocutorAborted Kind = "interlocutor_aborted"
+	// KindSeatRestored records the orchestrator restoring an unavailable seat
+	// (PR-CRW-13): the instance, the model it now runs, the reason, and
+	// whether a substitute fills it.
+	KindSeatRestored Kind = "seat_restored"
 	// KindRevised records a valid plan revision against its expected prior
 	// version; Classification is the harness-derived tactical/strategic label
 	// (PR-DAG-MUT-4, PR-DAG-MUT-6).
@@ -180,6 +184,7 @@ var authorOf = map[Kind]Author{
 	KindExecution: AuthorHarness, KindPrepared: AuthorHarness, KindChild: AuthorHarness,
 	KindDelivery: AuthorHarness, KindLane: AuthorHarness, KindPrompt: AuthorHarness, KindExecutionEnded: AuthorHarness,
 	KindLease:                AuthorHarness,
+	KindSeatRestored:         AuthorOrchestrator,
 	KindPlanned:              AuthorOrchestrator,
 	KindWithdrawn:            AuthorOrchestrator,
 	KindCancelRequested:      AuthorOrchestrator,
@@ -328,6 +333,11 @@ type Entry struct {
 	Phase      string  `json:"phase,omitempty"`
 	// Owner is the harness instance an execution or lease belongs to.
 	Owner string `json:"owner,omitempty"`
+	// Model is the provider/model an execution runs, or a restored seat's.
+	Model string `json:"model,omitempty"`
+	// Substitute marks a restored seat filled by a non-orchestrating Takt
+	// substitute rather than by its own specialist.
+	Substitute bool `json:"substitute,omitempty"`
 }
 
 // History is the append-only store. All access is serialized by the workspace
@@ -618,6 +628,10 @@ func (e Entry) validateKindFields() error {
 	case KindInvalidRevision:
 		if e.Reason == "" {
 			return errors.New("history: an invalid revision records its reason")
+		}
+	case KindSeatRestored:
+		if e.Agent == "" || e.Model == "" || e.Reason == "" {
+			return errors.New("history: a seat restoration names the instance, the model it runs and the reason")
 		}
 	}
 	return nil

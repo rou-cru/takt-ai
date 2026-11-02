@@ -95,9 +95,8 @@ against the updated evidence, not to regenerate them.
 ## Specialist unavailable
 
 If a lane's specialist cannot be dispatched, or its dispatch fails past the recovery bounds in
-OPERATIONS, name that lane blocked, apply BASELINE's fallback and proceed: lanes that do
-not consume its result keep running per the plan, and lanes that do wait on the named gap
-rather than guessing. Escalate per OPERATIONS if the objective cannot be judged without it.
+OPERATIONS, restore its seat per OPERATIONS. Until it runs, lanes that do not consume its
+result keep running per the plan, and lanes that do wait on the named gap rather than guessing. Escalate per OPERATIONS if the objective cannot be judged without it.
 
 ## Mode per lane
 

@@ -280,8 +280,8 @@ No reason outside this list justifies an edge.
 Route by the need table in your OPERATIONS; this skill adds no second one. Every handoff
 carries decisions, contracts, evidence, assumptions, and limits. When interfaces prevent
 concurrency, return to Architect; behavioral gaps go to Spec and experience gaps to
-Designer. TPM revises decomposition when needed; Takt revises the graph. If an owner is
-absent, deliver permitted fallback work and name the missing assurance.
+Designer. TPM revises decomposition when needed; Takt revises the graph. An owner that
+cannot run has its seat restored per OPERATIONS.
 
 ---
 

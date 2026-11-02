@@ -57,6 +57,10 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	if err := refuseRecycledProductManager(r, consumed); err != nil {
 		return nil, err
 	}
+	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
+	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
+		return nil, err
+	}
 	u, _ := h.Project().Unit(r.Session, r.Event)
 	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
 	for _, id := range consumed {
@@ -91,7 +95,11 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			if r.CreatedAt == 0 {
 				r.CreatedAt = time.Now().UnixMilli()
 			}
-			if err := h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, Background: r.Background, CreatedAt: r.CreatedAt, Owner: r.Owner, Cause: history.CauseNone}); err != nil {
+			entries := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, Background: r.Background, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
+			if seat.Restores() {
+				entries = append(entries, protocol.SeatEntry(r.Session, r.Event, u.AttemptID, seat))
+			}
+			if err := h.AppendBatch(entries); err != nil {
 				return "", err
 			}
 		}
@@ -128,11 +136,11 @@ func attachExecutionChild(h *history.History, r coordinationRequest) (any, error
 		if err == nil {
 			err = observeExecutionRunning(h, d)
 		}
-		return d, err
+		return attached(d, err)
 	}
 	p := h.Project()
 	if d, ok := p.ExecutionForChild(r.Child, r.Agent); ok {
-		return d, observeExecutionRunning(h, d)
+		return attached(d, observeExecutionRunning(h, d))
 	}
 	// The host proposes the first link using native parent/title/time. Neither
 	// titles nor timestamps authorize any operation after this association.
@@ -159,7 +167,27 @@ func attachExecutionChild(h *history.History, r coordinationRequest) (any, error
 	if err == nil {
 		err = observeExecutionRunning(h, d)
 	}
-	return d, err
+	return attached(d, err)
+}
+
+// attachedExecution is a linked execution; a substitute's carries the
+// identity texts its composed prompt leaves out (PR-CRW-13).
+type attachedExecution struct {
+	history.Execution
+	Identity []string `json:"identity,omitempty"`
+}
+
+func attached(d history.Execution, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	out := attachedExecution{Execution: d}
+	if d.Substitute {
+		if out.Identity, err = protocol.SubstituteIdentity(d.Agent); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // A native context/event is evidence of this linked execution, even when a

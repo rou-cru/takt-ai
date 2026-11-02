@@ -68,6 +68,14 @@ type coordinationRequest struct {
 	Owner   string              `json:"owner,omitempty"`
 	Stopped []laneStop          `json:"stopped,omitempty"`
 	Repair  *vfs.RepairApproval `json:"repair,omitempty"`
+	// Model is the provider/model a delegation runs; ConfiguredModel is the
+	// instance's own. SeatReason and Substitute declare a seat restoration
+	// (PR-CRW-13); UserConfirmed carries the user's approval of its model.
+	Model           string `json:"model,omitempty"`
+	ConfiguredModel string `json:"configured_model,omitempty"`
+	SeatReason      string `json:"seat_reason,omitempty"`
+	Substitute      bool   `json:"substitute,omitempty"`
+	UserConfirmed   bool   `json:"user_confirmed,omitempty"`
 }
 
 // memoryRoot is where `takt-ai memory` keeps its session index: the user's

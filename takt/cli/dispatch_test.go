@@ -78,6 +78,11 @@ type request struct {
 	Origin     string           `json:"origin,omitempty"`
 	Caller     string           `json:"caller,omitempty"`
 	Owner      string           `json:"owner,omitempty"`
+	Model      string           `json:"model,omitempty"`
+	Configured string           `json:"configured_model,omitempty"`
+	SeatReason string           `json:"seat_reason,omitempty"`
+	Substitute bool             `json:"substitute,omitempty"`
+	Confirmed  bool             `json:"user_confirmed,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -484,6 +489,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"a handoff needs the results the holder recorded", handoffNeedsRecordedResults},
 		{"the user ends a holder's turn", userAbortsSwitch},
 		{"a lent session's memory index pages", lentMemoryPages},
+		{"an unavailable seat is restored, never absorbed", seatRestoration},
 		{"a deleted holder session is aborted", deletedSessionAbortsHolder},
 		{"a declared document's absence never gates a nonstandard handoff", handoffOptionalCopy},
 		{"validate_results against a real engram", validateResultsAgainstRealEngram},
@@ -776,6 +782,84 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 	}
 	if after.InFlight() != p.Concurrency.Specialists-1 {
 		t.Fatalf("effective termination did not release: in flight %d", after.InFlight())
+	}
+}
+
+// seatRestoration covers PR-CRW-13 at delegation: another model or a
+// substitute restores a seat only with a reason; autonomously only with a model
+// that completed work in the session, otherwise with the user's approval; a
+// substitute only after a recorded reassignment, composed without identity.
+func seatRestoration(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	s.must(commit("plan-1", "brief", "spec-1", "spec-2", "brief-2", "design-1", "design-2", "self"))
+	delegate := func(unit, dispatch, agent, modelID, configured string) request {
+		s.must(request{Action: "inputs", Session: rootSession, Event: unit})
+		return request{Action: "prepare", Session: rootSession, Event: unit, Dispatch: dispatch, Caller: rootSession, Agent: agent, Owner: "instance", Model: modelID, Configured: configured}
+	}
+	s.must(delegate("brief", "d1", "pm", "p/a", "p/a"))
+	finished := call("finish", "brief")
+	finished.Agent, finished.Dispatch = "pm", "d1"
+	s.must(finished)
+
+	unproven := delegate("spec-1", "d2", "spec", "p/b", "p/c")
+	s.refused(unproven) // no seat_reason
+	unproven.SeatReason = "spec timed out twice"
+	if res := s.refused(unproven); !strings.Contains(res.stderr, "seat/unproven-model") {
+		t.Fatalf("an unproven model was not refused for the user's approval: %s", res.stderr)
+	}
+	unproven.Confirmed = true
+	s.must(unproven)
+
+	proven := delegate("spec-2", "d3", "spec", "p/a", "p/c")
+	proven.SeatReason = "spec timed out again"
+	s.must(proven)
+
+	substitute := delegate("brief-2", "d4", "pm", "p/a", "p/c")
+	substitute.SeatReason, substitute.Substitute = "pm cannot run", true
+	s.refused(substitute) // no reassignment of the pm seat yet
+	reassigned := delegate("design-1", "d5", "architect", "p/a", "p/c")
+	reassigned.SeatReason = "architect cannot run on its model"
+	s.must(reassigned)
+	substitute = delegate("design-2", "d7", "architect", "p/a", "p/c")
+	substitute.SeatReason, substitute.Substitute = "no reassignment works", true
+	s.must(substitute)
+	var linked struct {
+		Substitute bool     `json:"substitute"`
+		Identity   []string `json:"identity"`
+	}
+	s.must(request{Action: "attach_child", Session: rootSession, Dispatch: "d7", Child: "sub-child", Agent: "architect"}).decode(t, &linked)
+	var identity []string
+	for _, name := range []string{"PERSONA.md", "SOUL.md"} {
+		text, err := os.ReadFile(filepath.Join("..", "catalog", "assets", "agents", "takt-architect", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity = append(identity, strings.TrimSpace(string(text)))
+	}
+	if !linked.Substitute || !slices.Equal(linked.Identity, identity) {
+		t.Fatalf("a substitute's link does not carry the installed identity to leave out: %+v", linked)
+	}
+	// An instance with no identity files has nothing to leave out.
+	var plain struct {
+		Identity []string `json:"identity"`
+	}
+	s.must(request{Action: "attach_child", Session: rootSession, Dispatch: "d3", Child: "spec-child", Agent: "spec"}).decode(t, &plain)
+	if len(plain.Identity) != 0 {
+		t.Fatalf("a non-substitute link carries identity: %+v", plain)
+	}
+
+	orchestrator := delegate("self", "d6", "takt", "p/a", "p/c")
+	orchestrator.SeatReason = "takt is slow"
+	s.refused(orchestrator)
+
+	var seats []history.Entry
+	for _, e := range s.entries() {
+		if e.Kind == history.KindSeatRestored {
+			seats = append(seats, e)
+		}
+	}
+	if len(seats) != 4 || seats[0].Model != "p/b" || seats[3].Agent != "architect" || !seats[3].Substitute {
+		t.Fatalf("restorations recorded: %+v", seats)
 	}
 }
 

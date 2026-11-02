@@ -538,6 +538,9 @@ func budgeted(b *Budgets, e Entry) bool {
 	case KindInvalidRevision:
 		// Recorded and visible, but touches no state: the last valid plan and
 		// its tracked version stay untouched (PR-DAG-MUT-6).
+	case KindSeatRestored:
+		// A record for the completion report; the restored instance runs
+		// through the unit's ordinary admission.
 	default:
 		return false
 	}

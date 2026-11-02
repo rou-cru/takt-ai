@@ -47,6 +47,10 @@ type Execution struct {
 	Ready      bool    `json:"ready,omitempty"`
 	Terminated bool    `json:"terminated,omitempty"`
 	Settled    bool    `json:"settled,omitempty"`
+	// Model is the provider/model the execution runs.
+	Model string `json:"model,omitempty"`
+	// Substitute marks a Takt substitute filling the instance's seat.
+	Substitute bool `json:"substitute,omitempty"`
 	// Owner is the harness instance that prepared or attached this execution;
 	// empty for one recorded before owners were.
 	Owner string `json:"owner,omitempty"`
@@ -95,7 +99,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, Background: e.Background, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, Background: e.Background, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
