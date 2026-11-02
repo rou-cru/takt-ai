@@ -1078,6 +1078,14 @@ describe("interlocutor switch", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a declared standard artifact path reaches the incoming specialist with its objective", async () => {
+    const vfs = await startVfs({ respond: core() })
+    try {
+      await vfs.run("dispatch_switch", { ...request, expected_artifact: "docs/prd.md" }, orchestrator)
+      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: typed\nStandard artifact path: docs/prd.md")
+    } finally { await vfs.stop() }
+  })
+
   test("a user abort names no child, ends the lent session the core reports and clears the switch", async () => {
     const vfs = await startVfs({ respond: core() })
     try {

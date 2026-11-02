@@ -25,13 +25,15 @@ lint and full suites run in Verify units; checks on the materialized workspace a
 
 ## Consolidation and commit
 
-Consolidating is not a Git commit: accept each vertical slice with one global Verify node after its
-writers finish. Commit a milestone once the slice's computational acceptance is recorded and its
-advisory review closes without a reproduction-backed defect. Non-blocking advisory findings remain
-recorded but neither delay the checkpoint nor require correction or reverification. Failed or
-unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
-message. An incomplete consolidation identifies
-its manifest, author, files and state. Invoke the original normal operation as the
+Consolidating is not a Git commit. Accept each vertical slice with one global Verify node after
+its writers finish, then create the checkpoint commit:
+
+- Blocks it: a failed or unverified acceptance criterion; an advisory-review defect with an
+  executable reproduction.
+- Does not block it: other advisory findings, or no advisory review planned.
+- Load takt-git-commit before writing the message.
+
+An incomplete consolidation identifies its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if
 files diverged, to keep current files and close the incomplete effect as interrupted
 with evidence retained. Repair approval never authorizes consolidation; ownership,

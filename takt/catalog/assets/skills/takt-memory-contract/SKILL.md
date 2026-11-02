@@ -34,17 +34,9 @@ commentary mixed in. Aim for under roughly 400 lines and wrap
 their own self-contained entry. If an artifact
 exceeds the byte limit, split it into ordered parts, each `supplements` the previous one.
 
-The Engram write must succeed before the result is delivered. A direct interlocutor (PM,
-architect, product designer) or planning author (specification, technical design, contract)
-persists each standard artifact it authors as a repository document, through native file
-tools, and as one complete isolated memory entry with identical content; complete compliance
-requires both. A required document is not an optional attachment; any other copy stays
-optional and never gates delivery. When a document or copy is written, it uses the content
-already recorded in Engram. A failed or missing required write does not erase the recorded
-entry, but delivery reports it as unmet or unverified, never as complete persistence
-compliance. An authorized no-write or diagnostic result invents no document and claims no
-persistence it did not perform. Present the entry's ID through the assigned handoff operation,
-not through a phrase in your final answer.
+The Engram write must succeed before the result is delivered. Any filesystem copy uses the
+content already recorded in Engram. Present the entry's ID through the assigned handoff
+operation, not through a phrase in your final answer.
 
 ## 2. Natures
 

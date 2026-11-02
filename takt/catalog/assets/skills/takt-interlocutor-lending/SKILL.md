@@ -43,12 +43,13 @@ specialist.
 | `Standard` | Consume the delivered Engram IDs as the invariant |
 | `EarlyHandoff` | Take the artifact as returned, in its actual partial state |
 | `Aborted` | No content to interpret and no fault to any agent: consult the user, never reconstruct |
-| `TechFault` | Reconcile transition and artifact evidence; route bounded technical diagnosis/correction when objective, authority and continuity are established; otherwise consult the user |
+| `TechFault`, objective, authority and continuity established | Reconcile transition and artifact evidence; route bounded diagnosis or correction |
+| `TechFault`, otherwise | Consult the user |
 | `Outraged` | Your own brief or inputs caused the failure: read the incident, correct them, do not chase it into a broader pattern the evidence does not support |
 
 - What happened during the session comes from the accepted transition history; the envelope
   carries the declared payload; governing knowledge comes from memory and the referenced
-  documents. Never fill a gap with what seems plausible: declare it and investigate within
+  documents, queried by topic. Never fill a gap with what seems plausible: declare it and investigate within
   authority; consult the user if continuity remains indeterminable.
 - Inspect `ExtraArtifacts` only as deeply as `AdditionalContext` says they matter.
 - A malformed or incomplete envelope leaves the session unsettled: resolve the gap before

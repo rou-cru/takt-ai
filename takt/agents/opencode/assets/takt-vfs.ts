@@ -1218,7 +1218,7 @@ export default Plugin.define({
       const claims = await takt("claims", event).then(r => r.claims ?? [], () => undefined)
       if (claims !== undefined) {
         const prior = claims.filter(claim => claim.root_session_id !== root)
-        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key refuses overlap with any existing claim, same root or other roots, and discards nothing; to continue earlier staged work, pass its author_key with the exact retained scope.` })
+        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key refuses any overlap and discards nothing; to continue staged work, pass its author_key with the exact retained scope.` })
       }
       // A failed status read must never break the orchestrator's own request.
       const state = await coordinate({ action: "status" }).catch(() => undefined)
@@ -1496,7 +1496,7 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlap with any existing claim, same root or other roots, is refused and discards nothing. To continue, retry, or correct staged work, pass its author_key with the exact retained scope and any added paths: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, any overlap with an existing claim is refused and nothing is discarded. To continue, retry, or correct staged work, pass its author_key with the exact retained scope and any added paths: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
@@ -1621,7 +1621,7 @@ export default Plugin.define({
           objective: str("Objective for the incoming interlocutor's session"),
           requirements: str("Requirements for the incoming interlocutor: paths to formal, finalized documents, useful known Engram IDs, and settled decisions; declare explicit emptiness when none exists"),
           client: str("Client-facing context for the incoming interlocutor"),
-          expected_artifact: str("Expected artifact path for the incoming role when it authors a repository document; its persistence is required, and an extra copy is optional and never gates the handoff"),
+          expected_artifact: str("Repository path for the incoming specialist's standard document; sent to it at the switch"),
         }, ["target_agent", "objective"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ target_agent: string; objective: string; requirements?: string; client?: string; expected_artifact?: string }>(value)
@@ -1633,6 +1633,7 @@ export default Plugin.define({
             `Objective: ${args.objective}`,
             args.requirements ? `Requirements: ${args.requirements}` : undefined,
             args.client ? `Client: ${args.client}` : undefined,
+            args.expected_artifact ? `Standard artifact path: ${args.expected_artifact}` : undefined,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,
@@ -1683,7 +1684,7 @@ export default Plugin.define({
         input: obj({
           result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
           additional_context: str("Context to carry back to the base"),
-          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional extra filesystem copies; required persistence is role-dependent and no optional copy gates the handoff" },
+          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional extra filesystem copies; none gates the handoff" },
           result_ids: { type: "array", items: { type: "integer" }, description: "One existing Engram entry ID per delivered result; required for Standard handoff" },
         }, ["result", "additional_context", "extra_artifacts", "result_ids"]),
         // Not built on dispatch(): the caller here is the temporary holder,

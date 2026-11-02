@@ -32,7 +32,7 @@ objective's close.
 | | | Required specification missing | Return the missing invariant to Takt; do not infer it |
 | 2. Plan | `qa`: specification, frozen contracts, PRD, analyst facts, existing test policy | Policy when authored, plan, matrix and applicable environment requirements delivered; a diagnostic blocker is also a real result | Q2 selected → 3; otherwise → 4; blocker → outcomes |
 | 3. Author | `tpm`: plan and matrix, always assigning each matrix row its owning node; creating test-author tasks only when Q2 is selected. Then `test` per task: plan, specification, contracts and matrix, with disjoint test-file claims | Each delta consolidates, after its phase gate when the plan sets one; acceptance Verify (4) runs it | 4; gate failure or blocker → outcomes |
-| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
+| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report and per-row matrix evidence, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
 | 5. Critique | Independent assignments concurrently by default: `mutation` only with Q2 selected, must-not-fail rows and an executable green original suite, consuming plan, matrix and acceptance report; `explorer` for selected Q3, consuming plan and acceptance report; `quality` for selected Q4, consuming plan, specification and acceptance report | Reports or diagnostic blockers delivered | Eligible survivor → 6; findings/blockers → outcomes; otherwise → 7 |
 | 6. Strengthen | `test`: plan, specification, contracts, matrix and mutation report, with its existing author_key when continuing staged work. Authoring → Verify gate → consolidation → `mutation` on only affected rows, consuming plan, matrix and prior mutation report | No must-not-fail survivor, or {{policy.recovery_max_attempts}} rounds admitted | Survivor with budget → next round; exhausted → 7 with residual risk; baseline/gate failure or blocker → outcomes |
 | 7. Close | At objective closure, `qa`: independent acceptance evidence, specification, plan, matrix and supplements, and selected mutation, exploration and quality reports, all by ID and evaluated scope. At a non-objective slice, nothing; retain the slice's evidence by ID and evaluated scope | Objective: test completion report delivered. Slice: its scoped evidence retained, with no completion report. Unmet criteria remain unmet | Inside SDD at a non-objective slice → back to SDD's slice control point; otherwise → 8 |
@@ -42,13 +42,14 @@ Critique entry criteria apply per assignment: a failed suite bars mutation, not 
 Q3/Q4 session whose own entry conditions hold. Serialize only a concrete conflict in services,
 ports, data or measurements, naming it; no general barrier between independent critiques.
 An audit records ineligible critiques as not run, preserves every finding and proceeds to
-Close/Report without repair. Whether or not critiques run, at objective closure the QA lead records the completion report from independent
-acceptance evidence; Verify supplies verification reports and matrix evidence.
+Close/Report without repair.
 
-Close consumes valid evidence. Missing checks or changes to their evaluated scope return
-to Accept for Verify to supply the affected evidence, then resume Close. A strengthened suite invalidates its previous suite result;
-it does not automatically invalidate unrelated measurements. Failed or unverified criteria
-stay failed or unverified. Closing an audit certifies neither the product nor a milestone commit.
+- At objective closure, `qa` records the completion report; `verify` supplies acceptance and
+  matrix evidence.
+- A missing check, or a change to its evaluated scope, returns to Accept; Close then resumes.
+- A strengthened suite invalidates its previous result, not unrelated measurements.
+- Failed or unverified criteria stay so; closing an audit certifies neither the product nor a
+  checkpoint.
 
 Commit the states that run from Author (or Accept without Q2) through Close before delegation;
 inside SDD they are nodes of its DAG. Strengthen is forward correction, not reversible recovery.

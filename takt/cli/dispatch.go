@@ -83,10 +83,10 @@ func journalRef(entries []vfs.JournalEntry) string {
 	return entries[len(entries)-1].Ref()
 }
 
-// checkArtifact reports whether the optional filesystem copy the active
+// checkArtifact reports whether the standard document the active
 // interlocutor switch for session declared exists under workspace. Nothing
 // declared (no active switch, or none named) reports verified: PR-HAR-24
-// checks existence only when a copy was named.
+// checks existence only when a path was named.
 func checkArtifact(h *history.History, workspace, session string) bool {
 	path := protocol.ExpectedArtifact(h, session)
 	if path == "" {
@@ -97,8 +97,8 @@ func checkArtifact(h *history.History, workspace, session string) bool {
 }
 
 // handoffWithCopyReport assembles the handoff envelope, whose Engram result
-// IDs BuildHandoffEnvelope validates, and reports whether the optional
-// filesystem copy declared at switch time exists; that copy never gates it.
+// IDs BuildHandoffEnvelope validates, and reports whether the standard
+// document declared at switch time exists; its absence never gates it.
 func handoffWithCopyReport(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
 	verified := checkArtifact(h, workspace, r.Session)
 	envelope, e := protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
