@@ -36,7 +36,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string\) error](<#Restore>)
 - [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Revise>)
 - [func SeatEntry\(root, unit, attempt string, s Seat\) history.Entry](<#SeatEntry>)
-- [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
+- [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind, owner string\) error](<#StartActivity>)
 - [func SubstituteIdentity\(agent string\) \(\[\]string, error\)](<#SubstituteIdentity>)
 - [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
 - [func UncertainFlight\(f history.Flight\) bool](<#UncertainFlight>)
@@ -318,10 +318,10 @@ SeatEntry is the execution\-history record of an admitted restoration.
 ## func StartActivity
 
 ```go
-func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind) error
+func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error
 ```
 
-StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle.
+StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance.
 
 <a name="SubstituteIdentity"></a>
 ## func SubstituteIdentity
