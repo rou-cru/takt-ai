@@ -174,7 +174,7 @@ const SnapshotSchemaVersion = 1
 ```
 
 <a name="AllowanceKey"></a>
-## func [AllowanceKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L177>)
+## func AllowanceKey
 
 ```go
 func AllowanceKey(bound, objective string) string
@@ -183,7 +183,7 @@ func AllowanceKey(bound, objective string) string
 AllowanceKey names the scope an exception's allowance applies to: a bound, narrowed by objective where the exception is objective\-scoped, so an exception never authorizes unrelated work \(PR\-HAR\-22\).
 
 <a name="LaneUnit"></a>
-## func [LaneUnit](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L203>)
+## func LaneUnit
 
 ```go
 func LaneUnit(cycle, role string) (unit, agent string)
@@ -192,7 +192,7 @@ func LaneUnit(cycle, role string) (unit, agent string)
 LaneUnit is the work unit and catalog agent of a maintenance cycle's lane for role: the collector runs as the cycle itself, the verifier as its own unit.
 
 <a name="StateDir"></a>
-## func [StateDir](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L401>)
+## func StateDir
 
 ```go
 func StateDir(workspace string) string
@@ -201,7 +201,7 @@ func StateDir(workspace string) string
 StateDir is the private state directory of a workspace, shared by the VFS store and the execution history.
 
 <a name="UnitKey"></a>
-## func [UnitKey](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L344>)
+## func UnitKey
 
 ```go
 func UnitKey(session, unit string) string
@@ -210,7 +210,7 @@ func UnitKey(session, unit string) string
 UnitKey names session's work unit unit in Projection.Units.
 
 <a name="Activity"></a>
-## type [Activity](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L220-L227>)
+## type Activity
 
 Activity is a non\-work\-unit execution record. Its ActivityID is a real activity identity and is never inserted into Projection.Units.
 
@@ -226,7 +226,7 @@ type Activity struct {
 ```
 
 <a name="ActivityNode"></a>
-## type [ActivityNode](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L100-L106>)
+## type ActivityNode
 
 ActivityNode is a non\-work\-unit activity projected separately from Nodes. ActivityID retains the source identity \(for GC, the exact CycleID\) and is never used as a work\-unit ID or edge endpoint.
 
@@ -241,7 +241,7 @@ type ActivityNode struct {
 ```
 
 <a name="Assurance"></a>
-## type [Assurance](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L99-L104>)
+## type Assurance
 
 Assurance is the prevailing result of a unit's current attempt, recorded apart from its delivery outcome \(PR\-DAG\-TMP\-9\). Revision is nil when no revision was evaluated.
 
@@ -255,7 +255,7 @@ type Assurance struct {
 ```
 
 <a name="Author"></a>
-## type [Author](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L54>)
+## type Author
 
 Author is the semantic author of an entry \(PR\-DAG\-REP\-5\). It says whose act the entry records, never who physically appended it.
 
@@ -278,7 +278,7 @@ const (
 ```
 
 <a name="AuthorOf"></a>
-### func [AuthorOf](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L233>)
+### func AuthorOf
 
 ```go
 func AuthorOf(k Kind) Author
@@ -287,7 +287,7 @@ func AuthorOf(k Kind) Author
 AuthorOf returns the semantic author a kind must carry.
 
 <a name="Budgets"></a>
-## type [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L296-L323>)
+## type Budgets
 
 Budgets is a session's derived consumption of the bounds of PR\-HAR\-19..21. Consumption only grows: a recorded exception adds allowance beside it rather than erasing it \(PR\-HAR\-22\).
 
@@ -323,7 +323,7 @@ type Budgets struct {
 ```
 
 <a name="Budgets.QARoundFor"></a>
-### func \(Budgets\) [QARoundFor](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L154>)
+### func \(Budgets\) QARoundFor
 
 ```go
 func (b Budgets) QARoundFor(unit string) (string, Strengthening)
@@ -332,7 +332,7 @@ func (b Budgets) QARoundFor(unit string) (string, Strengthening)
 QARoundFor finds a unit's declared membership from this session's history.
 
 <a name="Budgets.Scope"></a>
-### func \(Budgets\) [Scope](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L274>)
+### func \(Budgets\) Scope
 
 ```go
 func (b Budgets) Scope(unit string) (string, Recovery)
@@ -341,7 +341,7 @@ func (b Budgets) Scope(unit string) (string, Recovery)
 Scope returns the objective of the unresolved recovery whose declared scope contains unit. Membership is declared, never inferred \(PR\-DAG\-MUT\-9\), and an overlapping declaration is refused, so at most one recovery matches.
 
 <a name="Budgets.StrengtheningUsed"></a>
-### func \(Budgets\) [StrengtheningUsed](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L164>)
+### func \(Budgets\) StrengtheningUsed
 
 ```go
 func (b Budgets) StrengtheningUsed(objective string) int
@@ -350,7 +350,7 @@ func (b Budgets) StrengtheningUsed(objective string) int
 StrengtheningUsed counts started rounds, not attempts or plan revisions.
 
 <a name="Edge"></a>
-## type [Edge](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L111-L114>)
+## type Edge
 
 Edge is one declared prerequisite, directed from the prerequisite to its dependent \(PRD\_DAG\_TUI.md §5\). It describes declared structure only; it grants no scheduling or blocking authority.
 
@@ -362,7 +362,7 @@ type Edge struct {
 ```
 
 <a name="Entry"></a>
-## type [Entry](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L258-L359>)
+## type Entry
 
 Entry is one recorded act. Its Seq is assigned by Append: the harness is the sole sequencer. Entries carry references, never copies of referenced content.
 
@@ -472,7 +472,7 @@ type Entry struct {
 ```
 
 <a name="ReadEntries"></a>
-### func [ReadEntries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L418>)
+### func ReadEntries
 
 ```go
 func ReadEntries(stateDir string) (_ []Entry, err error)
@@ -481,7 +481,7 @@ func ReadEntries(stateDir string) (_ []Entry, err error)
 ReadEntries reads the recorded order read\-only, without creating a store or schema, so a reader outside the workspace lock never writes. An absent history has no entries.
 
 <a name="ReadPage"></a>
-### func [ReadPage](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L449>)
+### func ReadPage
 
 ```go
 func ReadPage(stateDir, sessionID, unitID string, after, limit int) ([]Entry, error)
@@ -490,7 +490,7 @@ func ReadPage(stateDir, sessionID, unitID string, after, limit int) ([]Entry, er
 ReadPage pages the recorded order read\-only, oldest first: entries after the exclusive cursor, optionally of one session and unit, at most limit of them \(clamped to 1..MaxPageSize\).
 
 <a name="Execution"></a>
-## type [Execution](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L32-L57>)
+## type Execution
 
 Execution is the current linkage of one exact host dispatch. A unit retry creates a new record; no callback may move its predecessor to that attempt.
 
@@ -524,7 +524,7 @@ type Execution struct {
 ```
 
 <a name="Flight"></a>
-## type [Flight](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L33>)
+## type Flight
 
 Flight distinguishes the in\-flight conditions PR\-DAG\-TMP\-1 keeps visible. Reservation is not proof of execution.
 
@@ -553,7 +553,7 @@ const (
 ```
 
 <a name="Flight.MarshalJSON"></a>
-### func \(Flight\) [MarshalJSON](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L64>)
+### func \(Flight\) MarshalJSON
 
 ```go
 func (f Flight) MarshalJSON() ([]byte, error)
@@ -562,7 +562,7 @@ func (f Flight) MarshalJSON() ([]byte, error)
 MarshalJSON emits the flight's wire name.
 
 <a name="History"></a>
-## type [History](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L363-L366>)
+## type History
 
 History is the append\-only store. All access is serialized by the workspace lock the caller already holds through vfs.Open.
 
@@ -573,7 +573,7 @@ type History struct {
 ```
 
 <a name="Open"></a>
-### func [Open](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L370>)
+### func Open
 
 ```go
 func Open(stateDir string) (*History, error)
@@ -582,7 +582,7 @@ func Open(stateDir string) (*History, error)
 Open opens the execution history under the private state directory, creating it if absent. A corrupt or incomplete record is an error, never a reset.
 
 <a name="History.Append"></a>
-### func \(\*History\) [Append](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L501>)
+### func \(\*History\) Append
 
 ```go
 func (h *History) Append(e Entry) error
@@ -591,7 +591,7 @@ func (h *History) Append(e Entry) error
 Append assigns the next position and durably records the entry. A rejected entry is not recorded: an invalid state never becomes representable here.
 
 <a name="History.AppendBatch"></a>
-### func \(\*History\) [AppendBatch](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L507>)
+### func \(\*History\) AppendBatch
 
 ```go
 func (h *History) AppendBatch(entries []Entry) (err error)
@@ -600,7 +600,7 @@ func (h *History) AppendBatch(entries []Entry) (err error)
 AppendBatch makes a declaration and all of its plan effects indivisible. Validation or persistence failure leaves both the store and replay unchanged.
 
 <a name="History.AttachChild"></a>
-### func \(\*History\) [AttachChild](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L151>)
+### func \(\*History\) AttachChild
 
 ```go
 func (h *History) AttachChild(dispatch, child, agent string) (Execution, error)
@@ -609,7 +609,7 @@ func (h *History) AttachChild(dispatch, child, agent string) (Execution, error)
 
 
 <a name="History.AttachMaintenance"></a>
-### func \(\*History\) [AttachMaintenance](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L211>)
+### func \(\*History\) AttachMaintenance
 
 ```go
 func (h *History) AttachMaintenance(root, cycle, role, child, owner string) error
@@ -618,7 +618,7 @@ func (h *History) AttachMaintenance(root, cycle, role, child, owner string) erro
 AttachMaintenance records a native lane under the cycle the core authorized.
 
 <a name="History.Close"></a>
-### func \(\*History\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L467>)
+### func \(\*History\) Close
 
 ```go
 func (h *History) Close() error
@@ -627,7 +627,7 @@ func (h *History) Close() error
 Close releases the store handle.
 
 <a name="History.Entries"></a>
-### func \(\*History\) [Entries](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L494>)
+### func \(\*History\) Entries
 
 ```go
 func (h *History) Entries() []Entry
@@ -636,7 +636,7 @@ func (h *History) Entries() []Entry
 Entries returns the recorded prefix in its total order.
 
 <a name="History.ExecutionFact"></a>
-### func \(\*History\) [ExecutionFact](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L144>)
+### func \(\*History\) ExecutionFact
 
 ```go
 func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids []int64) error
@@ -645,7 +645,7 @@ func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids
 
 
 <a name="History.Project"></a>
-### func \(\*History\) [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L497>)
+### func \(\*History\) Project
 
 ```go
 func (h *History) Project() Projection
@@ -654,7 +654,7 @@ func (h *History) Project() Projection
 Project derives the current projection from the whole recorded prefix.
 
 <a name="Kind"></a>
-## type [Kind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L83>)
+## type Kind
 
 Kind is the recorded act. Kinds carry no authority: they describe lifecycle facts, never dispatch eligibility.
 
@@ -778,7 +778,7 @@ const (
 ```
 
 <a name="Node"></a>
-## type [Node](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L74-L95>)
+## type Node
 
 Node is one work unit's content\-free projection. Temporal fields and declared prerequisites map Project's own state; NodeKind carries the recorded classification.
 
@@ -808,7 +808,7 @@ type Node struct {
 ```
 
 <a name="NodeKind"></a>
-## type [NodeKind](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L69>)
+## type NodeKind
 
 NodeKind identifies the source of a projected work unit or non\-unit activity. It is descriptive metadata only: it does not grant authority or scheduling.
 
@@ -831,7 +831,7 @@ const (
 ```
 
 <a name="Outcome"></a>
-## type [Outcome](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L63>)
+## type Outcome
 
 Outcome is the prevailing outcome of settled work.
 
@@ -855,7 +855,7 @@ const (
 ```
 
 <a name="Projection"></a>
-## type [Projection](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L327-L341>)
+## type Projection
 
 Projection is the derived execution DAG state. It is never edited in place: it is recomputed from the record.
 
@@ -878,7 +878,7 @@ type Projection struct {
 ```
 
 <a name="Project"></a>
-### func [Project](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L388>)
+### func Project
 
 ```go
 func Project(entries []Entry) Projection
@@ -887,7 +887,7 @@ func Project(entries []Entry) Projection
 Project derives the projection from a recorded prefix. It reads no external state and no clock, so the same prefix always yields the same projection.
 
 <a name="ReadProjection"></a>
-### func [ReadProjection](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/history.go#L407>)
+### func ReadProjection
 
 ```go
 func ReadProjection(stateDir string) (Projection, error)
@@ -896,7 +896,7 @@ func ReadProjection(stateDir string) (Projection, error)
 ReadProjection reads the existing history without creating a store or schema. An absent history is the empty projection; malformed existing history fails.
 
 <a name="Projection.Budgets"></a>
-### func \(Projection\) [Budgets](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L356>)
+### func \(Projection\) Budgets
 
 ```go
 func (p Projection) Budgets(session string) Budgets
@@ -905,7 +905,7 @@ func (p Projection) Budgets(session string) Budgets
 Budgets returns a session's consumption; a session with nothing recorded has consumed nothing.
 
 <a name="Projection.ExecutionForChild"></a>
-### func \(Projection\) [ExecutionForChild](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L133>)
+### func \(Projection\) ExecutionForChild
 
 ```go
 func (p Projection) ExecutionForChild(child, agent string) (Execution, bool)
@@ -914,7 +914,7 @@ func (p Projection) ExecutionForChild(child, agent string) (Execution, bool)
 ExecutionForChild never uses a host title as authority. Titles only propose the initial association, recorded by AttachChild under the workspace lock.
 
 <a name="Projection.HeldRoot"></a>
-### func \(Projection\) [HeldRoot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L635>)
+### func \(Projection\) HeldRoot
 
 ```go
 func (p Projection) HeldRoot(session string) (root string, ok bool)
@@ -923,7 +923,7 @@ func (p Projection) HeldRoot(session string) (root string, ok bool)
 HeldRoot returns the root whose interlocutor holder is session; ok is false when session holds no root.
 
 <a name="Projection.InFlight"></a>
-### func \(Projection\) [InFlight](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L376>)
+### func \(Projection\) InFlight
 
 ```go
 func (p Projection) InFlight() int
@@ -932,7 +932,7 @@ func (p Projection) InFlight() int
 InFlight counts the units holding a concurrency slot: admitted pending launch, running, suspended, cancellation\-pending and uncertain alike \(PR\-HAR\-16, PR\-HAR\-18\).
 
 <a name="Projection.NextAttempt"></a>
-### func \(Projection\) [NextAttempt](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L180>)
+### func \(Projection\) NextAttempt
 
 ```go
 func (p Projection) NextAttempt(root, unit string) string
@@ -941,7 +941,7 @@ func (p Projection) NextAttempt(root, unit string) string
 NextAttempt is issued from execution history for ordinary and maintenance work alike. A denied ordinary admission does not spend an attempt.
 
 <a name="Projection.Orphaned"></a>
-### func \(Projection\) [Orphaned](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/execution.go#L126>)
+### func \(Projection\) Orphaned
 
 ```go
 func (p Projection) Orphaned(d Execution, now time.Time) bool
@@ -950,7 +950,7 @@ func (p Projection) Orphaned(d Execution, now time.Time) bool
 Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it. An execution recorded without an owner has none to wait for.
 
 <a name="Projection.Unit"></a>
-### func \(Projection\) [Unit](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L349>)
+### func \(Projection\) Unit
 
 ```go
 func (p Projection) Unit(session, unit string) (Unit, bool)
@@ -959,7 +959,7 @@ func (p Projection) Unit(session, unit string) (Unit, bool)
 Unit returns session's work unit named unit, and whether it is known.
 
 <a name="QARound"></a>
-## type [QARound](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L141-L144>)
+## type QARound
 
 QARound is a plan's explicit authoring membership, never inferred for older histories. The plan version identifies the round across later replanning.
 
@@ -971,7 +971,7 @@ type QARound struct {
 ```
 
 <a name="Recovery"></a>
-## type [Recovery](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L230-L265>)
+## type Recovery
 
 Recovery is one objective's bounded\-recovery accounting.
 
@@ -1015,7 +1015,7 @@ type Recovery struct {
 ```
 
 <a name="Recovery.Unresolved"></a>
-### func \(Recovery\) [Unresolved](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L269>)
+### func \(Recovery\) Unresolved
 
 ```go
 func (r Recovery) Unresolved() bool
@@ -1024,7 +1024,7 @@ func (r Recovery) Unresolved() bool
 Unresolved reports a recovery that still governs its declared scope: open, or abandoned by forced backtracking and not yet restored.
 
 <a name="ResultStatus"></a>
-## type [ResultStatus](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L79>)
+## type ResultStatus
 
 ResultStatus is the typed status of a recorded result \(PR\-OBS\-RES\-1\). A missing result never implies success: the absence of one is not a status.
 
@@ -1046,7 +1046,7 @@ const (
 ```
 
 <a name="Snapshot"></a>
-## type [Snapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L119-L137>)
+## type Snapshot
 
 Snapshot is the read\-only, content\-free DAG projection PRD\_DAG\_TUI.md §8 contracts: identities, states and structural references only, never prompts, responses, or other free\-text content.
 
@@ -1073,7 +1073,7 @@ type Snapshot struct {
 ```
 
 <a name="BuildSnapshot"></a>
-### func [BuildSnapshot](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L147>)
+### func BuildSnapshot
 
 ```go
 func BuildSnapshot(entries []Entry) Snapshot
@@ -1082,7 +1082,7 @@ func BuildSnapshot(entries []Entry) Snapshot
 BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
 
 <a name="State"></a>
-## type [State](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L17>)
+## type State
 
 State is the temporal state of PR\-DAG\-TMP\-1. Every work unit holds exactly one.
 
@@ -1106,7 +1106,7 @@ const (
 ```
 
 <a name="State.MarshalJSON"></a>
-### func \(State\) [MarshalJSON](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/snapshot.go#L56>)
+### func \(State\) MarshalJSON
 
 ```go
 func (s State) MarshalJSON() ([]byte, error)
@@ -1115,7 +1115,7 @@ func (s State) MarshalJSON() ([]byte, error)
 MarshalJSON emits the state's wire name.
 
 <a name="Strengthening"></a>
-## type [Strengthening](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L148-L151>)
+## type Strengthening
 
 Strengthening is one declared round as replay derives it. The first admitted member starts it; siblings and later attempts continue the same round.
 
@@ -1127,7 +1127,7 @@ type Strengthening struct {
 ```
 
 <a name="Unit"></a>
-## type [Unit](<https://github.com/rou-cru/takt-ai/blob/main/takt/history/projection.go#L185-L216>)
+## type Unit
 
 Unit is a work unit as the replay derives it.
 
