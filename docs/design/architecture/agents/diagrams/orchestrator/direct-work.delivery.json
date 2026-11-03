@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ffe5ad65-26f8-4dee-b1a7-d248d57b3488",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/direct-work.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/direct-work.html",
+  "specification": {
+    "sha256": "901f0db5e9c41b0a0c22e9ddeeed71b26e2e315c769f93f98181feab8d16de04",
+    "bytes": 4878
+  },
+  "artifact": {
+    "sha256": "57147419922499db0c776a38394b92b5de14e4686013eda0e4fdfa0536ebaed2",
+    "bytes": 817944
+  }
+}

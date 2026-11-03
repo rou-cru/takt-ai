@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -19,6 +19,10 @@
     {
       "id": "outcome",
       "label": "Outcome"
+    },
+    {
+      "id": "escalate",
+      "label": "User decision"
     }
   ],
   "nodes": [
@@ -29,12 +33,12 @@
       "type": "security",
       "label": "Route reports misfit",
       "sublabel": "reason, evidence kept",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 42,
-          "end_line": 47
+          "line": 62,
+          "end_line": 67
         }
       ]
     },
@@ -45,12 +49,12 @@
       "type": "security",
       "label": "Restart at question 1",
       "sublabel": "with the new evidence",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 42,
-          "end_line": 47
+          "line": 62,
+          "end_line": 67
         }
       ]
     },
@@ -61,12 +65,12 @@
       "type": "security",
       "label": "Same failed route?",
       "sublabel": "same evidence",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 48,
-          "end_line": 61
+          "line": 69,
+          "end_line": 76
         }
       ]
     },
@@ -77,12 +81,12 @@
       "type": "security",
       "label": "Direct-work tests hold?",
       "sublabel": "file, concern, no contract",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 48,
-          "end_line": 53
+          "line": 70,
+          "end_line": 72
         }
       ]
     },
@@ -93,12 +97,12 @@
       "type": "security",
       "label": "Bounded units fit?",
       "sublabel": "unplanned-unit limit",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 54,
-          "end_line": 57
+          "line": 73,
+          "end_line": 75
         }
       ]
     },
@@ -109,12 +113,12 @@
       "type": "backend",
       "label": "Adopt the route",
       "sublabel": "tree reaches a new route",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 42,
-          "end_line": 47
+          "line": 62,
+          "end_line": 67
         }
       ]
     },
@@ -125,12 +129,12 @@
       "type": "backend",
       "label": "Bounded by decision",
       "sublabel": "small action, ownership kept",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 48,
-          "end_line": 53
+          "line": 70,
+          "end_line": 72
         }
       ]
     },
@@ -141,12 +145,12 @@
       "type": "backend",
       "label": "Delegate specialists",
       "sublabel": "never replaced by takt",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 54,
-          "end_line": 57
+          "line": 73,
+          "end_line": 75
         }
       ]
     },
@@ -155,19 +159,35 @@
       "lane": "outcome",
       "col": 5,
       "type": "backend",
+      "label": "Resolve uncertainty",
+      "sublabel": "competent specialist or direct",
+      "width": 160,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection-exceptions/SKILL.md",
+          "line": 16,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "o4",
+      "lane": "escalate",
+      "col": 5,
+      "type": "backend",
       "label": "Consult the user",
-      "sublabel": "workflow-selection-exceptions",
+      "sublabel": "no route, or the user's choice",
       "width": 170,
       "sources": [
         {
-          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 58,
-          "end_line": 61
+          "path": "takt/catalog/assets/skills/takt-workflow-selection-exceptions/SKILL.md",
+          "line": 18,
+          "end_line": 20
         },
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection-exceptions/SKILL.md",
-          "line": 12,
-          "end_line": 23
+          "line": 22,
+          "end_line": 24
         }
       ]
     }
@@ -211,6 +231,11 @@
       "from": "m4",
       "to": "o3",
       "label": "no"
+    },
+    {
+      "from": "o3",
+      "to": "o4",
+      "label": "no justifiable route or user's choice"
     }
   ],
   "cards": [
@@ -220,6 +245,14 @@
       "items": [
         "A route is never re-adopted under identical evidence",
         "Each new phase is judged on its own current evidence"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Uncertainty",
+      "items": [
+        "Resolve technical uncertainty within authority: the competent specialist, or direct investigation when the user's instruction covers it, keeping effective budgets and ownership limits",
+        "Reconsider the tree only with new evidence; present evidence and alternatives to the user when no justifiable route remains or the choice belongs to the user"
       ]
     },
     {

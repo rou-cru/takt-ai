@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9e37e91f-e3d4-497b-9f5e-9367757f345f",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/escalation.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/escalation.html",
+  "specification": {
+    "sha256": "df32275bdeea8962988b56f89bf5b8d38d1e1565386deb26088299567dd7196f",
+    "bytes": 5127
+  },
+  "artifact": {
+    "sha256": "2e28675931a622d124ba132d03e54e731a6fde724ff8a5584339a794c10e977d",
+    "bytes": 817092
+  }
+}

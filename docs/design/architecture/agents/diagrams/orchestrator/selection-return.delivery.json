@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6b6cb38f-194e-4776-94c8-c8815ff1600c",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/selection-return.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/selection-return.html",
+  "specification": {
+    "sha256": "ce60ca2d98c24c46e3445d1c2426cd81336ef7cf82cb29220795407daa090b76",
+    "bytes": 6186
+  },
+  "artifact": {
+    "sha256": "2f2b00e4f1ff49ddd525f6fdc9e624b167b3f16608b5f8f238368ae97f850711",
+    "bytes": 822707
+  }
+}

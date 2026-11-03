@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fa05eb55-0f48-48ec-acbf-172dd7f208ee",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/flows/planning-intent.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/flows/planning-intent.html",
+  "specification": {
+    "sha256": "c3e6c6637f3db0bb0376bd366146da5afb6ff9339db4692b6ee84687d5be0ea9",
+    "bytes": 4784
+  },
+  "artifact": {
+    "sha256": "599ced98acaf79d91c7cc25ec5f472801cdb99fee64ba99d61161f30350e7d89",
+    "bytes": 816457
+  }
+}

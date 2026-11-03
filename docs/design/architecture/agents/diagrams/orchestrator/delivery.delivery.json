@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1b0341a3-bd18-4de2-98d8-def323fa4159",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/delivery.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/delivery.html",
+  "specification": {
+    "sha256": "956187dd37ffd607cce58268cf03967e1992102a6535c9f8f6440f5f4424b765",
+    "bytes": 5980
+  },
+  "artifact": {
+    "sha256": "b269d4ad65becc43bf88a5d8db5c61990a5ec7318031e5a2e109076292273b69",
+    "bytes": 825590
+  }
+}

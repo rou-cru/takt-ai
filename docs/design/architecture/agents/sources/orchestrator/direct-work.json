@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -38,7 +38,7 @@
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 14,
-          "end_line": 19
+          "end_line": 15
         }
       ]
     },
@@ -53,8 +53,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 19
+          "line": 13,
+          "end_line": 14
         }
       ]
     },
@@ -69,8 +69,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 22
+          "line": 15,
+          "end_line": 18
         }
       ]
     },
@@ -85,8 +85,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 16,
-          "end_line": 18
+          "line": 14,
+          "end_line": 15
         }
       ]
     },
@@ -101,8 +101,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 22,
-          "end_line": 26
+          "line": 19,
+          "end_line": 24
         }
       ]
     },
@@ -117,8 +117,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 26,
-          "end_line": 28
+          "line": 25,
+          "end_line": 26
         }
       ]
     },
@@ -133,13 +133,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 28
+          "line": 12,
+          "end_line": 20
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 33,
-          "end_line": 47
+          "line": 36,
+          "end_line": 54
         }
       ]
     }
@@ -196,14 +196,16 @@
       "title": "While working directly",
       "items": [
         "Record each concern with dispatch_activity_start and close it with dispatch_activity_finish before delegating or answering",
-        "Never run build, lint or full suites, and never certify own work unless the user asks"
+        "Never run build, lint or full suites; direct checks are not independent verification, so report the missing assurance"
       ]
     },
     {
       "dot": "rose",
-      "title": "Never",
+      "title": "Limits",
       "items": [
-        "A technology choice, new implementation of a component, or absorbing an available specialist's judgment"
+        "A technology choice or new implementation of a component is never direct work",
+        "Specialist judgment stays with its owner unless the user explicitly orders direct work; that order permits nontrivial, multi-pass work within its scope but no wider permissions, claims or budgets",
+        "An adjustment is trivial only with one file, one concern, and no contract change or other lane's judgment"
       ]
     }
   ]

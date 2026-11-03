@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -29,17 +29,17 @@
       "type": "security",
       "label": "Plan applies?",
       "sublabel": "several rounds, floor, critical",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 90
+          "line": 103,
+          "end_line": 106
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 128
+          "line": 89,
+          "end_line": 95
         }
       ]
     },
@@ -50,12 +50,12 @@
       "type": "security",
       "label": "Within limit?",
       "sublabel": "unplanned-unit limit",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 74,
-          "end_line": 80
+          "line": 89,
+          "end_line": 95
         }
       ]
     },
@@ -66,12 +66,12 @@
       "type": "security",
       "label": "Implementation lane?",
       "sublabel": "needs a file set",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 68,
-          "end_line": 73
+          "line": 86,
+          "end_line": 88
         }
       ]
     },
@@ -82,12 +82,12 @@
       "type": "security",
       "label": "Scope collides?",
       "sublabel": "same root; claim_list inspects",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 68,
-          "end_line": 73
+          "line": 86,
+          "end_line": 88
         }
       ]
     },
@@ -98,12 +98,12 @@
       "type": "backend",
       "label": "dispatch_commit",
       "sublabel": "revision names its base",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 90
+          "line": 103,
+          "end_line": 106
         }
       ]
     },
@@ -114,12 +114,12 @@
       "type": "backend",
       "label": "Route via selection",
       "sublabel": "not bounded work any more",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 74,
-          "end_line": 80
+          "line": 92,
+          "end_line": 95
         }
       ]
     },
@@ -130,12 +130,12 @@
       "type": "backend",
       "label": "dispatch_inputs",
       "sublabel": "consumed Engram IDs",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 8,
-          "end_line": 11
+          "line": 7,
+          "end_line": 9
         }
       ]
     },
@@ -146,17 +146,17 @@
       "type": "backend",
       "label": "claim_assign",
       "sublabel": "exact file set",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 68,
-          "end_line": 73
+          "line": 86,
+          "end_line": 88
         },
         {
           "path": "takt/vfs/operation.go",
-          "line": 154,
-          "end_line": 158
+          "line": 176,
+          "end_line": 183
         }
       ]
     },
@@ -167,12 +167,12 @@
       "type": "backend",
       "label": "Resolve collision",
       "sublabel": "queue, continue, re-cut",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 68,
-          "end_line": 73
+          "line": 86,
+          "end_line": 88
         }
       ]
     },
@@ -183,12 +183,12 @@
       "type": "backend",
       "label": "Delegate",
       "sublabel": "named by its unit",
-      "width": 170,
+      "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 56,
-          "end_line": 67
+          "line": 83,
+          "end_line": 85
         }
       ]
     }
@@ -273,7 +273,8 @@
       "title": "Identity",
       "items": [
         "The delegation name is the unit identity; the same name again retries it, new work gets a new name",
-        "Without an author_key, claim_assign replaces overlapping claims from other root sessions, discarding their staged work; only same-root collisions are refused; with the author_key it continues the existing work"
+        "claim_assign without author_key never takes a path another root's claim holds: continue that work with its author_key, or release or discard it first",
+        "With the author_key, claim_assign continues the existing staged work and may extend its exact scope"
       ]
     }
   ]
