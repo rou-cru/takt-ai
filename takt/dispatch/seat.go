@@ -69,15 +69,33 @@ func ValidateSeat(h *history.History, root string, s Seat) error {
 		return fmt.Errorf("dispatch: restoring the %s seat names the model it runs and a seat_reason stating why the instance cannot run; retry the subagent call with both", s.Agent)
 	}
 	p := h.Project()
-	if s.Substitute && !slices.ContainsFunc(h.Entries(), func(e history.Entry) bool {
-		return e.Kind == history.KindSeatRestored && e.SessionID == root && e.Agent == s.Agent && !e.Substitute
-	}) {
+	if s.Substitute && !reassignmentFailed(h.Entries(), root, s.Agent) {
 		return fmt.Errorf("dispatch: a substitute fills the %s seat only after a model reassignment of that seat is recorded and still fails; reassign its model first", s.Agent)
 	}
 	if !s.UserConfirmed && !proven(p, root, s.Model) {
 		return fmt.Errorf("%s: model %s has completed no work in this session; with the user present, their approval admits it", UnprovenModelCause, s.Model)
 	}
 	return nil
+}
+
+// reassignmentFailed reports whether a model reassignment of agent's seat in
+// root is recorded and the attempt it ran ended failed or interrupted: the
+// recorded events that show no reassignment works (PR-CRW-13).
+func reassignmentFailed(entries []history.Entry, root, agent string) bool {
+	type attempt struct{ unit, id string }
+	reassigned := map[attempt]bool{}
+	for _, e := range entries {
+		if e.SessionID != root {
+			continue
+		}
+		switch {
+		case e.Kind == history.KindSeatRestored && e.Agent == agent && !e.Substitute:
+			reassigned[attempt{e.WorkUnitID, e.AttemptID}] = true
+		case e.Kind == history.KindTerminated && (e.Outcome == history.OutcomeFailed || e.Outcome == history.OutcomeInterrupted) && reassigned[attempt{e.WorkUnitID, e.AttemptID}]:
+			return true
+		}
+	}
+	return false
 }
 
 // proven reports whether model completed a unit of root.

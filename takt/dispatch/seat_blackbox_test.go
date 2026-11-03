@@ -108,17 +108,31 @@ func TestValidateSeatAdmitsApprovedOrProvenModel(t *testing.T) {
 	}
 }
 
-func TestValidateSeatAdmitsSubstituteAfterRecordedReassignment(t *testing.T) {
+func TestValidateSeatAdmitsSubstituteAfterFailedReassignment(t *testing.T) {
 	h := newHistory(t)
 	completeWith(t, h, "done", "m2")
 	reassign := dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "provider outage"}
-	if err := h.Append(dispatch.SeatEntry(seatRoot, "done", history.FirstAttempt, reassign)); err != nil {
+	if err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: "retry", Session: seatRoot, Agent: seatAgent, Dispatch: "call-retry"}); err != nil {
+		t.Fatalf("Admit(retry) error = %v", err)
+	}
+	u, _ := h.Project().Unit(seatRoot, "retry")
+	if err := h.Append(dispatch.SeatEntry(seatRoot, "retry", u.AttemptID, reassign)); err != nil {
 		t.Fatalf("append seat restoration: %v", err)
 	}
 	substitute := reassign
 	substitute.Substitute = true
+	// A reassignment that has not failed may still work: no substitute yet.
+	if err := dispatch.ValidateSeat(h, seatRoot, substitute); err == nil {
+		t.Fatal("ValidateSeat() of a substitute while the reassignment runs error = nil, want a refusal")
+	}
+	if err := dispatch.Record(h, "", "retry", seatRoot, history.KindCancelRequested); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Finish(h, "", "retry", seatRoot); err != nil {
+		t.Fatal(err)
+	}
 	if err := dispatch.ValidateSeat(h, seatRoot, substitute); err != nil {
-		t.Fatalf("ValidateSeat() of a substitute after a reassignment error = %v, want nil", err)
+		t.Fatalf("ValidateSeat() of a substitute after the reassignment failed error = %v, want nil", err)
 	}
 	// A recorded substitute is not a reassignment: it never unlocks another one.
 	other := newHistory(t)

@@ -938,7 +938,8 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 // seatRestoration covers PR-CRW-13 at delegation: another model or a
 // substitute restores a seat only with a reason; autonomously only with a model
 // that completed work in the session, otherwise with the user's approval; a
-// substitute only after a recorded reassignment, composed without identity.
+// substitute only after a recorded reassignment failed, composed without
+// identity; a retry of a dispatch never changes its seat.
 func seatRestoration(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	s.must(commit("plan-1", "brief", "spec-1", "spec-2", "brief-2", "design-1", "design-2", "self"))
@@ -963,6 +964,15 @@ func seatRestoration(t *testing.T, bin string) {
 	proven := delegate("spec-2", "d3", "spec", "p/a", "p/c")
 	proven.SeatReason = "spec timed out again"
 	s.must(proven)
+	// A retry of the same dispatch never runs another seat under its record.
+	reseated := proven
+	reseated.Model, reseated.Confirmed = "p/b", true
+	if res := s.refused(reseated); !strings.Contains(res.stderr, "already runs the spec seat") {
+		t.Fatalf("a retry under another model was not refused: %s", res.stderr)
+	}
+	reseated = proven
+	reseated.Substitute = true
+	s.refused(reseated)
 
 	substitute := delegate("brief-2", "d4", "pm", "p/a", "p/c")
 	substitute.SeatReason, substitute.Substitute = "pm cannot run", true
@@ -972,6 +982,9 @@ func seatRestoration(t *testing.T, bin string) {
 	s.must(reassigned)
 	substitute = delegate("design-2", "d7", "architect", "p/a", "p/c")
 	substitute.SeatReason, substitute.Substitute = "no reassignment works", true
+	s.refused(substitute) // the reassignment has not failed yet
+	s.must(call("cancel", "design-1"))
+	s.must(call("finish", "design-1"))
 	s.must(substitute)
 	var linked struct {
 		Substitute bool     `json:"substitute"`

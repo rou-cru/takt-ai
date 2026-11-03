@@ -38,6 +38,11 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
 		}
+		// The seat is part of what the execution record names: a retry may not
+		// run another model or swap in a substitute under it.
+		if prior.Model != r.Model || prior.Substitute != r.Substitute {
+			return nil, fmt.Errorf("dispatch %s already runs the %s seat with model %q (substitute %t); retry a different seat with a new subagent call", r.Dispatch, prior.Agent, prior.Model, prior.Substitute)
+		}
 		if prior.Ready || prior.Settled {
 			return map[string]any{"execution": prior, "launchable": false}, nil
 		}
