@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -441,7 +442,10 @@ func (f *FS) JournalPage(sessionID, unitID string, after, limit int) []JournalEn
 func journalPage(entries []JournalEntry, sessionID, unitID string, after, limit int) []JournalEntry {
 	limit = max(1, min(limit, MaxJournalPageSize))
 	result := make([]JournalEntry, 0, limit)
-	for _, e := range entries {
+	// Seq increases along the journal, so the page starts past after without
+	// rescanning the entries before it.
+	start := sort.Search(len(entries), func(i int) bool { return entries[i].Seq > after })
+	for _, e := range entries[start:] {
 		if e.Seq > after && (sessionID == "" || e.SessionID == sessionID) && (unitID == "" || e.WorkUnitID == unitID) {
 			result = append(result, e)
 			if len(result) == limit {

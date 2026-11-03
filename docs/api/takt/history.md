@@ -52,6 +52,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(p Projection\) ExecutionForChild\(child, agent string\) \(Execution, bool\)](<#Projection.ExecutionForChild>)
   - [func \(p Projection\) HeldRoot\(session string\) \(root string, ok bool\)](<#Projection.HeldRoot>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
+  - [func \(p Projection\) LeaseLapsed\(owner string, now time.Time\) bool](<#Projection.LeaseLapsed>)
   - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
   - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
@@ -222,6 +223,8 @@ type Activity struct {
     State      State    `json:"state"`
     Flight     Flight   `json:"flight,omitempty"`
     Outcome    Outcome  `json:"outcome,omitempty"`
+    // Owner is the harness instance that captures the activity.
+    Owner string `json:"owner,omitempty"`
 }
 ```
 
@@ -931,6 +934,15 @@ func (p Projection) InFlight() int
 
 InFlight counts the units holding a concurrency slot: admitted pending launch, running, suspended, cancellation\-pending and uncertain alike \(PR\-HAR\-16, PR\-HAR\-18\).
 
+<a name="Projection.LeaseLapsed"></a>
+### func \(Projection\) LeaseLapsed
+
+```go
+func (p Projection) LeaseLapsed(owner string, now time.Time) bool
+```
+
+LeaseLapsed reports whether harness instance owner has stopped renewing its lease by now. Work recorded without an owner has none to wait for.
+
 <a name="Projection.NextAttempt"></a>
 ### func \(Projection\) NextAttempt
 
@@ -947,7 +959,7 @@ NextAttempt is issued from execution history for ordinary and maintenance work a
 func (p Projection) Orphaned(d Execution, now time.Time) bool
 ```
 
-Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it. An execution recorded without an owner has none to wait for.
+Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it.
 
 <a name="Projection.Unit"></a>
 ### func \(Projection\) Unit
@@ -1156,6 +1168,9 @@ type Unit struct {
     // Launched says whether execution was ever observed, so a pending admission
     // that terminates without launch never appears executed.
     Launched bool `json:"launched"`
+    // CancelRequested says a cancellation of the current attempt was requested,
+    // so its termination is interrupted whatever its flight shows by then.
+    CancelRequested bool `json:"-"`
     // Committed says a plan commitment declared this unit. Work admitted
     // without plan coverage is never committed.
     Committed bool `json:"committed,omitempty"`

@@ -183,6 +183,9 @@ func TestSearchRequiresCompactResultsArray(t *testing.T) {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
+				if got := r.URL.Query().Get("response_format"); got != "compact" {
+					t.Errorf("response_format = %q, want compact", got)
+				}
 				if _, err := w.Write([]byte(tt.body)); err != nil {
 					t.Errorf("write search response: %v", err)
 				}

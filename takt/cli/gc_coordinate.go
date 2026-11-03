@@ -392,7 +392,7 @@ func evaluateMandateReversionRate(workspace string, fs *vfs.FS, coord *gc.Coordi
 	clock := obs.NewClock()
 	bus := obs.NewBus(c.Plan.SessionID, clock)
 	bus.AttachStore(store)
-	d, err := gc.EvaluateMandateReversionRate(journalEntries(fs, ""), bus, clock, gc.MandateReversionRateInput{
+	d, err := gc.EvaluateMandateReversionRate(journalEntries(fs, c.Plan.SessionID), bus, clock, gc.MandateReversionRateInput{
 		Agent: harnessAgent, SessionID: c.Plan.SessionID, Mandate: c.Plan.Mandate,
 		WorkUnitID: c.Plan.CycleID,
 	})
@@ -544,5 +544,5 @@ func startGCCycleActivity(h *history.History, c *gc.Cycle) error {
 		(c.Phase == "aborting" || c.Phase == "blocked") {
 		return nil
 	}
-	return protocol.StartActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance)
+	return protocol.StartActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance, "")
 }

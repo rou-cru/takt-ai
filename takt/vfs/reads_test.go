@@ -146,6 +146,8 @@ func TestEarlierAttemptReaderDoesNotHoldItsUnit(t *testing.T) {
 	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "plugin", AgentID: "dev", Specialist: "dev"}, []string{"plugin/x.ts"}); err != nil {
 		t.Fatalf("claim outside the running reads = %v; want admitted despite the earlier attempt's free reads", err)
 	}
+	_, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "other", AgentID: "dev", Specialist: "dev"}, []string{"core/c.go"})
+	refused(t, "claim inside the running attempt's reads", err, vfs.ErrCollision)
 }
 
 func TestReadsRejectUnknownSelectors(t *testing.T) {

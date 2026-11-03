@@ -108,18 +108,55 @@ func TestValidateSeatAdmitsApprovedOrProvenModel(t *testing.T) {
 	}
 }
 
-func TestValidateSeatAdmitsSubstituteAfterRecordedReassignment(t *testing.T) {
+func TestValidateSeatAdmitsSubstituteAfterFailedReassignment(t *testing.T) {
 	h := newHistory(t)
 	completeWith(t, h, "done", "m2")
 	reassign := dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "provider outage"}
-	if err := h.Append(dispatch.SeatEntry(seatRoot, "done", history.FirstAttempt, reassign)); err != nil {
-		t.Fatalf("append seat restoration: %v", err)
-	}
 	substitute := reassign
 	substitute.Substitute = true
-	if err := dispatch.ValidateSeat(h, seatRoot, substitute); err != nil {
-		t.Fatalf("ValidateSeat() of a substitute after a reassignment error = %v, want nil", err)
+	run := func(unit string, kinds ...history.Kind) {
+		t.Helper()
+		if err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: unit, Session: seatRoot, Agent: seatAgent, Dispatch: "call-" + unit}); err != nil {
+			t.Fatalf("Admit(%s) error = %v", unit, err)
+		}
+		u, _ := h.Project().Unit(seatRoot, unit)
+		if err := h.Append(dispatch.SeatEntry(seatRoot, unit, u.AttemptID, reassign)); err != nil {
+			t.Fatalf("append seat restoration: %v", err)
+		}
+		for _, kind := range kinds {
+			if err := dispatch.Record(h, "", unit, seatRoot, kind); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	finish := func(unit string) {
+		t.Helper()
+		if err := dispatch.Finish(h, "", unit, seatRoot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	admits := func(want bool, why string) {
+		t.Helper()
+		if err := dispatch.ValidateSeat(h, seatRoot, substitute); (err == nil) != want {
+			t.Fatalf("ValidateSeat() of a substitute %s error = %v, want admitted %t", why, err, want)
+		}
+	}
+	// A reassignment that has not failed may still work: no substitute yet.
+	run("retry")
+	admits(false, "while the reassignment runs")
+	// Cancelled before launch, the reassigned model never ran.
+	if err := dispatch.Record(h, "", "retry", seatRoot, history.KindCancelRequested); err != nil {
+		t.Fatal(err)
+	}
+	finish("retry")
+	admits(false, "after a reassignment cancelled before launch")
+	run("retry-2", history.KindLaunched, history.KindCancelRequested)
+	finish("retry-2")
+	admits(true, "after the launched reassignment failed")
+	// A later reassignment that works replaces the earlier failure.
+	run("retry-3", history.KindLaunched)
+	finish("retry-3")
+	admits(false, "after a later reassignment completed")
 	// A recorded substitute is not a reassignment: it never unlocks another one.
 	other := newHistory(t)
 	completeWith(t, other, "done", "m2")

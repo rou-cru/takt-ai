@@ -782,6 +782,11 @@ func unmonitoredExecution(t *testing.T, bin string) {
 	if n := s.projection().InFlight(); n != 1 {
 		t.Fatalf("losing capture released capacity: in flight %d", n)
 	}
+	// A repeated report, as a retrying instance sends it, records nothing new.
+	s.must(lost)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("a repeated lost-capture report recorded %d entries; want 1", n)
+	}
 	reconcile := call("reconcile", "unmon-unit")
 	reconcile.Pass = true
 	s.must(reconcile)
@@ -902,6 +907,38 @@ func unmonitoredActivity(t *testing.T, bin string) {
 	if n := s.count(history.KindUnmonitored); n != 1 {
 		t.Fatalf("late or unknown losses were recorded: %d", n)
 	}
+
+	// An activity whose capturing instance stopped renewing its lease is
+	// reported orphaned, so another instance records the lost capture. One a
+	// live instance just started is not: starting it renews that lease.
+	h, err := history.Open(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lapsed := time.Now().Add(-2 * history.LeaseTTL).UnixMilli()
+	for _, e := range []history.Entry{
+		{Author: history.AuthorHarness, Kind: history.KindLease, Owner: "gone", CreatedAt: lapsed, Cause: history.CauseNone},
+		{Author: history.AuthorOf(history.KindActivityStarted), Kind: history.KindActivityStarted, SessionID: rootSession, ActivityID: "gone-activity", NodeKind: history.NodeKindOrchestrator, Owner: "gone", Cause: history.CauseNone},
+	} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.must(request{Action: "activity_start", Session: rootSession, ActivityID: "live-activity", NodeKind: history.NodeKindOrchestrator, Owner: "live"})
+	var listed struct {
+		Activities         map[string]history.Activity `json:"activities"`
+		OrphanedActivities []string                    `json:"orphaned_activities"`
+	}
+	s.must(request{Action: "executions"}).decode(t, &listed)
+	if len(listed.Activities) != 2 || listed.Activities["live-activity"].Owner != "live" || listed.Activities["gone-activity"].SessionID != rootSession {
+		t.Fatalf("in-flight activities listed: %+v", listed.Activities)
+	}
+	if !slices.Equal(listed.OrphanedActivities, []string{"gone-activity"}) {
+		t.Fatalf("orphaned activities = %v; want only the one whose owner's lease lapsed", listed.OrphanedActivities)
+	}
 }
 
 func cancellationRetainsCapacity(t *testing.T, bin string) {
@@ -938,7 +975,8 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 // seatRestoration covers PR-CRW-13 at delegation: another model or a
 // substitute restores a seat only with a reason; autonomously only with a model
 // that completed work in the session, otherwise with the user's approval; a
-// substitute only after a recorded reassignment, composed without identity.
+// substitute only after a recorded reassignment failed, composed without
+// identity; a retry of a dispatch never changes its seat.
 func seatRestoration(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	s.must(commit("plan-1", "brief", "spec-1", "spec-2", "brief-2", "design-1", "design-2", "self"))
@@ -963,6 +1001,15 @@ func seatRestoration(t *testing.T, bin string) {
 	proven := delegate("spec-2", "d3", "spec", "p/a", "p/c")
 	proven.SeatReason = "spec timed out again"
 	s.must(proven)
+	// A retry of the same dispatch never runs another seat under its record.
+	reseated := proven
+	reseated.Model, reseated.Confirmed = "p/b", true
+	if res := s.refused(reseated); !strings.Contains(res.stderr, "is recorded with model") {
+		t.Fatalf("a retry under another model was not refused: %s", res.stderr)
+	}
+	reseated = proven
+	reseated.Substitute = true
+	s.refused(reseated)
 
 	substitute := delegate("brief-2", "d4", "pm", "p/a", "p/c")
 	substitute.SeatReason, substitute.Substitute = "pm cannot run", true
@@ -972,6 +1019,12 @@ func seatRestoration(t *testing.T, bin string) {
 	s.must(reassigned)
 	substitute = delegate("design-2", "d7", "architect", "p/a", "p/c")
 	substitute.SeatReason, substitute.Substitute = "no reassignment works", true
+	s.refused(substitute) // the reassignment has not failed yet
+	launched := call("launch", "design-1")
+	launched.Agent, launched.Dispatch = "architect", "d5"
+	s.must(launched)
+	s.must(call("cancel", "design-1"))
+	s.must(call("finish", "design-1"))
 	s.must(substitute)
 	var linked struct {
 		Substitute bool     `json:"substitute"`
@@ -1482,10 +1535,10 @@ func handoffNeedsRecordedResults(t *testing.T, bin string) {
 // interface, refusing any other.
 func lentMemoryPages(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	const lent = "child-p"
+	const lent, handedOff = "child-p", "child-q"
 	var entries []seededEntry
 	for id := int64(1); id <= 55; id++ {
-		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent})
+		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent}, seededEntry{ID: 100 + id, Author: "pm", Caller: handedOff})
 	}
 	s.seedMemory(rootSession, append(entries, seededEntry{ID: 99, Author: "takt", Caller: rootSession})...)
 	s.must(request{Action: "switch", Session: rootSession, Child: lent, Agent: "pm"})
@@ -1494,7 +1547,7 @@ func lentMemoryPages(t *testing.T, bin string) {
 	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
 		t.Fatalf("first page: %+v", resp)
 	}
-	if !strings.Contains(resp.Notice, "page them with dispatch_lent_entries from next_after 50") {
+	if !strings.Contains(resp.Notice, "call dispatch_lent_entries with child child-p and after 50") {
 		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
 	}
 	var page struct {
@@ -1507,6 +1560,15 @@ func lentMemoryPages(t *testing.T, bin string) {
 	}
 	s.refused(request{Action: "lent_entries", Session: rootSession, Child: rootSession})
 	s.refused(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 99})
+
+	// A handoff's notice names its lent session too: the convening agent reads
+	// only the notice, and paging needs that child.
+	s.must(request{Action: "switch", Session: rootSession, Child: handedOff, Agent: "pm"})
+	var handoff returned
+	s.must(request{Action: "handoff", Session: rootSession, Child: handedOff, Agent: "pm", Result: "EarlyHandoff"}).decode(t, &handoff)
+	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "call dispatch_lent_entries with child child-q and after 150") {
+		t.Fatalf("handoff notice does not name the lent session to page: %+v", handoff)
+	}
 }
 
 // userAbortsSwitch covers IR-24: the user may end a temporary holder's turn

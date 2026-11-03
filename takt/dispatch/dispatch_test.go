@@ -23,10 +23,10 @@ func TestAdmitSucceedsWithinBudget(t *testing.T) {
 func TestActivityLifecycleUsesSeparateIdentityAndProjection(t *testing.T) {
 	h := newHistory(t)
 	id := "direct-activity-31c8"
-	if err := dispatch.StartActivity(h, "root", id, history.NodeKindOrchestrator); err != nil {
+	if err := dispatch.StartActivity(h, "root", id, history.NodeKindOrchestrator, ""); err != nil {
 		t.Fatalf("start activity: %v", err)
 	}
-	if err := dispatch.StartActivity(h, "root", id, history.NodeKindOrchestrator); err != nil {
+	if err := dispatch.StartActivity(h, "root", id, history.NodeKindOrchestrator, ""); err != nil {
 		t.Fatalf("repeated start was not idempotent: %v", err)
 	}
 	p := h.Project()

@@ -413,6 +413,24 @@ export default Plugin.define({
         return parsed && !parsed.settled ? [{ ...parsed, mine: parsed.owner === INSTANCE || orphaned.includes(parsed.dispatch) }] : []
       })
     }
+    // unsettledActivities lists the direct orchestrator activities in flight,
+    // each with whether this instance captures it and whether the core reports
+    // it orphaned because its capturing instance's lease lapsed.
+    async function unsettledActivities(): Promise<Array<{ id: string; root: string; own: boolean; orphaned: boolean; unmonitored: boolean }>> {
+      const result = responseObject(await dispatchAction({ action: "executions" }), "dispatch executions")
+      if (!result || !isResponseObject(result) || !isResponseObject(result.activities)) return []
+      const orphaned = isStringArray(result.orphaned_activities) ? result.orphaned_activities : []
+      return Object.entries(result.activities).flatMap(([id, a]) => isResponseObject(a) && typeof a.session_id === "string"
+        ? [{ id, root: a.session_id, own: a.owner === INSTANCE, orphaned: orphaned.includes(id), unmonitored: a.flight === "capture unmonitored" }]
+        : [])
+    }
+    // markActivitiesUnmonitored records lost capture for each listed activity.
+    // The core keeps the activity in flight and ignores a repeat.
+    async function markActivitiesUnmonitored(activities: Array<{ id: string; root: string }>) {
+      await Promise.all(activities.map(a =>
+        dispatchAction({ action: "activity_unmonitored", session: a.root, activity_id: a.id, node_kind: "orchestrator" })
+          .catch(error => console.error("Takt unmonitored activity unrecorded", a.id, error))))
+    }
     // A terminal host record of the exact native call settles any execution,
     // whoever owns it; only the owner, or any instance once the owner's lease
     // lapsed, starts a host wait on a child.
@@ -467,6 +485,18 @@ export default Plugin.define({
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
+      // While the host stream is down, the lost capture of what this instance
+      // watches is recorded again, so a write that failed is retried. Otherwise
+      // only an instance that stopped renewing its lease lost the capture of the
+      // activities it ran; whichever instance notices records that gap.
+      if (!eventsRunning && !disposed) {
+        await unsettledExecutions().then(executions => recordLostCapture(executions.filter(d => d.mine)))
+          .catch(error => console.error("Takt lost capture reconciliation", error))
+      } else {
+        await unsettledActivities()
+          .then(activities => markActivitiesUnmonitored(activities.filter(a => a.orphaned && !a.own && !a.unmonitored)))
+          .catch(error => console.error("Takt orphaned activity reconciliation", error))
+      }
       for (const d of await unsettledExecutions()) {
         if (d.cycle) continue
         let backgroundLaunched = false
@@ -1310,9 +1340,6 @@ export default Plugin.define({
     const pendingReplies = new Map<string, { session: string; controller: AbortController; resolve: (reply: string) => void; reject: (error: Error) => void }>()
     let eventsRunning = false
     let disposed = false
-    // openActivities are the direct orchestrator activities this plugin started and
-    // has not seen finish, with the root session each one belongs to.
-    const openActivities = new Map<string, string>()
     // inactivity fires once per silence of the open host stream; the next host event arms it again.
     let inactivity: ReturnType<typeof setTimeout> | undefined
     const stopInactivity = () => { clearTimeout(inactivity); inactivity = undefined }
@@ -1400,31 +1427,48 @@ export default Plugin.define({
         endApprovals("confirmation event stream ended")
         // The plugin's own disposal is closure, a stream error a disconnection,
         // and a stream that just ended EOF: three distinct observations (PR-OBS-BUS-6).
-        void streamLost(disposed ? "closed" : failed ? "disconnected" : "eof")
+        let cause: "closed" | "disconnected" | "eof" = "eof"
+        if (disposed) cause = "closed"
+        else if (failed) cause = "disconnected"
+        void streamLost(cause)
       })
+    }
+    // STREAM_READ_ATTEMPTS bounds how often a stream-loss report rereads what is
+    // in flight before it gives up: a transient read failure must not drop the
+    // unmonitored record of known work.
+    const STREAM_READ_ATTEMPTS = 3
+    async function reread<T>(read: () => Promise<T>, attempt = 1): Promise<T> {
+      try {
+        return await read()
+      } catch (error) {
+        if (attempt >= STREAM_READ_ATTEMPTS) throw error
+        return reread(read, attempt + 1)
+      }
     }
     // observeStream records the host stream's state once per execution this instance
     // watches (PR-OBS-BUS-5/6), and says which ones. The observation proves nothing
     // about the agent.
     async function observeStream(state: "eof" | "inactive" | "disconnected" | "closed") {
       try {
-        const watched = (await unsettledExecutions()).filter(d => d.mine)
+        const watched = (await reread(unsettledExecutions)).filter(d => d.mine)
         for (const d of watched) observe("stream_liveness", "takt.platform", d.agent, d.root, { stream: HOST_EVENT_STREAM, state }, d.unit, d.attempt)
         return watched
       } catch (error) { console.error("Takt stream state unreported", error); return [] }
     }
-    // streamLost reports the loss of the host event stream: each execution this
-    // instance watches and each open direct activity it started is marked
-    // unmonitored, neither completed nor failed. Telemetry loss proves nothing
-    // about the agent.
-    async function streamLost(state: "eof" | "disconnected" | "closed") {
-      await Promise.all((await observeStream(state)).map(d =>
+    // recordLostCapture marks unmonitored, neither completed nor failed, each
+    // execution in watched and each direct activity this instance captures or
+    // whose capturing instance is gone. The core ignores a repeat.
+    async function recordLostCapture(watched: Delegation[]) {
+      await Promise.all(watched.map(d =>
         dispatchAction({ action: "unmonitored", session: d.root, event: d.unit, dispatch: d.dispatch })
           .catch(error => console.error("Takt unmonitored execution unrecorded", d.dispatch, error))))
-      await Promise.all([...openActivities].map(([activity, root]) =>
-        dispatchAction({ action: "activity_unmonitored", session: root, activity_id: activity, node_kind: "orchestrator" })
-          .then(() => openActivities.delete(activity))
-          .catch(error => console.error("Takt unmonitored activity unrecorded", activity, error))))
+      const activities = await reread(unsettledActivities).catch(error => { console.error("Takt unmonitored activities unread", error); return [] })
+      await markActivitiesUnmonitored(activities.filter(a => (a.own || a.orphaned) && !a.unmonitored))
+    }
+    // streamLost reports the loss of the host event stream for what this
+    // instance watches. Telemetry loss proves nothing about the agent.
+    async function streamLost(state: "eof" | "disconnected" | "closed") {
+      await recordLostCapture(await observeStream(state))
     }
     startEvents()
 
@@ -1524,7 +1568,7 @@ export default Plugin.define({
       // a specialist's, so every one requires the calling session to be the
       // root interlocutor.
       // after runs once the history accepted the request, with the root session it named.
-      const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>, after?: (args: Args, session: string) => void) =>
+      const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>) =>
         editor.add({
           name, description, input,
           async execute(value: unknown, c) {
@@ -1532,7 +1576,6 @@ export default Plugin.define({
             const session = await rootSession(c.sessionID)
             if (c.sessionID !== session) throw new Error(`${name} belongs to the root orchestrator`)
             const result = await governed(c, { action, session, ...fields(args) })
-            after?.(args, session)
             return { content: JSON.stringify(result) }
           },
         })
@@ -1608,10 +1651,8 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args,
-        (args, session) => openActivities.set(args.activity_id, session))
-      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args,
-        (args) => openActivities.delete(args.activity_id))
+      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
+      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
       dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored.",
         "recovery",

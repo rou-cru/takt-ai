@@ -103,7 +103,7 @@ type artifactReport struct {
 
 // interlocutorReturn is what the harness delivers when the interface comes
 // back: the four-field envelope, the declared document's check when a path was
-// declared, and for an abort the sessions involved. Notice is the text the
+// declared, the lent session, and for an abort its root. Notice is the text the
 // convening agent reads, so every host relays the same words.
 type interlocutorReturn struct {
 	Envelope protocol.Envelope `json:"envelope"`
@@ -129,7 +129,7 @@ func (r interlocutorReturn) withNotice(from string) (interlocutorReturn, error) 
 		lines = append(lines, fmt.Sprintf("Declared standard document %s: %s.", r.Artifact.Path, state))
 	}
 	if next := r.Envelope.Memory.NextAfter; next != 0 {
-		lines = append(lines, fmt.Sprintf("More entries of the lent session remain: page them with dispatch_lent_entries from next_after %d.", next))
+		lines = append(lines, fmt.Sprintf("More entries remain: call dispatch_lent_entries with child %s and after %d.", r.Child, next))
 	}
 	r.Notice = strings.Join(lines, "\n")
 	return r, nil
@@ -159,7 +159,7 @@ func handoffReturn(h *history.History, ref, workspace string, r coordinationRequ
 	if e != nil {
 		return nil, e
 	}
-	return interlocutorReturn{Envelope: envelope, Artifact: artifact}.withNotice(r.Agent)
+	return interlocutorReturn{Envelope: envelope, Artifact: artifact, Child: r.Child}.withNotice(r.Agent)
 }
 
 // abortReturn assembles the synthesized abort envelope: the standard document
@@ -448,10 +448,14 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		return func() (any, error) { return c, protocol.Record(h, ref, r.Event, r.Session, kind) }
 	}
 	// unestablished records launch or capture that could not be established, unless
-	// a later attempt under another dispatch already holds the unit.
+	// a later attempt under another dispatch already holds the unit. A repeated
+	// report of lost capture records nothing new.
 	unestablished := func(kind history.Kind) func() (any, error) {
 		return func() (any, error) {
 			if staleDispatch(h, r) {
+				return c, nil
+			}
+			if u, _ := h.Project().Unit(r.Session, r.Event); kind == history.KindUnmonitored && u.State == history.StateInFlight && u.Flight == history.FlightUnmonitored {
 				return c, nil
 			}
 			return record(kind)()
@@ -539,7 +543,14 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			if r.NodeKind != history.NodeKindOrchestrator {
 				return nil, errors.New("dispatch: activity_start only accepts node_kind orchestrator")
 			}
-			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind)
+			// The capturing instance is alive as it starts the activity: its lease
+			// is renewed first, so no other instance reads the activity orphaned.
+			if r.Owner != "" {
+				if err := renewLease(h, r.Owner, time.Now()); err != nil {
+					return nil, err
+				}
+			}
+			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind, r.Owner)
 		},
 		"activity_finish": func() (any, error) {
 			if r.NodeKind != history.NodeKindOrchestrator {

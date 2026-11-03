@@ -76,7 +76,7 @@ func TestMarkActivityUnmonitoredKeepsTheActivityInFlight(t *testing.T) {
 	if err := dispatch.MarkActivityUnmonitored(h, session, id); err == nil {
 		t.Fatal("an activity that never started was marked unmonitored")
 	}
-	if err := dispatch.StartActivity(h, session, id, orchestrator); err != nil {
+	if err := dispatch.StartActivity(h, session, id, orchestrator, ""); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -98,6 +98,34 @@ func TestMarkActivityUnmonitoredKeepsTheActivityInFlight(t *testing.T) {
 	}
 	if a := h.Project().Activities[id]; a.State != history.StateSettled || a.Flight != "" || len(h.Entries()) != 3 {
 		t.Fatalf("activity = %+v after a late loss", a)
+	}
+}
+
+// An instance that starts an in-flight activity again takes over its capture:
+// the activity names it and is observed again. A repeat from the capturing
+// instance records nothing.
+func TestRepeatedActivityStartTakesOverCapture(t *testing.T) {
+	h := newHistory(t)
+	const session, id = "takeover-root", "takeover-activity"
+	orchestrator := history.NodeKindOrchestrator
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.MarkActivityUnmonitored(h, session, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if a := h.Project().Activities[id]; a.Owner != "second" || a.Flight != history.FlightRunning || a.State != history.StateInFlight {
+		t.Fatalf("activity = %+v; want it captured by the second instance and observed running", a)
+	}
+	before := len(h.Entries())
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.Entries()); n != before {
+		t.Fatalf("a repeat from the capturing instance recorded %d entries", n-before)
 	}
 }
 
@@ -139,5 +167,87 @@ func TestFinishRecordsCompletedDeliveryWithoutEvidenceAsUnverified(t *testing.T)
 		if e.Kind == history.KindResult && e.WorkUnitID == "fin-plain" && e.Author != history.AuthorHarness {
 			t.Fatalf("finish authored its result as %q", e.Author)
 		}
+	}
+}
+
+// A non-start reconciled after lost capture ends without a work result: it is
+// interrupted, so the model it ran is never counted as having completed work.
+func TestReconciledUnmonitoredNonStartIsInterrupted(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-d", "unmon-d"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: seatAgent, Dispatch: "unmon-call-d"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := h.Project().Unit(root, unit)
+	if err := h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: root, WorkUnitID: unit, AttemptID: u.AttemptID, Dispatch: "unmon-call-d", Agent: seatAgent, Model: "m9", Cause: history.CauseNone}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Launch(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Record(h, "", unit, root, history.KindUnmonitored); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Reconcile(h, "", unit, root, false); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ = h.Project().Unit(root, unit); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("unit = %+v; want a reconciled non-start settled interrupted", u)
+	}
+	seat := dispatch.Seat{Agent: seatAgent, Model: "m9", Configured: "m1", Reason: "provider outage"}
+	if err := dispatch.ValidateSeat(h, root, seat); err == nil || !strings.HasPrefix(err.Error(), dispatch.UnprovenModelCause) {
+		t.Fatalf("ValidateSeat() after an interrupted non-start = %v; want the model still unproven", err)
+	}
+}
+
+// Lost capture during a pending cancellation shows as unmonitored, and the
+// cancelled work still finishes interrupted, not completed.
+func TestUnmonitoredKeepsAPendingCancellation(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-e", "unmon-e"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: "executor", Dispatch: "unmon-call-e"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Launch(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []history.Kind{history.KindCancelRequested, history.KindUnmonitored} {
+		if err := dispatch.Record(h, "", unit, root, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Flight != history.FlightUnmonitored {
+		t.Fatalf("flight = %q; want lost capture visible while the cancellation is pending", u.Flight)
+	}
+	if err := dispatch.Finish(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("outcome = %q; want cancelled work interrupted", u.Outcome)
+	}
+}
+
+// A non-start never observed launching and then left unmonitored is
+// reconciled interrupted, like a launched one.
+func TestReconciledNeverLaunchedUnmonitoredNonStartIsInterrupted(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-f", "unmon-f"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: seatAgent, Dispatch: "unmon-call-f"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Record(h, "", unit, root, history.KindUnmonitored); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Launched {
+		t.Fatalf("unit = %+v; want a unit never launched", u)
+	}
+	if err := dispatch.Reconcile(h, "", unit, root, false); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("unit = %+v; want a reconciled never-launched non-start settled interrupted", u)
 	}
 }

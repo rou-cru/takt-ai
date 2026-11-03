@@ -121,11 +121,16 @@ func (p *Projection) foldExecution(e Entry) {
 }
 
 // Orphaned reports whether d's owner has stopped renewing its lease by now, so
-// another harness instance may reconcile it. An execution recorded without an
-// owner has none to wait for.
+// another harness instance may reconcile it.
 func (p Projection) Orphaned(d Execution, now time.Time) bool {
-	renewed, ok := p.Leases[d.Owner]
-	return d.Owner == "" || !ok || now.Sub(time.UnixMilli(renewed)) > LeaseTTL
+	return p.LeaseLapsed(d.Owner, now)
+}
+
+// LeaseLapsed reports whether harness instance owner has stopped renewing its
+// lease by now. Work recorded without an owner has none to wait for.
+func (p Projection) LeaseLapsed(owner string, now time.Time) bool {
+	renewed, ok := p.Leases[owner]
+	return owner == "" || !ok || now.Sub(time.UnixMilli(renewed)) > LeaseTTL
 }
 
 // ExecutionForChild never uses a host title as authority. Titles only propose
