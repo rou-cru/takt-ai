@@ -336,15 +336,15 @@ respond = (call) => call.verb === "dispatch" && requestOf(call).action === "hand
   ? { stdout: "", stderr: "handoff denied: standard artifact \"brief.md\" not found; produce it before handoff", code: 1 } : undefined
 await assert.rejects(tools.dispatch_handoff.execute(handoff, holder), /standard artifact "brief.md" not found/)
 assert.equal(synthetic.length, 0, "a refused handoff reached the orchestrator")
-const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: [] }
+const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: { entries: [] } }
+const notice = "The interface is back from pm. Envelope: ..."
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
-  ? { stdout: JSON.stringify(envelope), stderr: "", code: 0 } : undefined
+  ? { stdout: JSON.stringify({ envelope, artifact: { path: "brief.md", present: true }, notice }), stderr: "", code: 0 } : undefined
 const returned = await tools.dispatch_handoff.execute(handoff, holder)
 assert.equal(returned.content, "", "the holder received the envelope")
 assert.equal(synthetic.length, 1)
 assert.equal(synthetic[0].sessionID, "root")
-assert.match(synthetic[0].text, /back from pm/)
-assert.deepEqual(JSON.parse(synthetic[0].text.slice(synthetic[0].text.indexOf("{"))), envelope)
+assert.equal(synthetic[0].text, notice, "the root reads the core's notice")
 await new Promise(resolve => setTimeout(resolve, 10))
 assert.deepEqual(interrupted, ["lent"])
 respond = () => undefined
