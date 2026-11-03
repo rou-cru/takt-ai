@@ -392,7 +392,7 @@ func evaluateMandateReversionRate(workspace string, fs *vfs.FS, coord *gc.Coordi
 	clock := obs.NewClock()
 	bus := obs.NewBus(c.Plan.SessionID, clock)
 	bus.AttachStore(store)
-	d, err := gc.EvaluateMandateReversionRate(journalEntries(fs, ""), bus, clock, gc.MandateReversionRateInput{
+	d, err := gc.EvaluateMandateReversionRate(journalEntries(fs, c.Plan.SessionID), bus, clock, gc.MandateReversionRateInput{
 		Agent: harnessAgent, SessionID: c.Plan.SessionID, Mandate: c.Plan.Mandate,
 		WorkUnitID: c.Plan.CycleID,
 	})
