@@ -67,6 +67,12 @@ func TestMarkActivityUnmonitoredKeepsTheActivityInFlight(t *testing.T) {
 	h := newHistory(t)
 	const session, id = "unmon-activity-root", "orchestrator-activity-5e0a"
 	orchestrator := history.NodeKindOrchestrator
+	if err := dispatch.MarkActivityUnmonitored(h, "", id); err == nil {
+		t.Fatal("a loss without its session was recorded")
+	}
+	if err := dispatch.MarkActivityUnmonitored(h, session, ""); err == nil {
+		t.Fatal("a loss without its activity was recorded")
+	}
 	if err := dispatch.MarkActivityUnmonitored(h, session, id); err == nil {
 		t.Fatal("an activity that never started was marked unmonitored")
 	}

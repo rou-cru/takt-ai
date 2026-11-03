@@ -195,6 +195,16 @@ func TestPublishCycleReeditEvent_Succeeds(t *testing.T) {
 	}
 }
 
+func TestPublishProblemRateEvent_Succeeds(t *testing.T) {
+	// A problem-rate envelope carries the raw count and recorded-work
+	// denominator beside the rate (PR-MNT-9, PR-MNT-11); the bus validates
+	// them as the event class's required attributes.
+	bus, clock := newBus(t)
+	if err := obs.PublishProblemRateEvent(bus, clock, "agent-a", "cycle_reedit", 2, 8, 0.25, "wu-1"); err != nil {
+		t.Fatalf("PublishProblemRateEvent: %v", err)
+	}
+}
+
 // TestControlActionTaxonomyIsComplete checks PR-OBS-CTL-1's full ordering
 // (OBSERVE, THROTTLE, CONTAIN, ROLLBACK, GATE, ESCALATE) validates as a
 // ControlRecord, and that PublishControlEffectEvent produces the typed event

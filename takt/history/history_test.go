@@ -247,3 +247,33 @@ func TestAppendRejectsInvalidEntries(t *testing.T) {
 		t.Fatalf("rejected entries recorded: %d", n)
 	}
 }
+
+// TestSeatRestorationNamesInstanceModelAndReason covers PR-CRW-13's record: a
+// restoration without its instance, model, or reason is refused, and a
+// complete one is recorded without changing the unit it names.
+func TestSeatRestorationNamesInstanceModelAndReason(t *testing.T) {
+	h := open(t, filepath.Join(t.TempDir(), "state"))
+	if err := h.Append(observed(t, "a", history.KindAdmitted, "")); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := h.Project().Unit("root", "a")
+	seat := history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindSeatRestored, SessionID: "root", WorkUnitID: "a",
+		AttemptID: history.FirstAttempt, Agent: "dev", Model: "m2", Reason: "provider outage", Cause: history.CauseNone}
+	for name, mutate := range map[string]func(*history.Entry){
+		"instance": func(e *history.Entry) { e.Agent = "" },
+		"model":    func(e *history.Entry) { e.Model = "" },
+		"reason":   func(e *history.Entry) { e.Reason = "" },
+	} {
+		incomplete := seat
+		mutate(&incomplete)
+		if err := h.Append(incomplete); err == nil {
+			t.Fatalf("restoration without its %s recorded", name)
+		}
+	}
+	if err := h.Append(seat); err != nil {
+		t.Fatalf("complete restoration: %v", err)
+	}
+	if after, _ := h.Project().Unit("root", "a"); !reflect.DeepEqual(after, before) {
+		t.Fatalf("restoration changed the unit: %+v, want %+v", after, before)
+	}
+}
