@@ -102,9 +102,6 @@ const delegationOf = (value: unknown): Delegation | undefined =>
 export function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
   return value !== null && "version" in value && "units" in value
 }
-export function isGCCycleResponse(value: DispatchResponse): value is GCCycle {
-  return value !== null && isResponseObject(value) && isGCCycle(value)
-}
 export function isMemoryIndex(value: unknown): value is MemoryIndex {
   return isResponseObject(value) && Array.isArray(value.entries) && value.entries.every(item => typeof item === "number") &&
     isOptional(value.next_after, (n): n is number => typeof n === "number")

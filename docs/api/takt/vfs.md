@@ -46,7 +46,6 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) CompleteShell\(c Caller, callID, stateDir string\) \(result OperationResult, err error\)](<#FS.CompleteShell>)
   - [func \(f \*FS\) ConsolidateAs\(c Caller, author AgentID, checkpoint string, accepted \*StagedState\) \(seq int, err error\)](<#FS.ConsolidateAs>)
   - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64, acceptFailing bool\) \(err error\)](<#FS.ConsolidateCheckpoint>)
-  - [func \(f \*FS\) ConsolidatedBy\(path string\) \(cycleID, mandateClass string, ok bool\)](<#FS.ConsolidatedBy>)
   - [func \(f \*FS\) ContinueShell\(c Caller, callID, phase string\) \(plan ShellPlan, err error\)](<#FS.ContinueShell>)
   - [func \(f \*FS\) CycleInterrupted\(cycle string\) bool](<#FS.CycleInterrupted>)
   - [func \(f \*FS\) CycleKeys\(cycle string\) \(author, verifier AgentID\)](<#FS.CycleKeys>)
@@ -589,7 +588,7 @@ Close releases all handles. It never discards staged state or recovery data.
 func (f *FS) CompleteCycle(cycleID string) (err error)
 ```
 
-CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. ConsolidatedBy still attributes the cycle's paths \(PR\-MNT\-31\).
+CompleteCycle releases cycleID's discard state after it closed without regressing acceptance, so DiscardCycle can no longer undo it. Idempotent. The cycle's paths stay attributed, so a later re\-edit of one still names this cycle and mandate class in the journal \(PR\-MNT\-31\).
 
 <a name="FS.CompleteShell"></a>
 ### func \(\*FS\) CompleteShell
@@ -617,15 +616,6 @@ func (f *FS) ConsolidateCheckpoint(key AgentID, checkpoint string, expected uint
 ```
 
 ConsolidateCheckpoint is a trusted coordinator operation that consolidates authorized staged changes. Verdicts inform: a current failing one refuses unless acceptFailing carries the user's explicit acceptance, and a stale one is ignored. A maintenance cycle's current verdicts stay a gate that must pass. An empty checkpoint label defaults to the author key and revision.
-
-<a name="FS.ConsolidatedBy"></a>
-### func \(\*FS\) ConsolidatedBy
-
-```go
-func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool)
-```
-
-ConsolidatedBy reports the cycle and mandate class that last consolidated path across every retained cycle \(open or completed\), so a caller staging a write can attribute a later re\-edit back to it \(PR\-MNT\-31\). path must match the slash\-relative form JournalEntry.Path and recoveryItem.Path use. It scans every retained cycle per call; index by path if that ever grows.
 
 <a name="FS.ContinueShell"></a>
 ### func \(\*FS\) ContinueShell

@@ -11,7 +11,6 @@ import {
   isCoordinator,
   isCoordinatorResponse,
   isGCCycle,
-  isGCCycleResponse,
   isGCPlan,
   isHandoffEnvelope,
   isInterlocutorReturn,
@@ -412,7 +411,6 @@ describe("gc coordination shapes", () => {
 
   test("gcCoordinateResponse matches the real coordinator wire contract", () => {
     expect(isCoordinatorResponse(contracts.coordinator)).toBe(true)
-    expect(isGCCycleResponse(contracts.coordinator.cycle)).toBe(true)
     expect(gcCoordinateResponse(contracts.coordinator, "attach")).toEqual(contracts.coordinator)
   })
 })
