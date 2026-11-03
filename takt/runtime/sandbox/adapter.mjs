@@ -18,17 +18,31 @@ const DESCENDANT_SWEEPS = 30;
 // proxy filters by it, not by a call's own list, so a different list restarts it.
 let proxyAllowlist;
 
+// proxyRestarts orders proxy restarts: each runs after the previous one
+// settles, so concurrent wraps never initialize the proxy at the same time.
+let proxyRestarts = Promise.resolve();
+
 // restrictNetwork starts the proxy that lets a sandboxed command reach only the
 // allowed domains. Without it the sandbox leaves the network unrestricted.
-async function restrictNetwork(allowedDomains) {
+function restrictNetwork(allowedDomains) {
   const key = JSON.stringify(allowedDomains);
-  if (proxyAllowlist === key) return;
-  if (proxyAllowlist !== undefined) await SandboxManager.reset();
-  await SandboxManager.initialize({
-    network: { allowedDomains, deniedDomains: [], strictAllowlist: true },
-    filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+  const restart = proxyRestarts.then(async () => {
+    if (proxyAllowlist === key) return;
+    if (proxyAllowlist !== undefined) {
+      // Forget the old list first: a failed restart must start again, never
+      // be skipped as already running.
+      proxyAllowlist = undefined;
+      await SandboxManager.reset();
+    }
+    await SandboxManager.initialize({
+      network: { allowedDomains, deniedDomains: [], strictAllowlist: true },
+      filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+    });
+    proxyAllowlist = key;
   });
-  proxyAllowlist = key;
+  // A failed restart reaches its caller; the next one still runs.
+  proxyRestarts = restart.catch(() => {});
+  return restart;
 }
 
 export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], allowedDomains, callID }) {

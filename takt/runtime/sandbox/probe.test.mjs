@@ -143,8 +143,8 @@ test('network is restricted only when an allowlist is configured', async () => {
     const workspace = join(root, 'workspace');
     for (const p of [scratch, workspace]) await mkdir(p);
     let seq = 0;
-    async function fetchWith(extra) {
-      const wrapped = await wrap(`curl -sS --max-time 5 ${quote(url)}`, {
+    async function fetchWith(extra, curlFlags = '') {
+      const wrapped = await wrap(`curl -sS --max-time 5 ${curlFlags}${quote(url)}`, {
         writable: [scratch], scratch, protectedPaths: [workspace], callID: `net-${++seq}`, ...extra });
       // Asynchronous: the server answering the request lives in this process.
       return promisify(execFile)('/bin/sh', ['-c', wrapped], { cwd: scratch, timeout: 20000,
@@ -155,6 +155,17 @@ test('network is restricted only when an allowlist is configured', async () => {
     const limited = await fetchWith({ allowedDomains: ['allowed.test'] });
     assert.notEqual(limited.stdout, 'reached', 'a host outside the allowlist was reachable');
     assert.ok(limited.code, 'the restricted command succeeded');
+    const filtered = await fetchWith({ allowedDomains: ['allowed.test'] }, "--noproxy '' ");
+    assert.notEqual(filtered.stdout, 'reached', 'the proxy let through a host outside the allowlist');
+    // The proxy filters by host, not by blocking everything: a host on the
+    // allowlist stays reachable. The sandbox exempts loopback from its proxy,
+    // so the request is sent through it explicitly to reach the filter.
+    const allowed = await fetchWith({ allowedDomains: ['127.0.0.1'] }, "--noproxy '' ");
+    assert.equal(allowed.stdout, 'reached', allowed.stderr);
+    // Concurrent first wraps under a new allowlist restart the proxy once, in
+    // turn, and both reach the allowed host.
+    const both = await Promise.all([1, 2].map(() => fetchWith({ allowedDomains: ['127.0.0.1', 'allowed.test'] }, "--noproxy '' ")));
+    for (const run of both) assert.equal(run.stdout, 'reached', run.stderr);
   } finally {
     server.close();
     await SandboxManager.reset();
