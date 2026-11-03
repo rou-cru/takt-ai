@@ -495,11 +495,16 @@ func (p *Projection) fold(e Entry) {
 func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 	a, exists := p.Activities[e.ActivityID]
 	if isActivityStarted(e.Kind) {
-		if !exists {
+		switch {
+		case !exists:
 			p.Activities[e.ActivityID] = Activity{
 				ActivityID: e.ActivityID, SessionID: e.SessionID, NodeKind: nodeKind,
 				State: StateInFlight, Flight: FlightRunning, Owner: e.Owner,
 			}
+		case a.State == StateInFlight && e.Owner != "":
+			// Another instance took over the capture: it is observed again.
+			a.Owner, a.Flight = e.Owner, FlightRunning
+			p.Activities[e.ActivityID] = a
 		}
 		return
 	}

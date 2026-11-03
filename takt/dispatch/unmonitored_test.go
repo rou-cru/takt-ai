@@ -101,6 +101,34 @@ func TestMarkActivityUnmonitoredKeepsTheActivityInFlight(t *testing.T) {
 	}
 }
 
+// An instance that starts an in-flight activity again takes over its capture:
+// the activity names it and is observed again. A repeat from the capturing
+// instance records nothing.
+func TestRepeatedActivityStartTakesOverCapture(t *testing.T) {
+	h := newHistory(t)
+	const session, id = "takeover-root", "takeover-activity"
+	orchestrator := history.NodeKindOrchestrator
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.MarkActivityUnmonitored(h, session, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if a := h.Project().Activities[id]; a.Owner != "second" || a.Flight != history.FlightRunning || a.State != history.StateInFlight {
+		t.Fatalf("activity = %+v; want it captured by the second instance and observed running", a)
+	}
+	before := len(h.Entries())
+	if err := dispatch.StartActivity(h, session, id, orchestrator, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.Entries()); n != before {
+		t.Fatalf("a repeat from the capturing instance recorded %d entries", n-before)
+	}
+}
+
 func TestFinishRecordsCompletedDeliveryWithoutEvidenceAsUnverified(t *testing.T) {
 	h := newHistory(t)
 	policy := loadPolicy(t)
