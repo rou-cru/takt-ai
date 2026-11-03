@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/history"
 )
 
 // interlocutorTestAgent is a real catalog agent whose role resolves to
@@ -296,5 +297,23 @@ func TestUnreadableLentIndexLeavesTheHolder(t *testing.T) {
 	}
 	if got := h.Project().Budgets("root-1").InterlocutorHolder; got != "child-1" {
 		t.Fatalf("holder after refused returns = %q, want child-1 kept for a retry", got)
+	}
+}
+
+// A caller that does not hold the turn is denied, and the denial recorded,
+// even when the lent-session index cannot be read.
+func TestNonHolderHandoffIsDeniedBeforeTheIndexIsRead(t *testing.T) {
+	h := newHistory(t)
+	memoryRoot := t.TempDir()
+	if err := dispatch.Switch(h, "", "root-1", "child-1", interlocutorTestAgent, "artifact.md"); err != nil {
+		t.Fatalf("Switch() error = %v", err)
+	}
+	writeSessionIndex(t, memoryRoot, "root-1", "not an index")
+	if _, err := dispatch.BuildHandoffEnvelope(h, "", memoryRoot, "root-1", "someone-else", interlocutorTestAgent, dispatch.HandoffOutcome{Result: "EarlyHandoff"}); err == nil {
+		t.Fatal("BuildHandoffEnvelope() from a non-holder session error = nil, want a denial")
+	}
+	entries := h.Entries()
+	if last := entries[len(entries)-1]; last.Kind != history.KindDenied || last.Cause != history.CauseInterlocutorHolder {
+		t.Fatalf("last entry = %+v; want the non-holder denial recorded", last)
 	}
 }

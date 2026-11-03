@@ -169,6 +169,11 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 			return Envelope{}, e
 		}
 	}
+	// A caller that does not hold the turn has no index to read: Handoff
+	// records and returns its denial.
+	if callerSession != h.Project().Budgets(root).InterlocutorHolder {
+		return Envelope{}, Handoff(h, journalRef, root, callerSession, outcome.Result)
+	}
 	// The index is read before the handoff is recorded: a failed read leaves
 	// the holder in place, so the same handoff can be retried.
 	index, e := lentIndex(memoryRoot, root, callerSession, 0)
