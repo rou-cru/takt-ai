@@ -20,11 +20,11 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
   if (command === "executions") {
    const open = Object.fromEntries(Object.entries(activities).filter(([, a]) => a.state === "in flight"))
    return reply({ executions, orphaned: Object.values(executions).filter(d => !d.settled && !(d.owner && leases.has(d.owner))).map(d => d.dispatch),
-    activities: open, orphaned_activities: Object.keys(open).filter(id => !(open[id].owner && leases.has(open[id].owner))).sort() })
+    activities: open, orphaned_activities: Object.keys(open).filter(id => !(open[id].owner && leases.has(open[id].owner))).sort((a, b) => a.localeCompare(b)) })
   }
   if (command === "activity_start") { activities[r.activity_id] ??= { activity_id: r.activity_id, session_id: r.session, node_kind: r.node_kind, state: "in flight", flight: "observed running", ...(r.owner ? { owner: r.owner } : {}) }; return undefined }
   if (command === "activity_finish") { const a = activities[r.activity_id]; if (a) { a.state = "settled"; delete a.flight; a.outcome = r.outcome }; return undefined }
-  if (command === "activity_unmonitored") { const a = activities[r.activity_id]; if (a?.state === "in flight") a.flight = "capture unmonitored"; return undefined }
+  if (command === "activity_unmonitored") { const a = activities[r.activity_id]; if (a?.state === "in flight") { a.flight = "capture unmonitored" }; return undefined }
   if (command === "execution") return reply(executions[r.dispatch] ?? null)
   if (command === "resolve") return reply(activeChild(r.child,r.agent) ?? (holders[r.child] ? {root:holders[r.child]} : null))
   if (command === "prepare") {

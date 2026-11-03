@@ -1420,16 +1420,22 @@ export default Plugin.define({
         endApprovals("confirmation event stream ended")
         // The plugin's own disposal is closure, a stream error a disconnection,
         // and a stream that just ended EOF: three distinct observations (PR-OBS-BUS-6).
-        void streamLost(disposed ? "closed" : failed ? "disconnected" : "eof")
+        let cause: "closed" | "disconnected" | "eof" = "eof"
+        if (disposed) cause = "closed"
+        else if (failed) cause = "disconnected"
+        void streamLost(cause)
       })
     }
     // STREAM_READ_ATTEMPTS bounds how often a stream-loss report rereads what is
     // in flight before it gives up: a transient read failure must not drop the
     // unmonitored record of known work.
     const STREAM_READ_ATTEMPTS = 3
-    async function reread<T>(read: () => Promise<T>): Promise<T> {
-      for (let attempt = 1; ; attempt++) {
-        try { return await read() } catch (error) { if (attempt >= STREAM_READ_ATTEMPTS) throw error }
+    async function reread<T>(read: () => Promise<T>, attempt = 1): Promise<T> {
+      try {
+        return await read()
+      } catch (error) {
+        if (attempt >= STREAM_READ_ATTEMPTS) throw error
+        return reread(read, attempt + 1)
       }
     }
     // observeStream records the host stream's state once per execution this instance

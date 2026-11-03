@@ -862,10 +862,10 @@ const activityLabel = (activity: DagActivity) => (activity.node_kind === "orches
 const activityUnmonitored = (activity: DagActivity) => activity.state === "in_flight" && activity.flight === "unmonitored"
 
 export function activityText(activity: DagActivity): string {
-  const glyph = activityUnmonitored(activity) ? "◐" : activity.state === "in_flight" ? "◆" : "◇"
   const label = activityLabel(activity)
-  const status = activityUnmonitored(activity) ? "unmonitored" : activity.state === "in_flight" ? "running" : activity.outcome ?? "settled"
-  return `${glyph} ${label} ${activity.activity_id} · ${status}`
+  if (activityUnmonitored(activity)) return `◐ ${label} ${activity.activity_id} · unmonitored`
+  if (activity.state === "in_flight") return `◆ ${label} ${activity.activity_id} · running`
+  return `◇ ${label} ${activity.activity_id} · ${activity.outcome ?? "settled"}`
 }
 
 export function activityBoxWidth(activity: DagActivity): number {
