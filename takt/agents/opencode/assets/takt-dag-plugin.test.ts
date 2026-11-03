@@ -45,7 +45,7 @@ const reply = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 
 // startDag mounts the real plugin against a scripted takt-ai; each poll is one
 // spawn, so the recorded argv shows exactly what the view asked for.
-function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: string } = {}) {
+function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: string; interruptFails?: boolean } = {}) {
   const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
   const originalSpawn = runtime.Bun.spawn
   const spawned: string[][] = []
@@ -69,7 +69,7 @@ function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: str
     data: { location: { default: () => ({ directory: "/workspace" }) }, session: { root: (id: string) => id } },
     theme: { text: { base: "white", muted: "gray", feedback: { error: { base: "red" } } } },
     client: { session: {
-      async interrupt(input: { sessionID: string }) { interrupts.push(input.sessionID) },
+      async interrupt(input: { sessionID: string }) { interrupts.push(input.sessionID); if (opts.interruptFails) throw new Error("interrupt failed") },
       async synthetic(input: { sessionID: string; text: string }) { synthetics.push(input) },
     } },
     ui: {
@@ -218,6 +218,18 @@ describe("/takt-abort", () => {
       expect(dag.interrupts).toEqual(["child"])
       expect(dag.synthetics).toEqual([{ sessionID: "root", text: aborted.notice }])
       expect(dag.toasts.at(-1)?.variant).toBe("success")
+    } finally { dag.stop() }
+  })
+
+  test("a failed stop still hands the notice to the convening agent and reports the failure", async () => {
+    const dag = startDag(() => reply(aborted), { current: "child", interruptFails: true })
+    try {
+      command(dag)!.run()
+      await until(() => dag.toasts.length > 0)
+      expect(dag.interrupts).toEqual(["child"])
+      expect(dag.synthetics).toEqual([{ sessionID: "root", text: aborted.notice }])
+      expect(dag.toasts.at(-1)?.variant).toBe("error")
+      expect(dag.toasts.at(-1)?.message).toContain("interrupt failed")
     } finally { dag.stop() }
   })
 

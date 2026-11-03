@@ -1516,8 +1516,13 @@ export default Plugin.define({
         context.ui.toast.show({ variant: "error", message: refusal || (err || out).trim() || `abort exited ${code}` })
         return
       }
-      await context.client.session.interrupt({ sessionID: reply.child })
-      await context.client.session.synthetic({ sessionID: reply.root, text: reply.notice })
+      // The core already cleared the holder, so the convening agent gets the
+      // notice even when the stop fails; that failure still reaches the toast.
+      try {
+        await context.client.session.interrupt({ sessionID: reply.child })
+      } finally {
+        await context.client.session.synthetic({ sessionID: reply.root, text: reply.notice })
+      }
       context.ui.toast.show({ variant: "success", message: "Lent session aborted; the interface is back with the convening agent." })
     }
 
