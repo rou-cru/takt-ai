@@ -448,10 +448,14 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		return func() (any, error) { return c, protocol.Record(h, ref, r.Event, r.Session, kind) }
 	}
 	// unestablished records launch or capture that could not be established, unless
-	// a later attempt under another dispatch already holds the unit.
+	// a later attempt under another dispatch already holds the unit. A repeated
+	// report of lost capture records nothing new.
 	unestablished := func(kind history.Kind) func() (any, error) {
 		return func() (any, error) {
 			if staleDispatch(h, r) {
+				return c, nil
+			}
+			if u, _ := h.Project().Unit(r.Session, r.Event); kind == history.KindUnmonitored && u.State == history.StateInFlight && u.Flight == history.FlightUnmonitored {
 				return c, nil
 			}
 			return record(kind)()
@@ -538,6 +542,13 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"activity_start": func() (any, error) {
 			if r.NodeKind != history.NodeKindOrchestrator {
 				return nil, errors.New("dispatch: activity_start only accepts node_kind orchestrator")
+			}
+			// The capturing instance is alive as it starts the activity: its lease
+			// is renewed first, so no other instance reads the activity orphaned.
+			if r.Owner != "" {
+				if err := renewLease(h, r.Owner, time.Now()); err != nil {
+					return nil, err
+				}
 			}
 			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind, r.Owner)
 		},

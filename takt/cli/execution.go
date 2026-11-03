@@ -39,8 +39,9 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
 		}
 		// The seat is part of what the execution record names: a retry may not
-		// run another model or swap in a substitute under it.
-		if prior.Model != r.Model || prior.Substitute != r.Substitute {
+		// run another model or swap in a substitute under it. An execution
+		// recorded before models were recorded names none, so any model matches.
+		if (prior.Model != "" && prior.Model != r.Model) || prior.Substitute != r.Substitute {
 			return nil, fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
 		}
 		if prior.Ready || prior.Settled {
