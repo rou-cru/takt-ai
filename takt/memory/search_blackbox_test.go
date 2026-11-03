@@ -18,6 +18,9 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/memory"
@@ -154,5 +157,51 @@ func TestSearchRejectsInvalidRequests(t *testing.T) {
 		if _, err := memory.Search(context.Background(), cfg, req); !errors.As(err, &invalid) {
 			t.Errorf("%s: err = %v, want a validation error", name, err)
 		}
+	}
+}
+
+func TestSearchRequiresCompactResultsArray(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		body      string
+		wantError string
+	}{
+		{"missing results", `{}`, "engram search: expected compact results array; check the running server version"},
+		{"null results", `{"results":null}`, "engram search: expected compact results array; check the running server version"},
+		{"empty results", `{"results":[]}`, ""},
+		{"legacy array", `[]`, "decode"},
+		{"incorrect results type", `{"results":{}}`, "decode"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				if r.URL.Path != "/search" {
+					t.Errorf("unexpected request: %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				if _, err := w.Write([]byte(tt.body)); err != nil {
+					t.Errorf("write search response: %v", err)
+				}
+			}))
+			t.Cleanup(server.Close)
+			res, err := memory.Search(context.Background(), memory.Config{EngramURL: server.URL, HTTP: server.Client()}, memory.SearchRequest{Query: "cache", Scope: "personal"})
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("search error = %v, want %q", err, tt.wantError)
+				}
+				var invalid *memory.ValidationError
+				if errors.As(err, &invalid) {
+					t.Fatalf("server response error must not be a validation error: %v", err)
+				}
+				return
+			}
+			if err != nil || res.Results == nil || len(res.Results) != 0 || res.OmittedSuperseded != 0 {
+				t.Fatalf("empty search = %+v, %v, want a valid empty result", res, err)
+			}
+		})
 	}
 }

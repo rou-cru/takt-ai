@@ -89,6 +89,10 @@ describe("searchResult", () => {
 })
 
 describe("renderSearch", () => {
+  test("distinguishes omitted history from an empty search", () => {
+    expect(renderSearch({ results: [], omitted_superseded: 2 })).toBe("No non-superseded entries in the returned candidates\n2 superseded entries omitted; pass include_history to see them")
+    expect(renderSearch({ results: [], omitted_superseded: 0 })).toBe("No memories found")
+  })
   test("renders one marked line per entry and the omitted count", () => {
     expect(renderSearch(searchResult(contracts.memory_search.result))).toBe(
       "#42 [decision] [dev] Cache for ten minutes — Cache policy. [disputed] [exception]\n1 superseded entries omitted; pass include_history to see them",

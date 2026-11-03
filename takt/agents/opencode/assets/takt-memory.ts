@@ -74,7 +74,7 @@ export function renderSearch(result: SearchResult): string {
     const project = hit.project ? ` (${hit.project})` : ""
     return `#${hit.id} [${hit.type}]${project} ${hit.title} — ${hit.preview.replace(/\s+/g, " ").trim()}${marks}`
   })
-  if (lines.length === 0) lines.push("No memories found")
+  if (lines.length === 0) lines.push(result.omitted_superseded > 0 ? "No non-superseded entries in the returned candidates" : "No memories found")
   if (result.omitted_superseded > 0) lines.push(`${result.omitted_superseded} superseded entries omitted; pass include_history to see them`)
   return lines.join("\n")
 }
