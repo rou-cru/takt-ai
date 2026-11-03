@@ -54,6 +54,9 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
 		}
 	}
+	if err := refuseRecycledProductManager(r, consumed); err != nil {
+		return nil, err
+	}
 	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
 	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
