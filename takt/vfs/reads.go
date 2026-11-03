@@ -80,9 +80,10 @@ func readsExplicitlyCover(selectors []string, rel string) bool {
 	return slices.ContainsFunc(selectors, func(selector string) bool { return selector != ReadFree && readCovers(selector, rel) })
 }
 
-// liveLocked reports whether key's unit holds its paths as a mutex: it is
-// awaiting launch or in flight. A holder that is neither left staged work with
-// no one running over it.
+// liveLocked reports whether key's binding holds its paths as a mutex: it is
+// awaiting launch, or its own attempt is the one its unit runs. A binding
+// released before adoption, or left by an earlier attempt, runs nothing, even
+// while its unit runs under another binding.
 func (f *FS) liveLocked(p history.Projection, key AgentID) bool {
 	b, ok := f.bindings[key]
 	if !ok {
@@ -92,7 +93,7 @@ func (f *FS) liveLocked(p history.Projection, key AgentID) bool {
 		return true
 	}
 	u, known := p.Unit(b.SessionID, b.WorkUnitID)
-	return known && u.State == history.StateInFlight
+	return known && b.AttemptID != "" && u.State == history.StateInFlight && u.AttemptID == b.AttemptID
 }
 
 func sameUnit(a, b Identity) bool { return a.SessionID == b.SessionID && a.WorkUnitID == b.WorkUnitID }

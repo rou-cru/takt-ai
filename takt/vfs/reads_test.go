@@ -98,6 +98,56 @@ func TestReaderInFlightExcludesNewClaims(t *testing.T) {
 	}
 }
 
+// A free reader in flight still holds every path against new claims: the
+// mutex keeps its documented reach while its own attempt runs.
+func TestFreeReaderInFlightExcludesNewClaims(t *testing.T) {
+	f, _, state := newStore(t)
+	if _, err := reader(t, f, state, "docs", []string{vfs.ReadFree}, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "code", AgentID: "dev", Specialist: "dev"}, []string{"lib/b.go"})
+	refusedNaming(t, "claim under a free reader in flight", err, vfs.ErrCollision, "wait", "narrow")
+}
+
+// A reader released before adoption runs nothing, even once its unit runs
+// again under a narrower claim: its stale reads hold no path.
+func TestReleasedReaderDoesNotHoldItsUnitsNewClaim(t *testing.T) {
+	f, _, state := newStore(t)
+	wide, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "core", AgentID: "dev", Specialist: "dev", Reads: []string{vfs.ReadFree}}, []string{"core/a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.RevokeOwnership(wide); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = reader(t, f, state, "core", []string{"core/**"}, "core/a.go"); err != nil {
+		t.Fatalf("narrower claim after the release = %v; want admitted", err)
+	}
+	if _, err = f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "plugin", AgentID: "dev", Specialist: "dev"}, []string{"plugin/x.ts"}); err != nil {
+		t.Fatalf("claim outside the running reads = %v; want admitted despite the released free reads", err)
+	}
+}
+
+// A reader of an earlier attempt runs nothing once its unit runs a later
+// attempt under another claim: only the running attempt's reads hold paths.
+func TestEarlierAttemptReaderDoesNotHoldItsUnit(t *testing.T) {
+	f, _, state := newStore(t)
+	if _, err := reader(t, f, state, "core", []string{vfs.ReadFree}, "core/a.go"); err != nil {
+		t.Fatal(err)
+	}
+	settle(t, state, testSession, "core", history.FirstAttempt)
+	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "core", AgentID: "dev", Specialist: "dev", Reads: []string{"core/**"}}, []string{"core/b.go"}); err != nil {
+		t.Fatal(err)
+	}
+	admit(t, state, testSession, "core", "2")
+	if _, err := f.BindAs(callerOf(testSession, "dev", "core"), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "plugin", AgentID: "dev", Specialist: "dev"}, []string{"plugin/x.ts"}); err != nil {
+		t.Fatalf("claim outside the running reads = %v; want admitted despite the earlier attempt's free reads", err)
+	}
+}
+
 func TestReadsRejectUnknownSelectors(t *testing.T) {
 	for _, bad := range []string{"", "/abs", "../x", "*.", "*.a/b", "dir//"} {
 		if err := vfs.ValidateReads([]string{bad}); err == nil {
