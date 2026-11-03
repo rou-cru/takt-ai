@@ -217,6 +217,12 @@ func TestPublishProblemRateEvent_Succeeds(t *testing.T) {
 	if len(events) != 1 || events[0].Envelope.Correlations.WorkUnitID != "wu-1" {
 		t.Fatalf("problem_rate events = %+v; want one correlated to wu-1", events)
 	}
+	// The stored measurements are the published ones, not zero values.
+	for name, want := range map[string]float64{"count": 2, "denominator": 8, "rate": 0.25} {
+		if got, ok := events[0].Envelope.Attributes[name].(float64); !ok || got != want {
+			t.Errorf("stored %s = %v; want %v", name, events[0].Envelope.Attributes[name], want)
+		}
+	}
 }
 
 // TestControlActionTaxonomyIsComplete checks PR-OBS-CTL-1's full ordering
