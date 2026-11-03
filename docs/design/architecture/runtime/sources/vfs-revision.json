@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "VFS staged revision lifecycle",
@@ -7,27 +7,15 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "claims",
-      "label": "Claims"
-    },
-    {
-      "id": "main",
-      "label": "Staging"
-    },
-    {
-      "id": "gate",
-      "label": "Gate and recovery"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "gate",
+    "passed",
+    "consolidating",
+    "consolidated"
   ],
   "states": [
     {
@@ -35,13 +23,11 @@
       "type": "start",
       "label": "Unbound",
       "sublabel": "no claim",
-      "lane": "claims",
-      "col": 0,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 124,
-          "end_line": 275
+          "path": "takt/vfs/claims.go",
+          "line": 34,
+          "end_line": 94
         }
       ]
     },
@@ -50,18 +36,11 @@
       "type": "waiting",
       "label": "Bound prelaunch",
       "sublabel": "scope assigned",
-      "lane": "claims",
-      "col": 1,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 151,
-          "end_line": 211
-        },
-        {
-          "path": "takt/vfs/operation.go",
-          "line": 376,
-          "end_line": 466
+          "path": "takt/vfs/claims.go",
+          "line": 62,
+          "end_line": 93
         }
       ]
     },
@@ -70,13 +49,11 @@
       "type": "active",
       "label": "Bound",
       "sublabel": "base captured",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 124,
-          "end_line": 275
+          "path": "takt/vfs/bindings.go",
+          "line": 127,
+          "end_line": 153
         }
       ]
     },
@@ -85,18 +62,11 @@
       "type": "active",
       "label": "Staged",
       "sublabel": "revision++, verdict cleared",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/vfs/vfs.go",
-          "line": 304,
-          "end_line": 354
-        },
-        {
-          "path": "takt/vfs/shell.go",
-          "line": 212,
-          "end_line": 215
+          "line": 345,
+          "end_line": 395
         }
       ]
     },
@@ -105,12 +75,11 @@
       "type": "decision",
       "label": "Verdict passed",
       "sublabel": "bound to revision + hash",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 875
+          "path": "takt/vfs/verdict.go",
+          "line": 67,
+          "end_line": 126
         }
       ]
     },
@@ -119,13 +88,11 @@
       "type": "active",
       "label": "Consolidating",
       "sublabel": "flush in progress",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/vfs/vfs.go",
-          "line": 396,
-          "end_line": 426
+          "path": "takt/vfs/recovery.go",
+          "line": 64,
+          "end_line": 76
         }
       ]
     },
@@ -134,18 +101,16 @@
       "type": "waiting",
       "label": "Verifier gate bound",
       "sublabel": "prepared from author_keys",
-      "lane": "gate",
-      "col": 2,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 277,
-          "end_line": 316
+          "path": "takt/vfs/bindings.go",
+          "line": 214,
+          "end_line": 305
         },
         {
-          "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 924,
-          "end_line": 960
+          "path": "takt/vfs/verdict.go",
+          "line": 143,
+          "end_line": 168
         }
       ]
     },
@@ -154,12 +119,11 @@
       "type": "failure",
       "label": "Verdict rejected",
       "sublabel": "author re-stages",
-      "lane": "gate",
-      "col": 3,
       "sources": [
         {
-          "path": "takt/vfs/operation.go",
-          "line": 875
+          "path": "takt/vfs/verdict.go",
+          "line": 67,
+          "end_line": 126
         }
       ]
     },
@@ -168,16 +132,16 @@
       "type": "waiting",
       "label": "Recovery required",
       "sublabel": "partial flush",
-      "lane": "gate",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/vfs/storage.go",
-          "line": 310
+          "path": "takt/vfs/repair.go",
+          "line": 76,
+          "end_line": 135
         },
         {
           "path": "takt/vfs/recovery.go",
-          "line": 289
+          "line": 288,
+          "end_line": 319
         }
       ]
     },
@@ -186,18 +150,16 @@
       "type": "neutral",
       "label": "Rolled back",
       "sublabel": "staged delta discarded",
-      "lane": "terminal",
-      "col": 1,
       "sources": [
         {
           "path": "takt/vfs/operation.go",
-          "line": 861,
-          "end_line": 873
+          "line": 176,
+          "end_line": 183
         },
         {
-          "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 1531,
-          "end_line": 1540
+          "path": "takt/vfs/staged.go",
+          "line": 49,
+          "end_line": 60
         }
       ]
     },
@@ -206,13 +168,11 @@
       "type": "neutral",
       "label": "Cycle discarded",
       "sublabel": "pre-cycle state restored",
-      "lane": "terminal",
-      "col": 3,
       "sources": [
         {
           "path": "takt/vfs/cycle.go",
-          "line": 117,
-          "end_line": 139
+          "line": 132,
+          "end_line": 154
         }
       ]
     },
@@ -221,13 +181,11 @@
       "type": "success",
       "label": "Consolidated",
       "sublabel": "delta and ownership released",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/vfs/recovery.go",
-          "line": 64,
-          "end_line": 136
+          "path": "takt/vfs/vfs.go",
+          "line": 443,
+          "end_line": 469
         }
       ]
     }
@@ -280,8 +238,7 @@
       "from": "staged",
       "to": "consolidating",
       "label": "ordinary delta",
-      "variant": "dashed",
-      "route": "top-channel"
+      "variant": "dashed"
     },
     {
       "from": "consolidating",
@@ -298,7 +255,7 @@
     {
       "from": "recovery",
       "to": "bound",
-      "label": "recover --restore"
+      "label": "original operation invoked again"
     },
     {
       "from": "staged",
@@ -332,7 +289,7 @@
       "items": [
         "Verifier gates are prepared bound at delegation from author_keys; the verifier needs the verify grant and cannot verify its own work",
         "A verdict binds to one revision and delta hash; any new write clears it",
-        "Shell staging: shell-prepare projects the scope, shell-import stages the captured result"
+        "Shell staging: shell-prepare projects the scope, shell-complete stages the captured result"
       ]
     },
     {
@@ -349,16 +306,30 @@
       "title": "Recovery",
       "items": [
         "While recovery is pending every call is refused",
-        "Restore refuses when a base changed"
+        "Invoking the original normal operation as the orchestrator asks for exact-state approval: it restores the pre-flush snapshot, or keeps divergent current files and closes the effect as interrupted with evidence, then reevaluates the original operation",
+        "Repair approval never authorizes consolidation; ownership, current verdicts and physical bases are checked again",
+        "A restore refuses when a base changed; divergent files are kept and closed interrupted rather than overwritten"
       ]
     },
     {
       "dot": "violet",
-      "title": "Claims",
+      "title": "Claims and reads",
       "items": [
-        "A fresh claim_assign discards overlapping claims of other roots; a same-root overlap is a collision",
+        "claim_assign without an author_key never takes a path another root's claim holds; continue that work with its author_key, or release or discard it first",
+        "claim_assign with the work's author_key keeps its staged work; naming only part of it hands that part over under a new key",
+        "A declared reads selector lifts claims of work no one runs and serves its staged view; it is refused while covered work is in flight, and so is a claim over what an in-flight unit reads",
+        "Liveness requires a prelaunch binding or the binding's own active attempt; another attempt of the same unit does not keep it live",
         "Reassign keeps the staged delta and clears the verdict; revoke frees paths and is refused while work is staged",
         "vfs_discard is orchestrator-only"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ordinary shell network",
+      "items": [
+        "TAKT_SANDBOX_ALLOWED_DOMAINS carries comma-separated domain patterns; when supplied, the ordinary shell wrapper initializes a strict proxy allowlist",
+        "Unset or empty leaves the network unrestricted; the adapter API's explicit [] denies domains, but the environment parser returns nil for empty input",
+        "This is not a default deny-all policy; D05 and D06 remain uncertified"
       ]
     }
   ]

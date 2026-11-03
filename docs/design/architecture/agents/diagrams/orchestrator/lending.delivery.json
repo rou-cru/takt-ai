@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "44b44f92-be22-4671-a001-ce234a1bc621",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/lending.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/lending.html",
+  "specification": {
+    "sha256": "86204b9eb39ac736674546d310fb26139ae0bef0840655e0244a0c4426cf07a2",
+    "bytes": 5908
+  },
+  "artifact": {
+    "sha256": "9ffe9cf3291a87d6c1c63ce1d62b805bc9a386fc7839036fe22c736d173f2861",
+    "bytes": 821450
+  }
+}

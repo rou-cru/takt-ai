@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9162928f-9e65-46b8-8741-95632c734abc",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/delegation.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/delegation.html",
+  "specification": {
+    "sha256": "5916704953dfa5da36ef545a88c356f23356c3fe791ec13769edead2764e811f",
+    "bytes": 6262
+  },
+  "artifact": {
+    "sha256": "3df1bb97912dea5f8c620873d2d56ae346fbed91e6e3c0faf0eb4fd70110bc64",
+    "bytes": 823626
+  }
+}

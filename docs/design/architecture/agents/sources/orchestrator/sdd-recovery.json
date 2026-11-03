@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: failure and recovery",
@@ -7,27 +7,14 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Unit failure"
-    },
-    {
-      "id": "bounded",
-      "label": "Bounded recovery"
-    },
-    {
-      "id": "replan",
-      "label": "Replanning circuit"
-    },
-    {
-      "id": "exits",
-      "label": "Exits"
-    }
+  "mainPath": [
+    "failed",
+    "retry",
+    "resumed"
   ],
   "states": [
     {
@@ -35,13 +22,11 @@
       "type": "start",
       "label": "Unit fails",
       "sublabel": "first failure",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 100,
-          "end_line": 106
+          "line": 123,
+          "end_line": 124
         }
       ]
     },
@@ -50,13 +35,11 @@
       "type": "active",
       "label": "Retry once",
       "sublabel": "error output, same scope",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 31,
-          "end_line": 35
+          "line": 12,
+          "end_line": 13
         }
       ]
     },
@@ -65,13 +48,11 @@
       "type": "success",
       "label": "Resumed",
       "sublabel": "plan continues",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 52,
-          "end_line": 54
+          "line": 21,
+          "end_line": 26
         }
       ]
     },
@@ -80,13 +61,11 @@
       "type": "active",
       "label": "Declared recovery",
       "sublabel": "budgets declared",
-      "lane": "bounded",
-      "col": 2,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 100,
-          "end_line": 106
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 12,
+          "end_line": 17
         }
       ]
     },
@@ -95,13 +74,11 @@
       "type": "waiting",
       "label": "Subtree frozen",
       "sublabel": "task BLOCKED, lanes run on",
-      "lane": "replan",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 36,
-          "end_line": 42
+          "line": 15,
+          "end_line": 16
         }
       ]
     },
@@ -110,13 +87,11 @@
       "type": "waiting",
       "label": "Owner escalation",
       "sublabel": "structure, behavior, experience",
-      "lane": "replan",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 43,
-          "end_line": 45
+          "line": 17,
+          "end_line": 20
         }
       ]
     },
@@ -125,13 +100,11 @@
       "type": "active",
       "label": "Delta re-indexed",
       "sublabel": "dispatch_commit with base",
-      "lane": "replan",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 46,
-          "end_line": 51
+          "line": 21,
+          "end_line": 23
         }
       ]
     },
@@ -140,13 +113,11 @@
       "type": "neutral",
       "label": "Cut reassessed",
       "sublabel": "no third delta",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 55,
-          "end_line": 57
+          "line": 28,
+          "end_line": 29
         }
       ]
     },
@@ -154,14 +125,17 @@
       "id": "user",
       "type": "waiting",
       "label": "Awaiting direction",
-      "sublabel": "limit reached",
-      "lane": "exits",
-      "col": 4,
+      "sublabel": "value or authorization",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 107,
-          "end_line": 119
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 24,
+          "end_line": 26
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 29,
+          "end_line": 31
         }
       ]
     }
@@ -170,8 +144,7 @@
     {
       "from": "failed",
       "to": "retry",
-      "label": "minor, in bounds",
-      "labelDy": -31
+      "label": "minor, in bounds"
     },
     {
       "from": "failed",
@@ -182,15 +155,14 @@
     {
       "from": "failed",
       "to": "frozen",
-      "label": "contract defect or conflicting deltas",
+      "label": "defect or conflict",
       "variant": "security"
     },
     {
       "from": "retry",
       "to": "resumed",
       "label": "succeeds",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "retry",
@@ -207,14 +179,12 @@
     {
       "from": "frozen",
       "to": "owner",
-      "label": "task, evidence, segment",
-      "labelDy": -31
+      "label": "task, evidence, segment"
     },
     {
       "from": "owner",
       "to": "delta",
-      "label": "owner delta; TPM revises tasks",
-      "labelDy": -31
+      "label": "owner delta; TPM revises tasks"
     },
     {
       "from": "delta",
@@ -233,6 +203,12 @@
       "to": "user",
       "label": "limit reached",
       "variant": "security"
+    },
+    {
+      "from": "reassess",
+      "to": "user",
+      "label": "value, authorization or no continuation",
+      "variant": "security"
     }
   ],
   "cards": [
@@ -240,7 +216,8 @@
       "dot": "cyan",
       "title": "Owners",
       "items": [
-        "Structural or interface: architect. Behavior or acceptance: spec. Experience or identity: product-designer. Scope tradeoff: pm and the user",
+        "Structural or interface: architect. Behavior or acceptance: spec. Experience or identity: product-designer. Scope analysis: pm",
+        "A discrepancy requires diagnosis, not an assumption that the contract is wrong; technical uncertainty is resolved within authority",
         "Conflicting deltas from two in-flight tasks: freeze both, keep both staged, and escalate to the owner of the contract they share"
       ]
     },
@@ -254,9 +231,11 @@
     },
     {
       "dot": "rose",
-      "title": "Limits",
+      "title": "Limits and decisions",
       "items": [
-        "A second failing verdict for the same author key counts as one failed recovery; consecutive failed recoveries of one objective reach the limit"
+        "The user decides value, required authorization, irreversible effects, or no justifiable continuation; exhausted scope needs a user-approved finite allowance",
+        "A second failing verdict for the same author key counts as one failed recovery; consecutive failed recoveries of one objective reach the limit",
+        "After two nonconverging contract deltas, reassess the decomposition instead of issuing a third"
       ]
     }
   ]

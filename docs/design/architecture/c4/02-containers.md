@@ -6,7 +6,7 @@ Takt splits at runtime: the installer runs as a CLI, and the harness runs inside
 
 | Container | Technology | Responsibility | Evidence |
 | :--- | :--- | :--- | :--- |
-| takt-ai binary | Go, Bubble Tea | Setup, doctor, TUI and the harness subcommands (`codegraph`, `dag`, `dispatch`, `gc`, `memory`, `obs`, `vfs`). Single entry point. Embeds the catalog (12 agents, 32 skills) as a component, not a separate unit. | `takt/cli/main.go`, `takt/catalog/packages.go` |
+| takt-ai binary | Go, Bubble Tea | Setup, doctor, TUI and the harness subcommands (`codegraph`, `dag`, `dispatch`, `gc`, `memory`, `obs`, `vfs`). Single entry point. Embeds the catalog as a component, not a separate unit. | `takt/cli/main.go`, `takt/catalog/packages.go` |
 | OpenCode configuration | Files | Written by the binary, loaded by OpenCode: `opencode.json`, `AGENTS.md`, `plugins/` and the `takt/` package dir under `~/.config/opencode`, plus `.opencode/skills/`. | `takt/model/paths.go`, `takt/agents/opencode/layout.go`, `takt/skills/skills.go` |
 | OpenCode plugins | TypeScript, Bun | VFS, DAG view and memory plugins; the VFS plugin loads the sandbox adapter (`takt-sandbox.mjs`). They spawn `takt-ai` subcommands. | `takt/agents/opencode/assets/takt-vfs.ts`, `takt-memory.ts`, `takt-dag.tsx` |
 | Local state | SQLite, files | Execution history, event store and VFS staging under the private `.takt-ai` state directory. | `takt/history/history.go`, `takt/obs/store.go` |

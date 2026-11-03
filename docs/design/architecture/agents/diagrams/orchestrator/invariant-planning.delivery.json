@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "38581cd5-1d2b-413d-a79a-3d0008a8891a",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/orchestrator/invariant-planning.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/orchestrator/invariant-planning.html",
+  "specification": {
+    "sha256": "e299056f7d8a843106cdb0b58f602da0e7277307fbc9b4f9290da99e224b0563",
+    "bytes": 6681
+  },
+  "artifact": {
+    "sha256": "62ede47993d23e4ccc1a829ba425be789a02cc3e726616d4ab5a6e82294bf4dc",
+    "bytes": 825551
+  }
+}

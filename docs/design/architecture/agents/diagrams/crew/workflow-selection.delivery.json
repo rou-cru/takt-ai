@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d62c1af4-f683-4005-b20f-171f334aa58e",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/sources/crew/workflow-selection.json",
+  "output": "/Users/albertorouracruz/takt-ai/docs/design/architecture/agents/diagrams/crew/workflow-selection.html",
+  "specification": {
+    "sha256": "eedc71aafe0ecd04f0c880d2a2d378e38ee21509f3a9cd38c122a6c2656f0c99",
+    "bytes": 6736
+  },
+  "artifact": {
+    "sha256": "70136966a007b96e29c13dcfcd87ed7536c87be3b3a76eae23add4088284ef1f",
+    "bytes": 825774
+  }
+}

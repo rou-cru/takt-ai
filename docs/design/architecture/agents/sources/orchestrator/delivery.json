@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: handling a staged delivery",
@@ -7,23 +7,16 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Delivery"
-    },
-    {
-      "id": "fix",
-      "label": "Correction"
-    },
-    {
-      "id": "exits",
-      "label": "Exceptions"
-    }
+  "mainPath": [
+    "delivered",
+    "verifying",
+    "passed",
+    "consolidating",
+    "consolidated"
   ],
   "states": [
     {
@@ -31,13 +24,11 @@
       "type": "start",
       "label": "Delivery staged",
       "sublabel": "author key returned",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 10,
-          "end_line": 16
+          "line": 12,
+          "end_line": 14
         }
       ]
     },
@@ -46,18 +37,16 @@
       "type": "decision",
       "label": "Verifier gate",
       "sublabel": "author_keys declared",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 132
+          "line": 128,
+          "end_line": 130
         },
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 24,
-          "end_line": 35
+          "line": 31,
+          "end_line": 37
         }
       ]
     },
@@ -66,13 +55,11 @@
       "type": "active",
       "label": "Verdict passes",
       "sublabel": "covers the staged revision",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 24,
-          "end_line": 35
+          "line": 31,
+          "end_line": 37
         }
       ]
     },
@@ -81,13 +68,11 @@
       "type": "active",
       "label": "Consolidating",
       "sublabel": "vfs_consolidate",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 24,
-          "end_line": 35
+          "line": 31,
+          "end_line": 37
         }
       ]
     },
@@ -96,13 +81,11 @@
       "type": "success",
       "label": "Consolidated",
       "sublabel": "released to the workspace",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 24,
-          "end_line": 35
+          "line": 31,
+          "end_line": 37
         }
       ]
     },
@@ -111,13 +94,11 @@
       "type": "failure",
       "label": "Verdict fails",
       "sublabel": "staged work untouched",
-      "lane": "fix",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 121,
-          "end_line": 132
+          "end_line": 126
         }
       ]
     },
@@ -126,13 +107,11 @@
       "type": "active",
       "label": "Correction",
       "sublabel": "claim_assign with author_key",
-      "lane": "fix",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 17,
-          "end_line": 23
+          "line": 16,
+          "end_line": 19
         }
       ]
     },
@@ -141,18 +120,11 @@
       "type": "neutral",
       "label": "Discarded",
       "sublabel": "only if correction cannot reach",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
-          "line": 17,
-          "end_line": 23
-        },
-        {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 118,
-          "end_line": 120
+          "line": 27,
+          "end_line": 29
         }
       ]
     },
@@ -161,18 +133,11 @@
       "type": "waiting",
       "label": "Escalated",
       "sublabel": "limit reached or base changed",
-      "lane": "exits",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 114,
-          "end_line": 121
-        },
-        {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 129,
-          "end_line": 133
+          "line": 123,
+          "end_line": 126
         }
       ]
     }
@@ -181,29 +146,25 @@
     {
       "from": "delivered",
       "to": "verifying",
-      "label": "verification planned",
-      "variant": "emphasis",
-      "labelDy": -31
+      "label": "gate planned",
+      "variant": "emphasis"
     },
     {
       "from": "verifying",
       "to": "passed",
-      "label": "pass per key",
-      "labelDy": -31
+      "label": "pass per key"
     },
     {
       "from": "passed",
       "to": "consolidating",
       "label": "author passes",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "consolidating",
       "to": "consolidated",
       "label": "released",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "verifying",
@@ -214,8 +175,7 @@
     {
       "from": "failed",
       "to": "spotfix",
-      "label": "not a discard",
-      "labelDy": -31
+      "label": "not a discard"
     },
     {
       "from": "spotfix",
@@ -240,6 +200,12 @@
       "to": "escalated",
       "label": "recovery required",
       "variant": "security"
+    },
+    {
+      "from": "delivered",
+      "to": "consolidating",
+      "label": "no planned gate",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -253,16 +219,18 @@
     },
     {
       "dot": "amber",
-      "title": "After consolidation",
+      "title": "Milestone",
       "items": [
-        "Consolidating is not a Git commit; a milestone is committed only after one global Verify node passes, after loading takt-git-commit"
+        "Consolidating is not a Git commit; one global Verify node accepts each vertical slice after its writers finish",
+        "A milestone is committed once its computational acceptance is recorded and advisory review closes without a reproduction-backed defect, after loading takt-git-commit",
+        "Non-blocking advisory findings remain recorded; they neither delay the checkpoint nor require correction or reverification, while failed or unverified criteria block"
       ]
     },
     {
       "dot": "rose",
       "title": "Judges",
       "items": [
-        "The blind pair is requested only on the conditions in the operations prose"
+        "The blind pair is requested only on the conditions in the operations prose; takt delegates the verify of a contested unit"
       ]
     }
   ]

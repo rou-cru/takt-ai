@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -24,8 +24,9 @@
       "sublabel": "objective, approvals",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 17,
+          "end_line": 21
         }
       ]
     },
@@ -36,8 +37,9 @@
       "sublabel": "orchestrator",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
+          "line": 25,
+          "end_line": 32
         }
       ]
     },
@@ -49,7 +51,8 @@
       "sources": [
         {
           "path": "takt/dispatch/dispatch.go",
-          "line": 16
+          "line": 138,
+          "end_line": 169
         }
       ]
     },
@@ -60,8 +63,9 @@
       "sublabel": "direct_interlocutor",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
-          "line": 12
+          "path": "takt/catalog/assets/skills/takt-interlocutor-handoff/SKILL.md",
+          "line": 20,
+          "end_line": 23
         }
       ]
     },
@@ -73,7 +77,8 @@
       "sources": [
         {
           "path": "takt/memory/memory.go",
-          "line": 16
+          "line": 333,
+          "end_line": 351
         }
       ]
     }
@@ -90,26 +95,26 @@
     {
       "id": "m02",
       "from": "takt",
-      "to": "user",
+      "to": "harness",
       "y": 188,
-      "label": "ask: lend takt-pm?",
-      "variant": "default"
+      "label": "dispatch_switch: requirements, client, objective",
+      "variant": "security"
     },
     {
       "id": "m03",
-      "from": "user",
-      "to": "takt",
+      "from": "harness",
+      "to": "user",
       "y": 216,
-      "label": "consent",
-      "variant": "return"
+      "label": "confirmation: accept takt-pm and objective?",
+      "variant": "default"
     },
     {
       "id": "m04",
-      "from": "takt",
+      "from": "user",
       "to": "harness",
       "y": 244,
-      "label": "dispatch_switch: requirements, client",
-      "variant": "security"
+      "label": "accept",
+      "variant": "return"
     },
     {
       "id": "m05",
@@ -154,26 +159,26 @@
     {
       "id": "m10",
       "from": "pm",
-      "to": "user",
+      "to": "harness",
       "y": 412,
-      "label": "question: hand back?",
-      "variant": "default"
+      "label": "dispatch_handoff: Standard + Engram IDs",
+      "variant": "security"
     },
     {
       "id": "m11",
-      "from": "user",
-      "to": "pm",
+      "from": "harness",
+      "to": "user",
       "y": 440,
-      "label": "accept",
-      "variant": "return"
+      "label": "confirmation: accept the return?",
+      "variant": "default"
     },
     {
       "id": "m12",
-      "from": "pm",
+      "from": "user",
       "to": "harness",
       "y": 468,
-      "label": "dispatch_handoff: Standard + IDs",
-      "variant": "security"
+      "label": "accept",
+      "variant": "return"
     },
     {
       "id": "m13",
@@ -189,15 +194,16 @@
       "dot": "cyan",
       "title": "Lend",
       "items": [
-        "The user consents before the interface is lent",
+        "dispatch_switch names the specialist and objective; the harness asks the user to accept before the switch takes effect, and a refusal means no lend",
         "Drafts are hypotheses; the accepted version supersedes them with the approval as evidence"
       ]
     },
     {
       "dot": "rose",
-      "title": "Harness",
+      "title": "Return",
       "items": [
-        "The switch is recorded; one holder at a time, and no chaining",
+        "dispatch_handoff asks the user to accept the handed-back artifact before the interface returns",
+        "The switch and handoff are recorded transitions; one holder at a time, and no chaining",
         "takt-pm hands the interface back; only takt closes the memory session"
       ]
     }
