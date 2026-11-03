@@ -782,6 +782,11 @@ func unmonitoredExecution(t *testing.T, bin string) {
 	if n := s.projection().InFlight(); n != 1 {
 		t.Fatalf("losing capture released capacity: in flight %d", n)
 	}
+	// A repeated report, as a retrying instance sends it, records nothing new.
+	s.must(lost)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("a repeated lost-capture report recorded %d entries; want 1", n)
+	}
 	reconcile := call("reconcile", "unmon-unit")
 	reconcile.Pass = true
 	s.must(reconcile)
@@ -904,12 +909,25 @@ func unmonitoredActivity(t *testing.T, bin string) {
 	}
 
 	// An activity whose capturing instance stopped renewing its lease is
-	// reported orphaned, so another instance records the lost capture; one a
-	// live instance captures is not.
-	s.must(request{Action: "lease", Owner: "live"})
-	for id, owner := range map[string]string{"live-activity": "live", "gone-activity": "gone"} {
-		s.must(request{Action: "activity_start", Session: rootSession, ActivityID: id, NodeKind: history.NodeKindOrchestrator, Owner: owner})
+	// reported orphaned, so another instance records the lost capture. One a
+	// live instance just started is not: starting it renews that lease.
+	h, err := history.Open(s.state)
+	if err != nil {
+		t.Fatal(err)
 	}
+	lapsed := time.Now().Add(-2 * history.LeaseTTL).UnixMilli()
+	for _, e := range []history.Entry{
+		{Author: history.AuthorHarness, Kind: history.KindLease, Owner: "gone", CreatedAt: lapsed, Cause: history.CauseNone},
+		{Author: history.AuthorOf(history.KindActivityStarted), Kind: history.KindActivityStarted, SessionID: rootSession, ActivityID: "gone-activity", NodeKind: history.NodeKindOrchestrator, Owner: "gone", Cause: history.CauseNone},
+	} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.must(request{Action: "activity_start", Session: rootSession, ActivityID: "live-activity", NodeKind: history.NodeKindOrchestrator, Owner: "live"})
 	var listed struct {
 		Activities         map[string]history.Activity `json:"activities"`
 		OrphanedActivities []string                    `json:"orphaned_activities"`
@@ -1002,6 +1020,9 @@ func seatRestoration(t *testing.T, bin string) {
 	substitute = delegate("design-2", "d7", "architect", "p/a", "p/c")
 	substitute.SeatReason, substitute.Substitute = "no reassignment works", true
 	s.refused(substitute) // the reassignment has not failed yet
+	launched := call("launch", "design-1")
+	launched.Agent, launched.Dispatch = "architect", "d5"
+	s.must(launched)
 	s.must(call("cancel", "design-1"))
 	s.must(call("finish", "design-1"))
 	s.must(substitute)

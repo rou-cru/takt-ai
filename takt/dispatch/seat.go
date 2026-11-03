@@ -78,24 +78,28 @@ func ValidateSeat(h *history.History, root string, s Seat) error {
 	return nil
 }
 
-// reassignmentFailed reports whether a model reassignment of agent's seat in
-// root is recorded and the attempt it ran ended failed or interrupted: the
-// recorded events that show no reassignment works (PR-CRW-13).
+// reassignmentFailed reports whether the latest model reassignment of agent's
+// seat in root ran and ended failed or interrupted: the recorded events that
+// show no reassignment works (PR-CRW-13). A reassignment cancelled before
+// launch ran no model, and a later reassignment replaces an earlier failure.
 func reassignmentFailed(entries []history.Entry, root, agent string) bool {
-	type attempt struct{ unit, id string }
-	reassigned := map[attempt]bool{}
+	var unit, attempt string
+	var launched, failed bool
 	for _, e := range entries {
 		if e.SessionID != root {
 			continue
 		}
+		latest := unit != "" && e.WorkUnitID == unit && e.AttemptID == attempt
 		switch {
 		case e.Kind == history.KindSeatRestored && e.Agent == agent && !e.Substitute:
-			reassigned[attempt{e.WorkUnitID, e.AttemptID}] = true
-		case e.Kind == history.KindTerminated && (e.Outcome == history.OutcomeFailed || e.Outcome == history.OutcomeInterrupted) && reassigned[attempt{e.WorkUnitID, e.AttemptID}]:
-			return true
+			unit, attempt, launched, failed = e.WorkUnitID, e.AttemptID, false, false
+		case e.Kind == history.KindLaunched && latest:
+			launched = true
+		case e.Kind == history.KindTerminated && latest:
+			failed = launched && (e.Outcome == history.OutcomeFailed || e.Outcome == history.OutcomeInterrupted)
 		}
 	}
-	return false
+	return failed
 }
 
 // proven reports whether model completed a unit of root.
