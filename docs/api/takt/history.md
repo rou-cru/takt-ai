@@ -1168,6 +1168,9 @@ type Unit struct {
     // Launched says whether execution was ever observed, so a pending admission
     // that terminates without launch never appears executed.
     Launched bool `json:"launched"`
+    // CancelRequested says a cancellation of the current attempt was requested,
+    // so its termination is interrupted whatever its flight shows by then.
+    CancelRequested bool `json:"-"`
     // Committed says a plan commitment declared this unit. Work admitted
     // without plan coverage is never committed.
     Committed bool `json:"committed,omitempty"`

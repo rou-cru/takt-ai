@@ -321,7 +321,7 @@ SeatEntry is the execution\-history record of an admitted restoration.
 func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error
 ```
 
-StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance.
+StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance. Another instance that starts the activity again takes over its capture.
 
 <a name="SubstituteIdentity"></a>
 ## func SubstituteIdentity
