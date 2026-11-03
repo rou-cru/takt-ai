@@ -1495,10 +1495,10 @@ func handoffNeedsRecordedResults(t *testing.T, bin string) {
 // interface, refusing any other.
 func lentMemoryPages(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	const lent = "child-p"
+	const lent, handedOff = "child-p", "child-q"
 	var entries []seededEntry
 	for id := int64(1); id <= 55; id++ {
-		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent})
+		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent}, seededEntry{ID: 100 + id, Author: "pm", Caller: handedOff})
 	}
 	s.seedMemory(rootSession, append(entries, seededEntry{ID: 99, Author: "takt", Caller: rootSession})...)
 	s.must(request{Action: "switch", Session: rootSession, Child: lent, Agent: "pm"})
@@ -1507,7 +1507,7 @@ func lentMemoryPages(t *testing.T, bin string) {
 	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
 		t.Fatalf("first page: %+v", resp)
 	}
-	if !strings.Contains(resp.Notice, "page them with dispatch_lent_entries from next_after 50") {
+	if !strings.Contains(resp.Notice, "page them with dispatch_lent_entries, child child-p, from next_after 50") {
 		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
 	}
 	var page struct {
@@ -1520,6 +1520,15 @@ func lentMemoryPages(t *testing.T, bin string) {
 	}
 	s.refused(request{Action: "lent_entries", Session: rootSession, Child: rootSession})
 	s.refused(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 99})
+
+	// A handoff's notice names its lent session too: the convening agent reads
+	// only the notice, and paging needs that child.
+	s.must(request{Action: "switch", Session: rootSession, Child: handedOff, Agent: "pm"})
+	var handoff returned
+	s.must(request{Action: "handoff", Session: rootSession, Child: handedOff, Agent: "pm", Result: "EarlyHandoff"}).decode(t, &handoff)
+	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "page them with dispatch_lent_entries, child child-q, from next_after 150") {
+		t.Fatalf("handoff notice does not name the lent session to page: %+v", handoff)
+	}
 }
 
 // userAbortsSwitch covers IR-24: the user may end a temporary holder's turn

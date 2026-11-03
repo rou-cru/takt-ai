@@ -277,3 +277,24 @@ func TestEnvelopesSurfaceAnUnreadableMemoryIndex(t *testing.T) {
 		t.Fatal("BuildAbortEnvelope() with an unreadable index error = nil, want an error")
 	}
 }
+
+// An unreadable lent-session index refuses the return before it is recorded:
+// the holder stays, so the same handoff or abort can be retried once the index
+// reads.
+func TestUnreadableLentIndexLeavesTheHolder(t *testing.T) {
+	h := newHistory(t)
+	memoryRoot := t.TempDir()
+	if err := dispatch.Switch(h, "", "root-1", "child-1", interlocutorTestAgent, "artifact.md"); err != nil {
+		t.Fatalf("Switch() error = %v", err)
+	}
+	writeSessionIndex(t, memoryRoot, "root-1", "not an index")
+	if _, err := dispatch.BuildHandoffEnvelope(h, "", memoryRoot, "root-1", "child-1", interlocutorTestAgent, dispatch.HandoffOutcome{Result: "EarlyHandoff"}); err == nil {
+		t.Fatal("BuildHandoffEnvelope() over an unreadable index error = nil, want an error")
+	}
+	if _, _, err := dispatch.BuildAbortEnvelope(h, "", memoryRoot, "root-1", "child-1", "drift detected", "harness"); err == nil {
+		t.Fatal("BuildAbortEnvelope() over an unreadable index error = nil, want an error")
+	}
+	if got := h.Project().Budgets("root-1").InterlocutorHolder; got != "child-1" {
+		t.Fatalf("holder after refused returns = %q, want child-1 kept for a retry", got)
+	}
+}
