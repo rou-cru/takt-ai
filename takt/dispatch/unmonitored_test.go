@@ -141,3 +141,62 @@ func TestFinishRecordsCompletedDeliveryWithoutEvidenceAsUnverified(t *testing.T)
 		}
 	}
 }
+
+// A non-start reconciled after lost capture ends without a work result: it is
+// interrupted, so the model it ran is never counted as having completed work.
+func TestReconciledUnmonitoredNonStartIsInterrupted(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-d", "unmon-d"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: seatAgent, Dispatch: "unmon-call-d"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := h.Project().Unit(root, unit)
+	if err := h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: root, WorkUnitID: unit, AttemptID: u.AttemptID, Dispatch: "unmon-call-d", Agent: seatAgent, Model: "m9", Cause: history.CauseNone}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Launch(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Record(h, "", unit, root, history.KindUnmonitored); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Reconcile(h, "", unit, root, false); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ = h.Project().Unit(root, unit); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("unit = %+v; want a reconciled non-start settled interrupted", u)
+	}
+	seat := dispatch.Seat{Agent: seatAgent, Model: "m9", Configured: "m1", Reason: "provider outage"}
+	if err := dispatch.ValidateSeat(h, root, seat); err == nil || !strings.HasPrefix(err.Error(), dispatch.UnprovenModelCause) {
+		t.Fatalf("ValidateSeat() after an interrupted non-start = %v; want the model still unproven", err)
+	}
+}
+
+// Lost capture never erases a pending cancellation: finishing the cancelled
+// work records it interrupted, not completed.
+func TestUnmonitoredKeepsAPendingCancellation(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-e", "unmon-e"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: "executor", Dispatch: "unmon-call-e"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Launch(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []history.Kind{history.KindCancelRequested, history.KindUnmonitored} {
+		if err := dispatch.Record(h, "", unit, root, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Flight != history.FlightCancelling {
+		t.Fatalf("flight = %q; want cancellation still pending after lost capture", u.Flight)
+	}
+	if err := dispatch.Finish(h, "", unit, root); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("outcome = %q; want cancelled work interrupted", u.Outcome)
+	}
+}

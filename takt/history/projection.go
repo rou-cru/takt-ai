@@ -479,7 +479,11 @@ func (p *Projection) fold(e Entry) {
 	case KindTerminated:
 		u.State, u.Flight, u.Outcome = StateSettled, "", e.Outcome
 	default:
-		u.State, u.Flight = StateInFlight, flightOf[e.Kind]
+		// Lost capture never erases a pending cancellation: the work still ends
+		// interrupted once termination is recorded.
+		if e.Kind != KindUnmonitored || u.Flight != FlightCancelling {
+			u.State, u.Flight = StateInFlight, flightOf[e.Kind]
+		}
 		u.Launched = u.Launched || e.Kind == KindLaunched
 	}
 	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
