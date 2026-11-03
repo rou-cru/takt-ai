@@ -151,7 +151,7 @@ func terminate(h *history.History, journalRef, event, session string, nonStart b
 	outcome := history.OutcomeCompleted
 	projection := h.Project()
 	unit, _ := projection.Unit(session, event)
-	if nonStart || unit.Flight == history.FlightCancelling || unit.Flight == history.FlightUncertain {
+	if nonStart || unit.CancelRequested || unit.Flight == history.FlightUncertain {
 		outcome = history.OutcomeInterrupted
 	}
 	// Termination of work in an abandoned recovery scope is the second fact of

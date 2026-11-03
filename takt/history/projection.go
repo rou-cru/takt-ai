@@ -206,6 +206,9 @@ type Unit struct {
 	// Launched says whether execution was ever observed, so a pending admission
 	// that terminates without launch never appears executed.
 	Launched bool `json:"launched"`
+	// CancelRequested says a cancellation of the current attempt was requested,
+	// so its termination is interrupted whatever its flight shows by then.
+	CancelRequested bool `json:"-"`
 	// Committed says a plan commitment declared this unit. Work admitted
 	// without plan coverage is never committed.
 	Committed bool `json:"committed,omitempty"`
@@ -471,6 +474,7 @@ func (p *Projection) fold(e Entry) {
 		// Each attempt starts unlaunched, without an outcome or assurance; the unit's
 		// contract and prerequisites carry over unchanged.
 		u.State, u.Flight, u.Outcome, u.Launched, u.Dispatch, u.Agent = StateInFlight, flightOf[e.Kind], "", false, e.Dispatch, e.Agent
+		u.CancelRequested = false
 		u.Assurance = nil
 	case KindPlanned:
 		u.State = StatePlanned
@@ -481,12 +485,9 @@ func (p *Projection) fold(e Entry) {
 	case KindTerminated:
 		u.State, u.Flight, u.Outcome = StateSettled, "", e.Outcome
 	default:
-		// Lost capture never erases a pending cancellation: the work still ends
-		// interrupted once termination is recorded.
-		if e.Kind != KindUnmonitored || u.Flight != FlightCancelling {
-			u.State, u.Flight = StateInFlight, flightOf[e.Kind]
-		}
+		u.State, u.Flight = StateInFlight, flightOf[e.Kind]
 		u.Launched = u.Launched || e.Kind == KindLaunched
+		u.CancelRequested = u.CancelRequested || e.Kind == KindCancelRequested
 	}
 	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
 }

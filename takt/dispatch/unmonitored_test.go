@@ -173,8 +173,8 @@ func TestReconciledUnmonitoredNonStartIsInterrupted(t *testing.T) {
 	}
 }
 
-// Lost capture never erases a pending cancellation: finishing the cancelled
-// work records it interrupted, not completed.
+// Lost capture during a pending cancellation shows as unmonitored, and the
+// cancelled work still finishes interrupted, not completed.
 func TestUnmonitoredKeepsAPendingCancellation(t *testing.T) {
 	h := newHistory(t)
 	const root, unit = "unmon-root-e", "unmon-e"
@@ -190,13 +190,36 @@ func TestUnmonitoredKeepsAPendingCancellation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u, _ := h.Project().Unit(root, unit); u.Flight != history.FlightCancelling {
-		t.Fatalf("flight = %q; want cancellation still pending after lost capture", u.Flight)
+	if u, _ := h.Project().Unit(root, unit); u.Flight != history.FlightUnmonitored {
+		t.Fatalf("flight = %q; want lost capture visible while the cancellation is pending", u.Flight)
 	}
 	if err := dispatch.Finish(h, "", unit, root); err != nil {
 		t.Fatal(err)
 	}
 	if u, _ := h.Project().Unit(root, unit); u.Outcome != history.OutcomeInterrupted {
 		t.Fatalf("outcome = %q; want cancelled work interrupted", u.Outcome)
+	}
+}
+
+// A non-start never observed launching and then left unmonitored is
+// reconciled interrupted, like a launched one.
+func TestReconciledNeverLaunchedUnmonitoredNonStartIsInterrupted(t *testing.T) {
+	h := newHistory(t)
+	const root, unit = "unmon-root-f", "unmon-f"
+	req := dispatch.AdmissionRequest{Event: unit, Session: root, Agent: seatAgent, Dispatch: "unmon-call-f"}
+	if err := dispatch.Admit(h, loadPolicy(t), "", req); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Record(h, "", unit, root, history.KindUnmonitored); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.Launched {
+		t.Fatalf("unit = %+v; want a unit never launched", u)
+	}
+	if err := dispatch.Reconcile(h, "", unit, root, false); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := h.Project().Unit(root, unit); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("unit = %+v; want a reconciled never-launched non-start settled interrupted", u)
 	}
 }
