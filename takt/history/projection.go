@@ -206,6 +206,9 @@ type Unit struct {
 	// Launched says whether execution was ever observed, so a pending admission
 	// that terminates without launch never appears executed.
 	Launched bool `json:"launched"`
+	// CancelRequested says a cancellation of the current attempt was requested,
+	// so its termination is interrupted whatever its flight shows by then.
+	CancelRequested bool `json:"-"`
 	// Committed says a plan commitment declared this unit. Work admitted
 	// without plan coverage is never committed.
 	Committed bool `json:"committed,omitempty"`
@@ -224,6 +227,8 @@ type Activity struct {
 	State      State    `json:"state"`
 	Flight     Flight   `json:"flight,omitempty"`
 	Outcome    Outcome  `json:"outcome,omitempty"`
+	// Owner is the harness instance that captures the activity.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Recovery is one objective's bounded-recovery accounting.
@@ -469,6 +474,7 @@ func (p *Projection) fold(e Entry) {
 		// Each attempt starts unlaunched, without an outcome or assurance; the unit's
 		// contract and prerequisites carry over unchanged.
 		u.State, u.Flight, u.Outcome, u.Launched, u.Dispatch, u.Agent = StateInFlight, flightOf[e.Kind], "", false, e.Dispatch, e.Agent
+		u.CancelRequested = false
 		u.Assurance = nil
 	case KindPlanned:
 		u.State = StatePlanned
@@ -481,6 +487,7 @@ func (p *Projection) fold(e Entry) {
 	default:
 		u.State, u.Flight = StateInFlight, flightOf[e.Kind]
 		u.Launched = u.Launched || e.Kind == KindLaunched
+		u.CancelRequested = u.CancelRequested || e.Kind == KindCancelRequested
 	}
 	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
 }
@@ -488,11 +495,16 @@ func (p *Projection) fold(e Entry) {
 func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 	a, exists := p.Activities[e.ActivityID]
 	if isActivityStarted(e.Kind) {
-		if !exists {
+		switch {
+		case !exists:
 			p.Activities[e.ActivityID] = Activity{
 				ActivityID: e.ActivityID, SessionID: e.SessionID, NodeKind: nodeKind,
-				State: StateInFlight, Flight: FlightRunning,
+				State: StateInFlight, Flight: FlightRunning, Owner: e.Owner,
 			}
+		case a.State == StateInFlight && e.Owner != "":
+			// Another instance took over the capture: it is observed again.
+			a.Owner, a.Flight = e.Owner, FlightRunning
+			p.Activities[e.ActivityID] = a
 		}
 		return
 	}

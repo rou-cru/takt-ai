@@ -199,9 +199,29 @@ func TestPublishProblemRateEvent_Succeeds(t *testing.T) {
 	// A problem-rate envelope carries the raw count and recorded-work
 	// denominator beside the rate (PR-MNT-9, PR-MNT-11); the bus validates
 	// them as the event class's required attributes.
+	store, err := obs.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
 	bus, clock := newBus(t)
+	bus.AttachStore(store)
 	if err := obs.PublishProblemRateEvent(bus, clock, "agent-a", "cycle_reedit", 2, 8, 0.25, "wu-1"); err != nil {
 		t.Fatalf("PublishProblemRateEvent: %v", err)
+	}
+	// The work unit is the per-task join key of the published rate.
+	events, err := store.Events("session-test", obs.EventProblemRate, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("store.Events: %v", err)
+	}
+	if len(events) != 1 || events[0].Envelope.Correlations.WorkUnitID != "wu-1" {
+		t.Fatalf("problem_rate events = %+v; want one correlated to wu-1", events)
+	}
+	// The stored measurements are the published ones, not zero values.
+	for name, want := range map[string]float64{"count": 2, "denominator": 8, "rate": 0.25} {
+		if got, ok := events[0].Envelope.Attributes[name].(float64); !ok || got != want {
+			t.Errorf("stored %s = %v; want %v", name, events[0].Envelope.Attributes[name], want)
+		}
 	}
 }
 

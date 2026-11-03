@@ -5,7 +5,7 @@ import { dirname } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
 import { Schema } from "effect"
 import vfsPlugin, { withoutIdentity, STREAM_INACTIVITY_MS } from "./takt-vfs"
-import { historyFixture, type FixtureExecution } from "../testdata/history-fixture.mjs"
+import { historyFixture, type FixtureActivity, type FixtureExecution } from "../testdata/history-fixture.mjs"
 
 const contracts = JSON.parse(readFileSync(new URL("../testdata/contracts.json", import.meta.url), "utf8"))
 
@@ -45,7 +45,7 @@ type Ctx = { sessionID: string; agent: string; id?: string }
 type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown>; time?: { created: number } }
 type Options = {
   nativeCalls?: Record<string,"completed"|"error"|"running">
-  history?: { inputs?: Record<string,number[]>; executions?: Record<string,Partial<FixtureExecution>>; holders?: Record<string,string> }
+  history?: { inputs?: Record<string,number[]>; executions?: Record<string,Partial<FixtureExecution>>; holders?: Record<string,string>; activities?: Record<string,Partial<FixtureActivity>>; leases?: string[] }
   nativeInput?: unknown
   respond?: (call: Call) => Reply | undefined
   claims?: unknown[]
@@ -917,6 +917,61 @@ describe("stream inactivity", () => {
       ])
       for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
     } finally { await vfs.stop() }
+  })
+
+  test("an activity whose capturing instance is gone is marked unmonitored, and never one a live instance captures", async () => {
+    const earlier = (id: string, owner: string) => ({ activity_id: id, session_id: "root", node_kind: "orchestrator", state: "in flight", flight: "observed running", owner })
+    const vfs = await startVfs({ history: { leases: ["other-live"], activities: { "gone-1": earlier("gone-1", "crashed"), "live-1": earlier("live-1", "other-live") } } })
+    try {
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "activity_unmonitored").length === 1)
+      await sleep(SHORT_SILENCE_MS * 4)
+      expect(vfs.requests("dispatch", "activity_unmonitored")).toEqual([
+        { action: "activity_unmonitored", session: "root", activity_id: "gone-1", node_kind: "orchestrator" },
+      ])
+      expect(vfs.history.activities["live-1"].flight).toBe("observed running")
+    } finally { await vfs.stop() }
+  })
+
+  test("a transient failure to read what is in flight is retried before the loss is reported", async () => {
+    let failing = 0
+    const vfs = await startVfs({
+      history: { executions: saved(live) },
+      respond: (call) => call.kind === "dispatch" && call.command === "executions" && failing-- > 0 ? { code: 1, err: "store busy" } : undefined,
+    })
+    try {
+      failing = 1
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "unmonitored").length === 1)
+      expect(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch)).toEqual(["a:1"])
+    } finally { await vfs.stop() }
+  })
+})
+
+describe("lost capture retry", () => {
+  // SHORT_RENEWAL_MS stands in for the lease renewal interval so a renewal can
+  // run in a test.
+  const SHORT_RENEWAL_MS = 8
+  test("a lost-capture write that fails is recorded on a later lease renewal while the stream is down", async () => {
+    const original = globalThis.setInterval
+    globalThis.setInterval = ((handler: () => void, ms?: number, ...rest: unknown[]) =>
+      original(handler, ms === 30_000 ? SHORT_RENEWAL_MS : ms, ...rest)) as unknown as typeof setInterval
+    let failing = true
+    const vfs = await startVfs({
+      history: { executions: saved({ "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT } }) },
+      respond: (call) => call.kind === "dispatch" && (call.command === "unmonitored" || call.command === "activity_unmonitored") && failing ? { code: 1, err: "store busy" } : undefined,
+    })
+    try {
+      await vfs.run("dispatch_activity_start", { activity_id: "open-1", node_kind: "orchestrator" }, orchestrator)
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "unmonitored").length === 1 && vfs.requests("dispatch", "activity_unmonitored").length === 1)
+      failing = false
+      await until(() => vfs.history.activities["open-1"]?.flight === "capture unmonitored" && vfs.requests("dispatch", "unmonitored").length >= 2)
+      expect(vfs.history.activities["open-1"].flight).toBe("capture unmonitored")
+      expect(vfs.requests("dispatch", "unmonitored").length).toBeGreaterThanOrEqual(2)
+      expect(new Set(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch))).toEqual(new Set(["a:1"]))
+      for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
+    } finally { await vfs.stop(); globalThis.setInterval = original }
   })
 })
 

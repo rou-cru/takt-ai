@@ -187,7 +187,9 @@ func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
 	if err = fs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	r.Action, r.Owner = "prepare", testOwner
+	// The interrupted record names no model, as one from before models were
+	// recorded; the retry names the model it runs and still resumes.
+	r.Action, r.Owner, r.Model, r.ConfiguredModel = "prepare", testOwner, "p/a", "p/a"
 	r.AuthorKeys = []vfs.AgentID{vfs.AgentID(a)}
 	got, err := executionRequest(t, fx, r)
 	if err != nil || got["attempt"] != u.AttemptID || got["launchable"] != true {

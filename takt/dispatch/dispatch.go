@@ -141,11 +141,17 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 // completed finish whose attempt has no evaluated result is recorded in the same
 // batch as unverified delivery, never as accepted work (PR-DAG-TMP-9).
 func Finish(h *history.History, journalRef, event, session string) error {
+	return terminate(h, journalRef, event, session, false)
+}
+
+// terminate records effective termination. nonStart is a reconciliation
+// establishing that unestablished execution never ran: like a cancellation,
+// it ends without a work result, so it is interrupted, never completed.
+func terminate(h *history.History, journalRef, event, session string, nonStart bool) error {
 	outcome := history.OutcomeCompleted
 	projection := h.Project()
 	unit, _ := projection.Unit(session, event)
-	switch unit.Flight {
-	case history.FlightCancelling, history.FlightUncertain:
+	if nonStart || unit.CancelRequested || unit.Flight == history.FlightUncertain {
 		outcome = history.OutcomeInterrupted
 	}
 	// Termination of work in an abandoned recovery scope is the second fact of
@@ -221,7 +227,7 @@ func Reconcile(h *history.History, journalRef, event, session string, running bo
 	if running {
 		return Record(h, journalRef, event, session, history.KindLaunched)
 	}
-	return Finish(h, journalRef, event, session)
+	return terminate(h, journalRef, event, session, true)
 }
 
 // Withdraw revokes still-planned work. Admitted work's contract and

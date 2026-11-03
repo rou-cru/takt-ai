@@ -169,11 +169,18 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 			return Envelope{}, e
 		}
 	}
-	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
-		return Envelope{}, e
+	// A caller that does not hold the turn has no index to read: Handoff
+	// records and returns its denial.
+	if callerSession != h.Project().Budgets(root).InterlocutorHolder {
+		return Envelope{}, Handoff(h, journalRef, root, callerSession, outcome.Result)
 	}
+	// The index is read before the handoff is recorded: a failed read leaves
+	// the holder in place, so the same handoff can be retried.
 	index, e := lentIndex(memoryRoot, root, callerSession, 0)
 	if e != nil {
+		return Envelope{}, e
+	}
+	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
 		return Envelope{}, e
 	}
 	extra := outcome.ExtraArtifacts
@@ -192,11 +199,16 @@ func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childS
 	if childSession != "" {
 		aborted = childSession
 	}
-	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
-		return Envelope{}, "", e
+	// As for a handoff, the index is read before the abort is recorded. With
+	// no holder there is nothing to index, and Abort states the refusal.
+	var index MemoryIndex
+	if aborted != "" {
+		var e error
+		if index, e = lentIndex(memoryRoot, root, aborted, 0); e != nil {
+			return Envelope{}, "", e
+		}
 	}
-	index, e := lentIndex(memoryRoot, root, aborted, 0)
-	if e != nil {
+	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
 		return Envelope{}, "", e
 	}
 	return Envelope{Result: "Aborted", AdditionalContext: reason, ExtraArtifacts: []string{}, Memory: index}, aborted, nil
