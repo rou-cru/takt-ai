@@ -95,12 +95,10 @@ type PackageFile struct {
 	Mode fs.FileMode
 }
 
-// SkillPackage is one validated skill: its package ID and SKILL.md descriptor bytes.
+// SkillPackage is one validated skill: its package ID and deployed files.
 type SkillPackage struct {
 	// ID is the package identifier, also its directory name under skills/.
 	ID string
-	// Descriptor holds the SKILL.md frontmatter and body bytes.
-	Descriptor []byte
 	// Files lists every file deployed for the skill, executables marked.
 	Files []PackageFile
 }
@@ -282,7 +280,7 @@ func loadSkills(fsys fs.FS, files pkgFiles) ([]SkillPackage, error) {
 		if err := files.markExecutables(base, meta.Metadata.Executables); err != nil {
 			return nil, err
 		}
-		skills = append(skills, SkillPackage{ID: id, Descriptor: descriptor})
+		skills = append(skills, SkillPackage{ID: id})
 	}
 	return skills, nil
 }

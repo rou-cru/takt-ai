@@ -324,14 +324,12 @@ ReconcileSelection reconciles a selection against the embedded manifest for call
 <a name="SkillPackage"></a>
 ## type SkillPackage
 
-SkillPackage is one validated skill: its package ID and SKILL.md descriptor bytes.
+SkillPackage is one validated skill: its package ID and deployed files.
 
 ```go
 type SkillPackage struct {
     // ID is the package identifier, also its directory name under skills/.
     ID  string
-    // Descriptor holds the SKILL.md frontmatter and body bytes.
-    Descriptor []byte
     // Files lists every file deployed for the skill, executables marked.
     Files []PackageFile
 }
