@@ -129,7 +129,7 @@ func (r interlocutorReturn) withNotice(from string) (interlocutorReturn, error) 
 		lines = append(lines, fmt.Sprintf("Declared standard document %s: %s.", r.Artifact.Path, state))
 	}
 	if next := r.Envelope.Memory.NextAfter; next != 0 {
-		lines = append(lines, fmt.Sprintf("More entries of the lent session %s remain: page them with dispatch_lent_entries, child %s, from next_after %d.", r.Child, r.Child, next))
+		lines = append(lines, fmt.Sprintf("More entries remain: call dispatch_lent_entries with child %s and after %d.", r.Child, next))
 	}
 	r.Notice = strings.Join(lines, "\n")
 	return r, nil

@@ -41,7 +41,7 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		// The seat is part of what the execution record names: a retry may not
 		// run another model or swap in a substitute under it.
 		if prior.Model != r.Model || prior.Substitute != r.Substitute {
-			return nil, fmt.Errorf("dispatch %s already runs the %s seat with model %q (substitute %t); retry a different seat with a new subagent call", r.Dispatch, prior.Agent, prior.Model, prior.Substitute)
+			return nil, fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
 		}
 		if prior.Ready || prior.Settled {
 			return map[string]any{"execution": prior, "launchable": false}, nil

@@ -986,7 +986,7 @@ func seatRestoration(t *testing.T, bin string) {
 	// A retry of the same dispatch never runs another seat under its record.
 	reseated := proven
 	reseated.Model, reseated.Confirmed = "p/b", true
-	if res := s.refused(reseated); !strings.Contains(res.stderr, "already runs the spec seat") {
+	if res := s.refused(reseated); !strings.Contains(res.stderr, "is recorded with model") {
 		t.Fatalf("a retry under another model was not refused: %s", res.stderr)
 	}
 	reseated = proven
@@ -1526,7 +1526,7 @@ func lentMemoryPages(t *testing.T, bin string) {
 	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
 		t.Fatalf("first page: %+v", resp)
 	}
-	if !strings.Contains(resp.Notice, "page them with dispatch_lent_entries, child child-p, from next_after 50") {
+	if !strings.Contains(resp.Notice, "call dispatch_lent_entries with child child-p and after 50") {
 		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
 	}
 	var page struct {
@@ -1545,7 +1545,7 @@ func lentMemoryPages(t *testing.T, bin string) {
 	s.must(request{Action: "switch", Session: rootSession, Child: handedOff, Agent: "pm"})
 	var handoff returned
 	s.must(request{Action: "handoff", Session: rootSession, Child: handedOff, Agent: "pm", Result: "EarlyHandoff"}).decode(t, &handoff)
-	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "page them with dispatch_lent_entries, child child-q, from next_after 150") {
+	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "call dispatch_lent_entries with child child-q and after 150") {
 		t.Fatalf("handoff notice does not name the lent session to page: %+v", handoff)
 	}
 }
