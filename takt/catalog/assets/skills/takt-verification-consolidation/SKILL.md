@@ -29,7 +29,8 @@ Consolidating is not a Git commit: accept each vertical slice with one global Ve
 writers finish. Commit a milestone once the slice's computational acceptance is recorded and its
 advisory review closes without a reproduction-backed defect. Non-blocking advisory findings remain
 recorded but neither delay the checkpoint nor require correction or reverification. Failed or
-unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
+unverified acceptance criteria still block the checkpoint; a quality critique without executable
+measurement evidence is advisory, not an acceptance criterion. Load takt-git-commit before writing the
 message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if
