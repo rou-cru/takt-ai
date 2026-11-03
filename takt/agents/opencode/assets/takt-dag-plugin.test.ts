@@ -45,7 +45,7 @@ const reply = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 
 // startDag mounts the real plugin against a scripted takt-ai; each poll is one
 // spawn, so the recorded argv shows exactly what the view asked for.
-function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: string; interruptFails?: boolean } = {}) {
+function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: string; interruptFails?: boolean; syntheticFails?: boolean } = {}) {
   const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
   const originalSpawn = runtime.Bun.spawn
   const spawned: string[][] = []
@@ -70,7 +70,7 @@ function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: str
     theme: { text: { base: "white", muted: "gray", feedback: { error: { base: "red" } } } },
     client: { session: {
       async interrupt(input: { sessionID: string }) { interrupts.push(input.sessionID); if (opts.interruptFails) throw new Error("interrupt failed") },
-      async synthetic(input: { sessionID: string; text: string }) { synthetics.push(input) },
+      async synthetic(input: { sessionID: string; text: string }) { synthetics.push(input); if (opts.syntheticFails) throw new Error("notice failed") },
     } },
     ui: {
       router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: opts.current ?? "root" }), navigate(destination: unknown) { navigated.push(destination) } },
@@ -227,9 +227,20 @@ describe("/takt-abort", () => {
       command(dag)!.run()
       await until(() => dag.toasts.length > 0)
       expect(dag.interrupts).toEqual(["child"])
-      expect(dag.synthetics).toEqual([{ sessionID: "root", text: aborted.notice }])
+      expect(dag.synthetics).toEqual([{ sessionID: "root", text: `${aborted.notice}\nStopping the lent session failed; it may still be running.` }])
       expect(dag.toasts.at(-1)?.variant).toBe("error")
       expect(dag.toasts.at(-1)?.message).toContain("interrupt failed")
+    } finally { dag.stop() }
+  })
+
+  test("a failed stop and a failed notice report both failures", async () => {
+    const dag = startDag(() => reply(aborted), { current: "child", interruptFails: true, syntheticFails: true })
+    try {
+      command(dag)!.run()
+      await until(() => dag.toasts.length > 0)
+      expect(dag.toasts.at(-1)?.variant).toBe("error")
+      expect(dag.toasts.at(-1)?.message).toContain("interrupt failed")
+      expect(dag.toasts.at(-1)?.message).toContain("notice failed")
     } finally { dag.stop() }
   })
 

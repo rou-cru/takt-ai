@@ -948,6 +948,33 @@ describe("stream inactivity", () => {
   })
 })
 
+describe("lost capture retry", () => {
+  // SHORT_RENEWAL_MS stands in for the lease renewal interval so a renewal can
+  // run in a test.
+  const SHORT_RENEWAL_MS = 8
+  test("a lost-capture write that fails is recorded on a later lease renewal while the stream is down", async () => {
+    const original = globalThis.setInterval
+    globalThis.setInterval = ((handler: () => void, ms?: number, ...rest: unknown[]) =>
+      original(handler, ms === 30_000 ? SHORT_RENEWAL_MS : ms, ...rest)) as unknown as typeof setInterval
+    let failing = true
+    const vfs = await startVfs({
+      history: { executions: saved({ "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT } }) },
+      respond: (call) => call.kind === "dispatch" && (call.command === "unmonitored" || call.command === "activity_unmonitored") && failing ? { code: 1, err: "store busy" } : undefined,
+    })
+    try {
+      await vfs.run("dispatch_activity_start", { activity_id: "open-1", node_kind: "orchestrator" }, orchestrator)
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "unmonitored").length === 1 && vfs.requests("dispatch", "activity_unmonitored").length === 1)
+      failing = false
+      await until(() => vfs.history.activities["open-1"]?.flight === "capture unmonitored" && vfs.requests("dispatch", "unmonitored").length >= 2)
+      expect(vfs.history.activities["open-1"].flight).toBe("capture unmonitored")
+      expect(vfs.requests("dispatch", "unmonitored").length).toBeGreaterThanOrEqual(2)
+      expect(new Set(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch))).toEqual(new Set(["a:1"]))
+      for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
+    } finally { await vfs.stop(); globalThis.setInterval = original }
+  })
+})
+
 describe("maintenance cycle", () => {
   test("a failed prompt from an earlier cycle cannot interrupt a replacement cycle", async () => {
     let statusCalls=0

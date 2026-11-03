@@ -1517,12 +1517,20 @@ export default Plugin.define({
         return
       }
       // The core already cleared the holder, so the convening agent gets the
-      // notice even when the stop fails; that failure still reaches the toast.
+      // notice even when the stop fails, told that the lent session may still
+      // run; each failure still reaches the toast.
+      const stop = await context.client.session.interrupt({ sessionID: reply.child }).then(() => undefined, (error: unknown) => ({ error }))
+      const text = stop ? `${reply.notice}\nStopping the lent session failed; it may still be running.` : reply.notice
       try {
-        await context.client.session.interrupt({ sessionID: reply.child })
-      } finally {
-        await context.client.session.synthetic({ sessionID: reply.root, text: reply.notice })
+        await context.client.session.synthetic({ sessionID: reply.root, text })
+      } catch (error) {
+        if (stop) {
+          const reason = (failure: unknown) => failure instanceof Error ? failure.message : String(failure)
+          throw new AggregateError([stop.error, error], `stopping the lent session failed (${reason(stop.error)}) and notifying the convening agent failed (${reason(error)})`, { cause: error })
+        }
+        throw error
       }
+      if (stop) throw stop.error
       context.ui.toast.show({ variant: "success", message: "Lent session aborted; the interface is back with the convening agent." })
     }
 

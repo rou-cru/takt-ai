@@ -485,11 +485,18 @@ export default Plugin.define({
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
-      // An instance that stopped renewing its lease lost the capture of the
+      // While the host stream is down, the lost capture of what this instance
+      // watches is recorded again, so a write that failed is retried. Otherwise
+      // only an instance that stopped renewing its lease lost the capture of the
       // activities it ran; whichever instance notices records that gap.
-      await unsettledActivities()
-        .then(activities => markActivitiesUnmonitored(activities.filter(a => a.orphaned && !a.own && !a.unmonitored)))
-        .catch(error => console.error("Takt orphaned activity reconciliation", error))
+      if (!eventsRunning && !disposed) {
+        await unsettledExecutions().then(executions => recordLostCapture(executions.filter(d => d.mine)))
+          .catch(error => console.error("Takt lost capture reconciliation", error))
+      } else {
+        await unsettledActivities()
+          .then(activities => markActivitiesUnmonitored(activities.filter(a => a.orphaned && !a.own && !a.unmonitored)))
+          .catch(error => console.error("Takt orphaned activity reconciliation", error))
+      }
       for (const d of await unsettledExecutions()) {
         if (d.cycle) continue
         let backgroundLaunched = false
@@ -1448,16 +1455,20 @@ export default Plugin.define({
         return watched
       } catch (error) { console.error("Takt stream state unreported", error); return [] }
     }
-    // streamLost reports the loss of the host event stream: each execution this
-    // instance watches and each direct activity it captures, or whose capturing
-    // instance is gone, is marked unmonitored, neither completed nor failed.
-    // Telemetry loss proves nothing about the agent.
-    async function streamLost(state: "eof" | "disconnected" | "closed") {
-      await Promise.all((await observeStream(state)).map(d =>
+    // recordLostCapture marks unmonitored, neither completed nor failed, each
+    // execution in watched and each direct activity this instance captures or
+    // whose capturing instance is gone. The core ignores a repeat.
+    async function recordLostCapture(watched: Delegation[]) {
+      await Promise.all(watched.map(d =>
         dispatchAction({ action: "unmonitored", session: d.root, event: d.unit, dispatch: d.dispatch })
           .catch(error => console.error("Takt unmonitored execution unrecorded", d.dispatch, error))))
       const activities = await reread(unsettledActivities).catch(error => { console.error("Takt unmonitored activities unread", error); return [] })
       await markActivitiesUnmonitored(activities.filter(a => (a.own || a.orphaned) && !a.unmonitored))
+    }
+    // streamLost reports the loss of the host event stream for what this
+    // instance watches. Telemetry loss proves nothing about the agent.
+    async function streamLost(state: "eof" | "disconnected" | "closed") {
+      await recordLostCapture(await observeStream(state))
     }
     startEvents()
 
