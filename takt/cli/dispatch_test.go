@@ -83,6 +83,7 @@ type request struct {
 	SeatReason string           `json:"seat_reason,omitempty"`
 	Substitute bool             `json:"substitute,omitempty"`
 	Confirmed  bool             `json:"user_confirmed,omitempty"`
+	AuthorKeys []vfs.AgentID    `json:"author_keys,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -475,6 +476,10 @@ func TestDispatchCommand(t *testing.T) {
 		{"admission recovers from an orphaned barrier hold", orphanedBarrierHold},
 		{"launches collapse and an uncertain one is reconciled before repeating", launchAndReconciliation},
 		{"a delegation a later attempt replaced is never marked uncertain or reconciled", staleDispatchIgnored},
+		{"unmonitored execution keeps its slot and is reconciled", unmonitoredExecution},
+		{"a native child event reconciles an unmonitored launch that never ran", unmonitoredReconciledOnChild},
+		{"reconciling a non-start releases the gates prepared for the attempt", reconcileReleasesPreparedGates},
+		{"an unmonitored activity stays in flight, unblamed and unfinished", unmonitoredActivity},
 		{"cancellation keeps its slot while the controls stay available", cancellationRetainsCapacity},
 		{"a delegation that never returns is abandoned and its unit delegated again", abandonUnreturnedDelegation},
 		{"delegation without plan coverage is bounded", unplannedBound},
@@ -751,6 +756,151 @@ func launchAndReconciliation(t *testing.T, bin string) {
 	s.must(reconcile("three", false))
 	if u := s.unit("three"); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted || u.Launched {
 		t.Fatalf("non-start: %+v", u)
+	}
+}
+
+func unmonitoredExecution(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	live := call("admit", "unmon-unit")
+	live.Dispatch = "root:unmon-1"
+	s.must(live)
+	s.must(call("launch", "unmon-unit"))
+	// A dispatch that no longer holds the unit cannot mark it.
+	stale := call("unmonitored", "unmon-unit")
+	stale.Dispatch = "root:unmon-old"
+	s.must(stale)
+	if s.count(history.KindUnmonitored) != 0 {
+		t.Fatal("a stale delegation marked the live attempt unmonitored")
+	}
+	lost := call("unmonitored", "unmon-unit")
+	lost.Dispatch = "root:unmon-1"
+	s.must(lost)
+	// Capture lost is not termination: the unit stays in flight and keeps its slot.
+	if u := s.unit("unmon-unit"); u.State != history.StateInFlight || u.Flight != history.FlightUnmonitored || !u.Launched {
+		t.Fatalf("unmonitored unit: %+v", u)
+	}
+	if n := s.projection().InFlight(); n != 1 {
+		t.Fatalf("losing capture released capacity: in flight %d", n)
+	}
+	reconcile := call("reconcile", "unmon-unit")
+	reconcile.Pass = true
+	s.must(reconcile)
+	if u := s.unit("unmon-unit"); u.Flight != history.FlightRunning {
+		t.Fatalf("reconciled unit: %+v", u)
+	}
+}
+
+// unmonitoredReconciledOnChild: a native child event is evidence of execution,
+// so a launch whose capture was lost is reconciled instead of refused.
+func unmonitoredReconciledOnChild(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief"})
+	prepare := request{Action: "prepare", Session: rootSession, Event: "brief", Dispatch: "lost-capture", Caller: rootSession, Agent: "pm", Owner: "instance"}
+	s.must(prepare)
+	lost := call("unmonitored", "brief")
+	lost.Dispatch = "lost-capture"
+	s.must(lost)
+	if u := s.unit("brief"); u.Flight != history.FlightUnmonitored || u.Launched {
+		t.Fatalf("unmonitored unit: %+v", u)
+	}
+	attach := request{Action: "attach_child", Session: rootSession, Event: "brief", Dispatch: "lost-capture", Child: "pm-child", Agent: "pm"}
+	s.must(attach)
+	if u := s.unit("brief"); u.State != history.StateInFlight || u.Flight != history.FlightRunning || !u.Launched {
+		t.Fatalf("the child event did not reconcile the unmonitored launch: %+v", u)
+	}
+}
+
+// pendingGates counts the verifier gates prepared and not yet adopted.
+func (s *session) pendingGates() int {
+	s.t.Helper()
+	fs, err := vfs.Open(s.root, s.state)
+	if err != nil {
+		s.t.Fatalf("open vfs: %v", err)
+	}
+	n := 0
+	for _, c := range fs.OwnershipClaims(rootSession) {
+		if c.AuthorKey != "" {
+			n++
+		}
+	}
+	if err := fs.Close(); err != nil {
+		s.t.Fatalf("close vfs: %v", err)
+	}
+	return n
+}
+
+func reconcileReleasesPreparedGates(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	author := s.stage("", "writer", "work", 1)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "review"})
+	prepare := func(dispatch string) request {
+		return request{Action: "prepare", Session: rootSession, Event: "review", Dispatch: dispatch, Caller: rootSession, Agent: "verify", Owner: "instance", AuthorKeys: []vfs.AgentID{author}}
+	}
+	reconcile := func(dispatch string, running bool) request {
+		r := call("reconcile", "review")
+		r.Dispatch, r.Pass = dispatch, running
+		return r
+	}
+	mark := func(kind, dispatch string) {
+		r := call(kind, "review")
+		r.Dispatch = dispatch
+		s.must(r)
+	}
+	// Capture was lost but the execution runs: its gates are the child's to adopt.
+	s.must(prepare("alive"))
+	if s.pendingGates() != 1 {
+		t.Fatalf("preparation issued %d gates; want 1", s.pendingGates())
+	}
+	mark("unmonitored", "alive")
+	s.must(reconcile("alive", true))
+	if s.pendingGates() != 1 || s.unit("review").Flight != history.FlightRunning {
+		t.Fatalf("reconciling a running execution disturbed its gates: %d, %+v", s.pendingGates(), s.unit("review"))
+	}
+	// A refusal because nothing is uncertain touches nothing either.
+	s.refused(reconcile("alive", false))
+	if s.pendingGates() != 1 || s.unit("review").State != history.StateInFlight {
+		t.Fatalf("a refused reconciliation released gates: %d, %+v", s.pendingGates(), s.unit("review"))
+	}
+	s.must(call("finish", "review"))
+	// A launch that never started ends the attempt and releases what it prepared.
+	s.must(prepare("failed-launch"))
+	mark("uncertain", "failed-launch")
+	s.must(reconcile("failed-launch", false))
+	if u := s.unit("review"); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("non-start: %+v", u)
+	}
+	if n := s.pendingGates(); n != 0 {
+		t.Fatalf("non-start left %d prepared gates", n)
+	}
+}
+
+func unmonitoredActivity(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const id = "orchestrator-activity-7c2e"
+	activity := request{Action: "activity_start", Session: rootSession, ActivityID: id, NodeKind: history.NodeKindOrchestrator}
+	s.must(activity)
+	activity.Action = "activity_unmonitored"
+	s.must(activity)
+	s.must(activity)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("a repeat recorded %d unmonitored entries", n)
+	}
+	p := s.projection()
+	if a := p.Activities[id]; a.State != history.StateInFlight || a.Flight != history.FlightUnmonitored || a.Outcome != "" || len(p.Units) != 0 {
+		t.Fatalf("unmonitored activity: %+v, units %d", a, len(p.Units))
+	}
+	activity.Action, activity.Outcome = "activity_finish", string(history.OutcomeCompleted)
+	s.must(activity)
+	if a := s.projection().Activities[id]; a.State != history.StateSettled || a.Flight != "" {
+		t.Fatalf("the activity could not finish after losing capture: %+v", a)
+	}
+	// A loss reported after the end, or for an unknown activity, changes nothing.
+	activity.Action = "activity_unmonitored"
+	s.must(activity)
+	activity.ActivityID = "never-started"
+	s.refused(activity)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("late or unknown losses were recorded: %d", n)
 	}
 }
 

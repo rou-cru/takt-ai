@@ -14,7 +14,24 @@ export const SHELL_ESCAPED_DESCENDANTS = 121;
 // tenth of a second each.
 const DESCENDANT_SWEEPS = 30;
 
-export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], callID }) {
+// proxyAllowlist is the allowlist the shared network proxy was started with. The
+// proxy filters by it, not by a call's own list, so a different list restarts it.
+let proxyAllowlist;
+
+// restrictNetwork starts the proxy that lets a sandboxed command reach only the
+// allowed domains. Without it the sandbox leaves the network unrestricted.
+async function restrictNetwork(allowedDomains) {
+  const key = JSON.stringify(allowedDomains);
+  if (proxyAllowlist === key) return;
+  if (proxyAllowlist !== undefined) await SandboxManager.reset();
+  await SandboxManager.initialize({
+    network: { allowedDomains, deniedDomains: [], strictAllowlist: true },
+    filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+  });
+  proxyAllowlist = key;
+}
+
+export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], allowedDomains, callID }) {
   if (!['darwin', 'linux'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch)) {
     throw new Error('Takt sandbox: unsupported target; no direct-shell fallback');
   }
@@ -26,6 +43,7 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
   }
   // SRT grants shared temp/log directories by default. They are NOT private
   // scratch and must be carved out explicitly. Device stdio is retained.
+  if (allowedDomains !== undefined) await restrictNetwork(allowedDomains);
   const denyDefaults = getDefaultWritePaths().filter(p => !p.startsWith('/dev/'));
   return SandboxManager.wrapWithSandbox(command, '/bin/sh', {
     filesystem: {
@@ -36,7 +54,9 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
       // one holding every call's sandbox root; it stays readable to its command.
       allowRead: [scratch],
     },
-    // Deliberately absent: network. [] would block network, contrary to product.
+    // Network is restricted only when the user configured an allowlist: absent
+    // means unrestricted, and [] would block every domain.
+    ...(allowedDomains !== undefined && { network: { allowedDomains } }),
   }, undefined, { commandId: callID });
 }
 

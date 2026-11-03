@@ -303,8 +303,8 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 var ordinaryDispatchActions = map[string]bool{
 	"prepare": true, "inputs": true, "execution": true, "executions": true, "lease": true, "attach_child": true, "deliver": true, "resolve": true,
 	"admit": true, "finish": true, "tick": true,
-	"activity_start": true, "activity_finish": true,
-	"launch": true, "uncertain": true, "reconcile": true, "suspend": true,
+	"activity_start": true, "activity_finish": true, "activity_unmonitored": true,
+	"launch": true, "uncertain": true, "unmonitored": true, "reconcile": true, "suspend": true,
 	"cancel": true, "stop": true, "escalate": true, "withdraw": true,
 	"commit": true, "contest": true, "recovery": true, "recovered": true,
 	"restore": true, "exception": true, "abandon": true,
@@ -447,6 +447,16 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 	record := func(kind history.Kind) func() (any, error) {
 		return func() (any, error) { return c, protocol.Record(h, ref, r.Event, r.Session, kind) }
 	}
+	// unestablished records launch or capture that could not be established, unless
+	// a later attempt under another dispatch already holds the unit.
+	unestablished := func(kind history.Kind) func() (any, error) {
+		return func() (any, error) {
+			if staleDispatch(h, r) {
+				return c, nil
+			}
+			return record(kind)()
+		}
+	}
 	attempt := r.Attempt
 	if attempt == "" {
 		attempt = protocol.CurrentAttempt(h.Project(), r.Session, r.Event)
@@ -464,15 +474,19 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			}
 			return c, protocol.Launch(h, ref, r.Event, r.Session)
 		},
-		"uncertain": func() (any, error) {
-			if staleDispatch(h, r) {
-				return c, nil
-			}
-			return record(history.KindUncertain)()
-		},
+		"uncertain":   unestablished(history.KindUncertain),
+		"unmonitored": unestablished(history.KindUnmonitored),
 		"reconcile": func() (any, error) {
 			if staleDispatch(h, r) {
 				return c, nil
+			}
+			// A non-start is the effective termination: release the gates prepared
+			// for this attempt first, as finish does, because the unit stops being
+			// in flight once reconciled and a retry could no longer reach them.
+			if u, _ := h.Project().Unit(r.Session, r.Event); !r.Pass && u.State == history.StateInFlight && protocol.UncertainFlight(u.Flight) {
+				if err := fs.CancelPreparedDelegation(r.Session, r.Event, u.AttemptID); err != nil {
+					return nil, err
+				}
 			}
 			return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass)
 		},
@@ -532,6 +546,14 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 				return nil, errors.New("dispatch: activity_finish only accepts node_kind orchestrator")
 			}
 			return c, protocol.FinishActivity(h, r.Session, r.ActivityID, r.NodeKind, history.Outcome(r.Outcome))
+		},
+		// Capture of a non-unit activity was lost: it stays in flight, neither
+		// failed nor finished (PR-OBS-BUS-5).
+		"activity_unmonitored": func() (any, error) {
+			if r.NodeKind != history.NodeKindOrchestrator {
+				return nil, errors.New("dispatch: activity_unmonitored only accepts node_kind orchestrator")
+			}
+			return c, protocol.MarkActivityUnmonitored(h, r.Session, r.ActivityID)
 		},
 	}
 	if handler, ok := handlers[r.Action]; ok {

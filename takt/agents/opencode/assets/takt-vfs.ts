@@ -29,6 +29,12 @@ export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: strin
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 5
+// HOST_EVENT_STREAM names the sensor stream whose loss leaves executions unmonitored.
+const HOST_EVENT_STREAM = "host_events"
+// STREAM_INACTIVITY_MS is the silence of the open host event stream after which
+// one "inactive" observation is made. It is an observation, never an enforcement
+// window or budget: silence proves neither closure nor failure of any agent.
+export const STREAM_INACTIVITY_MS = 120_000
 // INSPECT_PAGE_LIMIT is the largest page takt-ai vfs journal and history serve.
 const INSPECT_PAGE_LIMIT = 500
 
@@ -48,7 +54,7 @@ export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
   return value as T
 }
 
-type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; capture?: boolean; cwd?: string; confirm?: string }
+type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; allowedDomains?: string[]; capture?: boolean; cwd?: string; confirm?: string }
 // AdoptedGate is one gate the core adopted for the calling host session.
 type AdoptedGate = { key: string; author_key: string; scope: string[]; error?: string }
 type Repair = { kind: "manifest" | "cycle"; id: string; author: string; paths: string[]; state: string; preserve: boolean; reason: string }
@@ -128,13 +134,15 @@ export function parseVFSShell(value: unknown): VFSShellResponse | undefined {
   if (!isResponseObject(value) || (value.decision !== "allow" && value.decision !== "ask" && value.decision !== "deny") ||
       !isString(value.reason) || !isOptional(value.cwd, isString) || !isOptional(value.scratch, isString) ||
       !isOptional(value.confirm, isString) || !isOptional(value.capture, isBoolean) ||
-      !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray)) return undefined
-  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths } = value
+      !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray) ||
+      !isOptional(value.allowedDomains, isStringArray)) return undefined
+  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths, allowedDomains } = value
   return { decision, reason, ...(isString(cwd) ? { cwd } : {}),
     ...(isString(scratch) ? { scratch } : {}), ...(isString(confirm) ? { confirm } : {}),
     ...(isBoolean(capture) ? { capture } : {}),
     ...(isStringArray(writable) ? { writable } : {}),
-    ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) }
+    ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) ,
+    ...(isStringArray(allowedDomains) ? { allowedDomains } : {}) }
 }
 export function responseObject(value: unknown, command: string): Record<string, unknown> {
   if (!isResponseObject(value)) throw new Error(`takt-ai ${command} returned a non-object response`)
@@ -664,7 +672,7 @@ export default Plugin.define({
     // strips it and swaps the shell executable for a sandboxed one without
     // touching the command text; evaluate finds the call by its tool call id and
     // only applies the decision admission already took.
-    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; capture: boolean }
+    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; allowedDomains?: string[]; capture: boolean }
     // ready is false while the transport request is still running.
     // started claims the call for create.before; wrapped says the sandbox is armed.
     type AdmittedShell = {
@@ -710,7 +718,7 @@ export default Plugin.define({
       if (!shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
       if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${shell.reason}`))
       if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
-      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private }
+      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private, ...(shell.allowedDomains ? { allowedDomains: shell.allowedDomains } : {}) }
     }
 
     // The first execute.before pins the tool call to the execution its session
@@ -782,7 +790,7 @@ export default Plugin.define({
           const { wrap, supervise } = await import(SANDBOX_ADAPTER)
           const run = supervise(await wrap(text, {
             writable: plan.writable, scratch: plan.scratch,
-            protectedPaths: plan.protected, privatePaths: plan.private, callID,
+            protectedPaths: plan.protected, privatePaths: plan.private, ...(plan.allowedDomains ? { allowedDomains: plan.allowedDomains } : {}), callID,
           }), plan.confirm)
           // The command text stays as admitted: OpenCode parses it for its own
           // permission check after this hook. The sandbox lives in the shell
@@ -1302,6 +1310,17 @@ export default Plugin.define({
     const pendingReplies = new Map<string, { session: string; controller: AbortController; resolve: (reply: string) => void; reject: (error: Error) => void }>()
     let eventsRunning = false
     let disposed = false
+    // openActivities are the direct orchestrator activities this plugin started and
+    // has not seen finish, with the root session each one belongs to.
+    const openActivities = new Map<string, string>()
+    // inactivity fires once per silence of the open host stream; the next host event arms it again.
+    let inactivity: ReturnType<typeof setTimeout> | undefined
+    const stopInactivity = () => { clearTimeout(inactivity); inactivity = undefined }
+    const armInactivity = () => {
+      stopInactivity()
+      inactivity = setTimeout(() => { if (eventsRunning) void observeStream("inactive") }, STREAM_INACTIVITY_MS)
+      inactivity.unref?.()
+    }
     function endApprovals(reason: string, session?: string) {
       for (const [id, waiter] of pendingReplies) {
         if (session && waiter.session !== session) continue
@@ -1348,8 +1367,11 @@ export default Plugin.define({
     function startEvents() {
       if (eventsRunning || disposed) return
       eventsRunning = true
+      let failed = false
+      armInactivity()
       void (async () => {
         for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
+          armInactivity()
           // Replies never queue behind context lookups, telemetry or lifecycle IPC.
           if (event.type === "permission.replied") {
             pendingReplies.get(event.data.requestID)?.resolve(event.data.reply)
@@ -1371,11 +1393,38 @@ export default Plugin.define({
             void onSessionDeleted(event.data.sessionID).catch(error => console.error("Takt session deleted", error))
           }
         }
-      })().catch(error => console.error("Takt event stream disconnected", error)).finally(() => {
+      })().catch(error => { failed = true; console.error("Takt event stream disconnected", error) }).finally(() => {
         eventsRunning = false; confirmations = undefined
+        stopInactivity()
         hostWaits.abort(); hostWaits = new AbortController()
         endApprovals("confirmation event stream ended")
+        // The plugin's own disposal is closure, a stream error a disconnection,
+        // and a stream that just ended EOF: three distinct observations (PR-OBS-BUS-6).
+        void streamLost(disposed ? "closed" : failed ? "disconnected" : "eof")
       })
+    }
+    // observeStream records the host stream's state once per execution this instance
+    // watches (PR-OBS-BUS-5/6), and says which ones. The observation proves nothing
+    // about the agent.
+    async function observeStream(state: "eof" | "inactive" | "disconnected" | "closed") {
+      try {
+        const watched = (await unsettledExecutions()).filter(d => d.mine)
+        for (const d of watched) observe("stream_liveness", "takt.platform", d.agent, d.root, { stream: HOST_EVENT_STREAM, state }, d.unit, d.attempt)
+        return watched
+      } catch (error) { console.error("Takt stream state unreported", error); return [] }
+    }
+    // streamLost reports the loss of the host event stream: each execution this
+    // instance watches and each open direct activity it started is marked
+    // unmonitored, neither completed nor failed. Telemetry loss proves nothing
+    // about the agent.
+    async function streamLost(state: "eof" | "disconnected" | "closed") {
+      await Promise.all((await observeStream(state)).map(d =>
+        dispatchAction({ action: "unmonitored", session: d.root, event: d.unit, dispatch: d.dispatch })
+          .catch(error => console.error("Takt unmonitored execution unrecorded", d.dispatch, error))))
+      await Promise.all([...openActivities].map(([activity, root]) =>
+        dispatchAction({ action: "activity_unmonitored", session: root, activity_id: activity, node_kind: "orchestrator" })
+          .then(() => openActivities.delete(activity))
+          .catch(error => console.error("Takt unmonitored activity unrecorded", activity, error))))
     }
     startEvents()
 
@@ -1425,8 +1474,8 @@ export default Plugin.define({
             ...toolInput(schema.properties),
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
               description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
-            seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),
-            seat_substitute: { type: "boolean", description: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity" },
+              seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),
+              seat_substitute: { type: "boolean", description: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity" },
           } }
         })
       }
@@ -1474,7 +1523,8 @@ export default Plugin.define({
       // dispatch tools below: each is the orchestrator's own declaration, never
       // a specialist's, so every one requires the calling session to be the
       // root interlocutor.
-      const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>) =>
+      // after runs once the history accepted the request, with the root session it named.
+      const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>, after?: (args: Args, session: string) => void) =>
         editor.add({
           name, description, input,
           async execute(value: unknown, c) {
@@ -1482,6 +1532,7 @@ export default Plugin.define({
             const session = await rootSession(c.sessionID)
             if (c.sessionID !== session) throw new Error(`${name} belongs to the root orchestrator`)
             const result = await governed(c, { action, session, ...fields(args) })
+            after?.(args, session)
             return { content: JSON.stringify(result) }
           },
         })
@@ -1557,8 +1608,10 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
-      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
+      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args,
+        (args, session) => openActivities.set(args.activity_id, session))
+      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args,
+        (args) => openActivities.delete(args.activity_id))
 
       dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored.",
         "recovery",
@@ -2037,6 +2090,6 @@ export default Plugin.define({
     // The renewal never keeps the host process alive on its own.
     leaseTimer.unref?.()
     void renewLease().catch(error => console.error("Takt lease renewal", error))
-    return () => { clearInterval(leaseTimer); disposed = true; endApprovals("VFS plugin stopped"); abort.abort() }
+    return () => { clearInterval(leaseTimer); stopInactivity(); disposed = true; endApprovals("VFS plugin stopped"); abort.abort() }
   },
 })

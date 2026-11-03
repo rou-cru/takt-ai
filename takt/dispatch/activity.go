@@ -71,6 +71,27 @@ func FinishActivity(h *history.History, session, activityID string, nodeKind his
 	})
 }
 
+// MarkActivityUnmonitored records that capture of an in-flight orchestrator
+// activity was lost. The activity stays in flight: it is neither finished nor
+// failed, and no agent is blamed (PR-OBS-BUS-5). A repeat, or a loss reported
+// after the activity settled, changes nothing.
+func MarkActivityUnmonitored(h *history.History, session, activityID string) error {
+	if session == "" || activityID == "" {
+		return errors.New("dispatch: activity unmonitored requires session and activity_id")
+	}
+	prior, exists := h.Project().Activities[activityID]
+	if !exists || prior.SessionID != session || prior.NodeKind != history.NodeKindOrchestrator {
+		return fmt.Errorf("dispatch: orchestrator activity %q is not active for this session", activityID)
+	}
+	if prior.State == history.StateSettled || prior.Flight == history.FlightUnmonitored {
+		return nil
+	}
+	return h.Append(history.Entry{
+		Author: history.AuthorOf(history.KindUnmonitored), Kind: history.KindUnmonitored, SessionID: session,
+		ActivityID: activityID, NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone,
+	})
+}
+
 func activityRecordKind(nodeKind history.NodeKind, start bool) (history.Kind, error) {
 	switch {
 	case nodeKind == history.NodeKindOrchestrator && start:

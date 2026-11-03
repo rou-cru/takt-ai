@@ -15,6 +15,7 @@ Package obs keeps one local event stream and control record so sessions stay obs
 - [func PublishCollisionEvent\(bus \*Bus, clock \*Clock, attemptingAgent, owningAgent, path, workUnitID string\) error](<#PublishCollisionEvent>)
 - [func PublishControlEffectEvent\(bus \*Bus, clock \*Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string\) error](<#PublishControlEffectEvent>)
 - [func PublishCycleReeditEvent\(bus \*Bus, clock \*Clock, agent, cycleID, mandateClass, pathHash, workUnitID string\) error](<#PublishCycleReeditEvent>)
+- [func PublishProblemRateEvent\(bus \*Bus, clock \*Clock, agent, signal string, count, denominator int64, rate float64, workUnitID string\) error](<#PublishProblemRateEvent>)
 - [func PublishVFSEvent\(bus \*Bus, clock \*Clock, agent, journalRef, workUnitID string, attributes map\[string\]any\) error](<#PublishVFSEvent>)
 - [func StorePath\(workspace string\) \(string, error\)](<#StorePath>)
 - [type ActionClass](<#ActionClass>)
@@ -41,7 +42,6 @@ Package obs keeps one local event stream and control record so sessions stay obs
   - [func \(s \*Store\) AppendAction\(r ControlRecord\) \(int64, error\)](<#Store.AppendAction>)
   - [func \(s \*Store\) AppendEvent\(e Envelope\) \(int64, error\)](<#Store.AppendEvent>)
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
-  - [func \(s \*Store\) CountEvents\(sessionID string, class EventClass, afterID, beforeID int64\) \(int64, error\)](<#Store.CountEvents>)
   - [func \(s \*Store\) Events\(sessionID string, class EventClass, afterID, beforeID int64, limit int\) \(out \[\]StoredEvent, err error\)](<#Store.Events>)
 - [type StoreHealth](<#StoreHealth>)
   - [func InspectStore\(workspace string\) \(health StoreHealth, err error\)](<#InspectStore>)
@@ -50,6 +50,21 @@ Package obs keeps one local event stream and control record so sessions stay obs
 
 
 ## Constants
+
+<a name="StreamEOF"></a>Stream liveness states are the closed set a capture stream can report, so a loss is named, never inferred.
+
+```go
+const (
+    // StreamEOF marks a stream that ended on its own.
+    StreamEOF = "eof"
+    // StreamInactive marks a stream that stopped producing while still connected.
+    StreamInactive = "inactive"
+    // StreamDisconnected marks a stream whose connection dropped.
+    StreamDisconnected = "disconnected"
+    // StreamClosed marks a stream closed on purpose.
+    StreamClosed = "closed"
+)
+```
 
 <a name="PrivateTelemetryDirectoryMode"></a>Telemetry modes keep the event database owner\-only.
 
@@ -101,7 +116,7 @@ var ErrUnsafeStore = errors.New("telemetry store is not a private regular file")
 ```
 
 <a name="PublishCollisionEvent"></a>
-## func PublishCollisionEvent
+## func [PublishCollisionEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L418>)
 
 ```go
 func PublishCollisionEvent(bus *Bus, clock *Clock, attemptingAgent, owningAgent, path, workUnitID string) error
@@ -110,7 +125,7 @@ func PublishCollisionEvent(bus *Bus, clock *Clock, attemptingAgent, owningAgent,
 PublishCollisionEvent publishes a cross\-agent write collision intercepted by the VFS.
 
 <a name="PublishControlEffectEvent"></a>
-## func PublishControlEffectEvent
+## func [PublishControlEffectEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L473>)
 
 ```go
 func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string) error
@@ -119,7 +134,7 @@ func PublishControlEffectEvent(bus *Bus, clock *Clock, action ActionClass, agent
 PublishControlEffectEvent publishes the PR\-OBS\-CTL\-5 event for every control action beyond OBSERVE \(THROTTLE, CONTAIN, ROLLBACK, GATE, ESCALATE\). Deciding when to act belongs to takt/gc; this only makes the chosen action observable on the bus.
 
 <a name="PublishCycleReeditEvent"></a>
-## func PublishCycleReeditEvent
+## func [PublishCycleReeditEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L435>)
 
 ```go
 func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClass, pathHash, workUnitID string) error
@@ -127,8 +142,17 @@ func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClas
 
 PublishCycleReeditEvent publishes the PR\-MNT\-31 event for a path a maintenance cycle already consolidated that is edited again, attributing the reversion to that cycle and its mandate class instead of leaving it unattributed.
 
+<a name="PublishProblemRateEvent"></a>
+## func [PublishProblemRateEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L453>)
+
+```go
+func PublishProblemRateEvent(bus *Bus, clock *Clock, agent, signal string, count, denominator int64, rate float64, workUnitID string) error
+```
+
+PublishProblemRateEvent publishes the PR\-MNT\-9 derivation: the raw signal count and the recorded\-work denominator it was divided by travel with the rate, so a level change can be checked against both \(PR\-MNT\-11\) and a replay of the same interval reproduces them.
+
 <a name="PublishVFSEvent"></a>
-## func PublishVFSEvent
+## func [PublishVFSEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L404>)
 
 ```go
 func PublishVFSEvent(bus *Bus, clock *Clock, agent, journalRef, workUnitID string, attributes map[string]any) error
@@ -137,7 +161,7 @@ func PublishVFSEvent(bus *Bus, clock *Clock, agent, journalRef, workUnitID strin
 PublishVFSEvent constructs and publishes an envelope referencing a VFS journal entry by ref, describing it through attributes without content.
 
 <a name="StorePath"></a>
-## func StorePath
+## func [StorePath](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L100>)
 
 ```go
 func StorePath(workspace string) (string, error)
@@ -146,7 +170,7 @@ func StorePath(workspace string) (string, error)
 StorePath returns where a workspace keeps its event database, the only location the store ever uses.
 
 <a name="ActionClass"></a>
-## type ActionClass
+## type [ActionClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L251>)
 
 ActionClass names one control response ordered by intrusiveness so escalation stays predictable.
 
@@ -174,7 +198,7 @@ const (
 ```
 
 <a name="Bus"></a>
-## type Bus
+## type [Bus](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L319-L337>)
 
 Bus keeps one ordered stream plus decisions so control stays deterministic and local.
 
@@ -185,7 +209,7 @@ type Bus struct {
 ```
 
 <a name="NewBus"></a>
-### func NewBus
+### func [NewBus](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L340>)
 
 ```go
 func NewBus(sessionID string, clock *Clock) *Bus
@@ -194,7 +218,7 @@ func NewBus(sessionID string, clock *Clock) *Bus
 NewBus creates one bus per session so events never leak across runs.
 
 <a name="Bus.AttachStore"></a>
-### func \(\*Bus\) AttachStore
+### func \(\*Bus\) [AttachStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L348>)
 
 ```go
 func (b *Bus) AttachStore(s *Store)
@@ -203,7 +227,7 @@ func (b *Bus) AttachStore(s *Store)
 AttachStore persists everything published from now on, so a bus outlives its process.
 
 <a name="Bus.Degrade"></a>
-### func \(\*Bus\) Degrade
+### func \(\*Bus\) [Degrade](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L390>)
 
 ```go
 func (b *Bus) Degrade(reason string)
@@ -212,7 +236,7 @@ func (b *Bus) Degrade(reason string)
 Degrade marks the control plane as unavailable. The fallback posture is the static deterministic budgets defined elsewhere.
 
 <a name="Bus.Publish"></a>
-### func \(\*Bus\) Publish
+### func \(\*Bus\) [Publish](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L355>)
 
 ```go
 func (b *Bus) Publish(e Envelope) error
@@ -221,7 +245,7 @@ func (b *Bus) Publish(e Envelope) error
 Publish appends one validated event plus its watch record so nothing enters silently.
 
 <a name="Bus.SessionID"></a>
-### func \(\*Bus\) SessionID
+### func \(\*Bus\) [SessionID](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L398>)
 
 ```go
 func (b *Bus) SessionID() string
@@ -230,7 +254,7 @@ func (b *Bus) SessionID() string
 SessionID returns the session identifier for this bus instance.
 
 <a name="Clock"></a>
-## type Clock
+## type [Clock](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L233-L236>)
 
 Clock owns monotonic session time for duration measurements.
 
@@ -241,7 +265,7 @@ type Clock struct {
 ```
 
 <a name="NewClock"></a>
-### func NewClock
+### func [NewClock](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L239>)
 
 ```go
 func NewClock() *Clock
@@ -250,7 +274,7 @@ func NewClock() *Clock
 NewClock starts a session clock so all later budgets share one origin.
 
 <a name="Clock.Now"></a>
-### func \(\*Clock\) Now
+### func \(\*Clock\) [Now](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L244>)
 
 ```go
 func (c *Clock) Now() SessionTime
@@ -259,7 +283,7 @@ func (c *Clock) Now() SessionTime
 Now reads elapsed session time so callers share one consistent clock.
 
 <a name="ControlRecord"></a>
-## type ControlRecord
+## type [ControlRecord](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L288-L301>)
 
 ControlRecord keeps one decision with its reason so later review can audit what happened.
 
@@ -281,7 +305,7 @@ type ControlRecord struct {
 ```
 
 <a name="ControlRecord.Validate"></a>
-### func \(\*ControlRecord\) Validate
+### func \(\*ControlRecord\) [Validate](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L304>)
 
 ```go
 func (r *ControlRecord) Validate() error
@@ -290,7 +314,7 @@ func (r *ControlRecord) Validate() error
 Validate rejects incomplete decisions so every recorded action stays auditable.
 
 <a name="CorrelationIDs"></a>
-## type CorrelationIDs
+## type [CorrelationIDs](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L125-L134>)
 
 CorrelationIDs links one event to its session and work so scattered signals stay joinable.
 
@@ -308,7 +332,7 @@ type CorrelationIDs struct {
 ```
 
 <a name="Envelope"></a>
-## type Envelope
+## type [Envelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L137-L154>)
 
 Envelope carries one normalized event without content so telemetry stays safe to keep and share.
 
@@ -334,7 +358,7 @@ type Envelope struct {
 ```
 
 <a name="NewEnvelope"></a>
-### func NewEnvelope
+### func [NewEnvelope](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L217>)
 
 ```go
 func NewEnvelope(clock *Clock, source SourcePlane, agent string) Envelope
@@ -343,7 +367,7 @@ func NewEnvelope(clock *Clock, source SourcePlane, agent string) Envelope
 NewEnvelope builds a pre\-stamped envelope so callers cannot forget versions or timestamps.
 
 <a name="Envelope.Validate"></a>
-### func \(\*Envelope\) Validate
+### func \(\*Envelope\) [Validate](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L173>)
 
 ```go
 func (e *Envelope) Validate() error
@@ -352,7 +376,7 @@ func (e *Envelope) Validate() error
 Validate rejects content leaks and missing owners so bad events fail before reaching the stream.
 
 <a name="EventClass"></a>
-## type EventClass
+## type [EventClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L52>)
 
 EventClass names what an event means so consumers can filter without parsing payloads.
 
@@ -374,6 +398,8 @@ const (
     EventUnitLifecycle EventClass = "unit_lifecycle"
     // EventToolActivity marks platform tool use, so liveness is observable without tool arguments.
     EventToolActivity EventClass = "tool_activity"
+    // EventStreamLiveness marks the state of a capture stream, so a lost stream is never read as an empty or completed session.
+    EventStreamLiveness EventClass = "stream_liveness"
     // EventModelUsage records provider-reported token and cost usage without model content.
     EventModelUsage EventClass = "model_usage"
     // EventGCFindingUnapplied marks a finding left unapplied, so lingering artifacts stay visible.
@@ -396,7 +422,7 @@ const (
 ```
 
 <a name="SessionTime"></a>
-## type SessionTime
+## type [SessionTime](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L230>)
 
 SessionTime counts elapsed time for analysis, not action\-denominated budgets.
 
@@ -405,7 +431,7 @@ type SessionTime = time.Duration
 ```
 
 <a name="SourcePlane"></a>
-## type SourcePlane
+## type [SourcePlane](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/obs.go#L33>)
 
 SourcePlane names where an event came from so mixed signals stay separable.
 
@@ -433,7 +459,7 @@ const (
 ```
 
 <a name="Store"></a>
-## type Store
+## type [Store](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L81-L83>)
 
 Store persists events and control actions in one workspace\-local SQLite file so separate process invocations share a single stream. Row id is the order.
 
@@ -444,7 +470,7 @@ type Store struct {
 ```
 
 <a name="OpenStore"></a>
-### func OpenStore
+### func [OpenStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L148>)
 
 ```go
 func OpenStore(workspace string) (*Store, error)
@@ -453,7 +479,7 @@ func OpenStore(workspace string) (*Store, error)
 OpenStore opens \(creating if absent\) the workspace event database in WAL mode with a busy timeout, so concurrent invocations wait for each other instead of failing.
 
 <a name="Store.AppendAction"></a>
-### func \(\*Store\) AppendAction
+### func \(\*Store\) [AppendAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L269>)
 
 ```go
 func (s *Store) AppendAction(r ControlRecord) (int64, error)
@@ -462,7 +488,7 @@ func (s *Store) AppendAction(r ControlRecord) (int64, error)
 AppendAction validates then writes one control action and returns its id.
 
 <a name="Store.AppendEvent"></a>
-### func \(\*Store\) AppendEvent
+### func \(\*Store\) [AppendEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L173>)
 
 ```go
 func (s *Store) AppendEvent(e Envelope) (int64, error)
@@ -471,7 +497,7 @@ func (s *Store) AppendEvent(e Envelope) (int64, error)
 AppendEvent validates then writes one event under its own session and returns its id. The session clock is not stored: it restarts each process, so row id is the order.
 
 <a name="Store.Close"></a>
-### func \(\*Store\) Close
+### func \(\*Store\) [Close](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L169>)
 
 ```go
 func (s *Store) Close() error
@@ -479,17 +505,8 @@ func (s *Store) Close() error
 
 Close releases the database handle.
 
-<a name="Store.CountEvents"></a>
-### func \(\*Store\) CountEvents
-
-```go
-func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error)
-```
-
-CountEvents reports how many events Events would return for the same filters without loading them, so a consumer can cheaply derive a rate's numerator or denominator \(a count of registered work, PR\-MNT\-9/PR\-MNT\-11\).
-
 <a name="Store.Events"></a>
-### func \(\*Store\) Events
+### func \(\*Store\) [Events](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L211>)
 
 ```go
 func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int64, limit int) (out []StoredEvent, err error)
@@ -498,7 +515,7 @@ func (s *Store) Events(sessionID string, class EventClass, afterID, beforeID int
 Events returns up to limit persisted events for sessionID with id in \(afterID, beforeID\], in AppendEvent's id order — registration order, never wall\-clock time \(PR\-MNT\-9/PR\-MNT\-11\). class filters to one EventClass, the zero value matching all; beforeID or limit of 0 means unbounded.
 
 <a name="StoreHealth"></a>
-## type StoreHealth
+## type [StoreHealth](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L34-L43>)
 
 StoreHealth is what a read\-only look at a workspace's event store found.
 
@@ -516,7 +533,7 @@ type StoreHealth struct {
 ```
 
 <a name="InspectStore"></a>
-### func InspectStore
+### func [InspectStore](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/inspect.go#L49>)
 
 ```go
 func InspectStore(workspace string) (health StoreHealth, err error)
@@ -525,7 +542,7 @@ func InspectStore(workspace string) (health StoreHealth, err error)
 InspectStore checks the workspace event store without changing anything, so a health check never creates the store or its directory. It fails when the file is not readable as a database, is missing a table, or fails SQLite's integrity check: such a store cannot be relied on.
 
 <a name="StoredAction"></a>
-## type StoredAction
+## type [StoredAction](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L93-L97>)
 
 StoredAction is one persisted control action with its row id and write time.
 
@@ -538,7 +555,7 @@ type StoredAction struct {
 ```
 
 <a name="StoredEvent"></a>
-## type StoredEvent
+## type [StoredEvent](<https://github.com/rou-cru/takt-ai/blob/main/takt/obs/store.go#L86-L90>)
 
 StoredEvent is one persisted event with its row id and write time, so readers can resume by id.
 

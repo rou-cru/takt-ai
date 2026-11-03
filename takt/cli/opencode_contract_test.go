@@ -62,6 +62,23 @@ func TestOpenCodeContracts(t *testing.T) {
 		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
 		{Seq: 2, Author: history.AuthorOrchestrator, Kind: history.KindActivityStarted, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
 	}))
+	// An unmonitored execution and a settled unit whose delivery has a result: the
+	// flight and assurance names the TS decoder reads.
+	revision := uint64(2)
+	check("dag_assurance", history.BuildSnapshot([]history.Entry{
+		{Seq: 0, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
+		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindLaunched, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", Cause: history.CauseNone},
+		{Seq: 2, Author: history.AuthorHarness, Kind: history.KindUnmonitored, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", Cause: history.CauseNone},
+		{Seq: 3, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
+		{Seq: 4, Author: history.AuthorHarness, Kind: history.KindTerminated, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", Cause: history.CauseNone, Outcome: history.OutcomeCompleted},
+		{Seq: 5, Author: history.AuthorVerification, Kind: history.KindResult, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", Cause: history.CauseNone, Status: history.ResultFailed, Revision: &revision, Evidence: "journal/7"},
+	}))
+	// An orchestrator activity whose capture was lost: still in flight, never
+	// settled, with the unmonitored flight the TS decoder reads.
+	check("dag_activity_unmonitored", history.BuildSnapshot([]history.Entry{
+		{Seq: 0, Author: history.AuthorOrchestrator, Kind: history.KindActivityStarted, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
+		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindUnmonitored, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
+	}))
 	check("dag_unavailable", struct {
 		Capture string `json:"capture"`
 	}{history.CaptureUnavailable})

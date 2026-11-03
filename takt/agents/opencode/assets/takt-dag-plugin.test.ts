@@ -39,7 +39,7 @@ afterAll(() => {
 })
 const snapshot = (extra: Record<string, unknown> = {}) => ({
   schema_version: 1, projection_revision: 4, history_position: 4, session_id: "root", capture: "current", plan_version: "plan-7",
-  nodes: [{ id: "unit-a", node_kind: "delegated", state: "settled", outcome: "completed", launched: true }], edges: [], activities: [], ...extra,
+  nodes: [{ id: "unit-a", node_kind: "delegated", state: "settled", outcome: "completed", assurance: { status: "verified", revision: 1, author: "verification" }, launched: true }], edges: [], activities: [], ...extra,
 })
 const reply = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 
@@ -122,7 +122,7 @@ async function visit(respond: () => Reply, view: (dag: ReturnType<typeof startDa
 describe("DAG route view", () => {
   test("polls the session's snapshot and shows its header, graph and legend", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.route("root"))
-    expect(frame).toContain("Takt DAG · 1/1 done")
+    expect(frame).toContain("Takt DAG · 1/1 accepted")
     expect(frame).toContain("unit-a")
     expect(frame).not.toContain("projection")
     expect(spawned[0]).toEqual([

@@ -12,6 +12,7 @@ import {
   glyphFor,
   hasContent,
   headerLine,
+  progressLine,
   nodeText,
   ordinal,
   packActivities,
@@ -22,8 +23,9 @@ import {
   topologyKey,
 } from "./takt-dag"
 
-const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string }> = {}) =>
-  ({ id: "unit-1", node_kind: "delegated", state: "planned", launched: false, ...overrides }) as never
+const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string; assurance: object }> = {}) =>
+  ({ id: "unit-1", node_kind: "delegated", state: "planned", launched: false, ...overrides,
+    ...(overrides.assurance ? { assurance: { author: "verification", ...overrides.assurance } } : {}) }) as never
 
 describe("ordinal", () => {
   test("orders strings lexicographically", () => {
@@ -252,7 +254,14 @@ describe("node presentation", () => {
     expect(glyphFor(node({ state: "settled", outcome: "failed" }))).toBe("✗")
     expect(glyphFor(node({ state: "settled", outcome: "backtracked" }))).toBe("↩")
     expect(glyphFor(node({ state: "settled", outcome: "interrupted" }))).toBe("⊘")
-    expect(glyphFor(node({ state: "settled" }))).toBe("✓")
+    expect(glyphFor(node({ state: "settled" }))).toBe("◔")
+    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "verified" } }))).toBe("✓")
+    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "unverified" } }))).toBe("◔")
+    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "failed" } }))).toBe("✗")
+    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "blocked" } }))).toBe("◔")
+    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "impossible" } }))).toBe("◔")
+    expect(glyphFor(node({ state: "settled", outcome: "failed", assurance: { status: "verified" } }))).toBe("✗")
+    expect(glyphFor(node({ state: "in_flight", flight: "unmonitored" }))).toBe("◐")
     expect(glyphFor(node({ state: "in_flight", flight: "pending_launch" }))).toBe("○")
     expect(glyphFor(node({ state: "in_flight", flight: "uncertain" }))).toBe("!")
     expect(glyphFor(node({ state: "in_flight", flight: "suspended" }))).toBe("⏸")
@@ -261,12 +270,13 @@ describe("node presentation", () => {
   })
 
   test("nodeText composes the kind glyph, state glyph, kind label and id", () => {
-    expect(nodeText(node({ id: "unit-7", state: "settled" }))).toBe("✓ unit-7")
+    expect(nodeText(node({ id: "unit-7", state: "settled", assurance: { status: "verified" } }))).toBe("✓ unit-7")
   })
 
   test("nodeText cuts the id to the layout's label cap with an ellipsis", () => {
-    expect(nodeText(node({ id: "overhaul-defect-evidence", state: "settled" }), 8)).toBe("✓ overhau…")
-    expect(nodeText(node({ id: "unit-7", state: "settled" }), 8)).toBe("✓ unit-7")
+    const accepted = { state: "settled", assurance: { status: "verified" } }
+    expect(nodeText(node({ id: "overhaul-defect-evidence", ...accepted }), 8)).toBe("✓ overhau…")
+    expect(nodeText(node({ id: "unit-7", ...accepted }), 8)).toBe("✓ unit-7")
   })
 
   test("renders activity-only and layered graph views in both layouts", async () => {
@@ -297,6 +307,11 @@ describe("activity presentation", () => {
     expect(activityText({ activity_id: "a1", node_kind: "orchestrator", state: "in_flight" } as never)).toBe("◆ direct activity a1 · running")
     expect(activityText({ activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" } as never)).toBe("◇ GC activity a2 · completed")
     expect(activityText({ activity_id: "a3", node_kind: "maintenance", state: "settled" } as never)).toBe("◇ GC activity a3 · settled")
+  })
+  test("activityText shows lost capture as the unmonitored glyph, in flight and not failed", () => {
+    const lost = { activity_id: "a4", node_kind: "orchestrator", state: "in_flight", flight: "unmonitored" } as never
+    expect(activityText(lost)).toBe("◐ direct activity a4 · unmonitored")
+    expect(glyphFor({ id: "u", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true } as never)).toBe(activityText(lost).charAt(0))
   })
   test("packActivities wraps the lane into rows within the width and cuts a box wider than it", () => {
     const lane = ["a1", "a2", "a3"].map((id) => ({ activity_id: id, node_kind: "orchestrator", state: "in_flight" })) as never[]
@@ -334,8 +349,8 @@ describe("sidebar rows", () => {
 
   test("keeps completed units in the graph, muted; only the glyph tells the state", () => {
     const snapshot = { ...base, edges: diamond, nodes: [
-      node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm" }),
-      node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design" }),
+      node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm", assurance: { status: "verified" } }),
+      node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design", assurance: { status: "verified" } }),
       node({ id: "structure-arch", state: "in_flight", flight: "observed_running", agent: "arch" }),
       node({ id: "behavior-spec" }),
     ] } as never
@@ -347,6 +362,11 @@ describe("sidebar rows", () => {
       { text: "├─┘" },
       { text: "◌ behavior-spec" },
     ])
+  })
+
+  test("shows an unmonitored unit with its own glyph and no error tone", () => {
+    const snapshot = { ...base, edges: [], nodes: [node({ id: "u", state: "in_flight", flight: "unmonitored" })] } as never
+    expect(sidebarRows(snapshot)).toEqual([{ text: "◐ u" }])
   })
 
   test("folds the oldest rows into a leading count when the graph exceeds the row budget", () => {
@@ -367,7 +387,7 @@ describe("sidebar rows", () => {
 
   test("mutes a group only once every unit in it is completed", () => {
     const wide = ["b", "c", "d", "e"]
-    const done = { state: "settled", outcome: "completed", agent: "x" }
+    const done = { state: "settled", outcome: "completed", agent: "x", assurance: { status: "verified" } }
     const group = (nodes: object[]) => sidebarRows({ ...base, nodes: [node({ id: "a", ...done }), ...nodes],
       edges: wide.map((id) => ({ from: "a", to: id })) } as never)[1]
     expect(group(wide.map((id) => node({ id, ...done })))).toEqual({ text: "└─≡ ✓✓✓✓ 4 parallel", tone: "muted" })
@@ -433,6 +453,13 @@ describe("sidebar rows", () => {
       { text: "◆ direct activity" },
     ])
   })
+
+  test("an unmonitored activity keeps its row with the unmonitored glyph and no failure tone", () => {
+    const snapshot = { ...base, nodes: [], edges: [], activities: [
+      { activity_id: "a1", node_kind: "orchestrator", state: "in_flight", flight: "unmonitored" },
+    ] } as never
+    expect(sidebarRows(snapshot)).toEqual([{ text: "◐ direct activity" }])
+  })
 })
 
 describe("hasContent / headerLine / sidebarDetail", () => {
@@ -449,8 +476,8 @@ describe("hasContent / headerLine / sidebarDetail", () => {
   })
   test("headerLine shows progress, not internal revisions, for a current capture", () => {
     expect(headerLine({ ...base, nodes: [], plan_version: "plan-9" } as never, "confirmed")).toBe("Takt DAG")
-    const nodes = [node({ id: "a", state: "settled" }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "planned" })]
-    expect(headerLine({ ...base, nodes } as never, "confirmed")).toBe("Takt DAG · 1/3 done · 1 running")
+    const nodes = [node({ id: "a", state: "settled", assurance: { status: "verified" } }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "planned" })]
+    expect(headerLine({ ...base, nodes } as never, "confirmed")).toBe("Takt DAG · 1/3 accepted · 1 running")
   })
   test("headerLine reports the view's health over the snapshot's capture when stale", () => {
     const snapshot = { ...base, nodes: [] } as never
@@ -461,8 +488,25 @@ describe("hasContent / headerLine / sidebarDetail", () => {
     expect(sidebarDetail(undefined, "waiting")).toBe("waiting")
     expect(sidebarDetail({ ...base, nodes: [] } as never, "confirmed")).toBe("")
     expect(sidebarDetail({ ...base, nodes: [] } as never, "invalid")).toBe("invalid")
-    const nodes = [node({ id: "a", state: "settled" }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "withdrawn" })]
+    const nodes = [node({ id: "a", state: "settled", assurance: { status: "verified" } }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "withdrawn" })]
     expect(sidebarDetail({ ...base, nodes } as never, "confirmed")).toBe("1/2")
+  })
+  test("sidebarDetail does not count a delivery without verified assurance as accepted", () => {
+    const nodes = [node({ id: "a", state: "settled", outcome: "completed" }), node({ id: "b", state: "settled", outcome: "completed", assurance: { status: "failed" } })]
+    expect(sidebarDetail({ ...base, nodes } as never, "confirmed")).toBe("0/2")
+  })
+
+  test("progressLine counts only verified deliveries as accepted, and never calls unmonitored running", () => {
+    const settled = { state: "settled", outcome: "completed" }
+    const nodes = [
+      node({ id: "a", ...settled, assurance: { status: "verified", revision: 1 } }),
+      node({ id: "b", ...settled }),
+      node({ id: "c", ...settled, assurance: { status: "unverified" } }),
+      node({ id: "d", ...settled, assurance: { status: "failed", revision: 2 } }),
+      node({ id: "e", state: "in_flight", flight: "unmonitored" }),
+      node({ id: "f", state: "in_flight", flight: "observed_running" }),
+    ]
+    expect(progressLine({ ...base, nodes } as never)).toBe("1/6 accepted · 1 running")
   })
 })
 

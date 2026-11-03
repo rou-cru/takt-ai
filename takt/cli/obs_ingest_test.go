@@ -126,3 +126,19 @@ func TestObsIngestRejectsInvalidWithoutWriting(t *testing.T) {
 		}
 	}
 }
+
+func TestObsIngestAcceptsStreamLivenessOnlyWithAKnownState(t *testing.T) {
+	ws, bin := t.TempDir(), buildTaktAI(t)
+	payload := func(state string) string {
+		return `{"ipc_version":1,"session_id":"s-liveness","agent":"harness","source":"takt.platform","event_class":"stream_liveness","attributes":{"stream":"child-1","state":"` + state + `"}}`
+	}
+	if _, err := obsIngest(t, bin, ws, payload("disconnected")); err != nil {
+		t.Fatalf("known state rejected: %v", err)
+	}
+	if _, err := obsIngest(t, bin, ws, payload("hung")); err == nil {
+		t.Fatal("unknown state accepted")
+	}
+	if n := len(obsEvents(t, ws, "s-liveness")); n != 1 {
+		t.Fatalf("%d events stored, want only the valid one", n)
+	}
+}

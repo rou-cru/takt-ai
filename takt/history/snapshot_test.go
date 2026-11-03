@@ -323,6 +323,44 @@ func TestWorkUnitEntriesRejectActivityNodeKinds(t *testing.T) {
 	}
 }
 
+func TestUnmonitoredActivityStaysInFlightAndSerializes(t *testing.T) {
+	h := open(t, filepath.Join(t.TempDir(), "state"))
+	const id = "orchestrator-activity-3b1d"
+	lost := activityRecord("root", id, history.NodeKindOrchestrator, true, "")
+	lost.Kind, lost.Author = history.KindUnmonitored, history.AuthorOf(history.KindUnmonitored)
+	for _, e := range []history.Entry{activityRecord("root", id, history.NodeKindOrchestrator, true, ""), lost} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := h.Project().Activities[id]
+	if a.State != history.StateInFlight || a.Flight != history.FlightUnmonitored || a.Outcome != "" || len(h.Project().Units) != 0 {
+		t.Fatalf("activity = %+v; want in flight, unmonitored, unsettled, and no unit", a)
+	}
+	snapshot := history.BuildSnapshot(h.Entries())
+	if len(snapshot.Nodes) != 0 || len(snapshot.Activities) != 1 || snapshot.Activities[0].Flight != history.FlightUnmonitored || snapshot.Activities[0].State != history.StateInFlight {
+		t.Fatalf("snapshot = %+v; want one unmonitored activity and no node", snapshot)
+	}
+	raw, err := json.Marshal(snapshot.Activities[0])
+	if err != nil || string(raw) != `{"activity_id":"`+id+`","node_kind":"orchestrator","state":"in_flight","flight":"unmonitored"}` {
+		t.Fatalf("activity wire = %s, %v", raw, err)
+	}
+	// The activity still ends normally: losing capture settles nothing.
+	if err := h.Append(activityRecord("root", id, history.NodeKindOrchestrator, false, history.OutcomeCompleted)); err != nil {
+		t.Fatal(err)
+	}
+	if a = h.Project().Activities[id]; a.State != history.StateSettled || a.Flight != "" || a.Outcome != history.OutcomeCompleted {
+		t.Fatalf("settled activity = %+v", a)
+	}
+	// A loss recorded after the end changes nothing.
+	if err := h.Append(lost); err != nil {
+		t.Fatal(err)
+	}
+	if a = h.Project().Activities[id]; a.State != history.StateSettled || a.Flight != "" {
+		t.Fatalf("late loss reopened the activity: %+v", a)
+	}
+}
+
 func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
 	cycleID := "a13f86e2b7c94e6d"

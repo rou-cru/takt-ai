@@ -40,6 +40,8 @@ var obsIngestPlanes = map[obs.EventClass]obs.SourcePlane{
 	obs.EventUnitLifecycle: obs.PlaneOrchestration,
 	obs.EventToolActivity:  obs.PlanePlatform,
 	obs.EventModelUsage:    obs.PlanePlatform,
+	// A lost capture stream is reported by the platform adapter that held it.
+	obs.EventStreamLiveness: obs.PlanePlatform,
 }
 
 // obsIngestRequest is the strict stdin contract of obs ingest: identity and class plus content-free attributes.
@@ -74,7 +76,7 @@ func runObs(args []string, stdin io.Reader, stdout, stderr io.Writer) (err error
 	class := obs.EventClass(req.EventClass)
 	plane, ok := obsIngestPlanes[class]
 	if !ok {
-		return fmt.Errorf("obs: event_class %q cannot be ingested (dispatch, unit_lifecycle, tool_activity, model_usage)", req.EventClass)
+		return fmt.Errorf("obs: event_class %q cannot be ingested (dispatch, unit_lifecycle, tool_activity, model_usage, stream_liveness)", req.EventClass)
 	}
 	if obs.SourcePlane(req.Source) != plane {
 		return fmt.Errorf("obs: source %q does not match class %q (want %q)", req.Source, req.EventClass, plane)

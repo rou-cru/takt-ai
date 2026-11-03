@@ -10,6 +10,20 @@ describe("shared Go/TypeScript wire contracts", () => {
     expect(decodeSnapshot(contracts.dag_normal)).toMatchObject({ capture: "current", nodes: [{ id: "unit-1" }] })
     expect(decodeSnapshot(contracts.dag_unavailable)).toEqual({ capture: "unavailable" })
   })
+  test("DAG assurance sample keeps unmonitored flight and the recorded assurance", () => {
+    expect(decodeSnapshot(contracts.dag_assurance)).toMatchObject({
+      nodes: [
+        { id: "unit-1", state: "in_flight", flight: "unmonitored" },
+        { id: "unit-2", state: "settled", outcome: "completed", assurance: { status: "failed", revision: 2, evidence: "journal/7" } },
+      ],
+    })
+  })
+  test("DAG activity sample keeps an unmonitored activity in flight", () => {
+    expect(decodeSnapshot(contracts.dag_activity_unmonitored)).toMatchObject({
+      nodes: [],
+      activities: [{ activity_id: "activity-1", node_kind: "orchestrator", state: "in_flight", flight: "unmonitored" }],
+    })
+  })
   test("non-DAG contract discriminants and required fields stay present", () => {
     expect(contracts.vfs_bind).toMatchObject({ ok: true, key: expect.any(String), attempt_id: expect.any(String), invariants_version: expect.any(String) })
     expect(contracts.memory_record).toMatchObject({ ok: true, result: { id: expect.any(Number), deduplicated: false } })

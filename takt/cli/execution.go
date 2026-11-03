@@ -54,9 +54,6 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
 		}
 	}
-	if err := refuseRecycledProductManager(r, consumed); err != nil {
-		return nil, err
-	}
 	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
 	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
@@ -200,11 +197,12 @@ func observeExecutionRunning(h *history.History, d history.Execution) error {
 	if u.AttemptID != d.Attempt || u.Dispatch != d.Dispatch || u.State != history.StateInFlight {
 		return errors.New("native execution no longer holds this dispatch; resume its current delegation")
 	}
-	if u.Flight == history.FlightUncertain {
+	if protocol.UncertainFlight(u.Flight) {
 		return protocol.Reconcile(h, "", d.Unit, d.Root, true)
 	}
 	return protocol.Launch(h, "", d.Unit, d.Root)
 }
+
 func resolveExecution(h *history.History, child, agent string) (any, error) {
 	if d, ok := h.Project().ExecutionForChild(child, agent); ok {
 		return d, nil

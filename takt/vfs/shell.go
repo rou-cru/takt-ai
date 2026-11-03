@@ -25,6 +25,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
 )
 
@@ -92,6 +93,9 @@ type ShellPlan struct {
 	Writable  []string `json:"writable,omitempty"`
 	Protected []string `json:"protected,omitempty"`
 	Private   []string `json:"private,omitempty"`
+	// AllowedDomains is the user's network allowlist for the sandbox; absent
+	// leaves the network unrestricted.
+	AllowedDomains []string `json:"allowedDomains,omitempty"`
 	// Capture reports that the command's result must be imported as a VFS
 	// transaction once it ends.
 	Capture bool `json:"capture"`
@@ -216,8 +220,9 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	plan := ShellPlan{
 		Decision: decision, Reason: reason,
 		Scratch: filepath.Join(root, "scratch"), Confirm: filepath.Join(root, "confirm"),
-		Private: append([]string{stateDir}, homeSensitivePaths(userHome())...),
-		Capture: decision != ShellDeny && key != "",
+		Private:        append([]string{stateDir}, homeSensitivePaths(userHome())...),
+		AllowedDomains: allowedDomains(),
+		Capture:        decision != ShellDeny && key != "",
 	}
 	if decision == ShellDeny {
 		return ShellPlan{Decision: decision, Reason: reason}, nil
@@ -252,6 +257,18 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 		plan.Writable = []string{everythingWritable}
 	}
 	return plan, nil
+}
+
+// allowedDomains is the network allowlist the user configured for sandboxes,
+// or nil when none is: the network is then unrestricted.
+func allowedDomains() []string {
+	var domains []string
+	for _, domain := range strings.Split(os.Getenv(model.EnvSandboxAllowedDomains), ",") {
+		if domain = strings.TrimSpace(domain); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+	return domains
 }
 
 // projectLocked materializes the binding's scope, as the merged view shows it,

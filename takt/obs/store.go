@@ -199,8 +199,8 @@ func (s *Store) AppendEvent(e Envelope) (int64, error) {
 	return res.LastInsertId()
 }
 
-// eventRowColumns lists the columns Events/CountEvents scan, in the order
-// scanRow expects them, so the two queries below stay in lockstep.
+// eventRowColumns lists the columns Events scans, in the order scanEventRow
+// expects them.
 const eventRowColumns = `id, written_at, schema_version, wall_timestamp, source, acting_agent, event_class,
 	work_unit_id, attempt_id, journal_entry_ref, attributes`
 
@@ -263,25 +263,6 @@ func scanEventRow(rows *sql.Rows, sessionID string) (StoredEvent, error) {
 		}
 	}
 	return ev, nil
-}
-
-// CountEvents reports how many events Events would return for the same filters
-// without loading them, so a consumer can cheaply derive a rate's numerator or
-// denominator (a count of registered work, PR-MNT-9/PR-MNT-11).
-func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error) {
-	query := `SELECT COUNT(*) FROM events WHERE session_id=? AND id>?`
-	args := []any{sessionID, afterID}
-	if beforeID > 0 {
-		query += ` AND id<=?`
-		args = append(args, beforeID)
-	}
-	if class != "" {
-		query += ` AND event_class=?`
-		args = append(args, string(class))
-	}
-	var count int64
-	err := s.db.QueryRow(query, args...).Scan(&count)
-	return count, err
 }
 
 // AppendAction validates then writes one control action and returns its id.

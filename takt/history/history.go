@@ -96,6 +96,12 @@ const (
 	KindLaunched Kind = "launched"
 	// KindUncertain records launch or liveness that could not be established.
 	KindUncertain Kind = "launch_uncertain"
+	// KindUnmonitored records that capture of a running execution was lost. The
+	// execution stays in flight and keeps its reserved capacity: a missing
+	// stream is never an empty or completed session (PR-OBS-BUS-5, PR-OBS-BUS-7).
+	// Carrying an activity_id and an activity node kind, it marks that activity
+	// instead of a work unit.
+	KindUnmonitored Kind = "unmonitored"
 	// KindSuspended records execution held, typically on a VFS collision.
 	KindSuspended Kind = "suspended"
 	// KindCancelRequested records a cancellation that is not yet effective
@@ -162,6 +168,12 @@ const (
 	// such as a GC cycle, separate from delegated work units.
 	KindMaintenanceStarted  Kind = "maintenance_started"
 	KindMaintenanceFinished Kind = "maintenance_finished"
+	// KindResult records a typed result (PR-OBS-RES-1) for one evaluated
+	// revision of a work unit's attempt. It is assurance, never lifecycle: it
+	// changes no temporal state and rewrites no earlier fact (PR-DAG-TMP-9).
+	// A verifier authors gate verdicts and acceptance results; the harness
+	// authors the results of its own checks and a finish with no evaluation.
+	KindResult Kind = "result_recorded"
 )
 
 // Classification is a plan revision's derived tactical/strategic label
@@ -203,6 +215,8 @@ var authorOf = map[Kind]Author{
 	KindDenied:               AuthorHarness,
 	KindLaunched:             AuthorHarness,
 	KindUncertain:            AuthorHarness,
+	KindUnmonitored:          AuthorHarness,
+	KindResult:               AuthorVerification,
 	KindSuspended:            AuthorHarness,
 	KindTerminated:           AuthorHarness,
 	KindRecoveryClosed:       AuthorHarness,
@@ -302,6 +316,10 @@ type Entry struct {
 	// reference a restoration confirmation produced. It is never prose standing
 	// in for absent evidence.
 	Evidence string `json:"evidence,omitempty"`
+	// Status and Revision are a result's typed status and the staged revision it
+	// evaluated; Revision is absent when no revision was evaluated (PR-OBS-RES-1).
+	Status   ResultStatus `json:"status,omitempty"`
+	Revision *uint64      `json:"revision,omitempty"`
 	// PlanVersion, Contract and Prerequisites are the identified baseline
 	// version, the unit's contract, and its explicit prerequisite identities,
 	// recorded by a plan commitment (PR-DAG-MUT-1).
@@ -545,13 +563,15 @@ func (e Entry) validateIdentity() (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("history: unknown entry kind %q", e.Kind)
 	}
-	if e.Author != author {
+	// A result is authored by the verifier, or by the harness for its own checks
+	// (PR-DAG-REP-5).
+	if e.Author != author && (e.Kind != KindResult || e.Author != AuthorHarness) {
 		return false, fmt.Errorf("history: %q is authored by the %s, not by %q", e.Kind, author, e.Author)
 	}
 	if e.SessionID == "" {
 		return false, errors.New("history: session identity required")
 	}
-	activityKind, isActivity := activityKindOf(e.Kind)
+	activityKind, isActivity := activityKindOf(e)
 	if isActivity {
 		if e.ActivityID == "" || e.WorkUnitID != "" || e.AttemptID != "" {
 			return false, errors.New("history: activity records require activity_id and must not carry work_unit_id or attempt_id")
@@ -596,7 +616,18 @@ func (e Entry) validateKindFields() error {
 	if e.QARound != nil && e.Kind != KindQARound {
 		return errors.New("history: qa_round belongs only to a round declaration")
 	}
+	if (e.Status != "" || e.Revision != nil) && e.Kind != KindResult {
+		return errors.New("history: status and revision belong only to a result")
+	}
 	switch e.Kind {
+	case KindResult:
+		if !resultStatuses[e.Status] {
+			return errors.New("history: a result names a known status: verified, failed, blocked, impossible or unverified")
+		}
+		evaluated := e.Status == ResultVerified || e.Status == ResultFailed
+		if evaluated && (e.Revision == nil || strings.TrimSpace(e.Evidence) == "") {
+			return errors.New("history: an evaluated result names its revision and evidence reference")
+		}
 	case KindQARound:
 		if e.PlanVersion == "" || e.QARound == nil || strings.TrimSpace(e.QARound.Objective) == "" || len(e.QARound.Units) == 0 {
 			return errors.New("history: a QA round names its plan version, acceptance objective and authoring units")
@@ -638,12 +669,16 @@ func (e Entry) validateKindFields() error {
 }
 
 // activityKindOf names the source classification encoded by an activity event.
-func activityKindOf(k Kind) (NodeKind, bool) {
-	switch k {
+// A lost-capture record is an orchestrator activity's only when it names an
+// activity: the same kind marks a work unit otherwise.
+func activityKindOf(e Entry) (NodeKind, bool) {
+	switch e.Kind {
 	case KindActivityStarted, KindActivityFinished:
 		return NodeKindOrchestrator, true
 	case KindMaintenanceStarted, KindMaintenanceFinished:
 		return NodeKindMaintenance, true
+	case KindUnmonitored:
+		return NodeKindOrchestrator, e.ActivityID != "" && e.NodeKind == NodeKindOrchestrator
 	default:
 		return "", false
 	}

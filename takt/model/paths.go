@@ -50,6 +50,12 @@ const (
 	MCPServersKeyOpenCode = "servers"
 )
 
+// EnvSandboxAllowedDomains names the environment variable with which the user
+// opts shell sandboxes into a network allowlist: comma-separated domain
+// patterns such as "github.com,*.npmjs.org". Unset or empty leaves the network
+// unrestricted; Takt imposes no domain of its own.
+const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
+
 // Engram endpoint single source of truth: env override name and its default.
 const (
 	// EnvEngramURL names the environment variable overriding the default endpoint.

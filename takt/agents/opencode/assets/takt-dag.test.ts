@@ -43,6 +43,32 @@ describe("DAG snapshot wire contract", () => {
     })
   })
 
+  test("accepts an unmonitored activity and rejects a flight an activity cannot have", () => {
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current", nodes: [], edges: [] }
+    const activity = (flight: string) => ({ ...base, activities: [{ activity_id: "a", node_kind: "orchestrator", state: "in_flight", flight }] })
+    expect(decodeSnapshot(activity("unmonitored"))).toMatchObject({ activities: [{ activity_id: "a", state: "in_flight", flight: "unmonitored" }] })
+    expect(() => decodeSnapshot(activity("uncertain"))).toThrow("invalid DAG snapshot JSON")
+  })
+
+  test("keeps a valid assurance and the unmonitored flight, and adds none to a node without it", () => {
+    const decoded = decodeSnapshot({
+      schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current",
+      nodes: [
+        { id: "a", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true },
+        { id: "b", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "failed", revision: 0, evidence: "journal/7", author: "verification" } },
+        { id: "c", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "unverified", author: "harness" } },
+        { id: "d", node_kind: "delegated", state: "settled", outcome: "completed", launched: true },
+      ],
+      edges: [], activities: [],
+    })
+    expect(decoded).toHaveProperty("nodes", [
+      { id: "a", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true },
+      { id: "b", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "failed", revision: 0, evidence: "journal/7", author: "verification" } },
+      { id: "c", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "unverified", author: "harness" } },
+      { id: "d", node_kind: "delegated", state: "settled", outcome: "completed", launched: true },
+    ])
+  })
+
   test("rejects malformed snapshot, node, edge, and activity fields", () => {
     const base = { schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "current", nodes: [], edges: [] }
     const invalidNodes: unknown[] = [
@@ -56,6 +82,10 @@ describe("DAG snapshot wire contract", () => {
       { id: "unit", state: "planned", launched: "false" }, { id: "unit", state: "planned", launched: false, contract: 1 },
       { id: "unit", state: "planned", launched: false, prerequisites: ["valid", 3] },
       { id: "unit", state: "planned", launched: false, agent: 7 },
+      { id: "unit", state: "settled", launched: false, assurance: "verified" },
+      { id: "unit", state: "settled", launched: false, assurance: { status: "accepted" } },
+      { id: "unit", state: "settled", launched: false, assurance: { status: "verified", revision: -1 } },
+      { id: "unit", state: "settled", launched: false, assurance: { status: "verified", evidence: 3 } },
     ]
     for (const node of invalidNodes) {
       expect(() => decodeSnapshot({ ...base, nodes: [node] })).toThrow("invalid DAG snapshot JSON")

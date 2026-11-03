@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { dirname } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
 import { Schema } from "effect"
-import vfsPlugin, { withoutIdentity } from "./takt-vfs"
+import vfsPlugin, { withoutIdentity, STREAM_INACTIVITY_MS } from "./takt-vfs"
 import { historyFixture, type FixtureExecution } from "../testdata/history-fixture.mjs"
 
 const contracts = JSON.parse(readFileSync(new URL("../testdata/contracts.json", import.meta.url), "utf8"))
@@ -33,6 +33,8 @@ const SHELL_NOT_ADMITTED = 122
 const SETTLE_ATTEMPTS = 100
 const SETTLE_STEP_MS = 2
 const QUIET_MS = 25
+// DRAIN_MS lets work a disposal triggers finish before the scripted takt-ai goes.
+const DRAIN_MS = 10
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 type Reply = { out?: string; err?: string; code?: number }
@@ -137,13 +139,16 @@ async function startVfs(options: Options = {}) {
   const events: OpenCodeEvent[] = []
   let wake: (() => void) | undefined
   let closed = false
+      // ended is how the scripted host ends the event stream: cleanly, or failing.
+      let ended: { error?: Error } | undefined
   const register = (hooks: Hooks) => async (name: string, callback: unknown) => {
     hooks.set(name, [...(hooks.get(name) ?? []), callback as (event: HookEvent) => Promise<void>])
     return { dispose() {} }
   }
   async function* stream(): AsyncGenerator<OpenCodeEvent> {
     while (!closed) {
-      while (events.length === 0 && !closed) await new Promise<void>((resolve) => { wake = resolve })
+      while (events.length === 0 && !closed && !ended) await new Promise<void>((resolve) => { wake = resolve })
+      if (ended) { if (ended.error) throw ended.error; return }
       const event = events.shift()
       if (event) yield event
     }
@@ -257,10 +262,12 @@ async function startVfs(options: Options = {}) {
     },
     tool: toolHooks, permission: permissionHooks, shell: shellHooks, session: sessionHooks,
     publish(event: OpenCodeEvent) { events.push(event); wake?.() },
+    endStream(error?: Error) { ended = { error }; wake?.() },
     async stop() {
       // Telemetry is deferred to a timer; let it drain before the stub goes.
       await sleep(SETTLE_STEP_MS * 2)
       if (typeof cleanup === "function") cleanup()
+      await sleep(DRAIN_MS)
       restore()
     },
   }
@@ -829,6 +836,86 @@ describe("delegation lifecycle", () => {
       vfs.publish({ id: "evt-root", created: 2, type: "session.idle", data: { sessionID: "root" } } as OpenCodeEvent)
       await until(() => vfs.requests("gc", "tick").length > 0)
       expect(vfs.requests("gc", "tick")).toEqual([{ action: "tick", session: "root" }])
+    } finally { await vfs.stop() }
+  })
+})
+
+describe("launch uncertainty and stream loss", () => {
+  const live = { "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT }, "b:1": { unit: "u2", root: "rootB", agent: RESULT_AGENT }, "c:1": { unit: "u3", root: "rootC", settled: true } }
+  const livenessEvents = (vfs: Awaited<ReturnType<typeof startVfs>>) =>
+    vfs.requests("obs", "ingest").filter(r => r.event_class === "stream_liveness")
+  const lost = () => [["u1", "rootA", "a:1"], ["u2", "rootB", "b:1"]].map(([unit, root, dispatch]) => ({ unit, root, dispatch }))
+
+  for (const [name, end, state] of [["ends", undefined, "eof"], ["fails", new Error("socket reset"), "disconnected"]] as const) {
+    test(`a host event stream that ${name} marks each live execution unmonitored with state ${state}`, async () => {
+      const vfs = await startVfs({ history: { executions: saved(live) } })
+      try {
+        vfs.endStream(end)
+        await until(() => vfs.requests("dispatch", "unmonitored").length === 2 && livenessEvents(vfs).length === 2)
+        expect(vfs.requests("dispatch", "unmonitored").map(r => ({ unit: r.event, root: r.session, dispatch: r.dispatch })))
+          .toEqual(lost())
+        expect(livenessEvents(vfs).map(r => ({ unit: r.work_unit_id, root: r.session_id, attributes: r.attributes })))
+          .toEqual([{ unit: "u1", root: "rootA", attributes: { stream: "host_events", state } }, { unit: "u2", root: "rootB", attributes: { stream: "host_events", state } }])
+        // Missing telemetry is neither completion nor failure of the agent.
+        expect(["finish", "abandon", "uncertain", "reconcile"].flatMap(action => vfs.requests("dispatch", action))).toEqual([])
+        expect(activeDispatches(vfs)).toEqual(["a:1", "b:1"])
+      } finally { await vfs.stop() }
+    })
+  }
+
+  test("closing the plugin marks each live execution unmonitored with state closed", async () => {
+    const vfs = await startVfs({ history: { executions: saved(live) } })
+    await vfs.stop()
+    expect(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch)).toEqual(["a:1", "b:1"])
+    expect(livenessEvents(vfs).map(r => (r.attributes as Record<string, unknown>).state)).toEqual(["closed", "closed"])
+  })
+})
+
+describe("stream inactivity", () => {
+  // SHORT_SILENCE_MS stands in for STREAM_INACTIVITY_MS so a silence can elapse in a test.
+  const SHORT_SILENCE_MS = 8
+  const live = { "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT } }
+  const withShortSilence = async (run: () => Promise<void>) => {
+    const original = globalThis.setTimeout
+    globalThis.setTimeout = ((handler: () => void, ms?: number, ...rest: unknown[]) =>
+      original(handler, ms === STREAM_INACTIVITY_MS ? SHORT_SILENCE_MS : ms, ...rest)) as unknown as typeof setTimeout
+    try { await run() } finally { globalThis.setTimeout = original }
+  }
+  const inactive = (vfs: Awaited<ReturnType<typeof startVfs>>) =>
+    vfs.requests("obs", "ingest").filter(r => (r.attributes as Record<string, unknown>)?.state === "inactive")
+  const hostEvent = { type: "permission.replied", data: { requestID: "none", reply: "once" } } as unknown as OpenCodeEvent
+
+  test("silence is observed once, a host event arms it again, and it never marks anything unmonitored or failed", async () => {
+    await withShortSilence(async () => {
+      const vfs = await startVfs({ history: { executions: saved(live) } })
+      try {
+        await until(() => inactive(vfs).length === 1)
+        await sleep(SHORT_SILENCE_MS * 4)
+        expect(inactive(vfs)).toHaveLength(1)
+        expect(inactive(vfs)[0]).toMatchObject({ session_id: "rootA", work_unit_id: "u1", event_class: "stream_liveness", attributes: { stream: "host_events", state: "inactive" } })
+        vfs.publish(hostEvent)
+        await until(() => inactive(vfs).length === 2)
+        await sleep(SHORT_SILENCE_MS * 4)
+        expect(inactive(vfs)).toHaveLength(2)
+        for (const action of ["unmonitored", "activity_unmonitored", "finish", "abandon", "uncertain", "reconcile"]) expect(vfs.requests("dispatch", action)).toEqual([])
+        expect(activeDispatches(vfs)).toEqual(["a:1"])
+      } finally { await vfs.stop() }
+    })
+  })
+
+  test("losing the stream marks each open direct activity unmonitored, and never one that finished", async () => {
+    const vfs = await startVfs({ history: { executions: saved(live) } })
+    try {
+      const activity = (id: string) => vfs.run("dispatch_activity_start", { activity_id: id, node_kind: "orchestrator" }, orchestrator)
+      await activity("open-1"); await activity("open-2"); await activity("done-1")
+      await vfs.run("dispatch_activity_finish", { activity_id: "done-1", node_kind: "orchestrator", outcome: "completed" }, orchestrator)
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "activity_unmonitored").length === 2)
+      expect(vfs.requests("dispatch", "activity_unmonitored")).toEqual([
+        { action: "activity_unmonitored", session: "root", activity_id: "open-1", node_kind: "orchestrator" },
+        { action: "activity_unmonitored", session: "root", activity_id: "open-2", node_kind: "orchestrator" },
+      ])
+      for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
     } finally { await vfs.stop() }
   })
 })
@@ -1755,6 +1842,35 @@ describe("shell admission", () => {
       await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
       reply = json({ ok: true, shell: { decision: "allow", reason: "fine" } })
       await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("omitted an allowed shell plan field")
+    } finally { await vfs.stop() }
+  })
+
+  test("the opt-in network allowlist reaches the sandbox only when the plan carries it", async () => {
+    const seen: Record<string, unknown>[] = []
+    mock.module("./takt-sandbox.mjs", () => ({
+      wrap: (line: string, options: Record<string, unknown>) => { seen.push(options); return Promise.resolve(`wrapped:${line}`) },
+      supervise: (wrapped: string) => wrapped,
+    }))
+    const domains = ["example.com", "*.github.com"]
+    let extra: Record<string, unknown> = {}
+    const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "shell-prepare" || call.command === "shell-continue" ? shellReply(extra) : undefined })
+    try {
+      await vfs.fire(vfs.shell, "create.before", { command: await admit(vfs, shellEvent()) })
+      extra = { allowedDomains: domains }
+      await vfs.fire(vfs.shell, "create.before", { command: await admit(vfs, shellEvent({ id: "s2" })) })
+      expect(seen).toHaveLength(2)
+      expect("allowedDomains" in seen[0]).toBe(false)
+      expect(seen[1].allowedDomains).toEqual(domains)
+    } finally { await vfs.stop() }
+  })
+
+  test("a malformed network allowlist refuses the command", async () => {
+    let allowedDomains: unknown = "example.com"
+    const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "shell-prepare" ? shellReply({ allowedDomains }) : undefined })
+    try {
+      await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
+      allowedDomains = ["example.com", 7]
+      await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
     } finally { await vfs.stop() }
   })
 

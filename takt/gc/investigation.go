@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/obs"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 // Investigation records both successful and unsuccessful attempts to refute.
@@ -104,7 +105,7 @@ func eligibleFinding(f Finding, demoted []MandateClass) bool {
 
 // MandateRateDecision is the reversion-rate evaluation for one mandate class
 // over one range of registered work, kept alongside its raw inputs so the
-// rate is never logged or acted on without the counts behind it (PR-MNT-11).
+// rate is never logged or acted on without the counts behind it (PR-MNT-32).
 type MandateRateDecision struct {
 	Mandate        MandateClass `json:"mandate_class"`
 	Reversions     int64        `json:"reversions"`
@@ -114,53 +115,60 @@ type MandateRateDecision struct {
 }
 
 // MandateReversionRateInput is what EvaluateMandateReversionRate measures: the
-// class and session, the registered range (afterID, beforeID], and the acting
-// agent and work unit recorded on any CONTAIN effect.
+// class and session, and the acting agent and work unit recorded on any
+// CONTAIN effect.
 type MandateReversionRateInput struct {
 	Agent      string
 	SessionID  string
 	Mandate    MandateClass
-	AfterID    int64
-	BeforeID   int64
 	WorkUnitID string
 }
 
-// EvaluateMandateReversionRate measures how often mandate's consolidated work
-// is reverted (PR-MNT-7): cycle-reedit events (PR-MNT-31) over registered
-// session events in (afterID, beforeID], never elapsed time (PR-MNT-9/11).
-// Above the policy's demotion reversion rate it demotes the mandate to proposal-only
-// (PR-MNT-32) and publishes the CONTAIN effect PR-OBS-CTL-5 requires; the
-// caller records the demotion in the coordinator.
-func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
-	reedits, err := store.Events(in.SessionID, obs.EventCycleReedit, in.AfterID, in.BeforeID, 0)
-	if err != nil {
-		return MandateRateDecision{}, err
+// EvaluateMandateReversionRate counts distinct consolidated cycle/path pairs
+// and their attributed re-edits from the journal. Reads, repeated edits and
+// unrelated work cannot change the denominator. No registered work publishes no
+// rate, preserving the last measured value on the bus.
+func EvaluateMandateReversionRate(entries []vfs.JournalEntry, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error) {
+	type subject struct{ cycle, path string }
+	registeredWork, revertedWork := map[subject]bool{}, map[subject]bool{}
+	for _, e := range entries {
+		if e.SessionID != in.SessionID || e.Outcome != "" || e.Path == "" {
+			continue
+		}
+		if e.Operation == vfs.OpFlush && e.CycleID != "" && e.MandateClass == string(in.Mandate) {
+			registeredWork[subject{e.CycleID, e.Path}] = true
+		}
+		if (e.Operation == vfs.OpCreate || e.Operation == vfs.OpPatch || e.Operation == vfs.OpDelete) && e.ReeditOfCycleID != "" && e.ReeditOfMandateClass == string(in.Mandate) {
+			revertedWork[subject{e.ReeditOfCycleID, e.Path}] = true
+		}
 	}
 	var reversions int64
-	for _, e := range reedits {
-		if mc, _ := e.Envelope.Attributes["mandate_class"].(string); mc == string(in.Mandate) {
+	for key := range revertedWork {
+		if registeredWork[key] {
 			reversions++
 		}
 	}
-	registered, err := store.CountEvents(in.SessionID, "", in.AfterID, in.BeforeID)
-	if err != nil {
-		return MandateRateDecision{}, err
+	registered := int64(len(registeredWork))
+	d := MandateRateDecision{Mandate: in.Mandate, Reversions: reversions, RegisteredWork: registered}
+	if registered == 0 {
+		return d, nil
 	}
 	p, err := LoadTriggerPolicy()
 	if err != nil {
 		return MandateRateDecision{}, err
 	}
 	threshold, minWork := p.Demotion.ReversionRate, p.Demotion.MinRegisteredWork
-	d := MandateRateDecision{Mandate: in.Mandate, Reversions: reversions, RegisteredWork: registered}
-	if registered > 0 {
-		d.Rate = float64(reversions) / float64(registered)
+	d.Rate = float64(reversions) / float64(registered)
+	signal := "cycle_reedit:" + string(in.Mandate)
+	if err := obs.PublishProblemRateEvent(bus, clock, in.Agent, signal, reversions, registered, d.Rate, in.WorkUnitID); err != nil {
+		return d, err
 	}
 	if registered >= minWork && d.Rate > threshold {
 		d.Demoted = true
 		// The record carries every input the decision read, so replaying the
 		// same events under the same policy reproduces it.
-		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d range=(%d,%d]) exceeds threshold %g (policy %s v%d, min_registered_work=%d)",
-			in.Mandate, d.Rate, reversions, registered, in.AfterID, in.BeforeID, threshold, TriggerPolicyRef, p.Version, minWork)
+		cond := fmt.Sprintf("gc mandate %s reversion rate %.2f (reversions=%d registered_work=%d) exceeds threshold %g (policy %s v%d, min_registered_work=%d)",
+			in.Mandate, d.Rate, reversions, registered, threshold, TriggerPolicyRef, p.Version, minWork)
 		if err := obs.PublishControlEffectEvent(bus, clock, obs.ActionContain, in.Agent, "gc.mandate-reversion-rate", cond, in.WorkUnitID); err != nil {
 			return d, err
 		}

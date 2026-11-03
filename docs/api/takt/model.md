@@ -83,6 +83,12 @@ const (
 const AgentOpenCode = "opencode"
 ```
 
+<a name="EnvSandboxAllowedDomains"></a>EnvSandboxAllowedDomains names the environment variable with which the user opts shell sandboxes into a network allowlist: comma\-separated domain patterns such as "github.com,\*.npmjs.org". Unset or empty leaves the network unrestricted; Takt imposes no domain of its own.
+
+```go
+const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
+```
+
 <a name="SectionEngramProtocol"></a>SectionEngramProtocol is the markdown section ID shared by inject and remove.
 
 ```go
@@ -110,7 +116,7 @@ var SensitivePathGlobs = []string{
 ```
 
 <a name="OpenCodeConfigPath"></a>
-## func OpenCodeConfigPath
+## func [OpenCodeConfigPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L71>)
 
 ```go
 func OpenCodeConfigPath(home string) string
@@ -119,7 +125,7 @@ func OpenCodeConfigPath(home string) string
 OpenCodeConfigPath returns \<home\>/.config/opencode/opencode.json.
 
 <a name="OpenCodePluginPath"></a>
-## func OpenCodePluginPath
+## func [OpenCodePluginPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L81>)
 
 ```go
 func OpenCodePluginPath(home, file string) string
@@ -128,7 +134,7 @@ func OpenCodePluginPath(home, file string) string
 OpenCodePluginPath returns \<home\>/.config/opencode/plugins/\<file\>.
 
 <a name="OpenCodePromptPath"></a>
-## func OpenCodePromptPath
+## func [OpenCodePromptPath](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/paths.go#L76>)
 
 ```go
 func OpenCodePromptPath(home string) string
@@ -137,7 +143,7 @@ func OpenCodePromptPath(home string) string
 OpenCodePromptPath returns \<home\>/.config/opencode/AGENTS.md.
 
 <a name="ValidateRoleClass"></a>
-## func ValidateRoleClass
+## func [ValidateRoleClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L62>)
 
 ```go
 func ValidateRoleClass(subject string, r RoleClass) error
@@ -146,7 +152,7 @@ func ValidateRoleClass(subject string, r RoleClass) error
 ValidateRoleClass fails fast on missing or unknown classes so bad configs surface before dispatch.
 
 <a name="ComponentID"></a>
-## type ComponentID
+## type [ComponentID](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L24>)
 
 ComponentID names an installable piece so setup and lifecycle can select parts without string guessing.
 
@@ -170,7 +176,7 @@ const (
 ```
 
 <a name="InjectionResult"></a>
-## type InjectionResult
+## type [InjectionResult](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/types.go#L39-L46>)
 
 InjectionResult reports what an inject or remove changed so callers can record ownership and show honest summaries.
 
@@ -186,7 +192,7 @@ type InjectionResult struct {
 ```
 
 <a name="ModelAssignment"></a>
-## type ModelAssignment
+## type [ModelAssignment](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/model_assignment.go#L19-L24>)
 
 ModelAssignment pairs one model with its effort so each sub\-agent has a single clear runtime choice.
 
@@ -200,7 +206,7 @@ type ModelAssignment struct {
 ```
 
 <a name="RoleClass"></a>
-## type RoleClass
+## type [RoleClass](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L24>)
 
 RoleClass names one fixed permission profile so every specialist gets exactly the access it needs.
 
@@ -230,7 +236,7 @@ const (
 ```
 
 <a name="RoleClass.HoldsInterface"></a>
-### func \(RoleClass\) HoldsInterface
+### func \(RoleClass\) [HoldsInterface](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L59>)
 
 ```go
 func (r RoleClass) HoldsInterface() bool
@@ -239,7 +245,7 @@ func (r RoleClass) HoldsInterface() bool
 HoldsInterface marks who may speak with the user so only one role can hold the conversation.
 
 <a name="RoleClass.Valid"></a>
-### func \(RoleClass\) Valid
+### func \(RoleClass\) [Valid](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/role.go#L56>)
 
 ```go
 func (r RoleClass) Valid() bool
@@ -248,7 +254,7 @@ func (r RoleClass) Valid() bool
 Valid guards dispatch by rejecting unknown classes early instead of failing mid\-run.
 
 <a name="VFSCapability"></a>
-## type VFSCapability
+## type [VFSCapability](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/vfs_capability.go#L20>)
 
 VFSCapability names one VFS operation that an agent instance may use. Instances with no VFS access declare an explicit empty capability list.
 
@@ -287,7 +293,7 @@ const (
 ```
 
 <a name="VFSCapability.Valid"></a>
-### func \(VFSCapability\) Valid
+### func \(VFSCapability\) [Valid](<https://github.com/rou-cru/takt-ai/blob/main/takt/model/vfs_capability.go#L49>)
 
 ```go
 func (c VFSCapability) Valid() bool

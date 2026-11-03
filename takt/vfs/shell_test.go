@@ -16,12 +16,15 @@
 package vfs_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
@@ -123,6 +126,44 @@ func TestShellMutationIsStagedAndDiskUntouched(t *testing.T) {
 	if shell.CallID != "shell-1" || shell.AfterHash != result.DeltaHash || shell.BeforeHash == shell.AfterHash ||
 		shell.Agent != "dev" || !strings.Contains(shell.Outcome, "status 0 from revision 0") {
 		t.Fatalf("journal entry = %+v; want one shell transaction with its hashes and outcome", shell)
+	}
+}
+
+func TestShellReeditRetainsCompletedCycleAttribution(t *testing.T) {
+	g := newGCRig(t)
+	consolidatedCycle(g, "collector")
+	if err := g.f.CompleteCycle("cycle-1"); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := delegate(t, g.f, g.state, "s", "dev", "ordinary", "a.txt")
+	plan, err := g.f.PrepareShell(c, "ordinary-shell", "printf corrected > a.txt", g.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellRun(t, plan, "0", writeProjected(t, "a.txt", "corrected"))
+	if _, err := g.f.CompleteShell(c, "ordinary-shell", g.state); err != nil {
+		t.Fatal(err)
+	}
+	if content, ok := g.disk("a.txt"); !ok || content != "new-a" {
+		t.Fatalf("shell reedit changed physical work: %q %v", content, ok)
+	}
+	var mutations, transactions int
+	for _, e := range g.f.JournalPage("s", "ordinary", -1, vfs.MaxJournalPageSize) {
+		if e.Operation == vfs.OpPatch {
+			mutations++
+			if e.Path != "a.txt" || e.ReeditOfCycleID != "cycle-1" || e.ReeditOfMandateClass != "dead-code" || e.CallID != "ordinary-shell" {
+				t.Fatalf("unattributed shell mutation: %+v", e)
+			}
+		}
+		if e.Operation == vfs.OpShell {
+			transactions++
+			if e.Path != "" || e.CallID != "ordinary-shell" {
+				t.Fatalf("shell transaction lost identity or invented a path: %+v", e)
+			}
+		}
+	}
+	if mutations != 1 || transactions != 1 {
+		t.Fatalf("got %d attributed mutations and %d transactions", mutations, transactions)
 	}
 }
 
@@ -284,6 +325,30 @@ func TestShellDecisions(t *testing.T) {
 				t.Fatalf("approved plan = %+v; want the approval's grant with the workspace still denied", plan)
 			}
 		})
+	}
+}
+
+// TestShellPlanCarriesTheUsersNetworkAllowlistOnlyWhenConfigured checks that
+// the network stays unrestricted unless the user configured an allowlist.
+func TestShellPlanCarriesTheUsersNetworkAllowlistOnlyWhenConfigured(t *testing.T) {
+	f, _, state := newStore(t)
+	c := callerOf(testSession, "fix", "u")
+	t.Setenv(model.EnvSandboxAllowedDomains, "")
+	open, err := f.PrepareShell(c, "net-open", "ls", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(open)
+	if open.AllowedDomains != nil || strings.Contains(string(raw), "allowedDomains") {
+		t.Fatalf("plan without a configured allowlist = %s; want the network unrestricted", raw)
+	}
+	t.Setenv(model.EnvSandboxAllowedDomains, " github.com, *.npmjs.org ,,")
+	limited, err := f.PrepareShell(c, "net-limited", "ls", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"github.com", "*.npmjs.org"}; !slices.Equal(limited.AllowedDomains, want) {
+		t.Fatalf("allowed domains = %v; want %v", limited.AllowedDomains, want)
 	}
 }
 

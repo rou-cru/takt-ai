@@ -64,6 +64,8 @@ const (
 	EventUnitLifecycle EventClass = "unit_lifecycle"
 	// EventToolActivity marks platform tool use, so liveness is observable without tool arguments.
 	EventToolActivity EventClass = "tool_activity"
+	// EventStreamLiveness marks the state of a capture stream, so a lost stream is never read as an empty or completed session.
+	EventStreamLiveness EventClass = "stream_liveness"
 	// EventModelUsage records provider-reported token and cost usage without model content.
 	EventModelUsage EventClass = "model_usage"
 	// EventGCFindingUnapplied marks a finding left unapplied, so lingering artifacts stay visible.
@@ -92,9 +94,10 @@ var allowedAttributes = map[EventClass][]string{
 	EventDispatch:           {"decision", "specialist", "dispatch_id", "reason_code", "parallelism"},
 	EventUnitLifecycle:      {"transition", "from_state", "to_state", "specialist", "reason_code"},
 	EventToolActivity:       {"platform", "tool", "phase", "outcome", "duration_ms", "path", "path_hash"},
+	EventStreamLiveness:     {"stream", "state"},
 	EventModelUsage:         {"provider", "model", "message_id", "usage_event_id", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens", "cache_write_tokens", "cost_usd"},
 	EventGCFindingUnapplied: {"finding_kind", "target", "count", "cycle_id", "mandate_class"},
-	EventProblemRate:        {"signal", "count", "window_seconds", "rate"},
+	EventProblemRate:        {"signal", "count", "denominator", "rate"},
 	EventCycleReedit:        {"cycle_id", "mandate_class", "path_hash"},
 	EventControlThrottle:    {"policy_ref", "triggering_condition"},
 	EventControlContain:     {"policy_ref", "triggering_condition"},
@@ -102,6 +105,21 @@ var allowedAttributes = map[EventClass][]string{
 	EventControlGate:        {"policy_ref", "triggering_condition"},
 	EventControlEscalate:    {"policy_ref", "triggering_condition"},
 }
+
+// Stream liveness states are the closed set a capture stream can report, so a loss is named, never inferred.
+const (
+	// StreamEOF marks a stream that ended on its own.
+	StreamEOF = "eof"
+	// StreamInactive marks a stream that stopped producing while still connected.
+	StreamInactive = "inactive"
+	// StreamDisconnected marks a stream whose connection dropped.
+	StreamDisconnected = "disconnected"
+	// StreamClosed marks a stream closed on purpose.
+	StreamClosed = "closed"
+)
+
+// streamStates lists every state a stream_liveness event may carry.
+var streamStates = []string{StreamEOF, StreamInactive, StreamDisconnected, StreamClosed}
 
 // CorrelationIDs links one event to its session and work so scattered signals stay joinable.
 type CorrelationIDs struct {
@@ -182,6 +200,14 @@ func (e *Envelope) Validate() error {
 		case string, bool, int, int32, int64, uint, uint32, uint64, float32, float64:
 		default:
 			return fmt.Errorf("obs: attribute %q of class %q must be a scalar", k, e.EventClass)
+		}
+	}
+	if e.EventClass == EventStreamLiveness {
+		if _, ok := e.Attributes["stream"].(string); !ok {
+			return errors.New("obs: stream_liveness needs the attribute \"stream\"")
+		}
+		if state, _ := e.Attributes["state"].(string); !slices.Contains(streamStates, state) {
+			return fmt.Errorf("obs: stream_liveness state %v must be one of %v", e.Attributes["state"], streamStates)
 		}
 	}
 	return nil
@@ -417,6 +443,25 @@ func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClas
 		"cycle_id":      cycleID,
 		"mandate_class": mandateClass,
 		"path_hash":     pathHash,
+	}
+	return bus.Publish(env)
+}
+
+// PublishProblemRateEvent publishes the PR-MNT-9 derivation: the raw signal count and the recorded-work
+// denominator it was divided by travel with the rate, so a level change can be checked against both
+// (PR-MNT-11) and a replay of the same interval reproduces them.
+func PublishProblemRateEvent(bus *Bus, clock *Clock, agent, signal string, count, denominator int64, rate float64, workUnitID string) error {
+	env := NewEnvelope(clock, PlaneHarness, agent)
+	env.EventClass = EventProblemRate
+	env.Correlations = CorrelationIDs{
+		SessionID:  bus.SessionID(),
+		WorkUnitID: workUnitID,
+	}
+	env.Attributes = map[string]any{
+		"signal":      signal,
+		"count":       count,
+		"denominator": denominator,
+		"rate":        rate,
 	}
 	return bus.Publish(env)
 }
