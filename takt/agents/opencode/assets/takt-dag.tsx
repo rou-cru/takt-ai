@@ -20,15 +20,29 @@ const POLL_INTERVAL_MS = 2000
 // ---------------------------------------------------------------------------
 
 type DagNodeState = "planned" | "in_flight" | "settled" | "withdrawn"
-type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain"
+type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain" | "unmonitored"
+// Acceptance of a delivery, recorded apart from the outcome (PR-DTUI-12).
+type DagAssuranceStatus = "verified" | "failed" | "blocked" | "impossible" | "unverified"
 type DagOutcome = "completed" | "failed" | "backtracked" | "interrupted"
 type DagActivityKind = "orchestrator" | "maintenance"
 type Capture = "current" | "empty" | "uncertain" | "unavailable"
 const DAG_STATES: readonly DagNodeState[] = ["planned", "in_flight", "settled", "withdrawn"]
-const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain"]
+const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain", "unmonitored"]
+const DAG_ASSURANCE_STATUSES: readonly DagAssuranceStatus[] = ["verified", "failed", "blocked", "impossible", "unverified"]
 const DAG_OUTCOMES: readonly DagOutcome[] = ["completed", "failed", "backtracked", "interrupted"]
 const DAG_CAPTURES: readonly Capture[] = ["current", "empty", "uncertain", "unavailable"]
 const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "maintenance"]
+// An activity is running, or running with its capture lost; never failed or hung (PR-OBS-BUS-5).
+type DagActivityFlight = Extract<DagFlight, "observed_running" | "unmonitored">
+const DAG_ACTIVITY_FLIGHTS: readonly DagActivityFlight[] = ["observed_running", "unmonitored"]
+
+interface DagAssurance {
+  readonly status: DagAssuranceStatus
+  readonly author: "harness" | "verification"
+  /** The evaluated revision; absent when none was evaluated. */
+  readonly revision?: number
+  readonly evidence?: string
+}
 
 interface DagNode {
   readonly id: string
@@ -41,6 +55,8 @@ interface DagNode {
   /** Present only while state === "settled". */
   readonly outcome?: DagOutcome
   readonly launched: boolean
+  /** Absent until a result was recorded; a settled delivery without it is not accepted. */
+  readonly assurance?: DagAssurance
   readonly contract?: string
   readonly prerequisites?: readonly string[]
   /** Short label of the specialist admitted for the current attempt; absent until admitted. */
@@ -51,7 +67,7 @@ interface DagActivity {
   readonly activity_id: string
   readonly node_kind: DagActivityKind
   readonly state: "in_flight" | "settled"
-  readonly flight?: "observed_running"
+  readonly flight?: DagActivityFlight
   readonly outcome?: DagOutcome
 }
 
@@ -80,6 +96,12 @@ const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString)
 
+const isAssurance = (value: unknown): value is DagAssurance =>
+  isRecord(value) && oneOf(value.status, DAG_ASSURANCE_STATUSES) &&
+  (value.author === "harness" || value.author === "verification") &&
+  isOptional(value.revision, isNonNegativeInteger) && isOptional(value.evidence, isString)
+
+
 export function decodeSnapshot(value: unknown): DagResponse {
   const invalid = (): never => { throw new Error("invalid DAG snapshot JSON") }
   if (isRecord(value) && value.capture === "unavailable") {
@@ -100,6 +122,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
         !isOptional(raw.flight, isOneOf(DAG_FLIGHTS)) ||
         !isOptional(raw.outcome, isOneOf(DAG_OUTCOMES)) ||
         typeof raw.launched !== "boolean" ||
+        !isOptional(raw.assurance, isAssurance) ||
         !isOptional(raw.contract, isString) ||
         !isOptional(raw.prerequisites, isStringArray) ||
         !isOptional(raw.agent, isString) ||
@@ -110,6 +133,11 @@ export function decodeSnapshot(value: unknown): DagResponse {
       ...(raw.attempt_id === undefined ? {} : { attempt_id: raw.attempt_id }), state: raw.state,
       ...(raw.flight === undefined ? {} : { flight: raw.flight }),
       ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }), launched: raw.launched,
+      ...(raw.assurance === undefined ? {} : { assurance: {
+        status: raw.assurance.status,
+        author: raw.assurance.author,
+        ...(raw.assurance.revision === undefined ? {} : { revision: raw.assurance.revision }),
+        ...(raw.assurance.evidence === undefined ? {} : { evidence: raw.assurance.evidence }) } }),
       ...(raw.contract === undefined ? {} : { contract: raw.contract }),
       ...(raw.prerequisites === undefined ? {} : { prerequisites: raw.prerequisites }),
       ...(raw.agent === undefined ? {} : { agent: raw.agent }) }
@@ -122,12 +150,12 @@ export function decodeSnapshot(value: unknown): DagResponse {
     if (!isRecord(raw) || !isString(raw.activity_id) ||
         !oneOf(raw.node_kind, DAG_ACTIVITY_KINDS) ||
         (raw.state !== "in_flight" && raw.state !== "settled") ||
-        (raw.flight !== undefined && raw.flight !== "observed_running") ||
+        (raw.flight !== undefined && !oneOf(raw.flight, DAG_ACTIVITY_FLIGHTS)) ||
         (raw.outcome !== undefined && !oneOf(raw.outcome, DAG_OUTCOMES)) ||
         (raw.state !== "in_flight" && raw.flight !== undefined) ||
         (raw.state !== "settled" && raw.outcome !== undefined)) return invalid()
     return { activity_id: raw.activity_id, node_kind: raw.node_kind, state: raw.state,
-      ...(raw.flight === undefined ? {} : { flight: "observed_running" }),
+      ...(raw.flight === undefined ? {} : { flight: raw.flight }),
       ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }) }
   })
   return { schema_version: 1, projection_revision: value.projection_revision,
@@ -777,6 +805,15 @@ export function edgePorts(layout: Layout): Port[] {
 // settled distinction collapses into another.
 // ---------------------------------------------------------------------------
 
+// Only independent verification accepts a completed delivery (PR-DTUI-12).
+const isAccepted = (n: DagNode) => n.state === "settled" && (n.outcome ?? "completed") === "completed" && n.assurance?.author === "verification" && n.assurance.status === "verified"
+
+// A delivered unit shows its acceptance, not its delivery.
+function deliveredGlyph(node: DagNode): string {
+  if (isAccepted(node)) return "✓"
+  return node.assurance?.author === "verification" && node.assurance.status === "failed" ? "✗" : "◔"
+}
+
 export function glyphFor(node: DagNode): string {
   switch (node.state) {
     case "planned":
@@ -792,7 +829,7 @@ export function glyphFor(node: DagNode): string {
         case "interrupted":
           return "⊘"
         default:
-          return "✓"
+          return deliveredGlyph(node)
       }
     case "in_flight":
       switch (node.flight) {
@@ -804,6 +841,8 @@ export function glyphFor(node: DagNode): string {
           return "⏸"
         case "cancellation_pending":
           return "↯"
+        case "unmonitored":
+          return "◐"
         default:
           return "●"
       }
@@ -819,11 +858,14 @@ export function nodeText(node: DagNode, cap = Infinity): string {
 
 const activityLabel = (activity: DagActivity) => (activity.node_kind === "orchestrator" ? "direct activity" : "GC activity")
 
+// Lost capture reads as the unmonitored unit does: its glyph, in flight, no agent blamed.
+const activityUnmonitored = (activity: DagActivity) => activity.state === "in_flight" && activity.flight === "unmonitored"
+
 export function activityText(activity: DagActivity): string {
-  const glyph = activity.state === "in_flight" ? "◆" : "◇"
   const label = activityLabel(activity)
-  const status = activity.state === "in_flight" ? "running" : activity.outcome ?? "settled"
-  return `${glyph} ${label} ${activity.activity_id} · ${status}`
+  if (activityUnmonitored(activity)) return `◐ ${label} ${activity.activity_id} · unmonitored`
+  if (activity.state === "in_flight") return `◆ ${label} ${activity.activity_id} · running`
+  return `◇ ${label} ${activity.activity_id} · ${activity.outcome ?? "settled"}`
 }
 
 export function activityBoxWidth(activity: DagActivity): number {
@@ -859,8 +901,9 @@ export function packActivities(activities: readonly DagActivity[], width: number
 
 // The glyph legend, shown on demand in the route view (`?`).
 const LEGEND_LINES = [
-  "✓ completed   ● running   ◌ planned   ○ admitted   ! uncertain",
-  "✗ failed   ↩ backtracked   × withdrawn   ⏸ suspended   ↯ stopping   ⊘ interrupted",
+  "✓ accepted   ◔ delivered, not accepted   ● running   ◌ planned   ○ admitted   ! uncertain",
+  "◐ unmonitored   ✗ failed or acceptance failed   ↩ backtracked   × withdrawn",
+  "⏸ suspended   ↯ stopping   ⊘ interrupted",
   "◆ direct activity   ◇ GC activity",
 ]
 
@@ -982,11 +1025,12 @@ export function hasContent(snapshot: DagSnapshot): boolean {
   return snapshot.nodes.length > 0 || snapshot.activities.length > 0
 }
 
-// progressLine counts what a person tracks: units done and running.
+// progressLine counts what a person tracks: units accepted and running.
+// Delivery never counts as accepted.
 export function progressLine(snapshot: DagSnapshot): string {
-  const done = snapshot.nodes.filter((n) => n.state === "settled" && (n.outcome ?? "completed") === "completed").length
+  const accepted = snapshot.nodes.filter(isAccepted).length
   const running = snapshot.nodes.filter((n) => n.state === "in_flight" && (n.flight ?? "observed_running") === "observed_running").length
-  const parts = [`${done}/${snapshot.nodes.length} done`]
+  const parts = [`${accepted}/${snapshot.nodes.length} accepted`]
   if (running > 0) parts.push(`${running} running`)
   return parts.join(" · ")
 }
@@ -1027,8 +1071,6 @@ export interface SidebarRow {
   readonly tone?: SidebarTone
 }
 
-const isCompleted = (n: DagNode) => n.state === "settled" && (n.outcome ?? "completed") === "completed"
-
 /** Cuts text to width terminal cells, marking the cut with an ellipsis. */
 export function fit(text: string, width: number): string {
   if (Bun.stringWidth(text) <= width) return text
@@ -1048,7 +1090,7 @@ export function sidebarDetail(snapshot: DagSnapshot | undefined, health: Health)
   const capture = snapshot && health === "confirmed" ? snapshot.capture : health
   if (capture !== "current") return capture
   const units = snapshot?.nodes.filter((n) => n.state !== "withdrawn") ?? []
-  return units.length === 0 ? "" : `${units.filter(isCompleted).length}/${units.length}`
+  return units.length === 0 ? "" : `${units.filter(isAccepted).length}/${units.length}`
 }
 
 /** One row of the frontier graph: a unit, or a layer too wide for its lanes. */
@@ -1063,7 +1105,7 @@ function sidebarNode(node: DagNode): FrontierItem {
   const glyph = glyphFor(node)
   let tone: SidebarTone | undefined
   if (glyph === "✗") tone = "error"
-  else if (isCompleted(node)) tone = "muted"
+  else if (isAccepted(node)) tone = "muted"
   return { id: node.id, glyph, label: node.id, ...(tone ? { tone } : {}) }
 }
 
@@ -1222,7 +1264,7 @@ export function sidebarRows(snapshot: DagSnapshot): SidebarRow[] {
     order.map((item) => ({ text: fit(`${item.glyph} ${item.label}`, SIDEBAR_COLUMNS), ...(item.tone ? { tone: item.tone } : {}) }))
   const activities = snapshot.activities
     .filter((a) => a.state === "in_flight")
-    .map((a) => ({ text: fit(`◆ ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
+    .map((a) => ({ text: fit(`${activityUnmonitored(a) ? "◐" : "◆"} ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
   const rows = [...graph, ...activities]
   if (rows.length <= MAX_SIDEBAR_ROWS) return rows
   const hidden = rows.length - (MAX_SIDEBAR_ROWS - 1)
@@ -1261,6 +1303,14 @@ export function SidebarGraph(props: {
 // ---------------------------------------------------------------------------
 // Snapshot query
 // ---------------------------------------------------------------------------
+
+// AbortReturn is the part of the core's abort reply this plugin relays.
+type AbortReturn = { child: string; root: string; notice: string }
+function isAbortReturn(value: unknown): value is AbortReturn {
+  if (typeof value !== "object" || value === null) return false
+  const reply = value as Record<string, unknown>
+  return typeof reply.child === "string" && typeof reply.root === "string" && typeof reply.notice === "string"
+}
 
 function stateDir(workspace: string): string {
   return resolve(workspace, ".takt-ai", "vfs")
@@ -1436,6 +1486,54 @@ export default Plugin.define({
       )
     }
 
+    // abortLent is the user's own abort of a lent interlocutor session
+    // (IR-24): no agent holds one. Run from the lent session or from the
+    // session that lent it, it confirms, has the core record the abort with
+    // the user as origin, stops the lent session and hands the core's notice
+    // to the convening agent.
+    const abortLent = async () => {
+      const route = context.ui.router.current()
+      if (route.type !== "session") {
+        context.ui.toast.show({ variant: "warning", message: "Open the lent session, or the session that lent it, to abort it." })
+        return
+      }
+      const confirmed = await context.ui.dialog.confirm({
+        title: "Abort the lent session",
+        message: "End the lent specialist's session now and return the interface without a handoff?",
+        label: { confirm: "Abort", cancel: "Keep it" },
+      })
+      if (confirmed !== true) return
+      const request = { action: "abort_switch", child: route.sessionID, evidence: "the user ran /takt-abort", origin: "user" }
+      const proc = Bun.spawn(
+        [TAKT_AI, "dispatch", "--workspace", workspace, "--state", stateDir(workspace), "--request", JSON.stringify(request)],
+        { cwd: workspace, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+      )
+      const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])
+      let reply: unknown
+      try { reply = JSON.parse(out) } catch { reply = undefined }
+      if (code !== 0 || !isAbortReturn(reply)) {
+        const refusal = typeof reply === "object" && reply !== null && typeof (reply as { error?: unknown }).error === "string" ? (reply as { error: string }).error : ""
+        context.ui.toast.show({ variant: "error", message: refusal || (err || out).trim() || `abort exited ${code}` })
+        return
+      }
+      // The core already cleared the holder, so the convening agent gets the
+      // notice even when the stop fails, told that the lent session may still
+      // run; each failure still reaches the toast.
+      const stop = await context.client.session.interrupt({ sessionID: reply.child }).then(() => undefined, (error: unknown) => ({ error }))
+      const text = stop ? `${reply.notice}\nStopping the lent session failed; it may still be running.` : reply.notice
+      try {
+        await context.client.session.synthetic({ sessionID: reply.root, text })
+      } catch (error) {
+        if (stop) {
+          const reason = (failure: unknown) => failure instanceof Error ? failure.message : String(failure)
+          throw new AggregateError([stop.error, error], `stopping the lent session failed (${reason(stop.error)}) and notifying the convening agent failed (${reason(error)})`, { cause: error })
+        }
+        throw error
+      }
+      if (stop) throw stop.error
+      context.ui.toast.show({ variant: "success", message: "Lent session aborted; the interface is back with the convening agent." })
+    }
+
     const unregisterRoute = context.ui.router.register({ name: "takt.dag", render: (input) => <DagView sessionID={input.data?.sessionID} /> })
 
     // A keymap layer belongs to the component that creates it, so the command
@@ -1461,6 +1559,14 @@ export default Plugin.define({
                   data: route.type === "session" ? { sessionID: route.sessionID } : undefined,
                 })
               },
+            },
+            {
+              id: "takt.interlocutor.abort",
+              title: "Abort the lent Takt session",
+              palette: true,
+              slash: { name: "takt-abort" },
+              run: () => void abortLent().catch((error: unknown) =>
+                context.ui.toast.show({ variant: "error", message: error instanceof Error ? error.message : String(error) })),
             },
           ],
         }))

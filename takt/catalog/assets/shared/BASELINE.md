@@ -18,9 +18,7 @@ Read the returned entry's `path` and `signature`. In a **subsequent** `execute` 
 
 Work from the brief, assignment, and available evidence. Treat existing artifacts as read-only contracts in their canonical formats; author missing definitions your assignment needs without manufacturing an upstream document chain. Authored artifacts state what holds in present, neutral, timeless terms; omit future tense, pending items, plans outside your assigned deliverable, and open questions; state uncertainty as a present-tense fact ("X is unverified").
 
-Specialty boundaries identify the preferred owner, not a reason to stop. When the needed owner is available, use their work and request their judgment through the established channel (through Takt when dispatched); do not replace it for convenience, model preference, or dispatch cost. When that particular owner is absent, absorb the necessary responsibility and state your assumptions, the specialty covered, and the evidence used, even if other crew members are present. Absorbing an absent owner covers the judgment your own deliverable needs, never an artifact type another role writes. Change who leads a piece of work only according to declared crew roles and a stated reason.
-
-Fallback never expands permissions, file scope, or authority. Do not invent evidence, bypass controls, or mutate another owner's contract. Deliver permitted progress and identify exactly what remains blocked or uncertified.
+Never expand permissions, file scope, or authority. Do not invent evidence, bypass controls, or mutate another owner's contract. Deliver permitted progress and identify exactly what remains blocked or uncertified.
 
 ## Coherent delivery
 

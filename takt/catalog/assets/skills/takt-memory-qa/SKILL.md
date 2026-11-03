@@ -7,7 +7,7 @@ metadata:
   version: "1.1"
 ---
 
-# Memory role: qa — Test planning
+# Memory role: qa — Test planning and completion
 
 ## Records
 
@@ -29,6 +29,8 @@ metadata:
   needs an environment beyond what the repository already runs.
 - **Traceability Matrix** (`references/traceability-matrix.md`) — one per objective with QA
   planned.
+
+- **Test Completion Report** (`references/test-completion-report.md`) — at objective closure, from independent acceptance evidence and the selected critique reports retrieved by ID.
 
 ## When
 

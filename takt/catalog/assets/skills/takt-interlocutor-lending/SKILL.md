@@ -24,11 +24,13 @@ it returns.
 
 1. Call `dispatch_switch` naming the specialist and the objective. The harness asks the user to
    accept them before the switch takes effect; a refusal means no lending: reevaluate. Its
-   `requirements` carry the Engram IDs of the invariants the specialist consumes (IDs only,
-   never their content) and the settled decisions that bind it; `client` carries what is known
-   of the user. The specialist starts from `objective`, `requirements` and `client` alone.
-2. If the user asks to cut a lent session short, call `dispatch_abort_switch`; the harness asks
-   the user to confirm it.
+   `requirements` carry the finalized formal document paths the specialist needs, plus useful
+   known Engram IDs of the invariants it consumes and the settled decisions that bind it. Pass
+   references, never copied content; the specialist retrieves a known ID directly. When no
+   useful reference exists, state `requirements` as empty rather than inventing one. `client`
+   carries what is known of the user. The specialist starts from `objective`, `requirements`
+   and `client` alone.
+2. Only the user aborts a lent session: if they ask, tell them to run `/takt-abort`.
 
 ## Reading the return
 
@@ -40,14 +42,15 @@ specialist.
 | `Standard` | Consume the delivered Engram IDs as the invariant |
 | `EarlyHandoff` | Take the artifact as returned, in its actual partial state |
 | `Aborted` | No content to interpret and no fault to any agent: consult the user, never reconstruct |
-| `TechFault` | Take it to the user for a decision, never advance on your own because it looks trivial |
+| `TechFault`, objective, authority and continuity established | Reconcile transition and artifact evidence; route bounded diagnosis or correction |
+| `TechFault`, otherwise | Consult the user |
 | `Outraged` | Your own brief or inputs caused the failure: read the incident, correct them, do not chase it into a broader pattern the evidence does not support |
 
-- What happened during the session comes from the envelope; what remains in effect as
-  knowledge comes from memory, queried by topic. Never fill a gap with what seems plausible:
-  declare it and consult the user.
+- What happened during the session comes from the accepted transition history; the envelope
+  carries the declared payload; governing knowledge comes from memory and the referenced
+  documents, queried by topic. Never fill a gap with what seems plausible: declare it and investigate within
+  authority; consult the user if continuity remains indeterminable.
 - Inspect `ExtraArtifacts` only as deeply as `AdditionalContext` says they matter.
 - A malformed or incomplete envelope leaves the session unsettled: resolve the gap before
   resuming the DAG around it.
-- Before advancing after any anomalous return, assess its scale, explain its impact and
-  propose how to handle it, and confirm the procedure with the user.
+- After an anomalous return, reconcile evidence and assess impact before resuming.

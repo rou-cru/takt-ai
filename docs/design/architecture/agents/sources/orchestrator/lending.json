@@ -196,7 +196,7 @@
       "col": 3,
       "type": "backend",
       "label": "TechFault",
-      "sublabel": "the user decides",
+      "sublabel": "bounded diagnosis, else the user",
       "width": 180,
       "sources": [
         {
@@ -281,15 +281,15 @@
       "dot": "cyan",
       "title": "Lending",
       "items": [
-        "requirements carry Engram IDs only, never their content, and name what is genuinely unknown",
-        "The user can cut a lent session short with dispatch_abort_switch"
+        "requirements carry finalized document paths and useful Engram IDs, never their content; explicitly empty when none exists",
+        "Only the user cuts a lent session short, with /takt-abort"
       ]
     },
     {
       "dot": "rose",
       "title": "Anomalous returns",
       "items": [
-        "Assess scale and impact, propose handling and confirm with the user before advancing",
+        "Reconcile transition and artifact evidence; route bounded diagnosis or correction, else consult the user",
         "A malformed envelope leaves the session unsettled"
       ]
     }

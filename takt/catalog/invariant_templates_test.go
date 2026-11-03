@@ -40,7 +40,7 @@ func TestPlanningDocumentTemplates(t *testing.T) {
 		{"takt-memory-qa", "test-plan", "Test Plan"},
 		{"takt-memory-qa", "environment-requirements", "Environment Requirements"},
 		{"takt-memory-qa", "traceability-matrix", "Traceability Matrix"},
-		{"takt-memory-verify", "test-completion-report", "Test Completion Report"},
+		{"takt-memory-qa", "test-completion-report", "Test Completion Report"},
 		{"takt-invariant-authoring", "generic-artifact", "Generic Artifact Skeleton"},
 	} {
 		t.Run(tc.skill+"/"+tc.file, func(t *testing.T) {

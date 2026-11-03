@@ -17,6 +17,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -113,6 +114,9 @@ func Search(ctx context.Context, cfg Config, req SearchRequest) (SearchResult, e
 		}
 		if _, err := c.call(ctx, http.MethodGet, "/search?"+query.Encode(), nil, &page); err != nil {
 			return SearchResult{}, err
+		}
+		if page.Results == nil {
+			return SearchResult{}, errors.New("engram search: expected compact results array; check the running server version")
 		}
 		out := governing(page.Results, req.IncludeHistory)
 		if len(out.Results) >= limit || len(page.Results) < fetch {

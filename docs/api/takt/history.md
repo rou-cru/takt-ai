@@ -17,6 +17,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
 - [type Activity](<#Activity>)
 - [type ActivityNode](<#ActivityNode>)
+- [type Assurance](<#Assurance>)
 - [type Author](<#Author>)
   - [func AuthorOf\(k Kind\) Author](<#AuthorOf>)
 - [type Budgets](<#Budgets>)
@@ -51,12 +52,14 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(p Projection\) ExecutionForChild\(child, agent string\) \(Execution, bool\)](<#Projection.ExecutionForChild>)
   - [func \(p Projection\) HeldRoot\(session string\) \(root string, ok bool\)](<#Projection.HeldRoot>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
+  - [func \(p Projection\) LeaseLapsed\(owner string, now time.Time\) bool](<#Projection.LeaseLapsed>)
   - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
   - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
 - [type QARound](<#QARound>)
 - [type Recovery](<#Recovery>)
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
+- [type ResultStatus](<#ResultStatus>)
 - [type Snapshot](<#Snapshot>)
   - [func BuildSnapshot\(entries \[\]Entry\) Snapshot](<#BuildSnapshot>)
 - [type State](<#State>)
@@ -220,6 +223,8 @@ type Activity struct {
     State      State    `json:"state"`
     Flight     Flight   `json:"flight,omitempty"`
     Outcome    Outcome  `json:"outcome,omitempty"`
+    // Owner is the harness instance that captures the activity.
+    Owner string `json:"owner,omitempty"`
 }
 ```
 
@@ -235,6 +240,20 @@ type ActivityNode struct {
     State      State    `json:"state"`
     Flight     Flight   `json:"flight,omitempty"`
     Outcome    Outcome  `json:"outcome,omitempty"`
+}
+```
+
+<a name="Assurance"></a>
+## type Assurance
+
+Assurance is the prevailing result of a unit's current attempt, recorded apart from its delivery outcome \(PR\-DAG\-TMP\-9\). Revision is nil when no revision was evaluated.
+
+```go
+type Assurance struct {
+    Status   ResultStatus `json:"status"`
+    Revision *uint64      `json:"revision,omitempty"`
+    Evidence string       `json:"evidence,omitempty"`
+    Author   Author       `json:"author"`
 }
 ```
 
@@ -412,6 +431,10 @@ type Entry struct {
     // reference a restoration confirmation produced. It is never prose standing
     // in for absent evidence.
     Evidence string `json:"evidence,omitempty"`
+    // Status and Revision are a result's typed status and the staged revision it
+    // evaluated; Revision is absent when no revision was evaluated (PR-OBS-RES-1).
+    Status   ResultStatus `json:"status,omitempty"`
+    Revision *uint64      `json:"revision,omitempty"`
     // PlanVersion, Contract and Prerequisites are the identified baseline
     // version, the unit's contract, and its explicit prerequisite identities,
     // recorded by a plan commitment (PR-DAG-MUT-1).
@@ -443,6 +466,11 @@ type Entry struct {
     Phase      string  `json:"phase,omitempty"`
     // Owner is the harness instance an execution or lease belongs to.
     Owner string `json:"owner,omitempty"`
+    // Model is the provider/model an execution runs, or a restored seat's.
+    Model string `json:"model,omitempty"`
+    // Substitute marks a restored seat filled by a non-orchestrating Takt
+    // substitute rather than by its own specialist.
+    Substitute bool `json:"substitute,omitempty"`
 }
 ```
 
@@ -488,6 +516,10 @@ type Execution struct {
     Ready      bool    `json:"ready,omitempty"`
     Terminated bool    `json:"terminated,omitempty"`
     Settled    bool    `json:"settled,omitempty"`
+    // Model is the provider/model the execution runs.
+    Model string `json:"model,omitempty"`
+    // Substitute marks a Takt substitute filling the instance's seat.
+    Substitute bool `json:"substitute,omitempty"`
     // Owner is the harness instance that prepared or attached this execution;
     // empty for one recorded before owners were.
     Owner string `json:"owner,omitempty"`
@@ -517,6 +549,9 @@ const (
     FlightCancelling Flight = "cancellation pending"
     // FlightUncertain is launch or liveness that could not be established.
     FlightUncertain Flight = "launch uncertain"
+    // FlightUnmonitored is execution whose capture was lost. It stays in flight
+    // and holds its reservation; it is neither hung nor failed (PR-OBS-BUS-7).
+    FlightUnmonitored Flight = "capture unmonitored"
 )
 ```
 
@@ -664,6 +699,12 @@ const (
     KindLaunched Kind = "launched"
     // KindUncertain records launch or liveness that could not be established.
     KindUncertain Kind = "launch_uncertain"
+    // KindUnmonitored records that capture of a running execution was lost. The
+    // execution stays in flight and keeps its reserved capacity: a missing
+    // stream is never an empty or completed session (PR-OBS-BUS-5, PR-OBS-BUS-7).
+    // Carrying an activity_id and an activity node kind, it marks that activity
+    // instead of a work unit.
+    KindUnmonitored Kind = "unmonitored"
     // KindSuspended records execution held, typically on a VFS collision.
     KindSuspended Kind = "suspended"
     // KindCancelRequested records a cancellation that is not yet effective
@@ -709,6 +750,10 @@ const (
     // KindInterlocutorAborted records the harness or user ending the temporary
     // holder's turn without negotiation (IR-24); Result is always "Aborted".
     KindInterlocutorAborted Kind = "interlocutor_aborted"
+    // KindSeatRestored records the orchestrator restoring an unavailable seat
+    // (PR-CRW-13): the instance, the model it now runs, the reason, and
+    // whether a substitute fills it.
+    KindSeatRestored Kind = "seat_restored"
     // KindRevised records a valid plan revision against its expected prior
     // version; Classification is the harness-derived tactical/strategic label
     // (PR-DAG-MUT-4, PR-DAG-MUT-6).
@@ -726,6 +771,12 @@ const (
     // such as a GC cycle, separate from delegated work units.
     KindMaintenanceStarted  Kind = "maintenance_started"
     KindMaintenanceFinished Kind = "maintenance_finished"
+    // KindResult records a typed result (PR-OBS-RES-1) for one evaluated
+    // revision of a work unit's attempt. It is assurance, never lifecycle: it
+    // changes no temporal state and rewrites no earlier fact (PR-DAG-TMP-9).
+    // A verifier authors gate verdicts and acceptance results; the harness
+    // authors the results of its own checks and a finish with no evaluation.
+    KindResult Kind = "result_recorded"
 )
 ```
 
@@ -745,10 +796,14 @@ type Node struct {
     State     State    `json:"state"`
     Flight    Flight   `json:"flight,omitempty"`
     // Outcome is set only once the unit is settled.
-    Outcome       Outcome  `json:"outcome,omitempty"`
-    Launched      bool     `json:"launched"`
-    Contract      string   `json:"contract,omitempty"`
-    Prerequisites []string `json:"prerequisites,omitempty"`
+    Outcome Outcome `json:"outcome,omitempty"`
+    // Assurance is the prevailing result of the current attempt, apart from
+    // Outcome: delivery is not acceptance (PR-DAG-TMP-9). Absent until a result
+    // is recorded; absence is never success.
+    Assurance     *Assurance `json:"assurance,omitempty"`
+    Launched      bool       `json:"launched"`
+    Contract      string     `json:"contract,omitempty"`
+    Prerequisites []string   `json:"prerequisites,omitempty"`
     // Agent identifies the specialist admitted for the current attempt; empty
     // until the unit is first admitted.
     Agent string `json:"agent,omitempty"`
@@ -879,6 +934,15 @@ func (p Projection) InFlight() int
 
 InFlight counts the units holding a concurrency slot: admitted pending launch, running, suspended, cancellation\-pending and uncertain alike \(PR\-HAR\-16, PR\-HAR\-18\).
 
+<a name="Projection.LeaseLapsed"></a>
+### func \(Projection\) LeaseLapsed
+
+```go
+func (p Projection) LeaseLapsed(owner string, now time.Time) bool
+```
+
+LeaseLapsed reports whether harness instance owner has stopped renewing its lease by now. Work recorded without an owner has none to wait for.
+
 <a name="Projection.NextAttempt"></a>
 ### func \(Projection\) NextAttempt
 
@@ -895,7 +959,7 @@ NextAttempt is issued from execution history for ordinary and maintenance work a
 func (p Projection) Orphaned(d Execution, now time.Time) bool
 ```
 
-Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it. An execution recorded without an owner has none to wait for.
+Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it.
 
 <a name="Projection.Unit"></a>
 ### func \(Projection\) Unit
@@ -970,6 +1034,28 @@ func (r Recovery) Unresolved() bool
 ```
 
 Unresolved reports a recovery that still governs its declared scope: open, or abandoned by forced backtracking and not yet restored.
+
+<a name="ResultStatus"></a>
+## type ResultStatus
+
+ResultStatus is the typed status of a recorded result \(PR\-OBS\-RES\-1\). A missing result never implies success: the absence of one is not a status.
+
+```go
+type ResultStatus string
+```
+
+<a name="ResultVerified"></a>ResultStatuses are the closed set of result statuses.
+
+```go
+const (
+    ResultVerified   ResultStatus = "verified"
+    ResultFailed     ResultStatus = "failed"
+    ResultBlocked    ResultStatus = "blocked"
+    ResultImpossible ResultStatus = "impossible"
+    // ResultUnverified is delivery with no evaluated evidence (PR-DAG-TMP-9).
+    ResultUnverified ResultStatus = "unverified"
+)
+```
 
 <a name="Snapshot"></a>
 ## type Snapshot
@@ -1076,9 +1162,15 @@ type Unit struct {
     Flight Flight `json:"flight,omitempty"`
     // Outcome is the prevailing outcome once settled.
     Outcome Outcome `json:"outcome,omitempty"`
+    // Assurance is the prevailing result of the current attempt; nil until one
+    // is recorded, and never read as success (PR-OBS-RES-1).
+    Assurance *Assurance `json:"assurance,omitempty"`
     // Launched says whether execution was ever observed, so a pending admission
     // that terminates without launch never appears executed.
     Launched bool `json:"launched"`
+    // CancelRequested says a cancellation of the current attempt was requested,
+    // so its termination is interrupted whatever its flight shows by then.
+    CancelRequested bool `json:"-"`
     // Committed says a plan commitment declared this unit. Work admitted
     // without plan coverage is never committed.
     Committed bool `json:"committed,omitempty"`

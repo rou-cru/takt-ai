@@ -39,13 +39,13 @@ afterAll(() => {
 })
 const snapshot = (extra: Record<string, unknown> = {}) => ({
   schema_version: 1, projection_revision: 4, history_position: 4, session_id: "root", capture: "current", plan_version: "plan-7",
-  nodes: [{ id: "unit-a", node_kind: "delegated", state: "settled", outcome: "completed", launched: true }], edges: [], activities: [], ...extra,
+  nodes: [{ id: "unit-a", node_kind: "delegated", state: "settled", outcome: "completed", assurance: { status: "verified", revision: 1, author: "verification" }, launched: true }], edges: [], activities: [], ...extra,
 })
 const reply = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 
 // startDag mounts the real plugin against a scripted takt-ai; each poll is one
 // spawn, so the recorded argv shows exactly what the view asked for.
-function startDag(respond: () => Reply) {
+function startDag(respond: () => Reply, opts: { confirm?: boolean; current?: string; interruptFails?: boolean; syntheticFails?: boolean } = {}) {
   const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
   const originalSpawn = runtime.Bun.spawn
   const spawned: string[][] = []
@@ -55,6 +55,10 @@ function startDag(respond: () => Reply) {
   let app: Slot | undefined
   const layers: Array<() => { commands?: Array<{ id?: string; bind?: string; slash?: { name: string }; run: () => void }> }> = []
   const navigated: unknown[] = []
+  const toasts: Array<{ variant?: string; message: string }> = []
+  const interrupts: string[] = []
+  const synthetics: Array<{ sessionID: string; text: string }> = []
+  const confirms: unknown[] = []
   runtime.Bun.spawn = ((argv: string[]) => {
     spawned.push(argv)
     const answer = respond()
@@ -64,8 +68,14 @@ function startDag(respond: () => Reply) {
     location: { directory: "/workspace" },
     data: { location: { default: () => ({ directory: "/workspace" }) }, session: { root: (id: string) => id } },
     theme: { text: { base: "white", muted: "gray", feedback: { error: { base: "red" } } } },
+    client: { session: {
+      async interrupt(input: { sessionID: string }) { interrupts.push(input.sessionID); if (opts.interruptFails) throw new Error("interrupt failed") },
+      async synthetic(input: { sessionID: string; text: string }) { synthetics.push(input); if (opts.syntheticFails) throw new Error("notice failed") },
+    } },
     ui: {
-      router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: "root" }), navigate(destination: unknown) { navigated.push(destination) } },
+      router: { register(value: typeof route) { route = value; return () => {} }, current: () => ({ type: "session", sessionID: opts.current ?? "root" }), navigate(destination: unknown) { navigated.push(destination) } },
+      dialog: { async confirm(options: unknown) { confirms.push(options); return opts.confirm ?? true } },
+      toast: { show(options: { variant?: string; message: string }) { toasts.push(options) } },
       slot(value: Slot) {
         if (value.append === "sidebar.footer") sidebar = value
         if (value.append === "app") app = value
@@ -75,7 +85,7 @@ function startDag(respond: () => Reply) {
     keymap: { layer: (input: (typeof layers)[number]) => { layers.push(input) } },
   } as never)
   return {
-    spawned, killed, layers, navigated,
+    spawned, killed, layers, navigated, toasts, interrupts, synthetics, confirms,
     route: (sessionID: string | undefined) => route!.render({ data: { sessionID } }),
     sidebar: (sessionID: string) => sidebar!.render({ sessionID }),
     app: () => app!.render({ sessionID: "root" }),
@@ -112,7 +122,7 @@ async function visit(respond: () => Reply, view: (dag: ReturnType<typeof startDa
 describe("DAG route view", () => {
   test("polls the session's snapshot and shows its header, graph and legend", async () => {
     const { frame, spawned } = await visit(() => reply(snapshot()), (d) => d.route("root"))
-    expect(frame).toContain("Takt DAG · 1/1 done")
+    expect(frame).toContain("Takt DAG · 1/1 accepted")
     expect(frame).toContain("unit-a")
     expect(frame).not.toContain("projection")
     expect(spawned[0]).toEqual([
@@ -183,6 +193,76 @@ describe("DAG route entry", () => {
       expect(open?.slash?.name).toBe("takt-dag")
       open!.run()
       expect(dag.navigated).toEqual([{ type: "plugin", name: "takt.dag", data: { sessionID: "root" } }])
+    } finally { dag.stop() }
+  })
+})
+
+describe("/takt-abort", () => {
+  const command = (dag: ReturnType<typeof startDag>) => {
+    dag.app()
+    return dag.layers.flatMap((layer) => layer().commands ?? []).find((entry) => entry.id === "takt.interlocutor.abort")
+  }
+  const aborted = { envelope: { result: "Aborted", additional_context: "the user ran /takt-abort", extra_artifacts: [], memory: { entries: [] } }, root: "root", child: "child", notice: "The interface is back from pm, whose lent session was aborted." }
+
+  test("the user's confirmed abort is recorded with the user as origin, stops the lent session and returns the notice", async () => {
+    const dag = startDag(() => reply(aborted), { current: "child" })
+    try {
+      const abort = command(dag)
+      expect(abort?.slash?.name).toBe("takt-abort")
+      abort!.run()
+      await until(() => dag.synthetics.length > 0)
+      expect(dag.spawned).toEqual([[
+        "__TAKT_AI_BINARY__", "dispatch", "--workspace", "/workspace", "--state", "/workspace/.takt-ai/vfs",
+        "--request", JSON.stringify({ action: "abort_switch", child: "child", evidence: "the user ran /takt-abort", origin: "user" }),
+      ]])
+      expect(dag.interrupts).toEqual(["child"])
+      expect(dag.synthetics).toEqual([{ sessionID: "root", text: aborted.notice }])
+      expect(dag.toasts.at(-1)?.variant).toBe("success")
+    } finally { dag.stop() }
+  })
+
+  test("a failed stop still hands the notice to the convening agent and reports the failure", async () => {
+    const dag = startDag(() => reply(aborted), { current: "child", interruptFails: true })
+    try {
+      command(dag)!.run()
+      await until(() => dag.toasts.length > 0)
+      expect(dag.interrupts).toEqual(["child"])
+      expect(dag.synthetics).toEqual([{ sessionID: "root", text: `${aborted.notice}\nStopping the lent session failed; it may still be running.` }])
+      expect(dag.toasts.at(-1)?.variant).toBe("error")
+      expect(dag.toasts.at(-1)?.message).toContain("interrupt failed")
+    } finally { dag.stop() }
+  })
+
+  test("a failed stop and a failed notice report both failures", async () => {
+    const dag = startDag(() => reply(aborted), { current: "child", interruptFails: true, syntheticFails: true })
+    try {
+      command(dag)!.run()
+      await until(() => dag.toasts.length > 0)
+      expect(dag.toasts.at(-1)?.variant).toBe("error")
+      expect(dag.toasts.at(-1)?.message).toContain("interrupt failed")
+      expect(dag.toasts.at(-1)?.message).toContain("notice failed")
+    } finally { dag.stop() }
+  })
+
+  test("a declined confirmation aborts nothing", async () => {
+    const dag = startDag(() => reply(aborted), { confirm: false, current: "child" })
+    try {
+      command(dag)!.run()
+      await until(() => dag.confirms.length > 0)
+      await sleep(SETTLE_STEP_MS * 5)
+      expect(dag.spawned).toEqual([])
+      expect(dag.interrupts).toEqual([])
+    } finally { dag.stop() }
+  })
+
+  test("a refusal from the core is shown and stops nothing", async () => {
+    const dag = startDag(() => ({ out: JSON.stringify({ ok: false, error: "harness: no interlocutor switch is active for this session; nothing to abort" }), code: 1 }), { current: "root" })
+    try {
+      command(dag)!.run()
+      await until(() => dag.toasts.length > 0)
+      expect(dag.toasts).toEqual([{ variant: "error", message: "harness: no interlocutor switch is active for this session; nothing to abort" }])
+      expect(dag.interrupts).toEqual([])
+      expect(dag.synthetics).toEqual([])
     } finally { dag.stop() }
   })
 })

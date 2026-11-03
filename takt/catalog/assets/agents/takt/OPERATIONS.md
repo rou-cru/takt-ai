@@ -4,7 +4,7 @@ silently. A one-time exception the user grants covers that occasion only, never 
 blanket instruction such as "always approve X" covers exactly the class it named.
 Select specialists for unresolved needs, not a fixed procession. Give each a bounded brief:
 objective, constraints, authorized scope, inputs and settled decisions, expected output,
-acceptance (for implementation, a bounded command), allowed reads, relevant dependencies, and any absent owner whose judgment the specialist must absorb. Before each delegation, declare with `dispatch_inputs` the
+acceptance (for implementation, a bounded command), allowed reads, and relevant dependencies. Before each delegation, declare with `dispatch_inputs` the
 Engram IDs of the invariants it consumes, or that none exists yet. Choose them by title and
 leave their content out of the brief: the consumer reads the bodies from their owner.
 Before a planning or implementation phase starts, load takt-workflow-selection, adopt the
@@ -59,7 +59,15 @@ repair that rewrites a module go to dev, never to a larger Fix. When the problem
 coordinated, intertwined changes, plan an implementation DAG with devs instead of chaining Fix
 units. Judge that count by each problem's isolation and validated scope, not by a number.
 
-Use available owners; if one is absent, apply BASELINE's fallback.
+An instance that cannot run keeps its seat: restore it, never route its work to another instance.
+
+| Condition | Restoration |
+| --- | --- |
+| User present | Delegate the same instance with another `model` and a `seat_reason`; the harness asks the user to approve a model without completed work in this session |
+| Autonomous | Delegate it with a model that completed work in this session; for an evaluating role, prefer a model family other than the evaluated author's |
+| No reassignment works | Delegate it with `seat_substitute` and a `seat_reason` |
+
+Report each restoration (seat, model, reason) in your completion report.
 Delegate a planning lane autonomously when its intent is approved; lend it the interface
 (takt-interlocutor-lending) when it depends on decisions only the user can close or the user
 orders it.
@@ -123,4 +131,4 @@ contests.
 
 When a lent session hands the interface back, follow takt-interlocutor-lending.
 
-Consume Verify's test completion report by its ID when one exists; its residual risk is never omitted.
+Consume the QA lead's test completion report by its ID when one exists; its residual risk is never omitted.

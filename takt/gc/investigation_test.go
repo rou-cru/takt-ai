@@ -16,15 +16,16 @@
 package gc_test
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/obs"
+	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
-// newRateTestBus opens a workspace-local store and a bus attached to it, so
-// gc.EvaluateMandateReversionRate has real persisted events to read back, the
-// same store/bus wiring the rest of the session uses.
+// newRateTestBus retains measurements in the session's durable event store.
 func newRateTestBus(t *testing.T) (*obs.Store, *obs.Bus, *obs.Clock) {
 	t.Helper()
 	store, err := obs.OpenStore(t.TempDir())
@@ -38,29 +39,19 @@ func newRateTestBus(t *testing.T) (*obs.Store, *obs.Bus, *obs.Clock) {
 	return store, bus, clock
 }
 
-// seedRegisteredWork appends n content-free tool-activity events, standing
-// in for "units of registered work" (the PR-MNT-9/PR-MNT-11 denominator).
-func seedRegisteredWork(t *testing.T, bus *obs.Bus, clock *obs.Clock, n int) {
-	t.Helper()
+func registeredWork(mandate gc.MandateClass, n int) []vfs.JournalEntry {
+	var entries []vfs.JournalEntry
 	for i := 0; i < n; i++ {
-		env := obs.NewEnvelope(clock, obs.PlaneHarness, "agent-a")
-		env.EventClass = obs.EventToolActivity
-		env.Correlations = obs.CorrelationIDs{SessionID: "session-rate-test", WorkUnitID: "wu-1"}
-		if err := bus.Publish(env); err != nil {
-			t.Fatal(err)
-		}
+		entries = append(entries, vfs.JournalEntry{Seq: i + 1, SessionID: "session-rate-test", Operation: vfs.OpFlush, CycleID: "cycle-1", MandateClass: string(mandate), Path: fmt.Sprintf("file-%d.go", i)})
 	}
+	return entries
 }
 
-// seedReedits attributes n reversions to mandate, via the same helper N3
-// wired for PR-MNT-31.
-func seedReedits(t *testing.T, bus *obs.Bus, clock *obs.Clock, mandate gc.MandateClass, n int) {
-	t.Helper()
+func withReedits(entries []vfs.JournalEntry, mandate gc.MandateClass, n int) []vfs.JournalEntry {
 	for i := 0; i < n; i++ {
-		if err := obs.PublishCycleReeditEvent(bus, clock, "agent-a", "cycle-1", string(mandate), "hash-1", "wu-1"); err != nil {
-			t.Fatal(err)
-		}
+		entries = append(entries, vfs.JournalEntry{Seq: len(entries) + 1, SessionID: "session-rate-test", Operation: vfs.OpPatch, ReeditOfCycleID: "cycle-1", ReeditOfMandateClass: string(mandate), Path: fmt.Sprintf("file-%d.go", i)})
 	}
+	return entries
 }
 
 func eligibleFixture(mandate gc.MandateClass) gc.Finding {
@@ -71,18 +62,17 @@ func eligibleFixture(mandate gc.MandateClass) gc.Finding {
 var confirmedFixture = []gc.Investigation{{FindingID: "f1", Outcome: "confirmed", Evidence: "traced the call site"}}
 
 func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) {
-	store, bus, clock := newRateTestBus(t)
-	seedRegisteredWork(t, bus, clock, 20)             // denominator = 20
-	seedReedits(t, bus, clock, gc.MandateDeadCode, 2) // 2/20 = 10%, below the 25% threshold
+	_, bus, clock := newRateTestBus(t)
+	entries := withReedits(registeredWork(gc.MandateDeadCode, 20), gc.MandateDeadCode, 2)
 
-	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDeadCode, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(entries, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDeadCode, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Demoted {
 		t.Fatalf("did not expect demotion: %+v", d)
 	}
-	if d.Reversions != 2 || d.RegisteredWork != 22 {
+	if d.Reversions != 2 || d.RegisteredWork != 20 {
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
 	if !gc.AuthorizedFinding(eligibleFixture(gc.MandateDeadCode), confirmedFixture, nil) {
@@ -91,30 +81,27 @@ func TestEvaluateMandateReversionRate_BelowThresholdDoesNotDemote(t *testing.T) 
 }
 
 func TestEvaluateMandateReversionRate_AboveThresholdDemotesAndPropagates(t *testing.T) {
-	store, bus, clock := newRateTestBus(t)
-	seedRegisteredWork(t, bus, clock, 10)                // denominator = 10 registered-work events...
-	seedReedits(t, bus, clock, gc.MandateDuplication, 5) // ...plus 5 reedits = 15 registered, 5/15 = 33%, above 25%
+	_, bus, clock := newRateTestBus(t)
+	entries := withReedits(registeredWork(gc.MandateDuplication, 10), gc.MandateDuplication, 5)
 
-	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDuplication, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(entries, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDuplication, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !d.Demoted {
 		t.Fatalf("expected demotion: %+v", d)
 	}
-	if d.Reversions != 5 || d.RegisteredWork != 15 {
+	if d.Reversions != 5 || d.RegisteredWork != 10 {
 		t.Fatalf("wrong raw counts: %+v", d)
 	}
 
 }
 
 func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T) {
-	store, bus, clock := newRateTestBus(t)
-	// Only 2 registered-work events total, both reedits: 100% rate, but far
-	// below the policy's min_registered_work, so it must not fire.
-	seedReedits(t, bus, clock, gc.MandateDocumentation, 2)
+	_, bus, clock := newRateTestBus(t)
+	entries := withReedits(registeredWork(gc.MandateDocumentation, 2), gc.MandateDocumentation, 2)
 
-	d, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDocumentation, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"})
+	d, err := gc.EvaluateMandateReversionRate(entries, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDocumentation, WorkUnitID: "wu-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,10 +112,9 @@ func TestEvaluateMandateReversionRate_SmallDenominatorNeverDemotes(t *testing.T)
 
 func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) {
 	store, bus, clock := newRateTestBus(t)
-	seedRegisteredWork(t, bus, clock, 10)
-	seedReedits(t, bus, clock, gc.MandateComplexity, 5)
+	entries := withReedits(registeredWork(gc.MandateComplexity, 10), gc.MandateComplexity, 5)
 
-	if _, err := gc.EvaluateMandateReversionRate(store, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateComplexity, AfterID: 0, BeforeID: 0, WorkUnitID: "wu-1"}); err != nil {
+	if _, err := gc.EvaluateMandateReversionRate(entries, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateComplexity, WorkUnitID: "wu-1"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,5 +124,171 @@ func TestEvaluateMandateReversionRate_PublishesControlEffectEvent(t *testing.T) 
 	}
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one control-contain effect event, got %d", len(events))
+	}
+}
+
+func TestEvaluateMandateReversionRate_AlwaysPublishesRawCountsAndDenominator(t *testing.T) {
+	store, bus, clock := newRateTestBus(t)
+	entries := withReedits(registeredWork(gc.MandateDeadCode, 20), gc.MandateDeadCode, 2)
+	// Events that are not work leave the denominator alone.
+	if err := obs.PublishCollisionEvent(bus, clock, "agent-a", "agent-b", "a.go", "wu-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if _, err := gc.EvaluateMandateReversionRate(entries, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateDeadCode, WorkUnitID: "wu-1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rates, err := store.Events("session-rate-test", obs.EventProblemRate, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rates) != 2 {
+		t.Fatalf("%d problem_rate events for two evaluations below the threshold, want both published", len(rates))
+	}
+	// The same events under the same policy reproduce the same record.
+	for _, r := range rates {
+		a := r.Envelope.Attributes
+		if a["signal"] != "cycle_reedit:"+string(gc.MandateDeadCode) || a["count"] != float64(2) || a["denominator"] != float64(20) || a["rate"] != 0.1 {
+			t.Fatalf("problem_rate attributes = %+v, want signal, count 2, denominator 20, rate 0.1", a)
+		}
+		if _, windowed := a["window_seconds"]; windowed {
+			t.Fatal("a time window travels with the rate")
+		}
+	}
+	if contain, _ := store.Events("session-rate-test", obs.EventControlContain, 0, 0, 0); len(contain) != 0 {
+		t.Fatalf("%d CONTAIN effects below the threshold", len(contain))
+	}
+}
+
+func TestEvaluateMandateReversionRate_NoRegisteredWorkPublishesNoRate(t *testing.T) {
+	store, bus, clock := newRateTestBus(t)
+	if _, err := gc.EvaluateMandateReversionRate(nil, bus, clock, gc.MandateReversionRateInput{Agent: "agent-a", SessionID: "session-rate-test", Mandate: gc.MandateComplexity, WorkUnitID: "wu-1"}); err != nil {
+		t.Fatal(err)
+	}
+	rates, err := store.Events("session-rate-test", obs.EventProblemRate, 0, 0, 0)
+	if err != nil || len(rates) != 0 {
+		t.Fatalf("rates = %+v err = %v, want no measurement without work", rates, err)
+	}
+}
+
+func TestMandateRateIgnoresUnrelatedWorkAndPreservesMeasurementDuringInactivity(t *testing.T) {
+	store, bus, clock := newRateTestBus(t)
+	in := gc.MandateReversionRateInput{Agent: "harness", SessionID: bus.SessionID(), Mandate: gc.MandateDeadCode}
+	entries := withReedits(registeredWork(in.Mandate, 20), in.Mandate, 2)
+	first, err := gc.EvaluateMandateReversionRate(entries, bus, clock, in)
+	if err != nil || first.Rate != 0.1 {
+		t.Fatalf("initial measurement: %+v %v", first, err)
+	}
+	for _, e := range registeredWork(gc.MandateComplexity, 20) {
+		e.Seq = len(entries)
+		entries = append(entries, e)
+	}
+	for _, e := range entries[:20] {
+		e.Seq, e.SessionID = len(entries), "another-session"
+		entries = append(entries, e)
+	}
+	// Repeated edits and reads of one attributed path do not add damage.
+	entries = withReedits(entries, in.Mandate, 2)
+	read := entries[len(entries)-1]
+	read.Seq, read.Operation = len(entries), vfs.OpRead
+	entries = append(entries, read)
+	again, err := gc.EvaluateMandateReversionRate(entries, bus, clock, in)
+	if err != nil || again != first {
+		t.Fatalf("unrelated work changed measurement: %+v -> %+v, %v", first, again, err)
+	}
+	if empty, err := gc.EvaluateMandateReversionRate(nil, bus, clock, in); err != nil || empty.RegisteredWork != 0 || empty.Demoted {
+		t.Fatalf("no registered work: %+v %v", empty, err)
+	}
+	rates, err := store.Events(bus.SessionID(), obs.EventProblemRate, 0, 0, 0)
+	if err != nil || len(rates) != 2 || rates[1].Envelope.Attributes["rate"] != 0.1 {
+		t.Fatalf("inactivity replaced the last valid measurement: %+v %v", rates, err)
+	}
+}
+
+func TestMandateRateUsesDurableConsolidationAndReeditJournal(t *testing.T) {
+	for _, discarded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("discarded=%v", discarded), func(t *testing.T) {
+			_, bus, clock := newRateTestBus(t)
+			root, state := t.TempDir(), filepath.Join(t.TempDir(), "state")
+			f, err := vfs.Open(root, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = f.Close() })
+			identity := vfs.Identity{SessionID: bus.SessionID(), WorkUnitID: "collect", AttemptID: "1", AgentID: "collector", Specialist: "dev", CycleID: "cycle-1", MandateClass: string(gc.MandateDeadCode)}
+			author, err := f.Bind(identity, []string{"a.txt"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := f.Apply(vfs.Operation{Key: author, CallID: "create", Action: vfs.OpCreate, Path: "a.txt", Content: []byte("collected")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			judge, err := f.AssignVerifier(vfs.Identity{SessionID: bus.SessionID(), WorkUnitID: "review", AttemptID: "1", AgentID: "judge", Specialist: "verify"}, author)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Verify(judge, author, "verdict", r.Revision, r.DeltaHash, true, ""); err != nil {
+				t.Fatal(err)
+			}
+			measure := func(work, reversions int64) {
+				t.Helper()
+				d, err := gc.EvaluateMandateReversionRate(f.JournalPage(bus.SessionID(), "", -1, vfs.MaxJournalPageSize), bus, clock, gc.MandateReversionRateInput{Agent: "harness", SessionID: bus.SessionID(), Mandate: gc.MandateDeadCode})
+				if err != nil || d.RegisteredWork != work || d.Reversions != reversions {
+					t.Fatalf("durable VFS attribution: %+v %v, want work=%d reversions=%d", d, err, work, reversions)
+				}
+			}
+			// A verified staged delta is not registered consolidated work.
+			measure(0, 0)
+			if err := f.ConsolidateCheckpoint(author, "cp", r.Revision, false); err != nil {
+				t.Fatal(err)
+			}
+			measure(1, 0)
+			if discarded {
+				if _, err := f.DiscardCycle(identity.CycleID); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := f.CompleteCycle(identity.CycleID); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			f, err = vfs.Open(root, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cycle, mandate, attributed := f.ConsolidatedBy("a.txt")
+			if attributed == discarded || (!discarded && (cycle != identity.CycleID || mandate != identity.MandateClass)) {
+				t.Fatalf("attribution after reopen: %q %q %v", cycle, mandate, attributed)
+			}
+			identity.CycleID, identity.MandateClass, identity.WorkUnitID = "", "", "ordinary"
+			author, err = f.Bind(identity, []string{"a.txt"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			action := vfs.OpPatch
+			if discarded {
+				action = vfs.OpCreate
+			}
+			if _, err = f.Apply(vfs.Operation{Key: author, CallID: "reedit", Action: action, Path: "a.txt", Content: []byte("corrected")}); err != nil {
+				t.Fatal(err)
+			}
+			if err = f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			f, err = vfs.Open(root, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if discarded {
+				// Discard remains historical work, but no longer owns later edits.
+				measure(1, 0)
+			} else {
+				measure(1, 1)
+			}
+		})
 	}
 }

@@ -24,8 +24,11 @@ import (
 
 // StartActivity records non-work-unit orchestrator or maintenance activity.
 // Activity identity stays in ActivityID, never in WorkUnitID; delegated work
-// continues to use Admit and the ordinary unit lifecycle.
-func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind) error {
+// continues to use Admit and the ordinary unit lifecycle. owner is the harness
+// instance that captures it, so another instance can tell once that capture is
+// lost; empty when the activity has no capturing instance. Another instance
+// that starts the activity again takes over its capture.
+func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error {
 	if session == "" || activityID == "" {
 		return errors.New("dispatch: activity start requires session and activity_id")
 	}
@@ -34,14 +37,18 @@ func StartActivity(h *history.History, session, activityID string, nodeKind hist
 		return err
 	}
 	if prior, exists := h.Project().Activities[activityID]; exists {
-		if prior.SessionID == session && prior.NodeKind == nodeKind && prior.State == history.StateInFlight {
+		if prior.SessionID != session || prior.NodeKind != nodeKind || prior.State != history.StateInFlight {
+			return fmt.Errorf("dispatch: activity identity %q is already recorded", activityID)
+		}
+		// A repeat from the capturing instance is a no-op; one from another
+		// instance records that it now captures the activity.
+		if owner == "" || owner == prior.Owner {
 			return nil
 		}
-		return fmt.Errorf("dispatch: activity identity %q is already recorded", activityID)
 	}
 	return h.Append(history.Entry{
 		Author: history.AuthorOf(kind), Kind: kind, SessionID: session, ActivityID: activityID,
-		NodeKind: nodeKind, Cause: history.CauseNone,
+		NodeKind: nodeKind, Owner: owner, Cause: history.CauseNone,
 	})
 }
 
@@ -68,6 +75,27 @@ func FinishActivity(h *history.History, session, activityID string, nodeKind his
 	return h.Append(history.Entry{
 		Author: history.AuthorOf(kind), Kind: kind, SessionID: session, ActivityID: activityID,
 		NodeKind: nodeKind, Cause: history.CauseNone, Outcome: outcome,
+	})
+}
+
+// MarkActivityUnmonitored records that capture of an in-flight orchestrator
+// activity was lost. The activity stays in flight: it is neither finished nor
+// failed, and no agent is blamed (PR-OBS-BUS-5). A repeat, or a loss reported
+// after the activity settled, changes nothing.
+func MarkActivityUnmonitored(h *history.History, session, activityID string) error {
+	if session == "" || activityID == "" {
+		return errors.New("dispatch: activity unmonitored requires session and activity_id")
+	}
+	prior, exists := h.Project().Activities[activityID]
+	if !exists || prior.SessionID != session || prior.NodeKind != history.NodeKindOrchestrator {
+		return fmt.Errorf("dispatch: orchestrator activity %q is not active for this session", activityID)
+	}
+	if prior.State == history.StateSettled || prior.Flight == history.FlightUnmonitored {
+		return nil
+	}
+	return h.Append(history.Entry{
+		Author: history.AuthorOf(history.KindUnmonitored), Kind: history.KindUnmonitored, SessionID: session,
+		ActivityID: activityID, NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone,
 	})
 }
 

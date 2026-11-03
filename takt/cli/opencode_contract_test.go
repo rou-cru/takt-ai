@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
@@ -44,13 +45,39 @@ func TestOpenCodeContracts(t *testing.T) {
 	check("memory_search", memoryEnvelope{OK: true, Result: memory.SearchResult{Results: []memory.SearchHit{{ID: 42, Type: "decision", Title: "[dev] Cache for ten minutes", Preview: "Cache policy.", Disputed: true, Exception: true}}, OmittedSuperseded: 1}})
 	check("memory_error", memoryEnvelope{OK: false, Error: "session is closed"})
 	check("coordinator", gc.Coordinator{Version: 1, Units: 3, Mutations: 1, Cursor: 2, NextMandate: 1, Cycle: &gc.Cycle{Plan: gc.Plan{Request: gc.Request{SessionID: "root-session", CycleID: "cycle-1", Mandate: gc.MandateComplexity}, Delta: []gc.Change{{Path: "src/a.go", Introduced: true}}, Closure: []string{"src/a.go", "src/b.go"}, Reachability: gc.ReachCodegraph}, Phase: "collect", Scope: []string{"src/a.go"}, Sessions: map[string]string{"collector": "session-collector", "verifier": "session-verifier"}}})
-	check("handoff", map[string]any{"result": "Standard", "additional_context": "Implemented the requested change.", "extra_artifacts": []string{"result.md"}, "memory": []int64{42}, "artifact_verified": true, "session_entries": []int64{42, 43}})
-	check("abort", map[string]any{"result": "Aborted", "additional_context": "User cancelled the task.", "extra_artifacts": []string{}, "memory": []int64{42}, "artifact_verified": true})
+	handoff, err := interlocutorReturn{Envelope: protocol.Envelope{Result: "Standard", AdditionalContext: "Implemented the requested change.", ExtraArtifacts: []string{"result.md"}, Memory: protocol.MemoryIndex{Entries: []int64{42, 43}}}, Artifact: &artifactReport{Path: "PRD.md", Present: true}}.withNotice("pm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("handoff", handoff)
+	abort, err := interlocutorReturn{Envelope: protocol.Envelope{Result: "Aborted", AdditionalContext: "User cancelled the task.", ExtraArtifacts: []string{}, Memory: protocol.MemoryIndex{Entries: []int64{42}, NextAfter: 42}}, Child: "child-session", Root: "root-session"}.withNotice("pm, whose lent session was aborted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("abort", abort)
+	check("lent_entries", protocol.MemoryIndex{Entries: []int64{43}})
 	check("dispatch_null", any(nil))
 	check("dag_normal", history.BuildSnapshot([]history.Entry{
 		{Seq: 0, Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone, PlanVersion: "plan-1", Contract: "Implement feature"},
 		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
 		{Seq: 2, Author: history.AuthorOrchestrator, Kind: history.KindActivityStarted, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
+	}))
+	// An unmonitored execution and a settled unit whose delivery has a result: the
+	// flight and assurance names the TS decoder reads.
+	revision := uint64(2)
+	check("dag_assurance", history.BuildSnapshot([]history.Entry{
+		{Seq: 0, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
+		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindLaunched, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", Cause: history.CauseNone},
+		{Seq: 2, Author: history.AuthorHarness, Kind: history.KindUnmonitored, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", Cause: history.CauseNone},
+		{Seq: 3, Author: history.AuthorHarness, Kind: history.KindAdmitted, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone},
+		{Seq: 4, Author: history.AuthorHarness, Kind: history.KindTerminated, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", Cause: history.CauseNone, Outcome: history.OutcomeCompleted},
+		{Seq: 5, Author: history.AuthorVerification, Kind: history.KindResult, SessionID: "root-session", WorkUnitID: "unit-2", AttemptID: "1", Cause: history.CauseNone, Status: history.ResultFailed, Revision: &revision, Evidence: "journal/7"},
+	}))
+	// An orchestrator activity whose capture was lost: still in flight, never
+	// settled, with the unmonitored flight the TS decoder reads.
+	check("dag_activity_unmonitored", history.BuildSnapshot([]history.Entry{
+		{Seq: 0, Author: history.AuthorOrchestrator, Kind: history.KindActivityStarted, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
+		{Seq: 1, Author: history.AuthorHarness, Kind: history.KindUnmonitored, SessionID: "root-session", ActivityID: "activity-1", NodeKind: history.NodeKindOrchestrator, Cause: history.CauseNone},
 	}))
 	check("dag_unavailable", struct {
 		Capture string `json:"capture"`

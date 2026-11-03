@@ -44,6 +44,9 @@ const (
 	FlightCancelling Flight = "cancellation pending"
 	// FlightUncertain is launch or liveness that could not be established.
 	FlightUncertain Flight = "launch uncertain"
+	// FlightUnmonitored is execution whose capture was lost. It stays in flight
+	// and holds its reservation; it is neither hung nor failed (PR-OBS-BUS-7).
+	FlightUnmonitored Flight = "capture unmonitored"
 )
 
 // flightOf maps the in-flight transitions.
@@ -53,6 +56,7 @@ var flightOf = map[Kind]Flight{
 	KindSuspended:       FlightSuspended,
 	KindCancelRequested: FlightCancelling,
 	KindUncertain:       FlightUncertain,
+	KindUnmonitored:     FlightUnmonitored,
 }
 
 // Outcome is the prevailing outcome of settled work.
@@ -69,6 +73,42 @@ const (
 	// OutcomeInterrupted is work cancelled or closed without a result.
 	OutcomeInterrupted Outcome = "interrupted"
 )
+
+// ResultStatus is the typed status of a recorded result (PR-OBS-RES-1). A
+// missing result never implies success: the absence of one is not a status.
+type ResultStatus string
+
+// ResultStatuses are the closed set of result statuses.
+const (
+	ResultVerified   ResultStatus = "verified"
+	ResultFailed     ResultStatus = "failed"
+	ResultBlocked    ResultStatus = "blocked"
+	ResultImpossible ResultStatus = "impossible"
+	// ResultUnverified is delivery with no evaluated evidence (PR-DAG-TMP-9).
+	ResultUnverified ResultStatus = "unverified"
+)
+
+// resultStatuses enumerates the statuses a result may carry.
+var resultStatuses = map[ResultStatus]bool{
+	ResultVerified: true, ResultFailed: true, ResultBlocked: true, ResultImpossible: true, ResultUnverified: true,
+}
+
+// Assurance is the prevailing result of a unit's current attempt, recorded
+// apart from its delivery outcome (PR-DAG-TMP-9). Revision is nil when no
+// revision was evaluated.
+type Assurance struct {
+	Status   ResultStatus `json:"status"`
+	Revision *uint64      `json:"revision,omitempty"`
+	Evidence string       `json:"evidence,omitempty"`
+	Author   Author       `json:"author"`
+}
+
+// prevails says whether a result incoming replaces the current assurance:
+// evidence for an earlier revision stays historical and never governs the
+// current one, and later evidence for the same revision prevails.
+func (a *Assurance) prevails(incoming Entry) bool {
+	return a == nil || a.Revision == nil || incoming.Revision != nil && *incoming.Revision >= *a.Revision
+}
 
 // Bound names a deterministic budget: the cause recorded on a denial, and the
 // limit a user exception scopes (PR-HAR-22).
@@ -160,9 +200,15 @@ type Unit struct {
 	Flight Flight `json:"flight,omitempty"`
 	// Outcome is the prevailing outcome once settled.
 	Outcome Outcome `json:"outcome,omitempty"`
+	// Assurance is the prevailing result of the current attempt; nil until one
+	// is recorded, and never read as success (PR-OBS-RES-1).
+	Assurance *Assurance `json:"assurance,omitempty"`
 	// Launched says whether execution was ever observed, so a pending admission
 	// that terminates without launch never appears executed.
 	Launched bool `json:"launched"`
+	// CancelRequested says a cancellation of the current attempt was requested,
+	// so its termination is interrupted whatever its flight shows by then.
+	CancelRequested bool `json:"-"`
 	// Committed says a plan commitment declared this unit. Work admitted
 	// without plan coverage is never committed.
 	Committed bool `json:"committed,omitempty"`
@@ -181,6 +227,8 @@ type Activity struct {
 	State      State    `json:"state"`
 	Flight     Flight   `json:"flight,omitempty"`
 	Outcome    Outcome  `json:"outcome,omitempty"`
+	// Owner is the harness instance that captures the activity.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Recovery is one objective's bounded-recovery accounting.
@@ -369,7 +417,7 @@ func (p *Projection) fold(e Entry) {
 			}
 		}
 	}
-	if nodeKind, activity := activityKindOf(e.Kind); activity {
+	if nodeKind, activity := activityKindOf(e); activity {
 		p.foldActivity(e, nodeKind)
 		return
 	}
@@ -386,6 +434,15 @@ func (p *Projection) fold(e Entry) {
 	}
 	u, known := p.Unit(e.SessionID, e.WorkUnitID)
 	if !accepts(u, known, e.Kind) {
+		return
+	}
+	// A result changes no lifecycle fact. A result for another attempt stays
+	// recorded without touching the unit.
+	if e.Kind == KindResult {
+		if e.AttemptID == u.AttemptID && u.Assurance.prevails(e) {
+			u.Assurance = &Assurance{Status: e.Status, Revision: e.Revision, Evidence: e.Evidence, Author: e.Author}
+			p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
+		}
 		return
 	}
 	// The first explicit classification sticks to the real work-unit identity.
@@ -414,9 +471,11 @@ func (p *Projection) fold(e Entry) {
 	u.SessionID, u.WorkUnitID, u.AttemptID = e.SessionID, e.WorkUnitID, e.AttemptID
 	switch e.Kind {
 	case KindAdmitted:
-		// Each attempt starts unlaunched and without an outcome; the unit's
+		// Each attempt starts unlaunched, without an outcome or assurance; the unit's
 		// contract and prerequisites carry over unchanged.
 		u.State, u.Flight, u.Outcome, u.Launched, u.Dispatch, u.Agent = StateInFlight, flightOf[e.Kind], "", false, e.Dispatch, e.Agent
+		u.CancelRequested = false
+		u.Assurance = nil
 	case KindPlanned:
 		u.State = StatePlanned
 		u.Committed = true
@@ -428,6 +487,7 @@ func (p *Projection) fold(e Entry) {
 	default:
 		u.State, u.Flight = StateInFlight, flightOf[e.Kind]
 		u.Launched = u.Launched || e.Kind == KindLaunched
+		u.CancelRequested = u.CancelRequested || e.Kind == KindCancelRequested
 	}
 	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
 }
@@ -435,18 +495,28 @@ func (p *Projection) fold(e Entry) {
 func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 	a, exists := p.Activities[e.ActivityID]
 	if isActivityStarted(e.Kind) {
-		if !exists {
+		switch {
+		case !exists:
 			p.Activities[e.ActivityID] = Activity{
 				ActivityID: e.ActivityID, SessionID: e.SessionID, NodeKind: nodeKind,
-				State: StateInFlight, Flight: FlightRunning,
+				State: StateInFlight, Flight: FlightRunning, Owner: e.Owner,
 			}
+		case a.State == StateInFlight && e.Owner != "":
+			// Another instance took over the capture: it is observed again.
+			a.Owner, a.Flight = e.Owner, FlightRunning
+			p.Activities[e.ActivityID] = a
 		}
 		return
 	}
 	if !exists || a.SessionID != e.SessionID || a.NodeKind != nodeKind || a.State != StateInFlight {
 		return
 	}
-	a.State, a.Flight, a.Outcome = StateSettled, "", e.Outcome
+	// Lost capture keeps the activity in flight; it is never settled or failed.
+	if e.Kind == KindUnmonitored {
+		a.Flight = FlightUnmonitored
+	} else {
+		a.State, a.Flight, a.Outcome = StateSettled, "", e.Outcome
+	}
 	p.Activities[e.ActivityID] = a
 }
 
@@ -538,6 +608,9 @@ func budgeted(b *Budgets, e Entry) bool {
 	case KindInvalidRevision:
 		// Recorded and visible, but touches no state: the last valid plan and
 		// its tracked version stay untouched (PR-DAG-MUT-6).
+	case KindSeatRestored:
+		// A record for the completion report; the restored instance runs
+		// through the unit's ordinary admission.
 	default:
 		return false
 	}
@@ -557,6 +630,9 @@ func accepts(u Unit, known bool, k Kind) bool {
 		return !known || u.State == StatePlanned
 	case KindWithdrawn:
 		return u.State == StatePlanned
+	case KindResult:
+		// Assurance follows delivery: a verdict may land after the unit settled.
+		return known && (u.State == StateInFlight || u.State == StateSettled)
 	case KindAdmitted:
 		// A settled unit is admitted again as its next attempt: a retry
 		// continues the same unit instead of creating one (PR-DAG-MUT-8).

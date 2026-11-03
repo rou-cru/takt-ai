@@ -137,13 +137,21 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 
 // Finish records the observed effective termination of a dispatched unit,
 // releasing its reserved slot. Cancellation-pending or uncertain execution ends
-// without a work result, so its outcome is interrupted (PR-DAG-TMP-1).
+// without a work result, so its outcome is interrupted (PR-DAG-TMP-1). A
+// completed finish whose attempt has no evaluated result is recorded in the same
+// batch as unverified delivery, never as accepted work (PR-DAG-TMP-9).
 func Finish(h *history.History, journalRef, event, session string) error {
+	return terminate(h, journalRef, event, session, false)
+}
+
+// terminate records effective termination. nonStart is a reconciliation
+// establishing that unestablished execution never ran: like a cancellation,
+// it ends without a work result, so it is interrupted, never completed.
+func terminate(h *history.History, journalRef, event, session string, nonStart bool) error {
 	outcome := history.OutcomeCompleted
 	projection := h.Project()
 	unit, _ := projection.Unit(session, event)
-	switch unit.Flight {
-	case history.FlightCancelling, history.FlightUncertain:
+	if nonStart || unit.CancelRequested || unit.Flight == history.FlightUncertain {
 		outcome = history.OutcomeInterrupted
 	}
 	// Termination of work in an abandoned recovery scope is the second fact of
@@ -153,11 +161,18 @@ func Finish(h *history.History, journalRef, event, session string) error {
 	if recovery.Backtracked {
 		outcome = history.OutcomeBacktracked
 	}
-	return h.Append(history.Entry{
+	terminated := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindTerminated, SessionID: session,
 		WorkUnitID: event, AttemptID: CurrentAttempt(projection, session, event), Cause: history.CauseUncaptured,
 		JournalRef: journalRef, Outcome: outcome, Objective: objective,
-	})
+	}
+	if outcome != history.OutcomeCompleted || unit.Assurance != nil {
+		return h.Append(terminated)
+	}
+	unverified := terminated
+	unverified.Kind, unverified.Author, unverified.Outcome, unverified.Objective = history.KindResult, history.AuthorHarness, "", ""
+	unverified.Status = history.ResultUnverified
+	return h.AppendBatch([]history.Entry{terminated, unverified})
 }
 
 // Record appends an observed lifecycle fact or an orchestrator declaration that
@@ -181,10 +196,17 @@ func Launch(h *history.History, journalRef, event, session string) error {
 		return errors.New("dispatch: launch requires an admitted unit in flight")
 	case u.Launched:
 		return nil
-	case u.Flight == history.FlightUncertain:
+	case UncertainFlight(u.Flight):
 		return errors.New("harness: uncertain launch must be reconciled before it may be repeated")
 	}
 	return Record(h, journalRef, event, session, history.KindLaunched)
+}
+
+// UncertainFlight says whether execution is unestablished: its launch or
+// liveness is uncertain, or its capture was lost. Both are reconciled the same
+// way and hold their reservation until then (PR-HAR-18, PR-OBS-BUS-7).
+func UncertainFlight(f history.Flight) bool {
+	return f == history.FlightUncertain || f == history.FlightUnmonitored
 }
 
 // Reconcile establishes what an uncertain launch did: execution observed
@@ -199,13 +221,13 @@ func Reconcile(h *history.History, journalRef, event, session string, running bo
 	if !running && u.State != history.StateInFlight {
 		return nil
 	}
-	if u.Flight != history.FlightUncertain {
+	if !UncertainFlight(u.Flight) {
 		return errors.New("dispatch: nothing uncertain to reconcile")
 	}
 	if running {
 		return Record(h, journalRef, event, session, history.KindLaunched)
 	}
-	return Finish(h, journalRef, event, session)
+	return terminate(h, journalRef, event, session, true)
 }
 
 // Withdraw revokes still-planned work. Admitted work's contract and

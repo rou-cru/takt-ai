@@ -29,6 +29,12 @@ export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: strin
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
 const IPC_VERSION = 5
+// HOST_EVENT_STREAM names the sensor stream whose loss leaves executions unmonitored.
+const HOST_EVENT_STREAM = "host_events"
+// STREAM_INACTIVITY_MS is the silence of the open host event stream after which
+// one "inactive" observation is made. It is an observation, never an enforcement
+// window or budget: silence proves neither closure nor failure of any agent.
+export const STREAM_INACTIVITY_MS = 120_000
 // INSPECT_PAGE_LIMIT is the largest page takt-ai vfs journal and history serve.
 const INSPECT_PAGE_LIMIT = 500
 
@@ -48,7 +54,7 @@ export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
   return value as T
 }
 
-type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; capture?: boolean; cwd?: string; confirm?: string }
+type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; allowedDomains?: string[]; capture?: boolean; cwd?: string; confirm?: string }
 // AdoptedGate is one gate the core adopted for the calling host session.
 type AdoptedGate = { key: string; author_key: string; scope: string[]; error?: string }
 type Repair = { kind: "manifest" | "cycle"; id: string; author: string; paths: string[]; state: string; preserve: boolean; reason: string }
@@ -68,10 +74,29 @@ type CoordinatorResponse = Record<string, unknown> & {
   next_mandate: number; requested: boolean; cycle?: GCCycle
   history?: GCCycle[]
 }
-type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: number[]; child?: string; aborted?: boolean; root?: string }
+// The IR-22 envelope: exactly these four fields.
+type MemoryIndex = { entries: number[]; next_after?: number }
+type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: MemoryIndex }
+// What the core delivers when the interface comes back: the envelope, with the
+// declared document's check and the ended session beside it, never inside.
+type InterlocutorReturn = { envelope: HandoffEnvelope; artifact?: { path: string; present: boolean }; child?: string; root?: string; notice: string }
 type NotHeld = { aborted: false }
-type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string }
-type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | HandoffEnvelope | NotHeld | Record<string, unknown> | null
+type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
+// SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
+// a model this session has not seen complete work; the user may approve it.
+const SEAT_UNPROVEN = "seat/unproven-model"
+// modelName is a model reference as the core records it: provider/model.
+export function modelName(value: unknown): string | undefined {
+  if (typeof value === "string" && value) return value
+  if (isResponseObject(value) && typeof value.providerID === "string" && typeof value.id === "string") return `${value.providerID}/${value.id}`
+  return undefined
+}
+// withoutIdentity removes a substitute's PERSONA and SOUL texts from its
+// composed system prompt: it holds the seat without its identity or voice.
+export function withoutIdentity<Part extends { type: string; text: string }>(system: Part[], identity: string[]): Part[] {
+  return system.map(part => ({ ...part, text: identity.reduce((text, block) => text.split(block).join(""), part.text) }))
+}
+type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | MemoryIndex | NotHeld | Record<string, unknown> | null
 const delegationOf = (value: unknown): Delegation | undefined =>
   value && isResponseObject(value) && typeof value.dispatch === "string" && typeof value.attempt === "string" && typeof value.root === "string" && typeof value.unit === "string" && typeof value.agent === "string" ? value as Delegation : undefined
 export function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
@@ -80,10 +105,17 @@ export function isCoordinatorResponse(value: DispatchResponse): value is Coordin
 export function isGCCycleResponse(value: DispatchResponse): value is GCCycle {
   return value !== null && isResponseObject(value) && isGCCycle(value)
 }
-export function isHandoffEnvelope(value: Record<string, unknown>): value is HandoffEnvelope {
-  return typeof value.result === "string" && typeof value.additional_context === "string" &&
-    Array.isArray(value.extra_artifacts) && value.extra_artifacts.every(item => typeof item === "string") &&
-    Array.isArray(value.memory) && value.memory.every(item => typeof item === "number")
+export function isMemoryIndex(value: unknown): value is MemoryIndex {
+  return isResponseObject(value) && Array.isArray(value.entries) && value.entries.every(item => typeof item === "number") &&
+    isOptional(value.next_after, (n): n is number => typeof n === "number")
+}
+export function isHandoffEnvelope(value: unknown): value is HandoffEnvelope {
+  return isResponseObject(value) && Object.keys(value).length === 4 && typeof value.result === "string" && typeof value.additional_context === "string" &&
+    isStringArray(value.extra_artifacts) && isMemoryIndex(value.memory)
+}
+export function isInterlocutorReturn(value: Record<string, unknown>): value is InterlocutorReturn {
+  return isHandoffEnvelope(value.envelope) && isString(value.notice) && isOptional(value.child, isString) && isOptional(value.root, isString) &&
+    isOptional(value.artifact, (a): a is { path: string; present: boolean } => isResponseObject(a) && isString(a.path) && isBoolean(a.present))
 }
 type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[] }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
@@ -102,13 +134,15 @@ export function parseVFSShell(value: unknown): VFSShellResponse | undefined {
   if (!isResponseObject(value) || (value.decision !== "allow" && value.decision !== "ask" && value.decision !== "deny") ||
       !isString(value.reason) || !isOptional(value.cwd, isString) || !isOptional(value.scratch, isString) ||
       !isOptional(value.confirm, isString) || !isOptional(value.capture, isBoolean) ||
-      !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray)) return undefined
-  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths } = value
+      !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray) ||
+      !isOptional(value.allowedDomains, isStringArray)) return undefined
+  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths, allowedDomains } = value
   return { decision, reason, ...(isString(cwd) ? { cwd } : {}),
     ...(isString(scratch) ? { scratch } : {}), ...(isString(confirm) ? { confirm } : {}),
     ...(isBoolean(capture) ? { capture } : {}),
     ...(isStringArray(writable) ? { writable } : {}),
-    ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) }
+    ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) ,
+    ...(isStringArray(allowedDomains) ? { allowedDomains } : {}) }
 }
 export function responseObject(value: unknown, command: string): Record<string, unknown> {
   if (!isResponseObject(value)) throw new Error(`takt-ai ${command} returned a non-object response`)
@@ -195,7 +229,8 @@ export function gcCoordinateResponse(result: Record<string, unknown>, action: un
 export function parseCoordinationResponse(value: unknown, verb: string[], action: unknown): DispatchResponse {
   if (value === null) return null
   const result = responseObject(value, verb.join(" "))
-  if (isHandoffEnvelope(result)) return result
+  if (isInterlocutorReturn(result)) return result
+  if (action === "lent_entries" && isMemoryIndex(result)) return result
   if (verb[0] === "dispatch" && ["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"].includes(String(action))) return result
   if (verb[0] === "gc" && action === "prompt" && typeof result.allowed === "boolean") return result
   if (action === "session_deleted" && result.aborted === false) return { aborted: false }
@@ -378,6 +413,24 @@ export default Plugin.define({
         return parsed && !parsed.settled ? [{ ...parsed, mine: parsed.owner === INSTANCE || orphaned.includes(parsed.dispatch) }] : []
       })
     }
+    // unsettledActivities lists the direct orchestrator activities in flight,
+    // each with whether this instance captures it and whether the core reports
+    // it orphaned because its capturing instance's lease lapsed.
+    async function unsettledActivities(): Promise<Array<{ id: string; root: string; own: boolean; orphaned: boolean; unmonitored: boolean }>> {
+      const result = responseObject(await dispatchAction({ action: "executions" }), "dispatch executions")
+      if (!result || !isResponseObject(result) || !isResponseObject(result.activities)) return []
+      const orphaned = isStringArray(result.orphaned_activities) ? result.orphaned_activities : []
+      return Object.entries(result.activities).flatMap(([id, a]) => isResponseObject(a) && typeof a.session_id === "string"
+        ? [{ id, root: a.session_id, own: a.owner === INSTANCE, orphaned: orphaned.includes(id), unmonitored: a.flight === "capture unmonitored" }]
+        : [])
+    }
+    // markActivitiesUnmonitored records lost capture for each listed activity.
+    // The core keeps the activity in flight and ignores a repeat.
+    async function markActivitiesUnmonitored(activities: Array<{ id: string; root: string }>) {
+      await Promise.all(activities.map(a =>
+        dispatchAction({ action: "activity_unmonitored", session: a.root, activity_id: a.id, node_kind: "orchestrator" })
+          .catch(error => console.error("Takt unmonitored activity unrecorded", a.id, error))))
+    }
     // A terminal host record of the exact native call settles any execution,
     // whoever owns it; only the owner, or any instance once the owner's lease
     // lapsed, starts a host wait on a child.
@@ -432,6 +485,18 @@ export default Plugin.define({
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
+      // While the host stream is down, the lost capture of what this instance
+      // watches is recorded again, so a write that failed is retried. Otherwise
+      // only an instance that stopped renewing its lease lost the capture of the
+      // activities it ran; whichever instance notices records that gap.
+      if (!eventsRunning && !disposed) {
+        await unsettledExecutions().then(executions => recordLostCapture(executions.filter(d => d.mine)))
+          .catch(error => console.error("Takt lost capture reconciliation", error))
+      } else {
+        await unsettledActivities()
+          .then(activities => markActivitiesUnmonitored(activities.filter(a => a.orphaned && !a.own && !a.unmonitored)))
+          .catch(error => console.error("Takt orphaned activity reconciliation", error))
+      }
       for (const d of await unsettledExecutions()) {
         if (d.cycle) continue
         let backgroundLaunched = false
@@ -637,7 +702,7 @@ export default Plugin.define({
     // strips it and swaps the shell executable for a sandboxed one without
     // touching the command text; evaluate finds the call by its tool call id and
     // only applies the decision admission already took.
-    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; capture: boolean }
+    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; allowedDomains?: string[]; capture: boolean }
     // ready is false while the transport request is still running.
     // started claims the call for create.before; wrapped says the sandbox is armed.
     type AdmittedShell = {
@@ -683,7 +748,7 @@ export default Plugin.define({
       if (!shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
       if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${shell.reason}`))
       if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
-      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private }
+      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private, ...(shell.allowedDomains ? { allowedDomains: shell.allowedDomains } : {}) }
     }
 
     // The first execute.before pins the tool call to the execution its session
@@ -755,7 +820,7 @@ export default Plugin.define({
           const { wrap, supervise } = await import(SANDBOX_ADAPTER)
           const run = supervise(await wrap(text, {
             writable: plan.writable, scratch: plan.scratch,
-            protectedPaths: plan.protected, privatePaths: plan.private, callID,
+            protectedPaths: plan.protected, privatePaths: plan.private, ...(plan.allowedDomains ? { allowedDomains: plan.allowedDomains } : {}), callID,
           }), plan.confirm)
           // The command text stays as admitted: OpenCode parses it for its own
           // permission check after this hook. The sandbox lives in the shell
@@ -933,10 +998,11 @@ export default Plugin.define({
     async function promptChild(sessionID: string, text: string): Promise<void> {
       await ctx.session.prompt({ sessionID, text }, { signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)]) })
     }
-    // returnInterface hands the interlocutor envelope to the root orchestrator,
-    // which holds the interface again; the lent session gets nothing back.
-    async function returnInterface(root: string, from: string, envelope: unknown): Promise<void> {
-      await ctx.session.synthetic({ sessionID: root, text: `The interface is back from ${from}. Envelope:\n${JSON.stringify(envelope, null, 2)}` })
+    // returnInterface hands the core's notice of the returned interface to the
+    // root orchestrator, which holds the interface again; the lent session gets
+    // nothing back.
+    async function returnInterface(root: string, ret: InterlocutorReturn): Promise<void> {
+      await ctx.session.synthetic({ sessionID: root, text: ret.notice })
     }
     const restoreGCCycle = once(async () => { await reconcileStoredDelegations() })
     function scheduleGC() {
@@ -1083,6 +1149,8 @@ export default Plugin.define({
       // host call identity tells a transport repetition apart from a retry.
       const unit = asString(input.description, "").trim()
       const specialist = asString(input.agent, "")
+      const configured = specialist ? modelName((await ctx.agent.get({ agentID: specialist })).data.model) : undefined
+      const model = modelName(input.model) ?? configured
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
@@ -1090,10 +1158,19 @@ export default Plugin.define({
         const request: Request = { action: "prepare", event: unit, dispatch: delegation, session: root,
           agent: specialist, caller: event.sessionID, background: input.background === true, owner: INSTANCE,
           ...(typeof input.sessionID === "string" && input.sessionID ? { child: input.sessionID } : {}),
-          ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }) }
-        const prepare = async () => {
+          ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }),
+          ...(model ? { model } : {}), ...(configured ? { configured_model: configured } : {}),
+          ...(typeof input.seat_reason === "string" && input.seat_reason ? { seat_reason: input.seat_reason } : {}),
+          ...(input.seat_substitute === true ? { substitute: true } : {}) }
+        const prepare = async (): Promise<DispatchResponse> => {
           try { return await dispatchAction(request) }
           catch (error) {
+            // PR-CRW-13: an unproven model restores the seat only with the user's approval.
+            if (error instanceof Error && error.message.includes(SEAT_UNPROVEN) && request.user_confirmed !== true) {
+              await confirmWithUser("seat_restore", specialist, { model: model ?? "", reason: asString(input.seat_reason, ""), substitute: String(input.seat_substitute === true) }, event)
+              request.user_confirmed = true
+              return prepare()
+            }
             const stop = error instanceof VFSRefusal ? error.response.stop_cycle : undefined
             if (!stop) throw error
             // Only an otherwise admissible operation asks to yield these lanes.
@@ -1218,7 +1295,7 @@ export default Plugin.define({
       const claims = await takt("claims", event).then(r => r.claims ?? [], () => undefined)
       if (claims !== undefined) {
         const prior = claims.filter(claim => claim.root_session_id !== root)
-        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key replaces overlapping claims from other roots completely, discarding their staged work; with author_key it continues the existing work. Same-root collisions are refused.` })
+        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key refuses any overlap and discards nothing; to continue staged work, pass its author_key with the exact retained scope.` })
       }
       // A failed status read must never break the orchestrator's own request.
       const state = await coordinate({ action: "status" }).catch(() => undefined)
@@ -1263,6 +1340,14 @@ export default Plugin.define({
     const pendingReplies = new Map<string, { session: string; controller: AbortController; resolve: (reply: string) => void; reject: (error: Error) => void }>()
     let eventsRunning = false
     let disposed = false
+    // inactivity fires once per silence of the open host stream; the next host event arms it again.
+    let inactivity: ReturnType<typeof setTimeout> | undefined
+    const stopInactivity = () => { clearTimeout(inactivity); inactivity = undefined }
+    const armInactivity = () => {
+      stopInactivity()
+      inactivity = setTimeout(() => { if (eventsRunning) void observeStream("inactive") }, STREAM_INACTIVITY_MS)
+      inactivity.unref?.()
+    }
     function endApprovals(reason: string, session?: string) {
       for (const [id, waiter] of pendingReplies) {
         if (session && waiter.session !== session) continue
@@ -1309,8 +1394,11 @@ export default Plugin.define({
     function startEvents() {
       if (eventsRunning || disposed) return
       eventsRunning = true
+      let failed = false
+      armInactivity()
       void (async () => {
         for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
+          armInactivity()
           // Replies never queue behind context lookups, telemetry or lifecycle IPC.
           if (event.type === "permission.replied") {
             pendingReplies.get(event.data.requestID)?.resolve(event.data.reply)
@@ -1332,11 +1420,55 @@ export default Plugin.define({
             void onSessionDeleted(event.data.sessionID).catch(error => console.error("Takt session deleted", error))
           }
         }
-      })().catch(error => console.error("Takt event stream disconnected", error)).finally(() => {
+      })().catch(error => { failed = true; console.error("Takt event stream disconnected", error) }).finally(() => {
         eventsRunning = false; confirmations = undefined
+        stopInactivity()
         hostWaits.abort(); hostWaits = new AbortController()
         endApprovals("confirmation event stream ended")
+        // The plugin's own disposal is closure, a stream error a disconnection,
+        // and a stream that just ended EOF: three distinct observations (PR-OBS-BUS-6).
+        let cause: "closed" | "disconnected" | "eof" = "eof"
+        if (disposed) cause = "closed"
+        else if (failed) cause = "disconnected"
+        void streamLost(cause)
       })
+    }
+    // STREAM_READ_ATTEMPTS bounds how often a stream-loss report rereads what is
+    // in flight before it gives up: a transient read failure must not drop the
+    // unmonitored record of known work.
+    const STREAM_READ_ATTEMPTS = 3
+    async function reread<T>(read: () => Promise<T>, attempt = 1): Promise<T> {
+      try {
+        return await read()
+      } catch (error) {
+        if (attempt >= STREAM_READ_ATTEMPTS) throw error
+        return reread(read, attempt + 1)
+      }
+    }
+    // observeStream records the host stream's state once per execution this instance
+    // watches (PR-OBS-BUS-5/6), and says which ones. The observation proves nothing
+    // about the agent.
+    async function observeStream(state: "eof" | "inactive" | "disconnected" | "closed") {
+      try {
+        const watched = (await reread(unsettledExecutions)).filter(d => d.mine)
+        for (const d of watched) observe("stream_liveness", "takt.platform", d.agent, d.root, { stream: HOST_EVENT_STREAM, state }, d.unit, d.attempt)
+        return watched
+      } catch (error) { console.error("Takt stream state unreported", error); return [] }
+    }
+    // recordLostCapture marks unmonitored, neither completed nor failed, each
+    // execution in watched and each direct activity this instance captures or
+    // whose capturing instance is gone. The core ignores a repeat.
+    async function recordLostCapture(watched: Delegation[]) {
+      await Promise.all(watched.map(d =>
+        dispatchAction({ action: "unmonitored", session: d.root, event: d.unit, dispatch: d.dispatch })
+          .catch(error => console.error("Takt unmonitored execution unrecorded", d.dispatch, error))))
+      const activities = await reread(unsettledActivities).catch(error => { console.error("Takt unmonitored activities unread", error); return [] })
+      await markActivitiesUnmonitored(activities.filter(a => (a.own || a.orphaned) && !a.unmonitored))
+    }
+    // streamLost reports the loss of the host event stream for what this
+    // instance watches. Telemetry loss proves nothing about the agent.
+    async function streamLost(state: "eof" | "disconnected" | "closed") {
+      await recordLostCapture(await observeStream(state))
     }
     startEvents()
 
@@ -1362,8 +1494,7 @@ export default Plugin.define({
       // The core decides from its history whether the session held a root.
       await dispatchAction({ action: "session_deleted", child: sessionID })
         .then(reply => {
-          const { aborted, root } = reply as { aborted?: boolean; root?: string }
-          if (aborted && root) return returnInterface(root, "a lent session that ended without a handoff", reply)
+          if (reply !== null && isInterlocutorReturn(reply) && reply.root) return returnInterface(reply.root, reply)
         })
         .catch(error => console.error("Takt session_deleted", error))
     }
@@ -1387,6 +1518,8 @@ export default Plugin.define({
             ...toolInput(schema.properties),
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
               description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
+              seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),
+              seat_substitute: { type: "boolean", description: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity" },
           } }
         })
       }
@@ -1434,6 +1567,7 @@ export default Plugin.define({
       // dispatch tools below: each is the orchestrator's own declaration, never
       // a specialist's, so every one requires the calling session to be the
       // root interlocutor.
+      // after runs once the history accepted the request, with the root session it named.
       const dispatch = <Args extends ToolInput>(name: string, description: string, action: string, input: ReturnType<typeof obj>, fields: (args: Args) => Record<string, unknown>) =>
         editor.add({
           name, description, input,
@@ -1496,7 +1630,7 @@ export default Plugin.define({
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, overlapping claims from other root sessions are discarded completely, including staged work; same-root collisions are refused. To continue, retry, or correct staged work, pass its author_key with the new exact file set: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
+      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, any overlap with an existing claim is refused and nothing is discarded. To continue, retry, or correct staged work, pass its author_key with the exact retained scope and any added paths: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
         work_unit_id: str("The unit the delegation will be named after"),
         agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
         scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
@@ -1517,7 +1651,7 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => args)
+      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
       dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
       dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored.",
@@ -1601,13 +1735,12 @@ export default Plugin.define({
         },
       })
 
-      // dispatch_switch and dispatch_abort_switch cannot ride the dispatch()
-      // factory above unmodified: both need to create or stop the temporary
-      // interlocutor's own session around the call to Go, and fields() only
-      // ever contributes a plain object into that one call. Each repeats
-      // dispatch()'s own root-only guard instead (IR-19/IR-24: a switch is
-      // originated by the base, its abort only by the user or the harness,
-      // never by a temporary holder).
+      // dispatch_switch cannot ride the dispatch() factory above unmodified: it
+      // creates the temporary interlocutor's own session around the call to
+      // Go, and fields() only ever contributes a plain object into that one
+      // call. It repeats dispatch()'s own root-only guard instead (IR-19). No
+      // agent holds an abort: the user's /takt-abort command and the harness
+      // originate one (IR-24).
       //
       // The user's decision is the harness's to obtain, not the model's word
       // (IR-20, IR-24): each transition asks through the permission service
@@ -1619,9 +1752,9 @@ export default Plugin.define({
         input: obj({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
-          requirements: str("Requirements context for the incoming interlocutor"),
+          requirements: str("Requirements for the incoming interlocutor: paths to formal, finalized documents, useful known Engram IDs, and settled decisions; declare explicit emptiness when none exists"),
           client: str("Client-facing context for the incoming interlocutor"),
-          expected_artifact: str("Optional filesystem copy; the result's Engram ID is required at handoff"),
+          expected_artifact: str("Repository path for the incoming specialist's standard document; sent to it at the switch"),
         }, ["target_agent", "objective"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ target_agent: string; objective: string; requirements?: string; client?: string; expected_artifact?: string }>(value)
@@ -1633,6 +1766,7 @@ export default Plugin.define({
             `Objective: ${args.objective}`,
             args.requirements ? `Requirements: ${args.requirements}` : undefined,
             args.client ? `Client: ${args.client}` : undefined,
+            args.expected_artifact ? `Standard artifact path: ${args.expected_artifact}` : undefined,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,
@@ -1661,20 +1795,18 @@ export default Plugin.define({
         },
       })
       editor.add({
-        name: "dispatch_abort_switch",
-        description: "Abort the current interlocutor switch and return the interlocutor role to the base. Only the user originates an abort: they are asked to accept it before it takes effect.",
-        input: obj({ reason: str("Evidence for aborting the switch") }, ["reason"]),
+        name: "dispatch_lent_entries",
+        description: "Page the memory index of a lent session whose returned envelope reports more entries, from its next_after.",
+        input: obj({
+          child: str("The lent session the envelope came from"),
+          after: { type: "integer", description: "The next_after of the previous page" },
+        }, ["child", "after"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ reason: string }>(value)
+          const args = toolInput<{ child: string; after: number }>(value)
           const session = await rootSession(c.sessionID)
-          if (c.sessionID !== session) throw new Error("dispatch_abort_switch belongs to the root orchestrator")
-          // The user's acceptance is what makes this a user-originated abort.
-          await confirmWithUser("interlocutor_abort", session, { reason: args.reason }, c)
-          // No child is named: the core aborts the current holder or refuses.
-          const result = await governed(c, { action: "abort_switch", session, child: "", evidence: args.reason, origin: "user" })
-          const aborted = result !== null && "child" in result && typeof result.child === "string" ? result.child : ""
-          if (aborted) await stopChild(aborted)
-          return { content: JSON.stringify(result) }
+          if (c.sessionID !== session) throw new Error("dispatch_lent_entries belongs to the root orchestrator")
+          const page = await dispatchAction({ action: "lent_entries", session, child: args.child, after: args.after })
+          return { content: JSON.stringify(page) }
         },
       })
       editor.add({
@@ -1683,7 +1815,7 @@ export default Plugin.define({
         input: obj({
           result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
           additional_context: str("Context to carry back to the base"),
-          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional filesystem copies" },
+          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional extra filesystem copies; none gates the handoff" },
           result_ids: { type: "array", items: { type: "integer" }, description: "One existing Engram entry ID per delivered result; required for Standard handoff" },
         }, ["result", "additional_context", "extra_artifacts", "result_ids"]),
         // Not built on dispatch(): the caller here is the temporary holder,
@@ -1698,7 +1830,8 @@ export default Plugin.define({
             action: "handoff", session, child: c.sessionID, agent: c.agent,
             result: args.result, additional_context: args.additional_context, extra_artifacts: args.extra_artifacts, result_ids: args.result_ids,
           })
-          await returnInterface(session, c.agent, envelope)
+          if (envelope === null || !isInterlocutorReturn(envelope)) throw new Error("dispatch_handoff: the core returned no envelope")
+          await returnInterface(session, envelope)
           // The holder has no further active work; its turn ends once this call returns.
           const holder = c.sessionID
           setTimeout(() => void stopChild(holder).catch(() => undefined), 0)
@@ -1941,6 +2074,7 @@ export default Plugin.define({
         if (!info.parentID) return
         // Learned first: nothing this context does later may keep it from its delegation.
         const delegation = await adoptChild(event.sessionID, event.agent)
+        if (delegation?.identity?.length) event.system = withoutIdentity(event.system, delegation.identity)
         const agent = await ctx.agent.get({ agentID: event.agent })
         const rules = agent.data.permissions
         const explicitlyAllows = (toolName: string) => {
@@ -1997,6 +2131,6 @@ export default Plugin.define({
     // The renewal never keeps the host process alive on its own.
     leaseTimer.unref?.()
     void renewLease().catch(error => console.error("Takt lease renewal", error))
-    return () => { clearInterval(leaseTimer); disposed = true; endApprovals("VFS plugin stopped"); abort.abort() }
+    return () => { clearInterval(leaseTimer); stopInactivity(); disposed = true; endApprovals("VFS plugin stopped"); abort.abort() }
   },
 })

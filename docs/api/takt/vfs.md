@@ -1303,6 +1303,9 @@ type ShellPlan struct {
     Writable  []string `json:"writable,omitempty"`
     Protected []string `json:"protected,omitempty"`
     Private   []string `json:"private,omitempty"`
+    // AllowedDomains is the user's network allowlist for the sandbox; absent
+    // leaves the network unrestricted.
+    AllowedDomains []string `json:"allowedDomains,omitempty"`
     // Capture reports that the command's result must be imported as a VFS
     // transaction once it ends.
     Capture bool `json:"capture"`

@@ -83,6 +83,12 @@ const (
 const AgentOpenCode = "opencode"
 ```
 
+<a name="EnvSandboxAllowedDomains"></a>EnvSandboxAllowedDomains names the environment variable with which the user opts shell sandboxes into a network allowlist: comma\-separated domain patterns such as "github.com,\*.npmjs.org". Unset or empty leaves the network unrestricted; Takt imposes no domain of its own.
+
+```go
+const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
+```
+
 <a name="SectionEngramProtocol"></a>SectionEngramProtocol is the markdown section ID shared by inject and remove.
 
 ```go

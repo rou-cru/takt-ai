@@ -38,6 +38,12 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
 		}
+		// The seat is part of what the execution record names: a retry may not
+		// run another model or swap in a substitute under it. An execution
+		// recorded before models were recorded names none, so any model matches.
+		if (prior.Model != "" && prior.Model != r.Model) || prior.Substitute != r.Substitute {
+			return nil, fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
+		}
 		if prior.Ready || prior.Settled {
 			return map[string]any{"execution": prior, "launchable": false}, nil
 		}
@@ -55,6 +61,10 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		}
 	}
 	if err := refuseRecycledProductManager(r, consumed); err != nil {
+		return nil, err
+	}
+	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
+	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
 	}
 	u, _ := h.Project().Unit(r.Session, r.Event)
@@ -91,7 +101,11 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			if r.CreatedAt == 0 {
 				r.CreatedAt = time.Now().UnixMilli()
 			}
-			if err := h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, Background: r.Background, CreatedAt: r.CreatedAt, Owner: r.Owner, Cause: history.CauseNone}); err != nil {
+			entries := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, Background: r.Background, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
+			if seat.Restores() {
+				entries = append(entries, protocol.SeatEntry(r.Session, r.Event, u.AttemptID, seat))
+			}
+			if err := h.AppendBatch(entries); err != nil {
 				return "", err
 			}
 		}
@@ -128,11 +142,11 @@ func attachExecutionChild(h *history.History, r coordinationRequest) (any, error
 		if err == nil {
 			err = observeExecutionRunning(h, d)
 		}
-		return d, err
+		return attached(d, err)
 	}
 	p := h.Project()
 	if d, ok := p.ExecutionForChild(r.Child, r.Agent); ok {
-		return d, observeExecutionRunning(h, d)
+		return attached(d, observeExecutionRunning(h, d))
 	}
 	// The host proposes the first link using native parent/title/time. Neither
 	// titles nor timestamps authorize any operation after this association.
@@ -159,7 +173,27 @@ func attachExecutionChild(h *history.History, r coordinationRequest) (any, error
 	if err == nil {
 		err = observeExecutionRunning(h, d)
 	}
-	return d, err
+	return attached(d, err)
+}
+
+// attachedExecution is a linked execution; a substitute's carries the
+// identity texts its composed prompt leaves out (PR-CRW-13).
+type attachedExecution struct {
+	history.Execution
+	Identity []string `json:"identity,omitempty"`
+}
+
+func attached(d history.Execution, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	out := attachedExecution{Execution: d}
+	if d.Substitute {
+		if out.Identity, err = protocol.SubstituteIdentity(d.Agent); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // A native context/event is evidence of this linked execution, even when a
@@ -172,11 +206,12 @@ func observeExecutionRunning(h *history.History, d history.Execution) error {
 	if u.AttemptID != d.Attempt || u.Dispatch != d.Dispatch || u.State != history.StateInFlight {
 		return errors.New("native execution no longer holds this dispatch; resume its current delegation")
 	}
-	if u.Flight == history.FlightUncertain {
+	if protocol.UncertainFlight(u.Flight) {
 		return protocol.Reconcile(h, "", d.Unit, d.Root, true)
 	}
 	return protocol.Launch(h, "", d.Unit, d.Root)
 }
+
 func resolveExecution(h *history.History, child, agent string) (any, error) {
 	if d, ok := h.Project().ExecutionForChild(child, agent); ok {
 		return d, nil
@@ -209,7 +244,9 @@ func renewLease(h *history.History, owner string, now time.Time) error {
 }
 
 // listExecutions answers every execution with the dispatches whose owner's
-// lease lapsed by now, which any harness instance may reconcile.
+// lease lapsed by now, which any harness instance may reconcile, and likewise
+// the orchestrator activities still in flight with those whose capturing
+// instance's lease lapsed: their capture is lost (PR-OBS-BUS-6).
 func listExecutions(h *history.History, now time.Time) map[string]any {
 	p := h.Project()
 	// Admission can survive a crash before KindExecution. Expose that exact
@@ -234,7 +271,18 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 		}
 	}
 	slices.Sort(orphaned)
-	return map[string]any{"executions": p.Executions, "orphaned": orphaned}
+	activities, orphanedActivities := map[string]history.Activity{}, []string{}
+	for id, a := range p.Activities {
+		if a.NodeKind != history.NodeKindOrchestrator || a.State != history.StateInFlight {
+			continue
+		}
+		activities[id] = a
+		if p.LeaseLapsed(a.Owner, now) {
+			orphanedActivities = append(orphanedActivities, id)
+		}
+	}
+	slices.Sort(orphanedActivities)
+	return map[string]any{"executions": p.Executions, "orphaned": orphaned, "activities": activities, "orphaned_activities": orphanedActivities}
 }
 
 // productManagerID names the catalog definition whose sessions author user

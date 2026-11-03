@@ -62,7 +62,7 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func Investigate\(plan Plan, report Report, prior \[\]Investigation, r Investigation\) \(\[\]Investigation, error\)](<#Investigate>)
 - [type MandateClass](<#MandateClass>)
 - [type MandateRateDecision](<#MandateRateDecision>)
-  - [func EvaluateMandateReversionRate\(store \*obs.Store, bus \*obs.Bus, clock \*obs.Clock, in MandateReversionRateInput\) \(MandateRateDecision, error\)](<#EvaluateMandateReversionRate>)
+  - [func EvaluateMandateReversionRate\(entries \[\]vfs.JournalEntry, bus \*obs.Bus, clock \*obs.Clock, in MandateReversionRateInput\) \(MandateRateDecision, error\)](<#EvaluateMandateReversionRate>)
 - [type MandateReversionRateInput](<#MandateReversionRateInput>)
 - [type Outcome](<#Outcome>)
 - [type Plan](<#Plan>)
@@ -873,7 +873,7 @@ const (
 <a name="MandateRateDecision"></a>
 ## type MandateRateDecision
 
-MandateRateDecision is the reversion\-rate evaluation for one mandate class over one range of registered work, kept alongside its raw inputs so the rate is never logged or acted on without the counts behind it \(PR\-MNT\-11\).
+MandateRateDecision is the reversion\-rate evaluation for one mandate class over one range of registered work, kept alongside its raw inputs so the rate is never logged or acted on without the counts behind it \(PR\-MNT\-32\).
 
 ```go
 type MandateRateDecision struct {
@@ -889,23 +889,21 @@ type MandateRateDecision struct {
 ### func EvaluateMandateReversionRate
 
 ```go
-func EvaluateMandateReversionRate(store *obs.Store, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
+func EvaluateMandateReversionRate(entries []vfs.JournalEntry, bus *obs.Bus, clock *obs.Clock, in MandateReversionRateInput) (MandateRateDecision, error)
 ```
 
-EvaluateMandateReversionRate measures how often mandate's consolidated work is reverted \(PR\-MNT\-7\): cycle\-reedit events \(PR\-MNT\-31\) over registered session events in \(afterID, beforeID\], never elapsed time \(PR\-MNT\-9/11\). Above the policy's demotion reversion rate it demotes the mandate to proposal\-only \(PR\-MNT\-32\) and publishes the CONTAIN effect PR\-OBS\-CTL\-5 requires; the caller records the demotion in the coordinator.
+EvaluateMandateReversionRate counts distinct consolidated cycle/path pairs and their attributed re\-edits from the journal. Reads, repeated edits and unrelated work cannot change the denominator. No registered work publishes no rate, preserving the last measured value on the bus.
 
 <a name="MandateReversionRateInput"></a>
 ## type MandateReversionRateInput
 
-MandateReversionRateInput is what EvaluateMandateReversionRate measures: the class and session, the registered range \(afterID, beforeID\], and the acting agent and work unit recorded on any CONTAIN effect.
+MandateReversionRateInput is what EvaluateMandateReversionRate measures: the class and session, and the acting agent and work unit recorded on any CONTAIN effect.
 
 ```go
 type MandateReversionRateInput struct {
     Agent      string
     SessionID  string
     Mandate    MandateClass
-    AfterID    int64
-    BeforeID   int64
     WorkUnitID string
 }
 ```

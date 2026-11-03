@@ -15,11 +15,10 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func Account\(h \*history.History, entries \[\]vfs.JournalEntry\) error](<#Account>)
 - [func Admissible\(h \*history.History, p AdmissionPolicy, req AdmissionRequest\) error](<#Admissible>)
 - [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest\) error](<#Admit>)
-- [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(map\[string\]any, error\)](<#BuildAbortEnvelope>)
-- [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(map\[string\]any, error\)](<#BuildHandoffEnvelope>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
 - [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit, qaRound ...\*history.QARound\) error](<#Commit>)
 - [func Contest\(h \*history.History, p AdmissionPolicy, journalRef, event, session, attempt string\) error](<#Contest>)
+- [func CurrentAgent\(h \*history.History, root string\) string](<#CurrentAgent>)
 - [func CurrentAttempt\(p history.Projection, session, event string\) string](<#CurrentAttempt>)
 - [func CurrentHolder\(h \*history.History, root string\) string](<#CurrentHolder>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Declare>)
@@ -30,20 +29,32 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func FinishActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind, outcome history.Outcome\) error](<#FinishActivity>)
 - [func Handoff\(h \*history.History, journalRef, root, callerSession, result string\) error](<#Handoff>)
 - [func Launch\(h \*history.History, journalRef, event, session string\) error](<#Launch>)
+- [func MarkActivityUnmonitored\(h \*history.History, session, activityID string\) error](<#MarkActivityUnmonitored>)
 - [func Reconcile\(h \*history.History, journalRef, event, session string, running bool\) error](<#Reconcile>)
 - [func Record\(h \*history.History, journalRef, event, session string, kind history.Kind\) error](<#Record>)
 - [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
 - [func Restore\(h \*history.History, fs \*vfs.FS, journalRef, session, objective string\) error](<#Restore>)
 - [func Revise\(h \*history.History, journalRef, session, baseVersion, newVersion string, adds \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Revise>)
-- [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind\) error](<#StartActivity>)
+- [func SeatEntry\(root, unit, attempt string, s Seat\) history.Entry](<#SeatEntry>)
+- [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind, owner string\) error](<#StartActivity>)
+- [func SubstituteIdentity\(agent string\) \(\[\]string, error\)](<#SubstituteIdentity>)
 - [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
+- [func UncertainFlight\(f history.Flight\) bool](<#UncertainFlight>)
+- [func ValidateSeat\(h \*history.History, root string, s Seat\) error](<#ValidateSeat>)
 - [func Withdraw\(h \*history.History, journalRef, event, session string\) error](<#Withdraw>)
 - [type AdmissionPolicy](<#AdmissionPolicy>)
   - [func LoadAdmissionPolicy\(\) \(AdmissionPolicy, error\)](<#LoadAdmissionPolicy>)
 - [type AdmissionRequest](<#AdmissionRequest>)
+- [type Envelope](<#Envelope>)
+  - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(Envelope, string, error\)](<#BuildAbortEnvelope>)
+  - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(Envelope, error\)](<#BuildHandoffEnvelope>)
 - [type HandoffOutcome](<#HandoffOutcome>)
+- [type MemoryIndex](<#MemoryIndex>)
+  - [func LentEntries\(h \*history.History, memoryRoot, root, child string, after int64\) \(MemoryIndex, error\)](<#LentEntries>)
 - [type PlanUnit](<#PlanUnit>)
 - [type RecoveryDeclaration](<#RecoveryDeclaration>)
+- [type Seat](<#Seat>)
+  - [func \(s Seat\) Restores\(\) bool](<#Seat.Restores>)
 
 
 ## Constants
@@ -70,6 +81,12 @@ const CauseRepetition = "control/unit-in-flight"
 
 ```go
 const CauseWithdrawn = "control/unit-withdrawn"
+```
+
+<a name="UnprovenModelCause"></a>UnprovenModelCause prefixes the refusal of an autonomous reassignment to a model this session has not seen complete work; the user may approve it.
+
+```go
+const UnprovenModelCause = "seat/unproven-model"
 ```
 
 <a name="Abort"></a>
@@ -108,24 +125,6 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 
 Admit is called before the host task tool. It reserves one concurrency slot indivisibly against the projection \(PR\-HAR\-16\); a refusal is recorded and stays visible.
 
-<a name="BuildAbortEnvelope"></a>
-## func BuildAbortEnvelope
-
-```go
-func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (map[string]any, error)
-```
-
-BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and assembles the IR\-22 envelope shape a handoff produces: no negotiated result, the abort's evidence as additional context, and the memory entries the holder recorded. Those are read from memoryRoot by author before the abort clears the holder.
-
-<a name="BuildHandoffEnvelope"></a>
-## func BuildHandoffEnvelope
-
-```go
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (map[string]any, error)
-```
-
-BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; filesystem copies are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
-
 <a name="CloseRecovery"></a>
 ## func CloseRecovery
 
@@ -152,6 +151,15 @@ func Contest(h *history.History, p AdmissionPolicy, journalRef, event, session, 
 ```
 
 Contest records the contest of a unit attempt that ended without a result, admitting at most the policy's distinct contests per session, upheld ones included. Judging the contested work is the orchestrator's Verify delegation. A transport duplicate of the same targeted failure returns its recorded disposition without consuming again \(PR\-HAR\-17, PR\-HAR\-20\).
+
+<a name="CurrentAgent"></a>
+## func CurrentAgent
+
+```go
+func CurrentAgent(h *history.History, root string) string
+```
+
+CurrentAgent returns the specialist holding root's interlocutor role, read from its owner; empty when no switch is active.
 
 <a name="CurrentAttempt"></a>
 ## func CurrentAttempt
@@ -205,7 +213,7 @@ Except records a scoped user exception before it enables further work: the bound
 func ExpectedArtifact(h *history.History, root string) string
 ```
 
-ExpectedArtifact returns the optional filesystem copy path declared by the active switch for root, or "" if there is none.
+ExpectedArtifact returns the standard document path declared by the active switch for root, or "" when it declares none.
 
 <a name="Finish"></a>
 ## func Finish
@@ -214,7 +222,7 @@ ExpectedArtifact returns the optional filesystem copy path declared by the activ
 func Finish(h *history.History, journalRef, event, session string) error
 ```
 
-Finish records the observed effective termination of a dispatched unit, releasing its reserved slot. Cancellation\-pending or uncertain execution ends without a work result, so its outcome is interrupted \(PR\-DAG\-TMP\-1\).
+Finish records the observed effective termination of a dispatched unit, releasing its reserved slot. Cancellation\-pending or uncertain execution ends without a work result, so its outcome is interrupted \(PR\-DAG\-TMP\-1\). A completed finish whose attempt has no evaluated result is recorded in the same batch as unverified delivery, never as accepted work \(PR\-DAG\-TMP\-9\).
 
 <a name="FinishActivity"></a>
 ## func FinishActivity
@@ -242,6 +250,15 @@ func Launch(h *history.History, journalRef, event, session string) error
 ```
 
 Launch records execution observed running. A repeat of an observed launch yields its recorded disposition, and a launch left uncertain by a communication failure must be reconciled before any repeat that could duplicate execution \(PR\-HAR\-17\).
+
+<a name="MarkActivityUnmonitored"></a>
+## func MarkActivityUnmonitored
+
+```go
+func MarkActivityUnmonitored(h *history.History, session, activityID string) error
+```
+
+MarkActivityUnmonitored records that capture of an in\-flight orchestrator activity was lost. The activity stays in flight: it is neither finished nor failed, and no agent is blamed \(PR\-OBS\-BUS\-5\). A repeat, or a loss reported after the activity settled, changes nothing.
 
 <a name="Reconcile"></a>
 ## func Reconcile
@@ -288,14 +305,32 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 
 Revise records a plan revision against its expected prior valid version \(PR\-DAG\-MUT\-6\). A valid revision is classified strategic or tactical by comparing the old and new plans \(PR\-DAG\-MUT\-4\) and applies as a whole; an invalid one is rejected with its reason recorded, touching no per\-unit state, so the last valid plan is untouched by construction.
 
+<a name="SeatEntry"></a>
+## func SeatEntry
+
+```go
+func SeatEntry(root, unit, attempt string, s Seat) history.Entry
+```
+
+SeatEntry is the execution\-history record of an admitted restoration.
+
 <a name="StartActivity"></a>
 ## func StartActivity
 
 ```go
-func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind) error
+func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error
 ```
 
-StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle.
+StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance. Another instance that starts the activity again takes over its capture.
+
+<a name="SubstituteIdentity"></a>
+## func SubstituteIdentity
+
+```go
+func SubstituteIdentity(agent string) ([]string, error)
+```
+
+SubstituteIdentity returns the installed PERSONA and SOUL texts of agent's instance: what a substitute's composed prompt leaves out.
 
 <a name="Switch"></a>
 ## func Switch
@@ -305,6 +340,24 @@ func Switch(h *history.History, journalRef, root, childSession, targetAgent, exp
 ```
 
 Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
+
+<a name="UncertainFlight"></a>
+## func UncertainFlight
+
+```go
+func UncertainFlight(f history.Flight) bool
+```
+
+UncertainFlight says whether execution is unestablished: its launch or liveness is uncertain, or its capture was lost. Both are reconciled the same way and hold their reservation until then \(PR\-HAR\-18, PR\-OBS\-BUS\-7\).
+
+<a name="ValidateSeat"></a>
+## func ValidateSeat
+
+```go
+func ValidateSeat(h *history.History, root string, s Seat) error
+```
+
+ValidateSeat refuses a restoration PR\-CRW\-13 does not admit, before any admission is spent: the orchestrator seat, a restoration without a reason or model, a substitute before any reassignment of that seat, and, without the user's approval, a model this session has not seen complete work.
 
 <a name="Withdraw"></a>
 ## func Withdraw
@@ -341,6 +394,10 @@ type AdmissionPolicy struct {
         MaxActions  int `yaml:"max_actions"`
         MaxAttempts int `yaml:"max_attempts"`
     }   `yaml:"recovery"`
+    // Interlocutor bounds the memory index a returned envelope carries (IR-22).
+    Interlocutor struct {
+        MemoryPage int `yaml:"memory_page"`
+    }   `yaml:"interlocutor"`
 }
 ```
 
@@ -367,6 +424,38 @@ type AdmissionRequest struct {
 }
 ```
 
+<a name="Envelope"></a>
+## type Envelope
+
+Envelope is the IR\-22 output envelope: exactly these four fields.
+
+```go
+type Envelope struct {
+    Result            string      `json:"result"`
+    AdditionalContext string      `json:"additional_context"`
+    ExtraArtifacts    []string    `json:"extra_artifacts"`
+    Memory            MemoryIndex `json:"memory"`
+}
+```
+
+<a name="BuildAbortEnvelope"></a>
+### func BuildAbortEnvelope
+
+```go
+func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (Envelope, string, error)
+```
+
+BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and synthesizes its envelope: no negotiated result, the abort's evidence as additional context, and the entries the lent session recorded. It also returns the aborted session.
+
+<a name="BuildHandoffEnvelope"></a>
+### func BuildHandoffEnvelope
+
+```go
+func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (Envelope, error)
+```
+
+BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; extra filesystem artifacts are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
+
 <a name="HandoffOutcome"></a>
 ## type HandoffOutcome
 
@@ -380,6 +469,27 @@ type HandoffOutcome struct {
     ResultIDs         []int64
 }
 ```
+
+<a name="MemoryIndex"></a>
+## type MemoryIndex
+
+MemoryIndex is the bounded IR\-22 index of the entries a lent session recorded. NextAfter is the last listed entry when more remain, the cursor LentEntries pages from; zero when the index is complete.
+
+```go
+type MemoryIndex struct {
+    Entries   []int64 `json:"entries"`
+    NextAfter int64   `json:"next_after,omitempty"`
+}
+```
+
+<a name="LentEntries"></a>
+### func LentEntries
+
+```go
+func LentEntries(h *history.History, memoryRoot, root, child string, after int64) (MemoryIndex, error)
+```
+
+LentEntries pages the memory index of child, a session that held root's interface, from the entry after. Any other session is refused: the index never carries unrelated root\-session history \(IR\-22\).
 
 <a name="PlanUnit"></a>
 ## type PlanUnit
@@ -409,5 +519,30 @@ type RecoveryDeclaration struct {
     Attempts int      `json:"attempts"`
 }
 ```
+
+<a name="Seat"></a>
+## type Seat
+
+Seat is what a delegation declares about the seat it fills \(PR\-CRW\-13\): the model it runs, the instance's configured model, and, when it restores an unavailable seat, the reason and whether a substitute fills it.
+
+```go
+type Seat struct {
+    Agent         string
+    Model         string
+    Configured    string
+    Reason        string
+    Substitute    bool
+    UserConfirmed bool
+}
+```
+
+<a name="Seat.Restores"></a>
+### func \(Seat\) Restores
+
+```go
+func (s Seat) Restores() bool
+```
+
+Restores reports whether the delegation restores the seat: another model than the configured one, or a substitute.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

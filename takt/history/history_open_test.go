@@ -128,10 +128,13 @@ func TestAppendValidatesActivityRecords(t *testing.T) {
 		entry history.Entry
 		want  string
 	}{
-		"orchestrator start":    {activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, ""), ""},
-		"orchestrator finish":   {activityEntry(history.KindActivityFinished, history.NodeKindOrchestrator, history.OutcomeCompleted), ""},
-		"maintenance start":     {activityEntry(history.KindMaintenanceStarted, history.NodeKindMaintenance, ""), ""},
-		"maintenance interrupt": {activityEntry(history.KindMaintenanceFinished, history.NodeKindMaintenance, history.OutcomeInterrupted), ""},
+		"orchestrator start":                    {activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, ""), ""},
+		"orchestrator finish":                   {activityEntry(history.KindActivityFinished, history.NodeKindOrchestrator, history.OutcomeCompleted), ""},
+		"maintenance start":                     {activityEntry(history.KindMaintenanceStarted, history.NodeKindMaintenance, ""), ""},
+		"maintenance interrupt":                 {activityEntry(history.KindMaintenanceFinished, history.NodeKindMaintenance, history.OutcomeInterrupted), ""},
+		"orchestrator unmonitored":              {activityEntry(history.KindUnmonitored, history.NodeKindOrchestrator, ""), ""},
+		"maintenance unmonitored":               {activityEntry(history.KindUnmonitored, history.NodeKindMaintenance, ""), "work entries require"},
+		"unmonitored activity without a source": {activityEntry(history.KindUnmonitored, "", ""), "work entries require"},
 		"missing activity id": {func() history.Entry {
 			e := activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, "")
 			e.ActivityID = ""

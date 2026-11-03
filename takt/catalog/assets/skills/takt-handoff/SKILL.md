@@ -19,6 +19,12 @@ A handoff carries the values the operation declares: an allowed outcome, and for
 the IDs of the entries you recorded for it in this session. Write the prose plainly and
 completely, for the orchestrator that reads it next.
 
+Before submitting a result:
+
+- Write each standard document you authored to the repository with native file tools, with
+  the same content as its memory entry.
+- If that write failed, state persistence as unmet in the submission.
+
 ## A failed attempt is simply corrected
 
 If a handoff call returns an error, read it, correct the submission, and call the same

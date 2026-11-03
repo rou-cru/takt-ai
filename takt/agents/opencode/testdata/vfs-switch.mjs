@@ -137,9 +137,9 @@ assert.equal(requestOf(ticks()[0]).session, "root", "rootSession() did not resol
 // 3. A dispatch_handoff from that same switch-created child reaches the
 // resolved root, not the child's own raw session id.
 const holder = { sessionID: "switch-root-child", agent: "pm" }
-const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: [] }
+const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: { entries: [] } }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
-  ? { stdout: JSON.stringify(envelope), stderr: "", code: 0 } : undefined
+  ? { stdout: JSON.stringify({ envelope, notice: "The interface is back from pm." }), stderr: "", code: 0 } : undefined
 mark = calls.filter(c => c.verb === "dispatch").length
 await tools.dispatch_handoff.execute({ result: "Standard", additional_context: "ctx", extra_artifacts: [], result_ids: [1] }, holder)
 const handoff = requestOf(calls.filter(c => c.verb === "dispatch").slice(mark).find(c=>requestOf(c).action==="handoff"))

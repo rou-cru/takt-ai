@@ -4,8 +4,8 @@ import { homedir } from "node:os"
 import { dirname } from "node:path"
 import type { OpenCodeEvent } from "@opencode/client"
 import { Schema } from "effect"
-import vfsPlugin from "./takt-vfs"
-import { historyFixture, type FixtureExecution } from "../testdata/history-fixture.mjs"
+import vfsPlugin, { withoutIdentity, STREAM_INACTIVITY_MS } from "./takt-vfs"
+import { historyFixture, type FixtureActivity, type FixtureExecution } from "../testdata/history-fixture.mjs"
 
 const contracts = JSON.parse(readFileSync(new URL("../testdata/contracts.json", import.meta.url), "utf8"))
 
@@ -33,6 +33,8 @@ const SHELL_NOT_ADMITTED = 122
 const SETTLE_ATTEMPTS = 100
 const SETTLE_STEP_MS = 2
 const QUIET_MS = 25
+// DRAIN_MS lets work a disposal triggers finish before the scripted takt-ai goes.
+const DRAIN_MS = 10
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
 type Reply = { out?: string; err?: string; code?: number }
@@ -43,13 +45,15 @@ type Ctx = { sessionID: string; agent: string; id?: string }
 type SessionInfo = { parentID?: string; title?: string; metadata?: Record<string, unknown>; time?: { created: number } }
 type Options = {
   nativeCalls?: Record<string,"completed"|"error"|"running">
-  history?: { inputs?: Record<string,number[]>; executions?: Record<string,Partial<FixtureExecution>>; holders?: Record<string,string> }
+  history?: { inputs?: Record<string,number[]>; executions?: Record<string,Partial<FixtureExecution>>; holders?: Record<string,string>; activities?: Record<string,Partial<FixtureActivity>>; leases?: string[] }
   nativeInput?: unknown
   respond?: (call: Call) => Reply | undefined
   claims?: unknown[]
   sessions?: Record<string, SessionInfo>
   storage?: Record<string, unknown>
   permissions?: Record<string, unknown[]>
+  // models names an agent's configured model, as OpenCode reports it.
+  models?: Record<string, { providerID: string; id: string }>
   promptError?: string
   home?: boolean
   nativeRead?: (input:unknown)=>Promise<unknown>
@@ -135,13 +139,16 @@ async function startVfs(options: Options = {}) {
   const events: OpenCodeEvent[] = []
   let wake: (() => void) | undefined
   let closed = false
+      // ended is how the scripted host ends the event stream: cleanly, or failing.
+      let ended: { error?: Error } | undefined
   const register = (hooks: Hooks) => async (name: string, callback: unknown) => {
     hooks.set(name, [...(hooks.get(name) ?? []), callback as (event: HookEvent) => Promise<void>])
     return { dispose() {} }
   }
   async function* stream(): AsyncGenerator<OpenCodeEvent> {
     while (!closed) {
-      while (events.length === 0 && !closed) await new Promise<void>((resolve) => { wake = resolve })
+      while (events.length === 0 && !closed && !ended) await new Promise<void>((resolve) => { wake = resolve })
+      if (ended) { if (ended.error) throw ended.error; return }
       const event = events.shift()
       if (event) yield event
     }
@@ -214,7 +221,7 @@ async function startVfs(options: Options = {}) {
       },
       agent: { async get({ agentID }: { agentID: string }) {
         if (agentID === BROKEN_AGENT) throw new Error("agent lookup failed")
-        return { data: { id: agentID, permissions: options.permissions?.[agentID] ?? [] } }
+        return { data: { id: agentID, permissions: options.permissions?.[agentID] ?? [], ...(options.models?.[agentID] ? { model: options.models[agentID] } : {}) } }
       } },
       permission: { hook: register(permissionHooks) },
       shell: { hook: register(shellHooks) },
@@ -240,6 +247,8 @@ async function startVfs(options: Options = {}) {
     actions: (kind: string) => calls.filter((call) => call.kind === kind).map((call) => call.command),
     // schema is the input schema a registered tool advertises to the host.
     schema: (name: string) => (tools.get(name) as { input?: { properties?: Record<string, Record<string, unknown>> } } | undefined)?.input,
+    // description is the text a registered tool advertises to the model.
+    description: (name: string) => (tools.get(name) as { description?: string } | undefined)?.description,
     requests: (kind: string, command: string) => calls.filter((call) => call.kind === kind && call.command === command).map((call) => call.request),
     run(name: string, input: unknown, ctx: Ctx = dev) {
       const execute = tools.get(name)?.execute
@@ -253,10 +262,12 @@ async function startVfs(options: Options = {}) {
     },
     tool: toolHooks, permission: permissionHooks, shell: shellHooks, session: sessionHooks,
     publish(event: OpenCodeEvent) { events.push(event); wake?.() },
+    endStream(error?: Error) { ended = { error }; wake?.() },
     async stop() {
       // Telemetry is deferred to a timer; let it drain before the stub goes.
       await sleep(SETTLE_STEP_MS * 2)
       if (typeof cleanup === "function") cleanup()
+      await sleep(DRAIN_MS)
       restore()
     },
   }
@@ -829,6 +840,141 @@ describe("delegation lifecycle", () => {
   })
 })
 
+describe("launch uncertainty and stream loss", () => {
+  const live = { "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT }, "b:1": { unit: "u2", root: "rootB", agent: RESULT_AGENT }, "c:1": { unit: "u3", root: "rootC", settled: true } }
+  const livenessEvents = (vfs: Awaited<ReturnType<typeof startVfs>>) =>
+    vfs.requests("obs", "ingest").filter(r => r.event_class === "stream_liveness")
+  const lost = () => [["u1", "rootA", "a:1"], ["u2", "rootB", "b:1"]].map(([unit, root, dispatch]) => ({ unit, root, dispatch }))
+
+  for (const [name, end, state] of [["ends", undefined, "eof"], ["fails", new Error("socket reset"), "disconnected"]] as const) {
+    test(`a host event stream that ${name} marks each live execution unmonitored with state ${state}`, async () => {
+      const vfs = await startVfs({ history: { executions: saved(live) } })
+      try {
+        vfs.endStream(end)
+        await until(() => vfs.requests("dispatch", "unmonitored").length === 2 && livenessEvents(vfs).length === 2)
+        expect(vfs.requests("dispatch", "unmonitored").map(r => ({ unit: r.event, root: r.session, dispatch: r.dispatch })))
+          .toEqual(lost())
+        expect(livenessEvents(vfs).map(r => ({ unit: r.work_unit_id, root: r.session_id, attributes: r.attributes })))
+          .toEqual([{ unit: "u1", root: "rootA", attributes: { stream: "host_events", state } }, { unit: "u2", root: "rootB", attributes: { stream: "host_events", state } }])
+        // Missing telemetry is neither completion nor failure of the agent.
+        expect(["finish", "abandon", "uncertain", "reconcile"].flatMap(action => vfs.requests("dispatch", action))).toEqual([])
+        expect(activeDispatches(vfs)).toEqual(["a:1", "b:1"])
+      } finally { await vfs.stop() }
+    })
+  }
+
+  test("closing the plugin marks each live execution unmonitored with state closed", async () => {
+    const vfs = await startVfs({ history: { executions: saved(live) } })
+    await vfs.stop()
+    expect(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch)).toEqual(["a:1", "b:1"])
+    expect(livenessEvents(vfs).map(r => (r.attributes as Record<string, unknown>).state)).toEqual(["closed", "closed"])
+  })
+})
+
+describe("stream inactivity", () => {
+  // SHORT_SILENCE_MS stands in for STREAM_INACTIVITY_MS so a silence can elapse in a test.
+  const SHORT_SILENCE_MS = 8
+  const live = { "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT } }
+  const withShortSilence = async (run: () => Promise<void>) => {
+    const original = globalThis.setTimeout
+    globalThis.setTimeout = ((handler: () => void, ms?: number, ...rest: unknown[]) =>
+      original(handler, ms === STREAM_INACTIVITY_MS ? SHORT_SILENCE_MS : ms, ...rest)) as unknown as typeof setTimeout
+    try { await run() } finally { globalThis.setTimeout = original }
+  }
+  const inactive = (vfs: Awaited<ReturnType<typeof startVfs>>) =>
+    vfs.requests("obs", "ingest").filter(r => (r.attributes as Record<string, unknown>)?.state === "inactive")
+  const hostEvent = { type: "permission.replied", data: { requestID: "none", reply: "once" } } as unknown as OpenCodeEvent
+
+  test("silence is observed once, a host event arms it again, and it never marks anything unmonitored or failed", async () => {
+    await withShortSilence(async () => {
+      const vfs = await startVfs({ history: { executions: saved(live) } })
+      try {
+        await until(() => inactive(vfs).length === 1)
+        await sleep(SHORT_SILENCE_MS * 4)
+        expect(inactive(vfs)).toHaveLength(1)
+        expect(inactive(vfs)[0]).toMatchObject({ session_id: "rootA", work_unit_id: "u1", event_class: "stream_liveness", attributes: { stream: "host_events", state: "inactive" } })
+        vfs.publish(hostEvent)
+        await until(() => inactive(vfs).length === 2)
+        await sleep(SHORT_SILENCE_MS * 4)
+        expect(inactive(vfs)).toHaveLength(2)
+        for (const action of ["unmonitored", "activity_unmonitored", "finish", "abandon", "uncertain", "reconcile"]) expect(vfs.requests("dispatch", action)).toEqual([])
+        expect(activeDispatches(vfs)).toEqual(["a:1"])
+      } finally { await vfs.stop() }
+    })
+  })
+
+  test("losing the stream marks each open direct activity unmonitored, and never one that finished", async () => {
+    const vfs = await startVfs({ history: { executions: saved(live) } })
+    try {
+      const activity = (id: string) => vfs.run("dispatch_activity_start", { activity_id: id, node_kind: "orchestrator" }, orchestrator)
+      await activity("open-1"); await activity("open-2"); await activity("done-1")
+      await vfs.run("dispatch_activity_finish", { activity_id: "done-1", node_kind: "orchestrator", outcome: "completed" }, orchestrator)
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "activity_unmonitored").length === 2)
+      expect(vfs.requests("dispatch", "activity_unmonitored")).toEqual([
+        { action: "activity_unmonitored", session: "root", activity_id: "open-1", node_kind: "orchestrator" },
+        { action: "activity_unmonitored", session: "root", activity_id: "open-2", node_kind: "orchestrator" },
+      ])
+      for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("an activity whose capturing instance is gone is marked unmonitored, and never one a live instance captures", async () => {
+    const earlier = (id: string, owner: string) => ({ activity_id: id, session_id: "root", node_kind: "orchestrator", state: "in flight", flight: "observed running", owner })
+    const vfs = await startVfs({ history: { leases: ["other-live"], activities: { "gone-1": earlier("gone-1", "crashed"), "live-1": earlier("live-1", "other-live") } } })
+    try {
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "activity_unmonitored").length === 1)
+      await sleep(SHORT_SILENCE_MS * 4)
+      expect(vfs.requests("dispatch", "activity_unmonitored")).toEqual([
+        { action: "activity_unmonitored", session: "root", activity_id: "gone-1", node_kind: "orchestrator" },
+      ])
+      expect(vfs.history.activities["live-1"].flight).toBe("observed running")
+    } finally { await vfs.stop() }
+  })
+
+  test("a transient failure to read what is in flight is retried before the loss is reported", async () => {
+    let failing = 0
+    const vfs = await startVfs({
+      history: { executions: saved(live) },
+      respond: (call) => call.kind === "dispatch" && call.command === "executions" && failing-- > 0 ? { code: 1, err: "store busy" } : undefined,
+    })
+    try {
+      failing = 1
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "unmonitored").length === 1)
+      expect(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch)).toEqual(["a:1"])
+    } finally { await vfs.stop() }
+  })
+})
+
+describe("lost capture retry", () => {
+  // SHORT_RENEWAL_MS stands in for the lease renewal interval so a renewal can
+  // run in a test.
+  const SHORT_RENEWAL_MS = 8
+  test("a lost-capture write that fails is recorded on a later lease renewal while the stream is down", async () => {
+    const original = globalThis.setInterval
+    globalThis.setInterval = ((handler: () => void, ms?: number, ...rest: unknown[]) =>
+      original(handler, ms === 30_000 ? SHORT_RENEWAL_MS : ms, ...rest)) as unknown as typeof setInterval
+    let failing = true
+    const vfs = await startVfs({
+      history: { executions: saved({ "a:1": { unit: "u1", root: "rootA", agent: RESULT_AGENT } }) },
+      respond: (call) => call.kind === "dispatch" && (call.command === "unmonitored" || call.command === "activity_unmonitored") && failing ? { code: 1, err: "store busy" } : undefined,
+    })
+    try {
+      await vfs.run("dispatch_activity_start", { activity_id: "open-1", node_kind: "orchestrator" }, orchestrator)
+      vfs.endStream(new Error("socket reset"))
+      await until(() => vfs.requests("dispatch", "unmonitored").length === 1 && vfs.requests("dispatch", "activity_unmonitored").length === 1)
+      failing = false
+      await until(() => vfs.history.activities["open-1"]?.flight === "capture unmonitored" && vfs.requests("dispatch", "unmonitored").length >= 2)
+      expect(vfs.history.activities["open-1"].flight).toBe("capture unmonitored")
+      expect(vfs.requests("dispatch", "unmonitored").length).toBeGreaterThanOrEqual(2)
+      expect(new Set(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch))).toEqual(new Set(["a:1"]))
+      for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
+    } finally { await vfs.stop(); globalThis.setInterval = original }
+  })
+})
+
 describe("maintenance cycle", () => {
   test("a failed prompt from an earlier cycle cannot interrupt a replacement cycle", async () => {
     let statusCalls=0
@@ -999,6 +1145,52 @@ describe("maintenance cycle", () => {
   })
 })
 
+describe("seat restoration", () => {
+  let asked: Array<Record<string, unknown>> = []
+  beforeEach(() => {
+    asked = []
+    mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
+    mock.module("@opencode/client", () => ({ OpenCode: { make: () => ({ permission: { create: async (r: Record<string, unknown>) => {
+      asked.push(r)
+      return { id: r.id, effect: "allow" }
+    } } }) } }))
+  })
+  const launch = (input: Record<string, unknown>) => ({ tool: "subagent", sessionID: "root", id: "call-s", agent: ORCHESTRATOR, messageID: "m", input })
+  const models = { [RESULT_AGENT]: { providerID: "p", id: "a" } }
+
+  test("every delegation reports the model it runs and the instance's configured one", async () => {
+    const vfs = await startVfs({ models })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-s", result_ids: [] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-s", agent: RESULT_AGENT }))
+      expect(vfs.requests("dispatch", "prepare")[0]).toMatchObject({ model: "p/a", configured_model: "p/a" })
+      expect(vfs.requests("dispatch", "prepare")[0]).not.toHaveProperty("seat_reason")
+    } finally { await vfs.stop() }
+  })
+
+  test("an unproven model restores the seat only after the user approves it", async () => {
+    const vfs = await startVfs({ models,
+      respond: (call) => call.kind === "dispatch" && call.command === "prepare" && !(call.request as { user_confirmed?: boolean }).user_confirmed
+        ? { code: 1, err: "seat/unproven-model: model p/b has completed no work in this session; with the user present, their approval admits it" } : undefined })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-s", result_ids: [] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", launch({ description: "unit-s", agent: RESULT_AGENT, model: { providerID: "p", id: "b" }, seat_reason: "the instance timed out twice" }))
+      expect(asked).toHaveLength(1)
+      expect(asked[0]).toMatchObject({ action: "seat_restore", resources: [RESULT_AGENT], metadata: { model: "p/b", reason: "the instance timed out twice" } })
+      const prepared = vfs.requests("dispatch", "prepare")
+      expect(prepared).toHaveLength(2)
+      expect(prepared[1]).toMatchObject({ model: "p/b", configured_model: "p/a", seat_reason: "the instance timed out twice", user_confirmed: true })
+    } finally { await vfs.stop() }
+  })
+})
+
+describe("withoutIdentity", () => {
+  test("leaves a substitute's composed prompt without its persona and soul", () => {
+    const system = [{ type: "text", text: "BASELINE\n\nI am the architect.\n\nMy voice.\n\nOPERATIONS" }, { type: "text", text: "Work unit u." }]
+    expect(withoutIdentity(system, ["I am the architect.", "My voice."]).map(part => part.text)).toEqual(["BASELINE\n\n\n\n\n\nOPERATIONS", "Work unit u."])
+  })
+})
+
 describe("interlocutor switch", () => {
   // asked records each confirmation the harness raises; answer decides it.
   let asked: Array<Record<string, unknown>> = []
@@ -1012,7 +1204,10 @@ describe("interlocutor switch", () => {
       return { id: r.id, effect: answer }
     } } }) } }))
   })
-  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: [3] }
+  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: { entries: [3] } }
+  const aborted = { ...envelope, result: "Aborted", additional_context: "ended" }
+  const HANDOFF_NOTICE = "The interface is back from dev."
+  const ABORT_NOTICE = "The interface is back from dev, whose lent session was aborted."
   const request = { target_agent: "dev", objective: "Ship it", requirements: "typed" }
   const lent = { child: { metadata: { takt_switch: "root" } } }
   const NO_HOLDER = "harness: no interlocutor switch is active for this session; nothing to abort"
@@ -1024,35 +1219,27 @@ describe("interlocutor switch", () => {
       if (call.kind !== "dispatch") return undefined
       const body = call.request as { child?: string }
       if (call.command === "switch") { holder = body.child; return { out: "{}" } }
-      if (call.command === "handoff") { holder = undefined; return json(envelope) }
+      if (call.command === "handoff") { holder = undefined; return json({ envelope, artifact: { path: "PRD.md", present: false }, notice: HANDOFF_NOTICE }) }
       if (call.command === "session_deleted") {
         if (!holder || body.child !== holder) return json({ aborted: false })
         holder = undefined
-        return json({ ...envelope, result: "Aborted", aborted: true, root: "root", child: body.child })
+        return json({ envelope: aborted, root: "root", child: body.child, notice: ABORT_NOTICE })
       }
       if (call.command !== "abort_switch") return undefined
       const target = body.child || holder
       if (!holder) return { code: 1, err: NO_HOLDER }
       if (target !== holder) return { code: 1, err: NOT_HOLDER }
       holder = undefined
-      return json({ ...envelope, result: "Aborted", child: target })
+      return json({ envelope: aborted, root: "root", child: target, notice: ABORT_NOTICE })
     }
   }
 
-  test("only the root orchestrator switches or aborts", async () => {
+  test("only the root orchestrator switches, and no agent holds an abort", async () => {
     const vfs = await startVfs({ sessions: { leaf: { parentID: "root" } } })
     try {
       const leaf: Ctx = { sessionID: "leaf", agent: ORCHESTRATOR }
       await expect(vfs.run("dispatch_switch", request, leaf)).rejects.toThrow("dispatch_switch belongs to the root orchestrator")
-      await expect(vfs.run("dispatch_abort_switch", { reason: "r" }, leaf)).rejects.toThrow("dispatch_abort_switch belongs to the root orchestrator")
-    } finally { await vfs.stop() }
-  })
-
-  test("an abort with no switch is refused with the core's text", async () => {
-    const vfs = await startVfs({ respond: core() })
-    try {
-      await expect(vfs.run("dispatch_abort_switch", { reason: "r" }, orchestrator)).rejects.toThrow(NO_HOLDER)
-      expect(vfs.log.interrupts).toEqual([])
+      await expect(Promise.resolve().then(() => vfs.run("dispatch_abort_switch", { reason: "r" }, orchestrator))).rejects.toThrow("dispatch_abort_switch")
     } finally { await vfs.stop() }
   })
 
@@ -1072,25 +1259,18 @@ describe("interlocutor switch", () => {
       await expect(vfs.run("dispatch_switch", request, orchestrator)).rejects.toThrow("prompt refused")
       expect(vfs.requests("dispatch", "abort_switch")).toEqual([{ action: "abort_switch", session: "root", child: "child", evidence: "the switched session could not be prompted", origin: "harness" }])
       expect(vfs.log.interrupts).toEqual(["child"])
-      await expect(vfs.run("dispatch_abort_switch", { reason: "again" }, orchestrator)).rejects.toThrow(NO_HOLDER)
     } finally { await vfs.stop() }
   })
 
-  test("a user abort names no child, ends the lent session the core reports and clears the switch", async () => {
+  test("a declared standard artifact path reaches the incoming specialist with its objective", async () => {
     const vfs = await startVfs({ respond: core() })
     try {
-      await vfs.run("dispatch_switch", request, orchestrator)
-      expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child" })
-      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: typed")
-      const result = await vfs.run("dispatch_abort_switch", { reason: "changed course" }, orchestrator)
-      expect(JSON.parse(result.content)).toMatchObject({ result: "Aborted", child: "child" })
-      expect(vfs.requests("dispatch", "abort_switch")).toEqual([{ action: "abort_switch", session: "root", child: "", evidence: "changed course", origin: "user" }])
-      expect(vfs.log.interrupts).toEqual(["child"])
-      await expect(vfs.run("dispatch_abort_switch", { reason: "again" }, orchestrator)).rejects.toThrow(NO_HOLDER)
+      await vfs.run("dispatch_switch", { ...request, expected_artifact: "docs/prd.md" }, orchestrator)
+      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: typed\nStandard artifact path: docs/prd.md")
     } finally { await vfs.stop() }
   })
 
-  test("a switch, abort or handoff the user refuses changes nothing", async () => {
+  test("a switch or handoff the user refuses changes nothing", async () => {
     const vfs = await startVfs({ sessions: lent, respond: core() })
     const caller = { ...orchestrator, messageID: "message", id: "tool-call" }
     try {
@@ -1102,25 +1282,11 @@ describe("interlocutor switch", () => {
       answer = "allow"
       await vfs.run("dispatch_switch", request, caller)
       answer = "deny"
-      await expect(vfs.run("dispatch_abort_switch", { reason: "model decided" }, caller)).rejects.toThrow("Permission denied: interlocutor_abort")
-      expect(vfs.requests("dispatch", "abort_switch")).toEqual([])
       const holder = { sessionID: "child", agent: "dev", messageID: "m", id: "t" }
       await expect(vfs.run("dispatch_handoff", { result: "Standard", additional_context: "done", extra_artifacts: [], result_ids: [3] }, holder)).rejects.toThrow("Permission denied: interlocutor_handoff")
       expect(vfs.requests("dispatch", "handoff")).toEqual([])
       expect(vfs.log.interrupts).toEqual([])
     } finally { await vfs.stop() }
-  })
-
-  test("a plugin restarted mid-switch can still abort it", async () => {
-    const respond = core()
-    const first = await startVfs({ respond })
-    try { await first.run("dispatch_switch", request, orchestrator) } finally { await first.stop() }
-    const restarted = await startVfs({ respond })
-    try {
-      await restarted.run("dispatch_abort_switch", { reason: "after restart" }, orchestrator)
-      expect(restarted.requests("dispatch", "abort_switch")).toEqual([{ action: "abort_switch", session: "root", child: "", evidence: "after restart", origin: "user" }])
-      expect(restarted.log.interrupts).toEqual(["child"])
-    } finally { await restarted.stop() }
   })
 
   test("a handoff returns the envelope to the root and ends the holder's turn", async () => {
@@ -1133,10 +1299,9 @@ describe("interlocutor switch", () => {
       expect(vfs.log.synthetics).toHaveLength(1)
       expect(vfs.log.synthetics[0].sessionID).toBe("root")
       expect(vfs.log.synthetics[0].text).toContain("The interface is back from dev.")
-      expect(JSON.parse(vfs.log.synthetics[0].text.split("Envelope:\n")[1])).toEqual(envelope)
+      expect(vfs.log.synthetics[0].text).toBe(HANDOFF_NOTICE)
       await until(() => vfs.log.interrupts.includes("child"))
       expect(vfs.log.interrupts).toEqual(["child"])
-      await expect(vfs.run("dispatch_abort_switch", { reason: "late" }, orchestrator)).rejects.toThrow(NO_HOLDER)
     } finally { await vfs.stop() }
   })
 
@@ -1147,7 +1312,7 @@ describe("interlocutor switch", () => {
       vfs.publish({ id: "evt-dead", created: 2, type: "session.deleted", data: { sessionID: "child" } } as OpenCodeEvent)
       await until(() => vfs.log.synthetics.length > 0)
       expect(vfs.requests("dispatch", "session_deleted")).toEqual([{ action: "session_deleted", child: "child" }])
-      expect(vfs.log.synthetics[0].text).toContain("a lent session that ended without a handoff")
+      expect(vfs.log.synthetics[0]).toEqual({ sessionID: "root", text: ABORT_NOTICE })
     } finally { await vfs.stop() }
   })
 
@@ -1161,7 +1326,6 @@ describe("interlocutor switch", () => {
       await new Promise((resolve) => setTimeout(resolve, 20))
       expect(vfs.errors).toEqual([])
       expect(vfs.log.synthetics).toEqual([])
-      await vfs.run("dispatch_abort_switch", { reason: "still active" }, orchestrator)
     } finally { await vfs.stop() }
   })
 
@@ -1226,6 +1390,14 @@ describe("path ownership", () => {
 })
 
 describe("claims and consolidation", () => {
+  // An assignment never resolves retained staged work on the side: release,
+  // discard, consolidation and staged edits stay separate owner operations.
+  const SIDE_RESOLUTIONS = ["release", "discard", "consolidate", "op"]
+  const sideResolutions = (vfs: Awaited<ReturnType<typeof startVfs>>) => vfs.actions("vfs").filter((command) => SIDE_RESOLUTIONS.includes(command))
+  // discardPromises are the sentences that announce a discard without negating
+  // it; naming the explicit vfs_discard tool is not a promise.
+  const discardPromises = (text: string) => text.split(/(?<=[.;!?])\s+|\n+/)
+    .filter((sentence) => /\bdiscard(s|ed|ing)?\b/i.test(sentence) && !/\b(no|not|never|nothing|neither|nor)\b|n't/i.test(sentence))
   test("releasing a claim leaves every decision to the core", async () => {
     let ended = false
     const vfs = await startVfs({
@@ -1271,6 +1443,63 @@ describe("claims and consolidation", () => {
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["a.go", "b.go"], author_key: "author-key" }, orchestrator)
       expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ author_key: "author-key", scope: ["a.go", "b.go"] })])
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("an assignment overlapping nothing goes to the owner alone and leaves other staged work untouched", async () => {
+    const vfs = await startVfs({ claims: [claim({ key: "other", work_unit_id: "unit-b", staged: true, scope: ["src/b.go"] })] })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
+      await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["src/a.go"] }, orchestrator)
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ work_unit_id: "unit-a", scope: ["src/a.go"] })])
+      expect(vfs.requests("vfs", "assign")[0]).not.toHaveProperty("author_key")
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test.each([
+    ["same-root", "root", "unit-b"],
+    ["other-root", "old-root", "unit-old"],
+  ])("a %s overlap without author_key surfaces the owner's refusal, resolves nothing, and the named key continues the work", async (_, root, unit) => {
+    const retained = ["src/a.go", "src/b.go"]
+    const refusal = `assign refused: src/a.go is retained by author_key held of work unit ${unit}; continue it with claim_assign author_key held and scope ${retained.join(", ")}`
+    const vfs = await startVfs({
+      claims: [claim({ key: "held", root_session_id: root, work_unit_id: unit, staged: true, scope: retained })],
+      respond: (call) => call.kind === "vfs" && call.command === "assign" && !call.request.author_key ? { code: 1, err: refusal } : undefined,
+    })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
+      await expect(vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: ["src/a.go"] }, orchestrator)).rejects.toThrow(refusal)
+      expect(vfs.requests("vfs", "assign")).toEqual([expect.objectContaining({ work_unit_id: "unit-a", scope: ["src/a.go"] })])
+      expect(vfs.requests("vfs", "assign")[0]).not.toHaveProperty("author_key")
+      expect(sideResolutions(vfs)).toEqual([])
+
+      await vfs.run("claim_assign", { work_unit_id: "unit-a", agent: "dev", scope: retained, author_key: "held" }, orchestrator)
+      expect(vfs.requests("vfs", "assign")[1]).toEqual(expect.objectContaining({ work_unit_id: "unit-a", scope: retained, author_key: "held" }))
+      expect(vfs.requests("vfs", "assign")).toHaveLength(2)
+      expect(sideResolutions(vfs)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("claim_assign's description states the overlap refusal and promises no discard", async () => {
+    const vfs = await startVfs()
+    try {
+      const text = vfs.description("claim_assign") ?? ""
+      expect(text).toContain("author_key")
+      expect(text).toMatch(/refus|reject/i)
+      expect(discardPromises(text)).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("the orchestrator's context keeps an earlier root's retained claim by key and paths, promising no discard", async () => {
+    const vfs = await startVfs({ claims: [claim({ key: "old-key", root_session_id: "old-root", work_unit_id: "unit-old", staged: true, scope: ["src/a.go", "src/b.go"] })] })
+    try {
+      const event = { tools: Object.fromEntries([...VFS_TOOL_NAMES, "claim_assign"].map((name) => [name, {}])), sessionID: "root", agent: ORCHESTRATOR, system: [] as Array<{ type: string; text: string }> }
+      await vfs.fire(vfs.session, "context", event)
+      const text = event.system.map((part) => part.text).join("\n")
+      for (const fact of ["old-key", "src/a.go", "src/b.go", "author_key"]) expect(text).toContain(fact)
+      expect(discardPromises(text)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -1668,6 +1897,35 @@ describe("shell admission", () => {
       await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
       reply = json({ ok: true, shell: { decision: "allow", reason: "fine" } })
       await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("omitted an allowed shell plan field")
+    } finally { await vfs.stop() }
+  })
+
+  test("the opt-in network allowlist reaches the sandbox only when the plan carries it", async () => {
+    const seen: Record<string, unknown>[] = []
+    mock.module("./takt-sandbox.mjs", () => ({
+      wrap: (line: string, options: Record<string, unknown>) => { seen.push(options); return Promise.resolve(`wrapped:${line}`) },
+      supervise: (wrapped: string) => wrapped,
+    }))
+    const domains = ["example.com", "*.github.com"]
+    let extra: Record<string, unknown> = {}
+    const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "shell-prepare" || call.command === "shell-continue" ? shellReply(extra) : undefined })
+    try {
+      await vfs.fire(vfs.shell, "create.before", { command: await admit(vfs, shellEvent()) })
+      extra = { allowedDomains: domains }
+      await vfs.fire(vfs.shell, "create.before", { command: await admit(vfs, shellEvent({ id: "s2" })) })
+      expect(seen).toHaveLength(2)
+      expect("allowedDomains" in seen[0]).toBe(false)
+      expect(seen[1].allowedDomains).toEqual(domains)
+    } finally { await vfs.stop() }
+  })
+
+  test("a malformed network allowlist refuses the command", async () => {
+    let allowedDomains: unknown = "example.com"
+    const vfs = await startVfs({ sessions: unitSessions, respond: (call) => call.command === "shell-prepare" ? shellReply({ allowedDomains }) : undefined })
+    try {
+      await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
+      allowedDomains = ["example.com", 7]
+      await expect(vfs.fire(vfs.tool, "execute.before", shellEvent())).rejects.toThrow("response omitted shell plan")
     } finally { await vfs.stop() }
   })
 

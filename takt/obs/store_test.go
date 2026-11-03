@@ -175,10 +175,9 @@ func TestStoreTwoOpensShareStream(t *testing.T) {
 	}
 }
 
-// TestStoreEventsAndCountEventsFilterAndRange checks the read API a rate
-// derivation needs: filtering by class, bounding by id range (never wall
-// time, per PR-MNT-9/PR-MNT-11), and Count matching what Events returns.
-func TestStoreEventsAndCountEventsFilterAndRange(t *testing.T) {
+// TestStoreEventsFilterAndRange checks the read API: filtering by class and
+// bounding by id range (never wall time, per PR-MNT-9/PR-MNT-11).
+func TestStoreEventsFilterAndRange(t *testing.T) {
 	ws := t.TempDir()
 	clock := obs.NewClock()
 	s := openStore(t, ws)
@@ -215,7 +214,7 @@ func TestStoreEventsAndCountEventsFilterAndRange(t *testing.T) {
 	}
 }
 
-// eventCountCase is one CountEvents assertion: the session and class filter,
+// eventCountCase is one Events count assertion: the session and class filter,
 // the bounded range, the expected count, and a label identifying which case
 // regressed on failure.
 type eventCountCase struct {
@@ -227,12 +226,12 @@ type eventCountCase struct {
 	Label   string
 }
 
-// assertEventCount checks s.CountEvents(c.Session, c.Class, c.From, c.To)
-// equals c.Want, failing with c.Label identifying which case regressed.
+// assertEventCount checks s.Events(c.Session, c.Class, c.From, c.To) returns
+// c.Want rows, failing with c.Label identifying which case regressed.
 func assertEventCount(t *testing.T, s *obs.Store, c eventCountCase) {
 	t.Helper()
-	if n, err := s.CountEvents(c.Session, c.Class, c.From, c.To); err != nil || n != c.Want {
-		t.Fatalf("CountEvents %s = %d, %v; want %d, nil", c.Label, n, err, c.Want)
+	if got, err := s.Events(c.Session, c.Class, c.From, c.To, 0); err != nil || int64(len(got)) != c.Want {
+		t.Fatalf("Events %s = %d, %v; want %d, nil", c.Label, len(got), err, c.Want)
 	}
 }
 
@@ -274,5 +273,37 @@ func TestNewClassesRejectAttributesOutsideAllowlist(t *testing.T) {
 	e.Attributes = map[string]any{"tool": "edit", "duration_ms": 12}
 	if err := e.Validate(); err != nil {
 		t.Errorf("listed attributes rejected: %v", err)
+	}
+}
+
+func TestEnvelopeContractCoversLivenessCallIDAndProblemRate(t *testing.T) {
+	clock := obs.NewClock()
+	valid := func(class obs.EventClass, attrs map[string]any) error {
+		e := obs.NewEnvelope(clock, obs.PlanePlatform, "agent-a")
+		e.EventClass = class
+		e.Attributes = attrs
+		return e.Validate()
+	}
+	for _, state := range []string{obs.StreamEOF, obs.StreamInactive, obs.StreamDisconnected, obs.StreamClosed} {
+		if err := valid(obs.EventStreamLiveness, map[string]any{"stream": "child-session-1", "state": state}); err != nil {
+			t.Errorf("state %q rejected: %v", state, err)
+		}
+	}
+	for name, attrs := range map[string]map[string]any{
+		"unknown state":     {"stream": "child-session-1", "state": "hung"},
+		"missing state":     {"stream": "child-session-1"},
+		"missing stream":    {"state": obs.StreamEOF},
+		"unlisted":          {"stream": "child-session-1", "state": obs.StreamEOF, "reason": "x"},
+		"non-string stream": {"stream": 1, "state": obs.StreamEOF},
+	} {
+		if err := valid(obs.EventStreamLiveness, attrs); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	if err := valid(obs.EventProblemRate, map[string]any{"signal": "cycle_reedit", "count": int64(2), "denominator": int64(8), "rate": 0.25}); err != nil {
+		t.Errorf("problem rate with count, denominator and rate rejected: %v", err)
+	}
+	if err := valid(obs.EventProblemRate, map[string]any{"signal": "cycle_reedit", "count": 2, "window_seconds": 60, "rate": 0.25}); err == nil {
+		t.Error("a time window was accepted as a problem rate attribute")
 	}
 }

@@ -89,6 +89,10 @@ describe("searchResult", () => {
 })
 
 describe("renderSearch", () => {
+  test("distinguishes omitted history from an empty search", () => {
+    expect(renderSearch({ results: [], omitted_superseded: 2 })).toBe("No non-superseded entries in the returned candidates\n2 superseded entries omitted; pass include_history to see them")
+    expect(renderSearch({ results: [], omitted_superseded: 0 })).toBe("No memories found")
+  })
   test("renders one marked line per entry and the omitted count", () => {
     expect(renderSearch(searchResult(contracts.memory_search.result))).toBe(
       "#42 [decision] [dev] Cache for ten minutes — Cache policy. [disputed] [exception]\n1 superseded entries omitted; pass include_history to see them",
@@ -402,6 +406,19 @@ describe("session deletion", () => {
 })
 
 
+const description = (tool: MemoryTool | undefined) => {
+  const text = (tool as { description?: unknown } | undefined)?.description
+  expect(typeof text).toBe("string")
+  return text as string
+}
+// All-turn context carries no continuation or closure procedure, however it is worded.
+const expectNoLifecycleProcedure = (system: Array<{ type: string; text: string }>) => {
+  const text = system.map(({ text }) => text).join("\n")
+  expect(text).not.toContain("memory_continue_session")
+  expect(text).not.toContain("memory_close_session")
+  expect(text).not.toMatch(/continu|clos/i)
+}
+
 describe("effective memory catalog", () => {
   test("Spec keeps record and never receives lifecycle schemas or instructions", async () => {
     const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
@@ -423,19 +440,48 @@ describe("effective memory catalog", () => {
       }
     } finally { memory.stop() }
   })
+  // A07: lifecycle procedures live in the action-time tool descriptions, not in all-turn context.
   test("ownership grants and revokes lifecycle on each turn for the calling session", async () => {
     let holder = "architect"
     const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "not-authority" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
     try {
       const granted = await memory.context("architect", "child")
       expect(Object.keys(granted.tools)).toHaveLength(4)
-      expect(JSON.stringify(granted.system)).toContain("memory_continue_session")
+      expect(Object.keys(granted.tools)).toEqual(expect.arrayContaining(["memory_continue_session", "memory_close_session"]))
+      expectNoLifecycleProcedure(granted.system)
       expect(memory.requests[0].request.caller_session).toBe("child")
+      const again = await memory.context("architect", "child")
+      expect(Object.keys(again.tools)).toHaveLength(4)
+      expectNoLifecycleProcedure(again.system)
       holder = "pm"
       const revoked = await memory.context("architect", "child")
       expect(Object.keys(revoked.tools)).toEqual(["memory_record", "memory_search"])
       expect(revoked.system).toEqual([])
-      expect(Object.keys((await memory.context("pm")).tools)).toHaveLength(4)
+      expect(memory.requests.at(-1)!.request).toMatchObject({ author: "architect", caller_session: "child" })
+      const holderTurn = await memory.context("pm")
+      expect(Object.keys(holderTurn.tools)).toHaveLength(4)
+      expectNoLifecycleProcedure(holderTurn.system)
+    } finally { memory.stop() }
+  })
+  test("the holder reaches the moved continuation and closure conditions in the tool descriptions", async () => {
+    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record", "memory_continue_session", "memory_close_session"] }) }) })
+    try {
+      const event = await memory.context("takt")
+      const continuation = description(event.tools.memory_continue_session)
+      for (const condition of [
+        /closed/i, // only a closed previous session
+        /user/i, /confirm/i, // identified by the user or a candidate the user confirms
+        /first/i, // the first new entry fixes the link
+        /replac/i, /withdraw|empty/i, // replace or withdraw before that entry
+        /interrupt/i, // interrupted sessions acquire no link
+        /refus|reject/i, /retry|resum|block/i, // a refusal does not block resuming and is not retried
+      ]) expect(continuation).toMatch(condition)
+      const closure = description(event.tools.memory_close_session)
+      for (const condition of [
+        /once/i, // called once
+        /compaction/i, // compaction is not closure
+        /(earlier|prior|previous|existing)\b[^.]*\banchors?\b|\banchors?\b[^.]*\b(kept|keeps|preserv\w*|retain\w*|remain\w*)/i, // later work keeps earlier close anchors
+      ]) expect(closure).toMatch(condition)
     } finally { memory.stop() }
   })
   test("uncertain authority fails closed and never widens native grants", async () => {

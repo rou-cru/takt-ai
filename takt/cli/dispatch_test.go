@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -73,9 +74,16 @@ type request struct {
 	QARound    *history.QARound `json:"qa_round,omitempty"`
 	Artifact   string           `json:"artifact,omitempty"`
 	ResultIDs  []int64          `json:"result_ids,omitempty"`
+	After      int64            `json:"after,omitempty"`
 	Origin     string           `json:"origin,omitempty"`
 	Caller     string           `json:"caller,omitempty"`
 	Owner      string           `json:"owner,omitempty"`
+	Model      string           `json:"model,omitempty"`
+	Configured string           `json:"configured_model,omitempty"`
+	SeatReason string           `json:"seat_reason,omitempty"`
+	Substitute bool             `json:"substitute,omitempty"`
+	Confirmed  bool             `json:"user_confirmed,omitempty"`
+	AuthorKeys []vfs.AgentID    `json:"author_keys,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -361,19 +369,74 @@ func (s *session) staged(key vfs.AgentID) int {
 
 // seedMemory writes the memory session index `takt-ai memory record` keeps
 // under HOME: which author recorded which entry in the session.
-func (s *session) seedMemory(id string, authors map[int64]string) {
+// returned decodes what the harness delivers when the interface comes back.
+type returned struct {
+	Envelope struct {
+		Result            string   `json:"result"`
+		AdditionalContext string   `json:"additional_context"`
+		ExtraArtifacts    []string `json:"extra_artifacts"`
+		Memory            struct {
+			Entries   []int64 `json:"entries"`
+			NextAfter int64   `json:"next_after"`
+		} `json:"memory"`
+	} `json:"envelope"`
+	Artifact *struct {
+		Path    string `json:"path"`
+		Present bool   `json:"present"`
+	} `json:"artifact"`
+	Child  string `json:"child"`
+	Root   string `json:"root"`
+	Notice string `json:"notice"`
+	raw    json.RawMessage
+}
+
+func (r *returned) UnmarshalJSON(data []byte) error {
+	type plain returned
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	*r = returned(p)
+	var outer struct {
+		Envelope json.RawMessage `json:"envelope"`
+	}
+	if err := json.Unmarshal(data, &outer); err != nil {
+		return err
+	}
+	r.raw = outer.Envelope
+	return nil
+}
+
+// requireFourFields fails unless the envelope holds exactly the IR-22 fields.
+func (r returned) requireFourFields(t *testing.T) {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(r.raw, &fields); err != nil {
+		t.Fatalf("decode envelope %s: %v", r.raw, err)
+	}
+	for _, key := range []string{"result", "additional_context", "extra_artifacts", "memory"} {
+		if _, ok := fields[key]; !ok {
+			t.Fatalf("envelope %s lacks %q", r.raw, key)
+		}
+	}
+	if len(fields) != 4 {
+		t.Fatalf("envelope %s has %d fields, want exactly four", r.raw, len(fields))
+	}
+}
+
+// seededEntry is one memory session index entry, in recording order.
+type seededEntry struct {
+	ID     int64  `json:"id"`
+	Author string `json:"author"`
+	Caller string `json:"caller,omitempty"`
+}
+
+func (s *session) seedMemory(id string, entries ...seededEntry) {
 	s.t.Helper()
-	type entry struct {
-		ID     int64  `json:"id"`
-		Author string `json:"author"`
-	}
 	index := struct {
-		Session string  `json:"session"`
-		Entries []entry `json:"entries"`
-	}{Session: id}
-	for entryID, author := range authors {
-		index.Entries = append(index.Entries, entry{ID: entryID, Author: author})
-	}
+		Session string        `json:"session"`
+		Entries []seededEntry `json:"entries"`
+	}{Session: id, Entries: entries}
 	dir := filepath.Join(s.home, ".takt-ai", "memory", "sessions")
 	if err := os.MkdirAll(dir, memoryDirMode); err != nil {
 		s.t.Fatal(err)
@@ -413,6 +476,10 @@ func TestDispatchCommand(t *testing.T) {
 		{"admission recovers from an orphaned barrier hold", orphanedBarrierHold},
 		{"launches collapse and an uncertain one is reconciled before repeating", launchAndReconciliation},
 		{"a delegation a later attempt replaced is never marked uncertain or reconciled", staleDispatchIgnored},
+		{"unmonitored execution keeps its slot and is reconciled", unmonitoredExecution},
+		{"a native child event reconciles an unmonitored launch that never ran", unmonitoredReconciledOnChild},
+		{"reconciling a non-start releases the gates prepared for the attempt", reconcileReleasesPreparedGates},
+		{"an unmonitored activity stays in flight, unblamed and unfinished", unmonitoredActivity},
 		{"cancellation keeps its slot while the controls stay available", cancellationRetainsCapacity},
 		{"a delegation that never returns is abandoned and its unit delegated again", abandonUnreturnedDelegation},
 		{"delegation without plan coverage is bounded", unplannedBound},
@@ -426,8 +493,10 @@ func TestDispatchCommand(t *testing.T) {
 		{"a restart or redeclaration grants no fresh allowance", consumptionSurvivesRestart},
 		{"a handoff needs the results the holder recorded", handoffNeedsRecordedResults},
 		{"the user ends a holder's turn", userAbortsSwitch},
+		{"a lent session's memory index pages", lentMemoryPages},
+		{"an unavailable seat is restored, never absorbed", seatRestoration},
 		{"a deleted holder session is aborted", deletedSessionAbortsHolder},
-		{"an optional filesystem copy never gates a nonstandard handoff", handoffOptionalCopy},
+		{"a declared document's absence never gates a nonstandard handoff", handoffOptionalCopy},
 		{"validate_results against a real engram", validateResultsAgainstRealEngram},
 		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
 	} {
@@ -690,6 +759,188 @@ func launchAndReconciliation(t *testing.T, bin string) {
 	}
 }
 
+func unmonitoredExecution(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	live := call("admit", "unmon-unit")
+	live.Dispatch = "root:unmon-1"
+	s.must(live)
+	s.must(call("launch", "unmon-unit"))
+	// A dispatch that no longer holds the unit cannot mark it.
+	stale := call("unmonitored", "unmon-unit")
+	stale.Dispatch = "root:unmon-old"
+	s.must(stale)
+	if s.count(history.KindUnmonitored) != 0 {
+		t.Fatal("a stale delegation marked the live attempt unmonitored")
+	}
+	lost := call("unmonitored", "unmon-unit")
+	lost.Dispatch = "root:unmon-1"
+	s.must(lost)
+	// Capture lost is not termination: the unit stays in flight and keeps its slot.
+	if u := s.unit("unmon-unit"); u.State != history.StateInFlight || u.Flight != history.FlightUnmonitored || !u.Launched {
+		t.Fatalf("unmonitored unit: %+v", u)
+	}
+	if n := s.projection().InFlight(); n != 1 {
+		t.Fatalf("losing capture released capacity: in flight %d", n)
+	}
+	// A repeated report, as a retrying instance sends it, records nothing new.
+	s.must(lost)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("a repeated lost-capture report recorded %d entries; want 1", n)
+	}
+	reconcile := call("reconcile", "unmon-unit")
+	reconcile.Pass = true
+	s.must(reconcile)
+	if u := s.unit("unmon-unit"); u.Flight != history.FlightRunning {
+		t.Fatalf("reconciled unit: %+v", u)
+	}
+}
+
+// unmonitoredReconciledOnChild: a native child event is evidence of execution,
+// so a launch whose capture was lost is reconciled instead of refused.
+func unmonitoredReconciledOnChild(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief"})
+	prepare := request{Action: "prepare", Session: rootSession, Event: "brief", Dispatch: "lost-capture", Caller: rootSession, Agent: "pm", Owner: "instance"}
+	s.must(prepare)
+	lost := call("unmonitored", "brief")
+	lost.Dispatch = "lost-capture"
+	s.must(lost)
+	if u := s.unit("brief"); u.Flight != history.FlightUnmonitored || u.Launched {
+		t.Fatalf("unmonitored unit: %+v", u)
+	}
+	attach := request{Action: "attach_child", Session: rootSession, Event: "brief", Dispatch: "lost-capture", Child: "pm-child", Agent: "pm"}
+	s.must(attach)
+	if u := s.unit("brief"); u.State != history.StateInFlight || u.Flight != history.FlightRunning || !u.Launched {
+		t.Fatalf("the child event did not reconcile the unmonitored launch: %+v", u)
+	}
+}
+
+// pendingGates counts the verifier gates prepared and not yet adopted.
+func (s *session) pendingGates() int {
+	s.t.Helper()
+	fs, err := vfs.Open(s.root, s.state)
+	if err != nil {
+		s.t.Fatalf("open vfs: %v", err)
+	}
+	n := 0
+	for _, c := range fs.OwnershipClaims(rootSession) {
+		if c.AuthorKey != "" {
+			n++
+		}
+	}
+	if err := fs.Close(); err != nil {
+		s.t.Fatalf("close vfs: %v", err)
+	}
+	return n
+}
+
+func reconcileReleasesPreparedGates(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	author := s.stage("", "writer", "work", 1)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "review"})
+	prepare := func(dispatch string) request {
+		return request{Action: "prepare", Session: rootSession, Event: "review", Dispatch: dispatch, Caller: rootSession, Agent: "verify", Owner: "instance", AuthorKeys: []vfs.AgentID{author}}
+	}
+	reconcile := func(dispatch string, running bool) request {
+		r := call("reconcile", "review")
+		r.Dispatch, r.Pass = dispatch, running
+		return r
+	}
+	mark := func(kind, dispatch string) {
+		r := call(kind, "review")
+		r.Dispatch = dispatch
+		s.must(r)
+	}
+	// Capture was lost but the execution runs: its gates are the child's to adopt.
+	s.must(prepare("alive"))
+	if s.pendingGates() != 1 {
+		t.Fatalf("preparation issued %d gates; want 1", s.pendingGates())
+	}
+	mark("unmonitored", "alive")
+	s.must(reconcile("alive", true))
+	if s.pendingGates() != 1 || s.unit("review").Flight != history.FlightRunning {
+		t.Fatalf("reconciling a running execution disturbed its gates: %d, %+v", s.pendingGates(), s.unit("review"))
+	}
+	// A refusal because nothing is uncertain touches nothing either.
+	s.refused(reconcile("alive", false))
+	if s.pendingGates() != 1 || s.unit("review").State != history.StateInFlight {
+		t.Fatalf("a refused reconciliation released gates: %d, %+v", s.pendingGates(), s.unit("review"))
+	}
+	s.must(call("finish", "review"))
+	// A launch that never started ends the attempt and releases what it prepared.
+	s.must(prepare("failed-launch"))
+	mark("uncertain", "failed-launch")
+	s.must(reconcile("failed-launch", false))
+	if u := s.unit("review"); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
+		t.Fatalf("non-start: %+v", u)
+	}
+	if n := s.pendingGates(); n != 0 {
+		t.Fatalf("non-start left %d prepared gates", n)
+	}
+}
+
+func unmonitoredActivity(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const id = "orchestrator-activity-7c2e"
+	activity := request{Action: "activity_start", Session: rootSession, ActivityID: id, NodeKind: history.NodeKindOrchestrator}
+	s.must(activity)
+	activity.Action = "activity_unmonitored"
+	s.must(activity)
+	s.must(activity)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("a repeat recorded %d unmonitored entries", n)
+	}
+	p := s.projection()
+	if a := p.Activities[id]; a.State != history.StateInFlight || a.Flight != history.FlightUnmonitored || a.Outcome != "" || len(p.Units) != 0 {
+		t.Fatalf("unmonitored activity: %+v, units %d", a, len(p.Units))
+	}
+	activity.Action, activity.Outcome = "activity_finish", string(history.OutcomeCompleted)
+	s.must(activity)
+	if a := s.projection().Activities[id]; a.State != history.StateSettled || a.Flight != "" {
+		t.Fatalf("the activity could not finish after losing capture: %+v", a)
+	}
+	// A loss reported after the end, or for an unknown activity, changes nothing.
+	activity.Action = "activity_unmonitored"
+	s.must(activity)
+	activity.ActivityID = "never-started"
+	s.refused(activity)
+	if n := s.count(history.KindUnmonitored); n != 1 {
+		t.Fatalf("late or unknown losses were recorded: %d", n)
+	}
+
+	// An activity whose capturing instance stopped renewing its lease is
+	// reported orphaned, so another instance records the lost capture. One a
+	// live instance just started is not: starting it renews that lease.
+	h, err := history.Open(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lapsed := time.Now().Add(-2 * history.LeaseTTL).UnixMilli()
+	for _, e := range []history.Entry{
+		{Author: history.AuthorHarness, Kind: history.KindLease, Owner: "gone", CreatedAt: lapsed, Cause: history.CauseNone},
+		{Author: history.AuthorOf(history.KindActivityStarted), Kind: history.KindActivityStarted, SessionID: rootSession, ActivityID: "gone-activity", NodeKind: history.NodeKindOrchestrator, Owner: "gone", Cause: history.CauseNone},
+	} {
+		if err := h.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.must(request{Action: "activity_start", Session: rootSession, ActivityID: "live-activity", NodeKind: history.NodeKindOrchestrator, Owner: "live"})
+	var listed struct {
+		Activities         map[string]history.Activity `json:"activities"`
+		OrphanedActivities []string                    `json:"orphaned_activities"`
+	}
+	s.must(request{Action: "executions"}).decode(t, &listed)
+	if len(listed.Activities) != 2 || listed.Activities["live-activity"].Owner != "live" || listed.Activities["gone-activity"].SessionID != rootSession {
+		t.Fatalf("in-flight activities listed: %+v", listed.Activities)
+	}
+	if !slices.Equal(listed.OrphanedActivities, []string{"gone-activity"}) {
+		t.Fatalf("orphaned activities = %v; want only the one whose owner's lease lapsed", listed.OrphanedActivities)
+	}
+}
+
 func cancellationRetainsCapacity(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	p := policy(t)
@@ -718,6 +969,100 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 	}
 	if after.InFlight() != p.Concurrency.Specialists-1 {
 		t.Fatalf("effective termination did not release: in flight %d", after.InFlight())
+	}
+}
+
+// seatRestoration covers PR-CRW-13 at delegation: another model or a
+// substitute restores a seat only with a reason; autonomously only with a model
+// that completed work in the session, otherwise with the user's approval; a
+// substitute only after a recorded reassignment failed, composed without
+// identity; a retry of a dispatch never changes its seat.
+func seatRestoration(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	s.must(commit("plan-1", "brief", "spec-1", "spec-2", "brief-2", "design-1", "design-2", "self"))
+	delegate := func(unit, dispatch, agent, modelID, configured string) request {
+		s.must(request{Action: "inputs", Session: rootSession, Event: unit})
+		return request{Action: "prepare", Session: rootSession, Event: unit, Dispatch: dispatch, Caller: rootSession, Agent: agent, Owner: "instance", Model: modelID, Configured: configured}
+	}
+	s.must(delegate("brief", "d1", "pm", "p/a", "p/a"))
+	finished := call("finish", "brief")
+	finished.Agent, finished.Dispatch = "pm", "d1"
+	s.must(finished)
+
+	unproven := delegate("spec-1", "d2", "spec", "p/b", "p/c")
+	s.refused(unproven) // no seat_reason
+	unproven.SeatReason = "spec timed out twice"
+	if res := s.refused(unproven); !strings.Contains(res.stderr, "seat/unproven-model") {
+		t.Fatalf("an unproven model was not refused for the user's approval: %s", res.stderr)
+	}
+	unproven.Confirmed = true
+	s.must(unproven)
+
+	proven := delegate("spec-2", "d3", "spec", "p/a", "p/c")
+	proven.SeatReason = "spec timed out again"
+	s.must(proven)
+	// A retry of the same dispatch never runs another seat under its record.
+	reseated := proven
+	reseated.Model, reseated.Confirmed = "p/b", true
+	if res := s.refused(reseated); !strings.Contains(res.stderr, "is recorded with model") {
+		t.Fatalf("a retry under another model was not refused: %s", res.stderr)
+	}
+	reseated = proven
+	reseated.Substitute = true
+	s.refused(reseated)
+
+	substitute := delegate("brief-2", "d4", "pm", "p/a", "p/c")
+	substitute.SeatReason, substitute.Substitute = "pm cannot run", true
+	s.refused(substitute) // no reassignment of the pm seat yet
+	reassigned := delegate("design-1", "d5", "architect", "p/a", "p/c")
+	reassigned.SeatReason = "architect cannot run on its model"
+	s.must(reassigned)
+	substitute = delegate("design-2", "d7", "architect", "p/a", "p/c")
+	substitute.SeatReason, substitute.Substitute = "no reassignment works", true
+	s.refused(substitute) // the reassignment has not failed yet
+	launched := call("launch", "design-1")
+	launched.Agent, launched.Dispatch = "architect", "d5"
+	s.must(launched)
+	s.must(call("cancel", "design-1"))
+	s.must(call("finish", "design-1"))
+	s.must(substitute)
+	var linked struct {
+		Substitute bool     `json:"substitute"`
+		Identity   []string `json:"identity"`
+	}
+	s.must(request{Action: "attach_child", Session: rootSession, Dispatch: "d7", Child: "sub-child", Agent: "architect"}).decode(t, &linked)
+	var identity []string
+	for _, name := range []string{"PERSONA.md", "SOUL.md"} {
+		text, err := os.ReadFile(filepath.Join("..", "catalog", "assets", "agents", "takt-architect", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity = append(identity, strings.TrimSpace(string(text)))
+	}
+	if !linked.Substitute || !slices.Equal(linked.Identity, identity) {
+		t.Fatalf("a substitute's link does not carry the installed identity to leave out: %+v", linked)
+	}
+	// An instance with no identity files has nothing to leave out.
+	var plain struct {
+		Identity []string `json:"identity"`
+	}
+	s.must(request{Action: "attach_child", Session: rootSession, Dispatch: "d3", Child: "spec-child", Agent: "spec"}).decode(t, &plain)
+	if len(plain.Identity) != 0 {
+		t.Fatalf("a non-substitute link carries identity: %+v", plain)
+	}
+
+	orchestrator := delegate("self", "d6", "takt", "p/a", "p/c")
+	orchestrator.SeatReason = "takt is slow"
+	s.refused(orchestrator)
+
+	var seats []history.Entry
+	for _, e := range s.entries() {
+		if e.Kind == history.KindSeatRestored {
+			seats = append(seats, e)
+		}
+	}
+	if len(seats) != 4 || seats[0].Model != "p/b" || seats[3].Agent != "architect" || !seats[3].Substitute {
+		t.Fatalf("restorations recorded: %+v", seats)
 	}
 }
 
@@ -1134,7 +1479,7 @@ func handoffNeedsRecordedResults(t *testing.T, bin string) {
 	t.Cleanup(server.Close)
 	s := newSession(t, bin)
 	s.env = append(s.env, "ENGRAM_BASE_URL="+server.URL)
-	s.seedMemory(rootSession, map[int64]string{123: "pm", 124: "dev", 999: "pm"})
+	s.seedMemory(rootSession, seededEntry{ID: 123, Author: "pm", Caller: "child-1"}, seededEntry{ID: 124, Author: "dev"}, seededEntry{ID: 999, Author: "pm", Caller: "child-1"})
 	validate := func(session string, ids ...int64) request {
 		return request{Action: "validate_results", Session: session, Agent: "pm", ResultIDs: ids}
 	}
@@ -1161,24 +1506,68 @@ func handoffNeedsRecordedResults(t *testing.T, bin string) {
 	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "child-1" {
 		t.Fatalf("a refused handoff released the interface: %q", holder)
 	}
-	// A valid ID suffices with no filesystem copy; the missing copy is reported.
+	// A valid ID suffices with no document on disk; its absence is reported
+	// beside the envelope.
 	if err := os.Remove(filepath.Join(s.root, artifact)); err != nil {
 		t.Fatal(err)
 	}
 	handoff.ResultIDs = []int64{123}
-	var resp map[string]any
+	var resp returned
 	s.must(handoff).decode(t, &resp)
-	if resp["artifact_verified"] != false {
-		t.Fatalf("missing optional copy was not reported: %+v", resp)
+	if resp.Artifact == nil || resp.Artifact.Path != artifact || resp.Artifact.Present {
+		t.Fatalf("missing standard document was not reported: %+v", resp)
 	}
-	if resp["result"] != "Standard" {
+	resp.requireFourFields(t)
+	if resp.Envelope.Result != "Standard" {
 		t.Fatalf("handoff result missing: %+v", resp)
 	}
-	if ids, ok := resp["memory"].([]any); !ok || len(ids) != 1 || ids[0] != float64(123) {
-		t.Fatalf("handoff response did not carry the specific result ID: %+v", resp)
+	// The index lists what the lent session recorded, not other root history.
+	if !slices.Equal(resp.Envelope.Memory.Entries, []int64{123, 999}) || resp.Envelope.Memory.NextAfter != 0 {
+		t.Fatalf("handoff memory is not the lent session's index: %+v", resp.Envelope.Memory)
 	}
 	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" || s.count(history.KindInterlocutorHandoff) != 1 {
 		t.Fatalf("the handoff did not return the interface: holder %q", holder)
+	}
+}
+
+// lentMemoryPages covers IR-22: the envelope's memory index is bounded by
+// policy, and lent_entries pages the remainder of a session that held the
+// interface, refusing any other.
+func lentMemoryPages(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const lent, handedOff = "child-p", "child-q"
+	var entries []seededEntry
+	for id := int64(1); id <= 55; id++ {
+		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent}, seededEntry{ID: 100 + id, Author: "pm", Caller: handedOff})
+	}
+	s.seedMemory(rootSession, append(entries, seededEntry{ID: 99, Author: "takt", Caller: rootSession})...)
+	s.must(request{Action: "switch", Session: rootSession, Child: lent, Agent: "pm"})
+	var resp returned
+	s.must(request{Action: "abort_switch", Session: rootSession, Child: lent, Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
+	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
+		t.Fatalf("first page: %+v", resp)
+	}
+	if !strings.Contains(resp.Notice, "call dispatch_lent_entries with child child-p and after 50") {
+		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
+	}
+	var page struct {
+		Entries   []int64 `json:"entries"`
+		NextAfter int64   `json:"next_after"`
+	}
+	s.must(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 50}).decode(t, &page)
+	if !slices.Equal(page.Entries, []int64{51, 52, 53, 54, 55}) || page.NextAfter != 0 {
+		t.Fatalf("remainder: %+v", page)
+	}
+	s.refused(request{Action: "lent_entries", Session: rootSession, Child: rootSession})
+	s.refused(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 99})
+
+	// A handoff's notice names its lent session too: the convening agent reads
+	// only the notice, and paging needs that child.
+	s.must(request{Action: "switch", Session: rootSession, Child: handedOff, Agent: "pm"})
+	var handoff returned
+	s.must(request{Action: "handoff", Session: rootSession, Child: handedOff, Agent: "pm", Result: "EarlyHandoff"}).decode(t, &handoff)
+	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "call dispatch_lent_entries with child child-q and after 150") {
+		t.Fatalf("handoff notice does not name the lent session to page: %+v", handoff)
 	}
 }
 
@@ -1186,7 +1575,7 @@ func handoffNeedsRecordedResults(t *testing.T, bin string) {
 // without negotiation, after a prior switch.
 func userAbortsSwitch(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	s.seedMemory(rootSession, map[int64]string{41: "pm", 42: "takt"})
+	s.seedMemory(rootSession, seededEntry{ID: 40, Author: "pm", Caller: "earlier-pm"}, seededEntry{ID: 41, Author: "pm", Caller: "child-2"}, seededEntry{ID: 42, Author: "takt", Caller: rootSession})
 	s.must(request{Action: "switch", Session: rootSession, Child: "child-2", Agent: "pm", Artifact: "PRD.md"})
 	var holder map[string]any
 	s.must(request{Action: "interlocutor", Session: rootSession}).decode(t, &holder)
@@ -1194,34 +1583,47 @@ func userAbortsSwitch(t *testing.T, bin string) {
 		t.Fatalf("interlocutor read does not return the holder: %+v", holder)
 	}
 	s.refused(request{Action: "abort_switch", Session: rootSession, Child: "other", Evidence: "x", Origin: "user"})
-	var resp map[string]any
+	var resp returned
 	s.must(request{Action: "abort_switch", Session: rootSession, Child: "child-2", Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
-	if resp["result"] != "Aborted" {
+	resp.requireFourFields(t)
+	if resp.Envelope.Result != "Aborted" {
 		t.Fatalf("abort_switch result: %+v", resp)
 	}
-	// The envelope carries what the holder recorded, not the whole session's memory.
-	if ids, ok := resp["memory"].([]any); !ok || len(ids) != 1 || ids[0] != float64(41) {
-		t.Fatalf("abort_switch memory is not the holder's entries: %+v", resp)
+	// The envelope carries what the lent session recorded: not the same
+	// author's earlier entries, nor the root's own.
+	if !slices.Equal(resp.Envelope.Memory.Entries, []int64{41}) {
+		t.Fatalf("abort_switch memory is not the lent session's entries: %+v", resp.Envelope.Memory)
 	}
-	// PR-HAR-24: the artifact is never required to abort, but its absence is
-	// still verified and reported.
-	if resp["artifact_verified"] != false {
-		t.Fatalf("abort with no artifact on disk must report artifact_verified = false: %+v", resp)
+	// PR-HAR-24: the document is never required to abort, but its absence is
+	// still checked and reported beside the envelope.
+	if resp.Artifact == nil || resp.Artifact.Present {
+		t.Fatalf("abort with no document on disk must report it absent: %+v", resp)
 	}
 	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" {
 		t.Fatalf("the abort left the holder in place: %q", holder)
 	}
-	if resp["child"] != "child-2" {
+	if resp.Child != "child-2" {
 		t.Fatalf("abort_switch does not name the aborted child: %+v", resp)
 	}
 	s.refused(request{Action: "abort_switch", Session: rootSession, Child: "child-2", Evidence: "x", Origin: "user"})
 	// An empty child aborts whoever holds the root, decided in the same call.
 	s.must(request{Action: "switch", Session: rootSession, Child: "child-3", Agent: "pm", Artifact: "PRD.md"})
 	s.must(request{Action: "abort_switch", Session: rootSession, Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
-	if resp["child"] != "child-3" || s.projection().Budgets(rootSession).InterlocutorHolder != "" {
+	if resp.Child != "child-3" || s.projection().Budgets(rootSession).InterlocutorHolder != "" {
 		t.Fatalf("abort_switch with no child did not abort the holder: %+v", resp)
 	}
 	s.refused(request{Action: "abort_switch", Session: rootSession, Evidence: "x", Origin: "user"})
+	// /takt-abort names only the session the user is in: the lent session
+	// resolves its root, the convening session its holder.
+	for _, from := range []string{"child-4", rootSession} {
+		s.must(request{Action: "switch", Session: rootSession, Child: "child-4", Agent: "pm"})
+		var user returned
+		s.must(request{Action: "abort_switch", Child: from, Evidence: "the user ran /takt-abort", Origin: "user"}).decode(t, &user)
+		if user.Root != rootSession || user.Child != "child-4" || !strings.HasPrefix(user.Notice, "The interface is back from pm, whose lent session was aborted.") {
+			t.Fatalf("abort from %s: %+v", from, user)
+		}
+	}
+	s.refused(request{Action: "abort_switch", Child: "stranger", Evidence: "x", Origin: "user"})
 }
 
 // deletedSessionAbortsHolder covers session_deleted: only the session that
@@ -1237,9 +1639,10 @@ func deletedSessionAbortsHolder(t *testing.T, bin string) {
 	if resp["aborted"] != false || len(s.entries()) != before {
 		t.Fatalf("a non-holder deletion must be a no-op: %+v", resp)
 	}
-	s.must(request{Action: "session_deleted", Child: "child-b"}).decode(t, &resp)
-	if resp["aborted"] != true || resp["root"] != otherRoot || resp["child"] != "child-b" {
-		t.Fatalf("session_deleted reply: %+v", resp)
+	var ended returned
+	s.must(request{Action: "session_deleted", Child: "child-b"}).decode(t, &ended)
+	if ended.Root != otherRoot || ended.Child != "child-b" || ended.Envelope.Result != "Aborted" {
+		t.Fatalf("session_deleted reply: %+v", ended)
 	}
 	p := s.projection()
 	if p.Budgets(otherRoot).InterlocutorHolder != "" || p.Budgets(rootSession).InterlocutorHolder != "child-a" {
@@ -1268,9 +1671,9 @@ func handoffOptionalCopy(t *testing.T, bin string) {
 				handoff := request{Action: "handoff", Session: rootSession, Child: "child", Agent: "pm", Result: result, ResultIDs: []int64{123}}
 				s.rejected(handoff) // an unrecorded result ID is refused whatever the result
 				handoff.ResultIDs = nil
-				var resp map[string]any
+				var resp returned
 				s.must(handoff).decode(t, &resp)
-				if resp["artifact_verified"] != present || resp["result"] != result {
+				if resp.Artifact == nil || resp.Artifact.Present != present || resp.Envelope.Result != result {
 					t.Fatalf("unexpected handoff metadata: %+v", resp)
 				}
 			})
@@ -1388,7 +1791,7 @@ waitLoop:
 	missing := created.ID + 1_000_000
 	s := newSession(t, bin)
 	s.env = append(s.env, "ENGRAM_BASE_URL="+baseURL)
-	s.seedMemory(rootSession, map[int64]string{created.ID: "pm", missing: "pm"})
+	s.seedMemory(rootSession, seededEntry{ID: created.ID, Author: "pm"}, seededEntry{ID: missing, Author: "pm"})
 	validate := func(id int64) request {
 		return request{Action: "validate_results", Session: rootSession, Agent: "pm", ResultIDs: []int64{id}}
 	}

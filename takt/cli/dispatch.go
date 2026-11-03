@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
@@ -52,10 +53,12 @@ type coordinationRequest struct {
 	AdditionalContext string           `json:"additional_context"`
 	ExtraArtifacts    []string         `json:"extra_artifacts"`
 	ResultIDs         []int64          `json:"result_ids"`
-	Origin            string           `json:"origin"`
-	Caller            string           `json:"caller,omitempty"`
-	Background        bool             `json:"background,omitempty"`
-	CreatedAt         int64            `json:"created_at,omitempty"`
+	// After is the lent_entries cursor: the next_after of the previous page.
+	After      int64  `json:"after,omitempty"`
+	Origin     string `json:"origin"`
+	Caller     string `json:"caller,omitempty"`
+	Background bool   `json:"background,omitempty"`
+	CreatedAt  int64  `json:"created_at,omitempty"`
 	// AuthorKeys distinguishes an absent list (no gates) from an empty one,
 	// which a verifier preparation refuses.
 	AuthorKeys []vfs.AgentID `json:"author_keys,omitempty"`
@@ -65,6 +68,14 @@ type coordinationRequest struct {
 	Owner   string              `json:"owner,omitempty"`
 	Stopped []laneStop          `json:"stopped,omitempty"`
 	Repair  *vfs.RepairApproval `json:"repair,omitempty"`
+	// Model is the provider/model a delegation runs; ConfiguredModel is the
+	// instance's own. SeatReason and Substitute declare a seat restoration
+	// (PR-CRW-13); UserConfirmed carries the user's approval of its model.
+	Model           string `json:"model,omitempty"`
+	ConfiguredModel string `json:"configured_model,omitempty"`
+	SeatReason      string `json:"seat_reason,omitempty"`
+	Substitute      bool   `json:"substitute,omitempty"`
+	UserConfirmed   bool   `json:"user_confirmed,omitempty"`
 }
 
 // memoryRoot is where `takt-ai memory` keeps its session index: the user's
@@ -83,24 +94,64 @@ func journalRef(entries []vfs.JournalEntry) string {
 	return entries[len(entries)-1].Ref()
 }
 
-// checkArtifact reports whether the optional filesystem copy the active
-// interlocutor switch for session declared exists under workspace. Nothing
-// declared (no active switch, or none named) reports verified: PR-HAR-24
-// checks existence only when a copy was named.
-func checkArtifact(h *history.History, workspace, session string) bool {
-	path := protocol.ExpectedArtifact(h, session)
-	if path == "" {
-		return true
-	}
-	_, err := os.Stat(filepath.Join(workspace, path))
-	return err == nil
+// artifactReport is the PR-HAR-24 standard-document check that travels beside
+// an envelope, never inside it (IR-22).
+type artifactReport struct {
+	Path    string `json:"path"`
+	Present bool   `json:"present"`
 }
 
-// handoffWithCopyReport assembles the handoff envelope, whose Engram result
-// IDs BuildHandoffEnvelope validates, and reports whether the optional
-// filesystem copy declared at switch time exists; that copy never gates it.
-func handoffWithCopyReport(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
-	verified := checkArtifact(h, workspace, r.Session)
+// interlocutorReturn is what the harness delivers when the interface comes
+// back: the four-field envelope, the declared document's check when a path was
+// declared, the lent session, and for an abort its root. Notice is the text the
+// convening agent reads, so every host relays the same words.
+type interlocutorReturn struct {
+	Envelope protocol.Envelope `json:"envelope"`
+	Artifact *artifactReport   `json:"artifact,omitempty"`
+	Child    string            `json:"child,omitempty"`
+	Root     string            `json:"root,omitempty"`
+	Notice   string            `json:"notice"`
+}
+
+// withNotice words the return for the convening agent: the envelope, then
+// what travels beside it.
+func (r interlocutorReturn) withNotice(from string) (interlocutorReturn, error) {
+	envelope, e := json.MarshalIndent(r.Envelope, "", "  ")
+	if e != nil {
+		return r, e
+	}
+	lines := []string{fmt.Sprintf("The interface is back from %s. Envelope:\n%s", from, envelope)}
+	if r.Artifact != nil {
+		state := "absent"
+		if r.Artifact.Present {
+			state = "present"
+		}
+		lines = append(lines, fmt.Sprintf("Declared standard document %s: %s.", r.Artifact.Path, state))
+	}
+	if next := r.Envelope.Memory.NextAfter; next != 0 {
+		lines = append(lines, fmt.Sprintf("More entries remain: call dispatch_lent_entries with child %s and after %d.", r.Child, next))
+	}
+	r.Notice = strings.Join(lines, "\n")
+	return r, nil
+}
+
+// checkArtifact reports whether the standard document the active interlocutor
+// switch for session declared exists under workspace; nil when none was
+// declared. It must run before the transition clears the switch.
+func checkArtifact(h *history.History, workspace, session string) *artifactReport {
+	path := protocol.ExpectedArtifact(h, session)
+	if path == "" {
+		return nil
+	}
+	_, err := os.Stat(filepath.Join(workspace, path))
+	return &artifactReport{Path: path, Present: err == nil}
+}
+
+// handoffReturn assembles the handoff envelope, whose Engram result IDs
+// BuildHandoffEnvelope validates, beside the declared document's check; the
+// document's absence never gates the handoff.
+func handoffReturn(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
+	artifact := checkArtifact(h, workspace, r.Session)
 	envelope, e := protocol.BuildHandoffEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Agent, protocol.HandoffOutcome{
 		Result: r.Result, AdditionalContext: r.AdditionalContext,
 		ExtraArtifacts: r.ExtraArtifacts, ResultIDs: r.ResultIDs,
@@ -108,21 +159,35 @@ func handoffWithCopyReport(h *history.History, ref, workspace string, r coordina
 	if e != nil {
 		return nil, e
 	}
-	envelope["artifact_verified"] = verified
-	return envelope, nil
+	return interlocutorReturn{Envelope: envelope, Artifact: artifact, Child: r.Child}.withNotice(r.Agent)
 }
 
-// abortWithArtifactReport assembles the abort envelope: the standard
-// artifact is never required to abort (PR-HAR-24), but its presence is still
-// checked and reported so what survived the abandoned switch is known.
-func abortWithArtifactReport(h *history.History, ref, workspace string, r coordinationRequest) (any, error) {
-	verified := checkArtifact(h, workspace, r.Session)
-	envelope, e := protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
-	if e != nil {
-		return nil, e
+// abortReturn assembles the synthesized abort envelope: the standard document
+// is never required to abort (PR-HAR-24), but its check still travels beside
+// the envelope so what survived the abandoned switch is known. Without
+// r.Session, r.Child names the session the user is in: a lent session aborts
+// itself, a convening session its current holder.
+func abortReturn(h *history.History, ref, workspace string, r coordinationRequest) (interlocutorReturn, error) {
+	if r.Session == "" {
+		if root, held := h.Project().HeldRoot(r.Child); held {
+			r.Session = root
+		} else {
+			r.Session, r.Child = r.Child, ""
+		}
 	}
-	envelope["artifact_verified"] = verified
-	return envelope, nil
+	artifact := checkArtifact(h, workspace, r.Session)
+	holder := protocol.CurrentAgent(h, r.Session)
+	envelope, child, e := protocol.BuildAbortEnvelope(h, ref, memoryRoot(), r.Session, r.Child, r.Evidence, r.Origin)
+	if e != nil {
+		return interlocutorReturn{}, e
+	}
+	return interlocutorReturn{Envelope: envelope, Artifact: artifact, Child: child, Root: r.Session}.withNotice(holder + ", whose lent session was aborted")
+}
+
+// lentEntries pages the memory index of a session that held r.Session's
+// interface, from r.After.
+func lentEntries(h *history.History, r coordinationRequest) (any, error) {
+	return protocol.LentEntries(h, memoryRoot(), r.Session, r.Child, r.After)
 }
 
 // sessionDeletedEvidence is the abort evidence recorded when a holder session
@@ -138,13 +203,11 @@ func abortDeletedHolder(h *history.History, ref, workspace string, r coordinatio
 	}
 	abort := r
 	abort.Session, abort.Evidence, abort.Origin = root, sessionDeletedEvidence, "harness"
-	out, e := abortWithArtifactReport(h, ref, workspace, abort)
+	out, e := abortReturn(h, ref, workspace, abort)
 	if e != nil {
 		return nil, e
 	}
-	envelope := out.(map[string]any)
-	envelope["aborted"], envelope["root"] = true, root
-	return envelope, nil
+	return out, nil
 }
 
 // coordinateRoutine admits and finishes ordinary work. Maintenance never gates
@@ -240,12 +303,12 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 var ordinaryDispatchActions = map[string]bool{
 	"prepare": true, "inputs": true, "execution": true, "executions": true, "lease": true, "attach_child": true, "deliver": true, "resolve": true,
 	"admit": true, "finish": true, "tick": true,
-	"activity_start": true, "activity_finish": true,
-	"launch": true, "uncertain": true, "reconcile": true, "suspend": true,
+	"activity_start": true, "activity_finish": true, "activity_unmonitored": true,
+	"launch": true, "uncertain": true, "unmonitored": true, "reconcile": true, "suspend": true,
 	"cancel": true, "stop": true, "escalate": true, "withdraw": true,
 	"commit": true, "contest": true, "recovery": true, "recovered": true,
 	"restore": true, "exception": true, "abandon": true,
-	"switch": true, "handoff": true, "abort_switch": true, "session_deleted": true, "interlocutor": true, "validate_results": true,
+	"switch": true, "handoff": true, "abort_switch": true, "session_deleted": true, "lent_entries": true, "interlocutor": true, "validate_results": true,
 }
 
 // runDispatch admits and drives ordinary crew work through the execution
@@ -384,6 +447,20 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 	record := func(kind history.Kind) func() (any, error) {
 		return func() (any, error) { return c, protocol.Record(h, ref, r.Event, r.Session, kind) }
 	}
+	// unestablished records launch or capture that could not be established, unless
+	// a later attempt under another dispatch already holds the unit. A repeated
+	// report of lost capture records nothing new.
+	unestablished := func(kind history.Kind) func() (any, error) {
+		return func() (any, error) {
+			if staleDispatch(h, r) {
+				return c, nil
+			}
+			if u, _ := h.Project().Unit(r.Session, r.Event); kind == history.KindUnmonitored && u.State == history.StateInFlight && u.Flight == history.FlightUnmonitored {
+				return c, nil
+			}
+			return record(kind)()
+		}
+	}
 	attempt := r.Attempt
 	if attempt == "" {
 		attempt = protocol.CurrentAttempt(h.Project(), r.Session, r.Event)
@@ -401,15 +478,19 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			}
 			return c, protocol.Launch(h, ref, r.Event, r.Session)
 		},
-		"uncertain": func() (any, error) {
-			if staleDispatch(h, r) {
-				return c, nil
-			}
-			return record(history.KindUncertain)()
-		},
+		"uncertain":   unestablished(history.KindUncertain),
+		"unmonitored": unestablished(history.KindUnmonitored),
 		"reconcile": func() (any, error) {
 			if staleDispatch(h, r) {
 				return c, nil
+			}
+			// A non-start is the effective termination: release the gates prepared
+			// for this attempt first, as finish does, because the unit stops being
+			// in flight once reconciled and a retry could no longer reach them.
+			if u, _ := h.Project().Unit(r.Session, r.Event); !r.Pass && u.State == history.StateInFlight && protocol.UncertainFlight(u.Flight) {
+				if err := fs.CancelPreparedDelegation(r.Session, r.Event, u.AttemptID); err != nil {
+					return nil, err
+				}
 			}
 			return c, protocol.Reconcile(h, ref, r.Event, r.Session, r.Pass)
 		},
@@ -426,8 +507,9 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 		"validate_results": func() (any, error) {
 			return nil, memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.Session, r.Agent, r.ResultIDs)
 		},
-		"handoff":      func() (any, error) { return handoffWithCopyReport(h, ref, workspace, r) },
-		"abort_switch": func() (any, error) { return abortWithArtifactReport(h, ref, workspace, r) },
+		"handoff":      func() (any, error) { return handoffReturn(h, ref, workspace, r) },
+		"abort_switch": func() (any, error) { return abortReturn(h, ref, workspace, r) },
+		"lent_entries": func() (any, error) { return lentEntries(h, r) },
 		// A deleted session that holds a root is aborted in this same locked
 		// unit; one that holds nothing writes nothing.
 		"session_deleted": func() (any, error) { return abortDeletedHolder(h, ref, workspace, r) },
@@ -461,13 +543,28 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			if r.NodeKind != history.NodeKindOrchestrator {
 				return nil, errors.New("dispatch: activity_start only accepts node_kind orchestrator")
 			}
-			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind)
+			// The capturing instance is alive as it starts the activity: its lease
+			// is renewed first, so no other instance reads the activity orphaned.
+			if r.Owner != "" {
+				if err := renewLease(h, r.Owner, time.Now()); err != nil {
+					return nil, err
+				}
+			}
+			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind, r.Owner)
 		},
 		"activity_finish": func() (any, error) {
 			if r.NodeKind != history.NodeKindOrchestrator {
 				return nil, errors.New("dispatch: activity_finish only accepts node_kind orchestrator")
 			}
 			return c, protocol.FinishActivity(h, r.Session, r.ActivityID, r.NodeKind, history.Outcome(r.Outcome))
+		},
+		// Capture of a non-unit activity was lost: it stays in flight, neither
+		// failed nor finished (PR-OBS-BUS-5).
+		"activity_unmonitored": func() (any, error) {
+			if r.NodeKind != history.NodeKindOrchestrator {
+				return nil, errors.New("dispatch: activity_unmonitored only accepts node_kind orchestrator")
+			}
+			return c, protocol.MarkActivityUnmonitored(h, r.Session, r.ActivityID)
 		},
 	}
 	if handler, ok := handlers[r.Action]; ok {

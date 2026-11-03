@@ -48,6 +48,7 @@ var (
 		FlightRunning:       "observed_running",
 		FlightCancelling:    "cancellation_pending",
 		FlightUncertain:     "uncertain",
+		FlightUnmonitored:   "unmonitored",
 	}
 )
 
@@ -80,10 +81,14 @@ type Node struct {
 	State     State    `json:"state"`
 	Flight    Flight   `json:"flight,omitempty"`
 	// Outcome is set only once the unit is settled.
-	Outcome       Outcome  `json:"outcome,omitempty"`
-	Launched      bool     `json:"launched"`
-	Contract      string   `json:"contract,omitempty"`
-	Prerequisites []string `json:"prerequisites,omitempty"`
+	Outcome Outcome `json:"outcome,omitempty"`
+	// Assurance is the prevailing result of the current attempt, apart from
+	// Outcome: delivery is not acceptance (PR-DAG-TMP-9). Absent until a result
+	// is recorded; absence is never success.
+	Assurance     *Assurance `json:"assurance,omitempty"`
+	Launched      bool       `json:"launched"`
+	Contract      string     `json:"contract,omitempty"`
+	Prerequisites []string   `json:"prerequisites,omitempty"`
 	// Agent identifies the specialist admitted for the current attempt; empty
 	// until the unit is first admitted.
 	Agent string `json:"agent,omitempty"`
@@ -182,7 +187,7 @@ func BuildSnapshot(entries []Entry) Snapshot {
 		}
 		s.Nodes = append(s.Nodes, Node{
 			ID: id, NodeKind: NodeKindDelegated, SessionID: u.SessionID, AttemptID: u.AttemptID,
-			State: u.State, Flight: u.Flight, Outcome: u.Outcome,
+			State: u.State, Flight: u.Flight, Outcome: u.Outcome, Assurance: u.Assurance,
 			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites, Agent: u.Agent,
 		})
 		for _, from := range prerequisites {

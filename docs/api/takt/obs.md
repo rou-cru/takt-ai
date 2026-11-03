@@ -15,6 +15,7 @@ Package obs keeps one local event stream and control record so sessions stay obs
 - [func PublishCollisionEvent\(bus \*Bus, clock \*Clock, attemptingAgent, owningAgent, path, workUnitID string\) error](<#PublishCollisionEvent>)
 - [func PublishControlEffectEvent\(bus \*Bus, clock \*Clock, action ActionClass, agent, policyRef, triggeringCondition, workUnitID string\) error](<#PublishControlEffectEvent>)
 - [func PublishCycleReeditEvent\(bus \*Bus, clock \*Clock, agent, cycleID, mandateClass, pathHash, workUnitID string\) error](<#PublishCycleReeditEvent>)
+- [func PublishProblemRateEvent\(bus \*Bus, clock \*Clock, agent, signal string, count, denominator int64, rate float64, workUnitID string\) error](<#PublishProblemRateEvent>)
 - [func PublishVFSEvent\(bus \*Bus, clock \*Clock, agent, journalRef, workUnitID string, attributes map\[string\]any\) error](<#PublishVFSEvent>)
 - [func StorePath\(workspace string\) \(string, error\)](<#StorePath>)
 - [type ActionClass](<#ActionClass>)
@@ -41,7 +42,6 @@ Package obs keeps one local event stream and control record so sessions stay obs
   - [func \(s \*Store\) AppendAction\(r ControlRecord\) \(int64, error\)](<#Store.AppendAction>)
   - [func \(s \*Store\) AppendEvent\(e Envelope\) \(int64, error\)](<#Store.AppendEvent>)
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
-  - [func \(s \*Store\) CountEvents\(sessionID string, class EventClass, afterID, beforeID int64\) \(int64, error\)](<#Store.CountEvents>)
   - [func \(s \*Store\) Events\(sessionID string, class EventClass, afterID, beforeID int64, limit int\) \(out \[\]StoredEvent, err error\)](<#Store.Events>)
 - [type StoreHealth](<#StoreHealth>)
   - [func InspectStore\(workspace string\) \(health StoreHealth, err error\)](<#InspectStore>)
@@ -50,6 +50,21 @@ Package obs keeps one local event stream and control record so sessions stay obs
 
 
 ## Constants
+
+<a name="StreamEOF"></a>Stream liveness states are the closed set a capture stream can report, so a loss is named, never inferred.
+
+```go
+const (
+    // StreamEOF marks a stream that ended on its own.
+    StreamEOF = "eof"
+    // StreamInactive marks a stream that stopped producing while still connected.
+    StreamInactive = "inactive"
+    // StreamDisconnected marks a stream whose connection dropped.
+    StreamDisconnected = "disconnected"
+    // StreamClosed marks a stream closed on purpose.
+    StreamClosed = "closed"
+)
+```
 
 <a name="PrivateTelemetryDirectoryMode"></a>Telemetry modes keep the event database owner\-only.
 
@@ -126,6 +141,15 @@ func PublishCycleReeditEvent(bus *Bus, clock *Clock, agent, cycleID, mandateClas
 ```
 
 PublishCycleReeditEvent publishes the PR\-MNT\-31 event for a path a maintenance cycle already consolidated that is edited again, attributing the reversion to that cycle and its mandate class instead of leaving it unattributed.
+
+<a name="PublishProblemRateEvent"></a>
+## func PublishProblemRateEvent
+
+```go
+func PublishProblemRateEvent(bus *Bus, clock *Clock, agent, signal string, count, denominator int64, rate float64, workUnitID string) error
+```
+
+PublishProblemRateEvent publishes the PR\-MNT\-9 derivation: the raw signal count and the recorded\-work denominator it was divided by travel with the rate, so a level change can be checked against both \(PR\-MNT\-11\) and a replay of the same interval reproduces them.
 
 <a name="PublishVFSEvent"></a>
 ## func PublishVFSEvent
@@ -374,6 +398,8 @@ const (
     EventUnitLifecycle EventClass = "unit_lifecycle"
     // EventToolActivity marks platform tool use, so liveness is observable without tool arguments.
     EventToolActivity EventClass = "tool_activity"
+    // EventStreamLiveness marks the state of a capture stream, so a lost stream is never read as an empty or completed session.
+    EventStreamLiveness EventClass = "stream_liveness"
     // EventModelUsage records provider-reported token and cost usage without model content.
     EventModelUsage EventClass = "model_usage"
     // EventGCFindingUnapplied marks a finding left unapplied, so lingering artifacts stay visible.
@@ -478,15 +504,6 @@ func (s *Store) Close() error
 ```
 
 Close releases the database handle.
-
-<a name="Store.CountEvents"></a>
-### func \(\*Store\) CountEvents
-
-```go
-func (s *Store) CountEvents(sessionID string, class EventClass, afterID, beforeID int64) (int64, error)
-```
-
-CountEvents reports how many events Events would return for the same filters without loading them, so a consumer can cheaply derive a rate's numerator or denominator \(a count of registered work, PR\-MNT\-9/PR\-MNT\-11\).
 
 <a name="Store.Events"></a>
 ### func \(\*Store\) Events

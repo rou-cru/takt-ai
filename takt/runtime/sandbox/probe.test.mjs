@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { createServer } from 'node:http';
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { supervise, wrap } from './adapter.mjs';
 
 const quote = s => `'${s.replaceAll("'", "'\\''")}'`;
@@ -126,4 +129,50 @@ test('supervised command confines its writes and outlives no descendant', async 
     await new Promise(resolve => setTimeout(resolve, 2000));
     await assert.rejects(readFile(orphan), 'a descendant survived the command and wrote afterwards');
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+// Network is unrestricted unless the user configured an allowlist, and an
+// allowlist that omits a host leaves a sandboxed command unable to reach it.
+test('network is restricted only when an allowlist is configured', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'takt-network-')));
+  const server = createServer((_, res) => res.end('reached')).listen(0, '127.0.0.1');
+  try {
+    await new Promise(resolve => server.once('listening', resolve));
+    const url = `http://127.0.0.1:${server.address().port}/`;
+    const scratch = join(root, 'scratch');
+    const workspace = join(root, 'workspace');
+    for (const p of [scratch, workspace]) await mkdir(p);
+    let seq = 0;
+    async function fetchWith(extra, curlFlags = '') {
+      const wrapped = await wrap(`curl -sS --max-time 5 ${curlFlags}${quote(url)}`, {
+        writable: [scratch], scratch, protectedPaths: [workspace], callID: `net-${++seq}`, ...extra });
+      // Asynchronous: the server answering the request lives in this process.
+      return promisify(execFile)('/bin/sh', ['-c', wrapped], { cwd: scratch, timeout: 20000,
+        env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch } }).catch(error => error);
+    }
+    const open = await fetchWith({});
+    assert.equal(open.stdout, 'reached', open.stderr);
+    // Concurrent first wraps with an allowlist start the proxy once, in turn,
+    // and both reach the allowed host. The sandbox exempts loopback from its
+    // proxy, so the request is sent through it explicitly to reach the filter.
+    const first = await Promise.all([1, 2].map(() => fetchWith({ allowedDomains: ['127.0.0.1'] }, "--noproxy '' ")));
+    for (const run of first) assert.equal(run.stdout, 'reached', run.stderr);
+    const limited = await fetchWith({ allowedDomains: ['allowed.test'] });
+    assert.notEqual(limited.stdout, 'reached', 'a host outside the allowlist was reachable');
+    assert.ok(limited.code, 'the restricted command succeeded');
+    const filtered = await fetchWith({ allowedDomains: ['allowed.test'] }, "--noproxy '' ");
+    assert.notEqual(filtered.stdout, 'reached', 'the proxy let through a host outside the allowlist');
+    // The proxy filters by host, not by blocking everything: a host on the
+    // allowlist stays reachable after a restart.
+    const allowed = await fetchWith({ allowedDomains: ['127.0.0.1'] }, "--noproxy '' ");
+    assert.equal(allowed.stdout, 'reached', allowed.stderr);
+    // Concurrent first wraps under a new allowlist restart the proxy once, in
+    // turn, and both reach the allowed host.
+    const both = await Promise.all([1, 2].map(() => fetchWith({ allowedDomains: ['127.0.0.1', 'allowed.test'] }, "--noproxy '' ")));
+    for (const run of both) assert.equal(run.stdout, 'reached', run.stderr);
+  } finally {
+    server.close();
+    await SandboxManager.reset();
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -14,7 +14,38 @@ export const SHELL_ESCAPED_DESCENDANTS = 121;
 // tenth of a second each.
 const DESCENDANT_SWEEPS = 30;
 
-export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], callID }) {
+// proxyAllowlist is the allowlist the shared network proxy was started with. The
+// proxy filters by it, not by a call's own list, so a different list restarts it.
+let proxyAllowlist;
+
+// proxyRestarts orders proxy restarts: each runs after the previous one
+// settles, so concurrent wraps never initialize the proxy at the same time.
+let proxyRestarts = Promise.resolve();
+
+// restrictNetwork starts the proxy that lets a sandboxed command reach only the
+// allowed domains. Without it the sandbox leaves the network unrestricted.
+function restrictNetwork(allowedDomains) {
+  const key = JSON.stringify(allowedDomains);
+  const restart = proxyRestarts.then(async () => {
+    if (proxyAllowlist === key) return;
+    if (proxyAllowlist !== undefined) {
+      // Forget the old list first: a failed restart must start again, never
+      // be skipped as already running.
+      proxyAllowlist = undefined;
+      await SandboxManager.reset();
+    }
+    await SandboxManager.initialize({
+      network: { allowedDomains, deniedDomains: [], strictAllowlist: true },
+      filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+    });
+    proxyAllowlist = key;
+  });
+  // A failed restart reaches its caller; the next one still runs.
+  proxyRestarts = restart.catch(() => {});
+  return restart;
+}
+
+export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], allowedDomains, callID }) {
   if (!['darwin', 'linux'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch)) {
     throw new Error('Takt sandbox: unsupported target; no direct-shell fallback');
   }
@@ -26,6 +57,7 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
   }
   // SRT grants shared temp/log directories by default. They are NOT private
   // scratch and must be carved out explicitly. Device stdio is retained.
+  if (allowedDomains !== undefined) await restrictNetwork(allowedDomains);
   const denyDefaults = getDefaultWritePaths().filter(p => !p.startsWith('/dev/'));
   return SandboxManager.wrapWithSandbox(command, '/bin/sh', {
     filesystem: {
@@ -36,7 +68,9 @@ export async function wrap(command, { writable, scratch, protectedPaths = [], pr
       // one holding every call's sandbox root; it stays readable to its command.
       allowRead: [scratch],
     },
-    // Deliberately absent: network. [] would block network, contrary to product.
+    // Network is restricted only when the user configured an allowlist: absent
+    // means unrestricted, and [] would block every domain.
+    ...(allowedDomains !== undefined && { network: { allowedDomains } }),
   }, undefined, { commandId: callID });
 }
 

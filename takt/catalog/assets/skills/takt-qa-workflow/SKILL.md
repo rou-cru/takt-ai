@@ -32,23 +32,24 @@ objective's close.
 | | | Required specification missing | Return the missing invariant to Takt; do not infer it |
 | 2. Plan | `qa`: specification, frozen contracts, PRD, analyst facts, existing test policy | Policy when authored, plan, matrix and applicable environment requirements delivered; a diagnostic blocker is also a real result | Q2 selected → 3; otherwise → 4; blocker → outcomes |
 | 3. Author | `tpm`: plan and matrix, always assigning each matrix row its owning node; creating test-author tasks only when Q2 is selected. Then `test` per task: plan, specification, contracts and matrix, with disjoint test-file claims | Each delta consolidates, after its phase gate when the plan sets one; acceptance Verify (4) runs it | 4; gate failure or blocker → outcomes |
-| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; none and completion report delivered → 8; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
+| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report and per-row matrix evidence, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
 | 5. Critique | Independent assignments concurrently by default: `mutation` only with Q2 selected, must-not-fail rows and an executable green original suite, consuming plan, matrix and acceptance report; `explorer` for selected Q3, consuming plan and acceptance report; `quality` for selected Q4, consuming plan, specification and acceptance report | Reports or diagnostic blockers delivered | Eligible survivor → 6; findings/blockers → outcomes; otherwise → 7 |
 | 6. Strengthen | `test`: plan, specification, contracts, matrix and mutation report, with its existing author_key when continuing staged work. Authoring → Verify gate → consolidation → `mutation` on only affected rows, consuming plan, matrix and prior mutation report | No must-not-fail survivor, or {{policy.recovery_max_attempts}} rounds admitted | Survivor with budget → next round; exhausted → 7 with residual risk; baseline/gate failure or blocker → outcomes |
-| 7. Close | Existing `verify`, without author_keys, on the materialized workspace: acceptance report, specification, plan, matrix, applicable supplements and the latest mutation, exploration and quality reports that exist. State explicitly that it closes acceptance | Matrix evidence and test completion report delivered | 8 |
+| 7. Close | At objective closure, `qa`: independent acceptance evidence, specification, plan, matrix and supplements, and selected mutation, exploration and quality reports, all by ID and evaluated scope. At a non-objective slice, nothing; retain the slice's evidence by ID and evaluated scope | Objective: test completion report delivered. Slice: its scoped evidence retained, with no completion report. Unmet criteria remain unmet | Inside SDD at a non-objective slice → back to SDD's slice control point; otherwise → 8 |
 | 8. Report | Nothing | Consume the test completion report by ID; state unmet criteria, unchecked work and every residual risk | Audit/report closed, not necessarily product accepted |
 
 Critique entry criteria apply per assignment: a failed suite bars mutation, not an independent
 Q3/Q4 session whose own entry conditions hold. Serialize only a concrete conflict in services,
 ports, data or measurements, naming it; no general barrier between independent critiques.
 An audit records ineligible critiques as not run, preserves every finding and proceeds to
-Close/Report without repair. If no critique runs, Accept supplies the test completion report
-when tasked to close; otherwise Close records it from the acceptance evidence.
+Close/Report without repair.
 
-Close consumes valid evidence; it executes only checks missing or invalidated by subsequent
-changes to their evaluated scope. A strengthened suite invalidates its previous suite result;
-it does not automatically invalidate unrelated measurements. Failed or unverified criteria
-stay failed or unverified. Closing an audit certifies neither the product nor a milestone commit.
+- At objective closure, `qa` records the completion report; `verify` supplies acceptance and
+  matrix evidence.
+- A missing check, or a change to its evaluated scope, returns to Accept; Close then resumes.
+- A strengthened suite invalidates its previous result, not unrelated measurements.
+- Failed or unverified criteria stay so; closing an audit certifies neither the product nor a
+  checkpoint.
 
 Commit the states that run from Author (or Accept without Q2) through Close before delegation;
 inside SDD they are nodes of its DAG. Strengthen is forward correction, not reversible recovery.
@@ -63,7 +64,7 @@ At the bound, continue to Close/Report with residual risk or propose a finite
 
 | Outcome | Destination | Inputs by ID |
 | --- | --- | --- |
-| Build, lint, Q1/Q2 or end-to-end failure; failed exploration or quality finding, in a delivery/hardening objective | One `fix` per localized code defect, `dev` when defects correlate; contract owner for a contradiction; data owner for missing prerequisites | The finding that localizes it and applicable contracts |
+| Build, lint, Q1/Q2 or end-to-end failure; failed exploration or Q4 failure with executable measurement evidence, in a delivery/hardening objective | One `fix` per localized code defect, `dev` when defects correlate; contract owner for a contradiction; data owner for missing prerequisites | The finding that localizes it and applicable contracts |
 | The same failure in an assessment-only objective | Retain finding; run critiques whose own entry holds, skip the rest; Close/Report, never inferred repair | Reports retained for closure |
 | Check not run, environment/service/data/configuration blocker | Owner of the missing fact or environment, identified from plan/analyst facts; no pass assumed. In an audit retain as unverified and close | Diagnostic report, plan and relevant facts |
 | A test contradicts specification or frozen interface | `spec` for behavior, `architect` for interface; freeze only consuming nodes pending the ruling | Contradicting artifacts and report; test path named in the brief |
@@ -71,6 +72,7 @@ At the bound, continue to Close/Report with residual risk or propose a finite
 | Owner rules code wrong | One `fix` per localized defect, `dev` when defects correlate; do not alter the oracle | Ruling and the finding that localizes it |
 | Verify gate fails | One `fix` per localized code defect, `dev` when defects correlate (test defects to `test`); contradiction to contract owner; unmet inputs to their owner. Keep delta staged pending decision; no automatic consolidation | Gate report and applicable inputs |
 | Mutation original baseline cannot run or fails, including during Strengthen | Localized code failure to its own `fix`, `dev` when failures correlate; environment gap to its owner, contradiction to contract owner; in an audit retain blocker and close. It is not a survivor round | Mutation blocker with original command/output, acceptance report and plan |
+| Q4 critique without executable measurement evidence | Retain as advisory residual risk in Close/Report, not a blocking failure or inferred repair; unmet criteria remain unmet | Quality report |
 | Q4 measurable criterion absent from plan | `qa` to complete the plan; Quality chooses measurement methods, never invents acceptance | Quality blocker, plan and specification |
 | Requirement too vague to derive a criterion (`qa` or `quality`) | `spec`, then Plan with the revision | Diagnostic blocker and specification |
 | Must-not-fail non-equivalent mutant survives | `test` through Strengthen, never implementer; at budget → Close with risk | Mutation report and affected rows |

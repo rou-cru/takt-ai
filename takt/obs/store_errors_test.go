@@ -208,9 +208,6 @@ func TestStoreOperationsFailAfterClose(t *testing.T) {
 	if _, err := s.Events(testSession, "", 0, 0, 0); err == nil {
 		t.Error("Events succeeded on a closed store")
 	}
-	if _, err := s.CountEvents(testSession, "", 0, 0); err == nil {
-		t.Error("CountEvents succeeded on a closed store")
-	}
 }
 
 func TestOpenStoreRefusesUnsafeExistingFiles(t *testing.T) {

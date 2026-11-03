@@ -335,9 +335,9 @@ func subagentRules(maintenance []string) []permissionRule {
 	return rules
 }
 
-// switchTools lend and return the chat interface itself; only the
+// switchTools lend, return and read back the chat interface; only the
 // orchestrator, which owns the interface, may hand it out or reclaim it.
-var switchTools = []string{"dispatch_switch", "dispatch_abort_switch"}
+var switchTools = []string{"dispatch_switch", "dispatch_lent_entries"}
 
 // interlocutorRules projects the interlocutor-stack tools by role: switching
 // the interface is the orchestrator's alone, and handing a completed

@@ -47,6 +47,10 @@ type Execution struct {
 	Ready      bool    `json:"ready,omitempty"`
 	Terminated bool    `json:"terminated,omitempty"`
 	Settled    bool    `json:"settled,omitempty"`
+	// Model is the provider/model the execution runs.
+	Model string `json:"model,omitempty"`
+	// Substitute marks a Takt substitute filling the instance's seat.
+	Substitute bool `json:"substitute,omitempty"`
 	// Owner is the harness instance that prepared or attached this execution;
 	// empty for one recorded before owners were.
 	Owner string `json:"owner,omitempty"`
@@ -95,7 +99,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, Background: e.Background, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, Background: e.Background, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
@@ -117,11 +121,16 @@ func (p *Projection) foldExecution(e Entry) {
 }
 
 // Orphaned reports whether d's owner has stopped renewing its lease by now, so
-// another harness instance may reconcile it. An execution recorded without an
-// owner has none to wait for.
+// another harness instance may reconcile it.
 func (p Projection) Orphaned(d Execution, now time.Time) bool {
-	renewed, ok := p.Leases[d.Owner]
-	return d.Owner == "" || !ok || now.Sub(time.UnixMilli(renewed)) > LeaseTTL
+	return p.LeaseLapsed(d.Owner, now)
+}
+
+// LeaseLapsed reports whether harness instance owner has stopped renewing its
+// lease by now. Work recorded without an owner has none to wait for.
+func (p Projection) LeaseLapsed(owner string, now time.Time) bool {
+	renewed, ok := p.Leases[owner]
+	return owner == "" || !ok || now.Sub(time.UnixMilli(renewed)) > LeaseTTL
 }
 
 // ExecutionForChild never uses a host title as authority. Titles only propose
