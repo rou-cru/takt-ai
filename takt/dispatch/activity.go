@@ -24,8 +24,10 @@ import (
 
 // StartActivity records non-work-unit orchestrator or maintenance activity.
 // Activity identity stays in ActivityID, never in WorkUnitID; delegated work
-// continues to use Admit and the ordinary unit lifecycle.
-func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind) error {
+// continues to use Admit and the ordinary unit lifecycle. owner is the harness
+// instance that captures it, so another instance can tell once that capture is
+// lost; empty when the activity has no capturing instance.
+func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error {
 	if session == "" || activityID == "" {
 		return errors.New("dispatch: activity start requires session and activity_id")
 	}
@@ -41,7 +43,7 @@ func StartActivity(h *history.History, session, activityID string, nodeKind hist
 	}
 	return h.Append(history.Entry{
 		Author: history.AuthorOf(kind), Kind: kind, SessionID: session, ActivityID: activityID,
-		NodeKind: nodeKind, Cause: history.CauseNone,
+		NodeKind: nodeKind, Owner: owner, Cause: history.CauseNone,
 	})
 }
 

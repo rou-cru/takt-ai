@@ -243,7 +243,9 @@ func renewLease(h *history.History, owner string, now time.Time) error {
 }
 
 // listExecutions answers every execution with the dispatches whose owner's
-// lease lapsed by now, which any harness instance may reconcile.
+// lease lapsed by now, which any harness instance may reconcile, and likewise
+// the orchestrator activities still in flight with those whose capturing
+// instance's lease lapsed: their capture is lost (PR-OBS-BUS-6).
 func listExecutions(h *history.History, now time.Time) map[string]any {
 	p := h.Project()
 	// Admission can survive a crash before KindExecution. Expose that exact
@@ -268,7 +270,18 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 		}
 	}
 	slices.Sort(orphaned)
-	return map[string]any{"executions": p.Executions, "orphaned": orphaned}
+	activities, orphanedActivities := map[string]history.Activity{}, []string{}
+	for id, a := range p.Activities {
+		if a.NodeKind != history.NodeKindOrchestrator || a.State != history.StateInFlight {
+			continue
+		}
+		activities[id] = a
+		if p.LeaseLapsed(a.Owner, now) {
+			orphanedActivities = append(orphanedActivities, id)
+		}
+	}
+	slices.Sort(orphanedActivities)
+	return map[string]any{"executions": p.Executions, "orphaned": orphaned, "activities": activities, "orphaned_activities": orphanedActivities}
 }
 
 // productManagerID names the catalog definition whose sessions author user

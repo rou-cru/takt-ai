@@ -539,7 +539,7 @@ func coordinate(ctx context.Context, fs *vfs.FS, h *history.History, workspace, 
 			if r.NodeKind != history.NodeKindOrchestrator {
 				return nil, errors.New("dispatch: activity_start only accepts node_kind orchestrator")
 			}
-			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind)
+			return c, protocol.StartActivity(h, r.Session, r.ActivityID, r.NodeKind, r.Owner)
 		},
 		"activity_finish": func() (any, error) {
 			if r.NodeKind != history.NodeKindOrchestrator {

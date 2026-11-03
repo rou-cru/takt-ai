@@ -902,6 +902,25 @@ func unmonitoredActivity(t *testing.T, bin string) {
 	if n := s.count(history.KindUnmonitored); n != 1 {
 		t.Fatalf("late or unknown losses were recorded: %d", n)
 	}
+
+	// An activity whose capturing instance stopped renewing its lease is
+	// reported orphaned, so another instance records the lost capture; one a
+	// live instance captures is not.
+	s.must(request{Action: "lease", Owner: "live"})
+	for id, owner := range map[string]string{"live-activity": "live", "gone-activity": "gone"} {
+		s.must(request{Action: "activity_start", Session: rootSession, ActivityID: id, NodeKind: history.NodeKindOrchestrator, Owner: owner})
+	}
+	var listed struct {
+		Activities         map[string]history.Activity `json:"activities"`
+		OrphanedActivities []string                    `json:"orphaned_activities"`
+	}
+	s.must(request{Action: "executions"}).decode(t, &listed)
+	if len(listed.Activities) != 2 || listed.Activities["live-activity"].Owner != "live" || listed.Activities["gone-activity"].SessionID != rootSession {
+		t.Fatalf("in-flight activities listed: %+v", listed.Activities)
+	}
+	if !slices.Equal(listed.OrphanedActivities, []string{"gone-activity"}) {
+		t.Fatalf("orphaned activities = %v; want only the one whose owner's lease lapsed", listed.OrphanedActivities)
+	}
 }
 
 func cancellationRetainsCapacity(t *testing.T, bin string) {

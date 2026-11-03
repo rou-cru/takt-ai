@@ -76,7 +76,7 @@ func TestMarkActivityUnmonitoredKeepsTheActivityInFlight(t *testing.T) {
 	if err := dispatch.MarkActivityUnmonitored(h, session, id); err == nil {
 		t.Fatal("an activity that never started was marked unmonitored")
 	}
-	if err := dispatch.StartActivity(h, session, id, orchestrator); err != nil {
+	if err := dispatch.StartActivity(h, session, id, orchestrator, ""); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {

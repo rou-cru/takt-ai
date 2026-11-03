@@ -544,5 +544,5 @@ func startGCCycleActivity(h *history.History, c *gc.Cycle) error {
 		(c.Phase == "aborting" || c.Phase == "blocked") {
 		return nil
 	}
-	return protocol.StartActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance)
+	return protocol.StartActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance, "")
 }

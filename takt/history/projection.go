@@ -224,6 +224,8 @@ type Activity struct {
 	State      State    `json:"state"`
 	Flight     Flight   `json:"flight,omitempty"`
 	Outcome    Outcome  `json:"outcome,omitempty"`
+	// Owner is the harness instance that captures the activity.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Recovery is one objective's bounded-recovery accounting.
@@ -495,7 +497,7 @@ func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 		if !exists {
 			p.Activities[e.ActivityID] = Activity{
 				ActivityID: e.ActivityID, SessionID: e.SessionID, NodeKind: nodeKind,
-				State: StateInFlight, Flight: FlightRunning,
+				State: StateInFlight, Flight: FlightRunning, Owner: e.Owner,
 			}
 		}
 		return
