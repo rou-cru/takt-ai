@@ -4,8 +4,10 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
  const inputs = new Map(Object.entries(initial.inputs ?? {}))
  const executions = structuredClone(initial.executions ?? {})
  const holders = { ...initial.holders }
+ // Direct orchestrator activities, keyed by activity_id, with their capturing instance.
+ const activities = structuredClone(initial.activities ?? {})
  // Instances that renewed a lease; an execution whose owner never did is orphaned.
- const leases = new Set()
+ const leases = new Set(initial.leases ?? [])
  const reply = value => ({ out: JSON.stringify(value), code: 0 })
  const denied = err => ({ err, code: 1 })
  function activeChild(child, agent) { return Object.values(executions).find(d => !d.settled && d.child === child && (!agent || d.agent === agent)) }
@@ -15,7 +17,14 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
    inputs.set(`${r.session}\0${r.event}`, [...(r.result_ids ?? [])]);return reply({ result_ids: r.result_ids ?? [] })
   }
   if (command === "lease") { leases.add(r.owner); return reply(null) }
-  if (command === "executions") return reply({ executions, orphaned: Object.values(executions).filter(d => !d.settled && !(d.owner && leases.has(d.owner))).map(d => d.dispatch) })
+  if (command === "executions") {
+   const open = Object.fromEntries(Object.entries(activities).filter(([, a]) => a.state === "in flight"))
+   return reply({ executions, orphaned: Object.values(executions).filter(d => !d.settled && !(d.owner && leases.has(d.owner))).map(d => d.dispatch),
+    activities: open, orphaned_activities: Object.keys(open).filter(id => !(open[id].owner && leases.has(open[id].owner))).sort((a, b) => a.localeCompare(b)) })
+  }
+  if (command === "activity_start") { activities[r.activity_id] ??= { activity_id: r.activity_id, session_id: r.session, node_kind: r.node_kind, state: "in flight", flight: "observed running", ...(r.owner ? { owner: r.owner } : {}) }; return undefined }
+  if (command === "activity_finish") { const a = activities[r.activity_id]; if (a) { a.state = "settled"; delete a.flight; a.outcome = r.outcome }; return undefined }
+  if (command === "activity_unmonitored") { const a = activities[r.activity_id]; if (a?.state === "in flight") { a.flight = "capture unmonitored" }; return undefined }
   if (command === "execution") return reply(executions[r.dispatch] ?? null)
   if (command === "resolve") return reply(activeChild(r.child,r.agent) ?? (holders[r.child] ? {root:holders[r.child]} : null))
   if (command === "prepare") {
@@ -51,5 +60,5 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
   if (command === "session_deleted" || command === "handoff" || command === "abort_switch") {delete holders[r.child];return undefined}
   return undefined
  }
- return {inputs,executions,holders,answer,activeChild,reply,denied}
+ return {inputs,executions,activities,holders,answer,activeChild,reply,denied}
 }

@@ -76,7 +76,7 @@ func TestProjectionLifecycleAndReplay(t *testing.T) {
 		t.Fatalf("in flight %d; want 3", p.InFlight())
 	}
 	want := map[string]history.Unit{
-		history.UnitKey("root", "a"): {SessionID: "root", WorkUnitID: "a", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightCancelling, Launched: true, Committed: true},
+		history.UnitKey("root", "a"): {SessionID: "root", WorkUnitID: "a", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightCancelling, Launched: true, CancelRequested: true, Committed: true},
 		history.UnitKey("root", "b"): {SessionID: "root", WorkUnitID: "b", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Committed: true},
 		history.UnitKey("root", "c"): {SessionID: "root", WorkUnitID: "c", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightPendingLaunch},
 		history.UnitKey("root", "e"): {SessionID: "root", WorkUnitID: "e", NodeKind: history.NodeKindDelegated, AttemptID: history.FirstAttempt, State: history.StateInFlight, Flight: history.FlightUncertain},

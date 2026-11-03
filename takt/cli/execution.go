@@ -38,6 +38,12 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
 		}
+		// The seat is part of what the execution record names: a retry may not
+		// run another model or swap in a substitute under it. An execution
+		// recorded before models were recorded names none, so any model matches.
+		if (prior.Model != "" && prior.Model != r.Model) || prior.Substitute != r.Substitute {
+			return nil, fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
+		}
 		if prior.Ready || prior.Settled {
 			return map[string]any{"execution": prior, "launchable": false}, nil
 		}
@@ -238,7 +244,9 @@ func renewLease(h *history.History, owner string, now time.Time) error {
 }
 
 // listExecutions answers every execution with the dispatches whose owner's
-// lease lapsed by now, which any harness instance may reconcile.
+// lease lapsed by now, which any harness instance may reconcile, and likewise
+// the orchestrator activities still in flight with those whose capturing
+// instance's lease lapsed: their capture is lost (PR-OBS-BUS-6).
 func listExecutions(h *history.History, now time.Time) map[string]any {
 	p := h.Project()
 	// Admission can survive a crash before KindExecution. Expose that exact
@@ -263,7 +271,18 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 		}
 	}
 	slices.Sort(orphaned)
-	return map[string]any{"executions": p.Executions, "orphaned": orphaned}
+	activities, orphanedActivities := map[string]history.Activity{}, []string{}
+	for id, a := range p.Activities {
+		if a.NodeKind != history.NodeKindOrchestrator || a.State != history.StateInFlight {
+			continue
+		}
+		activities[id] = a
+		if p.LeaseLapsed(a.Owner, now) {
+			orphanedActivities = append(orphanedActivities, id)
+		}
+	}
+	slices.Sort(orphanedActivities)
+	return map[string]any{"executions": p.Executions, "orphaned": orphaned, "activities": activities, "orphaned_activities": orphanedActivities}
 }
 
 // productManagerID names the catalog definition whose sessions author user

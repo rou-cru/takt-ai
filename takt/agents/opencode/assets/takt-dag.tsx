@@ -862,10 +862,10 @@ const activityLabel = (activity: DagActivity) => (activity.node_kind === "orches
 const activityUnmonitored = (activity: DagActivity) => activity.state === "in_flight" && activity.flight === "unmonitored"
 
 export function activityText(activity: DagActivity): string {
-  const glyph = activityUnmonitored(activity) ? "◐" : activity.state === "in_flight" ? "◆" : "◇"
   const label = activityLabel(activity)
-  const status = activityUnmonitored(activity) ? "unmonitored" : activity.state === "in_flight" ? "running" : activity.outcome ?? "settled"
-  return `${glyph} ${label} ${activity.activity_id} · ${status}`
+  if (activityUnmonitored(activity)) return `◐ ${label} ${activity.activity_id} · unmonitored`
+  if (activity.state === "in_flight") return `◆ ${label} ${activity.activity_id} · running`
+  return `◇ ${label} ${activity.activity_id} · ${activity.outcome ?? "settled"}`
 }
 
 export function activityBoxWidth(activity: DagActivity): number {
@@ -1516,8 +1516,21 @@ export default Plugin.define({
         context.ui.toast.show({ variant: "error", message: refusal || (err || out).trim() || `abort exited ${code}` })
         return
       }
-      await context.client.session.interrupt({ sessionID: reply.child })
-      await context.client.session.synthetic({ sessionID: reply.root, text: reply.notice })
+      // The core already cleared the holder, so the convening agent gets the
+      // notice even when the stop fails, told that the lent session may still
+      // run; each failure still reaches the toast.
+      const stop = await context.client.session.interrupt({ sessionID: reply.child }).then(() => undefined, (error: unknown) => ({ error }))
+      const text = stop ? `${reply.notice}\nStopping the lent session failed; it may still be running.` : reply.notice
+      try {
+        await context.client.session.synthetic({ sessionID: reply.root, text })
+      } catch (error) {
+        if (stop) {
+          const reason = (failure: unknown) => failure instanceof Error ? failure.message : String(failure)
+          throw new AggregateError([stop.error, error], `stopping the lent session failed (${reason(stop.error)}) and notifying the convening agent failed (${reason(error)})`, { cause: error })
+        }
+        throw error
+      }
+      if (stop) throw stop.error
       context.ui.toast.show({ variant: "success", message: "Lent session aborted; the interface is back with the convening agent." })
     }
 
