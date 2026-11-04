@@ -158,7 +158,7 @@ The home has no header row and no signature line: the logo (its terminal represe
   │                  [n] on [provider/model]             │
   │                  [n] on OpenCode's default model     │
   │ [n] skills                                           │
-  │ [n] MCP servers  codegraph · context7 · engram       │
+  │ [n] MCP servers  codegraph · context7 · takt-memory  │
   │ [n] integrations DAG panel · memory · sandbox · VFS  │
   │                                                      │
   │ WHAT CHANGES ON DISK                                 │
