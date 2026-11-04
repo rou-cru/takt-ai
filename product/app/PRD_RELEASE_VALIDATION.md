@@ -26,6 +26,7 @@
 | PR-REL-8 | Release validation MUST cover the required support targets defined in PR-SET-26. A Linux container result alone MUST NOT be treated as evidence of native macOS compatibility. |
 | PR-REL-9 | Results for the expected compatibility targets defined in PR-SET-26 MUST remain distinct from evidence for the required targets, and MUST NOT, by themselves, block release. |
 | PR-REL-10 | Project tests and CI MUST NOT require a developer's real host installation or personal working configuration as a test target. Validation for supported operating systems and architectures MUST be designed around isolated test environments rather than depend on personal host use. |
+| PR-REL-17 | On each required support target of PR-SET-26, release validation of the memory service covers clean installation, enrollment, a first record and read, a restart, an upgrade that preserves the service store, and scoped uninstallation that retains the corpus, plus two independent clients sharing one fresh corpus. A target not executed is reported as unverified, never as passed. |
 
 ### 1.4 Brand-derived surface validation
 

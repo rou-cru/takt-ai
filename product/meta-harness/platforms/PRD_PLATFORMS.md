@@ -29,6 +29,7 @@
 | PR-MEC-1 | Takt MUST use OpenCode v2 native mechanisms as the default for hosting and extending Takt-defined agents. |
 | PR-MEC-2 | Takt-owned extension code MAY fill a product capability that OpenCode v2 does not provide, but MUST NOT replace an adequate native mechanism or introduce a parallel agent implementation. |
 | PR-MEC-3 | For the confirmed first host adapter (OpenCode), the memory integration uses that host's server-plugin tool transformation mechanism for per-call context and MUST NOT assume an identity-injection hook the host does not provide. On other or future hosts, a supported native mechanism that injects trusted per-call identity is permitted and is selected under the platform's native-mechanism priority; mechanism selection follows per-host evidence rather than a universal transformation rule. |
+| PR-MEC-4 | The host memory tool projection emits only the bounded service result, without added prose, raw upstream responses, or duplicated bodies. When its projection would exceed the requested byte budget, it requests a smaller page and never clips an artifact or a continuation. Its input schemas omit the identity, session, and operation fields the integration generates; user content and options map to the service requests of PR-MSV-5. |
 
 ### 1.4 Deployed Artifact Integrity
 
