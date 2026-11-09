@@ -13,7 +13,7 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **target** | The concrete destination of an operation within the OpenCode v2 installation. |
 | **scope** | The OpenCode v2 target together with the set of managed assets applicable to it. |
 | **workspace** | The project tree the crew works on: everything under the project root of the active session, independent of whether it is a Git repository. |
-| **memory service** | The independent service process behind the memory MCP tools, distinct from the harness and from every client that calls it. Its ownership scope, isolation, and admission rules are defined in PRD_MEMORY_SERVICE.md. |
+| **memory service** | The independent service process that owns the memory store and serves the memory functions over MCP to the official integration and to external clients. |
 
 ## 2. What Is Installed
 
@@ -54,14 +54,8 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **memory nature** | The kind of assertion a memory entry records, distinct from whether it currently applies. |
 | **entry ID** | The persistent identifier of a memory entry, by which artifacts, evidence, and results are passed and retrieved. |
 | **Global Tier / Workspace Tier** | The two memory partitions: Global holds cross-project user preferences and environment quirks; Workspace holds the active repository's invariants, constraints, and domain knowledge. |
-| **tenant** | The hard memory partition of the memory corpus. Its scope semantics, including what global scope means, are defined in PRD_MEMORY_SERVICE.md. |
-| **memory reference** | The pair of opaque identifiers, memory identifier and entry identifier, that names one memory entry. Its canonical reserved token form in mixed file and memory invariant lists is defined in PRD_MEMORY_SERVICE.md. |
-| **issuer** | An enrolled principal, registered by the local operator, that asserts identities and operation bindings for its own namespace. Its corpus set and operation-ceiling rules are defined in PRD_MEMORY_SERVICE.md. |
-| **manual client** | An independent human or automation client that calls the memory service directly over MCP with its own credentials, outside the crew and without crew privileges. |
-| **admission reference** | The opaque, principal-bound and payload-bound token that names one crew memory lifecycle operation admitted by the harness. Its issuance and evidentiary scope are defined in PRD_HARNESS.md, and its validation on submission is defined in PRD_MEMORY_SERVICE.md. |
-| **operation receipt** | The terminal record of one memory operation: applied, rejected, or canceled, with its payload digest and result references. Distinct from operation status, which may report only a pending registration. |
-| **session anchor** | A harness-created record delimiting a session's memory graph at its start or end. |
-| **session narrative** | The end-of-session account of its objective, final state, and linked memory chronology. |
+| **external client** | A person or an automation that uses the memory service directly over MCP, outside the crew and the official integration. |
+| **session narrative** | The account a session close records: its objective and final state, read with the chronology derived from the entries committed since the previous close. |
 | **maintenance cycle** | A bounded harness-controlled run outside active task execution: GC over the workspace or dreaming over memory. |
 | **collector** | The simplification instance participating in a GC cycle, realigning the workspace to declared norms with bounded, behavior-preserving deltas. Not the name of every ordinary simplification assignment. |
 | **structural doctrine** | The engineering standard for the structure of work, distinct from functional requirements or authority to change it. |

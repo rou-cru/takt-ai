@@ -8,14 +8,19 @@ import "github.com/rou-cru/takt-ai/takt/memory"
 
 Package memory writes agent memories into Engram with harness\-owned metadata, links and session anchors.
 
+Package memory is Takt's own memory store: a SQLite database owned by the memory service.
+
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func Capabilities\(req CapabilitiesRequest\) \[\]string](<#Capabilities>)
 - [func Continue\(ctx context.Context, cfg Config, req ContinueRequest\) \(err error\)](<#Continue>)
 - [func EntryIDsByAuthor\(root, session, author string\) \(\[\]int64, error\)](<#EntryIDsByAuthor>)
 - [func EntryIDsByCaller\(root, session, caller string\) \(\[\]int64, error\)](<#EntryIDsByCaller>)
 - [func EntryIDsForSession\(root, session string\) \(\[\]int64, error\)](<#EntryIDsForSession>)
+- [func Init\(dir string\) error](<#Init>)
+- [func PrefixedToolName\(tool string\) string](<#PrefixedToolName>)
 - [func ResolveProject\(ctx context.Context, cfg Config, dir string\) string](<#ResolveProject>)
 - [func ValidateResultIDs\(ctx context.Context, cfg Config, ids \[\]int64\) error](<#ValidateResultIDs>)
 - [func ValidateSessionResultIDs\(ctx context.Context, cfg Config, session, author string, ids \[\]int64\) error](<#ValidateSessionResultIDs>)
@@ -33,6 +38,11 @@ Package memory writes agent memories into Engram with harness\-owned metadata, l
 - [type SearchRequest](<#SearchRequest>)
 - [type SearchResult](<#SearchResult>)
   - [func Search\(ctx context.Context, cfg Config, req SearchRequest\) \(SearchResult, error\)](<#Search>)
+- [type Store](<#Store>)
+  - [func Open\(dir string\) \(\*Store, error\)](<#Open>)
+  - [func \(s \*Store\) Backup\(ctx context.Context, path string\) \(string, int64, error\)](<#Store.Backup>)
+  - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
+- [type Tool](<#Tool>)
 - [type ValidationError](<#ValidationError>)
   - [func \(e \*ValidationError\) Error\(\) string](<#ValidationError.Error>)
 
@@ -48,6 +58,119 @@ const (
     // PrivateStateFileMode protects the memory session index lock.
     PrivateStateFileMode os.FileMode = 0o600
 )
+```
+
+<a name="ToolRecord"></a>Names of the six tools served identically on /crew and /external, the single source of tool names.
+
+```go
+const (
+    ToolRecord          = "record"
+    ToolSearch          = "search"
+    ToolRead            = "read"
+    ToolSessions        = "sessions"
+    ToolContinueSession = "continue_session"
+    ToolCloseSession    = "close_session"
+)
+```
+
+<a name="AdminBind"></a>Names of the tools served on /admin, which only Takt code calls.
+
+```go
+const (
+    AdminBind     = "bind"
+    AdminDescribe = "describe"
+    AdminStatus   = "status"
+    AdminInit     = "init"
+    AdminBackup   = "backup"
+)
+```
+
+<a name="ServerKey"></a>ServerKey is the MCP server key clients register the service under; it is distinctive so it never replaces or collides with a user's server under a generic key such as "memory".
+
+```go
+const ServerKey = "takt_memory"
+```
+
+<a name="StoreFile"></a>StoreFile is the name of the store file inside the memory directory.
+
+```go
+const StoreFile = "memory.db"
+```
+
+## Variables
+
+<a name="ErrNoStore"></a>
+
+```go
+var (
+    // ErrNoStore reports that the memory directory holds no store file.
+    ErrNoStore = errors.New("the Takt memory store does not exist; create it with init")
+    // ErrStoreExists reports that a store file already exists; init never replaces one.
+    ErrStoreExists = errors.New("memory store already exists; open it instead of running init")
+    // ErrNewerStore reports a store whose schema version is newer than this build supports; the file is left unchanged.
+    ErrNewerStore = errors.New("the Takt memory store schema is newer than this build; use a newer takt-ai")
+    // ErrCorrupt reports a store that fails its integrity check or is not a store of this schema; the file is left unchanged.
+    ErrCorrupt = errors.New("the Takt memory store is corrupt; restore it from a backup")
+    // ErrBusy reports a write that could not take the write lock in time; it had no effect and can be retried.
+    ErrBusy = errors.New("the Takt memory store is busy; retry the call")
+)
+```
+
+<a name="Tools"></a>Tools are the six tools of /crew and /external, with the same texts for every caller.
+
+```go
+var Tools = []Tool{
+    {
+        Name: ToolRecord,
+        Description: "Record one Takt memory entry: something that happened or is true now, such as an idea explored, " +
+            "a fact verified, a decision taken, or an artifact changed. Never record plans, next steps, pending work, " +
+            "or predictions unless the user directly ordered it. Entries are never changed or deleted; a change in " +
+            "understanding is a new entry whose relates_to names the affected entry. A new entry sends content. An entry " +
+            "that corrects or supersedes another is stored as the complete current artifact: send the complete content. " +
+            "Returns `Recorded #<id>`. A request larger than the transport's request cap is refused, stating the cap.",
+    },
+    {
+        Name: ToolSearch,
+        Description: "Search the Takt memory entries that currently apply, most relevant first. Each hit is one line: ID, " +
+            "nature, tier, title, author, date, and markers. [disputed] marks an open disagreement and " +
+            "[exception] a scoped exception: read the entry before relying on it. An invalid argument is refused; " +
+            "correct that argument.",
+    },
+    {
+        Name: ToolRead,
+        Description: "Read one Takt memory entry by ID; a known ID needs no search first. Returns its metadata, relations, " +
+            "and complete body, its current version when it was corrected or superseded, and the current version of " +
+            "each entry that supplements it. When that exceeds the read budget, it returns instead an outline of " +
+            "section headings with sizes, the requested or first section, and the supplements by ID and title. An " +
+            "unknown ID or section is refused as such and never replaced by another entry: report the ID as not " +
+            "found rather than substituting a search result, or choose a heading from the outline.",
+    },
+    {
+        Name: ToolSessions,
+        Description: "List the Takt memory sessions that recorded entries, closed or open, to find a previous session to " +
+            "resume or continue. Sessions matching the query come first; recency breaks ties. Each shows whether it " +
+            "is closed or open, the objective and state of each close, and a bounded chronology of its entries: ID, " +
+            "title, nature, author, and whether each still applies, never bodies.",
+    },
+    {
+        Name: ToolContinueSession,
+        Description: "Declare that this session continues a previous closed session, which may belong to another " +
+            "workspace. The declaration stays pending until this session records its first entry, which makes it " +
+            "permanent; until then, calling again replaces it and an empty previous_session_id withdraws it. Returns " +
+            "the pending declaration. Refused with no effect when the named session is not closed (resume an open " +
+            "session without declaring it), when this session already has an entry (continue without the link), or " +
+            "when this connection cannot address the named session (the refusal names the valid targets). " + rootOnly,
+    },
+    {
+        Name: ToolCloseSession,
+        Description: "Close this session's Takt memory with its objective and current state, once the requested work is " +
+            "reported or the user ends the conversation. The close covers the entries recorded since the previous " +
+            "close; their chronology is derived from them when read, so the close never restates them. A later entry " +
+            "reopens the session, and the next close covers only what followed. Returns the recorded close with the " +
+            "range it covers. Refused, recording nothing, when nothing was recorded since the previous close; no close " +
+            "is needed then. " + rootOnly,
+    },
+}
 ```
 
 <a name="Capabilities"></a>
@@ -94,6 +217,24 @@ func EntryIDsForSession(root, session string) ([]int64, error)
 ```
 
 EntryIDsForSession returns the ids of every memory entry created within session, so a caller can report them without the specialist declaring them itself \(MEM\-AUT\-6\). Returns an empty slice, not an error, when the session has no index yet.
+
+<a name="Init"></a>
+## func Init
+
+```go
+func Init(dir string) error
+```
+
+Init creates the store in the existing memory directory dir. It returns ErrStoreExists when a store file is already there and never replaces it.
+
+<a name="PrefixedToolName"></a>
+## func PrefixedToolName
+
+```go
+func PrefixedToolName(tool string) string
+```
+
+PrefixedToolName is the name OpenCode gives a tool of the memory MCP server: the server key, an underscore, and the tool.
 
 <a name="ResolveProject"></a>
 ## func ResolveProject
@@ -327,6 +468,56 @@ func Search(ctx context.Context, cfg Config, req SearchRequest) (SearchResult, e
 ```
 
 Search runs a full\-text memory search in one tier and returns the entries that still govern, marking open disputes and scoped exceptions.
+
+<a name="Store"></a>
+## type Store
+
+Store is an open memory store: one writer connection and a pool of readers.
+
+```go
+type Store struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Open"></a>
+### func Open
+
+```go
+func Open(dir string) (*Store, error)
+```
+
+Open opens the existing store in the existing memory directory dir. It never creates the directory or the store: it returns ErrNoStore when there is no store file, ErrNewerStore for a newer schema, and ErrCorrupt when the integrity check fails, leaving the file unchanged.
+
+<a name="Store.Backup"></a>
+### func \(\*Store\) Backup
+
+```go
+func (s *Store) Backup(ctx context.Context, path string) (string, int64, error)
+```
+
+Backup writes a consistent copy of the store with VACUUM INTO to path, which must be absolute and must not exist yet \(SQLite refuses an existing non\-empty target\), and returns the path and its size in bytes.
+
+<a name="Store.Close"></a>
+### func \(\*Store\) Close
+
+```go
+func (s *Store) Close() error
+```
+
+Close closes the writer and reader connections.
+
+<a name="Tool"></a>
+## type Tool
+
+Tool is one tool's name and its caller\-facing description; argument descriptions are the jsonschema tags of its argument type.
+
+```go
+type Tool struct {
+    Name        string
+    Description string
+}
+```
 
 <a name="ValidationError"></a>
 ## type ValidationError

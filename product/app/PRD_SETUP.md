@@ -33,7 +33,7 @@
 | PR-SET-10 | After setup, the application MUST provide a quick route to further configuration or exit to use the installed stack. For OpenCode v2, it MUST also offer immediate optional model assignment. |
 | PR-SET-32 | After applying the plan, setup MUST verify the installed result rather than infer it from the files written: each installed MCP integration MUST be confirmed connected by OpenCode, which requires a completed protocol handshake, not configuration or a running process alone, and the Takt orchestrator MUST be confirmed selectable as the session agent. The result MUST report each affected capability as verified, not verified, or not verifiable, and MUST NOT present a not-verified result as ready to work. |
 | PR-SET-11 | The intended successful OpenCode v2 handoff MUST have the Takt orchestrator selected as the session agent and the installed MCP integrations functional, with no additional Takt setup required. |
-| PR-SET-37 | The mandatory core includes the memory service integration: setup composes its endpoint configuration, identity bootstrap, and projected permissions as managed assets, selects or starts the local service process, and confirms its readiness before reporting the stack ready to work. An unreachable or not-ready service MUST appear as not verified or not verifiable under PR-SET-32 and MUST NOT be reported as ready. |
+| PR-SET-37 | Setup configures and starts the memory service and confirms its readiness before reporting the stack ready to work. An unreachable or not-ready service MUST appear as not verified or not verifiable under PR-SET-32 and MUST NOT be reported as ready. |
 
 ### 1.5 Custom Capability Composition
 
@@ -79,7 +79,6 @@
 | PR-SET-28 | Takt MUST acquire and configure the selected MCP integrations and other straightforward supporting assets needed for their OpenCode v2 integration, within the authorized installation plan. The curated capability catalog MUST NOT introduce complex dependency setup or substantial environment changes beyond those required to integrate with OpenCode v2. |
 | PR-SET-29 | Completing Takt TUI operations MUST NOT require the user to provide credentials or API tokens, nor assume that such secrets are already available. Setup MUST NOT introduce a credential-entry or account-provisioning step as a prerequisite for completing those operations. |
 | PR-SET-30 | LLM authentication MUST remain the responsibility of OpenCode v2 when agents are invoked. Takt setup MUST NOT require LLM authentication to be completed to configure the stack, and completion of setup MUST NOT be represented as proof that OpenCode v2 has authenticated successfully with an LLM provider. |
-| PR-SET-38 | Initial enrollment of the local memory principal and of individual clients is performed by Takt through the service's protected operator channel. Setup MUST NOT require the user to enter or supply a memory credential and MUST NOT introduce an unauthenticated enrollment step. |
 
 ### 1.10 Execution-Policy Delivery
 

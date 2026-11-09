@@ -16,6 +16,7 @@ HOST_TEST_PKGS=(
     ./takt/internal/opencodeapi
     ./takt/model
     ./takt/obs
+    ./takt/setup/testutil
     ./takt/skills
     ./takt/skills/testutil
     ./takt/tui
@@ -42,9 +43,9 @@ CONTAINER_TEST_PKGS=(
     ./takt/internal/filemerge
     ./takt/lifecycle
     ./takt/memory
+    ./takt/memory/embed
     ./takt/session
     ./takt/setup
-    ./takt/setup/testutil
     ./takt/verify
     ./takt/vfs
 )
