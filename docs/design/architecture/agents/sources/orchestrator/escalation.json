@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: escalation conduct",
@@ -7,23 +7,16 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Containment"
-    },
-    {
-      "id": "closing",
-      "label": "Reporting"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "trigger",
+    "freeze",
+    "terminate",
+    "restore",
+    "preserve"
   ],
   "states": [
     {
@@ -31,13 +24,11 @@
       "type": "start",
       "label": "Trigger",
       "sublabel": "scope, budget, discovery",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 107,
-          "end_line": 109
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 21,
+          "end_line": 26
         }
       ]
     },
@@ -46,12 +37,11 @@
       "type": "active",
       "label": "Path frozen",
       "sublabel": "affected path only",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 110
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 22,
+          "end_line": 22
         }
       ]
     },
@@ -60,12 +50,11 @@
       "type": "active",
       "label": "Termination confirmed",
       "sublabel": "active work stopped",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 111
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 23,
+          "end_line": 23
         }
       ]
     },
@@ -74,12 +63,11 @@
       "type": "active",
       "label": "Scope restored",
       "sublabel": "abandoned scope only",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 111
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 23,
+          "end_line": 23
         }
       ]
     },
@@ -88,12 +76,11 @@
       "type": "active",
       "label": "Progress preserved",
       "sublabel": "unrelated work kept",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 112
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 24,
+          "end_line": 24
         }
       ]
     },
@@ -102,12 +89,11 @@
       "type": "active",
       "label": "Report",
       "sublabel": "evidence and alternatives",
-      "lane": "closing",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 113
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 26,
+          "end_line": 26
         }
       ]
     },
@@ -115,14 +101,25 @@
       "id": "await",
       "type": "waiting",
       "label": "Awaiting direction",
-      "sublabel": "no further recovery",
-      "lane": "terminal",
-      "col": 4,
+      "sublabel": "only for that decision",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 114,
-          "end_line": 121
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 26,
+          "end_line": 32
+        }
+      ]
+    },
+    {
+      "id": "diagnose",
+      "type": "decision",
+      "label": "Technical route?",
+      "sublabel": "competent specialist or direct",
+      "sources": [
+        {
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 25,
+          "end_line": 26
         }
       ]
     }
@@ -147,7 +144,20 @@
     },
     {
       "from": "preserve",
-      "to": "report"
+      "to": "diagnose",
+      "label": "technical uncertainty",
+      "variant": "emphasis"
+    },
+    {
+      "from": "diagnose",
+      "to": "preserve",
+      "label": "within authority",
+      "variant": "dashed"
+    },
+    {
+      "from": "diagnose",
+      "to": "report",
+      "label": "value, authorization, irreversible effect or no continuation"
     },
     {
       "from": "report",
@@ -164,6 +174,15 @@
         "Budget expiry, or an objective-blocking discovery",
         "A contract that contradicts the code with no reachable owner, or two deltas that did not converge",
         "Consolidation reporting recovery required or a changed physical base"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Escalation",
+      "items": [
+        "Technical uncertainty goes to its competent specialist, or to direct investigation when the user's instruction covers it, keeping existing authority, ownership and budgets",
+        "The user decides value, required authorization, irreversible effects, or no justifiable continuation; direction is awaited only on that decision",
+        "An exhausted recovery offers the blind review pair before any allowance"
       ]
     },
     {

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Dispatched work unit lifecycle",
@@ -7,211 +7,36 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Unit progress"
-    },
-    {
-      "id": "side",
-      "label": "In flight: held or unknown"
-    },
-    {
-      "id": "terminal",
-      "label": "Never admitted"
-    }
-  ],
+  "mainPath": ["planned", "pending", "running", "settled"],
   "states": [
-    {
-      "id": "planned",
-      "type": "start",
-      "label": "Planned",
-      "sublabel": "declared, not admitted",
-      "lane": "main",
-      "col": 0,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 20,
-          "end_line": 29
-        }
-      ]
-    },
-    {
-      "id": "pending",
-      "type": "active",
-      "label": "Pending launch",
-      "sublabel": "in flight, slot reserved",
-      "lane": "main",
-      "col": 1,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 34,
-          "end_line": 56
-        }
-      ]
-    },
-    {
-      "id": "running",
-      "type": "active",
-      "label": "Running",
-      "sublabel": "in flight, observed",
-      "lane": "main",
-      "col": 2,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 34,
-          "end_line": 56
-        }
-      ]
-    },
-    {
-      "id": "settled",
-      "type": "success",
-      "label": "Settled",
-      "sublabel": "outcome recorded",
-      "lane": "main",
-      "col": 4,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 58,
-          "end_line": 71
-        }
-      ]
-    },
-    {
-      "id": "uncertain",
-      "type": "waiting",
-      "label": "Launch uncertain",
-      "sublabel": "in flight, unestablished",
-      "lane": "side",
-      "col": 1,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 34,
-          "end_line": 56
-        }
-      ]
-    },
-    {
-      "id": "suspended",
-      "type": "waiting",
-      "label": "Suspended",
-      "sublabel": "in flight, held",
-      "lane": "side",
-      "col": 2,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 34,
-          "end_line": 56
-        }
-      ]
-    },
-    {
-      "id": "cancelling",
-      "type": "waiting",
-      "label": "Cancellation pending",
-      "sublabel": "in flight, not yet effective",
-      "lane": "side",
-      "col": 3,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 34,
-          "end_line": 56
-        }
-      ]
-    },
-    {
-      "id": "withdrawn",
-      "type": "neutral",
-      "label": "Withdrawn",
-      "sublabel": "revoked while planned",
-      "lane": "terminal",
-      "col": 0,
-      "sources": [
-        {
-          "path": "takt/history/projection.go",
-          "line": 452,
-          "end_line": 469
-        }
-      ]
-    }
+    { "id": "planned", "type": "start", "label": "Planned", "sublabel": "declared, not admitted", "sources": [{ "path": "takt/history/projection.go", "line": 20, "end_line": 29 }] },
+    { "id": "pending", "type": "active", "label": "Pending launch", "sublabel": "in flight, slot reserved", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
+    { "id": "running", "type": "active", "label": "Running", "sublabel": "in flight, observed", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
+    { "id": "settled", "type": "success", "label": "Settled", "sublabel": "outcome recorded", "sources": [{ "path": "takt/history/projection.go", "line": 62, "end_line": 75 }] },
+    { "id": "uncertain", "type": "waiting", "label": "Launch uncertain", "sublabel": "in flight, unestablished", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
+    { "id": "suspended", "type": "waiting", "label": "Suspended", "sublabel": "in flight, held", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
+    { "id": "cancelling", "type": "waiting", "label": "Cancellation pending", "sublabel": "in flight, not yet effective", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
+    { "id": "unmonitored", "type": "waiting", "label": "Capture unmonitored", "sublabel": "in flight, reservation held", "sources": [{ "path": "takt/history/projection.go", "line": 47, "end_line": 49 }] },
+    { "id": "withdrawn", "type": "neutral", "label": "Withdrawn", "sublabel": "revoked while planned", "sources": [{ "path": "takt/history/projection.go", "line": 477, "end_line": 478 }] }
   ],
   "transitions": [
-    {
-      "from": "planned",
-      "to": "pending",
-      "label": "admitted",
-      "variant": "emphasis"
-    },
-    {
-      "from": "pending",
-      "to": "running",
-      "label": "launched"
-    },
-    {
-      "from": "running",
-      "to": "settled",
-      "label": "terminated",
-      "variant": "emphasis"
-    },
-    {
-      "from": "running",
-      "to": "suspended",
-      "label": "suspended",
-      "variant": "dashed"
-    },
-    {
-      "from": "suspended",
-      "to": "running",
-      "label": "launched",
-      "variant": "dashed"
-    },
-    {
-      "from": "pending",
-      "to": "uncertain",
-      "label": "launch_uncertain",
-      "variant": "security"
-    },
-    {
-      "from": "uncertain",
-      "to": "running",
-      "label": "launched"
-    },
-    {
-      "from": "running",
-      "to": "cancelling",
-      "label": "cancellation_requested",
-      "variant": "security"
-    },
-    {
-      "from": "cancelling",
-      "to": "settled",
-      "label": "terminated"
-    },
-    {
-      "from": "settled",
-      "to": "pending",
-      "label": "admitted: next attempt",
-      "variant": "dashed",
-      "route": "top-channel"
-    },
-    {
-      "from": "planned",
-      "to": "withdrawn",
-      "label": "withdrawn",
-      "variant": "dashed"
-    }
+    { "from": "planned", "to": "pending", "label": "admitted", "variant": "emphasis" },
+    { "from": "pending", "to": "running", "label": "launched" },
+    { "from": "running", "to": "settled", "label": "terminated", "variant": "emphasis" },
+    { "from": "running", "to": "suspended", "label": "suspended", "variant": "dashed" },
+    { "from": "suspended", "to": "running", "label": "launched", "variant": "dashed" },
+    { "from": "pending", "to": "uncertain", "label": "launch_uncertain", "variant": "security" },
+    { "from": "uncertain", "to": "running", "label": "launched" },
+    { "from": "running", "to": "cancelling", "label": "cancellation_requested", "variant": "security" },
+    { "from": "cancelling", "to": "settled", "label": "terminated" },
+    { "from": "settled", "to": "pending", "label": "admitted: next attempt", "variant": "dashed" },
+    { "from": "planned", "to": "withdrawn", "label": "withdrawn", "variant": "dashed" },
+    { "from": "running", "to": "unmonitored", "label": "host stream lost", "variant": "security" },
+    { "from": "unmonitored", "to": "settled", "label": "terminated" }
   ],
   "cards": [
     {
@@ -219,8 +44,19 @@
       "title": "History",
       "items": [
         "Unit state is a pure fold over the append-only execution history; nothing is stored",
-        "Any in-flight condition accepts launch_uncertain, suspended, cancellation_requested and terminated; only the common paths are drawn",
-        "Outcomes: completed, failed, backtracked, interrupted"
+        "Any in-flight condition accepts launch_uncertain, suspended, cancellation_requested, unmonitored and terminated; only the common paths are drawn",
+        "Outcomes: completed, failed, backtracked, interrupted",
+        "Inactivity alone proves neither failure nor closure; only loss of the host event stream marks watched executions and open activities unmonitored"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Assurance",
+      "items": [
+        "Assurance is recorded apart from outcome on the unit's current attempt: verified, failed, blocked, impossible or unverified",
+        "A completed finish whose attempt has no evaluated result is recorded in the same batch as unverified, never as accepted work",
+        "A result applies only to its own attempt and changes no lifecycle fact; evidence for an earlier revision stays historical",
+        "The snapshot and TUI carry assurance separately from state, flight and outcome"
       ]
     },
     {

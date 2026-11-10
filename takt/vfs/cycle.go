@@ -44,8 +44,8 @@ type cycleSnapshot struct {
 	// path, so the cycle that last re-edited a path is the one it is traced to.
 	Last map[string]int `json:",omitempty"`
 	// Completed marks a cycle CompleteCycle has closed: it can no longer be
-	// discarded, but ConsolidatedBy still attributes its paths so a later
-	// re-edit traces back to this cycle and mandate class (PR-MNT-31).
+	// discarded, but its paths stay attributed so a later re-edit still
+	// traces back to this cycle and mandate class (PR-MNT-31).
 	Completed bool
 }
 
@@ -84,7 +84,8 @@ func (f *FS) retainCycleLocked(agent AgentID, m *recoveryManifest) {
 
 // CompleteCycle releases cycleID's discard state after it closed without
 // regressing acceptance, so DiscardCycle can no longer undo it. Idempotent.
-// ConsolidatedBy still attributes the cycle's paths (PR-MNT-31).
+// The cycle's paths stay attributed, so a later re-edit of one still names
+// this cycle and mandate class in the journal (PR-MNT-31).
 func (f *FS) CompleteCycle(cycleID string) (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -98,20 +99,10 @@ func (f *FS) CompleteCycle(cycleID string) (err error) {
 	return nil
 }
 
-// ConsolidatedBy reports the cycle and mandate class that last consolidated
-// path across every retained cycle (open or completed), so a caller staging a
-// write can attribute a later re-edit back to it (PR-MNT-31). path must match
-// the slash-relative form JournalEntry.Path and recoveryItem.Path use. It
-// scans every retained cycle per call; index by path if that ever grows.
-func (f *FS) ConsolidatedBy(path string) (cycleID, mandateClass string, ok bool) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.consolidatedByLocked(path)
-}
-
-// consolidatedByLocked is ConsolidatedBy for a caller that already holds f.mu
-// (locked for read or write) — appendJournalLocked runs under the write lock
-// and must not re-enter it via the exported, self-locking method.
+// consolidatedByLocked reports the cycle and mandate class that last
+// consolidated path across every retained cycle (open or completed), for a
+// caller that already holds f.mu — appendJournalLocked runs under the write
+// lock.
 func (f *FS) consolidatedByLocked(path string) (cycleID, mandateClass string, ok bool) {
 	latest := -1
 	for _, id := range slices.Sorted(maps.Keys(f.cycles)) {
