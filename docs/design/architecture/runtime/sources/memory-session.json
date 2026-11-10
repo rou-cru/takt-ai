@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,8 +25,13 @@
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-memory.ts",
-          "line": 35,
-          "end_line": 51
+          "line": 200,
+          "end_line": 234
+        },
+        {
+          "path": "takt/agents/opencode/assets/takt-memory.ts",
+          "line": 160,
+          "end_line": 170
         }
       ]
     },
@@ -38,8 +43,8 @@
       "sources": [
         {
           "path": "takt/cli/memory.go",
-          "line": 54,
-          "end_line": 87
+          "line": 56,
+          "end_line": 110
         }
       ]
     },
@@ -51,7 +56,13 @@
       "sources": [
         {
           "path": "takt/memory/memory.go",
-          "line": 313
+          "line": 333,
+          "end_line": 351
+        },
+        {
+          "path": "takt/memory/memory.go",
+          "line": 864,
+          "end_line": 887
         }
       ]
     },
@@ -76,7 +87,8 @@
       "sources": [
         {
           "path": "takt/memory/client.go",
-          "line": 282
+          "line": 282,
+          "end_line": 291
         }
       ]
     }
@@ -143,7 +155,7 @@
       "from": "memory",
       "to": "cli",
       "y": 370,
-      "label": "stored or deduplicated",
+      "label": "stored or deduplicated; reopen only when linked",
       "variant": "return"
     },
     {
@@ -217,7 +229,23 @@
       "title": "Guards",
       "items": [
         "Personal scope or user orders ask for confirmation first",
-        "A closed session rejects writes and a second close"
+        "Only the agent holding the user conversation links or closes a session; a fallback close skips this check"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Reopen",
+      "items": [
+        "A new entry resumes a closed host conversation only after its anchor and target links are written; historical close anchors remain",
+        "A failed write or a deduplicated retry leaves the previous close intact"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Close",
+      "items": [
+        "An explicit repeat close of a closed session is rejected",
+        "A fallback close is idempotent: an unknown, empty or already closed session is a no-op"
       ]
     }
   ]

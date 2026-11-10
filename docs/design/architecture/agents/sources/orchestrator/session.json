@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: session lifecycle",
@@ -7,27 +7,15 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Session"
-    },
-    {
-      "id": "phases",
-      "label": "Phases"
-    },
-    {
-      "id": "waiting",
-      "label": "User"
-    },
-    {
-      "id": "terminal",
-      "label": "Closing"
-    }
+  "mainPath": [
+    "selecting",
+    "implementing",
+    "milestone",
+    "reporting"
   ],
   "states": [
     {
@@ -35,8 +23,6 @@
       "type": "start",
       "label": "Session start",
       "sublabel": "new or continued work",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -45,8 +31,8 @@
         },
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 10,
-          "end_line": 22
+          "line": 12,
+          "end_line": 13
         }
       ]
     },
@@ -55,8 +41,6 @@
       "type": "active",
       "label": "Objective framed",
       "sublabel": "constraints, acceptance",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -70,13 +54,11 @@
       "type": "decision",
       "label": "Selecting a route",
       "sublabel": "workflow-selection tree",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 18,
-          "end_line": 41
+          "line": 20,
+          "end_line": 55
         }
       ]
     },
@@ -85,13 +67,11 @@
       "type": "active",
       "label": "Planning",
       "sublabel": "invariant or bounded route",
-      "lane": "phases",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 18,
-          "end_line": 41
+          "line": 20,
+          "end_line": 55
         }
       ]
     },
@@ -100,13 +80,11 @@
       "type": "active",
       "label": "Implementing",
       "sublabel": "SDD, bounded or one unit",
-      "lane": "phases",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 18,
-          "end_line": 41
+          "line": 43,
+          "end_line": 55
         }
       ]
     },
@@ -115,13 +93,11 @@
       "type": "waiting",
       "label": "Awaiting the user",
       "sublabel": "consult, approve, lend",
-      "lane": "waiting",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 107,
-          "end_line": 119
+          "line": 109,
+          "end_line": 116
         }
       ]
     },
@@ -129,14 +105,17 @@
       "id": "milestone",
       "type": "active",
       "label": "Milestone",
-      "sublabel": "global Verify, then commit",
-      "lane": "terminal",
-      "col": 3,
+      "sublabel": "slice acceptance, then commit",
       "sources": [
         {
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 28,
+          "end_line": 32
+        },
+        {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 132
+          "line": 128,
+          "end_line": 130
         }
       ]
     },
@@ -145,17 +124,10 @@
       "type": "success",
       "label": "Reported and closed",
       "sublabel": "memory_close_session",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 144,
-          "end_line": 147
-        },
-        {
           "path": "takt/catalog/assets/skills/takt-memory-orchestrator/SKILL.md",
-          "line": 24,
+          "line": 23,
           "end_line": 31
         }
       ]
@@ -176,7 +148,7 @@
     {
       "from": "selecting",
       "to": "planning",
-      "label": "invariants missing"
+      "label": "plan"
     },
     {
       "from": "planning",
@@ -198,7 +170,7 @@
     {
       "from": "selecting",
       "to": "awaiting",
-      "label": "uncertain",
+      "label": "value or authority decision",
       "variant": "security"
     },
     {
@@ -210,7 +182,7 @@
     {
       "from": "implementing",
       "to": "awaiting",
-      "label": "escalation",
+      "label": "authorization or irreversible effect",
       "variant": "security"
     },
     {
@@ -222,13 +194,13 @@
     {
       "from": "implementing",
       "to": "milestone",
-      "label": "phases verified",
+      "label": "accepted",
       "variant": "emphasis"
     },
     {
       "from": "milestone",
       "to": "reporting",
-      "label": "Verify passes, commit",
+      "label": "recorded",
       "variant": "emphasis"
     },
     {
@@ -244,14 +216,24 @@
       "title": "Loop",
       "items": [
         "The selection tree runs before every planning or implementation phase",
+        "Planning runs when required invariants are missing, partial or need refinement.",
         "Invariant planning returns to the tree once its invariants are delivered"
       ]
     },
     {
       "dot": "amber",
+      "title": "Acceptance and milestone",
+      "items": [
+        "One global Verify accepts each vertical slice after its writers finish; failed or unverified criteria block",
+        "Non-blocking advisory findings stay recorded and do not delay the checkpoint",
+        "A milestone commit is a separate decision, taken once acceptance is recorded and advisory review closes without a reproduction-backed defect"
+      ]
+    },
+    {
+      "dot": "violet",
       "title": "Waiting",
       "items": [
-        "The user is consulted for lending, approvals, uncertainty and escalation",
+        "The user decides value, authorizations, irreversible effects and lending; technical uncertainty goes first to a competent specialist or bounded diagnosis",
         "Resuming earlier work and compaction are covered in their own views"
       ]
     },

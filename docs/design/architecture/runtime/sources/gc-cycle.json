@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "GC cycle lifecycle",
@@ -7,27 +7,16 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "trigger",
-      "label": "Trigger"
-    },
-    {
-      "id": "main",
-      "label": "Cycle phases"
-    },
-    {
-      "id": "closing",
-      "label": "Acceptance and abort"
-    },
-    {
-      "id": "terminal",
-      "label": "Terminal"
-    }
+  "mainPath": [
+    "collect",
+    "verify",
+    "consolidating",
+    "acceptance",
+    "closed"
   ],
   "states": [
     {
@@ -35,18 +24,16 @@
       "type": "start",
       "label": "Idle",
       "sublabel": "counters accumulate",
-      "lane": "trigger",
-      "col": 0,
       "sources": [
         {
-          "path": "takt/gc/trigger.go",
-          "line": 85,
-          "end_line": 86
+          "path": "takt/gc/coordinator.go",
+          "line": 185,
+          "end_line": 200
         },
         {
           "path": "takt/gc/trigger.go",
-          "line": 71,
-          "end_line": 97
+          "line": 147,
+          "end_line": 172
         }
       ]
     },
@@ -55,13 +42,11 @@
       "type": "waiting",
       "label": "Held",
       "sublabel": "barrier, ESCALATE record",
-      "lane": "trigger",
-      "col": 1,
       "sources": [
         {
           "path": "takt/gc/barrier.go",
           "line": 67,
-          "end_line": 86
+          "end_line": 87
         }
       ]
     },
@@ -70,18 +55,16 @@
       "type": "neutral",
       "label": "Prepared",
       "sublabel": "config, locks, analyzers frozen",
-      "lane": "trigger",
-      "col": 2,
       "sources": [
         {
           "path": "takt/gc/preparation.go",
-          "line": 171,
+          "line": 174,
           "end_line": 203
         },
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 75,
-          "end_line": 80
+          "line": 90,
+          "end_line": 95
         }
       ]
     },
@@ -90,13 +73,11 @@
       "type": "active",
       "label": "baseline",
       "sublabel": "prepared checks + analyzers",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 131,
-          "end_line": 151
+          "line": 155,
+          "end_line": 175
         }
       ]
     },
@@ -105,12 +86,11 @@
       "type": "decision",
       "label": "investigate",
       "sublabel": "collector: refute or confirm",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/gc/investigation.go",
-          "line": 50
+          "line": 30,
+          "end_line": 45
         }
       ]
     },
@@ -119,13 +99,11 @@
       "type": "active",
       "label": "collect",
       "sublabel": "mutations inside scope",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
-          "path": "takt/gc/guard.go",
-          "line": 56,
-          "end_line": 69
+          "path": "takt/vfs/gc_state.go",
+          "line": 30,
+          "end_line": 76
         }
       ]
     },
@@ -134,13 +112,11 @@
       "type": "decision",
       "label": "verify",
       "sublabel": "verifier verdict",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 209,
-          "end_line": 253
+          "line": 249,
+          "end_line": 277
         }
       ]
     },
@@ -149,13 +125,11 @@
       "type": "active",
       "label": "consolidating",
       "sublabel": "checkpoint",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 227,
-          "end_line": 253
+          "line": 329,
+          "end_line": 351
         }
       ]
     },
@@ -164,13 +138,11 @@
       "type": "active",
       "label": "aborting",
       "sublabel": "discard cycle",
-      "lane": "closing",
-      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 373,
-          "end_line": 393
+          "line": 468,
+          "end_line": 520
         }
       ]
     },
@@ -179,13 +151,11 @@
       "type": "decision",
       "label": "acceptance",
       "sublabel": "checks run again",
-      "lane": "closing",
-      "col": 4,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 227,
-          "end_line": 253
+          "line": 278,
+          "end_line": 307
         }
       ]
     },
@@ -194,13 +164,11 @@
       "type": "failure",
       "label": "blocked",
       "sublabel": "discard failed, barrier held",
-      "lane": "terminal",
-      "col": 3,
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 373,
-          "end_line": 393
+          "line": 483,
+          "end_line": 497
         }
       ]
     },
@@ -209,13 +177,11 @@
       "type": "success",
       "label": "closed",
       "sublabel": "applied, aborted or no-change",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
           "path": "takt/gc/coordinator.go",
-          "line": 239,
-          "end_line": 249
+          "line": 296,
+          "end_line": 309
         }
       ]
     }
@@ -319,8 +285,8 @@
       "title": "Not drawn",
       "items": [
         "investigate to closed when the collector reports no change",
-        "Plugin restart sends recover, which aborts the cycle",
-        "Acceptance aborts the cycle when the preparation changed"
+        "A plugin restart reconciles stored delegations, preserves another live owner's lanes, and aborts specified incomplete closure phases after lane termination; interrupted evidence is distinct from acceptance",
+        "Acceptance aborts the cycle when the checked preparation changed"
       ]
     },
     {
@@ -330,6 +296,15 @@
         "takt-ai gc plan, findings, refute, acceptance run outside the coordinator",
         "plan widens the scope with CodeGraph dependents; without CodeGraph it stays journal-only and records the gap. Coordinator cycles are journal-only",
         "Manual acceptance is refused while a coordinator cycle exists"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Closure measurement",
+      "items": [
+        "A closing cycle publishes the mandate reversion rate from the journal: distinct consolidated (cycle,path) pairs form the denominator and attributed create/patch/delete re-edits the numerator",
+        "Reads, repeated edits and unrelated work do not inflate the rate; zero registered work publishes no rate",
+        "Publishing the rate never blocks closure; a rate over policy demotes the mandate"
       ]
     }
   ]

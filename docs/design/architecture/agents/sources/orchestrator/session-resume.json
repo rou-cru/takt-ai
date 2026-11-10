@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -41,8 +41,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 23,
-          "end_line": 38
+          "line": 17,
+          "end_line": 26
         }
       ]
     },
@@ -57,8 +57,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 23,
-          "end_line": 38
+          "line": 28,
+          "end_line": 34
         }
       ]
     },
@@ -73,8 +73,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 39,
-          "end_line": 53
+          "line": 40,
+          "end_line": 47
         }
       ]
     },
@@ -89,8 +89,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 25,
-          "end_line": 37
+          "line": 17,
+          "end_line": 34
         }
       ]
     },
@@ -105,24 +105,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 48,
-          "end_line": 50
-        }
-      ]
-    },
-    {
-      "id": "declare",
-      "lane": "branch",
-      "col": 3,
-      "type": "backend",
-      "label": "Declare continuity",
-      "sublabel": "memory_continue_session",
-      "width": 140,
-      "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 43,
-          "end_line": 46
+          "line": 42,
+          "end_line": 47
         }
       ]
     },
@@ -138,7 +122,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
           "line": 44,
-          "end_line": 47
+          "end_line": 44
         }
       ]
     },
@@ -147,14 +131,14 @@
       "lane": "finish",
       "col": 3,
       "type": "security",
-      "label": "Confirm with user",
-      "sublabel": "objective, disputes",
+      "label": "Reconcile conflicts",
+      "sublabel": "conflicts or unknowns only",
       "width": 140,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 54,
-          "end_line": 63
+          "line": 49,
+          "end_line": 56
         }
       ]
     },
@@ -169,8 +153,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 54,
-          "end_line": 63
+          "line": 51,
+          "end_line": 56
         }
       ]
     },
@@ -180,13 +164,13 @@
       "col": 2,
       "type": "backend",
       "label": "Start fresh",
-      "sublabel": "any declaration withdrawn",
+      "sublabel": "without the earlier context",
       "width": 140,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 49,
-          "end_line": 50
+          "line": 46,
+          "end_line": 46
         }
       ]
     }
@@ -228,7 +212,7 @@
     {
       "id": "r6",
       "from": "s3",
-      "to": "declare",
+      "to": "confirm",
       "label": "closed"
     },
     {
@@ -236,12 +220,6 @@
       "from": "s3",
       "to": "intr",
       "label": "interrupted"
-    },
-    {
-      "id": "r8",
-      "from": "declare",
-      "to": "confirm",
-      "label": "declared or rejected"
     },
     {
       "id": "r9",
@@ -279,19 +257,27 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Two decisions",
+      "title": "Resuming",
       "items": [
-        "Resuming never waits on the declaration, and failing to declare never stops the resume",
-        "The declaration becomes a permanent link with the first new memory entry"
+        "Start from the state at close, or from an interrupted session's entries",
+        "Check the claims the state names against the current workspace and any repository the memory names; verified repository state prevails"
       ]
     },
     {
       "dot": "amber",
+      "title": "One message",
+      "items": [
+        "Present the objective, what memory claims that the repositories do not show (or the reverse), and open disputes as open",
+        "Ask only what that leaves in conflict or unknown; with nothing open, continue without waiting",
+        "Show what was found; resume once the user confirms which work it is and where it stands"
+      ]
+    },
+    {
+      "dot": "rose",
       "title": "Care",
       "items": [
-        "Declare nothing doubtful; show what was found and resume once the user confirms which work it is",
         "Another workspace is searched when nothing in this one matches or the user points there",
-        "A rejected declaration is not retried; before the first new entry a different continuity replaces or withdraws it"
+        "No recorded session matches: say so and ask for a hint or start fresh"
       ]
     }
   ]

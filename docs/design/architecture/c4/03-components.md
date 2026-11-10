@@ -152,7 +152,7 @@ Scope: how declarative content becomes OpenCode configuration and plugins. The p
 
 ### Agents in the catalog
 
-Twelve agent definitions: takt (orchestrator), analyst, architect, dev, fix, judge, pm, product-designer, simplify, spec, tpm and verify. Skills live beside them under `takt/catalog/assets/skills`; authoring rules are in `takt/catalog/CONVENTIONS.md` and `product/governance/DOCTRINE.md`.
+Agent definitions live under `takt/catalog/assets/agents`, one directory per agent, each `agent.yaml` declaring its role class, instances, VFS capabilities and skills: takt as orchestrator, planning authors, direct interlocutors, execution specialists, verification and quality assurance. Skills live beside them under `takt/catalog/assets/skills`; authoring rules are in `takt/catalog/CONVENTIONS.md` and `product/governance/DOCTRINE.md`.
 
 ### Notes
 

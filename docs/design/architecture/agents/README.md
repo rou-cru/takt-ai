@@ -1,6 +1,6 @@
 # Agent behavior as a deterministic system
 
-A model of the crew as processes that exchange messages, assuming the happy path: every agent does what its prose says. It is derived from the catalog prose (`takt/catalog/assets/agents/*/agent.yaml`, `OPERATIONS.md` and skills), not from runtime traces. Harness acts are marked as security-colored nodes and messages in the diagrams.
+A model of the crew as processes that exchange messages, assuming the happy path: every agent does what its prose says. It is derived from the catalog prose (`takt/catalog/assets/agents/*/agent.yaml`, `OPERATIONS.md` and skills), not from runtime traces. Harness acts are marked as security-colored nodes and messages in the diagrams. The flows are conditional examples, not a mandatory universal procession.
 
 | View | Diagram | Type |
 | :--- | :--- | :--- |
@@ -40,8 +40,8 @@ Not drawn as diagrams:
 | :--- | :--- |
 | Which specialist for which need | Unverified context: analyst. Intent and scope: pm. Behavior and acceptance: spec. Structure and technology: architect. Experience or identity: product-designer. Task decomposition: tpm. Implementation: dev. Defect repair: fix. Cleanup: simplify. Independent verdict: verify, never omitted from a planned verification. Test policy, plan and matrix: qa, when QA is planned. Blind Q2 tests, mutation, exploration and non-functional analysis: test, mutation, explorer and quality, where takt-qa-workflow reaches them. Each is omitted when settled artifacts already cover the need. |
 | When to request the blind judge pair | Only when the user asks, work advanced past deviations of unknown origin, the real state is unknown beyond a quick validation, a DAG ends with two or more phases that each reached the ceiling, or a large refactor of unknown impact has invariants to contrast. |
-| Whether a phase is verified | A gate is planned only for a completed module, a change whose deviation would cascade into later work, or an unknown state; one gate covers several authors and everything else consolidates on delivery. A planned gate needs a committed plan. Milestone acceptance is one Verify per milestone. |
-| Contesting a recorded failure | `dispatch_contest`, at most the per-session contest budget; it requests independent verification and takt never chooses the verifier. |
+| Whether a phase is verified | A gate is planned only for a completed module, a change whose deviation would cascade into later work, or an unknown state; one gate covers several authors and everything else consolidates on delivery. A planned gate needs a committed plan. One global Verify accepts each vertical slice after its writers finish; failed or unverified criteria block, while recorded non-blocking advisory findings do not. A milestone commit is a separate decision after acceptance. |
+| Contesting a recorded failure | `dispatch_contest`, at most the per-session contest budget; takt delegates the Verify of that unit's author key. |
 | GC cycles | Requested only when the user asks, after `gc_prepare` validated analyzers and acceptance commands; ordinary cleanup goes to simplify. |
 
 ## Processes
@@ -60,8 +60,8 @@ Role classes come from `agent.yaml`.
 ## Messages
 
 - Delegation: one-paragraph brief (objective, authorized scope, expected output, acceptance). Invariants never travel in the brief; they are declared by Engram ID.
-- Lend: Takt asks the user, then switches the interface to a pm, architect or product-designer with requirements, client and objective. The specialist hands back one of Standard, EarlyHandoff, TechFault or Outraged (or the lend is aborted).
-- Delivery: planning and interlocutor results are Engram IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Engram and delivered by ID with `deliver_result`. A later report is a new entry that supplements the earlier one.
+- Lend: Takt calls `dispatch_switch` with requirements, client and objective; the harness asks the user to accept the specialist before the switch takes effect, and a refusal means no lend. The specialist hands back one of Standard, EarlyHandoff, TechFault or Outraged (or the lend is aborted).
+- Delivery: planning and interlocutor results are Engram IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Engram and delivered by ID with `deliver_result`. A later report is a new entry related to the earlier one by its content: `supersedes` for a complete new version, `corrects` for a correction, and `supplements` only for a distinct additive artifact.
 - Two-part delivery: a specialist's delivery ends in VFS; takt releases each one where the plan sends it (phase verification, consolidation or a correction) before delegating more.
 - Ownership: only Takt owns claims, the DAG, delegation, consolidation and Git.
 
@@ -71,7 +71,7 @@ Role classes come from `agent.yaml`.
 | :--- | :--- | :--- | :--- |
 | Takt commits a plan, declares consumed IDs | Records units and prerequisites in the execution history | Entries are validated on append | `takt/history/history.go` |
 | Takt delegates | Admission: concurrency ceiling, unit already in flight, withdrawn unit, unplanned-unit bound, recovery limits | Denial is recorded and changes no state | `takt/dispatch/dispatch.go` |
-| Takt assigns a claim | Reserves the exact file set; a same-root collision is a typed error; without an author key, overlapping claims from other roots are discarded with their staged work; with it, the existing work continues | Deterministic | `takt/vfs/operation.go` |
+| Takt assigns a claim | Reserves the exact file set; a same-root collision is a typed error; without an author key it never takes a path another root's claim holds, so that work continues with its author key or is released or discarded first; with the author key the existing staged work continues | Deterministic | `takt/vfs/operation.go` |
 | Specialist binds | Scope check and base capture for every scoped path | Deterministic | `takt/vfs/operation.go` |
 | Execution stages | Revision increments and any verdict is cleared | Deterministic | `takt/vfs/vfs.go` |
 | Verifier gates | Prepared bound from the delegation's author keys and read by path; needs the verify grant; self-verification refused; verdict bound to revision and delta hash; a verdict on changed staged work is returned for a re-read | Deterministic | `takt/vfs/operation.go`, `takt/agents/opencode/assets/takt-vfs.ts` |
@@ -88,7 +88,7 @@ Role classes come from `agent.yaml`.
 - Choosing a route with the workflow-selection tree, and never re-adopting a route under identical evidence.
 - Cutting a DAG for concurrency and the width self-check before commit.
 - Comparing outputs across product, behavior, architecture and experience, and returning incompatibilities to their owners.
-- Resuming a session from its anchors and confirming continuity with the user.
+- Resuming a session from its anchors and reconciling only the conflicts or unknowns that remain with the user.
 - The recovery and diagnosis signals and the recovery conduct (freeze, restore only the abandoned scope, report).
 
 ## Fidelity notes

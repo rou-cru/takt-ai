@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: SDD workflow lifecycle",
@@ -7,27 +7,15 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Planning"
-    },
-    {
-      "id": "execution",
-      "label": "Execution"
-    },
-    {
-      "id": "exceptions",
-      "label": "Exceptions"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "phasegate",
+    "integrating",
+    "accepting",
+    "committed"
   ],
   "states": [
     {
@@ -35,13 +23,11 @@
       "type": "active",
       "label": "Planning",
       "sublabel": "owners freeze contracts",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 297,
-          "end_line": 341
+          "line": 288,
+          "end_line": 315
         }
       ]
     },
@@ -50,18 +36,16 @@
       "type": "decision",
       "label": "Validating",
       "sublabel": "width self-check",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 230,
-          "end_line": 240
+          "line": 223,
+          "end_line": 233
         },
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 180,
-          "end_line": 189
+          "line": 179,
+          "end_line": 181
         }
       ]
     },
@@ -70,13 +54,11 @@
       "type": "active",
       "label": "Compiling",
       "sublabel": "dispatch_commit",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 297,
-          "end_line": 341
+          "line": 288,
+          "end_line": 315
         }
       ]
     },
@@ -85,8 +67,6 @@
       "type": "active",
       "label": "Executing",
       "sublabel": "dispatch READY nodes",
-      "lane": "execution",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
@@ -100,17 +80,15 @@
       "type": "decision",
       "label": "Phase gate",
       "sublabel": "one verifier, author keys",
-      "lane": "execution",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 326,
-          "end_line": 329
+          "line": 316,
+          "end_line": 323
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 122,
+          "line": 128,
           "end_line": 130
         }
       ]
@@ -120,28 +98,24 @@
       "type": "active",
       "label": "Integrating",
       "sublabel": "loose ends, no checks",
-      "lane": "execution",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 329,
-          "end_line": 330
+          "line": 316,
+          "end_line": 323
         }
       ]
     },
     {
       "id": "accepting",
       "type": "active",
-      "label": "Accepting",
+      "label": "Slice acceptance",
       "sublabel": "global Verify",
-      "lane": "terminal",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 297,
-          "end_line": 341
+          "line": 316,
+          "end_line": 323
         }
       ]
     },
@@ -149,14 +123,12 @@
       "id": "rejected",
       "type": "waiting",
       "label": "Returned to owner",
-      "sublabel": "incomplete or too narrow",
-      "lane": "exceptions",
-      "col": 0,
+      "sublabel": "incomplete or unbounded",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 180,
-          "end_line": 203
+          "line": 179,
+          "end_line": 181
         }
       ]
     },
@@ -165,13 +137,11 @@
       "type": "waiting",
       "label": "Recovery",
       "sublabel": "see recovery view",
-      "lane": "exceptions",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 92,
-          "end_line": 119
+          "line": 104,
+          "end_line": 106
         }
       ]
     },
@@ -179,14 +149,17 @@
       "id": "committed",
       "type": "success",
       "label": "Milestone committed",
-      "sublabel": "Verify passed, no problems",
-      "lane": "terminal",
-      "col": 4,
+      "sublabel": "acceptance recorded, commit",
       "sources": [
         {
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 28,
+          "end_line": 32
+        },
+        {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 132
+          "line": 128,
+          "end_line": 130
         }
       ]
     }
@@ -195,20 +168,18 @@
     {
       "from": "planning",
       "to": "validating",
-      "label": "contracts and tasks in",
-      "labelDy": -31
+      "label": "contracts and tasks in"
     },
     {
       "from": "validating",
       "to": "compiling",
       "label": "self-check passes",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "validating",
       "to": "rejected",
-      "label": "incomplete, unbounded or serial",
+      "label": "incomplete, unbounded or unscoped-command cut",
       "variant": "security"
     },
     {
@@ -226,25 +197,23 @@
     {
       "from": "executing",
       "to": "phasegate",
-      "label": "phase verification planned",
-      "labelDy": -31
+      "label": "phase verification planned"
     },
     {
       "from": "phasegate",
       "to": "integrating",
-      "label": "verdicts pass, consolidated",
-      "labelDy": -31
+      "label": "verdicts pass"
     },
     {
       "from": "accepting",
       "to": "committed",
-      "label": "global Verify passes",
+      "label": "acceptance passes",
       "variant": "emphasis"
     },
     {
       "from": "executing",
       "to": "recovery",
-      "label": "second failure or contract defect",
+      "label": "second failure",
       "variant": "security"
     },
     {
@@ -270,8 +239,9 @@
       "dot": "cyan",
       "title": "Self-check",
       "items": [
-        "First implementation wave reaches the ceiling unless there are fewer nodes",
-        "Mean width is at least 2.0; below that the plan is a chain"
+        "There is no minimum wave width or occupancy: a narrow or fully serialized graph is valid when every edge names an admissible serialization reason",
+        "Ready independent nodes use available slots; excess work queues without artificial edges, and no work is invented to fill slots",
+        "Width never triggers a rebuild; only an edge without an admissible reason is removed"
       ]
     },
     {
@@ -279,14 +249,18 @@
       "title": "Rules",
       "items": [
         "Exclusive writable sets, frozen contracts before dispatch, no checks on staged work",
-        "Global build, lint and tests run only in one Verify node on the materialized workspace"
+        "One integration gate per slice: full build, lint and tests run only in one Verify unit on the materialized workspace after its writers finish",
+        "A milestone commit is a separate decision after acceptance passes; non-blocking advisory findings stay recorded and do not block",
+        "Integrating starts once phase verdicts pass consolidated; recovery follows a second failure or contract defect"
       ]
     },
     {
       "dot": "rose",
-      "title": "Escalation of a bad cut",
+      "title": "Slice control",
       "items": [
-        "A decomposition that admits no concurrency is rejected back to its author with the re-cut axis named"
+        "Once a slice is accepted, evaluate it before the next slice and tell a participating user how to try it",
+        "Dropping, adding or refactoring work alters the story first and realigns the invariants derived from it",
+        "A narrow or fully serialized slice remains valid; only an incomplete or unbounded contract returns to its author"
       ]
     }
   ]

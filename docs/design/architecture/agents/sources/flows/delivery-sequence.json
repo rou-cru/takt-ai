@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -37,7 +37,8 @@
       "sources": [
         {
           "path": "takt/dispatch/dispatch.go",
-          "line": 16
+          "line": 138,
+          "end_line": 169
         }
       ]
     },
@@ -73,7 +74,8 @@
       "sources": [
         {
           "path": "takt/memory/memory.go",
-          "line": 16
+          "line": 333,
+          "end_line": 351
         }
       ]
     },
@@ -192,7 +194,7 @@
       "from": "verify",
       "to": "takt",
       "y": 496,
-      "label": "deliver_result: report ID",
+      "label": "deliver_result: report ID and advisory findings",
       "variant": "return"
     },
     {
@@ -208,7 +210,7 @@
       "from": "takt",
       "to": "verify",
       "y": 552,
-      "label": "global Verify on materialized workspace",
+      "label": "global Verify: accepts the vertical slice",
       "variant": "emphasis"
     },
     {
@@ -216,7 +218,7 @@
       "from": "takt",
       "to": "git",
       "y": 580,
-      "label": "commit after it passes",
+      "label": "commit the milestone after acceptance; advisory findings do not block",
       "variant": "emphasis"
     }
   ],
@@ -226,8 +228,17 @@
       "title": "Delivery",
       "items": [
         "Execution ends in staged VFS work; releasing to the workspace is takt's",
-        "Consolidation needs a verdict covering the staged revision",
+        "Consolidation needs a verdict covering the staged revision; a delivery with no planned gate goes straight to consolidation",
         "Every delegation follows its dispatch_inputs; takt takes each returned delivery where the plan sends it before delegating more"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Acceptance and commit",
+      "items": [
+        "One global Verify node accepts each vertical slice after its writers finish; failed or unverified acceptance criteria block the checkpoint",
+        "Non-blocking advisory findings stay recorded: they neither delay the checkpoint nor require correction or reverification",
+        "Consolidating is not a Git commit; a milestone is committed once acceptance is recorded and advisory review closes without a reproduction-backed defect, after loading takt-git-commit"
       ]
     },
     {
@@ -235,7 +246,7 @@
       "title": "Not drawn",
       "items": [
         "A failing verdict leads to the repair loop (see the next view)",
-        "Build, lint and full suites run only in the global Verify, never on staged work"
+        "Build, lint and full suites run only in Verify units, never on staged work"
       ]
     }
   ]

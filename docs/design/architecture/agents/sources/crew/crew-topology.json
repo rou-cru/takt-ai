@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -64,7 +64,7 @@
       ],
       "size": [
         170,
-        280
+        800
       ],
       "sources": [
         {
@@ -140,7 +140,7 @@
       "sublabel": "direct_interlocutor",
       "pos": [
         330,
-        262
+        316
       ],
       "size": [
         230,
@@ -160,7 +160,7 @@
       "sublabel": "direct_interlocutor",
       "pos": [
         330,
-        316
+        370
       ],
       "size": [
         230,
@@ -180,7 +180,7 @@
       "sublabel": "direct_interlocutor",
       "pos": [
         330,
-        370
+        424
       ],
       "size": [
         230,
@@ -200,7 +200,7 @@
       "sublabel": "execution",
       "pos": [
         330,
-        464
+        518
       ],
       "size": [
         230,
@@ -220,7 +220,7 @@
       "sublabel": "execution",
       "pos": [
         330,
-        518
+        572
       ],
       "size": [
         230,
@@ -240,7 +240,7 @@
       "sublabel": "execution",
       "pos": [
         330,
-        572
+        626
       ],
       "size": [
         230,
@@ -260,7 +260,7 @@
       "sublabel": "verification",
       "pos": [
         330,
-        666
+        774
       ],
       "size": [
         230,
@@ -280,7 +280,7 @@
       "sublabel": "verification; judge-a, judge-b",
       "pos": [
         330,
-        720
+        828
       ],
       "size": [
         230,
@@ -304,12 +304,112 @@
       ],
       "size": [
         170,
-        302
+        640
       ],
       "sources": [
         {
           "path": "takt/vfs/vfs.go",
           "line": 16
+        }
+      ]
+    },
+    {
+      "id": "qa",
+      "type": "backend",
+      "label": "takt-qa",
+      "sublabel": "planning_author",
+      "pos": [
+        330,
+        222
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-qa/agent.yaml",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "id": "mutation",
+      "type": "backend",
+      "label": "takt-mutation",
+      "sublabel": "quality_assurance",
+      "pos": [
+        330,
+        922
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-mutation/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "explorer",
+      "type": "backend",
+      "label": "takt-explorer",
+      "sublabel": "quality_assurance",
+      "pos": [
+        330,
+        976
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-explorer/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "type": "backend",
+      "label": "takt-quality",
+      "sublabel": "quality_assurance",
+      "pos": [
+        330,
+        1030
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-quality/agent.yaml",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "type": "backend",
+      "label": "takt-test",
+      "sublabel": "execution",
+      "pos": [
+        330,
+        680
+      ],
+      "size": [
+        230,
+        46
+      ],
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt-test/agent.yaml",
+          "line": 14
         }
       ]
     }
@@ -321,7 +421,8 @@
       "wraps": [
         "analyst",
         "spec",
-        "tpm"
+        "tpm",
+        "qa"
       ],
       "pad": 14
     },
@@ -341,7 +442,8 @@
       "wraps": [
         "dev",
         "fix",
-        "simplify"
+        "simplify",
+        "test"
       ],
       "pad": 14
     },
@@ -351,6 +453,16 @@
       "wraps": [
         "verify",
         "judge"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "quality_assurance",
+      "wraps": [
+        "mutation",
+        "explorer",
+        "quality"
       ],
       "pad": 14
     }
@@ -483,13 +595,45 @@
       "via": [
         [
           125,
-          830
+          1140
         ],
         [
           925,
-          830
+          1140
         ]
       ]
+    },
+    {
+      "id": "takt-qa",
+      "from": "takt",
+      "to": "qa"
+    },
+    {
+      "id": "takt-test",
+      "from": "takt",
+      "to": "test"
+    },
+    {
+      "id": "takt-mutation",
+      "from": "takt",
+      "to": "mutation"
+    },
+    {
+      "id": "takt-explorer",
+      "from": "takt",
+      "to": "explorer"
+    },
+    {
+      "id": "takt-quality",
+      "from": "takt",
+      "to": "quality"
+    },
+    {
+      "id": "test-vfs",
+      "from": "test",
+      "to": "vfs",
+      "label": "read, run",
+      "variant": "security"
     }
   ],
   "cards": [
@@ -508,6 +652,15 @@
         "Dispatch admits every delegation and lend switch and keeps the execution history",
         "VFS holds claims, staged work, verdict gates and consolidation; only takt claims and consolidates",
         "Every agent records to Memory with memory_record (not drawn)"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Agent roles",
+      "items": [
+        "planning_author covers analyst, spec, tpm and qa; execution covers dev, fix, simplify and test",
+        "quality_assurance covers mutation, explorer and quality; verification covers verify and blind judge instances",
+        "The role declared by each agent.yaml fixes the seat; a replacement keeps the same seat and specialty"
       ]
     }
   ]

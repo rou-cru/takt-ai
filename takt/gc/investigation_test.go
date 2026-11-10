@@ -260,10 +260,7 @@ func TestMandateRateUsesDurableConsolidationAndReeditJournal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cycle, mandate, attributed := f.ConsolidatedBy("a.txt")
-			if attributed == discarded || (!discarded && (cycle != identity.CycleID || mandate != identity.MandateClass)) {
-				t.Fatalf("attribution after reopen: %q %q %v", cycle, mandate, attributed)
-			}
+			cycleID, mandateClass := identity.CycleID, identity.MandateClass
 			identity.CycleID, identity.MandateClass, identity.WorkUnitID = "", "", "ordinary"
 			author, err = f.Bind(identity, []string{"a.txt"})
 			if err != nil {
@@ -275,6 +272,20 @@ func TestMandateRateUsesDurableConsolidationAndReeditJournal(t *testing.T) {
 			}
 			if _, err = f.Apply(vfs.Operation{Key: author, CallID: "reedit", Action: action, Path: "a.txt", Content: []byte("corrected")}); err != nil {
 				t.Fatal(err)
+			}
+			// Attribution survives the reopen: the re-edit's journal entry
+			// names the completed cycle (PR-MNT-31). A discarded cycle is gone
+			// and owns no later edit.
+			page := f.JournalPage(bus.SessionID(), "ordinary", -1, vfs.MaxJournalPageSize)
+			if len(page) != 1 {
+				t.Fatalf("ordinary journal = %d entries, want the one re-edit", len(page))
+			}
+			if discarded {
+				if page[0].ReeditOfCycleID != "" || page[0].ReeditOfMandateClass != "" {
+					t.Fatalf("a discarded cycle still owns later edits: %+v", page[0])
+				}
+			} else if page[0].ReeditOfCycleID != cycleID || page[0].ReeditOfMandateClass != mandateClass {
+				t.Fatalf("re-edit after reopen = %+v, want reedit of %s/%s", page[0], cycleID, mandateClass)
 			}
 			if err = f.Close(); err != nil {
 				t.Fatal(err)

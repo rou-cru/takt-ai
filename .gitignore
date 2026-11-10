@@ -55,3 +55,7 @@ coverage/
 
 # Python bytecode from the benchmark tooling
 __pycache__/
+
+# Archify delivery receipts: machine-specific byproducts of archify finalize
+*.delivery.json
+*.delivery-pending.json

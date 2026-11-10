@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "Orchestrator: invariant-planning states",
@@ -7,27 +7,15 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
-  "lanes": [
-    {
-      "id": "main",
-      "label": "Planning states"
-    },
-    {
-      "id": "exits",
-      "label": "Exits"
-    },
-    {
-      "id": "waiting",
-      "label": "User"
-    },
-    {
-      "id": "terminal",
-      "label": "Outcome"
-    }
+  "mainPath": [
+    "plan",
+    "dispatch",
+    "coherence",
+    "complete"
   ],
   "states": [
     {
@@ -35,13 +23,11 @@
       "type": "active",
       "label": "Assess",
       "sublabel": "classify each invariant",
-      "lane": "main",
-      "col": 0,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
           "line": 17,
-          "end_line": 23
+          "end_line": 27
         }
       ]
     },
@@ -50,13 +36,11 @@
       "type": "active",
       "label": "Select",
       "sublabel": "one lane per invariant",
-      "lane": "main",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 24,
-          "end_line": 33
+          "line": 29,
+          "end_line": 40
         }
       ]
     },
@@ -65,13 +49,11 @@
       "type": "active",
       "label": "Plan",
       "sublabel": "edges by consumption",
-      "lane": "main",
-      "col": 2,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 34,
-          "end_line": 53
+          "line": 50,
+          "end_line": 75
         }
       ]
     },
@@ -80,13 +62,11 @@
       "type": "active",
       "label": "Dispatch",
       "sublabel": "lane starts when inputs exist",
-      "lane": "main",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 54,
-          "end_line": 59
+          "line": 77,
+          "end_line": 81
         }
       ]
     },
@@ -95,13 +75,11 @@
       "type": "decision",
       "label": "Coherence",
       "sublabel": "compare delivered documents",
-      "lane": "main",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 60,
-          "end_line": 69
+          "line": 83,
+          "end_line": 93
         }
       ]
     },
@@ -110,13 +88,11 @@
       "type": "neutral",
       "label": "Control returned",
       "sublabel": "single lane, or misfit",
-      "lane": "exits",
-      "col": 1,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 24,
-          "end_line": 33
+          "line": 29,
+          "end_line": 40
         }
       ]
     },
@@ -125,13 +101,11 @@
       "type": "waiting",
       "label": "Lane blocked",
       "sublabel": "specialist unavailable",
-      "lane": "exits",
-      "col": 3,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 70,
-          "end_line": 76
+          "line": 95,
+          "end_line": 99
         }
       ]
     },
@@ -140,13 +114,11 @@
       "type": "waiting",
       "label": "Ask the user",
       "sublabel": "disputed or not converging",
-      "lane": "waiting",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 60,
-          "end_line": 69
+          "line": 85,
+          "end_line": 92
         }
       ]
     },
@@ -155,13 +127,11 @@
       "type": "success",
       "label": "Planning complete",
       "sublabel": "invariants delivered",
-      "lane": "terminal",
-      "col": 4,
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 60,
-          "end_line": 69
+          "line": 83,
+          "end_line": 93
         }
       ]
     }
@@ -170,14 +140,12 @@
     {
       "from": "assess",
       "to": "select",
-      "label": "all classified",
-      "labelDy": -31
+      "label": "all classified"
     },
     {
       "from": "select",
       "to": "plan",
-      "label": "lane set fixed",
-      "labelDy": -31
+      "label": "lane set fixed"
     },
     {
       "from": "select",
@@ -189,14 +157,12 @@
       "from": "plan",
       "to": "dispatch",
       "label": "plan committed",
-      "variant": "emphasis",
-      "labelDy": -31
+      "variant": "emphasis"
     },
     {
       "from": "dispatch",
       "to": "coherence",
-      "label": "every lane delivered",
-      "labelDy": -31
+      "label": "every lane delivered"
     },
     {
       "from": "dispatch",
@@ -214,8 +180,7 @@
       "from": "coherence",
       "to": "dispatch",
       "label": "contradiction",
-      "variant": "security",
-      "labelDy": 57
+      "variant": "security"
     },
     {
       "from": "coherence",
@@ -241,14 +206,18 @@
       "dot": "cyan",
       "title": "Classes",
       "items": [
-        "Each invariant is settled, to refine, or to generate; probably settled is not a class"
+        "Each invariant is settled, to refine, or to generate; probably settled is not a class",
+        "User stories are settled only when final, with no question about their expected result open; revising a story makes every invariant derived from it to refine",
+        "A general or ambiguous request needs user stories; a trivial or narrowly technical one does not"
       ]
     },
     {
       "dot": "amber",
       "title": "Plan",
       "items": [
-        "pm roots the plan while intent is unsettled; analyst runs on a concrete question; designer and architect are independent unless one constrains the other",
+        "pm roots the plan: user stories first, then a different pm delegation formalizes the business documents from those final stories",
+        "analyst runs on a concrete question derived from an invariant in hand; designer and architect are independent unless one constrains the other",
+        "qa is conditional: only when planned, it follows spec and architect when present, consuming the specification, frozen contracts and pm's PRD; the plan then ends spec to qa",
         "More than one lane known: dispatch_commit before the first dispatch"
       ]
     },
@@ -256,7 +225,17 @@
       "dot": "rose",
       "title": "Coherence",
       "items": [
-        "takt decides which document stands and re-dispatches only the other lane"
+        "Ranks are fixed: the user's directive, then user stories, then business documents, then what derives from them; the higher document stands and only the other lane is re-dispatched",
+        "Between equal ranks, decide on the user's directive or verified facts; contradictory user stories are the user's to settle, through their pm when that lane runs with the user",
+        "Between qa and spec, spec stands for behavior; an unbacked conflict stays disputed and two failed alignments escalate"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Seat restoration",
+      "items": [
+        "A lane whose specialist cannot run has its seat restored per OPERATIONS, with model and reason; the specialty is never replaced",
+        "Lanes that do not consume the missing result keep running; consumers wait on the named gap rather than guessing"
       ]
     }
   ]

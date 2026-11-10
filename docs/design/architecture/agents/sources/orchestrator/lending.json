@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
       "link_mode": "local-only"
     }
   },
@@ -42,39 +42,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
           "line": 17,
-          "end_line": 24
-        }
-      ]
-    },
-    {
-      "id": "lq",
-      "lane": "decide",
-      "col": 1,
-      "type": "security",
-      "label": "Ask: lend?",
-      "sublabel": "native question tool",
-      "width": 180,
-      "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 25,
-          "end_line": 29
-        }
-      ]
-    },
-    {
-      "id": "la",
-      "lane": "decide",
-      "col": 2,
-      "type": "security",
-      "label": "Explicit accept?",
-      "sublabel": "reject or freeform: no lend",
-      "width": 180,
-      "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 25,
-          "end_line": 29
+          "end_line": 21
         }
       ]
     },
@@ -89,8 +57,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 17,
-          "end_line": 24
+          "line": 21,
+          "end_line": 21
         }
       ]
     },
@@ -105,8 +73,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 25,
-          "end_line": 29
+          "line": 26,
+          "end_line": 26
         }
       ]
     },
@@ -121,8 +89,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 30,
-          "end_line": 34
+          "line": 25,
+          "end_line": 32
         }
       ]
     },
@@ -137,8 +105,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 35,
-          "end_line": 39
+          "line": 37,
+          "end_line": 38
         }
       ]
     },
@@ -153,8 +121,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 40,
-          "end_line": 43
+          "line": 42,
+          "end_line": 42
         }
       ]
     },
@@ -169,8 +137,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 40,
-          "end_line": 44
+          "line": 43,
+          "end_line": 43
         }
       ]
     },
@@ -185,8 +153,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 40,
-          "end_line": 45
+          "line": 44,
+          "end_line": 44
         }
       ]
     },
@@ -201,7 +169,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 40,
+          "line": 45,
           "end_line": 46
         }
       ]
@@ -217,7 +185,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 40,
+          "line": 47,
           "end_line": 47
         }
       ]
@@ -231,29 +199,19 @@
     },
     {
       "from": "l1",
-      "to": "lq",
-      "label": "yes",
-      "variant": "emphasis"
-    },
-    {
-      "from": "lq",
-      "to": "la"
-    },
-    {
-      "from": "la",
       "to": "switch",
-      "label": "yes",
+      "label": "yes: dispatch_switch",
       "variant": "emphasis"
-    },
-    {
-      "from": "la",
-      "to": "reeval",
-      "label": "no"
     },
     {
       "from": "switch",
       "to": "env",
       "label": "specialist hands back"
+    },
+    {
+      "from": "switch",
+      "to": "reeval",
+      "label": "user refuses"
     },
     {
       "from": "env",
@@ -281,6 +239,7 @@
       "dot": "cyan",
       "title": "Lending",
       "items": [
+        "dispatch_switch names the specialist and objective; the harness asks the user to accept them before the switch takes effect, and a refusal means reevaluate without lending",
         "requirements carry finalized document paths and useful Engram IDs, never their content; explicitly empty when none exists",
         "Only the user cuts a lent session short, with /takt-abort"
       ]
@@ -289,8 +248,9 @@
       "dot": "rose",
       "title": "Anomalous returns",
       "items": [
-        "Reconcile transition and artifact evidence; route bounded diagnosis or correction, else consult the user",
-        "A malformed envelope leaves the session unsettled"
+        "Result attributes cause and never grades the specialist",
+        "Reconcile transition and artifact evidence; route bounded diagnosis or correction when objective, authority and continuity are established, else consult the user",
+        "A malformed or incomplete envelope leaves the session unsettled"
       ]
     }
   ]
