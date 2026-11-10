@@ -1,6 +1,6 @@
 ---
 name: takt-memory-explorer
-description: "Before recording memory as explorer. What this role records, when, and what it never records."
+description: "Before recording Takt memory as explorer. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,10 +11,10 @@ metadata:
 
 ## Records
 
-- `observation` (`project`): the exploration report — per charter, its area, risk and
+- `observation` (`workspace`): the exploration report — per charter, its area, risk and
   heuristics, what was exercised, each finding with its reproduction steps, oracle and
   severity, and the areas not reached.
-- `hypothesis` (`project`): a cause you suspect for a finding and could not verify.
+- `hypothesis` (`workspace`): a cause you suspect for a finding and could not verify.
 - A later report on the same deliverable is a complete new entry that `supersedes` your earlier one.
 
 ## When

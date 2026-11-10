@@ -16,7 +16,7 @@
 # exactly as it is: this fixture rewrites no source file and introduces no
 # script-specific variable, flag or configuration knob.
 #
-# Path selection exercised here (Engram #15074):
+# Path selection exercised here (#15074):
 #   * an explicit nonempty TAKT_WORKSPACE_DIR takes precedence over PWD, so the
 #     success run starts in a deliberately unwritable directory and still
 #     passes;
@@ -66,7 +66,7 @@ OUTPUT="$TMP/output"
 export FIXTURE="$FIX"
 mkdir -p "$FIX/bin"
 
-# A restricted PATH keeps a real opencode/takt-ai/engram/codegraph outside the
+# A restricted PATH keeps a real opencode/takt-ai/codegraph outside the
 # fixture from satisfying a case whose fixture binary was removed.
 PATH="$FIX/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH
@@ -150,7 +150,7 @@ ready() {
     rm -f "$FIX/forbidden"
     : > "$FIX/calls"
     local name
-    for name in opencode takt-ai engram codegraph; do
+    for name in opencode takt-ai codegraph; do
         make_fake "$name"
     done
     unset FAKE_FAIL FAKE_SLEEP FAKE_SLEEP_SECONDS TAKT_REPOSITORY_URL CODER_AGENT_TOKEN OPENCODE_PASSWORD || true
@@ -268,7 +268,7 @@ fi
 pass 'tokens and passwords are never printed'
 
 # Each required executable is an independent prerequisite.
-for missing in opencode takt-ai engram codegraph; do
+for missing in opencode takt-ai codegraph; do
     ready
     rm -f "$FIX/bin/$missing"
     expect_bad "missing executable '$missing' fails visibly" "$FIX_WORKSPACE" "$FIX_WORKSPACE"
@@ -339,7 +339,7 @@ fi
 EXTRA=''
 while IFS=' ' read -r name _; do
     case "$name" in
-        opencode|takt-ai|engram|codegraph|'') ;;
+        opencode|takt-ai|codegraph|'') ;;
         *) EXTRA="$EXTRA $name" ;;
     esac
 done < "$FIX/calls"

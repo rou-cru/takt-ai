@@ -1,16 +1,48 @@
 // Copyright (C) 2025 Takt AI Contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package opencodeapi
+package opencodeapi_test
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 )
+
+// stubRunner records every call and replays a canned answer. Tests key the
+// answer by "METHOD /path" so multi-call flows (like the handshake) can mix
+// responses.
+type stubRunner struct {
+	calls  [][]string
+	routes map[string]stubResponse
+}
+
+type stubResponse struct {
+	stdout string
+	stderr string
+	err    error
+}
+
+func (s *stubRunner) run(_ context.Context, args []string) ([]byte, []byte, error) {
+	s.calls = append(s.calls, args)
+	key := fmt.Sprintf("%s %s", args[len(args)-2], args[len(args)-1])
+	response, ok := s.routes[key]
+	if !ok {
+		return nil, nil, fmt.Errorf("stub has no route for %q", key)
+	}
+	return []byte(response.stdout), []byte(response.stderr), response.err
+}
+
+func stubClient(routes map[string]stubResponse) (*opencodeapi.Client, *stubRunner) {
+	stub := &stubRunner{routes: routes}
+	return opencodeapi.New(opencodeapi.WithRunner(stub.run)), stub
+}
 
 // The fixtures below are real payloads captured from OpenCode v2.0.16
 // ("opencode api GET /api/..."), trimmed to the fields that drive assertions
@@ -102,21 +134,21 @@ func routesFor(body string) map[string]stubResponse {
 }
 
 func TestListEndpointContracts(t *testing.T) {
-	testListEndpoint(t, "/api/model", (*Client).Models,
+	testListEndpoint(t, "/api/model", (*opencodeapi.Client).Models,
 		`{"id":"m","modelID":"m","providerID":"p","limit":{"context":1,"output":1}}`,
 		`{"id":"m","modelID":"m","providerID":"p","limit":{"context":0,"output":1}}`, "non-positive limits")
-	testListEndpoint(t, "/api/mcp", (*Client).MCPStatus,
+	testListEndpoint(t, "/api/mcp", (*opencodeapi.Client).MCPStatus,
 		`{"name":"m","status":{"status":"connected"}}`,
 		`{"name":"m","status":{"status":"half-open"}}`, "unknown state")
-	testListEndpoint(t, "/api/agent", (*Client).Agents,
+	testListEndpoint(t, "/api/agent", (*opencodeapi.Client).Agents,
 		`{"id":"a","mode":"primary"}`, `{"name":"NoID"}`, "agent entry has no id")
-	testListEndpoint(t, "/api/skill", (*Client).Skills,
+	testListEndpoint(t, "/api/skill", (*opencodeapi.Client).Skills,
 		`{"id":"s"}`, `{"name":"NoID"}`, "skill entry has no id")
-	testListEndpoint(t, "/api/plugin", (*Client).Plugins,
+	testListEndpoint(t, "/api/plugin", (*opencodeapi.Client).Plugins,
 		`{"state":{"status":"active"}}`, `{"state":{"status":"loading"}}`, "unknown status")
 }
 
-func testListEndpoint[T any](t *testing.T, path string, call func(*Client, context.Context) ([]T, error), valid, invalid, detail string) {
+func testListEndpoint[T any](t *testing.T, path string, call func(*opencodeapi.Client, context.Context) ([]T, error), valid, invalid, detail string) {
 	t.Helper()
 	t.Run(path, func(t *testing.T) {
 		for _, tc := range []struct {
@@ -125,12 +157,12 @@ func testListEndpoint[T any](t *testing.T, path string, call func(*Client, conte
 			wantErr  error
 		}{
 			{"empty list", stubResponse{stdout: `{"data":[]}`}, nil},
-			{"unavailable", stubResponse{err: errors.New("offline")}, ErrUnavailable},
-			{"missing binary", stubResponse{err: exec.ErrNotFound}, ErrBinaryMissing},
-			{"empty response", stubResponse{}, ErrInvalidResponse},
-			{"invalid JSON", stubResponse{stdout: "not JSON"}, ErrInvalidResponse},
-			{"wrong data shape", stubResponse{stdout: `{"data":{}}`}, ErrInvalidResponse},
-			{"invalid second entry", stubResponse{stdout: `{"data":[` + valid + `,` + invalid + `]}`}, ErrInvalidResponse},
+			{"unavailable", stubResponse{err: errors.New("offline")}, opencodeapi.ErrUnavailable},
+			{"missing binary", stubResponse{err: exec.ErrNotFound}, opencodeapi.ErrBinaryMissing},
+			{"empty response", stubResponse{}, opencodeapi.ErrInvalidResponse},
+			{"invalid JSON", stubResponse{stdout: "not JSON"}, opencodeapi.ErrInvalidResponse},
+			{"wrong data shape", stubResponse{stdout: `{"data":{}}`}, opencodeapi.ErrInvalidResponse},
+			{"invalid second entry", stubResponse{stdout: `{"data":[` + valid + `,` + invalid + `]}`}, opencodeapi.ErrInvalidResponse},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				client, stub := stubClient(map[string]stubResponse{"GET " + path: tc.response})
@@ -179,7 +211,7 @@ func TestModelsReturnsStructuredModelsInReportedOrder(t *testing.T) {
 	}
 
 	first := models[0]
-	if first.Ref != (ModelRef{ProviderID: "opencode", ModelID: "deepseek-v4.1-flash"}) {
+	if first.Ref != (opencodeapi.ModelRef{ProviderID: "opencode", ModelID: "deepseek-v4.1-flash"}) {
 		t.Fatalf("first ref = %+v", first.Ref)
 	}
 	if first.Ref.String() != "opencode/deepseek-v4.1-flash" {
@@ -229,7 +261,7 @@ func TestModelsRejectsAnEntryWithoutIdentity(t *testing.T) {
 		"GET /api/model": {stdout: `{"location":{"directory":"/x"},"data":[{"id":"orphan","modelID":"orphan","providerID":"","name":"Orphan"}]}`},
 	})
 
-	if _, err := client.Models(context.Background()); !errors.Is(err, ErrInvalidResponse) {
+	if _, err := client.Models(context.Background()); !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("Models() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -272,13 +304,13 @@ func TestMCPStatusMapsEveryReportedState(t *testing.T) {
 		t.Fatalf("MCPStatus() error = %v", err)
 	}
 
-	want := []MCPServer{
-		{Name: "aws-cost-management", State: MCPDisabled},
-		{Name: "codegraph", State: MCPConnected},
-		{Name: "context7", State: MCPConnected},
-		{Name: "ci-gateway", State: MCPFailed, Error: "connect ECONNREFUSED 127.0.0.1:8080"},
-		{Name: "obsidian", State: MCPNeedsAuth, Error: "authorization required"},
-		{Name: "warming", State: MCPPending},
+	want := []opencodeapi.MCPServer{
+		{Name: "aws-cost-management", State: opencodeapi.MCPDisabled},
+		{Name: "codegraph", State: opencodeapi.MCPConnected},
+		{Name: "context7", State: opencodeapi.MCPConnected},
+		{Name: "ci-gateway", State: opencodeapi.MCPFailed, Error: "connect ECONNREFUSED 127.0.0.1:8080"},
+		{Name: "obsidian", State: opencodeapi.MCPNeedsAuth, Error: "authorization required"},
+		{Name: "warming", State: opencodeapi.MCPPending},
 	}
 	if !reflect.DeepEqual(servers, want) {
 		t.Fatalf("servers =\n%+v\nwant\n%+v", servers, want)
@@ -292,7 +324,7 @@ func TestMCPStatusRejectsAnUnknownState(t *testing.T) {
 		"GET /api/mcp": {stdout: `{"location":{"directory":"/x"},"data":[{"name":"codegraph","status":{"status":"half-open"}}]}`},
 	})
 
-	if _, err := client.MCPStatus(context.Background()); !errors.Is(err, ErrInvalidResponse) {
+	if _, err := client.MCPStatus(context.Background()); !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("MCPStatus() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -323,7 +355,7 @@ func TestAgentsRejectsAnEntryWithoutID(t *testing.T) {
 		"GET /api/agent": {stdout: `{"location":{"directory":"/x"},"data":[{"name":"NoID"}]}`},
 	})
 
-	if _, err := client.Agents(context.Background()); !errors.Is(err, ErrInvalidResponse) {
+	if _, err := client.Agents(context.Background()); !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("Agents() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -356,7 +388,7 @@ func TestPluginsReportsLoadState(t *testing.T) {
 	if len(plugins) != 2 {
 		t.Fatalf("len(plugins) = %d, want 2", len(plugins))
 	}
-	if plugins[0] != (Plugin{ID: "opencode.tool.input.repair", Type: "builtin", Status: "active"}) {
+	if plugins[0] != (opencodeapi.Plugin{ID: "opencode.tool.input.repair", Type: "builtin", Status: "active"}) {
 		t.Fatalf("first plugin = %+v", plugins[0])
 	}
 	if plugins[1].Status != "failed" || plugins[1].Error != "module not found" {
@@ -369,7 +401,7 @@ func TestPluginsRejectsAnUnknownStatus(t *testing.T) {
 		"GET /api/plugin": {stdout: `{"location":{"directory":"/x"},"data":[{"id":"p","source":{"type":"builtin"},"state":{"status":"loading"}}]}`},
 	})
 
-	if _, err := client.Plugins(context.Background()); !errors.Is(err, ErrInvalidResponse) {
+	if _, err := client.Plugins(context.Background()); !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("Plugins() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -396,7 +428,7 @@ func TestReloadSurfacesAFailedRestartAsAnError(t *testing.T) {
 		"service restart": {stderr: "cannot stop service", err: errors.New("exit status 1")},
 	})
 
-	if err := client.Reload(context.Background()); !errors.Is(err, ErrUnavailable) {
+	if err := client.Reload(context.Background()); !errors.Is(err, opencodeapi.ErrUnavailable) {
 		t.Fatalf("Reload() error = %v, want ErrUnavailable", err)
 	}
 	if len(stub.calls) != 1 {
@@ -412,14 +444,14 @@ func TestReloadSurfacesAFailedReloadAsAnError(t *testing.T) {
 
 	// A reload that did not happen is a functional failure: it must be
 	// an error the plan can report as "not verified", never a silent success.
-	if err := client.Reload(context.Background()); !errors.Is(err, ErrUnavailable) {
+	if err := client.Reload(context.Background()); !errors.Is(err, opencodeapi.ErrUnavailable) {
 		t.Fatalf("Reload() error = %v, want ErrUnavailable", err)
 	}
 }
 
 func TestHandshakePassesOnAV2ServerWithWorkingRoutes(t *testing.T) {
 	client, stub := stubClient(map[string]stubResponse{
-		"GET /api/info":  {stdout: infoBody},
+		"GET /api/info":  {stdout: `{"version":"` + opencodeapi.MinimumVersion + `"}`},
 		"GET /api/model": {stdout: modelsBody},
 	})
 
@@ -427,12 +459,40 @@ func TestHandshakePassesOnAV2ServerWithWorkingRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handshake() error = %v", err)
 	}
-	if handshake.Version != "2.0.16" || handshake.Major != 2 {
+	if handshake.Version != opencodeapi.MinimumVersion || handshake.Major != 2 {
 		t.Fatalf("handshake = %+v", handshake)
 	}
 	// The probe order is the failure ladder: identity first, mechanism last.
 	if len(stub.calls) != 2 || stub.calls[0][2] != "/api/info" || stub.calls[1][2] != "/api/model" {
 		t.Fatalf("calls = %v, want /api/info then /api/model", stub.calls)
+	}
+}
+
+func TestHandshakeGatesOnTheMinimumVersion(t *testing.T) {
+	for _, tc := range []struct {
+		version  string
+		accepted bool
+	}{
+		{"1.99.99", false},
+		{"2.0.3", false},
+		{opencodeapi.MinimumVersion, true},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			client, _ := stubClient(map[string]stubResponse{
+				"GET /api/info":  {stdout: `{"version":"` + tc.version + `"}`},
+				"GET /api/model": {stdout: `{"location":{"directory":"/x"},"data":[]}`},
+			})
+			_, err := client.Handshake(context.Background())
+			if tc.accepted {
+				if err != nil {
+					t.Fatalf("Handshake(%s) error = %v, want it accepted", tc.version, err)
+				}
+				return
+			}
+			if !errors.Is(err, opencodeapi.ErrVersion) || !strings.Contains(err.Error(), opencodeapi.MinimumVersion) {
+				t.Fatalf("Handshake(%s) error = %v, want ErrVersion naming %s", tc.version, err, opencodeapi.MinimumVersion)
+			}
+		})
 	}
 }
 
@@ -458,31 +518,29 @@ func TestHandshakeRejectsAV1Server(t *testing.T) {
 	})
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrVersion) {
+	if !errors.Is(err, opencodeapi.ErrVersion) {
 		t.Fatalf("Handshake() error = %v, want ErrVersion", err)
 	}
 }
 
 func TestHandshakeRejectsAMissingBinary(t *testing.T) {
-	client, _ := stubClient(map[string]stubResponse{})
-	client.run = func(context.Context, []string) ([]byte, []byte, error) {
+	client := opencodeapi.New(opencodeapi.WithRunner(func(context.Context, []string) ([]byte, []byte, error) {
 		return nil, nil, &exec.Error{Name: "opencode", Err: exec.ErrNotFound}
-	}
+	}))
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrBinaryMissing) {
+	if !errors.Is(err, opencodeapi.ErrBinaryMissing) {
 		t.Fatalf("Handshake() error = %v, want ErrBinaryMissing", err)
 	}
 }
 
 func TestHandshakeRejectsAnUnreachableAPI(t *testing.T) {
-	client, _ := stubClient(map[string]stubResponse{})
-	client.run = func(_ context.Context, args []string) ([]byte, []byte, error) {
+	client := opencodeapi.New(opencodeapi.WithRunner(func(context.Context, []string) ([]byte, []byte, error) {
 		return nil, []byte("Could not reach server at http://127.0.0.1:59999\n"), errors.New("exit status 1")
-	}
+	}))
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrUnavailable) {
+	if !errors.Is(err, opencodeapi.ErrUnavailable) {
 		t.Fatalf("Handshake() error = %v, want ErrUnavailable", err)
 	}
 }
@@ -493,7 +551,7 @@ func TestHandshakeRejectsAGarbageBodyAsDrift(t *testing.T) {
 	})
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrInvalidResponse) {
+	if !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("Handshake() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -504,7 +562,7 @@ func TestHandshakeRejectsAVersionWithoutDigits(t *testing.T) {
 	})
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrInvalidResponse) {
+	if !errors.Is(err, opencodeapi.ErrInvalidResponse) {
 		t.Fatalf("Handshake() error = %v, want ErrInvalidResponse", err)
 	}
 }
@@ -514,26 +572,26 @@ func TestHandshakeRejectsAV2BinaryWithoutModelRoutes(t *testing.T) {
 	// routes fail must not pass the handshake, or Takt would mutate on a
 	// broken foundation.
 	client, _ := stubClient(map[string]stubResponse{
-		"GET /api/info":  {stdout: infoBody},
+		"GET /api/info":  {stdout: `{"version":"` + opencodeapi.MinimumVersion + `"}`},
 		"GET /api/model": {stderr: "HTTP 503 Service Unavailable", err: errors.New("exit status 1")},
 	})
 
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrUnavailable) {
+	if !errors.Is(err, opencodeapi.ErrUnavailable) {
 		t.Fatalf("Handshake() error = %v, want ErrUnavailable", err)
 	}
 }
 
 func TestHandshakeCleansUpMalformedModelEntries(t *testing.T) {
 	client, _ := stubClient(map[string]stubResponse{
-		"GET /api/info":  {stdout: infoBody},
+		"GET /api/info":  {stdout: `{"version":"` + opencodeapi.MinimumVersion + `"}`},
 		"GET /api/model": {stdout: `{"location":{"directory":"/x"},"data":[{"modelID":"orphan"}]}`},
 	})
 
 	// A broken model entry means the experimental routes drifted: probe
 	// failure, not version failure.
 	_, err := client.Handshake(context.Background())
-	if !errors.Is(err, ErrUnavailable) {
+	if !errors.Is(err, opencodeapi.ErrUnavailable) {
 		t.Fatalf("Handshake() error = %v, want ErrUnavailable", err)
 	}
 }

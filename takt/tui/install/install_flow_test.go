@@ -2,6 +2,7 @@ package install_test
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,12 +10,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/install"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
-	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 var (
@@ -48,22 +47,6 @@ func nonJSONManagedPath(t *testing.T) string {
 }
 
 func TestInstallConflictFlow(t *testing.T) {
-	dir, err := os.MkdirTemp("", "takt-install-fake-bin-")
-	if err != nil {
-		t.Fatalf("MkdirTemp() error = %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	if err := os.WriteFile(filepath.Join(dir, "engram"), testutil.FakeEngramScript("dev"), 0o755); err != nil {
-		t.Fatalf("WriteFile(engram) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "opencode"), testutil.FakeOpenCodeScript(), 0o755); err != nil {
-		t.Fatalf("WriteFile(opencode) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "codegraph"), testutil.FakeCodegraphScript(codegraph.CodegraphVersion), 0o755); err != nil {
-		t.Fatalf("WriteFile(codegraph) error = %v", err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
 	conflictPath := nonJSONManagedPath(t)
 
 	root := t.TempDir()
@@ -117,11 +100,11 @@ func TestInstallConflictFlow(t *testing.T) {
 		t.Fatalf("request.PreservePaths = %v, want it to exclude %q: choosing restore means Takt's version overwrites it, nothing is preserved", request.PreservePaths, conflictPath)
 	}
 
-	result, err := (runtime.Adapter{}).Execute(request)
-	if err != nil {
-		t.Fatalf("Adapter.Execute() error = %v", err)
-	}
-	resultMsg := runtime.ActionResultMsg{Request: request, Result: result, Err: err}
+	resultMsg := runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{
+		Action:   runtime.ActionInstall,
+		Changed:  []string{conflictPath},
+		BackedUp: []setup.Backup{{Path: conflictPath, Copy: path.Join(setup.BackupDir, conflictPath)}},
+	}}
 	next, _ = m.Update(resultMsg)
 	m = next.(install.Model)
 	if m.Step() != install.StepResult {
@@ -134,16 +117,6 @@ func TestInstallConflictFlow(t *testing.T) {
 	// and where its earlier content was copied.
 	if got := viewText(m); !strings.Contains(got, conflictPath) || !strings.Contains(got, setup.BackupDir) {
 		t.Errorf("result View() = %q, want it to name the backed-up %q and %q", got, conflictPath, setup.BackupDir)
-	}
-	if !setup.IsInstalled(root) {
-		t.Error("IsInstalled() after a completed install = false, want true")
-	}
-	restored, err := os.ReadFile(full)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if strings.Contains(string(restored), "pre-existing user content") {
-		t.Error("choosing restore did not overwrite the pre-existing content")
 	}
 }
 

@@ -105,12 +105,12 @@ Each section lists the tier, the procedure, and the evidence expected.
 - Procedure: Run access reviews and controlled operations as the provisioner identity in the allowed and denied namespaces, for both profiles. Check Secret read, Service, ServiceAccount, deployment, and exec denials.
 - Evidence: Authorization review results for permitted and denied operations; resource inventory per namespace. No Secret payload is read.
 
-### CW-T2-06 — Project and Engram memory survive stop/start
+### CW-T2-06 — Project and memory-store data survive stop/start
 
 - Tier: T2
 - Check location: AC normal runtime readback across stop and start
-- Procedure: Write a project marker and an Engram project entry in a running workspace. Stop and restart it. Read both back through normal tools under ENGRAM_DATA_DIR, and check the XDG data, state, and cache directories.
-- Evidence: Before and after PVC and workspace identity; file content and Engram readback. A newly created empty database does not count as survival. Data outside declared mounts is not asserted (OI-02).
+- Procedure: Write a project marker and a memory project entry in a running workspace. Stop and restart it. Read both back through normal tools under TAKT_MEMORY_DIR, and check the XDG data, state, and cache directories.
+- Evidence: Before and after PVC and workspace identity; file content and memory readback. A newly created empty database does not count as survival. Data outside declared mounts is not asserted (OI-02).
 
 ### CW-T2-07 — Reversible mode switch without silent data loss
 

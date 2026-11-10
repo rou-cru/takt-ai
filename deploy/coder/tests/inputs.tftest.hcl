@@ -526,14 +526,14 @@ run "reject_owner_env_opencode_prefix" {
   expect_failures = [var.owner_secret_env]
 }
 
-run "reject_owner_env_engram_prefix" {
+run "reject_owner_env_takt_memory_dir" {
   command = plan
   variables {
     namespace       = "takt-phase-one-test"
     workspace_image = "registry.example.invalid/team/takt-ai@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     owner_secret_env = {
       "6b1f9c2e-8a34-4d7b-9f21-0c5e7a1d3b48" = {
-        ENGRAM_DATA_DIR = { name = "takt-owner-a-secret", key = "engram-dir" }
+        TAKT_MEMORY_DIR = { name = "takt-owner-a-secret", key = "memory-dir" }
       }
     }
   }

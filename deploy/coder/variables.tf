@@ -139,8 +139,8 @@ variable "owner_secret_env" {
   }
 
   validation {
-    condition     = try(alltrue([for vars in values(var.owner_secret_env) : alltrue([for env_name in keys(vars) : !contains(["HOME", "PATH", "USER", "LOGNAME", "SHELL", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "BACKSTAGE_URL"], env_name) && !anytrue([for prefix in ["CODER_", "TAKT_", "OPENCODE_", "XDG_", "ENGRAM_"] : startswith(env_name, prefix)])])]), false)
-    error_message = "owner_secret_env must not override reserved names: HOME, PATH, USER, LOGNAME, SHELL, ENV, BASH_ENV, LD_PRELOAD, LD_LIBRARY_PATH, BACKSTAGE_URL, or any CODER_, TAKT_, OPENCODE_, XDG_ or ENGRAM_ name."
+    condition     = try(alltrue([for vars in values(var.owner_secret_env) : alltrue([for env_name in keys(vars) : !contains(["HOME", "PATH", "USER", "LOGNAME", "SHELL", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "BACKSTAGE_URL"], env_name) && !anytrue([for prefix in ["CODER_", "TAKT_", "OPENCODE_", "XDG_"] : startswith(env_name, prefix)])])]), false)
+    error_message = "owner_secret_env must not override reserved names: HOME, PATH, USER, LOGNAME, SHELL, ENV, BASH_ENV, LD_PRELOAD, LD_LIBRARY_PATH, BACKSTAGE_URL, or any CODER_, TAKT_, OPENCODE_ or XDG_ name."
   }
 
   validation {

@@ -126,7 +126,7 @@ run "stopped_keeps_agent_app_and_policy_declared" {
     error_message = "The agent must remain declared while the workspace is stopped, with the linux/amd64 platform and a blocking startup script."
   }
   assert {
-    condition     = coder_app.opencode.slug == "opencode" && coder_app.opencode.command == "cd /workspace && exec opencode"
+    condition     = coder_app.opencode.slug == "opencode" && coder_app.opencode.command == "cd /workspace && takt-ai memory start --init && exec opencode"
     error_message = "coder_app.opencode must not be start_count gated."
   }
   assert {

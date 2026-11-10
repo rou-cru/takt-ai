@@ -10,6 +10,6 @@ When your assignment asks whether QA is warranted, judge from the same inputs wh
 
 Deliver each document's ID: the policy when you authored or revised it, the plan, the matrix, and the environment requirements and test completion report when authored.
 
-When a missing prerequisite or ambiguous criterion prevents a coherent plan, record and deliver the diagnostic blocker with the missing input and its owner. It is a real result, not an incomplete plan presented as finished.
+When a missing prerequisite or ambiguous criterion prevents a coherent plan, record and deliver the diagnostic blocker with the missing input. It is a real result, not an incomplete plan presented as finished.
 
 Objective closure: author the test completion report (takt-memory-qa) from the evidence IDs assigned; missing or failed evidence stays unmet. Never rerun checks.

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -14,16 +13,16 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	skillsutil "github.com/rou-cru/takt-ai/takt/skills/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
-	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
-	_ "modernc.org/sqlite"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 func TestAdapterLifecycleActions(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 
 	install, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 	if err != nil || len(install.Changed) == 0 {
@@ -47,7 +46,7 @@ func TestAdapterUpgradeHonorsReplaceAndPreserve(t *testing.T) {
 	t.Cleanup(func() { setup.BuildVersion = previous })
 	for _, preserve := range []bool{false, true} {
 		root := t.TempDir()
-		adapter := testAdapter(nil)
+		adapter := testAdapter(t, nil)
 		setup.BuildVersion = "0.0.25"
 		install, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 		if err != nil {
@@ -116,7 +115,7 @@ func olderInstallThenEdit(t *testing.T, root, path string) {
 
 func TestAdapterInstallDeploysSkills(t *testing.T) {
 	root := t.TempDir()
-	result, err := testAdapter(nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
+	result, err := testAdapter(t, nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 	if err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -139,7 +138,7 @@ func TestAdapterInstallDeploysSkills(t *testing.T) {
 
 func TestAdapterSyncPreservesModifiedAndRedeploysDeletedSkills(t *testing.T) {
 	skillPath, embedded := skillsutil.FirstSkill(t)
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 
 	t.Run("locally modified skill is preserved", func(t *testing.T) {
 		root := t.TempDir()
@@ -193,7 +192,7 @@ func TestAdapterSyncPreservesModifiedAndRedeploysDeletedSkills(t *testing.T) {
 
 func TestAdapterUninstallRemovesSkills(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -227,7 +226,7 @@ func TestActionCommandReturnsErrorMessage(t *testing.T) {
 
 func TestAdapterExecuteCarriesComponents(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{
 		Action:     runtime.ActionInstall,
 		RootDir:    root,
@@ -256,7 +255,7 @@ func TestAdapterExecuteCarriesComponents(t *testing.T) {
 // definitions are not substituted for a different installed version.
 func TestCorrectDriftBlockedOnVersionMismatch(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	previous := setup.BuildVersion
 	setup.BuildVersion = "1.0.0"
 	t.Cleanup(func() { setup.BuildVersion = previous })
@@ -284,7 +283,7 @@ func TestCorrectDriftBlockedOnVersionMismatch(t *testing.T) {
 // handoff runs inside the runtime action.
 func TestAdapterUninstallAppliesRetentionChoices(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -312,102 +311,77 @@ func TestAdapterUninstallAppliesRetentionChoices(t *testing.T) {
 	}
 }
 
-// TestAdapterUninstallEngramLeaveIsDefault verifies that an empty or Leave
-// choice changes nothing about the uninstall.
-func TestAdapterUninstallEngramLeaveIsDefault(t *testing.T) {
-	for _, choice := range []string{"", lifecycle.EngramLeave} {
-		root := t.TempDir()
-		adapter := testAdapter(nil)
-		if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
-			t.Fatalf("install error = %v", err)
-		}
-		result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root, EngramChoice: choice})
-		if err != nil {
-			t.Fatalf("uninstall error = %v", err)
-		}
-		if len(result.Removed) == 0 {
-			t.Fatal("uninstall removed nothing")
-		}
-		for _, entry := range result.Incomplete {
-			if strings.Contains(entry, "Engram") {
-				t.Fatalf("leave reported Engram incomplete work: %v", result.Incomplete)
-			}
-		}
-	}
-}
-
-// TestAdapterUninstallEngramRemoveReportsIncomplete verifies that the
-// config footprint is removed as usual, and the database without a supported
-// remover is honest Incomplete, never a failure.
-func TestAdapterUninstallEngramRemoveReportsIncomplete(t *testing.T) {
-	root := t.TempDir()
-	adapter := testAdapter(nil)
+// installedWithMemory installs into a fresh root and starts the memory service in a private directory
+// holding one entry.
+func installedWithMemory(t *testing.T, adapter runtime.Adapter) (root, dir string) {
+	t.Helper()
+	dir = testutil.MemoryDir(t)
+	root = t.TempDir()
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
-	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root, EngramChoice: lifecycle.EngramRemove})
-	if err != nil {
-		t.Fatalf("remove choice must not fail: %v", err)
+	if _, err := memory.Start(context.Background(), dir, true); err != nil {
+		t.Fatalf("memory.Start: %v", err)
 	}
-	if len(result.Removed) == 0 {
-		t.Fatal("uninstall removed nothing")
-	}
-	found := false
-	for _, entry := range result.Incomplete {
-		if strings.Contains(entry, "Engram database") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("incomplete = %v, want an Engram database entry", result.Incomplete)
-	}
-}
-
-// TestAdapterUninstallEngramRetainDeliversMemoryBesideKeptFiles verifies the
-// memory handoff lands in the same retained directory as kept files, its
-// location reaches the result, and nothing is reported as incomplete.
-func TestAdapterUninstallEngramRetainDeliversMemoryBesideKeptFiles(t *testing.T) {
-	dataDir := t.TempDir()
-	t.Setenv("ENGRAM_DATA_DIR", dataDir)
-	fixture, err := sql.Open("sqlite", filepath.Join(dataDir, "engram.db"))
+	store, err := memory.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, statement := range []string{"CREATE TABLE observations (title TEXT)", "INSERT INTO observations VALUES ('alpha decision')"} {
-		if _, err := fixture.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	defer func() { _ = store.Close() }()
+	entry := memory.RecordArgs{Nature: memory.NatureObservation, Scope: memory.ScopeGlobal, Title: "alpha decision", Content: "body", Evidence: "seen"}
+	if _, err := store.Record(context.Background(), memory.Identity{Principal: memory.PrincipalExternal, HostSession: "k1"}, entry); err != nil {
+		t.Fatal(err)
 	}
-	_ = fixture.Close()
+	return root, dir
+}
 
-	root := t.TempDir()
-	adapter := testAdapter(nil)
-	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
-		t.Fatalf("install error = %v", err)
+// TestAdapterUninstallDiscardsTheMemoryByDefault verifies that a request that does not retain the
+// memory deletes it and reports nothing retained.
+func TestAdapterUninstallDiscardsTheMemoryByDefault(t *testing.T) {
+	adapter := testAdapter(t, nil)
+	root, dir := installedWithMemory(t, adapter)
+	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root})
+	if err != nil {
+		t.Fatalf("uninstall error = %v", err)
 	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("memory directory after uninstall: %v, want removed", err)
+	}
+	if result.RetainedMemory != "" || result.RetainedDir != "" || len(result.Incomplete) != 0 {
+		t.Errorf("result = %+v, want nothing retained and nothing incomplete", result)
+	}
+}
+
+// TestAdapterUninstallRetainDeliversMemoryBesideKeptFiles verifies the memory backup lands in the same
+// retained directory as kept files, its location reaches the result, and nothing is reported as incomplete.
+func TestAdapterUninstallRetainDeliversMemoryBesideKeptFiles(t *testing.T) {
+	adapter := testAdapter(t, nil)
+	root, dir := installedWithMemory(t, adapter)
 	kept := ".config/opencode/takt/agents/takt-analyst/OPERATIONS.md"
 	if err := os.WriteFile(filepath.Join(root, kept), []byte("user edit"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root, RetainPaths: []string{kept}, EngramChoice: lifecycle.EngramRetain})
+	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionUninstall, RootDir: root, RetainPaths: []string{kept}, RetainMemory: true})
 	if err != nil {
 		t.Fatalf("uninstall error = %v", err)
 	}
 	if len(result.Incomplete) != 0 {
 		t.Fatalf("incomplete = %v, want none", result.Incomplete)
 	}
-	want := filepath.Join(result.RetainedDir, "engram", "engram.db")
+	want := filepath.Join(result.RetainedDir, setup.RetainedMemoryDirName, memory.StoreFile)
 	if result.RetainedDir == "" || result.RetainedMemory != want {
-		t.Fatalf("RetainedMemory = %q, RetainedDir = %q; want the database inside the retained directory", result.RetainedMemory, result.RetainedDir)
+		t.Fatalf("RetainedMemory = %q, RetainedDir = %q; want the backup inside the retained directory", result.RetainedMemory, result.RetainedDir)
 	}
-	delivered, err := sql.Open("sqlite", "file:"+want+"?mode=ro")
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("memory directory after uninstall: %v, want removed", err)
+	}
+	store, err := memory.Open(filepath.Dir(want))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("memory.Open(backup): %v", err)
 	}
-	defer func() { _ = delivered.Close() }()
-	var title string
-	if err := delivered.QueryRow("SELECT title FROM observations").Scan(&title); err != nil || title != "alpha decision" {
-		t.Fatalf("delivered row = %q, %v", title, err)
+	defer func() { _ = store.Close() }()
+	if _, total, err := store.Coverage(context.Background()); err != nil || total != 1 {
+		t.Fatalf("backup entries = %d, %v; want 1", total, err)
 	}
 	if _, err := os.Stat(filepath.Join(result.RetainedDir, filepath.FromSlash(kept))); err != nil {
 		t.Fatalf("kept file is not beside the memory: %v", err)
@@ -441,8 +415,11 @@ func TestInstalledPreviewResetsOpenCodeModelToDefault(t *testing.T) {
 	}
 }
 
-func testAdapter(calls *[][]string) runtime.Adapter {
-	return runtime.NewTestAdapter(lifecycle.Runtime{ProviderActions: setup.ProviderRuntime{
+func testAdapter(t *testing.T, calls *[][]string) runtime.Adapter {
+	t.Helper()
+	// An uninstall deletes the memory directory: a test that does not choose its own never reaches the user's.
+	t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
+	return runtime.NewTestAdapter(lifecycle.Runtime{Model: testutil.FakeModel(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run: func(_ context.Context, program string, args ...string) ([]byte, error) {
 			if calls != nil {
@@ -479,7 +456,7 @@ func TestCorrectDriftCancellationBoundaries(t *testing.T) {
 	for _, partial := range []bool{false, true} {
 		t.Run(map[bool]string{false: "no changes", true: "partial"}[partial], func(t *testing.T) {
 			root := t.TempDir()
-			if _, err := testAdapter(nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
+			if _, err := testAdapter(t, nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 				t.Fatal(err)
 			}
 			path := ".config/opencode/opencode.json"
@@ -504,7 +481,7 @@ func TestCorrectDriftCancellationBoundaries(t *testing.T) {
 					t.Fatalf("result=%+v", msg.Result)
 				}
 				data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
-				if err != nil || !strings.Contains(string(data), "engram") {
+				if err != nil || !strings.Contains(string(data), memory.ServerKey) {
 					t.Fatalf("missing reinjection: %s, %v", data, err)
 				}
 			} else {

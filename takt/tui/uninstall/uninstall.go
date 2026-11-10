@@ -9,7 +9,6 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
-	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/keys"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
@@ -25,10 +24,9 @@ const (
 	// StateModified asks what to do with each externally modified managed
 	// file. Skipped when the preview finds none.
 	StateModified State = iota
-	// StateEngram asks what to do with the Engram database, which lives
-	// outside Takt's footprint. Leave is preselected: the safe default with
-	// zero behavior change.
-	StateEngram
+	// StateMemory asks whether to retain the memory before it is deleted.
+	// Retain is preselected: the safe default.
+	StateMemory
 	// StateReview is the commitment point: scope, removals, kept content and
 	// the Uninstall action. There is no second confirmation.
 	StateReview
@@ -47,7 +45,7 @@ const (
 	// Index 0 commits the reviewed uninstall: any cursor that is not
 	// actionBack selects it.
 	_ = iota
-	// actionBack returns to the Engram question without uninstalling.
+	// actionBack returns to the memory question without uninstalling.
 	actionBack
 )
 
@@ -57,9 +55,8 @@ const (
 	choiceRemove
 )
 const (
-	engramLeave = iota
-	engramRetain
-	engramRemove
+	memoryRetain = iota
+	memoryDiscard
 )
 const (
 	resultBack = iota
@@ -67,10 +64,9 @@ const (
 )
 
 var modifiedChoices = []string{ui.TextKeepMine, ui.TextUninstallRemoveOpt}
-var engramChoices = []ui.Item{
-	{Label: ui.TextEngramLeave, Description: ui.TextEngramLeaveDesc},
-	{Label: ui.TextEngramRetain, Description: ui.TextEngramRetainDesc},
-	{Label: ui.TextEngramRemove, Description: ui.TextEngramRemoveDesc},
+var memoryChoices = []ui.Item{
+	{Label: ui.TextMemoryRetain, Description: ui.TextMemoryRetainDesc},
+	{Label: ui.TextMemoryDiscard, Description: ui.TextMemoryDiscardDesc},
 }
 var reviewActions = []ui.FooterAction{{Label: ui.TextActionUninstall, Danger: true}, {Label: ui.TextActionBack}}
 
@@ -98,10 +94,9 @@ type Model struct {
 	preview setup.UninstallResult
 	// previewErr reports a plan that could not be prepared.
 	previewErr error
-	// engram is the StateEngram answer (engramLeave, engramRetain or
-	// engramRemove); the zero value is Leave, the safe default with zero
-	// behavior change.
-	engram int
+	// memory is the StateMemory answer (memoryRetain or memoryDiscard); the
+	// zero value is Retain, the safe default.
+	memory int
 
 	// run holds the in-flight uninstall request and its busy/cancel state.
 	run runtime.Run
@@ -129,12 +124,12 @@ func New(rootDir string) Model {
 }
 
 // preparePreview plans the uninstall and returns the first screen: the
-// modified-file questions when the preview found any, the Engram question
+// modified-file questions when the preview found any, the memory question
 // otherwise.
 func (model *Model) preparePreview() State {
 	model.preview, model.previewErr = runtime.Adapter{}.PreviewUninstall(model.RootDir)
 	if model.previewErr != nil {
-		return StateEngram
+		return StateMemory
 	}
 	for _, path := range model.preview.Preserved {
 		if model.preview.PreservedReasons[path] == "user-edited" {
@@ -144,7 +139,7 @@ func (model *Model) preparePreview() State {
 	if len(model.modified) > 0 {
 		return StateModified
 	}
-	return StateEngram
+	return StateMemory
 }
 
 // Init has no startup work.
@@ -161,7 +156,7 @@ func (model Model) Dirty() bool {
 	if model.state == StateResult || model.state == StateNotInstalled {
 		return false
 	}
-	return len(model.decisions) > 0 || model.engram != engramLeave
+	return len(model.decisions) > 0 || model.memory != memoryRetain
 }
 
 // Update handles interaction and action results without performing lifecycle work.
@@ -201,8 +196,8 @@ func (model Model) updateKey(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case StateModified:
 		return model.updateModified(key)
-	case StateEngram:
-		return model.updateEngram(key)
+	case StateMemory:
+		return model.updateMemory(key)
 	case StateReview, StateResult:
 		return model.updateActions(key)
 	}
@@ -235,18 +230,6 @@ func (model Model) allDecided() bool {
 	return true
 }
 
-// engramChoice maps the StateEngram answer onto the runtime request: Leave
-// is the safe default, Retain and Remove are explicit only.
-func (model Model) engramChoice() string {
-	switch model.engram {
-	case engramRetain:
-		return lifecycle.EngramRetain
-	case engramRemove:
-		return lifecycle.EngramRemove
-	}
-	return lifecycle.EngramLeave
-}
-
 const (
 	// eventConfirm applies the current step's primary action.
 	eventConfirm = "confirm"
@@ -270,26 +253,26 @@ func transitions() ui.Table[State, Model] {
 			if !model.allDecided() {
 				return StateModified, nil
 			}
-			model.cursor, model.focus = model.engram, ui.SectionBody
-			return StateEngram, nil
+			model.cursor, model.focus = model.memory, ui.SectionBody
+			return StateMemory, nil
 		},
 		{From: StateModified, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
 			return StateModified, ui.Back
 		},
-		{From: StateEngram, Event: eventConfirm}: func(model *Model) (State, tea.Cmd) {
+		{From: StateMemory, Event: eventConfirm}: func(model *Model) (State, tea.Cmd) {
 			if model.previewErr != nil {
-				return StateEngram, nil
+				return StateMemory, nil
 			}
 			// The destructive action is never the default: focus starts on Back.
 			model.cursor, model.focus = actionBack, ui.SectionFooter
 			return StateReview, nil
 		},
-		{From: StateEngram, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
+		{From: StateMemory, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
 			model.cursor, model.focus = 0, ui.SectionBody
 			if len(model.modified) > 0 {
 				return StateModified, nil
 			}
-			return StateEngram, ui.Back
+			return StateMemory, ui.Back
 		},
 		{From: StateReview, Event: eventConfirm}: uninstallReviewConfirm,
 		{From: StateReview, Event: eventBack}: func(model *Model) (State, tea.Cmd) {
@@ -300,7 +283,7 @@ func transitions() ui.Table[State, Model] {
 			model.cursor, model.focus = resultBack, ui.SectionFooter
 			if model.err == nil && !model.result.Cancelled() {
 				model.decisions = map[string]bool{}
-				model.engram = engramLeave
+				model.memory = memoryRetain
 			}
 			return StateResult, nil
 		},
@@ -316,7 +299,7 @@ func uninstallReviewConfirm(model *Model) (State, tea.Cmd) {
 		return model.reviewBack()
 	}
 	choices := model.retentionChoices()
-	request := runtime.ActionRequest{ID: runtime.NextID(), Action: runtime.ActionUninstall, RootDir: model.RootDir, RetainPaths: choices.Keep, RemovePaths: choices.Remove, EngramChoice: model.engramChoice()}
+	request := runtime.ActionRequest{ID: runtime.NextID(), Action: runtime.ActionUninstall, RootDir: model.RootDir, RetainPaths: choices.Keep, RemovePaths: choices.Remove, RetainMemory: model.memory == memoryRetain}
 	model.run = model.run.Start(request)
 	return StateReview, func() tea.Msg { return request }
 }
@@ -327,10 +310,10 @@ func uninstallResultConfirm(model *Model) (State, tea.Cmd) {
 	return StateResult, ui.Back
 }
 
-// reviewBack returns to the Engram question to fix answers.
+// reviewBack returns to the memory question to fix answers.
 func (model *Model) reviewBack() (State, tea.Cmd) {
 	model.cursor, model.focus = 0, ui.SectionBody
-	return StateEngram, nil
+	return StateMemory, nil
 }
 
 // applyTransition applies one table rule to move between screens.
@@ -375,16 +358,16 @@ func (model Model) nextUndecided(from int) (int, bool) {
 	return 0, false
 }
 
-// updateEngram: Leave is preselected (safe default); Enter chooses the
+// updateMemory: Retain is preselected (safe default); Enter chooses the
 // focused answer and advances to review.
-func (model Model) updateEngram(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (model Model) updateMemory(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case model.keymap.Up.Matches(key):
-		model.cursor = ui.MoveCursor(model.cursor, len(engramChoices), -1)
+		model.cursor = ui.MoveCursor(model.cursor, len(memoryChoices), -1)
 	case model.keymap.Down.Matches(key):
-		model.cursor = ui.MoveCursor(model.cursor, len(engramChoices), 1)
+		model.cursor = ui.MoveCursor(model.cursor, len(memoryChoices), 1)
 	case model.keymap.Confirm.Matches(key):
-		model.engram = model.cursor
+		model.memory = model.cursor
 		return model.applyTransition(eventConfirm)
 	case model.keymap.Back.Matches(key):
 		return model.applyTransition(eventBack)
@@ -413,8 +396,8 @@ func (model Model) Title() string {
 	switch model.state {
 	case StateModified:
 		return ui.TextUninstallModifiedTitle
-	case StateEngram:
-		return ui.TextUninstallEngramTitle
+	case StateMemory:
+		return ui.TextUninstallMemoryTitle
 	case StateReview:
 		return ui.TextUninstallReviewTitle
 	case StateResult:
@@ -440,8 +423,8 @@ func (model Model) fillFrame(frame *ui.Frame) {
 		frame.Footer = ui.FooterActions(ui.Actions(ui.TextActionBackToMenu), 0, true)
 	case model.state == StateModified:
 		model.modifiedFrame(frame)
-	case model.state == StateEngram:
-		model.engramFrame(frame)
+	case model.state == StateMemory:
+		model.memoryFrame(frame)
 	case model.state == StateReview:
 		frame.Body = model.reviewBody()
 		frame.Footer = ui.FooterActions(reviewActions, model.cursor, true)
@@ -454,10 +437,10 @@ func (model Model) modifiedFrame(frame *ui.Frame) {
 	frame.Body = model.modifiedBody()
 }
 
-// engramFrame asks the Engram question; a plan that could not be prepared is
+// memoryFrame asks the memory question; a plan that could not be prepared is
 // reported here, and choosing does not advance until it can.
-func (model Model) engramFrame(frame *ui.Frame) {
-	frame.Body = model.engramBody()
+func (model Model) memoryFrame(frame *ui.Frame) {
+	frame.Body = model.memoryBody()
 	if model.previewErr != nil {
 		frame.Body += "\n\n" + ui.Status(ui.StateFailed, ui.TextUninstallCannotPlan+model.previewErr.Error())
 	}
@@ -501,12 +484,12 @@ func (model Model) retainedHint() string {
 	return filepath.Join(model.RootDir, setup.RetainedDirName, "<date and time>") + string(filepath.Separator)
 }
 
-// engramBody asks the neutral retention question: valuable data is asked
+// memoryBody asks the retention question: valuable data is asked
 // about, never inferred from the uninstall request itself.
-func (model Model) engramBody() string {
+func (model Model) memoryBody() string {
 	var view strings.Builder
-	view.WriteString(theme.Caption.Render(ui.TextEngramQuestion))
-	view.WriteString("\n" + ui.SelectorDescribed(engramChoices, model.cursor, model.engram))
+	view.WriteString(theme.Caption.Render(ui.TextMemoryQuestion))
+	view.WriteString("\n" + ui.SelectorDescribed(memoryChoices, model.cursor, model.memory))
 	return view.String()
 }
 
@@ -527,17 +510,14 @@ func (model Model) reviewBody() string {
 		append(slices.Clone(model.preview.Removed), suffixed(choices.Remove, ui.TextModifiedSuffix)...)))
 	view.WriteString("\n" + theme.Label.Render(ui.TextUninstallMemoryLine))
 	model.reviewKeptSections(&view, keptInPlace, choices.Keep)
-	if len(choices.Keep) > 0 || model.engram == engramRetain {
+	if len(choices.Keep) > 0 || model.memory == memoryRetain {
 		view.WriteString("\n\n" + theme.Label.Render(ui.TextUninstallRetainedData+model.retainedHint()))
 	}
 	view.WriteString("\n\n" + theme.WarningText.Render(ui.TextUninstallNoBackup))
-	switch model.engram {
-	case engramRemove:
-		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallEngramChose))
-	case engramRetain:
-		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallEngramRetains))
-	default:
-		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallEngramStays))
+	if model.memory == memoryRetain {
+		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallMemoryRetains))
+	} else {
+		view.WriteString("\n" + theme.Caption.Render(ui.TextUninstallMemoryGoes))
 	}
 	return view.String()
 }

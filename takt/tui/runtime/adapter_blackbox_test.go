@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
@@ -15,28 +14,12 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-// installedRoot installs a real root with the fake engram/opencode/codegraph
-// binaries the repo's tui/testutil convention already provides, so Adapter
-// methods that shell out to them run against a deterministic fake tool
-// instead of a real one, and returns the root plus the components installed.
+// installedRoot installs a real root with the fake opencode and codegraph
+// binaries TestMain puts on PATH, so Adapter methods that shell out to them run
+// against a deterministic fake tool instead of a real one, and returns the
+// root plus the components installed.
 func installedRoot(t *testing.T) (string, []string) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "takt-runtime-fake-bin-")
-	if err != nil {
-		t.Fatalf("MkdirTemp() error = %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	if err := os.WriteFile(filepath.Join(dir, "engram"), testutil.FakeEngramScript("dev"), 0o755); err != nil {
-		t.Fatalf("WriteFile(engram) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "opencode"), testutil.FakeOpenCodeScript(), 0o755); err != nil {
-		t.Fatalf("WriteFile(opencode) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "codegraph"), testutil.FakeCodegraphScript(codegraph.CodegraphVersion), 0o755); err != nil {
-		t.Fatalf("WriteFile(codegraph) error = %v", err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
 	root := t.TempDir()
 	components, err := setup.AllComponents()
 	if err != nil {
@@ -48,7 +31,7 @@ func installedRoot(t *testing.T) (string, []string) {
 	}
 	request := setuputil.TestPlanRequest()
 	request.Components = names
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	return root, names

@@ -32,7 +32,7 @@ func installedRootWithDrift(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -87,7 +87,7 @@ func viewText(m drift.Model) string {
 func TestDriftReportsCleanWhenNothingDiffers(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	model := scan(t, drift.New(root))
@@ -221,14 +221,14 @@ func TestDriftRestoreFailureShowsFailedBody(t *testing.T) {
 
 	// A failure after some files were already restored: failedBody must
 	// still list what changed alongside the error.
-	partial := runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Changed: []string{edited}}, Err: errors.New("engram reinject failed")}
+	partial := runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Changed: []string{edited}}, Err: errors.New("memory reinject failed")}
 	next, _ := model.Update(partial)
 	model = next.(drift.Model)
 	if model.State() != drift.StateResult {
 		t.Fatalf("State() after a failed result = %v, want StateResult", model.State())
 	}
 	got := viewText(model)
-	if !testutil.Shows(got, edited) || !strings.Contains(got, "engram reinject failed") {
+	if !testutil.Shows(got, edited) || !strings.Contains(got, "memory reinject failed") {
 		t.Errorf("failed-partial View() = %q, want it to list %q and the error", got, edited)
 	}
 }

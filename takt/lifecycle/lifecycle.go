@@ -15,7 +15,7 @@
 
 // Package lifecycle dispatches the install, sync and uninstall orchestration
 // shared by the CLI (takt/cli) and the TUI runtime, composing setup, skills and
-// engram. It sits above them because hosting this dispatch in setup would
+// the memory service. It sits above them because hosting this dispatch in setup would
 // create an import cycle through skills.
 package lifecycle
 
@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,7 +35,9 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
-	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
+	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/skills"
@@ -55,6 +58,10 @@ type LifecycleResult struct {
 	// cancellation left undone.
 	Outcome    Outcome
 	NotApplied []string
+	// RetainedDir is the retained directory reserved for the memory backup, and RetainedMemory the
+	// backup file inside it; both are empty when no memory was retained.
+	RetainedDir    string
+	RetainedMemory string
 	// BackupDir is set when a cancelled operation replaced files whose
 	// copies were written to setup.BackupDir during this run.
 	BackupDir string
@@ -111,18 +118,10 @@ func nativeArtifactPending(notApplied []string) bool {
 	return slices.ContainsFunc(notApplied, func(path string) bool { return strings.HasPrefix(path, prefix) })
 }
 
-// Engram retention choices for uninstall: the Engram
-// database lives outside Takt's footprint, so uninstall never touches it
-// unless the user explicitly chooses EngramRemove. Empty means EngramLeave.
 const (
-	// EngramLeave keeps the Engram database where it is: zero behavior change.
-	EngramLeave = "leave"
-	// EngramRetain hands a consistent copy of the Engram database to the
-	// retained directory so files and memory share one directory. The database
-	// stays in place.
-	EngramRetain = "retain"
-	// EngramRemove asks for the Engram database to be removed too.
-	EngramRemove = "remove"
+	// removedMemorySuffix names the directory uninstall sets the memory directory aside into, so no
+	// ensure finds it at its configured path and no adapter can relaunch an owner.
+	removedMemorySuffix = ".removed-"
 
 	// managedFileMode makes Takt-acquired executable files usable by their owner
 	// and group while keeping other users from writing them.
@@ -137,10 +136,17 @@ type Runtime struct {
 	OpenCodeHandshake func(context.Context) error
 	// Reload is the final handoff after a completed OpenCode deployment.
 	Reload func(context.Context) error
-	// EngramChoice is EngramLeave (default), EngramRetain or EngramRemove; see above.
-	EngramChoice string
+	// RetainMemory makes uninstall back the memory up into the retained directory before deleting
+	// it (PR-INS-35). The zero value discards it.
+	RetainMemory bool
 	// Progress reports phase and artifact events to an interactive caller.
 	Progress func(setup.DeploymentProgress)
+	// StartMemory makes install and sync run the memory service and confirm it ready (PR-SET-37).
+	// Production constructors set it; image assembly leaves it false, because the volume that holds
+	// the store does not exist while the image is built.
+	StartMemory bool
+	// Model is the manifest install acquires; nil means the pinned model.
+	Model *embed.Manifest
 }
 
 // NewRuntime wires the production OpenCode V2 preflight and handoff while
@@ -151,7 +157,8 @@ func NewRuntime() Runtime {
 			_, err := opencode.Handshake(ctx)
 			return err
 		},
-		Reload: opencode.Reload,
+		Reload:      opencode.Reload,
+		StartMemory: true,
 	}
 }
 
@@ -248,16 +255,13 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	notApplied := func(result LifecycleResult, err error) (LifecycleResult, error) {
 		return result, errors.Join(err, restoreSetAside(aside))
 	}
-	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Engram memory capability"})
-	if aside, err = setAsideStale(rootDir, engram.ManagedBinaryKey(), engram.Resolve, aside); err != nil {
-		return notApplied(LifecycleResult{}, err)
-	}
-	engramCommand, err := acquireEngram(ctx, rootDir)
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Acquiring the memory model"})
+	err = runtime.acquireModel(ctx, rootDir)
 	if Cancelled(ctx, err) {
 		return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
 	}
 	if err != nil {
-		return notApplied(LifecycleResult{}, fmt.Errorf("engram memory capability unavailable: requires the engram binary %s or newer, which is not on PATH and could not be installed: %w", engram.EngramVersion, err))
+		return notApplied(LifecycleResult{}, fmt.Errorf("memory model unavailable: %w", err))
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking CodeGraph capability"})
 	if aside, err = setAsideStale(rootDir, codegraph.ManagedPrefixKey(), codegraph.Resolve, aside); err != nil {
@@ -300,7 +304,35 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return deployed, err
 	}
-	return runtime.finishInstall(ctx, rootDir, request, engramCommand, codegraphCommand, deployed)
+	return runtime.finishInstall(ctx, action, rootDir, request, codegraphCommand, deployed)
+}
+
+// acquireModel downloads and verifies the semantic model the memory service loads at start.
+func (runtime Runtime) acquireModel(ctx context.Context, rootDir string) error {
+	manifest := embed.Pinned()
+	if runtime.Model != nil {
+		manifest = *runtime.Model
+	}
+	return manifest.Acquire(ctx, http.DefaultClient, embed.ModelDir(rootDir))
+}
+
+// startMemory runs the memory service and returns only once it reports ready. Install creates the
+// store; sync only ensures the owner. A running owner that reports another version than this build is
+// replaced, here only (PR-SET-37).
+func startMemory(ctx context.Context, action string) error {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	status, err := memory.Start(ctx, dir, action == "install")
+	if err != nil || status.Version == setup.BuildVersion {
+		return err
+	}
+	if err := memory.StopOwner(ctx, dir); err != nil {
+		return err
+	}
+	_, err = memory.Start(ctx, dir, false)
+	return err
 }
 
 // setAsideStale moves the managed prerequisite at rel into the backups when
@@ -346,10 +378,16 @@ func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPla
 	return setup.SyncContextProgress(ctx, rootDir, plans, provider, progress, preserve...)
 }
 
-func (runtime Runtime) finishInstall(ctx context.Context, rootDir string, request setup.PlanRequest, engramCommand, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
-	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing Engram integration"})
-	if err := InjectEngram(rootDir, engramCommand); err != nil {
+func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing memory integration"})
+	if err := InjectMemory(rootDir); err != nil {
 		return deployed, err
+	}
+	if runtime.StartMemory {
+		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Starting the memory service"})
+		if err := startMemory(ctx, action); err != nil {
+			return deployed, fmt.Errorf("memory service did not become ready: %w", err)
+		}
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing CodeGraph integration"})
 	if err := InjectCodegraph(rootDir, codegraphCommand); err != nil {
@@ -417,24 +455,15 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 	if err != nil {
 		return removed, err
 	}
-	if err := removeEngram(rootDir); err != nil {
+	if err := removeMemoryServer(rootDir); err != nil {
 		return removed, err
 	}
 	if err := removeCodegraph(rootDir); err != nil {
 		return removed, err
 	}
-	if runtime.EngramChoice == EngramRemove {
-		// engram.Remove above covers the MCP config footprint; the
-		// database itself has no supported remover, so a Remove choice
-		// is reported as incomplete work, never a fatal error:
-		// deliberate retention is not a failure.
-		removed.Incomplete = append(removed.Incomplete, "Engram database was not removed: Takt has no supported database remover; it lives outside Takt's footprint and was left in place")
-	}
+	runtime.removeMemory(ctx, rootDir, &removed)
 	return removed, setup.ForgetInstallation(rootDir)
 }
-
-// acquireEngram is the Engram prerequisite seam; tests replace it to avoid PATH and network.
-var acquireEngram = engram.Acquire
 
 // acquireCodegraph is the CodeGraph prerequisite seam; tests replace it to avoid PATH and network.
 var acquireCodegraph = codegraph.Acquire
@@ -464,15 +493,24 @@ func plannedPaths(plans []setup.TargetPlan) []string {
 	return paths
 }
 
-// InjectEngram wires the engram MCP server into OpenCode, using engramCommand
-// verbatim. `engram setup` is never run: Takt's memory contract skill is the
-// only source of memory rules.
-func InjectEngram(rootDir, engramCommand string) error {
-	return injectServer("engram", rootDir, engramCommand, engram.Inject, registerManagedEngram)
+// memoryCrewArgs follow the takt-ai executable in the command of the crew's memory MCP server.
+var memoryCrewArgs = []string{"memory", "mcp", "--crew"}
+
+// InjectMemory registers the crew's memory MCP server in OpenCode under memory.ServerKey. Its command
+// is this takt-ai executable.
+func InjectMemory(rootDir string) error {
+	binary, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve takt-ai executable: %w", err)
+	}
+	injected, err := filemerge.InjectMCPServer(model.OpenCodeConfigPath(rootDir), memory.ServerKey, append([]string{binary}, memoryCrewArgs...))
+	if err != nil {
+		return fmt.Errorf("inject %s: %w", memory.ServerKey, err)
+	}
+	return refreshManagedOwnership(rootDir, injected.Files)
 }
 
-// injectServer runs one MCP server's injection plus its ownership bookkeeping
-// so engram and codegraph share one path instead of two mirrors.
+// injectServer runs one MCP server's injection plus its ownership bookkeeping.
 func injectServer(name, rootDir, command string,
 	inject func(string, string) (model.InjectionResult, error),
 	register func(string, string) error) error {
@@ -486,19 +524,8 @@ func injectServer(name, rootDir, command string,
 	return register(rootDir, command)
 }
 
-// registerManagedEngram records a Takt-acquired binary in the ownership
-// manifest so the manifest-driven uninstall removes it. A reused user binary is
-// never recorded.
-func registerManagedEngram(rootDir, engramCommand string) error {
-	managed, err := filepath.Abs(engram.ManagedBinaryPath(rootDir))
-	if err != nil {
-		return nil
-	}
-	return registerManagedPath(rootDir, engramCommand, managed, managed)
-}
-
-// registerManagedCodegraph records the Takt-acquired codegraph install the
-// same way, through one marker file of the npm package: the manifest tracks
+// registerManagedCodegraph records the Takt-acquired codegraph install in the
+// ownership manifest so the manifest-driven uninstall removes it, through one marker file of the npm package: the manifest tracks
 // files, and uninstall clears the rest of the managed tree with it. A reused
 // user binary is never recorded.
 func registerManagedCodegraph(rootDir, codegraphCommand string) error {
@@ -589,13 +616,115 @@ func refreshManagedOwnership(rootDir string, files []string) error {
 	return manifest.Save(rootDir)
 }
 
-// removeEngram strips the engram footprint from the uninstalled harness.
-func removeEngram(rootDir string) error {
-	return removeServer("engram", rootDir, engram.Remove)
+// removeMemoryServer unregisters the crew's memory MCP server, so new OpenCode starts spawn no adapter.
+func removeMemoryServer(rootDir string) error {
+	return removeServer(memory.ServerKey, rootDir, func(root string) (model.InjectionResult, error) {
+		return filemerge.RemoveMCPServer(model.OpenCodeConfigPath(root), memory.ServerKey)
+	})
 }
 
-// removeServer strips one MCP server's footprint so engram and codegraph share
-// one path instead of two mirrors.
+// removeMemory deletes the memory and its model. A failure is reported
+// as incomplete work, never as success; the set-aside directory is never deleted unless every earlier
+// step succeeded.
+func (runtime Runtime) removeMemory(ctx context.Context, rootDir string, result *LifecycleResult) {
+	if err := runtime.retireMemory(ctx, rootDir, result); err != nil {
+		result.Incomplete = append(result.Incomplete, "memory: "+err.Error())
+	}
+	if err := os.RemoveAll(embed.ModelDir(rootDir)); err != nil {
+		result.Incomplete = append(result.Incomplete, "memory model: "+err.Error())
+	}
+}
+
+// retireMemory sets the memory directory aside, stops its owner, backs it up when asked, and deletes it.
+func (runtime Runtime) retireMemory(ctx context.Context, rootDir string, result *LifecycleResult) error {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	now := time.Now()
+	setAside := fmt.Sprintf("%s%s%d", dir, removedMemorySuffix, now.Unix())
+	if _, err := memory.SocketPath(setAside); err != nil {
+		return fmt.Errorf("%s was not set aside and stays in place: its set-aside path cannot host an owner for the backup: %w", dir, err)
+	}
+	if err := os.Rename(dir, setAside); err != nil {
+		return fmt.Errorf("%s was not set aside and stays in place: %w", dir, err)
+	}
+	kept := func(err error) error { return fmt.Errorf("kept at %s: %w", setAside, err) }
+	if err := stopMemoryOwner(ctx, setAside); err != nil {
+		return kept(err)
+	}
+	if runtime.RetainMemory {
+		if err := backupMemory(ctx, rootDir, setAside, now, result); err != nil {
+			return kept(err)
+		}
+	}
+	if err := os.RemoveAll(setAside); err != nil {
+		return kept(err)
+	}
+	return nil
+}
+
+// stopMemoryOwner stops the owner serving dir, if any, and returns once it has released the directory.
+func stopMemoryOwner(ctx context.Context, dir string) error {
+	probeCtx, cancel := context.WithTimeout(ctx, memory.ProbeTimeout)
+	defer cancel()
+	if _, err := memory.Probe(probeCtx, dir); errors.Is(err, memory.ErrUnreachable) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return memory.StopOwner(ctx, dir)
+}
+
+// backupMemory starts an owner reachable only at setAside, writes the backup into the retained
+// directory, and stops that owner. A directory without a store has nothing to back up.
+func backupMemory(ctx context.Context, rootDir, setAside string, now time.Time, result *LifecycleResult) (err error) {
+	status, err := memory.Ensure(ctx, setAside)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if stopErr := stopMemoryOwner(ctx, setAside); stopErr != nil {
+			err = errors.Join(err, stopErr)
+		}
+	}()
+	if status.State == memory.StateNoStore {
+		return nil
+	}
+	retained, err := setup.ReserveRetentionDir(rootDir, now)
+	if err != nil {
+		return err
+	}
+	memoryDir := filepath.Join(retained, setup.RetainedMemoryDirName)
+	defer func() {
+		if err != nil {
+			// A failed backup leaves no partial copy; the directory goes too when nothing else shares it.
+			_ = os.RemoveAll(memoryDir)
+			_ = os.Remove(retained)
+		}
+	}()
+	if err := os.MkdirAll(memoryDir, setup.RetainedDirectoryMode); err != nil {
+		return err
+	}
+	admin, err := memory.DialAdmin(ctx, setAside)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, admin.Close()) }()
+	out, err := admin.Backup(ctx, memory.BackupInput{Path: filepath.Join(memoryDir, memory.StoreFile)})
+	if err != nil {
+		return fmt.Errorf("back up the store: %w", err)
+	}
+	result.RetainedDir, result.RetainedMemory = retained, out.Path
+	return nil
+}
+
+// removeServer strips one MCP server's footprint.
 func removeServer(name, rootDir string, remove func(string) (model.InjectionResult, error)) error {
 	if _, err := remove(rootDir); err != nil {
 		return fmt.Errorf("remove %s: %w", name, err)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
@@ -44,7 +45,7 @@ func reassignedAgent(t *testing.T) string {
 func installedAdapterRoot(t *testing.T) (string, runtime.Adapter) {
 	t.Helper()
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -69,8 +70,8 @@ func TestCorrectDriftRestoresSelectedFileAndReinjectsIntegrations(t *testing.T) 
 	if err != nil || string(data) == "{}" {
 		t.Fatalf("restored file = %q, %v; want the drifted content replaced", data, err)
 	}
-	if !strings.Contains(string(data), "engram") {
-		t.Errorf("restored file lacks the re-injected Engram integration:\n%s", data)
+	if !strings.Contains(string(data), memory.ServerKey) {
+		t.Errorf("restored file lacks the re-injected memory integration:\n%s", data)
 	}
 }
 
@@ -165,7 +166,7 @@ func TestReassignModelsReportsEverythingNotAppliedWhenCancelledUpFront(t *testin
 }
 
 func TestReassignModelsFailsWithoutAnInstallation(t *testing.T) {
-	_, err := testAdapter(nil).Execute(runtime.ActionRequest{
+	_, err := testAdapter(t, nil).Execute(runtime.ActionRequest{
 		Action: runtime.ActionReassignModels, RootDir: t.TempDir(),
 		ReassignOverrides: map[string]model.ModelAssignment{reassignedAgent(t): {Model: reassignedModel}},
 	})
@@ -177,7 +178,7 @@ func TestReassignModelsFailsWithoutAnInstallation(t *testing.T) {
 func TestCommandReportsProgressToTheObserverAndVerifiesInstalls(t *testing.T) {
 	var events []setup.DeploymentProgress
 	request := runtime.ActionRequest{ID: 21, Action: runtime.ActionInstall, RootDir: t.TempDir()}
-	message := testAdapter(nil).Command(context.Background(), request, func(event setup.DeploymentProgress) {
+	message := testAdapter(t, nil).Command(context.Background(), request, func(event setup.DeploymentProgress) {
 		events = append(events, event)
 	})().(runtime.ActionResultMsg)
 	if message.Err != nil || message.Result.Verify == nil {

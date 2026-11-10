@@ -8,13 +8,13 @@
   │ for every project                                    │  
   │                                                      │  
   │ WHAT YOU GET                                         │  
-  │ 13 agents        1 orchestrator · 12 specialists     │  
-  │                  11 on openai/gpt-6-luna             │  
-  │                  2 on OpenCode's default model       │  
-  │ 27 skills                                            │  
-  │  3 MCP servers   codegraph · context7 · engram       │  
-  │  4 integrations  DAG panel · memory · VFS · sandbox  │  
+  │ 18 agents        1 orchestrator · 17 specialists     │  
+  │                  on OpenCode's default model         │  
+  │ 42 skills                                            │  
+  │  3 MCP servers   codegraph · context7 · takt_memory  │  
+  │  4 integrations  DAG panel · memory · sandbox · VFS  │  
+  │                                                      │  
   └──────────────────────────────────────────────────────┘  
-                                                 1–13 / 17  
+                                                 1–13 / 15  
                   Personalize    [ Install ]                
                                                             

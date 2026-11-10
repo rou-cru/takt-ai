@@ -169,7 +169,7 @@ func TestBudgetsDerivedFromReplay(t *testing.T) {
 func TestInterlocutorBudgets(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
 	switched := observed(t, "child", history.KindInterlocutorSwitched, "")
-	switched.Agent, switched.Artifact = "specialist", "artifacts/report.md"
+	switched.Agent = "specialist"
 	denied := observed(t, "child", history.KindDenied, "")
 	denied.Cause = history.CauseUncaptured
 	for _, e := range []history.Entry{switched, denied} {
@@ -178,7 +178,7 @@ func TestInterlocutorBudgets(t *testing.T) {
 		}
 	}
 	got := h.Project().Budgets("root")
-	if got.InterlocutorHolder != "child" || got.InterlocutorAgent != "specialist" || got.InterlocutorArtifact != "artifacts/report.md" {
+	if got.InterlocutorHolder != "child" || got.InterlocutorAgent != "specialist" {
 		t.Fatalf("holder state %+v", got)
 	}
 	handoff := observed(t, "child", history.KindInterlocutorHandoff, "")
@@ -187,7 +187,7 @@ func TestInterlocutorBudgets(t *testing.T) {
 		t.Fatal(err)
 	}
 	got = h.Project().Budgets("root")
-	if got.InterlocutorHolder != "" || got.InterlocutorAgent != "" || got.InterlocutorArtifact != "" {
+	if got.InterlocutorHolder != "" || got.InterlocutorAgent != "" {
 		t.Fatalf("holder not cleared after handoff: %+v", got)
 	}
 }

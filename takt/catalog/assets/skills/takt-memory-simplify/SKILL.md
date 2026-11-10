@@ -1,6 +1,6 @@
 ---
 name: takt-memory-simplify
-description: "Before recording memory as simplify. What this role records, when, and what it never records."
+description: "Before recording Takt memory as simplify. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,7 +11,7 @@ metadata:
 
 ## Records
 
-- `observation` (`project`): a structural finding confirmed after trying to refute it (dead code, duplication, complexity), with the path or analysis output as evidence.
+- `observation` (`workspace`): a structural finding confirmed after trying to refute it (dead code, duplication, complexity), with the path or analysis output as evidence.
 - An `observation` that `corrects` a recorded fact the cleanup proved wrong.
 
 ## When
@@ -20,6 +20,6 @@ metadata:
 
 ## Never records
 
-- The list of changed files and lines: it belongs to your result, not to memory.
+- The list of changed files and lines: it belongs to your result, not to Takt memory.
 - Findings you did not confirm.
 - Suggested further cleanups.

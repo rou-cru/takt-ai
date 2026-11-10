@@ -7,6 +7,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -42,8 +43,8 @@ type ConfigChange struct {
 }
 
 // injectedServers are configured after the files are written (lifecycle's
-// InjectEngram/InjectCodegraph), so no planned artifact names them.
-var injectedServers = []string{string(model.ComponentCodegraph), string(model.ComponentEngram)}
+// InjectMemory/InjectCodegraph), so no planned artifact names them.
+var injectedServers = []string{string(model.ComponentCodegraph), memory.ServerKey}
 
 // integrationLabels names the deployed plugins by their artifact base name.
 var integrationLabels = map[string]string{

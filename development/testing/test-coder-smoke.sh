@@ -8,7 +8,7 @@
 # it writes inside the container or its own temporary directory, and removes
 # no container, image or volume unless --cleanup names this run's container.
 #
-# What this proves (Tier 2 of Engram #15067 CA-08) and what it cannot:
+# What this proves (Tier 2 of #15067 CA-08) and what it cannot:
 #   * proves: the image runs as UID/GID 10001, the baked OpenCode/Takt
 #     installation is visible to that user, the workspace is writable without
 #     root, the production bootstrap diagnostic exits 0 inside the image, and
@@ -215,7 +215,7 @@ case "$configured_user" in
 esac
 pass 'the container runs as UID/GID 10001 with a non-root image user'
 
-for tool in opencode takt-ai engram codegraph; do
+for tool in opencode takt-ai codegraph; do
     "$DOCKER" exec "$CONTAINER_ID" bash -c "command -v $tool >/dev/null" ||
         fail "the baked image must expose '$tool' on PATH for the runtime user"
 done

@@ -25,7 +25,6 @@ import (
 
 var (
 	downKey = tea.KeyPressMsg{Code: tea.KeyDown}
-	upKey   = tea.KeyPressMsg{Code: tea.KeyUp}
 	leftKey = tea.KeyPressMsg{Code: tea.KeyLeft}
 	escKey  = tea.KeyPressMsg{Code: tea.KeyEscape}
 )
@@ -40,9 +39,9 @@ func press(t *testing.T, model uninstall.Model, messages ...tea.Msg) uninstall.M
 	return model
 }
 
-// engramScreen is the uninstall flow of an installed root with no user edits,
-// so it opens on the Engram question.
-func engramScreen(t *testing.T) uninstall.Model {
+// memoryScreen is the uninstall flow of an installed root with no user edits,
+// so it opens on the memory question.
+func memoryScreen(t *testing.T) uninstall.Model {
 	t.Helper()
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setuputil.TestPlanRequest()); err != nil {
@@ -56,7 +55,7 @@ func engramScreen(t *testing.T) uninstall.Model {
 func modifiedScreen(t *testing.T) (uninstall.Model, []string) {
 	t.Helper()
 	root := t.TempDir()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -90,16 +89,16 @@ func uninstallRequest(t *testing.T, model uninstall.Model) (uninstall.Model, run
 	return next.(uninstall.Model), testutil.ActionRequest(t, command)
 }
 
-// TestEngramScreenShowsOnlyTheFocusedOptionDescription checks that all labels stay visible while only the focused choice's description is shown.
-func TestEngramScreenShowsOnlyTheFocusedOptionDescription(t *testing.T) {
-	screen := engramScreen(t)
-	if got := screen.Title(); got != ui.TextUninstallEngramTitle {
-		t.Errorf("Title() = %q, want %q", got, ui.TextUninstallEngramTitle)
+// TestMemoryScreenShowsOnlyTheFocusedOptionDescription checks that all labels stay visible while only the focused choice's description is shown.
+func TestMemoryScreenShowsOnlyTheFocusedOptionDescription(t *testing.T) {
+	screen := memoryScreen(t)
+	if got := screen.Title(); got != ui.TextUninstallMemoryTitle {
+		t.Errorf("Title() = %q, want %q", got, ui.TextUninstallMemoryTitle)
 	}
-	descriptions := []string{ui.TextEngramLeaveDesc, ui.TextEngramRetainDesc, ui.TextEngramRemoveDesc}
-	for focused, labels := range []string{ui.TextEngramLeave, ui.TextEngramRetain, ui.TextEngramRemove} {
+	descriptions := []string{ui.TextMemoryRetainDesc, ui.TextMemoryDiscardDesc}
+	for focused, labels := range []string{ui.TextMemoryRetain, ui.TextMemoryDiscard} {
 		v := viewText(screen)
-		for _, want := range []string{ui.TextEngramQuestion, ui.TextEngramLeave, ui.TextEngramRetain, ui.TextEngramRemove} {
+		for _, want := range []string{ui.TextMemoryQuestion, ui.TextMemoryRetain, ui.TextMemoryDiscard} {
 			if !testutil.Shows(v, want) {
 				t.Errorf("focus on %s: view missing %q:\n%s", labels, want, v)
 			}
@@ -113,24 +112,8 @@ func TestEngramScreenShowsOnlyTheFocusedOptionDescription(t *testing.T) {
 	}
 }
 
-// TestEngramAnswerReachesTheUninstallRequest checks that the chosen Engram answer makes the flow dirty and travels in the uninstall request.
-func TestEngramAnswerReachesTheUninstallRequest(t *testing.T) {
-	screen := press(t, engramScreen(t), downKey, upKey, downKey)
-	if screen.Dirty() {
-		t.Error("Dirty() before any answer = true, want false")
-	}
-	screen = press(t, screen, enterKey)
-	if screen.State() != uninstall.StateReview || !screen.Dirty() {
-		t.Fatalf("state = %v dirty = %v, want review and a dirty flow after choosing Retain", screen.State(), screen.Dirty())
-	}
-	_, request := uninstallRequest(t, screen)
-	if request.EngramChoice != lifecycle.EngramRetain {
-		t.Errorf("request.EngramChoice = %q, want %q", request.EngramChoice, lifecycle.EngramRetain)
-	}
-}
-
-// TestEngramQuestionStaysBlockedWhenThePlanCannotBePrepared checks that an unreadable ownership manifest is reported and Continue does not reach review.
-func TestEngramQuestionStaysBlockedWhenThePlanCannotBePrepared(t *testing.T) {
+// TestMemoryQuestionStaysBlockedWhenThePlanCannotBePrepared checks that an unreadable ownership manifest is reported and Continue does not reach review.
+func TestMemoryQuestionStaysBlockedWhenThePlanCannotBePrepared(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("SaveInstalledConfig() error = %v", err)
@@ -174,11 +157,11 @@ func TestModifiedFilesMustAllBeDecidedBeforeContinuing(t *testing.T) {
 		t.Errorf("first file's decision is not visible:\n%s", v)
 	}
 
-	// Removing the second decides the last file and advances to Engram, then
+	// Removing the second decides the last file and advances to the memory question, then
 	// review, carrying both decisions.
 	screen = press(t, screen, downKey, enterKey)
-	if screen.State() != uninstall.StateEngram || !screen.Dirty() {
-		t.Fatalf("state = %v dirty = %v, want the engram question and a dirty flow", screen.State(), screen.Dirty())
+	if screen.State() != uninstall.StateMemory || !screen.Dirty() {
+		t.Fatalf("state = %v dirty = %v, want the memory question and a dirty flow", screen.State(), screen.Dirty())
 	}
 	screen = press(t, screen, enterKey)
 	if screen.State() != uninstall.StateReview {
@@ -202,25 +185,25 @@ func TestBackNavigationAcrossSteps(t *testing.T) {
 		t.Errorf("Esc on the modified step = %#v, want ui.BackMsg", command())
 	}
 
-	// Engram returns to the modified questions when there are any.
+	// The memory question returns to the modified questions when there are any.
 	screen = press(t, screen, enterKey, enterKey)
-	if screen.State() != uninstall.StateEngram {
-		t.Fatalf("state = %v, want the engram question", screen.State())
+	if screen.State() != uninstall.StateMemory {
+		t.Fatalf("state = %v, want the memory question", screen.State())
 	}
 	if screen = press(t, screen, escKey); screen.State() != uninstall.StateModified {
-		t.Errorf("state = %v, want Esc on engram to return to the modified questions", screen.State())
+		t.Errorf("state = %v, want Esc on the memory question to return to the modified questions", screen.State())
 	}
 
-	// Review's Back action returns to the engram question.
-	screen = press(t, engramScreen(t), tabKey, enterKey)
-	if screen = press(t, screen, enterKey); screen.State() != uninstall.StateEngram {
-		t.Errorf("state = %v, want the Back action to return to engram", screen.State())
+	// Review's Back action returns to the memory question.
+	screen = press(t, memoryScreen(t), tabKey, enterKey)
+	if screen = press(t, screen, enterKey); screen.State() != uninstall.StateMemory {
+		t.Errorf("state = %v, want the Back action to return to the memory question", screen.State())
 	}
 }
 
 // TestBusyScreenIgnoresKeysAndAdvancesSpinner checks that a running uninstall ignores keys, advances its spinner and survives unknown messages.
 func TestBusyScreenIgnoresKeysAndAdvancesSpinner(t *testing.T) {
-	screen := press(t, engramScreen(t), enterKey)
+	screen := press(t, memoryScreen(t), enterKey)
 	screen, _ = uninstallRequest(t, screen)
 	if !screen.Run().Busy() {
 		t.Fatal("model is not busy after confirming the uninstall")
@@ -273,7 +256,7 @@ func TestResultBodiesForCancelledAndFailedRuns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			screen, request := uninstallRequest(t, press(t, engramScreen(t), enterKey))
+			screen, request := uninstallRequest(t, press(t, memoryScreen(t), enterKey))
 			screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: tt.result, Err: tt.err})
 			if screen.State() != uninstall.StateResult {
 				t.Fatalf("state = %v, want result", screen.State())
@@ -290,7 +273,7 @@ func TestResultBodiesForCancelledAndFailedRuns(t *testing.T) {
 
 // TestDirtyIsFalseOnceFinishedOrNotInstalled checks that a finished flow is no longer dirty and that a missing installation keeps the plain title.
 func TestDirtyIsFalseOnceFinishedOrNotInstalled(t *testing.T) {
-	screen := press(t, engramScreen(t), downKey, downKey, enterKey)
+	screen := press(t, memoryScreen(t), downKey, enterKey)
 	screen, request := uninstallRequest(t, screen)
 	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Removed: []string{"c.md"}}})
 	if screen.Dirty() {

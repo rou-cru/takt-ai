@@ -14,6 +14,7 @@ import (
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/models"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 )
 
@@ -50,7 +51,7 @@ func viewText(m models.Model) string {
 func TestModelsPasteFiltersPickerWhileOpen(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 
@@ -76,7 +77,7 @@ func TestModelsPasteFiltersPickerWhileOpen(t *testing.T) {
 func TestModelsReassignFlow(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 

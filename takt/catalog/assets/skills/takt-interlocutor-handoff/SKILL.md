@@ -35,18 +35,20 @@ standard artifact is recorded and updated progressively through the session, as 
 `takt-memory-contract`, so that an abrupt or early close still leaves the real state on
 record, rather than nothing at all. A
 user decision that falls outside the specialty is neither resolved nor discarded: it is kept
-as a note or a provisional artifact, and its existence and location are reported on return.
+as a note or a provisional artifact, and its existence and entry ID are reported in
+`AdditionalContext` on return.
 
-**Completed work requires a standard Engram result.** Record the specialty's document on
-its official template and return its IDs through `dispatch_handoff`; chat or a filesystem
+**Completed work requires a standard Takt memory result.** Record the specialty's document on
+its official template and return its current entry IDs through `dispatch_handoff`; chat or a filesystem
 copy alone is not a completed delivery. For an early close or failure, return the actual
 outcome and any results produced; do not manufacture an artifact when no output coherently
 exists, or present partial work as finished.
 
 **A new final deliverable needs the user's own approval.** Presenting it as settled requires
 an explicit accept from the user. Only reusing an already-approved deliverable without
-content changes bypasses a new accept; any extension that changes the deliverable requires
-a new explicit accept. This holds for every direct interlocutor, regardless of what the
+content changes bypasses a new accept; deliver it as an entry of this session that
+records the complete artifact and `supersedes` it. Any extension that changes the deliverable requires a new
+explicit accept. This holds for every direct interlocutor, regardless of what the
 deliverable is.
 
 **An escalation arrives already worked.** When something needs human judgment, what

@@ -83,7 +83,7 @@ func fixture(t *testing.T, name string, drifted func(t *testing.T, root string, 
 		fixtureDir = dir
 	}
 	root := filepath.Join(fixtureDir, name)
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -528,8 +528,8 @@ func TestResultBodies(t *testing.T) {
 		{
 			name:       "failure after some restores",
 			correction: runtime.ActionResult{Changed: []string{"agents/missing.md"}},
-			err:        errors.New("engram gone"),
-			want:       []string{"engram gone", ui.TextDriftRestoredHead, "agents/missing.md", ui.TextDriftSeeCurrent},
+			err:        errors.New("memory gone"),
+			want:       []string{"memory gone", ui.TextDriftRestoredHead, "agents/missing.md", ui.TextDriftSeeCurrent},
 		},
 		{
 			name: "failure before any restore",

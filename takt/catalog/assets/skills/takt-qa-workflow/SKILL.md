@@ -9,8 +9,7 @@ metadata:
 
 # Takt QA Workflow
 
-Each assignment's `dispatch_inputs` includes applicable supplements. Distinguish
-an objective that delivers or hardens code from an audit that only assesses it: an audit
+Distinguish an objective that delivers or hardens code from an audit that only assesses it: an audit
 preserves findings and never infers permission to repair.
 
 ## Entry
@@ -28,14 +27,14 @@ objective's close.
 
 | State | Delegate, with inputs by ID | Ends when | Next |
 | --- | --- | --- | --- |
-| 1. Assess | Nothing; read current entries | Specification settled (Engram or a repository artifact of equivalent rigor) | Missing plan or matrix → 2; plan selects Q2 → 3; otherwise → 4 |
+| 1. Assess | Nothing; read current entries | Specification settled (a Takt memory entry or a repository artifact of equivalent rigor) | Missing plan or matrix → 2; plan selects Q2 → 3; otherwise → 4 |
 | | | Required specification missing | Return the missing invariant to Takt; do not infer it |
 | 2. Plan | `qa`: specification, frozen contracts, PRD, analyst facts, existing test policy | Policy when authored, plan, matrix and applicable environment requirements delivered; a diagnostic blocker is also a real result | Q2 selected → 3; otherwise → 4; blocker → outcomes |
 | 3. Author | `tpm`: plan and matrix, always assigning each matrix row its owning node; creating test-author tasks only when Q2 is selected. Then `test` per task: plan, specification, contracts and matrix, with disjoint test-file claims | Each delta consolidates, after its phase gate when the plan sets one; acceptance Verify (4) runs it | 4; gate failure or blocker → outcomes |
-| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan, matrix and applicable supplements | Acceptance report and per-row matrix evidence, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
+| 4. Accept | Before Verify, confirm every matrix row has its owning DAG node. If any are missing, delegate `tpm` only that mapping with the existing WBS and matrix; do not repeat decomposition. Then existing `verify`, without author_keys, on the materialized workspace: specification, plan and matrix | Acceptance report and per-row matrix evidence, including failed or unverified checks | Inside SDD, a slice whose story is not must-not-fail while the objective is not closing → back to SDD's slice control point; eligible critique → 5; otherwise → 7; failures/blockers → outcomes, alongside any eligible critique |
 | 5. Critique | Independent assignments concurrently by default: `mutation` only with Q2 selected, must-not-fail rows and an executable green original suite, consuming plan, matrix and acceptance report; `explorer` for selected Q3, consuming plan and acceptance report; `quality` for selected Q4, consuming plan, specification and acceptance report | Reports or diagnostic blockers delivered | Eligible survivor → 6; findings/blockers → outcomes; otherwise → 7 |
 | 6. Strengthen | `test`: plan, specification, contracts, matrix and mutation report, with its existing author_key when continuing staged work. Authoring → Verify gate → consolidation → `mutation` on only affected rows, consuming plan, matrix and prior mutation report | No must-not-fail survivor, or {{policy.recovery_max_attempts}} rounds admitted | Survivor with budget → next round; exhausted → 7 with residual risk; baseline/gate failure or blocker → outcomes |
-| 7. Close | At objective closure, `qa`: independent acceptance evidence, specification, plan, matrix and supplements, and selected mutation, exploration and quality reports, all by ID and evaluated scope. At a non-objective slice, nothing; retain the slice's evidence by ID and evaluated scope | Objective: test completion report delivered. Slice: its scoped evidence retained, with no completion report. Unmet criteria remain unmet | Inside SDD at a non-objective slice → back to SDD's slice control point; otherwise → 8 |
+| 7. Close | At objective closure, `qa`: independent acceptance evidence, specification, plan and matrix, and selected mutation, exploration and quality reports, all by ID and evaluated scope. At a non-objective slice, nothing; retain the slice's evidence by ID and evaluated scope | Objective: test completion report delivered. Slice: its scoped evidence retained, with no completion report. Unmet criteria remain unmet | Inside SDD at a non-objective slice → back to SDD's slice control point; otherwise → 8 |
 | 8. Report | Nothing | Consume the test completion report by ID; state unmet criteria, unchecked work and every residual risk | Audit/report closed, not necessarily product accepted |
 
 Critique entry criteria apply per assignment: a failed suite bars mutation, not an independent

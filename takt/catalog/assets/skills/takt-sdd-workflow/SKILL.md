@@ -28,7 +28,7 @@ completeness conflicts with what the user asked for, the objective wins: name th
 record it, and keep moving within the permissions and approvals you were given.
 
 **Input premise.** Start from formal, broken-down specifications with their acceptance, held
-in Engram or in a repository artifact of equivalent rigor, and the contracts that exist.
+in Takt memory entries or in a repository artifact of equivalent rigor, and the contracts that exist.
 Without them this route does not fit: return control to Takt with that reason. Resolve other
 material gaps through the needed owners; do not require a PRD or a ceremonial document chain.
 Before implementation dispatch, the relevant acceptance and consumed interfaces must be
@@ -129,7 +129,7 @@ never invent the result to manufacture concurrency.
 ### 3.2 Symmetric Delivery
 
 A frozen signature goes to the agent that **implements** it *and* to every agent that
-**consumes** it for unrelated work. Both sides receive the identical declaration.
+**consumes** it for unrelated work. Both sides consume the same contract entry by its ID.
 
 Resolve consumed interface decisions before parallel dispatch; agents do not independently
 redefine the contract they share.
@@ -148,7 +148,8 @@ task scopes from them; Takt validates and places them into its execution DAG. Ev
 contract must declare (TPM's WBS names them Writable files, Consumed contracts, Allowed reads and Acceptance):
 
 - **`writable_set`**: Exact files the task may modify, existing or to be created.
-- **`consumed_interfaces`**: Fully declared types, signatures, and schemas the task needs.
+- **`consumed_interfaces`**: The entry IDs of the frozen interface contracts the task needs,
+  declared with `dispatch_inputs`, never restated.
 - **`allowed_reads`**: Files the task may read. Must exclude every path written by a
   concurrently in-flight task.
 - **`acceptance_check`**: A deterministic, bounded command that the Verify unit runs on the
@@ -159,8 +160,7 @@ Example of a complete contract:
 
 ```
 writable_set:        internal/config/parse.go, internal/config/parse_test.go
-consumed_interfaces: func Parse(r io.Reader) (Config, error)  // ErrInvalid on malformed input
-                     type Config struct { Port int; Hosts []string }
+consumed_interfaces: #214  // the frozen config parsing contract
 allowed_reads:       internal/config/types.go
 acceptance_check:    go test ./internal/config -run TestParse
 ```

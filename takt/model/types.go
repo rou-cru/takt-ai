@@ -25,13 +25,11 @@ type ComponentID string
 
 // Component IDs are the closed set of independently installable pieces.
 const (
-	// ComponentEngram names the memory-graph piece so installs can toggle memory independently.
-	ComponentEngram ComponentID = "engram"
 	// ComponentSkills names the skills piece so installs can toggle skills independently.
 	ComponentSkills ComponentID = "skills"
 	// ComponentContext7 names the docs-lookup integration so installs can toggle it independently.
 	ComponentContext7 ComponentID = "context7"
-	// ComponentCodegraph names the codebase-exploration MCP integration, mandatory core like Engram.
+	// ComponentCodegraph names the codebase-exploration MCP integration, mandatory core.
 	ComponentCodegraph ComponentID = "codegraph"
 )
 
