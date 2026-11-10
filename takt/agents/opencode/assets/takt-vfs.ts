@@ -2005,14 +2005,13 @@ export default Plugin.define({
         }, ["result_ids"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ result_ids: number[] }>(input)
-          const root = await rootSession(c.sessionID)
           // Only the session a running delegation runs in delivers for it: an
           // earlier attempt's session of the same unit never credits this one.
           const call=c.id ? invocations.get(`${c.sessionID}:${c.id}`) : undefined
           const running = await adoptChild(c.sessionID, c.agent,call)
           const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
           if (!running) {
-            await governed(c, { action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
+            await governed(c, { action: "validate_results", session: c.sessionID, agent: c.agent, result_ids: args.result_ids })
             // A delegated session that runs no delegation has nobody to deliver
             // to; a top-level session (an interlocutor) hands off its results itself.
             if ((await ctx.session.get({ sessionID: c.sessionID })).parentID) {

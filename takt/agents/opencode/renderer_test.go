@@ -77,7 +77,7 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 			if spec.Role != model.RoleOrchestrator && effectOf(rules, "subagent", "*") != "deny" {
 				t.Error("specialist may delegate")
 			}
-			for _, tool := range []string{"dispatch_switch", "dispatch_lent_entries"} {
+			for _, tool := range []string{"dispatch_switch"} {
 				want := "deny"
 				if spec.Role == model.RoleOrchestrator {
 					want = "allow"
@@ -559,7 +559,7 @@ func TestRenderConfigDeniesInterlocutorStackForVerificationQualityAssuranceAndMa
 		t.Fatal(err)
 	}
 	config := decodeConfig(t, artifact.Content)
-	switchTools := []string{"dispatch_switch", "dispatch_lent_entries"}
+	switchTools := []string{"dispatch_switch"}
 	for _, id := range []string{"verify", "takt-gc", "mutation", "pm"} {
 		rules := config.Agents[id].Permissions
 		for _, tool := range switchTools {

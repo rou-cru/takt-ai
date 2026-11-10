@@ -36,6 +36,9 @@ func serveMemory() error {
 	if err != nil {
 		return err
 	}
+	// The detached owner outlives the launcher that read its stderr, so a later write to that closed pipe
+	// must fail with an error instead of ending the service with SIGPIPE.
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	return memory.Serve(ctx, dir, resolveVersion(version))

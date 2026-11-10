@@ -166,6 +166,46 @@ func TestStartLaunchesTheOwnerAndReusesIt(t *testing.T) {
 	}
 }
 
+func TestStopOwnerStopsTheRunningOwner(t *testing.T) {
+	bin := binary(t)
+	dir := shortDir(t)
+	initStore(t, dir)
+	stopOwnerAtEnd(t, dir)
+	if out, err := takt(t, bin, dir, shortDir(t), "memory", "start"); err != nil {
+		t.Fatalf("start: %v\n%s", err, out)
+	}
+	if err := memory.StopOwner(context.Background(), dir); err != nil {
+		t.Fatalf("StopOwner() error = %v", err)
+	}
+	if _, err := memory.Probe(context.Background(), dir); err == nil {
+		t.Fatal("the owner still answers after StopOwner")
+	}
+}
+
+// TestStopOwnerLeavesAProcessAloneWhenNoOwnerHoldsTheLock proves a PID a crashed owner left in the lock file
+// is never signaled: it may belong to an unrelated process by now.
+func TestStopOwnerLeavesAProcessAloneWhenNoOwnerHoldsTheLock(t *testing.T) {
+	dir := shortDir(t)
+	bystander := exec.Command("sleep", "60")
+	if err := bystander.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- bystander.Wait() }()
+	t.Cleanup(func() { _ = bystander.Process.Kill() })
+	if err := os.WriteFile(filepath.Join(dir, memory.LockFile), []byte(strconv.Itoa(bystander.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.StopOwner(context.Background(), dir); err != nil {
+		t.Fatalf("StopOwner() error = %v", err)
+	}
+	select {
+	case err := <-exited:
+		t.Fatalf("the process named in the lock file was signaled and exited: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 func TestStartInitCreatesDirectoryAndStoreAndPrintsTheKeyAndSocket(t *testing.T) {
 	bin := binary(t)
 	dir := filepath.Join(shortDir(t), "mem")

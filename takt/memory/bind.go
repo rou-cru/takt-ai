@@ -28,6 +28,9 @@ type BindArgs struct {
 // pending grants. An existing binding keeps its root; for a new one, a claimed root that is
 // itself bound resolves to that binding's root.
 func (s *Store) Bind(ctx context.Context, a BindArgs) error {
+	if a.HostSession == "" || a.ClaimedRoot == "" || a.Workspace == "" || a.Agent == "" {
+		return refuse("bind needs host_session, agent, claimed_root, and workspace")
+	}
 	return s.write(ctx, func(tx *sql.Tx) error {
 		b, found, err := loadBinding(ctx, tx, a.HostSession)
 		if err != nil {

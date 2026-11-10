@@ -48,6 +48,24 @@ func TestBindRootResolution(t *testing.T) {
 	}
 }
 
+func TestBindRefusesAnEmptyArgument(t *testing.T) {
+	s := openStore(t)
+	whole := memory.BindArgs{HostSession: "h", Agent: "dev", ClaimedRoot: "h", Workspace: "ws"}
+	cases := map[string]func(a *memory.BindArgs){
+		"host session": func(a *memory.BindArgs) { a.HostSession = "" },
+		"agent":        func(a *memory.BindArgs) { a.Agent = "" },
+		"claimed root": func(a *memory.BindArgs) { a.ClaimedRoot = "" },
+		"workspace":    func(a *memory.BindArgs) { a.Workspace = "" },
+	}
+	for name, empty := range cases {
+		t.Run(name, func(t *testing.T) {
+			a := whole
+			empty(&a)
+			wantRefusal(t, s.Bind(context.Background(), a), "bind needs")
+		})
+	}
+}
+
 func TestBindRefreshesAgent(t *testing.T) {
 	s := openStore(t)
 	bind(t, s, "h", "dev", "h")

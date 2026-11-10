@@ -30,9 +30,17 @@ func TestOpenCodeConfigPath(t *testing.T) {
 	}
 }
 
+func TestOpenCodePromptPath(t *testing.T) {
+	got := model.OpenCodePromptPath("/home/user")
+	want := filepath.Join("/home/user", ".config/opencode", "AGENTS.md")
+	if got != want {
+		t.Errorf("OpenCodePromptPath = %q, want %q", got, want)
+	}
+}
+
 func TestOpenCodePluginPath(t *testing.T) {
-	got := model.OpenCodePluginPath("/home/user", "example.ts")
-	want := filepath.Join("/home/user", ".config/opencode", "plugins", "example.ts")
+	got := model.OpenCodePluginPath("/home/user", "engram.ts")
+	want := filepath.Join("/home/user", ".config/opencode", "plugins", "engram.ts")
 	if got != want {
 		t.Errorf("OpenCodePluginPath = %q, want %q", got, want)
 	}

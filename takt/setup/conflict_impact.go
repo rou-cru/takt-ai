@@ -57,11 +57,11 @@ func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry Ownershi
 	}
 }
 
-// injectedMCPServers names the MCP server keys InjectMemory and InjectCodegraph
+// injectedMCPServers names the MCP server keys InjectEngram, InjectMemory and InjectCodegraph
 // (takt/lifecycle) merge into opencode.json after deployment writes the
 // rendered artifact. They are never part of that artifact's own content, so a
 // plain byte comparison against it would read every fresh install as drift.
-var injectedMCPServers = []string{memory.ServerKey, "codegraph"}
+var injectedMCPServers = []string{"engram", memory.ServerKey, "codegraph"}
 
 // ContentMatches reports whether current already holds want the way deploy
 // would leave it: for opencode.json, MCP servers a later injection owns are

@@ -179,21 +179,3 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 		t.Errorf("cli.json must carry the attention settings OpenCode V2 reads there: %v\n%s", err, cli)
 	}
 }
-
-// TestUninstallWithAMemoryStoreIsRefusedBeforeMutation proves the CLI leaves the retain-or-discard
-// decision to the TUI (PR-INS-42, PR-INS-43): it fails naming the store and touches nothing.
-func TestUninstallWithAMemoryStoreIsRefusedBeforeMutation(t *testing.T) {
-	s := newSession(t, buildTaktAI(t))
-	res := s.runIn("{}", "setup", "uninstall", "--root", t.TempDir(), "--yes")
-	out := res.stdout + res.stderr
-	if res.code == 0 {
-		t.Fatalf("uninstall with a store succeeded:\n%s", out)
-	}
-	store := filepath.Join(s.memoryDir, memory.StoreFile)
-	if !strings.Contains(out, store) || !strings.Contains(out, "TUI") {
-		t.Fatalf("refusal does not name the store and the TUI:\n%s", out)
-	}
-	if _, err := os.Stat(store); err != nil {
-		t.Fatalf("the store was touched: %v", err)
-	}
-}

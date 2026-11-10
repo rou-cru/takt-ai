@@ -156,7 +156,7 @@ func verdictReplaceState(t *testing.T, f *vfs.FS, s vfs.StoredState) {
 func TestVerdictAuthorizesConsolidationAfterReopen(t *testing.T) {
 	f, root, state := verdictStore(t)
 	author := verdictBind(t, f, "rq34-author-unit", "3", "rq34-author",
-		vfs.InvariantSet{vfs.MemoryInvariant(15187), vfs.MemoryInvariant(15192)}, "rq34.txt")
+		vfs.InvariantSet{vfs.EngramInvariant(15187), vfs.EngramInvariant(15192)}, "rq34.txt")
 	gate := verdictGate(t, f, "rq34-author-unit", "1", "rq34-judge", author)
 	r := verdictCreate(t, f, author, "rq34-create", "rq34.txt", "rq34-content")
 	view := verdictJudge(t, f, gate, author)
