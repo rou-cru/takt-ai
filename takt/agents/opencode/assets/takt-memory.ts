@@ -51,6 +51,11 @@ class Unreachable extends Error {}
 
 const columnOf = (title: string) => Object.values(MATRIX_COLUMNS).find(column => title.startsWith(MATRIX_PREFIX) && title.endsWith(`: ${column}`))
 const isRootTitle = (title: string) => title.startsWith(MATRIX_PREFIX) && title.length > MATRIX_PREFIX.length && columnOf(title) === undefined
+// The root author records the root under its title and never relates it to a column.
+function checkRootRecord(title: string, targetTitle: string) {
+  if (!isRootTitle(title)) throw new Error(`The traceability matrix root is titled \`${MATRIX_PREFIX}<objective>\`; record it with that title.`)
+  if (columnOf(targetTitle)) throw new Error("That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction.")
+}
 const isMatrixTitle = (title: string) => title.startsWith(MATRIX_NAME)
 
 export default Plugin.define({
@@ -222,12 +227,6 @@ export default Plugin.define({
       if (!relation || !target?.exists) throw new Error(`Relate your ${own} column to the matrix: ${supplementRootHint(own)}; ${SUPERSEDE_HEAD_HINT}.`)
       const expected = await expectedColumnTitle(own, relation, target, targetTitle)
       if (title !== expected) throw new Error(`Title this entry exactly \`${expected}\`.`)
-    }
-
-    // The root author records the root under its title and never relates it to a column.
-    function checkRootRecord(title: string, targetTitle: string) {
-      if (!isRootTitle(title)) throw new Error(`The traceability matrix root is titled \`${MATRIX_PREFIX}<objective>\`; record it with that title.`)
-      if (columnOf(targetTitle)) throw new Error("That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction.")
     }
 
     // The title a column entry must carry, from the relation that places it in the matrix.
