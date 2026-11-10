@@ -31,6 +31,9 @@ const CODE_FENCE = "```"
 const MATRIX_NAME = "Traceability Matrix"
 const MATRIX_PREFIX = `${MATRIX_NAME}: `
 const MATRIX_ROOT_AUTHOR = "qa"
+// How a column entry is placed in the matrix, as the refusals word it.
+const supplementRootHint = (own: string) => `relate your first ${own} column entry to the matrix root with supplements`
+const SUPERSEDE_HEAD_HINT = "relate a later version to the head of your column chain with supersedes"
 const MATRIX_COLUMNS: Record<string, string> = { tpm: "Owning node", verify: "Evidence" }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
@@ -97,16 +100,15 @@ export default Plugin.define({
     }
 
     // An admin call; when the socket does not answer, the service is started once and the call retried.
-    async function admin(tool: string, build: (workspace: string) => Record<string, unknown>): Promise<unknown> {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          if (workspace === undefined || socket === undefined) throw new Unreachable("no workspace key")
-          return await rpc(tool, build(workspace))
-        } catch (error) {
-          if (!(error instanceof Unreachable)) throw error
-          if (attempt > 0) throw unavailable(error.message)
-          try { await start() } catch (startError) { throw unavailable(startError instanceof Error ? startError.message : String(startError)) }
-        }
+    async function admin(tool: string, build: (workspace: string) => Record<string, unknown>, retried = false): Promise<unknown> {
+      try {
+        if (workspace === undefined || socket === undefined) throw new Unreachable("no workspace key")
+        return await rpc(tool, build(workspace))
+      } catch (error) {
+        if (!(error instanceof Unreachable)) throw error
+        if (retried) throw unavailable(error.message)
+        try { await start() } catch (startError) { throw unavailable(startError instanceof Error ? startError.message : String(startError)) }
+        return admin(tool, build, true)
       }
     }
 
@@ -191,13 +193,13 @@ export default Plugin.define({
 
     // A matrix column chain starts with the entry that supplements the matrix root and continues with
     // the entries that supersede or correct it, whoever wrote them; this finds its start and the root title.
+    async function chainStart(head: Described): Promise<Described> {
+      const previous = head.outgoing?.find(r => r.kind === "supersedes" || r.kind === "corrects")
+      return previous ? chainStart(await describe(previous.entry)) : head
+    }
+
     async function columnChain(head: Described): Promise<{ start: string; root: string } | undefined> {
-      let current = head
-      for (;;) {
-        const previous = current.outgoing?.find(r => r.kind === "supersedes" || r.kind === "corrects")
-        if (!previous) break
-        current = await describe(previous.entry)
-      }
+      const current = await chainStart(head)
       const supplemented = current.outgoing?.find(r => r.kind === "supplements")
       if (!supplemented) return undefined
       const root = await describe(supplemented.entry)
@@ -214,29 +216,32 @@ export default Plugin.define({
       const targetTitle = target?.exists ? text(target.title) : ""
       if (!isMatrixTitle(title) && !isMatrixTitle(targetTitle)) return
       const own = MATRIX_COLUMNS[agent]
-      if (agent === MATRIX_ROOT_AUTHOR) {
-        if (!isRootTitle(title)) throw new Error(`The traceability matrix root is titled \`${MATRIX_PREFIX}<objective>\`; record it with that title.`)
-        if (columnOf(targetTitle)) throw new Error("That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction.")
-        return
-      }
+      if (agent === MATRIX_ROOT_AUTHOR) return checkRootRecord(title, targetTitle)
       if (own === undefined) throw new Error("Only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction.")
       if (isRootTitle(title)) throw new Error(`Only ${MATRIX_ROOT_AUTHOR} creates the traceability matrix root; record your column titled \`<matrix title>: ${own}\`.`)
-      const supplementRoot = `relate your first ${own} column entry to the matrix root with supplements`
-      const supersedeHead = `relate a later version to the head of your column chain with supersedes`
-      if (!relation || !target?.exists) throw new Error(`Relate your ${own} column to the matrix: ${supplementRoot}; ${supersedeHead}.`)
-      let expected: string
-      if (relation.relation === "supplements") {
-        if (!isRootTitle(targetTitle)) throw new Error(`A column supplements the matrix root, titled \`${MATRIX_PREFIX}<objective>\`; ${supplementRoot}.`)
-        expected = `${targetTitle}: ${own}`
-      } else if (relation.relation === "supersedes") {
-        const chain = await columnChain(target)
-        if (!chain) throw new Error(`The related entry is not a matrix column chain; ${supplementRoot}, or ${supersedeHead}.`)
-        expected = `${chain.root}: ${own}`
-        if (chain.start !== expected) throw new Error(`The related entry belongs to the column \`${chain.start}\`, which is not yours; relate to the head of your own column \`${expected}\` with supersedes, or use disputes to state a contradiction.`)
-      } else {
-        throw new Error(`A matrix column uses supplements for its first version or supersedes for a later one; change the relation.`)
-      }
+      if (!relation || !target?.exists) throw new Error(`Relate your ${own} column to the matrix: ${supplementRootHint(own)}; ${SUPERSEDE_HEAD_HINT}.`)
+      const expected = await expectedColumnTitle(own, relation, target, targetTitle)
       if (title !== expected) throw new Error(`Title this entry exactly \`${expected}\`.`)
+    }
+
+    // The root author records the root under its title and never relates it to a column.
+    function checkRootRecord(title: string, targetTitle: string) {
+      if (!isRootTitle(title)) throw new Error(`The traceability matrix root is titled \`${MATRIX_PREFIX}<objective>\`; record it with that title.`)
+      if (columnOf(targetTitle)) throw new Error("That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction.")
+    }
+
+    // The title a column entry must carry, from the relation that places it in the matrix.
+    async function expectedColumnTitle(own: string, relation: Record<string, unknown>, target: Described, targetTitle: string): Promise<string> {
+      if (relation.relation === "supplements") {
+        if (!isRootTitle(targetTitle)) throw new Error(`A column supplements the matrix root, titled \`${MATRIX_PREFIX}<objective>\`; ${supplementRootHint(own)}.`)
+        return `${targetTitle}: ${own}`
+      }
+      if (relation.relation !== "supersedes") throw new Error(`A matrix column uses supplements for its first version or supersedes for a later one; change the relation.`)
+      const chain = await columnChain(target)
+      if (!chain) throw new Error(`The related entry is not a matrix column chain; ${supplementRootHint(own)}, or ${SUPERSEDE_HEAD_HINT}.`)
+      const expected = `${chain.root}: ${own}`
+      if (chain.start !== expected) throw new Error(`The related entry belongs to the column \`${chain.start}\`, which is not yours; relate to the head of your own column \`${expected}\` with supersedes, or use disputes to state a contradiction.`)
+      return expected
     }
 
     // Vets a record and returns the grants the user approved for it.

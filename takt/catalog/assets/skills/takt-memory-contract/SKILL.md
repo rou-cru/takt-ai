@@ -78,8 +78,7 @@ per domain.
 - Pass an invariant only by the ID of its current version, never by summary or file path. A
   document the user supplies is recorded before it is passed, and from then on only its ID
   travels.
-- Verified repository state prevails over a contradicting Takt memory. When they
-  disagree, trust the repository and record an `observation` that `corrects` the entry. When
-  the entry is a decision, `corrects` needs the user's approval; without it, record the
-  disagreement as `disputes`.
+- Verified repository state prevails over a contradicting Takt memory: trust the repository and
+  record an `observation` that `corrects` the entry, or that `disputes` it when the entry is a
+  decision.
 - Present open `disputes` as open.

@@ -21,8 +21,9 @@ Do not write a session history.
 
 ## When
 
-- Close with `takt_memory_close_session` each time requested work is reported; a context
-  compaction is not a close.
+- Close with `takt_memory_close_session` each time requested work is reported or the user ends
+  the conversation, provided the session recorded entries since its last close. A context
+  compaction does not end the session: keep working and close at the next report.
 
 ## Never records
 

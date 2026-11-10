@@ -481,3 +481,30 @@ func TestStartRefusesADirectoryItCannotCreate(t *testing.T) {
 		t.Fatal("start created a directory under a regular file")
 	}
 }
+
+// TestStopOwnerDoesNotSignalWhenItsContextEnded proves an ended context, which never tried the lock, is not
+// taken as a live owner: the PID in the lock file stays unsignaled.
+func TestStopOwnerDoesNotSignalWhenItsContextEnded(t *testing.T) {
+	dir := shortDir(t)
+	bystander := exec.Command("sleep", "60")
+	if err := bystander.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- bystander.Wait() }()
+	t.Cleanup(func() { _ = bystander.Process.Kill() })
+	if err := os.WriteFile(filepath.Join(dir, memory.LockFile), []byte(strconv.Itoa(bystander.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var unavailable *memory.UnavailableError
+	if err := memory.StopOwner(ctx, dir); !errors.As(err, &unavailable) {
+		t.Fatalf("StopOwner() error = %v, want an unavailable error", err)
+	}
+	select {
+	case err := <-exited:
+		t.Fatalf("the process named in the lock file was signaled and exited: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+}

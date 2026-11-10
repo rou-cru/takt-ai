@@ -6,12 +6,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 )
@@ -136,18 +135,31 @@ func TestRunInstallStartsTheMemoryService(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(base) })
 	dir := filepath.Join(base, "memory")
 	t.Setenv(memory.EnvDir, dir)
-	t.Cleanup(func() {
-		if raw, err := os.ReadFile(filepath.Join(dir, memory.LockFile)); err == nil {
-			if pid, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil {
-				_ = syscall.Kill(pid, syscall.SIGTERM)
-			}
-		}
-	})
+	t.Cleanup(func() { _ = memory.StopOwner(context.Background(), dir) })
 
 	if _, err := (Runtime{Model: fakeModel(t), StartMemory: true}).Run(ctx, "install", t.TempDir(), setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if status, err := memory.Probe(ctx, dir); err != nil || status.State != memory.StateReady {
 		t.Fatalf("memory service after install: %+v, %v", status, err)
+	}
+}
+
+// TestRunInstallKeepsAModelAlreadyInstalled verifies a later install or sync needs no network for a model
+// whose files are present and match the manifest.
+func TestRunInstallKeepsAModelAlreadyInstalled(t *testing.T) {
+	root := t.TempDir()
+	request := setuputil.TestPlanRequest()
+	manifest := fakeModel(t)
+	if _, err := (Runtime{Model: manifest}).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("first install error = %v", err)
+	}
+	offline := *manifest
+	offline.BaseURL = "http://127.0.0.1:1"
+	if _, err := (Runtime{Model: &offline}).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("install with the model present and the host unreachable: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(embed.ModelDir(root), manifest.Files[0].Name)); err != nil {
+		t.Fatalf("model file missing: %v", err)
 	}
 }
