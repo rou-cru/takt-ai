@@ -6,7 +6,7 @@
 import "github.com/rou-cru/takt-ai/takt/doctor"
 ```
 
-Package doctor implements the \`takt\-ai doctor\` system health check: tool availability in PATH, ownership\-manifest deployment state, engram reachability, and free disk space.
+Package doctor implements the \`takt\-ai doctor\` system health check: tool availability in PATH, ownership\-manifest deployment state, memory service status, and free disk space.
 
 ## Index
 

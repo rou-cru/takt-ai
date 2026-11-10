@@ -23,8 +23,8 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func CurrentHolder\(h \*history.History, root string\) string](<#CurrentHolder>)
 - [func Declare\(h \*history.History, journalRef, session, version, baseVersion string, units \[\]PlanUnit, withdrawals \[\]string, qaRound ...\*history.QARound\) error](<#Declare>)
 - [func DeclareRecovery\(h \*history.History, p AdmissionPolicy, journalRef, event, session string, d RecoveryDeclaration\) error](<#DeclareRecovery>)
+- [func DeliveryRefusal\(cause error, retry string\) error](<#DeliveryRefusal>)
 - [func Except\(h \*history.History, journalRef, event, session, bound, objective string, allowance int\) error](<#Except>)
-- [func ExpectedArtifact\(h \*history.History, root string\) string](<#ExpectedArtifact>)
 - [func Finish\(h \*history.History, journalRef, event, session string\) error](<#Finish>)
 - [func FinishActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind, outcome history.Outcome\) error](<#FinishActivity>)
 - [func Handoff\(h \*history.History, journalRef, root, callerSession, result string\) error](<#Handoff>)
@@ -38,19 +38,21 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 - [func SeatEntry\(root, unit, attempt string, s Seat\) history.Entry](<#SeatEntry>)
 - [func StartActivity\(h \*history.History, session, activityID string, nodeKind history.NodeKind, owner string\) error](<#StartActivity>)
 - [func SubstituteIdentity\(agent string\) \(\[\]string, error\)](<#SubstituteIdentity>)
-- [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent, expectedArtifact string\) error](<#Switch>)
+- [func Switch\(h \*history.History, journalRef, root, childSession, targetAgent string, bind func\(\) error\) error](<#Switch>)
 - [func UncertainFlight\(f history.Flight\) bool](<#UncertainFlight>)
+- [func ValidateDelivery\(ctx context.Context, check MemoryCheck, session string, ids \[\]int64\) error](<#ValidateDelivery>)
+- [func ValidateHandoff\(ctx context.Context, h \*history.History, check MemoryCheck, root, callerSession string, outcome HandoffOutcome\) error](<#ValidateHandoff>)
 - [func ValidateSeat\(h \*history.History, root string, s Seat\) error](<#ValidateSeat>)
+- [func ValidateSwitch\(h \*history.History, root, targetAgent string\) error](<#ValidateSwitch>)
 - [func Withdraw\(h \*history.History, journalRef, event, session string\) error](<#Withdraw>)
 - [type AdmissionPolicy](<#AdmissionPolicy>)
   - [func LoadAdmissionPolicy\(\) \(AdmissionPolicy, error\)](<#LoadAdmissionPolicy>)
 - [type AdmissionRequest](<#AdmissionRequest>)
 - [type Envelope](<#Envelope>)
-  - [func BuildAbortEnvelope\(h \*history.History, journalRef, memoryRoot, root, childSession, reason, origin string\) \(Envelope, string, error\)](<#BuildAbortEnvelope>)
-  - [func BuildHandoffEnvelope\(h \*history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome\) \(Envelope, error\)](<#BuildHandoffEnvelope>)
+  - [func BuildAbortEnvelope\(h \*history.History, journalRef, root, childSession, reason, origin string\) \(Envelope, string, error\)](<#BuildAbortEnvelope>)
+  - [func BuildHandoffEnvelope\(ctx context.Context, h \*history.History, journalRef string, check MemoryCheck, root, callerSession string, outcome HandoffOutcome\) \(Envelope, error\)](<#BuildHandoffEnvelope>)
 - [type HandoffOutcome](<#HandoffOutcome>)
-- [type MemoryIndex](<#MemoryIndex>)
-  - [func LentEntries\(h \*history.History, memoryRoot, root, child string, after int64\) \(MemoryIndex, error\)](<#LentEntries>)
+- [type MemoryCheck](<#MemoryCheck>)
 - [type PlanUnit](<#PlanUnit>)
 - [type RecoveryDeclaration](<#RecoveryDeclaration>)
 - [type Seat](<#Seat>)
@@ -197,6 +199,15 @@ func DeclareRecovery(h *history.History, p AdmissionPolicy, journalRef, event, s
 
 DeclareRecovery admits bounded recovery of an objective. Consecutive failed recoveries close autonomous recovery for it until an enabling user decision is recorded; the objective identity carries that history \(PR\-HAR\-21, PR\-HAR\-22\).
 
+<a name="DeliveryRefusal"></a>
+## func DeliveryRefusal
+
+```go
+func DeliveryRefusal(cause error, retry string) error
+```
+
+DeliveryRefusal words a refused delivery: the cause and the continuation that makes a delivery valid \(PR\-HAR\-24\). retry is the call that delivers.
+
 <a name="Except"></a>
 ## func Except
 
@@ -205,15 +216,6 @@ func Except(h *history.History, journalRef, event, session, bound, objective str
 ```
 
 Except records a scoped user exception before it enables further work: the bound, the scope and a finite additional allowance \(consumption already recorded stands, PR\-HAR\-22\). An exception that could enable nothing is refused with the one that would. event only labels the record, defaulting to the objective or the bound when there is none.
-
-<a name="ExpectedArtifact"></a>
-## func ExpectedArtifact
-
-```go
-func ExpectedArtifact(h *history.History, root string) string
-```
-
-ExpectedArtifact returns the standard document path declared by the active switch for root, or "" when it declares none.
 
 <a name="Finish"></a>
 ## func Finish
@@ -336,10 +338,10 @@ SubstituteIdentity returns the installed PERSONA and SOUL texts of agent's insta
 ## func Switch
 
 ```go
-func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error
+func Switch(h *history.History, journalRef, root, childSession, targetAgent string, bind func() error) error
 ```
 
-Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). expectedArtifact is the standard artifact path this switch declares, fixed here and never renegotiated \(PR\-HAR\-24\).
+Switch registers a new temporary interlocutor\-stack holder for root. Only a targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is eligible \(IR\-1\); a root with an active holder refuses a second one \(IR\-19: no chaining\). A refused switch is recorded as a denial and never calls bind; bind runs once the checks pass, and its failure fails the switch and records nothing.
 
 <a name="UncertainFlight"></a>
 ## func UncertainFlight
@@ -350,6 +352,24 @@ func UncertainFlight(f history.Flight) bool
 
 UncertainFlight says whether execution is unestablished: its launch or liveness is uncertain, or its capture was lost. Both are reconciled the same way and hold their reservation until then \(PR\-HAR\-18, PR\-OBS\-BUS\-7\).
 
+<a name="ValidateDelivery"></a>
+## func ValidateDelivery
+
+```go
+func ValidateDelivery(ctx context.Context, check MemoryCheck, session string, ids []int64) error
+```
+
+ValidateDelivery checks the entry IDs a session delivers: written by that exact session and current. A completed delivery without IDs is refused.
+
+<a name="ValidateHandoff"></a>
+## func ValidateHandoff
+
+```go
+func ValidateHandoff(ctx context.Context, h *history.History, check MemoryCheck, root, callerSession string, outcome HandoffOutcome) error
+```
+
+ValidateHandoff is the check a handoff passes before it is recorded, and before the user is asked \(PR\-HAR\-23\): only the holder may hand off; a result is within its enumeration and every extra artifact is a resolvable reference \(PR\-HAR\-25\); a completed result delivers valid IDs; an early close with no result passes without a placeholder, and any IDs it declares are still validated \(PR\-HAR\-24\).
+
 <a name="ValidateSeat"></a>
 ## func ValidateSeat
 
@@ -358,6 +378,15 @@ func ValidateSeat(h *history.History, root string, s Seat) error
 ```
 
 ValidateSeat refuses a restoration PR\-CRW\-13 does not admit, before any admission is spent: the orchestrator seat, a restoration without a reason or model, a substitute before any reassignment of that seat, and, without the user's approval, a model this session has not seen complete work.
+
+<a name="ValidateSwitch"></a>
+## func ValidateSwitch
+
+```go
+func ValidateSwitch(h *history.History, root, targetAgent string) error
+```
+
+ValidateSwitch runs, read\-only, the checks Switch runs before it binds and records: the role of targetAgent and the active holder of root \(PR\-HAR\-23\).
 
 <a name="Withdraw"></a>
 ## func Withdraw
@@ -427,14 +456,14 @@ type AdmissionRequest struct {
 <a name="Envelope"></a>
 ## type Envelope
 
-Envelope is the IR\-22 output envelope: exactly these four fields.
+Envelope is the IR\-22 output envelope: exactly these four fields. Memory is the delivered, validated entry IDs; a synthesized abort leaves it empty.
 
 ```go
 type Envelope struct {
-    Result            string      `json:"result"`
-    AdditionalContext string      `json:"additional_context"`
-    ExtraArtifacts    []string    `json:"extra_artifacts"`
-    Memory            MemoryIndex `json:"memory"`
+    Result            string   `json:"result"`
+    AdditionalContext string   `json:"additional_context"`
+    ExtraArtifacts    []string `json:"extra_artifacts"`
+    Memory            []int64  `json:"memory"`
 }
 ```
 
@@ -442,24 +471,24 @@ type Envelope struct {
 ### func BuildAbortEnvelope
 
 ```go
-func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (Envelope, string, error)
+func BuildAbortEnvelope(h *history.History, journalRef, root, childSession, reason, origin string) (Envelope, string, error)
 ```
 
-BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and synthesizes its envelope: no negotiated result, the abort's evidence as additional context, and the entries the lent session recorded. It also returns the aborted session.
+BuildAbortEnvelope ends the temporary holder's turn \(IR\-24\) and synthesizes its envelope: no negotiated result, the abort's evidence as additional context, and no memory entries. It also returns the aborted session.
 
 <a name="BuildHandoffEnvelope"></a>
 ### func BuildHandoffEnvelope
 
 ```go
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (Envelope, error)
+func BuildHandoffEnvelope(ctx context.Context, h *history.History, journalRef string, check MemoryCheck, root, callerSession string, outcome HandoffOutcome) (Envelope, error)
 ```
 
-BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this session for delivered results; extra filesystem artifacts are optional and do not establish a handoff. memoryRoot is where the memory session index lives.
+BuildHandoffEnvelope requires memory IDs the holder itself recorded in this lent session for delivered results; extra filesystem artifacts are optional and do not establish a handoff.
 
 <a name="HandoffOutcome"></a>
 ## type HandoffOutcome
 
-HandoffOutcome is the negotiated result a handoff envelope carries: the IR\-23 result, any additional context, extra filesystem artifacts, and the Engram IDs the holder recorded for delivered results.
+HandoffOutcome is the negotiated result a handoff envelope carries: the IR\-23 result, any additional context, extra filesystem artifacts, and the memory entry IDs the holder recorded for delivered results.
 
 ```go
 type HandoffOutcome struct {
@@ -470,26 +499,14 @@ type HandoffOutcome struct {
 }
 ```
 
-<a name="MemoryIndex"></a>
-## type MemoryIndex
+<a name="MemoryCheck"></a>
+## type MemoryCheck
 
-MemoryIndex is the bounded IR\-22 index of the entries a lent session recorded. NextAfter is the last listed entry when more remain, the cursor LentEntries pages from; zero when the index is complete.
-
-```go
-type MemoryIndex struct {
-    Entries   []int64 `json:"entries"`
-    NextAfter int64   `json:"next_after,omitempty"`
-}
-```
-
-<a name="LentEntries"></a>
-### func LentEntries
+MemoryCheck validates entry IDs against a rule through the memory service's one validator.
 
 ```go
-func LentEntries(h *history.History, memoryRoot, root, child string, after int64) (MemoryIndex, error)
+type MemoryCheck func(ctx context.Context, ids []int64, rule memory.Rule) (memory.DescribeResult, error)
 ```
-
-LentEntries pages the memory index of child, a session that held root's interface, from the entry after. Any other session is refused: the index never carries unrelated root\-session history \(IR\-22\).
 
 <a name="PlanUnit"></a>
 ## type PlanUnit

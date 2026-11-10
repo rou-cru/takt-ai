@@ -6,57 +6,189 @@
 import "github.com/rou-cru/takt-ai/takt/memory"
 ```
 
-Package memory writes agent memories into Engram with harness\-owned metadata, links and session anchors.
-
 Package memory is Takt's own memory store: a SQLite database owned by the memory service.
 
 ## Index
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
-- [func Capabilities\(req CapabilitiesRequest\) \[\]string](<#Capabilities>)
-- [func Continue\(ctx context.Context, cfg Config, req ContinueRequest\) \(err error\)](<#Continue>)
-- [func EntryIDsByAuthor\(root, session, author string\) \(\[\]int64, error\)](<#EntryIDsByAuthor>)
-- [func EntryIDsByCaller\(root, session, caller string\) \(\[\]int64, error\)](<#EntryIDsByCaller>)
-- [func EntryIDsForSession\(root, session string\) \(\[\]int64, error\)](<#EntryIDsForSession>)
+- [func Assess\(ctx context.Context, dir string\) \(StatusOutput, Health, error\)](<#Assess>)
+- [func FormatSessions\(list \[\]SessionInfo\) string](<#FormatSessions>)
 - [func Init\(dir string\) error](<#Init>)
 - [func PrefixedToolName\(tool string\) string](<#PrefixedToolName>)
-- [func ResolveProject\(ctx context.Context, cfg Config, dir string\) string](<#ResolveProject>)
-- [func ValidateResultIDs\(ctx context.Context, cfg Config, ids \[\]int64\) error](<#ValidateResultIDs>)
-- [func ValidateSessionResultIDs\(ctx context.Context, cfg Config, session, author string, ids \[\]int64\) error](<#ValidateSessionResultIDs>)
-- [type CapabilitiesRequest](<#CapabilitiesRequest>)
-- [type CloseRequest](<#CloseRequest>)
-- [type CloseResult](<#CloseResult>)
-  - [func Close\(ctx context.Context, cfg Config, req CloseRequest\) \(result CloseResult, err error\)](<#Close>)
-- [type Config](<#Config>)
-- [type ContinueRequest](<#ContinueRequest>)
-- [type RecordRequest](<#RecordRequest>)
+- [func ResolveDir\(\) \(string, error\)](<#ResolveDir>)
+- [func RunAdapter\(ctx context.Context, dir string, opts AdapterOptions, in io.Reader, out io.Writer\) error](<#RunAdapter>)
+- [func Serve\(ctx context.Context, dir, version string\) \(err error\)](<#Serve>)
+- [func SocketPath\(dir string\) \(string, error\)](<#SocketPath>)
+- [func StopOwner\(ctx context.Context, dir string\) \(err error\)](<#StopOwner>)
+- [func WorkspaceKey\(ctx context.Context, dir string\) string](<#WorkspaceKey>)
+- [type AdapterOptions](<#AdapterOptions>)
+- [type Admin](<#Admin>)
+  - [func DialAdmin\(ctx context.Context, dir string\) \(\*Admin, error\)](<#DialAdmin>)
+  - [func \(a \*Admin\) Backup\(ctx context.Context, in BackupInput\) \(BackupOutput, error\)](<#Admin.Backup>)
+  - [func \(a \*Admin\) Bind\(ctx context.Context, in BindArgs\) error](<#Admin.Bind>)
+  - [func \(a \*Admin\) Close\(\) error](<#Admin.Close>)
+  - [func \(a \*Admin\) Describe\(ctx context.Context, in DescribeInput\) \(DescribeResult, error\)](<#Admin.Describe>)
+  - [func \(a \*Admin\) Init\(ctx context.Context\) \(StatusOutput, error\)](<#Admin.Init>)
+  - [func \(a \*Admin\) Status\(ctx context.Context\) \(StatusOutput, error\)](<#Admin.Status>)
+- [type BackupInput](<#BackupInput>)
+- [type BackupOutput](<#BackupOutput>)
+- [type BindArgs](<#BindArgs>)
+- [type CloseInput](<#CloseInput>)
+- [type ContinueInput](<#ContinueInput>)
+- [type DescribeInput](<#DescribeInput>)
+- [type DescribeResult](<#DescribeResult>)
+  - [func Validate\(ctx context.Context, a \*Admin, ids \[\]int64, rule Rule\) \(DescribeResult, error\)](<#Validate>)
+- [type Described](<#Described>)
+- [type DescribedRelation](<#DescribedRelation>)
+- [type Health](<#Health>)
+- [type Hit](<#Hit>)
+- [type Identity](<#Identity>)
+- [type OutlineEntry](<#OutlineEntry>)
+- [type ReadInput](<#ReadInput>)
+- [type ReadResult](<#ReadResult>)
+  - [func \(r ReadResult\) Text\(\) string](<#ReadResult.Text>)
+- [type RecordArgs](<#RecordArgs>)
 - [type RecordResult](<#RecordResult>)
-  - [func Record\(ctx context.Context, cfg Config, req RecordRequest\) \(result RecordResult, err error\)](<#Record>)
+- [type RecordedClose](<#RecordedClose>)
+- [type RefusalError](<#RefusalError>)
+  - [func \(e \*RefusalError\) Error\(\) string](<#RefusalError.Error>)
 - [type RelatesTo](<#RelatesTo>)
-- [type SearchHit](<#SearchHit>)
-- [type SearchRequest](<#SearchRequest>)
+- [type RelationView](<#RelationView>)
+- [type Rule](<#Rule>)
+- [type SearchArgs](<#SearchArgs>)
 - [type SearchResult](<#SearchResult>)
-  - [func Search\(ctx context.Context, cfg Config, req SearchRequest\) \(SearchResult, error\)](<#Search>)
+  - [func \(r SearchResult\) Text\(\) string](<#SearchResult.Text>)
+- [type SessionClose](<#SessionClose>)
+- [type SessionInfo](<#SessionInfo>)
+- [type SessionLine](<#SessionLine>)
+- [type SessionsInput](<#SessionsInput>)
+- [type StatusOutput](<#StatusOutput>)
+  - [func Ensure\(ctx context.Context, dir string\) \(StatusOutput, error\)](<#Ensure>)
+  - [func Probe\(ctx context.Context, dir string\) \(\_ StatusOutput, err error\)](<#Probe>)
+  - [func Start\(ctx context.Context, dir string, create bool\) \(\_ StatusOutput, err error\)](<#Start>)
 - [type Store](<#Store>)
   - [func Open\(dir string\) \(\*Store, error\)](<#Open>)
   - [func \(s \*Store\) Backup\(ctx context.Context, path string\) \(string, int64, error\)](<#Store.Backup>)
+  - [func \(s \*Store\) Bind\(ctx context.Context, a BindArgs\) error](<#Store.Bind>)
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
+  - [func \(s \*Store\) CloseSession\(ctx context.Context, id Identity, objective, state string\) \(RecordedClose, error\)](<#Store.CloseSession>)
+  - [func \(s \*Store\) ContinueSession\(ctx context.Context, id Identity, previousID string\) \(string, error\)](<#Store.ContinueSession>)
+  - [func \(s \*Store\) Coverage\(ctx context.Context\) \(covered, total int64, err error\)](<#Store.Coverage>)
+  - [func \(s \*Store\) Describe\(ctx context.Context, ids \[\]int64\) \(DescribeResult, error\)](<#Store.Describe>)
+  - [func \(s \*Store\) EmbedPending\(ctx context.Context, model \*embed.Model\) error](<#Store.EmbedPending>)
+  - [func \(s \*Store\) Read\(ctx context.Context, id int64, sectionHeading string\) \(ReadResult, error\)](<#Store.Read>)
+  - [func \(s \*Store\) Record\(ctx context.Context, id Identity, a RecordArgs\) \(RecordResult, error\)](<#Store.Record>)
+  - [func \(s \*Store\) Search\(ctx context.Context, id Identity, a SearchArgs, model \*embed.Model\) \(SearchResult, error\)](<#Store.Search>)
+  - [func \(s \*Store\) Sessions\(ctx context.Context, id Identity, query string, allWorkspaces bool, limit int\) \(\[\]SessionInfo, error\)](<#Store.Sessions>)
+- [type SupplementView](<#SupplementView>)
 - [type Tool](<#Tool>)
-- [type ValidationError](<#ValidationError>)
-  - [func \(e \*ValidationError\) Error\(\) string](<#ValidationError.Error>)
+- [type UnavailableError](<#UnavailableError>)
+  - [func \(e \*UnavailableError\) Error\(\) string](<#UnavailableError.Error>)
 
 
 ## Constants
 
-<a name="PrivateStateDirectoryMode"></a>Privacy modes keep memory session state owner\-only.
+<a name="NatureProposal"></a>Natures of an entry.
 
 ```go
 const (
-    // PrivateStateDirectoryMode protects the memory session directory.
-    PrivateStateDirectoryMode os.FileMode = 0o700
-    // PrivateStateFileMode protects the memory session index lock.
-    PrivateStateFileMode os.FileMode = 0o600
+    NatureProposal    = "proposal"
+    NatureDecision    = "decision"
+    NatureObservation = "observation"
+    NatureHypothesis  = "hypothesis"
+)
+```
+
+<a name="ScopeWorkspace"></a>Scopes of an entry; each names the tier the entry lives in.
+
+```go
+const (
+    ScopeWorkspace = "workspace"
+    ScopeGlobal    = "global"
+)
+```
+
+<a name="RelationCorrects"></a>Relation kinds between entries \(MEM\-SCP\-4\).
+
+```go
+const (
+    RelationCorrects    = "corrects"
+    RelationSupersedes  = "supersedes"
+    RelationSupplements = "supplements"
+    RelationExceptionTo = "exception-to"
+    RelationDisputes    = "disputes"
+)
+```
+
+<a name="PrincipalCrew"></a>Principals that reach the service.
+
+```go
+const (
+    PrincipalCrew     = "crew"
+    PrincipalExternal = "external"
+)
+```
+
+<a name="ModeLexical"></a>Search modes.
+
+```go
+const (
+    ModeLexical  = "lexical"
+    ModeSemantic = "semantic"
+)
+```
+
+<a name="SocketFile"></a>Files of the memory directory beside the store.
+
+```go
+const (
+    SocketFile = "memory.sock"
+    LockFile   = "serve.lock"
+)
+```
+
+<a name="PathCrew"></a>Request paths of the service, one per principal.
+
+```go
+const (
+    PathCrew     = "/crew"
+    PathExternal = "/external"
+    PathAdmin    = "/admin"
+)
+```
+
+<a name="MetaHostSession"></a>MCP request \`\_meta\` keys that carry the caller's identity \(MEM\-AUT\-7\).
+
+```go
+const (
+    // MetaHostSession is the host session OpenCode sends on every tool call.
+    MetaHostSession = "ai.opencode/sessionID"
+    // MetaExternalSession is the session key the stdio adapter generates once per process.
+    MetaExternalSession = "takt/session"
+    // MetaExternalWorkspace is the key of the adapter's --workspace directory.
+    MetaExternalWorkspace = "takt/workspace"
+)
+```
+
+<a name="StateReady"></a>Readiness states \`status\` reports.
+
+```go
+const (
+    StateReady      = "ready"
+    StateNoStore    = "no_store"
+    StateCorrupt    = "corrupt"
+    StateNewerStore = "newer_store"
+)
+```
+
+<a name="SessionClosed"></a>States of a listed session.
+
+```go
+const (
+    SessionClosed  = "closed"
+    SessionOpen    = "open"
+    SessionCurrent = "current" // the caller's own open session
 )
 ```
 
@@ -85,6 +217,22 @@ const (
 )
 ```
 
+<a name="EnvDir"></a>EnvDir relocates the memory directory, as deployments do.
+
+```go
+const EnvDir = "TAKT_MEMORY_DIR"
+```
+
+<a name="ProbeTimeout"></a>
+
+```go
+const (
+    // ProbeTimeout bounds one status query so a stuck owner cannot stall a caller; every caller of Probe
+    // uses it.
+    ProbeTimeout = 2 * time.Second
+)
+```
+
 <a name="ServerKey"></a>ServerKey is the MCP server key clients register the service under; it is distinctive so it never replaces or collides with a user's server under a generic key such as "memory".
 
 ```go
@@ -98,6 +246,26 @@ const StoreFile = "memory.db"
 ```
 
 ## Variables
+
+<a name="ErrUnreachable"></a>Outcomes of probing the service that the doctor reports apart \(PR\-MSV\-33\).
+
+```go
+var (
+    // ErrUnreachable means nothing accepted a connection on the socket.
+    ErrUnreachable = errors.New("the Takt memory service is unreachable")
+    // ErrMalformed means something answered that is not a valid memory service.
+    ErrMalformed = errors.New("the Takt memory service answered with a malformed response")
+)
+```
+
+<a name="Natures"></a>Natures and Relations list every valid value; the MCP input schema enums are built from them.
+
+```go
+var (
+    Natures   = []string{NatureProposal, NatureDecision, NatureObservation, NatureHypothesis}
+    Relations = []string{RelationCorrects, RelationSupersedes, RelationSupplements, RelationExceptionTo, RelationDisputes}
+)
+```
 
 <a name="ErrNoStore"></a>
 
@@ -173,50 +341,23 @@ var Tools = []Tool{
 }
 ```
 
-<a name="Capabilities"></a>
-## func Capabilities
+<a name="Assess"></a>
+## func Assess
 
 ```go
-func Capabilities(req CapabilitiesRequest) []string
+func Assess(ctx context.Context, dir string) (StatusOutput, Health, error)
 ```
 
-Capabilities projects session ownership without writing memory. An unavailable ownership authority hides lifecycle operations, but never prevents recording.
+Assess probes the owner of dir without starting it \(PR\-MSV\-33\) and classifies the answer. The status is valid unless the health is HealthUnreachable or HealthMalformed; for HealthMalformed, err says why.
 
-<a name="Continue"></a>
-## func Continue
+<a name="FormatSessions"></a>
+## func FormatSessions
 
 ```go
-func Continue(ctx context.Context, cfg Config, req ContinueRequest) (err error)
+func FormatSessions(list []SessionInfo) string
 ```
 
-Continue declares the previous session the current one continues; an empty PreviousSession withdraws the declaration. The link is fixed by start on the session's first entry, so a wrong declaration never becomes permanent. The previous session may belong to any project: one objective can span several.
-
-<a name="EntryIDsByAuthor"></a>
-## func EntryIDsByAuthor
-
-```go
-func EntryIDsByAuthor(root, session, author string) ([]int64, error)
-```
-
-EntryIDsByAuthor returns the ids of the entries author recorded within session: what that author may present as its own delivered results.
-
-<a name="EntryIDsByCaller"></a>
-## func EntryIDsByCaller
-
-```go
-func EntryIDsByCaller(root, session, caller string) ([]int64, error)
-```
-
-EntryIDsByCaller returns the ids of the entries recorded within session from the host session caller: what that exact agent session authored.
-
-<a name="EntryIDsForSession"></a>
-## func EntryIDsForSession
-
-```go
-func EntryIDsForSession(root, session string) ([]int64, error)
-```
-
-EntryIDsForSession returns the ids of every memory entry created within session, so a caller can report them without the specialist declaring them itself \(MEM\-AUT\-6\). Returns an empty slice, not an error, when the session has no index yet.
+FormatSessions renders a listing as the text the sessions tool returns.
 
 <a name="Init"></a>
 ## func Init
@@ -236,238 +377,631 @@ func PrefixedToolName(tool string) string
 
 PrefixedToolName is the name OpenCode gives a tool of the memory MCP server: the server key, an underscore, and the tool.
 
-<a name="ResolveProject"></a>
-## func ResolveProject
+<a name="ResolveDir"></a>
+## func ResolveDir
 
 ```go
-func ResolveProject(ctx context.Context, cfg Config, dir string) string
+func ResolveDir() (string, error)
 ```
 
-ResolveProject reports the Engram project name for dir, the same resolution Record/Continue/Close use — exported for read\-only callers \(e.g. doctor\) that need it without writing anything.
+ResolveDir is the single definition of the memory directory: TAKT\_MEMORY\_DIR when set, else \~/.takt\-ai/memory.
 
-<a name="ValidateResultIDs"></a>
-## func ValidateResultIDs
+<a name="RunAdapter"></a>
+## func RunAdapter
 
 ```go
-func ValidateResultIDs(ctx context.Context, cfg Config, ids []int64) error
+func RunAdapter(ctx context.Context, dir string, opts AdapterOptions, in io.Reader, out io.Writer) error
 ```
 
-ValidateResultIDs checks that a handoff names distinct, existing Engram entries. Content and suitability remain the orchestrator's judgment.
+RunAdapter is the stdio MCP adapter: it ensures the owner, then relays each JSON\-RPC line of in to the owner as one POST and writes one line to out per JSON response. A notification produces no output. It returns when in ends.
 
-<a name="ValidateSessionResultIDs"></a>
-## func ValidateSessionResultIDs
+<a name="Serve"></a>
+## func Serve
 
 ```go
-func ValidateSessionResultIDs(ctx context.Context, cfg Config, session, author string, ids []int64) error
+func Serve(ctx context.Context, dir, version string) (err error)
 ```
 
-ValidateSessionResultIDs accepts only results author itself recorded in session: an existing entry from another author, session or project is not this delivery's result.
+Serve runs the memory service on the existing directory dir until ctx ends. It returns the reason when it cannot start. It never creates the directory or the store: without a store the service is not ready and answers only \`status\` and \`init\`. version is the release version \`status\` reports.
 
-<a name="CapabilitiesRequest"></a>
-## type CapabilitiesRequest
-
-CapabilitiesRequest identifies a harness\-resolved caller without model input.
+<a name="SocketPath"></a>
+## func SocketPath
 
 ```go
-type CapabilitiesRequest struct {
-    // CallerSession is the harness-delivered host session running the tool.
-    // When present, the root Session is resolved from the execution history
-    // under the workspace lock instead of being accepted from the caller.
-    CallerSession string `json:"caller_session,omitempty"`
-    Author        string `json:"author"`
-    Session       string `json:"session"`
-    Directory     string `json:"directory"`
+func SocketPath(dir string) (string, error)
+```
+
+SocketPath is the owner's socket inside dir. A path the platform cannot bind is refused, naming the limit.
+
+<a name="StopOwner"></a>
+## func StopOwner
+
+```go
+func StopOwner(ctx context.Context, dir string) (err error)
+```
+
+StopOwner sends SIGTERM to the PID in the lock file and waits, bounded, for the lock to be released. An owner that is already gone is not a failure.
+
+<a name="WorkspaceKey"></a>
+## func WorkspaceKey
+
+```go
+func WorkspaceKey(ctx context.Context, dir string) string
+```
+
+WorkspaceKey is the single definition of the workspace key of dir: the git origin's repository name, else the repository top level's name, else the directory's name, normalized.
+
+<a name="AdapterOptions"></a>
+## type AdapterOptions
+
+AdapterOptions are the flags of \`takt\-ai memory mcp\`.
+
+```go
+type AdapterOptions struct {
+    // Crew relays to /crew with every message unchanged; otherwise to /external with identity added.
+    Crew bool
+    // Workspace is the external client's workspace directory; empty means no workspace.
+    Workspace string
 }
 ```
 
-<a name="CloseRequest"></a>
-## type CloseRequest
+<a name="Admin"></a>
+## type Admin
 
-CloseRequest ends a session and optionally records its outcome.
+Admin is a connection to /admin for Takt's own callers \(PR\-MSV\-41\).
 
 ```go
-type CloseRequest struct {
-    // CallerSession is the harness-delivered host session running the tool.
-    // When present, the root Session is resolved from the execution history
-    // under the workspace lock instead of being accepted from the caller.
-    CallerSession string `json:"caller_session,omitempty"`
-    Author        string `json:"author"`
-    Session       string `json:"session"`
-    Directory     string `json:"directory"`
-    Objective     string `json:"objective,omitempty"`
-    State         string `json:"state,omitempty"`
-    Fallback      bool   `json:"fallback"`
+type Admin struct {
+    // contains filtered or unexported fields
 }
 ```
 
-<a name="CloseResult"></a>
-## type CloseResult
-
-CloseResult reports the end anchor and how many entries the session recorded.
+<a name="DialAdmin"></a>
+### func DialAdmin
 
 ```go
-type CloseResult struct {
-    EndAnchorID int64 `json:"end_anchor_id"`
-    Entries     int   `json:"entries"`
+func DialAdmin(ctx context.Context, dir string) (*Admin, error)
+```
+
+DialAdmin connects to the owner of dir. It never starts the owner; see Ensure.
+
+<a name="Admin.Backup"></a>
+### func \(\*Admin\) Backup
+
+```go
+func (a *Admin) Backup(ctx context.Context, in BackupInput) (BackupOutput, error)
+```
+
+Backup writes a consistent copy of the store to a path that does not exist yet.
+
+<a name="Admin.Bind"></a>
+### func \(\*Admin\) Bind
+
+```go
+func (a *Admin) Bind(ctx context.Context, in BindArgs) error
+```
+
+Bind records a crew binding.
+
+<a name="Admin.Close"></a>
+### func \(\*Admin\) Close
+
+```go
+func (a *Admin) Close() error
+```
+
+Close ends the connection.
+
+<a name="Admin.Describe"></a>
+### func \(\*Admin\) Describe
+
+```go
+func (a *Admin) Describe(ctx context.Context, in DescribeInput) (DescribeResult, error)
+```
+
+Describe reports on the named entries.
+
+<a name="Admin.Init"></a>
+### func \(\*Admin\) Init
+
+```go
+func (a *Admin) Init(ctx context.Context) (StatusOutput, error)
+```
+
+Init creates the store when there is none.
+
+<a name="Admin.Status"></a>
+### func \(\*Admin\) Status
+
+```go
+func (a *Admin) Status(ctx context.Context) (StatusOutput, error)
+```
+
+Status reports the service's state.
+
+<a name="BackupInput"></a>
+## type BackupInput
+
+BackupInput is the destination of \`backup\`: an absolute path that does not exist yet.
+
+```go
+type BackupInput struct {
+    Path string `json:"path"`
 }
 ```
 
-<a name="Close"></a>
-### func Close
+<a name="BackupOutput"></a>
+## type BackupOutput
+
+BackupOutput is the written copy.
 
 ```go
-func Close(ctx context.Context, cfg Config, req CloseRequest) (result CloseResult, err error)
-```
-
-Close ends a session: only the session holder may close one unless it is a fallback. A fallback close is idempotent and reads its facts from the session index alone: it needs no directory, and a session that is unknown, empty or already closed is a no\-op.
-
-<a name="Config"></a>
-## type Config
-
-Config carries the runtime dependencies Record, Continue and Close need: the project root, the Engram endpoint or binary to start, and injectable HTTP and clock seams for tests.
-
-```go
-type Config struct {
-    Root         string
-    EngramURL    string
-    EngramBinary string
-    HTTP         *http.Client
-    Now          func() time.Time
+type BackupOutput struct {
+    Path string `json:"path"`
+    Size int64  `json:"size"`
 }
 ```
 
-<a name="ContinueRequest"></a>
-## type ContinueRequest
+<a name="BindArgs"></a>
+## type BindArgs
 
-ContinueRequest declares the earlier session this one continues; an empty PreviousSession withdraws the declaration.
+BindArgs is one crew bind. The hook sends it before every memory call.
 
 ```go
-type ContinueRequest struct {
-    // CallerSession is the harness-delivered host session running the tool.
-    // When present, the root Session is resolved from the execution history
-    // under the workspace lock instead of being accepted from the caller.
-    CallerSession   string `json:"caller_session,omitempty"`
-    Author          string `json:"author"`
-    Session         string `json:"session"`
-    Directory       string `json:"directory"`
-    PreviousSession string `json:"previous_session"`
+type BindArgs struct {
+    // HostSession is the runtime's session ID of the caller.
+    HostSession string `json:"host_session"`
+    // Agent is the caller's current agent; it is refreshed on every bind.
+    Agent string `json:"agent"`
+    // ClaimedRoot is the top of the parentID chain, or the session itself.
+    ClaimedRoot string `json:"claimed_root"`
+    // Workspace is the workspace key the binding is created with.
+    Workspace string `json:"workspace"`
+    // Grants are the record arguments the user approved for this call.
+    Grants []RecordArgs `json:"grants,omitempty"`
 }
 ```
 
-<a name="RecordRequest"></a>
-## type RecordRequest
+<a name="CloseInput"></a>
+## type CloseInput
 
-RecordRequest is one validated memory entry written by a Takt crew member.
+
 
 ```go
-type RecordRequest struct {
-    // CallerSession is the harness-delivered host session running the tool.
-    // When present, the root Session is resolved from the execution history
-    // under the workspace lock instead of being accepted from the caller.
-    CallerSession string     `json:"caller_session,omitempty"`
-    Author        string     `json:"author"`
-    Session       string     `json:"session"`
-    Directory     string     `json:"directory"`
-    Confirmed     bool       `json:"confirmed"`
-    UserOrder     bool       `json:"user_order"`
-    Nature        string     `json:"nature"`
-    Scope         string     `json:"scope"`
-    Title         string     `json:"title"`
-    Content       string     `json:"content"`
-    Evidence      string     `json:"evidence,omitempty"`
-    RelatesTo     *RelatesTo `json:"relates_to,omitempty"`
+type CloseInput struct {
+    Objective string `json:"objective" jsonschema:"What the user asked for in this session, in one or two sentences."`
+    State     string `json:"state" jsonschema:"What is true now, in present tense: governing decisions, open disagreements, and what was delivered. Never restate, merge, or upgrade the entries, and never include next steps or future work."`
+}
+```
+
+<a name="ContinueInput"></a>
+## type ContinueInput
+
+
+
+```go
+type ContinueInput struct {
+    PreviousSessionID string `json:"previous_session_id" jsonschema:"ID of the closed session, as the sessions tool lists it or the user gives it; never inferred. Empty withdraws the declaration."`
+}
+```
+
+<a name="DescribeInput"></a>
+## type DescribeInput
+
+DescribeInput names the entries \`describe\` reports on.
+
+```go
+type DescribeInput struct {
+    IDs []int64 `json:"ids"`
+}
+```
+
+<a name="DescribeResult"></a>
+## type DescribeResult
+
+DescribeResult holds one Described per requested ID, in order.
+
+```go
+type DescribeResult struct {
+    Entries []Described `json:"entries"`
+}
+```
+
+<a name="Validate"></a>
+### func Validate
+
+```go
+func Validate(ctx context.Context, a *Admin, ids []int64, rule Rule) (DescribeResult, error)
+```
+
+Validate is the single validator of the harness: one describe call checks every ID against rule and refuses with one message that names each failing entry and its correction. It returns the describe result even when it refuses.
+
+<a name="Described"></a>
+## type Described
+
+Described is what Describe reports for one ID. CurrentVersion is the head of the entry's corrects/supersedes chain, the entry itself when it was never revised.
+
+```go
+type Described struct {
+    ID                int64               `json:"id"`
+    Exists            bool                `json:"exists"`
+    WriterHostSession string              `json:"writer_host_session,omitempty"`
+    Title             string              `json:"title,omitempty"`
+    Outgoing          []DescribedRelation `json:"outgoing,omitempty"`
+    CurrentVersion    int64               `json:"current_version,omitempty"`
+}
+```
+
+<a name="DescribedRelation"></a>
+## type DescribedRelation
+
+DescribedRelation is the entry at the other end of a relation and its kind.
+
+```go
+type DescribedRelation struct {
+    Entry int64  `json:"entry"`
+    Kind  string `json:"kind"`
+}
+```
+
+<a name="Health"></a>
+## type Health
+
+Health is the outcome of probing the service of a directory, the one mapping from a probe to a state that doctor and verification report from.
+
+```go
+type Health int
+```
+
+<a name="HealthUnreachable"></a>
+
+```go
+const (
+    // HealthUnreachable means nothing answers on the socket.
+    HealthUnreachable Health = iota
+    // HealthMalformed means something answered that is not a valid memory service.
+    HealthMalformed
+    // HealthNewerStore means the store is newer than this build.
+    HealthNewerStore
+    // HealthNotReady means the service reports any other state than ready, no store among them.
+    HealthNotReady
+    // HealthUncovered means the service is ready but some entries have no semantic vector.
+    HealthUncovered
+    // HealthReady means the service is ready, with every entry covered.
+    HealthReady
+)
+```
+
+<a name="Hit"></a>
+## type Hit
+
+Hit is one search result.
+
+```go
+type Hit struct {
+    ID        int64
+    Nature    string
+    Tier      string
+    Title     string
+    Author    string
+    CreatedAt int64
+    Disputed  bool
+    Exception bool
+    // SupersededBy is the current version of a corrected or superseded entry; 0 for a current entry.
+    SupersededBy int64
+}
+```
+
+<a name="Identity"></a>
+## type Identity
+
+Identity is what the service resolved for a call; the server fills it from MCP \_meta and the model never states it \(MEM\-AUT\-7\). For the crew, HostSession is the host session and Workspace is ignored \(the binding owns it\). For the external principal, HostSession is the adapter's session key and Workspace the \-\-workspace key, empty without the flag.
+
+```go
+type Identity struct {
+    Principal   string
+    HostSession string
+    Workspace   string
+}
+```
+
+<a name="OutlineEntry"></a>
+## type OutlineEntry
+
+OutlineEntry is one section of an outline: its heading and its size in bytes.
+
+```go
+type OutlineEntry struct {
+    Heading string
+    Size    int
+}
+```
+
+<a name="ReadInput"></a>
+## type ReadInput
+
+ReadInput, SessionsInput, ContinueInput, and CloseInput are the arguments of the tools whose arguments the store has no struct for.
+
+```go
+type ReadInput struct {
+    ID      int64  `json:"id" jsonschema:"ID of the entry to read."`
+    Section string `json:"section,omitempty" jsonschema:"Heading of the one section to read, from the outline of an earlier read."`
+}
+```
+
+<a name="ReadResult"></a>
+## type ReadResult
+
+ReadResult is one entry as read \(MEM\-RET\-8\). In an outline read, Outline lists every section and Body holds only Section; otherwise Outline is nil and Body is the complete body.
+
+```go
+type ReadResult struct {
+    ID        int64
+    Nature    string
+    Tier      string
+    Title     string
+    Author    string
+    Session   string
+    Evidence  string
+    UserOrder bool
+    CreatedAt int64
+    // CurrentID and CurrentTitle name the current version when the entry was corrected or superseded; CurrentID is 0 otherwise.
+    CurrentID    int64
+    CurrentTitle string
+    Relations    []RelationView
+    Supplements  []SupplementView
+    Outline      []OutlineEntry
+    Section      string
+    Body         string
+}
+```
+
+<a name="ReadResult.Text"></a>
+### func \(ReadResult\) Text
+
+```go
+func (r ReadResult) Text() string
+```
+
+Text formats the entry as the text the read tool returns.
+
+<a name="RecordArgs"></a>
+## type RecordArgs
+
+RecordArgs are the arguments of a record. Content is the complete body, also for a revision. Grants carry these same arguments.
+
+```go
+type RecordArgs struct {
+    Nature    string     `json:"nature" jsonschema:"What the entry is, fixed for its life: proposal (an option raised and not adopted, with its tradeoff), decision (a choice the user approved, with the approval as evidence), observation (a result verified against evidence), or hypothesis (an interpretation not yet verified). Recording or citing never upgrades a nature: a confirmed hypothesis becomes a new observation that supersedes it."`
+    Scope     string     `json:"scope" jsonschema:"Tier of the entry. workspace: the active repository's architectural invariants, technical constraints, domain models, and verified facts. global: durable user preferences, communication habits, and environment quirks that hold across projects, never workspace content such as code, repository paths, proprietary business logic, or copies of workspace entries. When unsure, use workspace. A connection without a workspace refuses every workspace-scope call, naming how to provide one; global scope still works."`
+    Title     string     `json:"title" jsonschema:"Short, searchable name of what happened or is true."`
+    Content   string     `json:"content,omitempty" jsonschema:"The entry body: what happened or is true, why, and the files or artifacts involved. Keep routine entries concise; record an artifact or a user-ordered Takt memory entry whole, at any length."`
+    Evidence  string     `json:"evidence,omitempty" jsonschema:"What supports the entry, distinct from its writer: a file, command, test output, entry #<id>, or the user's approval. Required for observation and decision; add it, or choose the nature the support actually allows."`
+    RelatesTo *RelatesTo `json:"relates_to,omitempty" jsonschema:"The existing entry this entry relates to, and how."`
+    UserOrder bool       `json:"user_order,omitempty" jsonschema:"Set only when the user directly ordered recording this entry. Such an entry may record a plan, next step, or prediction, attributed to that order."`
 }
 ```
 
 <a name="RecordResult"></a>
 ## type RecordResult
 
-RecordResult reports the stored entry ID and whether deduplication absorbed the write.
+RecordResult is the outcome of a record: Recorded \#ID.
 
 ```go
 type RecordResult struct {
-    ID           int64 `json:"id"`
-    Deduplicated bool  `json:"deduplicated"`
+    ID int64
 }
 ```
 
-<a name="Record"></a>
-### func Record
+<a name="RecordedClose"></a>
+## type RecordedClose
+
+RecordedClose is a recorded session close and the sequence range it covers.
 
 ```go
-func Record(ctx context.Context, cfg Config, req RecordRequest) (result RecordResult, err error)
+type RecordedClose struct {
+    Session       string
+    FirstSequence int64
+    LastSequence  int64
+    Objective     string
+    State         string
+}
 ```
 
-Record validates and writes one memory into Engram under the session's lock. A new entry resumes a previously closed host conversation; historical close anchors remain in Engram. Contract violations are still rejected.
+<a name="RefusalError"></a>
+## type RefusalError
+
+RefusalError is a refused call; its message names the correction.
+
+```go
+type RefusalError struct{ Message string }
+```
+
+<a name="RefusalError.Error"></a>
+### func \(\*RefusalError\) Error
+
+```go
+func (e *RefusalError) Error() string
+```
+
+
 
 <a name="RelatesTo"></a>
 ## type RelatesTo
 
-RelatesTo links one new memory to an existing Engram node.
+RelatesTo names the entry a record relates to and how.
 
 ```go
 type RelatesTo struct {
-    ID       int64  `json:"id"`
-    Relation string `json:"relation"`
+    ID       int64  `json:"id" jsonschema:"ID of an existing entry in the same tier, taken from Takt memory results and never guessed; any other ID is refused. corrects and supersedes must name the head of that entry's chain; otherwise the call is refused, naming the head to relate to instead."`
+    Relation string `json:"relation" jsonschema:"corrects: the entry was wrong. supersedes: the entry was valid and no longer governs. Both make this entry its complete new version; to revise an entry you did not write, use them only with user approval, or with verified evidence when that entry is not a decision; otherwise use disputes. supplements: a distinct artifact that adds to the entry without changing it, never a revision of the same artifact. exception-to: the entry still governs except in a stated scope. disputes: an unresolved disagreement, which neither a later entry nor a different author settles."`
 }
 ```
 
-<a name="SearchHit"></a>
-## type SearchHit
+<a name="RelationView"></a>
+## type RelationView
 
-SearchHit is one matching entry with the applicability its recorded evolution gives it.
+RelationView is one relation of an entry, seen from that entry.
 
 ```go
-type SearchHit struct {
-    ID         int64  `json:"id"`
-    Type       string `json:"type"`
-    Title      string `json:"title"`
-    Preview    string `json:"preview"`
-    Project    string `json:"project,omitempty"`
-    Superseded bool   `json:"superseded,omitempty"`
-    Disputed   bool   `json:"disputed,omitempty"`
-    Exception  bool   `json:"exception,omitempty"`
+type RelationView struct {
+    // Kind is the relation kind.
+    Kind string
+    // Outgoing is true when the entry is the source of the relation, false when it is the target.
+    Outgoing bool
+    // Other is the entry on the other end.
+    Other      int64
+    OtherTitle string
 }
 ```
 
-<a name="SearchRequest"></a>
-## type SearchRequest
+<a name="Rule"></a>
+## type Rule
 
-SearchRequest is one memory search made on behalf of a crew member.
+Rule is what a harness path demands of the entries it names. Every path demands that an entry exists and is current; the other demands apply when set.
 
 ```go
-type SearchRequest struct {
-    Directory      string `json:"directory"`
-    Query          string `json:"query"`
-    Scope          string `json:"scope"`
-    Type           string `json:"type,omitempty"`
-    Limit          int    `json:"limit,omitempty"`
-    IncludeHistory bool   `json:"include_history,omitempty"`
-    // AllWorkspaces searches the workspace tier of every project.
-    AllWorkspaces bool `json:"all_workspaces,omitempty"`
+type Rule struct {
+    // WrittenBy is the exact host session that must have written every entry.
+    WrittenBy string
+}
+```
+
+<a name="SearchArgs"></a>
+## type SearchArgs
+
+SearchArgs are the arguments of a search. Scope is required; Mode defaults to lexical and Limit to defaultSearchLimit.
+
+```go
+type SearchArgs struct {
+    Query          string `json:"query" jsonschema:"Terms to match in lexical mode, or the concept to find in semantic mode."`
+    Mode           string `json:"mode,omitempty" jsonschema:"lexical, the default: matches names, IDs, and exact terms. semantic: matches concepts and paraphrases, and also reports how many entries in scope have no semantic representation yet, which lexical mode still finds by their terms. semantic is refused while the semantic model is unavailable; use lexical."`
+    Scope          string `json:"scope" jsonschema:"Tier to search: workspace or global."`
+    Limit          int    `json:"limit,omitempty" jsonschema:"Maximum number of hits."`
+    IncludeHistory bool   `json:"include_history,omitempty" jsonschema:"Also return corrected and superseded entries, each marked [superseded by #<id>] with its current version. They are history, never current guidance."`
+    AllWorkspaces  bool   `json:"all_workspaces,omitempty" jsonschema:"With workspace scope, search every workspace instead of the active one."`
 }
 ```
 
 <a name="SearchResult"></a>
 ## type SearchResult
 
-SearchResult lists the matching entries; superseded entries are left out and counted unless the request asked for history.
+SearchResult is the outcome of a search. Uncovered is meaningful in semantic mode only: the entries in scope with no semantic representation, which lexical mode still finds by their terms \(MEM\-RET\-9\).
 
 ```go
 type SearchResult struct {
-    Results           []SearchHit `json:"results"`
-    OmittedSuperseded int         `json:"omitted_superseded"`
+    Semantic  bool
+    Hits      []Hit
+    Uncovered int64
 }
 ```
 
-<a name="Search"></a>
-### func Search
+<a name="SearchResult.Text"></a>
+### func \(SearchResult\) Text
 
 ```go
-func Search(ctx context.Context, cfg Config, req SearchRequest) (SearchResult, error)
+func (r SearchResult) Text() string
 ```
 
-Search runs a full\-text memory search in one tier and returns the entries that still govern, marking open disputes and scoped exceptions.
+Text formats the result as the text the search tool returns: one line per hit and, in semantic mode, the count of entries in scope without a semantic representation.
+
+<a name="SessionClose"></a>
+## type SessionClose
+
+SessionClose is one close of a listed session.
+
+```go
+type SessionClose struct {
+    Objective string
+    State     string
+}
+```
+
+<a name="SessionInfo"></a>
+## type SessionInfo
+
+SessionInfo is one session of a listing. ID is the value ContinueSession accepts.
+
+```go
+type SessionInfo struct {
+    ID         string
+    Workspace  string
+    State      string
+    Closes     []SessionClose
+    Omitted    int // earlier entries not shown in Chronology
+    Chronology []SessionLine
+}
+```
+
+<a name="SessionLine"></a>
+## type SessionLine
+
+SessionLine is one entry of a session chronology; it never carries a body \(MEM\-AUT\-5\).
+
+```go
+type SessionLine struct {
+    ID      int64
+    Title   string
+    Nature  string
+    Author  string
+    Current bool // false when a corrects or supersedes relation retired the entry
+}
+```
+
+<a name="SessionsInput"></a>
+## type SessionsInput
+
+
+
+```go
+type SessionsInput struct {
+    Query         string `json:"query,omitempty" jsonschema:"Terms matched against close objectives and states and the titles of each session's entries."`
+    AllWorkspaces bool   `json:"all_workspaces,omitempty" jsonschema:"List the sessions of every workspace instead of the active one."`
+    Limit         int    `json:"limit,omitempty" jsonschema:"Maximum number of sessions."`
+}
+```
+
+<a name="StatusOutput"></a>
+## type StatusOutput
+
+StatusOutput is what \`status\` reports in every state \(PR\-MSV\-32\). Covered and Total count the entries with a vector of the current model; Covered below Total is the coverage gap.
+
+```go
+type StatusOutput struct {
+    Version string `json:"version"`
+    State   string `json:"state"`
+    Reason  string `json:"reason,omitempty"`
+    Covered int64  `json:"covered"`
+    Total   int64  `json:"total"`
+}
+```
+
+<a name="Ensure"></a>
+### func Ensure
+
+```go
+func Ensure(ctx context.Context, dir string) (StatusOutput, error)
+```
+
+Ensure makes the owner of dir available and returns its status \(PR\-MSV\-35\): a running owner is reused, never replaced. It never creates the directory or the store: a service that is up without a store is returned with its state and reason, for the caller to report. Every failure is an \*UnavailableError.
+
+<a name="Probe"></a>
+### func Probe
+
+```go
+func Probe(ctx context.Context, dir string) (_ StatusOutput, err error)
+```
+
+Probe reads the service's status and never starts it, for doctor and verification \(PR\-MSV\-33\). The error wraps ErrUnreachable when nothing listens and ErrMalformed when the answer is not a memory service.
+
+<a name="Start"></a>
+### func Start
+
+```go
+func Start(ctx context.Context, dir string, create bool) (_ StatusOutput, err error)
+```
+
+Start is \`takt\-ai memory start\`: it ensures the owner and returns its status once it is ready. With create it first creates the directory \(mode 0700\), and creates the store through /admin init when there is none. Without create, a missing directory or store is reported, never created.
 
 <a name="Store"></a>
 ## type Store
@@ -498,6 +1032,15 @@ func (s *Store) Backup(ctx context.Context, path string) (string, int64, error)
 
 Backup writes a consistent copy of the store with VACUUM INTO to path, which must be absolute and must not exist yet, and returns the path and its size in bytes. The copy is private to the local user like the store: the target is created exclusively with storeFileMode, which VACUUM INTO accepts empty.
 
+<a name="Store.Bind"></a>
+### func \(\*Store\) Bind
+
+```go
+func (s *Store) Bind(ctx context.Context, a BindArgs) error
+```
+
+Bind upserts the crew binding of a host session and appends the approved grants to its pending grants. An existing binding keeps its root; for a new one, a claimed root that is itself bound resolves to that binding's root.
+
 <a name="Store.Close"></a>
 ### func \(\*Store\) Close
 
@@ -506,6 +1049,100 @@ func (s *Store) Close() error
 ```
 
 Close closes the writer and reader connections.
+
+<a name="Store.CloseSession"></a>
+### func \(\*Store\) CloseSession
+
+```go
+func (s *Store) CloseSession(ctx context.Context, id Identity, objective, state string) (RecordedClose, error)
+```
+
+CloseSession records the objective, the state, and the sequence range of the caller's session entries committed since its previous close, and clears the unconsumed grants of its bindings. A crew caller must be the root of its own binding; an external caller closes its own session. Nothing new to close is refused and records nothing.
+
+<a name="Store.ContinueSession"></a>
+### func \(\*Store\) ContinueSession
+
+```go
+func (s *Store) ContinueSession(ctx context.Context, id Identity, previousID string) (string, error)
+```
+
+ContinueSession declares, replaces, or \(with an empty previousID\) withdraws the pending continuity of the caller's session, and returns the pending declaration \(MEM\-OPS\-5\). The target must be a closed session, of any workspace; the external principal cannot name a crew session. Once the caller's session has its first entry, the declaration is fixed and any further call is refused. An external caller keeps its pending declaration in a bindings row keyed by its own session key.
+
+<a name="Store.Coverage"></a>
+### func \(\*Store\) Coverage
+
+```go
+func (s *Store) Coverage(ctx context.Context) (covered, total int64, err error)
+```
+
+Coverage returns how many entries have a chunk of the model identity search uses, and how many entries exist, for status \(MEM\-RET\-9\). Before any model is recorded no entry is covered.
+
+<a name="Store.Describe"></a>
+### func \(\*Store\) Describe
+
+```go
+func (s *Store) Describe(ctx context.Context, ids []int64) (DescribeResult, error)
+```
+
+Describe reports the metadata of each entry ID, with its outgoing relations and its current version. An unknown ID is reported as not existing.
+
+<a name="Store.EmbedPending"></a>
+### func \(\*Store\) EmbedPending
+
+```go
+func (s *Store) EmbedPending(ctx context.Context, model *embed.Model) error
+```
+
+EmbedPending embeds every body without a chunk of the loaded model's identity, and stores one chunk per body section tagged with that identity. Embedding runs outside any write transaction. With a nil model nothing is embedded and writes and lexical search are unaffected.
+
+<a name="Store.Read"></a>
+### func \(\*Store\) Read
+
+```go
+func (s *Store) Read(ctx context.Context, id int64, sectionHeading string) (ReadResult, error)
+```
+
+Read returns the entry with the given ID: metadata, the current version when it is superseded, relations, the body, and the head version of each supplement. When the body and supplements exceed the read budget it returns the outline, the section named by section \(the first when empty\), and the supplements by ID and title. An unknown ID or section is refused as such and never substituted \(MEM\-RET\-8\).
+
+<a name="Store.Record"></a>
+### func \(\*Store\) Record
+
+```go
+func (s *Store) Record(ctx context.Context, id Identity, a RecordArgs) (RecordResult, error)
+```
+
+Record writes one entry as the identity in a single write transaction. Every refusal is a \*RefusalError naming the correction, and a busy store fails as ErrBusy.
+
+<a name="Store.Search"></a>
+### func \(\*Store\) Search
+
+```go
+func (s *Store) Search(ctx context.Context, id Identity, a SearchArgs, model *embed.Model) (SearchResult, error)
+```
+
+Search finds entries as the identity. Scope and applicability select the full\-text indexes or candidate sets before any ranking and before any body is read \(MEM\-RET\-6\); results are ordered by relevance, the higher sequence first on equal scores \(MEM\-AUT\-5\). Semantic mode needs the loaded model and is refused naming lexical mode when model is nil. Every refusal is a \*RefusalError.
+
+<a name="Store.Sessions"></a>
+### func \(\*Store\) Sessions
+
+```go
+func (s *Store) Sessions(ctx context.Context, id Identity, query string, allWorkspaces bool, limit int) ([]SessionInfo, error)
+```
+
+Sessions lists the sessions that have records in the caller's workspace, or in every workspace, most recent first. A query keeps the session it names by ID, the sessions whose close objectives or states match, and those whose entry titles contain every query word; close matches come first, recency breaks ties. A limit of zero or less means defaultSearchLimit. Bindings, pending continuity, and grants are never listed.
+
+<a name="SupplementView"></a>
+## type SupplementView
+
+SupplementView is the head version of an entry that supplements the one read. Body is empty in an outline read.
+
+```go
+type SupplementView struct {
+    ID    int64
+    Title string
+    Body  string
+}
+```
 
 <a name="Tool"></a>
 ## type Tool
@@ -519,22 +1156,24 @@ type Tool struct {
 }
 ```
 
-<a name="ValidationError"></a>
-## type ValidationError
+<a name="UnavailableError"></a>
+## type UnavailableError
 
-ValidationError is a contract rejection whose Reason is shown verbatim to the agent.
-
-```go
-type ValidationError struct{ Reason string }
-```
-
-<a name="ValidationError.Error"></a>
-### func \(\*ValidationError\) Error
+UnavailableError reports that no usable memory service could be reached or started \(PR\-MSV\-2\). It is never an empty or newly created store.
 
 ```go
-func (e *ValidationError) Error() string
+type UnavailableError struct {
+    Reason string
+}
 ```
 
-Error returns the rejection reason so callers render it without unwrapping.
+<a name="UnavailableError.Error"></a>
+### func \(\*UnavailableError\) Error
+
+```go
+func (e *UnavailableError) Error() string
+```
+
+
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

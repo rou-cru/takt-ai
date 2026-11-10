@@ -17,6 +17,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
 - [func GuardShellGit\(command string\) error](<#GuardShellGit>)
 - [func LockWorkspace\(rootDir string\) \(\*os.File, error\)](<#LockWorkspace>)
+- [func MemoryInvariant\(id int64\) string](<#MemoryInvariant>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
 - [func SpecialistRole\(instance string\) \(model.RoleClass, error\)](<#SpecialistRole>)
@@ -302,6 +303,15 @@ func LockWorkspace(rootDir string) (*os.File, error)
 ```
 
 LockWorkspace takes the workspace lock Open takes, without opening the store, for a harness command that decides from the execution history under the same serialization point. Closing the returned file releases it.
+
+<a name="MemoryInvariant"></a>
+## func MemoryInvariant
+
+```go
+func MemoryInvariant(id int64) string
+```
+
+MemoryInvariant is the invariant that names the memory entry id.
 
 <a name="ReadOnlyGitSubcommands"></a>
 ## func ReadOnlyGitSubcommands
@@ -1057,7 +1067,7 @@ type Identity struct {
 <a name="InvariantSet"></a>
 ## type InvariantSet
 
-InvariantSet is the reference the verification gate judges a staged delta against, in the precedence order PR\-VFS\-CSL\-3 fixes \(user goal and directives, the work unit's contract, the framework's planning artifacts\). An entry is either an Engram reference \(see EngramInvariant\), which pins itself because an entry is immutable and a revision is another entry, or a workspace\-relative path pinned by its content on disk.
+InvariantSet is the reference the verification gate judges a staged delta against, in the precedence order PR\-VFS\-CSL\-3 fixes \(user goal and directives, the work unit's contract, the framework's planning artifacts\). An entry is either a memory reference \(see MemoryInvariant\), which pins itself because an entry is immutable and a revision is another entry, or a workspace\-relative path pinned by its content on disk.
 
 ```go
 type InvariantSet []string
