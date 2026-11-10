@@ -10,6 +10,13 @@ import (
 
 func openStore(t *testing.T) *memory.Store {
 	t.Helper()
+	s, _ := openStoreIn(t)
+	return s
+}
+
+// openStoreIn opens a new store and also returns its directory.
+func openStoreIn(t *testing.T) (*memory.Store, string) {
+	t.Helper()
 	dir := t.TempDir()
 	if err := memory.Init(dir); err != nil {
 		t.Fatal(err)
@@ -19,7 +26,7 @@ func openStore(t *testing.T) *memory.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return s
+	return s, dir
 }
 
 func bind(t *testing.T, s *memory.Store, host, agent, root string, grants ...memory.RecordArgs) {

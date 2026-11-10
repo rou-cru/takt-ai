@@ -79,5 +79,7 @@ per domain.
   document the user supplies is recorded before it is passed, and from then on only its ID
   travels.
 - Verified repository state prevails over a contradicting Takt memory. When they
-  disagree, trust the repository and record an `observation` that `corrects` the entry.
+  disagree, trust the repository and record an `observation` that `corrects` the entry. When
+  the entry is a decision, `corrects` needs the user's approval; without it, record the
+  disagreement as `disputes`.
 - Present open `disputes` as open.

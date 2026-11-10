@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 )
@@ -121,3 +124,30 @@ func TestRunProviderFailurePreservesAppliedResult(t *testing.T) {
 	}
 }
 */
+
+// TestRunInstallStartsTheMemoryService verifies an install creates the memory store and leaves a ready
+// service, replacing a running owner that reports another version than this build.
+func TestRunInstallStartsTheMemoryService(t *testing.T) {
+	ctx := context.Background()
+	base, err := os.MkdirTemp("/tmp", "tkt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	dir := filepath.Join(base, "memory")
+	t.Setenv(memory.EnvDir, dir)
+	t.Cleanup(func() {
+		if raw, err := os.ReadFile(filepath.Join(dir, memory.LockFile)); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil {
+				_ = syscall.Kill(pid, syscall.SIGTERM)
+			}
+		}
+	})
+
+	if _, err := (Runtime{Model: fakeModel(t), StartMemory: true}).Run(ctx, "install", t.TempDir(), setuputil.TestPlanRequest()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if status, err := memory.Probe(ctx, dir); err != nil || status.State != memory.StateReady {
+		t.Fatalf("memory service after install: %+v, %v", status, err)
+	}
+}

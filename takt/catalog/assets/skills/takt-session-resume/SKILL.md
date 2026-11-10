@@ -16,8 +16,9 @@ zero, establish where things stand.
 
 Find candidates at the lowest cost, with `takt_memory_sessions`:
 
-1. Query with what the user said and a small `limit`. With an id, the candidate is the listed
-   session with that id.
+1. Query with the key words of the topic, not the whole sentence, and a small `limit`: every
+   word must match a title. Query an id by itself. When nothing matches, retry with fewer
+   words before concluding there is no session.
 2. Rank by match with what the user said, then recency, then workspace. The current
    workspace is the normal case; another workspace is rare but valid when one objective
    spans several repositories, and is listed (`all_workspaces`) when nothing here matches or

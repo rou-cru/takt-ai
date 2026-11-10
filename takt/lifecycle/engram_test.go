@@ -5,15 +5,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/codegraph"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
@@ -22,10 +26,27 @@ import (
 
 // TestMain keeps every lifecycle test off the host PATH and the network.
 func TestMain(m *testing.M) {
+	// startMemory launches this executable as `memory serve`; in a test run that is the test binary, which
+	// then answers as the owner instead of running the tests again.
+	if len(os.Args) == 3 && os.Args[1] == "memory" && os.Args[2] == "serve" {
+		os.Exit(serveAsLaunchedOwner())
+	}
 	acquireEngram = func(context.Context, string) (string, error) { return "/usr/local/bin/engram", nil }
 	acquireCodegraph = func(context.Context, string) (string, error) { return "/usr/local/bin/codegraph", nil }
 	installSandboxDependency = func(context.Context, string) error { return nil }
 	os.Exit(m.Run())
+}
+
+// serveAsLaunchedOwner is the owner process startMemory launches, serving the directory it passes.
+func serveAsLaunchedOwner() int {
+	signal.Ignore(syscall.SIGPIPE)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	if err := memory.Serve(ctx, os.Getenv(memory.EnvDir), "test"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
 }
 
 func withAcquire(t *testing.T, fn func(context.Context, string) (string, error)) {
