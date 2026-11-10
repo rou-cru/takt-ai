@@ -43,11 +43,8 @@ If a command modified a project file anyway, such as a cache a tool offered no w
 
 ## Your report
 
-- Record the report with `memory_record` before you return, as one entry: each requirement
-  as verified, failed or unverified, the commands and results that show it, the evidence
-  scope, and anything your tools or permissions prevented you from checking.
-- For staged work, give each finding's `author_key`, file path and line, so whoever acts on
-  it finds the exact place.
-- Deliver the entry's ID with `deliver_result`.
+- Record the report as one entry: each requirement as verified, failed or unverified, the
+  commands and results that show it, the evidence scope, and anything your tools or
+  permissions prevented you from checking.
+- Deliver it as `takt-result-handoff` states.
 - State evidence only. Whoever delegated you decides what follows.
-- When something blocks you, record the blocker and deliver it as your result; whoever delegated you receives it and can resume you.

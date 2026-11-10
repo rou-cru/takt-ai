@@ -3,6 +3,7 @@ package lifecycle_test
 import (
 	"context"
 	"errors"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,7 +77,7 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
 
-	installed, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request)
+	installed, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request)
 	if err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
@@ -90,7 +91,7 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 		t.Error("IsInstalled() after Run(install) = false, want true")
 	}
 
-	uninstalled, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
+	uninstalled, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "uninstall", root, request)
 	if err != nil {
 		t.Fatalf("Run(uninstall) error = %v", err)
 	}
@@ -105,10 +106,10 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 func TestRunSyncAfterInstall(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
-	result, err := (lifecycle.Runtime{}).Run(context.Background(), "sync", root, request)
+	result, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "sync", root, request)
 	if err != nil {
 		t.Fatalf("Run(sync) error = %v", err)
 	}
@@ -120,10 +121,10 @@ func TestRunSyncAfterInstall(t *testing.T) {
 func TestRunUninstallEngramRemoveReportsIncomplete(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
-	runtime := lifecycle.Runtime{EngramChoice: lifecycle.EngramRemove}
+	runtime := lifecycle.Runtime{Model: testutil.FakeModel(t), EngramChoice: lifecycle.EngramRemove}
 	result, err := runtime.Run(context.Background(), "uninstall", root, request)
 	if err != nil {
 		t.Fatalf("Run(uninstall, EngramRemove) error = %v", err)
@@ -168,7 +169,7 @@ func TestInstallCodegraphInjectsIntoRoot(t *testing.T) {
 
 func TestRunInstallHandshakeFailurePropagates(t *testing.T) {
 	root := t.TempDir()
-	runtime := lifecycle.Runtime{OpenCodeHandshake: func(context.Context) error { return errors.New("preflight refused") }}
+	runtime := lifecycle.Runtime{Model: testutil.FakeModel(t), OpenCodeHandshake: func(context.Context) error { return errors.New("preflight refused") }}
 	if _, err := runtime.Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err == nil {
 		t.Fatal("Run(install) with a failing handshake error = nil, want an error")
 	}
@@ -183,7 +184,7 @@ func TestRunInstallHandshakeFailurePropagates(t *testing.T) {
 func TestRunUninstallRefusesSymlinkedStateDir(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	victim := filepath.Join(outside, "codegraph", "keep.txt")
@@ -200,7 +201,7 @@ func TestRunUninstallRefusesSymlinkedStateDir(t *testing.T) {
 	if err := os.Symlink(outside, state); err != nil {
 		t.Fatal(err)
 	}
-	_, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
+	_, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "uninstall", root, request)
 	if err == nil || !strings.Contains(err.Error(), "remove managed codegraph") {
 		t.Errorf("Run(uninstall) through a symlinked state directory = %v; want the codegraph removal refused", err)
 	}

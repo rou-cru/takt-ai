@@ -48,7 +48,7 @@ func installedRoot(t *testing.T) (string, []string) {
 	}
 	request := setuputil.TestPlanRequest()
 	request.Components = names
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	return root, names

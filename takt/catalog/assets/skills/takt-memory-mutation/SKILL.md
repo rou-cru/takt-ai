@@ -1,6 +1,6 @@
 ---
 name: takt-memory-mutation
-description: "Before recording memory as mutation. What this role records, when, and what it never records."
+description: "Before recording Takt memory as mutation. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,7 +11,7 @@ metadata:
 
 ## Records
 
-- `observation` (`project`): the mutation report — per must-not-fail matrix row, the mutants
+- `observation` (`workspace`): the mutation report — per must-not-fail matrix row, the mutants
   generated, killed and surviving; each survivor's file, line, change and the required
   behavior left unchecked; each equivalent mutant discarded and why; what could not be run.
 - A later report on the same suite is a complete new entry that `supersedes` your earlier one.

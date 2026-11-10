@@ -304,6 +304,9 @@ func reinjectDrift(ctx context.Context, root, engramCommand string, changed int)
 	if err := lifecycle.InjectEngram(root, engramCommand); err != nil {
 		return err
 	}
+	if err := lifecycle.InjectMemory(root); err != nil {
+		return err
+	}
 	return lifecycle.InstallCodegraph(ctx, root)
 }
 

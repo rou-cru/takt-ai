@@ -359,3 +359,44 @@ func TestAdapterAnswersUnavailableAfterTheOwnerStops(t *testing.T) {
 		t.Fatalf("got %v", reply)
 	}
 }
+
+func TestAssessClassifiesTheOwnerAndStartCreatesTheStore(t *testing.T) {
+	ctx := context.Background()
+	dir := shortDir(t)
+	if _, health, err := memory.Assess(ctx, dir); health != memory.HealthUnreachable || !errors.Is(err, memory.ErrUnreachable) {
+		t.Fatalf("no owner: health %v, %v", health, err)
+	}
+	start(t, dir)
+	if status, health, err := memory.Assess(ctx, dir); err != nil || health != memory.HealthNotReady || status.State != memory.StateNoStore {
+		t.Fatalf("owner without a store: %+v, health %v, %v", status, health, err)
+	}
+	if _, err := memory.Start(ctx, dir, false); err == nil || !strings.Contains(err.Error(), "memory start --init") {
+		t.Fatalf("start without init: %v", err)
+	}
+	status, err := memory.Start(ctx, dir, true)
+	if err != nil || status.State != memory.StateReady {
+		t.Fatalf("start with init: %+v, %v", status, err)
+	}
+	if _, health, err := memory.Assess(ctx, dir); err != nil || health != memory.HealthReady {
+		t.Fatalf("ready owner: health %v, %v", health, err)
+	}
+}
+
+func TestResolveDirPrefersTheEnvironmentThenTheHome(t *testing.T) {
+	t.Setenv(memory.EnvDir, "/custom/memory")
+	if dir, err := memory.ResolveDir(); err != nil || dir != "/custom/memory" {
+		t.Fatalf("from the environment: %q, %v", dir, err)
+	}
+	home := t.TempDir()
+	t.Setenv(memory.EnvDir, "")
+	t.Setenv("HOME", home)
+	if dir, err := memory.ResolveDir(); err != nil || dir != filepath.Join(home, ".takt-ai", "memory") {
+		t.Fatalf("from the home: %q, %v", dir, err)
+	}
+}
+
+func TestPrefixedToolNameJoinsTheServerKeyAndTheTool(t *testing.T) {
+	if got := memory.PrefixedToolName(memory.ToolRecord); got != "takt_memory_record" {
+		t.Fatalf("got %q", got)
+	}
+}

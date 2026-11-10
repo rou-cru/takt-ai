@@ -1,6 +1,6 @@
 ---
 name: takt-memory-quality
-description: "Before recording memory as quality. What this role records, when, and what it never records."
+description: "Before recording Takt memory as quality. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,12 +11,12 @@ metadata:
 
 ## Records
 
-- `observation` (`project`): the analysis report — per ISO/IEC 25010 characteristic named,
+- `observation` (`workspace`): the analysis report — per ISO/IEC 25010 characteristic named,
   its criterion, method, evidence with commands and environment, and result as verified,
   failed or unverified. As the acceptance verdict, each non-functional acceptance criterion with its result.
 - A later report on the same deliverable is a complete new entry that `supersedes` your earlier one.
-- An `observation` that `corrects` or `disputes` a recorded fact or decision the analysis
-  contradicted.
+- An `observation` that `corrects` a recorded fact the analysis proved wrong, or that
+  `disputes` a decision it contradicts.
 
 ## When
 

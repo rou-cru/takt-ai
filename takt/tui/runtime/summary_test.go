@@ -20,7 +20,7 @@ func TestPreviewSummaryCountsSkillsNotFiles(t *testing.T) {
 	if plan.Summary.Skills != len(packages.Skills) {
 		t.Fatalf("Summary.Skills = %d, want the %d catalog skills", plan.Summary.Skills, len(packages.Skills))
 	}
-	if len(plan.Summary.Agents) == 0 || len(plan.Summary.MCPServers) != 3 || len(plan.Summary.Integrations) == 0 {
-		t.Fatalf("Summary = %+v, want agents, three MCP servers and the integrations", plan.Summary)
+	if len(plan.Summary.Agents) == 0 || len(plan.Summary.MCPServers) != 4 || len(plan.Summary.Integrations) == 0 {
+		t.Fatalf("Summary = %+v, want agents, four MCP servers and the integrations", plan.Summary)
 	}
 }

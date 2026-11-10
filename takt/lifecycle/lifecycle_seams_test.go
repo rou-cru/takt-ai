@@ -95,7 +95,7 @@ func TestRunInstallRejectsUnknownComponent(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
 	request.Components = []string{"no-such-component"}
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err == nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err == nil {
 		t.Fatal("Run(install, unknown component) error = nil, want an error")
 	}
 	if setup.IsInstalled(root) {
@@ -105,7 +105,7 @@ func TestRunInstallRejectsUnknownComponent(t *testing.T) {
 
 func TestRunInstallWrapsHandshakeFailure(t *testing.T) {
 	sentinel := errors.New("socket closed")
-	runtime := Runtime{OpenCodeHandshake: func(context.Context) error { return sentinel }}
+	runtime := Runtime{Model: fakeModel(t), OpenCodeHandshake: func(context.Context) error { return sentinel }}
 	_, err := runtime.Run(context.Background(), "install", t.TempDir(), setuputil.TestPlanRequest())
 	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "OpenCode V2 preflight failed") {
 		t.Fatalf("Run() error = %v, want the handshake error wrapped as a preflight failure", err)
@@ -115,7 +115,7 @@ func TestRunInstallWrapsHandshakeFailure(t *testing.T) {
 func TestRunInstallFailsWhenEngramUnavailable(t *testing.T) {
 	root := t.TempDir()
 	withAcquire(t, func(context.Context, string) (string, error) { return "", errors.New("offline") })
-	result, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err == nil || !strings.Contains(err.Error(), "engram memory capability unavailable") {
 		t.Fatalf("Run() error = %v, want the Engram prerequisite failure", err)
 	}
@@ -142,7 +142,7 @@ func TestRunInstallCancelledDuringAcquisitionAppliesNothing(t *testing.T) {
 			default:
 				withAcquireCodegraph(t, cancelling)
 			}
-			result, err := (Runtime{}).Run(ctx, "install", root, setuputil.TestPlanRequest())
+			result, err := (Runtime{Model: fakeModel(t)}).Run(ctx, "install", root, setuputil.TestPlanRequest())
 			if err != nil {
 				t.Fatalf("Run() error = %v, want nil for a cancellation", err)
 			}
@@ -163,7 +163,7 @@ func TestRunInstallReportsProgressAndReload(t *testing.T) {
 	root := t.TempDir()
 	var messages []string
 	reloaded := 0
-	runtime := Runtime{
+	runtime := Runtime{Model: fakeModel(t),
 		Progress: func(progress setup.DeploymentProgress) { messages = append(messages, progress.Message) },
 		Reload:   func(context.Context) error { reloaded++; return nil },
 	}
@@ -186,7 +186,7 @@ func TestRunInstallReportsProgressAndReload(t *testing.T) {
 func TestRunInstallReloadFailureDoesNotRollBack(t *testing.T) {
 	root := t.TempDir()
 	sentinel := errors.New("reload refused")
-	runtime := Runtime{Reload: func(context.Context) error { return sentinel }}
+	runtime := Runtime{Model: fakeModel(t), Reload: func(context.Context) error { return sentinel }}
 	result, err := runtime.Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil: a reload failure is not an install failure", err)
@@ -204,7 +204,7 @@ func TestRunInstallReloadFailureDoesNotRollBack(t *testing.T) {
 func TestRunInstallInjectionFailureKeepsDeployedResult(t *testing.T) {
 	root := t.TempDir()
 	corruptOpenCodeConfig(t, root)
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err == nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err == nil {
 		t.Fatal("Run() error = nil, want the injection failure")
 	}
 	if setup.IsInstalled(root) {
@@ -259,12 +259,12 @@ func TestRecordCancelledRecordsOnlyFullyAppliedRuns(t *testing.T) {
 func TestRunUninstallCancelledReturnsTypedOutcome(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := (Runtime{}).Run(ctx, "uninstall", root, request)
+	result, err := (Runtime{Model: fakeModel(t)}).Run(ctx, "uninstall", root, request)
 	if err != nil {
 		t.Fatalf("Run(uninstall) error = %v, want nil for a cancellation", err)
 	}
@@ -577,7 +577,7 @@ func TestInstallPlansIncludesSkillsPlan(t *testing.T) {
 
 func TestRunInstallProceedsAfterSuccessfulHandshake(t *testing.T) {
 	handshakes := 0
-	runtime := Runtime{OpenCodeHandshake: func(context.Context) error { handshakes++; return nil }}
+	runtime := Runtime{Model: fakeModel(t), OpenCodeHandshake: func(context.Context) error { handshakes++; return nil }}
 	if _, err := runtime.Run(context.Background(), "install", t.TempDir(), setuputil.TestPlanRequest()); err != nil {
 		t.Fatal(err)
 	}

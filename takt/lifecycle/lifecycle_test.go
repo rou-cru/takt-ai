@@ -15,7 +15,7 @@ import (
 
 func TestRunRejectsUnsupportedAction(t *testing.T) {
 	request := setup.PlanRequest{}
-	result, err := (Runtime{}).Run(context.Background(), "remove", t.TempDir(), request)
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "remove", t.TempDir(), request)
 	if err == nil || !strings.Contains(err.Error(), `unsupported action "remove"`) {
 		t.Fatalf("Run() error = %v, want unsupported action", err)
 	}
@@ -34,7 +34,7 @@ func TestRunInstallPersistsCustomInstalledConfig(t *testing.T) {
 	request := setuputil.TestPlanRequest()
 	request.Components = []string{"context7"}
 
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
@@ -61,13 +61,13 @@ func TestRunUninstallRestoresPreExistingMergedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := setuputil.TestPlanRequest()
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
 	if merged, _ := os.ReadFile(configPath); string(merged) == string(original) {
 		t.Fatal("install did not merge into opencode.json; test premise broken")
 	}
-	result, err := (Runtime{}).Run(context.Background(), "uninstall", root, request)
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "uninstall", root, request)
 	if err != nil {
 		t.Fatalf("uninstall error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestRunCompletedWhenCancelArrivesLate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request := setuputil.TestPlanRequest()
-	runtime := Runtime{ProviderActions: setup.ProviderRuntime{
+	runtime := Runtime{Model: fakeModel(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run: func(context.Context, string, ...string) ([]byte, error) {
 			cancel() // provider actions run after every file is applied
@@ -103,7 +103,7 @@ func TestRunCompletedWhenCancelArrivesLate(t *testing.T) {
 func TestRunProviderFailurePreservesAppliedResult(t *testing.T) {
 	root := t.TempDir()
 	wantErr := errors.New("provider action failed")
-	runtime := Runtime{ProviderActions: setup.ProviderRuntime{
+	runtime := Runtime{Model: fakeModel(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run:      func(context.Context, string, ...string) ([]byte, error) { return nil, wantErr },
 	}}

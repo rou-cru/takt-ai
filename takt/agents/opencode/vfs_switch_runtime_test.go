@@ -61,10 +61,9 @@ export const Plugin = { define: definition => definition }
 	}
 }
 
-// GC's collector and verifier lanes must both keep memory tool access
-// alongside their gc_* tools; a static check on the rendered source needs no
-// Node process.
-func TestTaktVFSPluginGCLaneToolsGrantMemoryAccess(t *testing.T) {
+// GC's collector and verifier lanes grant their gc_* tools and no memory or
+// web tool; a static check on the rendered source needs no Node process.
+func TestTaktVFSPluginGCLaneToolsGrantNoMemoryOrWebAccess(t *testing.T) {
 	source := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
 	block := regexp.MustCompile(`(?s)const GC_LANE_TOOLS: Record<string, string\[\]> = \{(.*?)\n\}`).FindStringSubmatch(source)
 	if block == nil {
