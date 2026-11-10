@@ -10,7 +10,8 @@ import (
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
-	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 // Impact values rank what keeping local content means for ConflictEntry.Impact.
@@ -23,9 +24,9 @@ const (
 	ImpactIncompatible = "incompatible"
 )
 
-// engramInjectedPaths are plan artifacts memory setup writes into after deployment.
+// injectedConfigPaths are plan artifacts the MCP injections write into after deployment.
 // A missing file here cannot stay deleted because setup recreates it.
-var engramInjectedPaths = map[string]bool{
+var injectedConfigPaths = map[string]bool{
 	opencode.ConfigPath(): true,
 }
 
@@ -35,7 +36,7 @@ var engramInjectedPaths = map[string]bool{
 func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry OwnershipEntry, managed bool, current []byte) {
 	conflict.Affects = capabilityFor(artifact.Path)
 	switch {
-	case conflict.Reason == "missing" && engramInjectedPaths[artifact.Path]:
+	case conflict.Reason == "missing" && injectedConfigPaths[artifact.Path]:
 		conflict.Impact = ImpactIncompatible
 		conflict.Consequence = "Takt memory setup recreates this file, so it cannot stay deleted."
 		conflict.Alternative = "Restore Takt version to recreate it."
@@ -56,11 +57,11 @@ func classifyConflict(conflict *ConflictEntry, artifact Artifact, entry Ownershi
 	}
 }
 
-// injectedMCPServers names the MCP server keys InjectEngram and InjectCodegraph
+// injectedMCPServers names the MCP server keys InjectMemory and InjectCodegraph
 // (takt/lifecycle) merge into opencode.json after deployment writes the
 // rendered artifact. They are never part of that artifact's own content, so a
 // plain byte comparison against it would read every fresh install as drift.
-var injectedMCPServers = []string{"engram", "codegraph"}
+var injectedMCPServers = []string{memory.ServerKey, "codegraph"}
 
 // ContentMatches reports whether current already holds want the way deploy
 // would leave it: for opencode.json, MCP servers a later injection owns are
@@ -118,7 +119,7 @@ func hashOf(content []byte) string {
 func capabilityFor(artifactPath string) string {
 	harness := "OpenCode"
 	switch {
-	case strings.HasPrefix(artifactPath, engram.MemorySkillsDir+"/"):
+	case strings.HasPrefix(artifactPath, model.OpenCodeSkillsDir+"/"):
 		return strings.Split(artifactPath, "/")[2] + " skill"
 	}
 	base := path.Base(artifactPath)

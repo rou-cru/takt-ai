@@ -1,185 +1,250 @@
-package main
+package main_test
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
+	"context"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/rou-cru/takt-ai/takt/history"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-// TestMain puts a compatible fake engram first on PATH so install, sync and
-// the memory command never touch the host binary or the network.
-func TestMain(m *testing.M) {
-	os.Exit(testutil.RunWithFakeEngram(m))
+// testOwnerInstance names the harness instance the delivery scenarios act as.
+const testOwnerInstance = "delivery-instance"
+
+// startMemory gives the session a memory directory under /tmp, short enough for a socket path, with a
+// store, and a service the binary launches itself through `memory start`.
+func (s *session) startMemory() {
+	s.t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "tkt")
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.t.Cleanup(func() {
+		testutil.StopMemoryOwner(dir)
+		_ = os.RemoveAll(dir)
+	})
+	s.env = append(s.env, memory.EnvDir+"="+dir)
+	s.memoryDir = dir
+	if res := s.run("memory", "start", "--init"); res.code != 0 {
+		s.t.Fatalf("memory start --init exited %d: %s", res.code, res.stderr)
+	}
 }
 
-// fakeEngramServer answers every Engram call the memory core makes with a fresh id.
-func fakeEngramServer(t *testing.T) {
+// record binds host as a crew session of the root and records one observation as it, optionally
+// superseding an earlier entry, returning the new entry's ID.
+func (s *session) record(host, title string, supersedes int64) int64 {
+	s.t.Helper()
+	ctx := context.Background()
+	admin, err := memory.DialAdmin(ctx, s.memoryDir)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+	if err := admin.Bind(ctx, memory.BindArgs{HostSession: host, Agent: "pm", ClaimedRoot: rootSession, Workspace: "ws"}); err != nil {
+		s.t.Fatal(err)
+	}
+	args := map[string]any{"nature": "observation", "scope": "workspace", "title": title, "content": "body of " + title, "evidence": "verified in the scenario"}
+	if supersedes != 0 {
+		args["relates_to"] = map[string]any{"id": supersedes, "relation": memory.RelationSupersedes}
+	}
+	sock := filepath.Join(s.memoryDir, memory.SocketFile)
+	crew, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint: "http://memory" + memory.PathCrew, DisableStandaloneSSE: true,
+		HTTPClient: &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		}}},
+	}, nil)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer func() { _ = crew.Close() }()
+	res, err := crew.CallTool(ctx, &mcp.CallToolParams{Name: memory.ToolRecord, Arguments: args, Meta: mcp.Meta{memory.MetaHostSession: host}})
+	if err != nil || res.IsError {
+		s.t.Fatalf("record %q as %s: %v %+v", title, host, err, res)
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(res.Content[0].(*mcp.TextContent).Text, "Recorded #"), 10, 64)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return id
+}
+
+// requireNamed fails unless the refusal's text contains every want.
+func requireNamed(t *testing.T, res result, wants ...string) {
 	t.Helper()
-	var next atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/project/current" {
-			if err := json.NewEncoder(w).Encode(map[string]string{"project": "demo", "cwd": r.URL.Query().Get("cwd")}); err != nil {
-				t.Errorf("encode project response: %v", err)
-			}
-			return
+	for _, want := range wants {
+		if !strings.Contains(res.stderr, want) {
+			t.Errorf("refusal %q does not name %q", res.stderr, want)
 		}
-		if err := json.NewEncoder(w).Encode(map[string]int64{"id": next.Add(1)}); err != nil {
-			t.Errorf("encode observation response: %v", err)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	t.Setenv("ENGRAM_BASE_URL", srv.URL)
-	t.Setenv("HOME", t.TempDir())
+	}
 }
 
-func runMemoryCLI(t *testing.T, command, input string) (map[string]any, int) {
-	t.Helper()
-	var stdout, stderr bytes.Buffer
-	err := run([]string{"memory", command}, strings.NewReader(input), &stdout, &stderr)
-	code := 0
-	var exit exitCode
-	if errors.As(err, &exit) {
-		code = int(exit)
-	} else if err != nil {
-		t.Fatalf("run() error = %v, want exitCode", err)
-	}
-	if strings.Count(stdout.String(), "\n") != 1 {
-		t.Fatalf("stdout = %q, want one JSON line", stdout.String())
-	}
-	var line map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &line); err != nil {
-		t.Fatal(err)
-	}
-	return line, code
-}
+func idRef(id int64) string { return "#" + strconv.FormatInt(id, 10) }
 
-func TestMemoryCommandExitCodes(t *testing.T) {
-	fakeEngramServer(t)
-	record := `{"author":"dev","session":"ses_1","directory":"/work/demo","nature":"proposal","scope":"project","title":"Split the parser","content":"The parser mixes IO and parsing."}`
-	cases := []struct {
-		name, command, input string
-		code                 int
-		want                 string
+// deliveryTable covers PR-HAR-24 for a delegated execution: it accepts the specialist's own
+// current entries, and refuses a superseded draft, a sibling session's entry,
+// and a completed result without IDs, each naming the continuation.
+func deliveryTable(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const child = "pm-child"
+	input := s.record("analyst-child", "declared input", 0)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{input}})
+	s.must(request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "brief", Dispatch: "call", Caller: rootSession, Agent: "pm", Child: child})
+	draft := s.record(child, "draft", 0)
+	final := s.record(child, "final", draft)
+	sibling := s.record("pm-sibling", "sibling result", 0)
+	deliver := func(ids ...int64) request {
+		return request{Action: "deliver", Session: rootSession, Child: child, Agent: "pm", ResultIDs: ids}
+	}
+	for _, tc := range []struct {
+		name string
+		ids  []int64
+		want string
 	}{
-		{"record ok", "record", record, 0, `"ok":true`},
-		{"close ok", "close", `{"author":"takt","session":"ses_1","directory":"/work/demo","objective":"Split parser","state":"Parser split"}`, 0, `"end_anchor_id"`},
-		{"record after close resumes", "record", strings.Replace(record, "Split the parser", "Refined the parser", 1), 0, `"ok":true`},
-		{"close resumed session", "close", `{"author":"takt","session":"ses_1","directory":"/work/demo","objective":"Refine parser","state":"Parser refined"}`, 0, `"end_anchor_id"`},
-		{"quoted wording accepted", "record", strings.NewReplacer("ses_1", "ses_words", "Split the parser", "Quoted: will", "The parser mixes IO and parsing.", "se verificó todo").Replace(record), 0, `"ok":true`},
-		{"invalid json", "record", `{"author":`, 2, "invalid request"},
-		{"capabilities invalid json", "capabilities", `{"author":`, 2, "invalid request"},
-		{"unknown field", "record", strings.Replace(record, `"author"`, `"confirmed_by":"x","author"`, 1), 2, "unknown field"},
-		{"multiple values", "continue", `{} {}`, 2, "multiple JSON values"},
-		{"unknown verb", "delete", `{}`, 1, "unknown memory command"},
-	}
-	for _, tc := range cases {
-		line, code := runMemoryCLI(t, tc.command, tc.input)
-		raw, _ := json.Marshal(line)
-		if code != tc.code || !strings.Contains(string(raw), tc.want) {
-			t.Errorf("%s: code=%d line=%s, want code %d containing %q", tc.name, code, raw, tc.code, tc.want)
-		}
-	}
-}
-
-func TestMemoryCommandEngramUnreachable(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("ENGRAM_BASE_URL", "http://127.0.0.1:1")
-	t.Setenv("PATH", t.TempDir()) // no engram binary to start
-	line, code := runMemoryCLI(t, "record", `{"author":"dev","session":"ses_1","directory":"/w","nature":"proposal","scope":"project","title":"T","content":"C"}`)
-	if code != 1 || line["ok"] != false {
-		t.Fatalf("code=%d line=%v, want internal failure", code, line)
-	}
-}
-
-func TestMemoryCapabilitiesReadOnly(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	dir := t.TempDir()
-	for _, tt := range []struct {
-		author string
-		count  int
-	}{{"spec", 1}, {"takt", 3}, {"architect", 3}} {
-		t.Run(tt.author, func(t *testing.T) {
-			input, err := json.Marshal(map[string]string{"author": tt.author, "session": "root", "directory": dir})
-			if err != nil {
-				t.Fatal(err)
-			}
-			line, code := runMemoryCLI(t, "capabilities", string(input))
-			if code != 0 || line["ok"] != true {
-				t.Fatalf("%v: %v", code, line)
-			}
-			tools, ok := line["result"].([]any)
-			if !ok || len(tools) != tt.count || tools[0] != "memory_record" {
-				t.Fatal(line)
-			}
+		{"superseded draft", []int64{draft}, "current version is " + idRef(final)},
+		{"sibling session's entry", []int64{sibling}, "written by another session"},
+		{"completed result without IDs", nil, "at least one Takt memory entry ID"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireNamed(t, s.rejected(deliver(tc.ids...)), tc.want, "takt_memory_record", "deliver_result")
 		})
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("read-only query mutated workspace: %v %v", entries, err)
+	var delivered struct {
+		ResultIDs []int64 `json:"result_ids"`
 	}
-	_, code := runMemoryCLI(t, "capabilities", `{"author":"spec","unexpected":true}`)
-	if code != invalidRequestExitStatus {
-		t.Fatalf("unknown identity fields accepted: %d", code)
+	s.must(deliver(final)).decode(t, &delivered)
+	if !slices.Equal(delivered.ResultIDs, []int64{final}) || !slices.Equal(s.projection().Executions["call"].Delivery, []int64{final}) {
+		t.Fatalf("delivery of the specialist's own current entry: answered %v, recorded %v", delivered.ResultIDs, s.projection().Executions["call"].Delivery)
 	}
 }
 
-// TestMemoryRootComesFromTheExecutionHistory: a delegated session records into
-// the root its delegation runs under, whatever root the request names, and an
-// unlinked session records only into itself.
-func TestMemoryRootComesFromTheExecutionHistory(t *testing.T) {
-	fakeEngramServer(t)
-	home := os.Getenv("HOME")
-	workspace := t.TempDir()
-	h, err := history.Open(history.StateDir(workspace))
-	if err != nil {
-		t.Fatal(err)
+// topLevelDelivery covers the top-level path: every ID was written by the calling host session and is
+// current.
+func topLevelDelivery(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const top = "top-session"
+	before := s.record(top, "recorded long ago", 0)
+	draft := s.record(top, "draft", 0)
+	final := s.record(top, "final", draft)
+	sibling := s.record("other-session", "someone else's", 0)
+	validate := func(ids ...int64) request {
+		return request{Action: "validate_results", Session: top, ResultIDs: ids}
 	}
-	for _, e := range []history.Entry{
-		{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: "root-r", WorkUnitID: "u1", AttemptID: "1", Dispatch: "call", Agent: "dev", Caller: "root-r", Cause: history.CauseNone},
-		{Author: history.AuthorHarness, Kind: history.KindChild, SessionID: "root-r", WorkUnitID: "u1", AttemptID: "1", Dispatch: "call", Child: "child-c", Cause: history.CauseNone},
+	s.must(validate(final, before))
+	requireNamed(t, s.rejected(validate(draft)), "current version is "+idRef(final), "takt_memory_record")
+	requireNamed(t, s.rejected(validate(sibling)), "written by another session")
+	requireNamed(t, s.rejected(validate()), "at least one Takt memory entry ID")
+	requireNamed(t, s.rejected(validate(final+99)), idRef(final+99)+" does not exist")
+}
+
+// inputsAreCurrent covers PR-HAR-37 and the pm rule: a superseded input is refused naming its current
+// version, and the pm session that wrote a consumed entry cannot be resumed to consume it.
+func inputsAreCurrent(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	draft := s.record("writer", "draft", 0)
+	final := s.record("writer", "final", draft)
+	requireNamed(t, s.rejected(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{draft}}), "current version is "+idRef(final))
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{final}})
+
+	story := s.record("pm-stories", "user story", 0)
+	s.must(request{Action: "inputs", Session: rootSession, Event: "business-docs", ResultIDs: []int64{story}})
+	prepare := request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "business-docs", Dispatch: "resume-call", Caller: rootSession, Agent: "pm", Child: "pm-stories"}
+	requireNamed(t, s.rejected(prepare), "fresh pm unit")
+	if p := s.projection(); len(p.Executions) != 0 || p.InFlight() != 0 {
+		t.Fatal("a refused resumption admitted an execution")
+	}
+	prepare.Dispatch, prepare.Child = "fresh-call", ""
+	s.must(prepare)
+	// Only the session that recorded the entry is barred: another pm session consumes it.
+	s.must(request{Action: "inputs", Session: rootSession, Event: "other-docs", ResultIDs: []int64{story}})
+	other := request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "other-docs", Dispatch: "other-call", Caller: rootSession, Agent: "pm", Child: "pm-docs"}
+	s.must(other)
+}
+
+// failedSwitchBind: a switch whose lent session cannot be bound to the convening root fails
+// and records nothing, and validate_switch refuses an absent or non-current requirements list.
+func failedSwitchBind(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	// A switch without an interlocutor specialist is refused before the lent session is bound,
+	// and the harness records the denial.
+	s.refused(request{Action: "switch", Session: rootSession, Child: "lent", Requirements: []int64{}})
+	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" {
+		t.Fatalf("a switch that failed to bind lent the interface to %q", holder)
+	}
+	unavailable := newSession(t, bin)
+	unavailable.env = append(unavailable.env, memory.EnvDir+"="+filepath.Join(t.TempDir(), "absent"))
+	requireNamed(t, unavailable.rejected(request{Action: "switch", Session: rootSession, Child: "lent", Agent: "pm", Requirements: []int64{}}), "Takt memory service is unreachable")
+	requireNamed(t, unavailable.rejected(request{Action: "switch", Session: rootSession, Child: "lent", Agent: "pm", Requirements: []int64{}}), "call dispatch_switch again")
+
+	draft := s.record("writer", "draft", 0)
+	final := s.record("writer", "final", draft)
+	s.must(request{Action: "validate_switch", Session: rootSession, Agent: "pm", Requirements: []int64{}})
+	s.must(request{Action: "validate_switch", Session: rootSession, Agent: "pm", Requirements: []int64{final}})
+	s.refused(request{Action: "validate_switch", Session: rootSession, Agent: "pm"})
+	requireNamed(t, s.refused(request{Action: "validate_switch", Session: rootSession, Agent: "pm", Requirements: []int64{draft}}), "current version is "+idRef(final))
+	s.refused(request{Action: "validate_switch", Session: rootSession, Agent: "analyst", Requirements: []int64{}})
+	s.rejected(request{Action: "switch", Session: rootSession, Child: "lent", Agent: "pm", Requirements: []int64{draft}})
+	if s.count(history.KindInterlocutorSwitched) != 0 {
+		t.Fatal("a refused switch was recorded")
+	}
+}
+
+// handoffNeedsRecordedResults covers PR-HAR-24 for a lent session: a completed handoff delivers the
+// entries the holder recorded, the envelope carries exactly those IDs, an early close
+// needs none, and validate_handoff refuses what the handoff refuses without recording anything.
+func handoffNeedsRecordedResults(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	const child = "child-1"
+	required := s.record("analyst-child", "requirement", 0)
+	s.must(request{Action: "switch", Session: rootSession, Child: child, Agent: "pm", Requirements: []int64{required}})
+	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != child {
+		t.Fatalf("the switch recorded holder %q, want %q", holder, child)
+	}
+	draft := s.record(child, "draft", 0)
+	final := s.record(child, "final", draft)
+	sibling := s.record("sibling-child", "sibling result", 0)
+	handoff := func(result string, ids ...int64) request {
+		return request{Action: "handoff", Session: rootSession, Child: child, Agent: "pm", Result: result, ResultIDs: ids}
+	}
+	for _, tc := range []struct {
+		name string
+		req  request
+		want string
+	}{
+		{"completed result without IDs", handoff("Standard"), "at least one Takt memory entry ID"},
+		{"superseded draft", handoff("Standard", draft), "current version is " + idRef(final)},
+		{"sibling session's entry", handoff("Standard", sibling), "written by another session"},
+		{"IDs declared by an early close", handoff("EarlyHandoff", sibling), "written by another session"},
 	} {
-		if err := h.Append(e); err != nil {
-			t.Fatal(err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			requireNamed(t, s.rejected(tc.req), tc.want, "takt_memory_record", "dispatch_handoff")
+			validate := tc.req
+			validate.Action = "validate_handoff"
+			requireNamed(t, s.rejected(validate), tc.want)
+		})
 	}
-	if err := h.Close(); err != nil {
-		t.Fatal(err)
+	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != child {
+		t.Fatalf("a refused handoff released the interface: %q", holder)
 	}
-	for caller, want := range map[string]string{"child-c": "root-r", "loose": "loose"} {
-		input, err := json.Marshal(map[string]string{"author": "dev", "session": "forged", "caller_session": caller, "directory": workspace, "nature": "proposal", "scope": "project", "title": "T " + caller, "content": "C"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if line, code := runMemoryCLI(t, "record", string(input)); code != 0 {
-			t.Fatalf("record from %s: %d %v", caller, code, line)
-		}
-		if !findFile(t, home, want+".json") {
-			t.Fatalf("record from %s did not land in %s", caller, want)
-		}
+	// A valid ID suffices for a completed handoff.
+	s.must(request{Action: "validate_handoff", Session: rootSession, Child: child, Result: "Standard", ResultIDs: []int64{final}})
+	var resp returned
+	s.must(handoff("Standard", final)).decode(t, &resp)
+	resp.requireFourFields(t)
+	if resp.Envelope.Result != "Standard" || !slices.Equal(resp.Envelope.Memory, []int64{final}) {
+		t.Fatalf("handoff envelope = %+v, want result Standard and the delivered [%d]", resp.Envelope, final)
 	}
-	if findFile(t, home, "forged.json") {
-		t.Fatal("a request-named root was accepted over the execution history")
+	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" || s.count(history.KindInterlocutorHandoff) != 1 {
+		t.Fatalf("the handoff did not return the interface: holder %q", holder)
 	}
-}
-
-func findFile(t *testing.T, dir, name string) bool {
-	t.Helper()
-	found := false
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && d.Name() == name {
-			found = true
-		}
-		return nil
-	})
-	return found
 }

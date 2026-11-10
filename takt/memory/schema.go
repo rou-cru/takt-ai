@@ -91,3 +91,24 @@ func applySchema(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion))
 	return err
 }
+
+// createPartition inserts the partition row for a tier and workspace key, and its two
+// full-text tables over title and body, named by the partition ID (rowid = entry ID).
+// It runs inside the caller's write transaction.
+func createPartition(ctx context.Context, tx *sql.Tx, tier, workspaceKey string) (int64, error) {
+	res, err := tx.ExecContext(ctx, `INSERT INTO partitions (tier, workspace_key) VALUES (?, ?)`, tier, workspaceKey)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	for _, kind := range []string{"current", "superseded"} {
+		ddl := fmt.Sprintf(`CREATE VIRTUAL TABLE fts_%s_%d USING fts5(title, body, %s)`, kind, id, ftsTokenizer)
+		if _, err := tx.ExecContext(ctx, ddl); err != nil {
+			return 0, err
+		}
+	}
+	return id, nil
+}

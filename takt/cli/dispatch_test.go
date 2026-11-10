@@ -2,25 +2,19 @@ package main_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
-	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -38,15 +32,6 @@ const rootSession = "root"
 // causeIncomplete is the cause recorded for a recovery declaration that leaves
 // a required part out.
 const causeIncomplete = "declaration/recovery-incomplete"
-
-// Modes of the memory session index a scenario seeds under its own HOME.
-const (
-	memoryDirMode  os.FileMode = 0o700
-	memoryFileMode os.FileMode = 0o600
-)
-
-// engramReadyTimeout bounds the wait for a real `engram serve` to listen.
-const engramReadyTimeout = 15 * time.Second
 
 // request is the JSON envelope `dispatch` reads; only the fields these
 // scenarios send.
@@ -72,18 +57,20 @@ type request struct {
 	Version    string           `json:"version,omitempty"`
 	Plan       []gc.PlanUnit    `json:"plan,omitempty"`
 	QARound    *history.QARound `json:"qa_round,omitempty"`
-	Artifact   string           `json:"artifact,omitempty"`
 	ResultIDs  []int64          `json:"result_ids,omitempty"`
-	After      int64            `json:"after,omitempty"`
-	Origin     string           `json:"origin,omitempty"`
-	Caller     string           `json:"caller,omitempty"`
-	Owner      string           `json:"owner,omitempty"`
-	Model      string           `json:"model,omitempty"`
-	Configured string           `json:"configured_model,omitempty"`
-	SeatReason string           `json:"seat_reason,omitempty"`
-	Substitute bool             `json:"substitute,omitempty"`
-	Confirmed  bool             `json:"user_confirmed,omitempty"`
-	AuthorKeys []vfs.AgentID    `json:"author_keys,omitempty"`
+	// Requirements carries a switch's entry IDs; an empty list is meaningful, so it is never omitted.
+	Requirements      []int64       `json:"requirements"`
+	Origin            string        `json:"origin,omitempty"`
+	AdditionalContext string        `json:"additional_context,omitempty"`
+	ExtraArtifacts    []string      `json:"extra_artifacts,omitempty"`
+	Caller            string        `json:"caller,omitempty"`
+	Owner             string        `json:"owner,omitempty"`
+	Model             string        `json:"model,omitempty"`
+	Configured        string        `json:"configured_model,omitempty"`
+	SeatReason        string        `json:"seat_reason,omitempty"`
+	Substitute        bool          `json:"substitute,omitempty"`
+	Confirmed         bool          `json:"user_confirmed,omitempty"`
+	AuthorKeys        []vfs.AgentID `json:"author_keys,omitempty"`
 }
 
 // call is an ordinary-specialist request of the root session about one unit.
@@ -157,6 +144,8 @@ type session struct {
 	bin               string
 	root, state, home string
 	env               []string
+	// memoryDir is the memory directory of the session's service, once started.
+	memoryDir string
 }
 
 // commandPackage is the import path of the command under test.
@@ -181,13 +170,20 @@ func buildTaktAI(t *testing.T) string {
 
 func newSession(t *testing.T, bin string) *session {
 	t.Helper()
-	return &session{t: t, bin: bin, root: t.TempDir(), state: filepath.Join(t.TempDir(), "state"), home: t.TempDir()}
+	s := &session{t: t, bin: bin, root: t.TempDir(), state: filepath.Join(t.TempDir(), "state"), home: t.TempDir()}
+	// Admitting an execution and lending the interface both consult the memory service.
+	s.startMemory()
+	return s
 }
 
 // run executes the binary with only the environment the session grants it.
-func (s *session) run(args ...string) result {
+func (s *session) run(args ...string) result { s.t.Helper(); return s.runIn("", args...) }
+
+// runIn is run with stdin as the command's standard input.
+func (s *session) runIn(stdin string, args ...string) result {
 	s.t.Helper()
 	cmd := exec.Command(s.bin, args...)
+	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = append([]string{"HOME=" + s.home, "TMPDIR=" + s.home, "PATH=" + os.Getenv("PATH")}, s.env...)
 	if dir := os.Getenv("GOCOVERDIR"); dir != "" {
 		cmd.Env = append(cmd.Env, "GOCOVERDIR="+dir)
@@ -367,23 +363,14 @@ func (s *session) staged(key vfs.AgentID) int {
 	return n
 }
 
-// seedMemory writes the memory session index `takt-ai memory record` keeps
-// under HOME: which author recorded which entry in the session.
 // returned decodes what the harness delivers when the interface comes back.
 type returned struct {
 	Envelope struct {
 		Result            string   `json:"result"`
 		AdditionalContext string   `json:"additional_context"`
 		ExtraArtifacts    []string `json:"extra_artifacts"`
-		Memory            struct {
-			Entries   []int64 `json:"entries"`
-			NextAfter int64   `json:"next_after"`
-		} `json:"memory"`
+		Memory            []int64  `json:"memory"`
 	} `json:"envelope"`
-	Artifact *struct {
-		Path    string `json:"path"`
-		Present bool   `json:"present"`
-	} `json:"artifact"`
 	Child  string `json:"child"`
 	Root   string `json:"root"`
 	Notice string `json:"notice"`
@@ -421,32 +408,6 @@ func (r returned) requireFourFields(t *testing.T) {
 	}
 	if len(fields) != 4 {
 		t.Fatalf("envelope %s has %d fields, want exactly four", r.raw, len(fields))
-	}
-}
-
-// seededEntry is one memory session index entry, in recording order.
-type seededEntry struct {
-	ID     int64  `json:"id"`
-	Author string `json:"author"`
-	Caller string `json:"caller,omitempty"`
-}
-
-func (s *session) seedMemory(id string, entries ...seededEntry) {
-	s.t.Helper()
-	index := struct {
-		Session string        `json:"session"`
-		Entries []seededEntry `json:"entries"`
-	}{Session: id, Entries: entries}
-	dir := filepath.Join(s.home, ".takt-ai", "memory", "sessions")
-	if err := os.MkdirAll(dir, memoryDirMode); err != nil {
-		s.t.Fatal(err)
-	}
-	data, err := json.Marshal(index)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, id+".json"), data, memoryFileMode); err != nil {
-		s.t.Fatal(err)
 	}
 }
 
@@ -493,11 +454,13 @@ func TestDispatchCommand(t *testing.T) {
 		{"a restart or redeclaration grants no fresh allowance", consumptionSurvivesRestart},
 		{"a handoff needs the results the holder recorded", handoffNeedsRecordedResults},
 		{"the user ends a holder's turn", userAbortsSwitch},
-		{"a lent session's memory index pages", lentMemoryPages},
 		{"an unavailable seat is restored, never absorbed", seatRestoration},
 		{"a deleted holder session is aborted", deletedSessionAbortsHolder},
 		{"a declared document's absence never gates a nonstandard handoff", handoffOptionalCopy},
-		{"validate_results against a real engram", validateResultsAgainstRealEngram},
+		{"a delegation delivers only its own current entries", deliveryTable},
+		{"top-level delivery needs the calling session's own current entries", topLevelDelivery},
+		{"inputs must be current and the pm never consumes its own entry", inputsAreCurrent},
+		{"a switch that cannot bind its lent session records nothing", failedSwitchBind},
 		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
 	} {
 		t.Run(tc.name, func(t *testing.T) { tc.run(t, bin) })
@@ -1466,117 +1429,11 @@ func consumptionSurvivesRestart(t *testing.T, bin string) {
 	}
 }
 
-func handoffNeedsRecordedResults(t *testing.T, bin string) {
-	// A stand-in Engram that has recorded observation 123 and nothing else.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/health", "/observations/123":
-			_, _ = w.Write([]byte(`{"id":123}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-	s := newSession(t, bin)
-	s.env = append(s.env, "ENGRAM_BASE_URL="+server.URL)
-	s.seedMemory(rootSession, seededEntry{ID: 123, Author: "pm", Caller: "child-1"}, seededEntry{ID: 124, Author: "dev"}, seededEntry{ID: 999, Author: "pm", Caller: "child-1"})
-	validate := func(session string, ids ...int64) request {
-		return request{Action: "validate_results", Session: session, Agent: "pm", ResultIDs: ids}
-	}
-	s.rejected(validate(rootSession, 999)) // indexed for pm, but Engram does not have it
-	s.rejected(validate(rootSession, 124)) // recorded by another author
-	s.rejected(validate("other", 123))     // recorded in another session
-	s.must(validate(rootSession, 123))
-	const artifact = "PRD.md"
-	s.must(request{Action: "switch", Session: rootSession, Child: "child-1", Agent: "pm", Artifact: artifact})
-	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "child-1" {
-		t.Fatalf("the switch did not hand the interface to the holder: %q", holder)
-	}
-	if err := os.WriteFile(filepath.Join(s.root, artifact), []byte("# PRD\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// The optional copy exists, yet without a result the holder recorded the
-	// handoff is refused and the holder keeps the interface.
-	handoff := request{Action: "handoff", Session: rootSession, Child: "child-1", Agent: "pm", Result: "Standard"}
-	s.rejected(handoff)
-	handoff.ResultIDs = []int64{999}
-	s.rejected(handoff)
-	handoff.ResultIDs = []int64{124}
-	s.rejected(handoff)
-	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "child-1" {
-		t.Fatalf("a refused handoff released the interface: %q", holder)
-	}
-	// A valid ID suffices with no document on disk; its absence is reported
-	// beside the envelope.
-	if err := os.Remove(filepath.Join(s.root, artifact)); err != nil {
-		t.Fatal(err)
-	}
-	handoff.ResultIDs = []int64{123}
-	var resp returned
-	s.must(handoff).decode(t, &resp)
-	if resp.Artifact == nil || resp.Artifact.Path != artifact || resp.Artifact.Present {
-		t.Fatalf("missing standard document was not reported: %+v", resp)
-	}
-	resp.requireFourFields(t)
-	if resp.Envelope.Result != "Standard" {
-		t.Fatalf("handoff result missing: %+v", resp)
-	}
-	// The index lists what the lent session recorded, not other root history.
-	if !slices.Equal(resp.Envelope.Memory.Entries, []int64{123, 999}) || resp.Envelope.Memory.NextAfter != 0 {
-		t.Fatalf("handoff memory is not the lent session's index: %+v", resp.Envelope.Memory)
-	}
-	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" || s.count(history.KindInterlocutorHandoff) != 1 {
-		t.Fatalf("the handoff did not return the interface: holder %q", holder)
-	}
-}
-
-// lentMemoryPages covers IR-22: the envelope's memory index is bounded by
-// policy, and lent_entries pages the remainder of a session that held the
-// interface, refusing any other.
-func lentMemoryPages(t *testing.T, bin string) {
-	s := newSession(t, bin)
-	const lent, handedOff = "child-p", "child-q"
-	var entries []seededEntry
-	for id := int64(1); id <= 55; id++ {
-		entries = append(entries, seededEntry{ID: id, Author: "pm", Caller: lent}, seededEntry{ID: 100 + id, Author: "pm", Caller: handedOff})
-	}
-	s.seedMemory(rootSession, append(entries, seededEntry{ID: 99, Author: "takt", Caller: rootSession})...)
-	s.must(request{Action: "switch", Session: rootSession, Child: lent, Agent: "pm"})
-	var resp returned
-	s.must(request{Action: "abort_switch", Session: rootSession, Child: lent, Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
-	if len(resp.Envelope.Memory.Entries) != 50 || resp.Envelope.Memory.NextAfter != 50 || resp.Artifact != nil {
-		t.Fatalf("first page: %+v", resp)
-	}
-	if !strings.Contains(resp.Notice, "call dispatch_lent_entries with child child-p and after 50") {
-		t.Fatalf("the notice does not name the remainder: %q", resp.Notice)
-	}
-	var page struct {
-		Entries   []int64 `json:"entries"`
-		NextAfter int64   `json:"next_after"`
-	}
-	s.must(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 50}).decode(t, &page)
-	if !slices.Equal(page.Entries, []int64{51, 52, 53, 54, 55}) || page.NextAfter != 0 {
-		t.Fatalf("remainder: %+v", page)
-	}
-	s.refused(request{Action: "lent_entries", Session: rootSession, Child: rootSession})
-	s.refused(request{Action: "lent_entries", Session: rootSession, Child: lent, After: 99})
-
-	// A handoff's notice names its lent session too: the convening agent reads
-	// only the notice, and paging needs that child.
-	s.must(request{Action: "switch", Session: rootSession, Child: handedOff, Agent: "pm"})
-	var handoff returned
-	s.must(request{Action: "handoff", Session: rootSession, Child: handedOff, Agent: "pm", Result: "EarlyHandoff"}).decode(t, &handoff)
-	if handoff.Envelope.Memory.NextAfter != 150 || !strings.Contains(handoff.Notice, "call dispatch_lent_entries with child child-q and after 150") {
-		t.Fatalf("handoff notice does not name the lent session to page: %+v", handoff)
-	}
-}
-
 // userAbortsSwitch covers IR-24: the user may end a temporary holder's turn
 // without negotiation, after a prior switch.
 func userAbortsSwitch(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	s.seedMemory(rootSession, seededEntry{ID: 40, Author: "pm", Caller: "earlier-pm"}, seededEntry{ID: 41, Author: "pm", Caller: "child-2"}, seededEntry{ID: 42, Author: "takt", Caller: rootSession})
-	s.must(request{Action: "switch", Session: rootSession, Child: "child-2", Agent: "pm", Artifact: "PRD.md"})
+	s.must(request{Action: "switch", Session: rootSession, Child: "child-2", Agent: "pm", Requirements: []int64{}})
 	var holder map[string]any
 	s.must(request{Action: "interlocutor", Session: rootSession}).decode(t, &holder)
 	if holder["holder"] != "child-2" {
@@ -1589,15 +1446,9 @@ func userAbortsSwitch(t *testing.T, bin string) {
 	if resp.Envelope.Result != "Aborted" {
 		t.Fatalf("abort_switch result: %+v", resp)
 	}
-	// The envelope carries what the lent session recorded: not the same
-	// author's earlier entries, nor the root's own.
-	if !slices.Equal(resp.Envelope.Memory.Entries, []int64{41}) {
-		t.Fatalf("abort_switch memory is not the lent session's entries: %+v", resp.Envelope.Memory)
-	}
-	// PR-HAR-24: the document is never required to abort, but its absence is
-	// still checked and reported beside the envelope.
-	if resp.Artifact == nil || resp.Artifact.Present {
-		t.Fatalf("abort with no document on disk must report it absent: %+v", resp)
+	// A synthesized abort delivers nothing: its memory is empty, not absent.
+	if resp.Envelope.Memory == nil || len(resp.Envelope.Memory) != 0 {
+		t.Fatalf("abort_switch memory is not empty: %+v", resp.Envelope.Memory)
 	}
 	if holder := s.projection().Budgets(rootSession).InterlocutorHolder; holder != "" {
 		t.Fatalf("the abort left the holder in place: %q", holder)
@@ -1607,7 +1458,7 @@ func userAbortsSwitch(t *testing.T, bin string) {
 	}
 	s.refused(request{Action: "abort_switch", Session: rootSession, Child: "child-2", Evidence: "x", Origin: "user"})
 	// An empty child aborts whoever holds the root, decided in the same call.
-	s.must(request{Action: "switch", Session: rootSession, Child: "child-3", Agent: "pm", Artifact: "PRD.md"})
+	s.must(request{Action: "switch", Session: rootSession, Child: "child-3", Agent: "pm", Requirements: []int64{}})
 	s.must(request{Action: "abort_switch", Session: rootSession, Evidence: "user cancelled the switch", Origin: "user"}).decode(t, &resp)
 	if resp.Child != "child-3" || s.projection().Budgets(rootSession).InterlocutorHolder != "" {
 		t.Fatalf("abort_switch with no child did not abort the holder: %+v", resp)
@@ -1616,7 +1467,7 @@ func userAbortsSwitch(t *testing.T, bin string) {
 	// /takt-abort names only the session the user is in: the lent session
 	// resolves its root, the convening session its holder.
 	for _, from := range []string{"child-4", rootSession} {
-		s.must(request{Action: "switch", Session: rootSession, Child: "child-4", Agent: "pm"})
+		s.must(request{Action: "switch", Session: rootSession, Child: "child-4", Agent: "pm", Requirements: []int64{}})
 		var user returned
 		s.must(request{Action: "abort_switch", Child: from, Evidence: "the user ran /takt-abort", Origin: "user"}).decode(t, &user)
 		if user.Root != rootSession || user.Child != "child-4" || !strings.HasPrefix(user.Notice, "The interface is back from pm, whose lent session was aborted.") {
@@ -1631,8 +1482,8 @@ func userAbortsSwitch(t *testing.T, bin string) {
 func deletedSessionAbortsHolder(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	const otherRoot = "root-2"
-	s.must(request{Action: "switch", Session: rootSession, Child: "child-a", Agent: "pm", Artifact: "PRD.md"})
-	s.must(request{Action: "switch", Session: otherRoot, Child: "child-b", Agent: "pm", Artifact: "PRD.md"})
+	s.must(request{Action: "switch", Session: rootSession, Child: "child-a", Agent: "pm", Requirements: []int64{}})
+	s.must(request{Action: "switch", Session: otherRoot, Child: "child-b", Agent: "pm", Requirements: []int64{}})
 	before := len(s.entries())
 	var resp map[string]any
 	s.must(request{Action: "session_deleted", Child: "stranger"}).decode(t, &resp)
@@ -1659,144 +1510,19 @@ func deletedSessionAbortsHolder(t *testing.T, bin string) {
 
 func handoffOptionalCopy(t *testing.T, bin string) {
 	for _, result := range []string{"EarlyHandoff", "TechFault", "Outraged"} {
-		for _, present := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/present=%t", result, present), func(t *testing.T) {
-				s := newSession(t, bin)
-				if present {
-					if err := os.WriteFile(filepath.Join(s.root, "copy.md"), []byte("draft"), 0o644); err != nil {
-						t.Fatal(err)
-					}
-				}
-				s.must(request{Action: "switch", Session: rootSession, Child: "child", Agent: "pm", Artifact: "copy.md"})
-				handoff := request{Action: "handoff", Session: rootSession, Child: "child", Agent: "pm", Result: result, ResultIDs: []int64{123}}
-				s.rejected(handoff) // an unrecorded result ID is refused whatever the result
-				handoff.ResultIDs = nil
-				var resp returned
-				s.must(handoff).decode(t, &resp)
-				if resp.Artifact == nil || resp.Artifact.Present != present || resp.Envelope.Result != result {
-					t.Fatalf("unexpected handoff metadata: %+v", resp)
-				}
-			})
-		}
-	}
-}
-
-// scrubFakeEngramPath drops any PATH entry from the fake engram stub this
-// package's TestMain installs (os.MkdirTemp("", "takt-tui-engram-")), so the
-// real-engram scenario can force a genuine download instead of finding it.
-func scrubFakeEngramPath(path string) string {
-	entries := strings.Split(path, string(os.PathListSeparator))
-	kept := entries[:0]
-	for _, entry := range entries {
-		if !strings.Contains(entry, "takt-tui-engram-") {
-			kept = append(kept, entry)
-		}
-	}
-	return strings.Join(kept, string(os.PathListSeparator))
-}
-
-// validateResultsAgainstRealEngram is E2E-D: every other coverage of
-// validate_results fakes Engram with an httptest.Server. This one downloads the
-// pinned release, runs a real `engram serve`, saves a real observation through
-// its real HTTP API, and drives the real dispatch action against it, the one
-// link the delivery rewrite depends on that no test exercised without a mock. It
-// runs only inside the disposable test container
-// (development/testing/test-containerized.sh): it never touches a host data
-// directory.
-func validateResultsAgainstRealEngram(t *testing.T, bin string) {
-	if _, err := os.Stat("/.dockerenv"); err != nil {
-		t.Skip("E2E-D runs only inside the test container")
-	}
-	t.Setenv("HOME", t.TempDir())
-	// The package's TestMain puts a fake `engram` stub first on PATH for every
-	// other test's sake; strip it so Acquire's PATH lookup can't shadow the real
-	// pinned release this scenario needs.
-	t.Setenv("PATH", scrubFakeEngramPath(os.Getenv("PATH")))
-	binary, err := engram.Acquire(context.Background(), t.TempDir())
-	if err != nil {
-		t.Fatalf("acquire real engram: %v", err)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
-	server := exec.Command(binary, "serve", strconv.Itoa(port))
-	server.Env = append(os.Environ(), "ENGRAM_DATA_DIR="+t.TempDir())
-	var serverOut bytes.Buffer
-	server.Stdout = &serverOut
-	server.Stderr = &serverOut
-	if err := server.Start(); err != nil {
-		t.Fatal(err)
-	}
-	exited := make(chan error, 1)
-	go func() { exited <- server.Wait() }()
-	t.Cleanup(func() { _ = server.Process.Kill() })
-	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
-	deadline := time.After(engramReadyTimeout)
-waitLoop:
-	for {
-		select {
-		case waitErr := <-exited:
-			t.Fatalf("engram serve exited early (%v): %s", waitErr, serverOut.String())
-		case <-deadline:
-			t.Fatalf("engram serve never listened: %s", serverOut.String())
-		case <-time.After(100 * time.Millisecond):
-			if conn, dialErr := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port)); dialErr == nil {
-				_ = conn.Close()
-				break waitLoop
+		t.Run(result, func(t *testing.T) {
+			s := newSession(t, bin)
+			s.must(request{Action: "switch", Session: rootSession, Child: "child", Agent: "pm", Requirements: []int64{}})
+			handoff := request{Action: "handoff", Session: rootSession, Child: "child", Agent: "pm", Result: result, ResultIDs: []int64{123}}
+			s.rejected(handoff) // an unknown result ID is refused whatever the result
+			handoff.ResultIDs = nil
+			var resp returned
+			s.must(handoff).decode(t, &resp)
+			if resp.Envelope.Result != result {
+				t.Fatalf("unexpected handoff result: %+v", resp)
 			}
-		}
+		})
 	}
-
-	sessionBody, err := json.Marshal(map[string]any{
-		"id": "e2e-d-session", "project": "fixture", "directory": "/tmp/e2e-d",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// An observation belongs to a session; the real server rejects a post
-	// under a session id it hasn't seen yet.
-	sessionResp, err := http.Post(baseURL+"/sessions", "application/json", bytes.NewReader(sessionBody))
-	if err != nil {
-		t.Fatalf("post real session: %v", err)
-	}
-	_ = sessionResp.Body.Close()
-
-	body, err := json.Marshal(map[string]any{
-		"session_id": "e2e-d-session",
-		"type":       "decision",
-		"title":      "real engram fixture",
-		"content":    "written by the real-engram dispatch scenario",
-		"tool_name":  "test",
-		"project":    "fixture",
-		"scope":      "project",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := http.Post(baseURL+"/observations", "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("post real observation: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	var created struct {
-		ID int64 `json:"id"`
-	}
-	if e := json.NewDecoder(resp.Body).Decode(&created); e != nil || created.ID == 0 {
-		t.Fatalf("real engram did not return an id: %v", e)
-	}
-
-	missing := created.ID + 1_000_000
-	s := newSession(t, bin)
-	s.env = append(s.env, "ENGRAM_BASE_URL="+baseURL)
-	s.seedMemory(rootSession, seededEntry{ID: created.ID, Author: "pm"}, seededEntry{ID: missing, Author: "pm"})
-	validate := func(id int64) request {
-		return request{Action: "validate_results", Session: rootSession, Agent: "pm", ResultIDs: []int64{id}}
-	}
-	s.rejected(validate(missing)) // a nonexistent ID is refused by the real engram
-	s.must(validate(created.ID))  // its own freshly-saved observation is accepted
 }
 
 func admissionYieldsCycle(t *testing.T, bin string) {

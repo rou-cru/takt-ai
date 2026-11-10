@@ -11,6 +11,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
@@ -68,7 +69,7 @@ func TestApplyModelOverrideChangeKeepsInjectedMCPServers(t *testing.T) {
 		t.Fatalf("SaveInstalledConfig() error = %v", err)
 	}
 	configPath := filepath.Join(root, filepath.FromSlash(opencode.ConfigPath()))
-	injected := []byte(`{"mcp":{"servers":{"engram":{"type":"local","command":["engram","mcp"]},"codegraph":{"type":"local","command":["codegraph","serve"]}}}}`)
+	injected := []byte(`{"mcp":{"servers":{"` + memory.ServerKey + `":{"type":"local","command":["takt-ai","memory","mcp","--crew"]},"codegraph":{"type":"local","command":["codegraph","serve"]}}}}`)
 	current, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -97,7 +98,7 @@ func TestApplyModelOverrideChangeKeepsInjectedMCPServers(t *testing.T) {
 	if err := json.Unmarshal(raw, &config); err != nil {
 		t.Fatalf("parse config after reassignment: %v", err)
 	}
-	for _, name := range []string{"engram", "codegraph"} {
+	for _, name := range []string{memory.ServerKey, "codegraph"} {
 		if _, ok := config.MCP.Servers[name]; !ok {
 			t.Errorf("MCP server %q dropped by model reassignment; servers = %v", name, config.MCP.Servers)
 		}

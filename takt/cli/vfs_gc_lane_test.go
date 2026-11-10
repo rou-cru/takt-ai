@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package main_test
 
 import (
 	"encoding/json"
@@ -35,7 +35,7 @@ const (
 // gcLaneReq is a request from a lane session as the plugin builds it: the
 // cycle's root, the lane as host session and unit, and no cycle attribution.
 func gcLaneReq(lane string, extra map[string]any) map[string]any {
-	req := map[string]any{"ipc_version": IPCVersion, "session_id": gcLaneRoot, "caller_session": lane,
+	req := map[string]any{"ipc_version": vfsIPCVersion, "session_id": gcLaneRoot, "caller_session": lane,
 		"caller_agent": gc.CollectorSpecialistID}
 	for k, v := range extra {
 		req[k] = v
@@ -48,7 +48,8 @@ func gcLaneReq(lane string, extra map[string]any) map[string]any {
 // lane's ordinary vfs commands resolve the cycle binding with no key or cycle
 // named, and no other session holds it.
 func TestVFSCollectorLaneResolvesItsCycleBinding(t *testing.T) {
-	root, state, call := gcHarness(t)
+	fx := newVFSFixture(t, buildTaktAI(t))
+	root, state := fx.root, fx.state
 	for path, content := range map[string]string{
 		"a.go":   "package main\nfunc dead() {}\nfunc main() {}\n",
 		"go.mod": "module fixture\n\ngo 1.25.0\n",
@@ -74,33 +75,31 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 	if err = os.WriteFile(filepath.Join(root, ".takt", "gc.json"), cfg, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	invoke := func(r coordinationRequest) gc.Coordinator {
+	invoke := func(fields map[string]any) gc.Coordinator {
 		t.Helper()
-		c, err := call(r)
-		if err != nil {
-			t.Fatalf("%s: %v", r.Action, err)
+		if _, err := coordinate(fx.s, fields); err != nil {
+			t.Fatalf("%v: %v", fields["action"], err)
 		}
-		return c
+		return *fx.s.coordinator()
 	}
-	invoke(coordinationRequest{Action: "prepare", Owner: testOwner, Session: gcLaneRoot})
+	invoke(map[string]any{"action": "prepare", "owner": testOwnerInstance, "session": gcLaneRoot})
 	consolidateOrdinaryEdit(t, root, state)
-	c := invoke(coordinationRequest{Action: "request", Session: gcLaneRoot})
+	c := invoke(map[string]any{"action": "request", "session": gcLaneRoot})
 	if c.Cycle == nil {
 		t.Fatalf("request opened no cycle: %+v", c)
 	}
-	invoke(coordinationRequest{Action: "attach", Owner: testOwner, Role: "verifier", Child: gcVerifierLane})
-	invoke(coordinationRequest{Action: "attach", Owner: testOwner, Role: "collector", Child: gcCollectorLane})
-	c = invoke(coordinationRequest{Action: "baseline", Session: gcVerifierLane})
-	invoke(coordinationRequest{Action: "investigate", Session: gcCollectorLane, Finding: c.Cycle.Report.Findings[0].ID, Outcome: "confirmed",
-		Evidence: "No callbacks, reflection, config entry, framework entry or public contract; production consumers absent."})
-	invoke(coordinationRequest{Action: "authorize", Session: gcCollectorLane})
+	invoke(map[string]any{"action": "attach", "owner": testOwnerInstance, "role": "verifier", "child": gcVerifierLane})
+	invoke(map[string]any{"action": "attach", "owner": testOwnerInstance, "role": "collector", "child": gcCollectorLane})
+	c = invoke(map[string]any{"action": "baseline", "session": gcVerifierLane})
+	invoke(map[string]any{"action": "investigate", "session": gcCollectorLane, "finding": c.Cycle.Report.Findings[0].ID, "outcome": "confirmed",
+		"evidence": "No callbacks, reflection, config entry, framework entry or public contract; production consumers absent."})
+	invoke(map[string]any{"action": "authorize", "session": gcCollectorLane})
 
-	mutate := newVFSMutator(t, root, state)
-	staged, err := mutate("op", gcLaneReq(gcCollectorLane, map[string]any{"call_id": "cleanup", "action": "patch", "path": "a.go", "content": "package main\nfunc main() {}\n"}))
+	staged, err := fx.mutate("op", gcLaneReq(gcCollectorLane, map[string]any{"call_id": "cleanup", "action": "patch", "path": "a.go", "content": "package main\nfunc main() {}\n"}))
 	if err != nil || staged.Revision == nil || *staged.Revision != 1 {
 		t.Fatalf("collector lane write = %+v, %v", staged, err)
 	}
-	_, err = mutate("op", gcLaneReq(gcVerifierLane, map[string]any{"call_id": "intrude", "action": "patch", "path": "a.go", "content": "x"}))
+	_, err = fx.mutate("op", gcLaneReq(gcVerifierLane, map[string]any{"call_id": "intrude", "action": "patch", "path": "a.go", "content": "x"}))
 	refusedWith(t, "a write from another lane", err, "vfs_bind")
 }
 

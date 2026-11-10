@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 )
 
-// MinimumMajor is the first OpenCode major release whose V2 API Takt targets;
-// it mirrors opencode.MinimumVersion to keep this adapter decoupled.
-const MinimumMajor = 2
+// MinimumVersion is the oldest OpenCode release Takt supports: v2.0.4 is the
+// first to send `_meta["ai.opencode/sessionID"]` on MCP tool calls, which the
+// memory crew identity relies on.
+const MinimumVersion = "2.0.4"
 
 // Info returns the exact version of the server the CLI resolves. It is the
 // cheapest call and doubles as the availability probe of the handshake.
@@ -150,10 +153,10 @@ func (c *Client) Handshake(ctx context.Context) (Handshake, error) {
 	if err != nil {
 		return Handshake{}, fmt.Errorf("%w: %s", ErrInvalidResponse, redactSensitiveText(err.Error()))
 	}
-	if major < MinimumMajor {
+	if !shared.VersionAtLeast(info.Version, MinimumVersion) {
 		return Handshake{}, fmt.Errorf(
-			"%w: server reports %q but Takt needs OpenCode v%d or newer for the V2 API",
-			ErrVersion, info.Version, MinimumMajor,
+			"%w: server reports %q but Takt needs OpenCode %s or newer",
+			ErrVersion, info.Version, MinimumVersion,
 		)
 	}
 	// The model routes are the V2 mechanism Takt needs right now.

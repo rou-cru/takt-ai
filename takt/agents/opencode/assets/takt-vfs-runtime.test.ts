@@ -73,6 +73,7 @@ const until = async (ready: () => boolean, attempts = SETTLE_ATTEMPTS): Promise<
 const saved = (records:Record<string,Partial<FixtureExecution>>) => Object.fromEntries(Object.entries(records).map(([dispatch,d])=>[dispatch,{dispatch,attempt:"1",agent:RESULT_AGENT,caller:dispatch.split(":")[0],inputs:[],admitted_at:0,...d}]))
 const activeDispatches = (vfs:Awaited<ReturnType<typeof startVfs>>) => Object.values(vfs.history.executions).filter((d)=>!d.settled&&!d.cycle).map((d)=>d.dispatch).sort()
 const orchestrator: Ctx = { sessionID: "root", agent: ORCHESTRATOR }
+// A lent session is created unable to continue or close a memory session.
 const dev: Ctx = { sessionID: "dispatch", agent: "dev" }
 const author: Ctx = { sessionID: "dispatch", agent: VFS_AUTHOR }
 const unitSessions = { dispatch: { parentID: "root", title: "unit-a" } }
@@ -95,6 +96,7 @@ function defaultReply({ kind, command }: Call, claims: unknown[]): Reply {
   if (kind === "codegraph") return { out: "" }
   if (kind === "obs") return { out: "{}" }
   if (kind === "gc" && command === "prompt") return json({allowed:true})
+  if (kind === "dispatch" && command.startsWith("validate_")) return json(null)
   if (kind === "dispatch" || kind === "gc") return json(coordinator())
   if (command === "claims") return json({ ok: true, claims })
   if (command === "bind") return json({ ok: true, key: "author-1", attempt_id: "attempt-1", invariants_version: "inv-1", revision: 0, delta_hash: "d0" })
@@ -531,7 +533,7 @@ describe("delegation lifecycle", () => {
     const declared = await startVfs({ sessions: producerSessions, respond: acceptInputs })
     try {
       const system = await admitProducer(declared, [7, 8])
-      expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: Engram #7, Engram #8. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.")
+      expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: #7, #8. Read each with takt_memory_read; they bind as read-only and prevail over any restatement in the brief.")
     } finally { await declared.stop() }
     const none = await startVfs({ sessions: producerSessions })
     try {
@@ -553,7 +555,7 @@ describe("delegation lifecycle", () => {
       await restarted.fire(restarted.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
       const context = { tools: {}, sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
       await restarted.fire(restarted.session, "context", context)
-      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: Engram #7. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.")
+      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes these invariants: #7. Read each with takt_memory_read; they bind as read-only and prevail over any restatement in the brief.")
     } finally { await restarted.stop() }
   })
 
@@ -583,7 +585,7 @@ describe("delegation lifecycle", () => {
       await vfs.run("deliver_result", { result_ids: [6] }, { sessionID: "child-r", agent: RESULT_AGENT })
       const event = finished()
       await vfs.fire(vfs.tool, "execute.after", event)
-      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #4, Engram #5, Engram #6")
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: #4, #5, #6")
       expect(vfs.log.prompts).toEqual([])
       expect(vfs.actions("dispatch").at(-1)).toBe("finish")
     } finally { await vfs.stop() }
@@ -638,7 +640,7 @@ describe("delegation lifecycle", () => {
       await vfs.run("deliver_result", { result_ids: [5] }, child)
       const event = { ...finished(), id: "call-r2" }
       await vfs.fire(vfs.tool, "execute.after", event)
-      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #5")
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: #5")
     } finally { await vfs.stop() }
   })
 
@@ -675,7 +677,7 @@ describe("delegation lifecycle", () => {
       await vfs.run("deliver_result", { result_ids: [4] }, { sessionID: "child-new", agent: RESULT_AGENT })
       const event = finished()
       await vfs.fire(vfs.tool, "execute.after", event)
-      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: Engram #4")
+      expect(event.result.content).toBe("Breakdown recorded.\n\nDelivered results: #4")
     } finally { await vfs.stop() }
   })
 
@@ -749,7 +751,7 @@ describe("delegation lifecycle", () => {
     const vfs = await startVfs({ respond: acceptInputs })
     try {
       const reply = await vfs.run("deliver_result", { result_ids: [3] }, { sessionID: "lent", agent: RESULT_AGENT })
-      expect(reply.content).toBe("Validated 1 result id(s); no delegation to credit them to")
+      expect(reply.content).toBe("Validated 1 result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff")
     } finally { await vfs.stop() }
   })
 
@@ -1076,8 +1078,11 @@ describe("maintenance cycle", () => {
       await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This maintenance cycle does not use that tool")
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
-      // The verifier keeps what an ordinary verification uses: web and memory reads.
-      for (const tool of ["webfetch", "websearch", "memory_search", "engram_mem_get_observation"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
+      // No lane has a memory or web tool.
+      for (const tool of ["webfetch", "websearch", "memory_search", "memory_record", "takt_memory_record", "takt_memory_read", "memory_get_observation"]) {
+        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This maintenance cycle does not use that tool")
+      }
+      for (const tool of ["shell", "bash"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
 
       vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "gcv" } } as OpenCodeEvent)
       await sleep(QUIET_MS)
@@ -1123,6 +1128,25 @@ describe("maintenance cycle", () => {
       expect(vfs.requests("gc", "abort")[0]).toMatchObject({ action: "abort", evidence: "prompt refused" })
       expect(vfs.log.interrupts.filter((id) => id === "gcv")).toEqual(["gcv"])
       expect(vfs.errors.some(([label]) => label === "Takt GC")).toBe(true)
+    } finally { await vfs.stop() }
+  })
+
+  test("the closing notice of a cycle carries the findings it left unapplied", async () => {
+    const finding = { path: "a.go", kind: "unused" }
+    const closing = { cycle: "cycle-1", outcome: "abort", unapplied_findings: [finding] }
+    let state: Reply = json({ ...coordinator(), closing })
+    const vfs = await startVfs({ respond: (call) => call.kind === "gc" && call.command === "status" ? state : undefined })
+    try {
+      const notified = async () => {
+        const event = { agent: ORCHESTRATOR, system: [] as Array<{ type: string; text: string }> }
+        await vfs.fire(vfs.session, "context", event)
+        return event.system.map(({ text }) => text)
+      }
+      const [notice] = await notified()
+      expect(notice).toContain("cycle-1")
+      expect(notice).toContain(JSON.stringify([finding]))
+      state = json(coordinator())
+      expect(await notified()).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -1204,11 +1228,11 @@ describe("interlocutor switch", () => {
       return { id: r.id, effect: answer }
     } } }) } }))
   })
-  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: { entries: [3] } }
+  const envelope = { result: "Standard", additional_context: "done", extra_artifacts: [], memory: [3] }
   const aborted = { ...envelope, result: "Aborted", additional_context: "ended" }
   const HANDOFF_NOTICE = "The interface is back from dev."
   const ABORT_NOTICE = "The interface is back from dev, whose lent session was aborted."
-  const request = { target_agent: "dev", objective: "Ship it", requirements: "typed" }
+  const request = { target_agent: "dev", objective: "Ship it", requirements: [7] }
   const lent = { child: { metadata: { takt_switch: "root" } } }
   const NO_HOLDER = "harness: no interlocutor switch is active for this session; nothing to abort"
   const NOT_HOLDER = "harness: session other is not the current interlocutor holder; abort the holder session instead"
@@ -1243,11 +1267,54 @@ describe("interlocutor switch", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a switch carries its requirement IDs to validation, the switch and the lent prompt", async () => {
+    const vfs = await startVfs({ respond: core() })
+    try {
+      await vfs.run("dispatch_switch", { ...request, requirements: [7, 9] }, orchestrator)
+      expect(vfs.requests("dispatch", "validate_switch")).toEqual([{ action: "validate_switch", session: "root", agent: "dev", requirements: [7, 9] }])
+      expect(vfs.requests("dispatch", "switch")[0]).toMatchObject({ session: "root", child: "child", agent: "dev", requirements: [7, 9] })
+      expect(vfs.log.prompts[0].text).toContain("#7, #9")
+      expect(asked[0]).toMatchObject({ metadata: { requirements: "#7, #9" } })
+    } finally { await vfs.stop() }
+  })
+
+  test("an empty requirement list is passed as stated", async () => {
+    const vfs = await startVfs({ respond: core() })
+    try {
+      await vfs.run("dispatch_switch", { ...request, requirements: [] }, orchestrator)
+      expect(vfs.requests("dispatch", "switch")[0]).toMatchObject({ requirements: [] })
+    } finally { await vfs.stop() }
+  })
+
+  test("a switch the core would refuse is returned before the user is asked or a session is created", async () => {
+    const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "validate_switch" ? { code: 1, err: "entry 7 is not current" } : undefined })
+    try {
+      await expect(vfs.run("dispatch_switch", request, orchestrator)).rejects.toThrow("entry 7 is not current")
+      expect(asked).toEqual([])
+      expect(vfs.log.created).toEqual([])
+      expect(vfs.requests("dispatch", "switch")).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
+  test("a handoff the core would refuse is returned to the holder before the user is asked", async () => {
+    const owner = core()
+    const vfs = await startVfs({ sessions: lent, respond: (call) => call.kind === "dispatch" && call.command === "validate_handoff" ? { code: 1, err: "result 3 is not yours" } : owner(call) })
+    try {
+      await vfs.run("dispatch_switch", request, orchestrator)
+      asked = []
+      const holder: Ctx = { sessionID: "child", agent: "dev" }
+      await expect(vfs.run("dispatch_handoff", { result: "Standard", additional_context: "done", extra_artifacts: [], result_ids: [3] }, holder)).rejects.toThrow("result 3 is not yours")
+      expect(vfs.requests("dispatch", "validate_handoff")).toEqual([{ action: "validate_handoff", session: "root", child: "child", result: "Standard", extra_artifacts: [], result_ids: [3] }])
+      expect(asked).toEqual([])
+      expect(vfs.requests("dispatch", "handoff")).toEqual([])
+    } finally { await vfs.stop() }
+  })
+
   test("a switch the core refuses stops the child it created", async () => {
     const vfs = await startVfs({ respond: (call) => call.kind === "dispatch" && call.command === "switch" ? { code: 1, err: "no capacity" } : undefined })
     try {
       await expect(vfs.run("dispatch_switch", request, orchestrator)).rejects.toThrow("dispatch switch: no capacity")
-      expect(vfs.log.created).toEqual([{ title: "Takt switch: dev", agent: "dev", metadata: { takt_switch: "root" } }])
+      expect(vfs.log.created).toEqual([{ title: "Takt switch: dev", agent: "dev", metadata: { takt_switch: "root" }}])
       expect(vfs.log.interrupts).toEqual(["child"])
       expect(vfs.log.prompts).toEqual([])
     } finally { await vfs.stop() }
@@ -1262,11 +1329,11 @@ describe("interlocutor switch", () => {
     } finally { await vfs.stop() }
   })
 
-  test("a declared standard artifact path reaches the incoming specialist with its objective", async () => {
+  test("the incoming specialist receives its objective and requirements", async () => {
     const vfs = await startVfs({ respond: core() })
     try {
-      await vfs.run("dispatch_switch", { ...request, expected_artifact: "docs/prd.md" }, orchestrator)
-      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: typed\nStandard artifact path: docs/prd.md")
+      await vfs.run("dispatch_switch", request, orchestrator)
+      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read")
     } finally { await vfs.stop() }
   })
 

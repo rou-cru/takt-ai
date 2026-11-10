@@ -22,8 +22,8 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 		return nil, errors.New("dispatch_inputs: name the unit the delegation will be named after")
 	}
 	if len(r.ResultIDs) > 0 {
-		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, r.ResultIDs); err != nil {
-			return nil, err
+		if _, err := checkMemory(ctx, r.ResultIDs, memory.Rule{}); err != nil {
+			return nil, fmt.Errorf("%w; call dispatch_inputs again with current IDs", err)
 		}
 	}
 	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: len(r.ResultIDs) == 0, Cause: history.CauseNone})
@@ -55,12 +55,12 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	if !ok {
 		return nil, fmt.Errorf("launch refused: inputs absent for root %s unit %s; call dispatch_inputs, then retry the same subagent call", r.Session, r.Event)
 	}
-	if len(consumed) > 0 {
-		if err := memory.ValidateResultIDs(ctx, memory.Config{Root: memoryRoot()}, consumed); err != nil {
-			return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
-		}
+	// One describe validates the inputs.
+	described, err := checkMemory(ctx, consumed, memory.Rule{})
+	if err != nil {
+		return nil, fmt.Errorf("%w; redeclare valid IDs with dispatch_inputs for unit %s, then retry delegation", err, r.Event)
 	}
-	if err := refuseRecycledProductManager(r, consumed); err != nil {
+	if err := refuseRecycledProductManager(r, described); err != nil {
 		return nil, err
 	}
 	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
@@ -70,7 +70,7 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	u, _ := h.Project().Unit(r.Session, r.Event)
 	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
 	for _, id := range consumed {
-		identity.Invariants = append(identity.Invariants, vfs.EngramInvariant(id))
+		identity.Invariants = append(identity.Invariants, vfs.MemoryInvariant(id))
 	}
 	needsClaim := vfs.RequireVFSCapability(r.Agent, model.VFSCapabilityWrite) == nil
 	compensate := func(cause error) (any, error) {
@@ -221,13 +221,17 @@ func resolveExecution(h *history.History, child, agent string) (any, error) {
 	}
 	return nil, nil
 }
+
+// deliverRetry is the call a refused execution delivery continues with.
+const deliverRetry = "deliver_result"
+
 func deliverExecution(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
 	d, ok := h.Project().ExecutionForChild(r.Child, r.Agent)
 	if !ok || d.Cycle != "" || (r.Dispatch != "" && r.Dispatch != d.Dispatch) || (r.Attempt != "" && r.Attempt != d.Attempt) {
 		return nil, errors.New("deliver_result belongs to a running delegation; nothing credited; return the IDs in your reply or resume its exact session")
 	}
-	if err := memory.ValidateSessionResultIDs(ctx, memory.Config{Root: memoryRoot()}, d.Root, d.Agent, r.ResultIDs); err != nil {
-		return nil, err
+	if err := protocol.ValidateDelivery(ctx, checkMemory, r.Child, r.ResultIDs); err != nil {
+		return nil, protocol.DeliveryRefusal(err, deliverRetry)
 	}
 	if err := h.ExecutionFact(d, history.KindDelivery, "", "", r.ResultIDs); err != nil {
 		return nil, err
@@ -291,17 +295,13 @@ const productManagerID = "takt-pm"
 
 // refuseRecycledProductManager refuses resuming a pm session to consume an
 // invariant that same session recorded. A fresh delegation is always admitted.
-func refuseRecycledProductManager(r coordinationRequest, consumed []int64) error {
-	if r.Child == "" || len(consumed) == 0 || !isProductManager(r.Agent) {
+func refuseRecycledProductManager(r coordinationRequest, consumed memory.DescribeResult) error {
+	if r.Child == "" || !isProductManager(r.Agent) {
 		return nil
 	}
-	own, err := memory.EntryIDsByCaller(memoryRoot(), r.Session, r.Child)
-	if err != nil {
-		return err
-	}
-	for _, id := range consumed {
-		if slices.Contains(own, id) {
-			return fmt.Errorf("launch refused: pm session %s recorded consumed invariant #%d; delegate a fresh pm unit to formalize it", r.Child, id)
+	for _, e := range consumed.Entries {
+		if e.WriterHostSession == r.Child {
+			return fmt.Errorf("launch refused: pm session %s recorded consumed invariant #%d; delegate a fresh pm unit to formalize it", r.Child, e.ID)
 		}
 	}
 	return nil
@@ -318,4 +318,48 @@ func isProductManager(agent string) bool {
 		}
 	}
 	return false
+}
+
+// validateTopLevelDelivery checks the entries a top-level agent delivers: each written by the
+// calling host session, and current.
+func validateTopLevelDelivery(ctx context.Context, r coordinationRequest) error {
+	if err := protocol.ValidateDelivery(ctx, checkMemory, r.Session, r.ResultIDs); err != nil {
+		return protocol.DeliveryRefusal(err, deliverRetry)
+	}
+	return nil
+}
+
+// validateRequirements checks the requirements of a switch: every ID is current, and an
+// empty list is the explicit statement that nothing useful exists (CTX-6). An absent list is refused.
+func validateRequirements(ctx context.Context, requirements []int64) error {
+	if requirements == nil {
+		return errors.New("dispatch_switch: name the Takt memory entry IDs the specialist needs as requirements, or an empty list when nothing useful exists")
+	}
+	if len(requirements) == 0 {
+		return nil
+	}
+	if _, err := checkMemory(ctx, requirements, memory.Rule{}); err != nil {
+		return fmt.Errorf("%w; name current IDs as requirements, then call dispatch_switch again", err)
+	}
+	return nil
+}
+
+// switchInterface lends the interface to a specialist session: it validates the requirements, binds the
+// lent session to the convening root before it is prompted (only once the harness would accept the switch), and records the switch.
+// A failed bind fails the switch and records nothing.
+func switchInterface(ctx context.Context, h *history.History, ref, workspace string, r coordinationRequest) (err error) {
+	if err := validateRequirements(ctx, r.Requirements); err != nil {
+		return err
+	}
+	admin, err := memoryAdmin(ctx)
+	if err != nil {
+		return fmt.Errorf("switch refused: %w; nothing was recorded; call dispatch_switch again", err)
+	}
+	defer func() { err = errors.Join(err, admin.Close()) }()
+	return protocol.Switch(h, ref, r.Session, r.Child, r.Agent, func() error {
+		if err := admin.Bind(ctx, memory.BindArgs{HostSession: r.Child, Agent: r.Agent, ClaimedRoot: r.Session, Workspace: memory.WorkspaceKey(ctx, workspace)}); err != nil {
+			return fmt.Errorf("switch refused: the lent session could not be bound to its conversation: %w; nothing was recorded; call dispatch_switch again", err)
+		}
+		return nil
+	})
 }

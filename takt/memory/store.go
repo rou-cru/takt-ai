@@ -98,6 +98,11 @@ func mapBusy(err error) error {
 	return err
 }
 
+// write runs fn in a write transaction on the single writer connection. A busy lock fails as ErrBusy; any error rolls back.
+func (s *Store) write(ctx context.Context, fn func(*sql.Tx) error) error {
+	return writeTx(ctx, s.writer, fn)
+}
+
 func writeTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

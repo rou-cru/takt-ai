@@ -23,6 +23,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
@@ -198,7 +199,7 @@ var orchestratorToolNames = []string{"dispatch_commit", "dispatch_inputs", "disp
 const vfsMutationSkill = "takt-vfs-mutation"
 
 // resultHandoffSkill gates the deliver_result tool: only the producers
-// designed to use it may present a complete Engram artifact as their result.
+// designed to use it may present a complete memory artifact as their result.
 const resultHandoffSkill = "takt-result-handoff"
 
 func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
@@ -263,14 +264,18 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, sensitiveEditDenies()...)
 		rules = append(rules, permissionRule{"edit", eventStoreResource, "deny"})
 	}
-	rules = append(rules, permissionRule{"memory_record", allResources, "allow"})
-	rules = append(rules, permissionRule{"memory_search", allResources, "allow"})
+	// Recording, reading, and listing sessions are open to every crew agent; the
+	// session lifecycle belongs to the orchestrator and the roles holding the
+	// user interface.
+	for _, name := range []string{memory.ToolRecord, memory.ToolSearch, memory.ToolRead, memory.ToolSessions} {
+		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, "allow"})
+	}
 	lifecycleEffect := "deny"
 	if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
 		lifecycleEffect = "allow"
 	}
-	for _, name := range []string{"memory_continue_session", "memory_close_session"} {
-		rules = append(rules, permissionRule{name, allResources, lifecycleEffect})
+	for _, name := range []string{memory.ToolContinueSession, memory.ToolCloseSession} {
+		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, lifecycleEffect})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// Ordinary sessions never expose GC tools. Harness-created GC sessions
@@ -335,9 +340,9 @@ func subagentRules(maintenance []string) []permissionRule {
 	return rules
 }
 
-// switchTools lend, return and read back the chat interface; only the
+// switchTools lend the chat interface; only the
 // orchestrator, which owns the interface, may hand it out or reclaim it.
-var switchTools = []string{"dispatch_switch", "dispatch_lent_entries"}
+var switchTools = []string{"dispatch_switch"}
 
 // interlocutorRules projects the interlocutor-stack tools by role: switching
 // the interface is the orchestrator's alone, and handing a completed

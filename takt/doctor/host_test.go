@@ -17,19 +17,20 @@ package doctor_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/doctor"
-	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
@@ -45,50 +46,48 @@ const (
 // executableMode makes the fake tools runnable.
 const executableMode = 0o755
 
+// readyWait bounds how long a test waits for its in-process memory service to open its socket.
+const readyWait = 10 * time.Second
+
 // check is one parsed report line with its optional remedy.
 type check struct {
 	mark, detail, remedy string
 }
 
-// route is one canned answer of the Engram stub.
-type route struct {
-	status int
-	body   string
-}
-
 // host is a machine doctor can inspect: its own HOME, a PATH holding only
-// fake tools, a working directory, and a stub Engram server. Nothing leaks in
+// fake tools, a working directory, and a memory directory. Nothing leaks in
 // from the machine running the tests.
 type host struct {
 	t         *testing.T
 	home      string
 	bin       string
 	workspace string
-
-	server *httptest.Server
-	mu     sync.Mutex
-	routes map[string]route
-	seen   []string
+	memoryDir string
 }
 
 // newHost builds a healthy machine: every tool installed and compatible, every
-// plugin deployed, a manifest whose files all exist, Engram answering cleanly.
+// plugin deployed, a manifest whose files all exist, and a ready memory service
+// with its semantic model loaded.
 func newHost(t *testing.T) *host {
 	t.Helper()
-	h := &host{t: t, home: t.TempDir(), bin: t.TempDir(), workspace: t.TempDir(), routes: map[string]route{
-		"/health": {http.StatusOK, "ok"},
-		"/doctor": {http.StatusOK, `{"summary":{"total":3,"ok":3},"checks":[]}`},
-		"/review": {http.StatusOK, `{"observations":[],"count":0}`},
-	}}
+	h := newHostWithoutMemory(t)
+	testutil.WriteTinyModel(t, embed.ModelDir(h.home))
+	if err := memory.Init(h.memoryDir); err != nil {
+		t.Fatal(err)
+	}
+	h.serve()
+	return h
+}
+
+// newHostWithoutMemory is newHost with nothing in the memory directory and no memory service.
+func newHostWithoutMemory(t *testing.T) *host {
+	t.Helper()
+	h := &host{t: t, home: t.TempDir(), bin: t.TempDir(), workspace: t.TempDir(), memoryDir: testutil.MemoryDir(t)}
 	t.Setenv("HOME", h.home)
 	t.Setenv("PATH", h.bin)
 	t.Chdir(h.workspace)
-	h.server = httptest.NewServer(http.HandlerFunc(h.serve))
-	t.Cleanup(h.server.Close)
-	t.Setenv(model.EnvEngramURL, h.server.URL)
 
 	h.tool("takt-ai", []byte("#!/bin/sh\n"))
-	h.tool("engram", testutil.FakeEngramScript(engram.EngramVersion))
 	h.tool("codegraph", testutil.FakeCodegraphScript(codegraph.CodegraphVersion))
 	h.tool("opencode", testutil.FakeOpenCodeScript())
 	plugins := []string{model.VFSPluginFile, "takt-memory.ts", "takt-sandbox.mjs", "takt-dag/tui.tsx"}
@@ -112,43 +111,50 @@ func newHost(t *testing.T) *host {
 	return h
 }
 
-// serve answers like Engram: canned routes by path, and the project Engram
-// detects for the caller's directory.
-func (h *host) serve(w http.ResponseWriter, r *http.Request) {
-	h.mu.Lock()
-	h.seen = append(h.seen, r.URL.RequestURI())
-	answer, ok := h.routes[r.URL.Path]
-	h.mu.Unlock()
-	if r.URL.Path == "/project/current" {
-		_ = json.NewEncoder(w).Encode(map[string]string{"project": "takt-fixture", "cwd": r.URL.Query().Get("cwd")})
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.WriteHeader(answer.status)
-	_, _ = w.Write([]byte(answer.body))
-}
-
-// answer replaces what the Engram stub says for one path.
-func (h *host) answer(path string, status int, body string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.routes[path] = route{status, body}
-}
-
-// requests lists what the Engram stub received for one path, in order.
-func (h *host) requests(path string) []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var out []string
-	for _, uri := range h.seen {
-		if strings.HasPrefix(uri, path) {
-			out = append(out, uri)
+// serve runs the memory service of the host's directory in this process until the test ends.
+func (h *host) serve() {
+	h.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- memory.Serve(ctx, h.memoryDir, "test-version") }()
+	h.t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			h.t.Error(err)
 		}
+	})
+	h.waitForSocket(done)
+}
+
+func (h *host) waitForSocket(done <-chan error) {
+	h.t.Helper()
+	deadline := time.Now().Add(readyWait)
+	for {
+		if _, err := os.Stat(filepath.Join(h.memoryDir, memory.SocketFile)); err == nil {
+			return
+		}
+		select {
+		case err := <-done:
+			h.t.Fatalf("Serve returned early: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			h.t.Fatal("the memory socket never appeared")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	return out
+}
+
+// answerGarbage makes something that is not a memory service listen on the service's socket.
+func (h *host) answerGarbage() {
+	h.t.Helper()
+	listener, err := net.Listen("unix", filepath.Join(h.memoryDir, memory.SocketFile))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("not a memory service")) })}
+	go func() { _ = server.Serve(listener) }()
+	h.t.Cleanup(func() { _ = server.Close() })
 }
 
 // tool installs an executable on PATH, replacing any earlier one.

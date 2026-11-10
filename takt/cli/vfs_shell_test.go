@@ -13,10 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package main_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,17 +25,40 @@ import (
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
+// shellReply is the answer of shell-prepare: the sandbox plan the core resolved.
+type shellReply struct {
+	OK    bool           `json:"ok"`
+	Shell *vfs.ShellPlan `json:"shell"`
+}
+
+// shellPrepare runs shell-prepare with req; a refusal is the command's exit status and stderr.
+func shellPrepare(fx *vfsFixture, req map[string]any) (shellReply, error) {
+	fx.t.Helper()
+	var resp shellReply
+	err := fx.call("shell-prepare", req, &resp)
+	return resp, err
+}
+
+// mustShellPrepare is shellPrepare for a request that has to be accepted.
+func mustShellPrepare(fx *vfsFixture, req map[string]any) shellReply {
+	fx.t.Helper()
+	resp, err := shellPrepare(fx, req)
+	if err != nil || !resp.OK {
+		fx.t.Fatalf("shell-prepare = %+v, %v", resp, err)
+	}
+	return resp
+}
+
 func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
-	root := t.TempDir()
-	canonicalRoot, err := filepath.EvalSymlinks(root)
+	fx := newVFSFixture(t, buildTaktAI(t))
+	canonicalRoot, err := filepath.EvalSymlinks(fx.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
+	state := fx.state
 	for _, command := range []string{"cat data.txt", "git diff", "ls"} {
 		t.Run(command, func(t *testing.T) {
-			prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+			prepared, err := shellPrepare(fx, vfsReq("u1", "analyst", map[string]any{
 				"call_id": "inspect-" + command, "command": command,
 			}))
 			if err != nil {
@@ -63,7 +85,7 @@ func TestVFSShellUnboundPlanProtectsWorkspace(t *testing.T) {
 // author binding the calling host session holds; any other caller gets an
 // unbound plan, whatever key it names.
 func TestVFSShellPlansOnlyForTheHeldBinding(t *testing.T) {
-	fx := newVFSFixture(t)
+	fx := newVFSFixture(t, buildTaktAI(t))
 	bound := fx.delegate(rootA, "u1", "dev", "data.txt")
 	for _, tc := range []struct {
 		name string
@@ -76,7 +98,7 @@ func TestVFSShellPlansOnlyForTheHeldBinding(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.req["author_key"], tc.req["call_id"], tc.req["command"] = bound, "inspect-"+tc.name, "cat data.txt"
-			prepared, err := fx.mutate("shell-prepare", tc.req)
+			prepared, err := shellPrepare(fx, tc.req)
 			if err != nil {
 				return
 			} // malformed caller identities are refused, never captured
@@ -85,26 +107,24 @@ func TestVFSShellPlansOnlyForTheHeldBinding(t *testing.T) {
 			}
 		})
 	}
-	prepared := fx.must("shell-prepare", vfsReq("u1", "dev", map[string]any{"call_id": "inspect-owner", "command": "cat data.txt"}))
+	prepared := mustShellPrepare(fx, vfsReq("u1", "dev", map[string]any{"call_id": "inspect-owner", "command": "cat data.txt"}))
 	if prepared.Shell == nil || prepared.Shell.Decision != vfs.ShellAllow || !prepared.Shell.Capture {
 		t.Fatalf("holder's inspection = %+v", prepared.Shell)
 	}
 }
 
 func TestVFSShellUnboundStillValidatesRequest(t *testing.T) {
+	bin := buildTaktAI(t)
 	for _, tc := range []struct{ name, callID, command string }{
 		{"missing call ID", "", "cat data.txt"},
 		{"empty command", "inspect", ""},
 		{"blank command", "inspect", " \t\n "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mutate := newVFSMutator(t, t.TempDir(), filepath.Join(t.TempDir(), "private"))
-			_, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+			_, err := shellPrepare(newVFSFixture(t, bin), vfsReq("u1", "analyst", map[string]any{
 				"call_id": tc.callID, "command": tc.command,
 			}))
-			if !errors.Is(err, vfs.ErrIdentity) {
-				t.Fatalf("invalid unbound request error = %v, want ErrIdentity", err)
-			}
+			refusedWith(t, "an invalid unbound request", err, vfs.ErrIdentity.Error())
 		})
 	}
 }
@@ -114,7 +134,7 @@ func TestVFSShellUnboundStillValidatesRequest(t *testing.T) {
 // projection comes back as a staged delta, and the workspace stays untouched
 // until the ordinary verdict and consolidation.
 func TestVFSShellIPC(t *testing.T) {
-	fx := newVFSFixture(t)
+	fx := newVFSFixture(t, buildTaktAI(t))
 	if err := os.WriteFile(filepath.Join(fx.root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +171,7 @@ func TestVFSShellIPC(t *testing.T) {
 // TestVFSShellImportRefusesAConcurrentWrite: a write staged while the command
 // ran is never overwritten by its import.
 func TestVFSShellImportRefusesAConcurrentWrite(t *testing.T) {
-	fx := newVFSFixture(t)
+	fx := newVFSFixture(t, buildTaktAI(t))
 	fx.delegate(rootA, "u1", "dev", "data.txt")
 	plan := prepareShell(t, fx, "shell-race", "printf shell > data.txt")
 	fx.write(rootA, "u1", "dev", "w1", "data.txt", "concurrent")
@@ -167,7 +187,7 @@ func TestVFSShellImportRefusesAConcurrentWrite(t *testing.T) {
 // captured plan.
 func prepareShell(t *testing.T, fx *vfsFixture, call, command string) *vfs.ShellPlan {
 	t.Helper()
-	plan := fx.must("shell-prepare", vfsReq("u1", "dev", map[string]any{"call_id": call, "command": command})).Shell
+	plan := mustShellPrepare(fx, vfsReq("u1", "dev", map[string]any{"call_id": call, "command": command})).Shell
 	if plan == nil || plan.Decision != vfs.ShellAllow || !plan.Capture || plan.Cwd == "" {
 		t.Fatalf("shell plan = %+v; want an allowed captured mutation with a projection", plan)
 	}
@@ -189,10 +209,10 @@ func runSandboxed(t *testing.T, plan *vfs.ShellPlan, content string) {
 // A command whose mutations cannot be captured is denied, and the denial carries
 // no sandbox layout to run with.
 func TestVFSShellUncapturableDenied(t *testing.T) {
-	fx := newVFSFixture(t)
+	fx := newVFSFixture(t, buildTaktAI(t))
 	author := fx.delegate(rootA, "u1", "dev", "data.txt")
 	fx.judge(rootA, "review", "verify", author)
-	prepared := fx.must("shell-prepare", vfsReq("review", "verify", map[string]any{"call_id": "shell-deny", "command": "printf x > data.txt"}))
+	prepared := mustShellPrepare(fx, vfsReq("review", "verify", map[string]any{"call_id": "shell-deny", "command": "printf x > data.txt"}))
 	if prepared.Shell.Decision != vfs.ShellDeny || prepared.Shell.Cwd != "" || prepared.Shell.Writable != nil {
 		t.Fatalf("shell plan = %+v; want a denial with no sandbox layout", prepared.Shell)
 	}
@@ -201,33 +221,10 @@ func TestVFSShellUncapturableDenied(t *testing.T) {
 	}
 }
 
-// An unbound caller carries no author_key, so it must not be refused as an
-// identity mismatch: it may still inspect the workspace.
-func TestVFSShellUnboundCallerInspectAllowed(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	if err := os.WriteFile(filepath.Join(root, "data.txt"), []byte("line1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
-		"call_id": "shell-unbound", "command": "cat data.txt",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Shell == nil || prepared.Shell.Decision == vfs.ShellDeny {
-		t.Fatalf("shell plan = %+v; want an unbound caller's inspection admitted", prepared.Shell)
-	}
-}
-
 // An unbound caller attempting a mutation is still denied, but with the
 // uncapturable-mutation reason, not a spurious identity mismatch.
 func TestVFSShellUnboundCallerMutationDenied(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	mutate := newVFSMutator(t, root, state)
-	prepared, err := mutate("shell-prepare", vfsReq("u1", "analyst", map[string]any{
+	prepared, err := shellPrepare(newVFSFixture(t, buildTaktAI(t)), vfsReq("u1", "analyst", map[string]any{
 		"call_id": "shell-unbound-mutate", "command": "printf x > data.txt",
 	}))
 	if err != nil {

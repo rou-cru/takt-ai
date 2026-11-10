@@ -3,7 +3,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { createServer } from 'node:http'
+import { request } from 'node:http'
 import plugin from './takt-vfs.ts'
 const workspace=resolve('workspace'),state=resolve('workspace/.takt-ai/vfs'),bin=process.argv[2]
 await mkdir(workspace,{recursive:true}); await mkdir(process.env.HOME,{recursive:true})
@@ -12,24 +12,22 @@ globalThis.Bun={spawn(argv,opts){
  const p=spawn(argv[0],argv.slice(1),{cwd:opts.cwd,env:process.env,detached:opts.detached,stdio:[opts.stdin==='ignore'?'ignore':'pipe','pipe','pipe']})
  return {stdin:p.stdin,stdout:Readable.toWeb(p.stdout),stderr:Readable.toWeb(p.stderr),exited:new Promise((r,j)=>{p.on('error',j);p.on('close',r)})}
 }}
-// The memory subsystem is real; only its remote Engram service is isolated.
-const observations=new Map(); let sequence=0
-const memoryServer=createServer(async(req,res)=>{
- let body=''; for await(const chunk of req)body+=chunk
- const data=body?JSON.parse(body):{}
- let reply={}
- if(req.method==='POST'&&req.url==='/observations'){const id=++sequence;observations.set(id,{...data,id});reply={id}}
- else if(req.url.startsWith('/observations/')){reply=observations.get(Number(req.url.split('/').at(-1)));if(!reply){res.writeHead(404);res.end('{}');return}}
- else if(req.url.startsWith('/project/current'))reply={project:'fixture',cwd:workspace}
- res.setHeader('Content-Type','application/json');res.end(JSON.stringify(reply))
-})
-await new Promise(r=>memoryServer.listen(0,'127.0.0.1',r))
-process.env.ENGRAM_BASE_URL=`http://127.0.0.1:${memoryServer.address().port}`
-async function recordResult(){
- const p=spawn(bin,['memory','record'],{env:process.env,stdio:['pipe','pipe','pipe']}); let out='',err=''
- p.stdout.on('data',c=>out+=c);p.stderr.on('data',c=>err+=c)
- p.stdin.end(JSON.stringify({author:'verify',session:'root-b',directory:workspace,nature:'observation',scope:'project',title:'Independent verdict',content:'All four staged authors checked',evidence:'Read all staged files'}))
- const code=await new Promise(r=>p.on('close',r));assert.equal(code,0,err);return JSON.parse(out).result.id
+// The memory service is real: the test starts it on its own TAKT_MEMORY_DIR. A crew entry is recorded
+// the way the crew integration does, a bind on /admin and a record on /crew, both over the service socket.
+const MEMORY_SOCKET=resolve(process.env.TAKT_MEMORY_DIR,'memory.sock')
+function memoryCall(path,name,args,meta){
+ const body=JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args,...(meta&&{_meta:meta})}})
+ return new Promise((ok,fail)=>{
+  const req=request({socketPath:MEMORY_SOCKET,path,method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'}},res=>{
+   let out='';res.on('data',c=>out+=c);res.on('end',()=>{const reply=JSON.parse(out);assert.ok(!reply.error&&!reply.result.isError,out);ok(reply.result)})})
+  req.on('error',fail);req.end(body)
+ })
+}
+async function recordResult(title){
+ const workspaceKey=execFileSync(bin,['memory','start'],{env:process.env,cwd:workspace,encoding:'utf8'}).trim()
+ await memoryCall('/admin','bind',{host_session:'judge',agent:'verify',claimed_root:'root-b',workspace:workspaceKey})
+ const res=await memoryCall('/crew','record',{nature:'observation',scope:'workspace',title,content:'All four staged authors checked',evidence:'Read all staged files'},{'ai.opencode/sessionID':'judge'})
+ return Number(res.content[0].text.replace('Recorded #',''))
 }
 const history=r=>JSON.parse(execFileSync(bin,['dispatch','--workspace',workspace,'--state',state,'--request',JSON.stringify(r)],{env:process.env,encoding:'utf8'}))
 const sessions=new Map(),waiting=new Map(),hostMessages=new Map()
@@ -86,7 +84,7 @@ for(const[i,key]of authors.entries()){
  await c.tools.vfs_consolidate.execute({author_key:key},rootB)
  assert.equal(await readFile(resolve(workspace,`${i}.txt`),'utf8'),`valid work ${i}`)
 }
-const resultID=await recordResult()
+const resultID=await recordResult('Independent verdict')
 await c.tools.deliver_result.execute({result_ids:[resultID]},{sessionID:'judge',agent:'verify'})
 await done(c,review)
 // A delayed callback cannot finish the new attempt, and a duplicate hook cannot
@@ -96,7 +94,9 @@ await assert.rejects(()=>launch(c,rootB,'review','verify','review-2',{sessionID:
 await done(a,review)
 const d=history({action:'execution',dispatch:'root-b:review-2'})
 assert.equal(d.attempt,'2');assert.ok(!d.settled)
-await c.tools.deliver_result.execute({result_ids:[resultID]},{sessionID:'judge',agent:'verify'})
+// The retry is a new admission: it delivers an entry recorded after it, not the first attempt's.
+const retryResultID=await recordResult('Independent verdict, retry')
+await c.tools.deliver_result.execute({result_ids:[retryResultID]},{sessionID:'judge',agent:'verify'})
 await done(c,retry)
 // A plugin restart alone cannot settle a prepared call with no observed child.
 // A terminal record of that exact native call does, allowing the existing retry.
@@ -120,5 +120,4 @@ const recovered=await launch(restarted,rootC,'transport','pm','recovered')
 assert.ok(history({action:'execution',dispatch:'root-c:orphan'}).settled)
 assert.equal(history({action:'execution',dispatch:'root-c:recovered'}).attempt,'2')
 await restarted.fire('execute.after',{...recovered,status:'error',result:{content:'native failure'}})
-await new Promise(r=>memoryServer.close(r))
 console.log('four authors retained across roots; all gates adopted; real core verdict/consolidation; restart/retry/late callback passed')

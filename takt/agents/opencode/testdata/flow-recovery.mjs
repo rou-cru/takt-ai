@@ -208,7 +208,7 @@ try {
 
  // While the interface is lent, its holder speaks with the user, so it asks
  // for a pending repair itself and hands the interface back.
- await tools.dispatch_switch.execute({target_agent:'pm',objective:'shape the brief'},root)
+ await tools.dispatch_switch.execute({target_agent:'pm',objective:"shape the brief",requirements:[]},root)
  await inject('candidate')
  const lentAsked=approvalCount
  await tools.dispatch_handoff.execute({result:'EarlyHandoff',additional_context:'stopping early',extra_artifacts:[],result_ids:[]},{sessionID:'lent',agent:'pm',id:'handoff',messageID:'lent-message'})

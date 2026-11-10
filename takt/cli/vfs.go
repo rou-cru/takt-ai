@@ -157,7 +157,7 @@ type request struct {
 	AgentID    string `json:"agent_id"`
 	Specialist string `json:"specialist"`
 	// Invariants declares the governing invariants on a bind or an assignment,
-	// in precedence order: Engram references (vfs.EngramInvariant) and
+	// in precedence order: memory references (vfs.MemoryInvariant) and
 	// workspace paths. A bind that joins an open attempt inherits that
 	// attempt's set.
 	Invariants vfs.InvariantSet `json:"invariants,omitempty"`
@@ -400,7 +400,7 @@ func assignClaim(fs *vfs.FS, req request, stdout io.Writer) error {
 	// execution history issues one when the target binds.
 	identity := vfs.Identity{SessionID: req.SessionID, WorkUnitID: req.WorkUnitID, AgentID: vfs.AgentID(req.AgentID), Specialist: req.Specialist, Reads: req.Reads}
 	for _, id := range consumed {
-		identity.Invariants = append(identity.Invariants, vfs.EngramInvariant(id))
+		identity.Invariants = append(identity.Invariants, vfs.MemoryInvariant(id))
 	}
 	key := vfs.AgentID(req.AuthorKey)
 	var assignErr error

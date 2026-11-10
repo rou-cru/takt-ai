@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"time"
 
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
@@ -16,6 +17,9 @@ import (
 	"github.com/rou-cru/takt-ai/takt/obs"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
+
+// closeApplied is the reason a cycle closes with when its authorized changes were consolidated.
+const closeApplied = "applied"
 
 // actionNoChange names the coordination action/reason recorded when a cycle
 // closes without proposing or refuting any findings.
@@ -94,7 +98,48 @@ func coordinatePrepare(ctx context.Context, workspace, state string, c *gc.Coord
 	return gc.Prepare(ctx, workspace, state, r.Session)
 }
 
+// cycleClosing is the closing notice of a cycle: its outcome and the findings it left unapplied.
+// The cycle record is the only report of those findings (PR-MNT-5).
+type cycleClosing struct {
+	Cycle     string       `json:"cycle"`
+	Outcome   string       `json:"outcome"`
+	Unapplied []gc.Finding `json:"unapplied_findings"`
+}
+
+// closingOf is the closing notice of the cycle that was open before an action and is closed after it;
+// nil when that action closed none.
+func closingOf(open *gc.Cycle, c *gc.Coordinator) *cycleClosing {
+	if open == nil || c.Cycle != nil || len(c.History) == 0 {
+		return nil
+	}
+	closed := c.History[len(c.History)-1]
+	unapplied := []gc.Finding{}
+	for _, f := range closed.Report.Findings {
+		if closed.Reason != closeApplied || !slices.Contains(closed.Scope, f.Path) {
+			unapplied = append(unapplied, f)
+		}
+	}
+	return &cycleClosing{Cycle: closed.Plan.CycleID, Outcome: closed.Reason, Unapplied: unapplied}
+}
+
+// closedCoordinator is the coordinator state beside the notice of the cycle the action closed.
+type closedCoordinator struct {
+	*gc.Coordinator
+	Closing *cycleClosing `json:"closing,omitempty"`
+}
+
 func coordinateGC(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
+	open := c.Cycle
+	result, err := coordinateGCAction(ctx, fs, h, workspace, state, c, r)
+	if result == c {
+		if closing := closingOf(open, c); closing != nil {
+			return closedCoordinator{c, closing}, err
+		}
+	}
+	return result, err
+}
+
+func coordinateGCAction(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	if r.Action == "status" {
 		c.ObserveExecutions(h)
 		return c, nil
@@ -290,14 +335,14 @@ func coordinateAcceptance(ctx context.Context, h *history.History, fs *vfs.FS, w
 	if !gc.ChecksPass(c.Cycle.Acceptance) {
 		return c, abortGCCycle(h, fs, workspace, c, "acceptance regression or missing evidence", nil)
 	}
-	cycleRecord(workspace, c.Cycle, "applied")
+	cycleRecord(workspace, c.Cycle, closeApplied)
 	if e = settleGCCycleActivity(h, fs, c.Cycle, history.OutcomeCompleted); e != nil {
 		return nil, e
 	}
 	// Closure is durably recorded before releasing retained rollback state.
 	id := c.Cycle.Plan.CycleID
 	closed := c.Cycle
-	c.Close("applied")
+	c.Close(closeApplied)
 	reportGCTelemetry(evaluateMandateReversionRate(workspace, fs, c, closed))
 	if e = gc.SaveCoordinator(fs, c); e != nil {
 		return nil, e

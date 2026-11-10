@@ -1,125 +1,86 @@
-package main
+package main_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	skillsutil "github.com/rou-cru/takt-ai/takt/skills/testutil"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-// TestRunWithoutArgumentsLaunchesTUI verifies empty args start the interactive UI.
-func TestRunWithoutArgumentsLaunchesTUI(t *testing.T) {
-	original, originalInteractive := runTUI, isInteractive
-	t.Cleanup(func() { runTUI, isInteractive = original, originalInteractive })
-	isInteractive = func(io.Reader, io.Writer) bool { return true }
-	called := false
-	runTUI = func(input io.Reader, output io.Writer) error {
-		called = input != nil && output != nil
-		return nil
-	}
-
-	var stdout, stderr bytes.Buffer
-	if err := run(nil, strings.NewReader(""), &stdout, &stderr); err != nil {
-		t.Fatalf("run() error = %v", err)
-	}
-	if !called {
-		t.Fatal("TUI launcher was not called")
-	}
-	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Fatalf("stdout = %q, stderr = %q, want empty", stdout.String(), stderr.String())
-	}
+// TestMain puts fake opencode, codegraph and npm first on PATH, so setup never touches the host
+// tools or the network, and lets this test binary act as the memory owner that memory.Ensure launches.
+func TestMain(m *testing.M) {
+	os.Exit(testutil.RunWithFakeTools(m))
 }
 
 // TestRunWithoutTerminalRefusesTUI verifies the TUI refuses to start without a terminal.
 func TestRunWithoutTerminalRefusesTUI(t *testing.T) {
-	original := runTUI
-	t.Cleanup(func() { runTUI = original })
-	runTUI = func(io.Reader, io.Writer) error {
-		t.Fatal("TUI launched without a terminal")
-		return nil
+	res := newSession(t, buildTaktAI(t)).run()
+	if res.code == 0 {
+		t.Fatal("takt-ai without a terminal succeeded")
 	}
-
-	var stdout, stderr bytes.Buffer
-	if err := run(nil, strings.NewReader(""), &stdout, &stderr); err == nil {
-		t.Fatal("run() error = nil, want non-terminal refusal")
-	}
-	if !strings.Contains(stderr.String(), "Usage:") || !strings.Contains(stderr.String(), "requires a terminal") {
-		t.Fatalf("stderr = %q", stderr.String())
+	if !strings.Contains(res.stderr, "Usage:") || !strings.Contains(res.stderr, "requires a terminal") {
+		t.Fatalf("stderr = %q", res.stderr)
 	}
 }
 
 // TestRunVersionPrintsResolvedVersion verifies every version flag prints the resolved version.
 func TestRunVersionPrintsResolvedVersion(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
 	for _, arg := range []string{"version", "--version", "-v"} {
 		t.Run(arg, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			if err := run([]string{arg}, strings.NewReader(""), &stdout, &stderr); err != nil {
-				t.Fatalf("run() error = %v", err)
-			}
-			if !strings.HasPrefix(stdout.String(), "takt-ai ") {
-				t.Errorf("stdout = %q, want version prefix", stdout.String())
-			}
-			if stderr.Len() != 0 {
-				t.Errorf("stderr = %q, want empty", stderr.String())
+			res := s.run(arg)
+			if res.code != 0 || !strings.HasPrefix(res.stdout, "takt-ai ") || res.stderr != "" {
+				t.Errorf("%s = %+v, want the version line", arg, res)
 			}
 		})
 	}
 }
 
-// TestResolveVersion verifies release, build, and dev versions resolve correctly.
-func TestResolveVersion(t *testing.T) {
-	original := buildInfoReader
-	t.Cleanup(func() { buildInfoReader = original })
-
-	tests := []struct {
-		name        string
-		ldflags     string
-		buildInfo   *debug.BuildInfo
-		buildInfoOK bool
-		want        string
-	}{
-		{name: "ldflags override wins", ldflags: "1.2.3", want: "1.2.3"},
-		{name: "build info semver trims v prefix", ldflags: "dev", buildInfo: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}, buildInfoOK: true, want: "1.2.3"},
-		{name: "devel build info falls back to dev", ldflags: "dev", buildInfo: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, buildInfoOK: true, want: "dev"},
-		{name: "missing build info falls back to dev", ldflags: "dev", want: "dev"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			buildInfoReader = func() (*debug.BuildInfo, bool) { return tc.buildInfo, tc.buildInfoOK }
-			if got := resolveVersion(tc.ldflags); got != tc.want {
-				t.Errorf("resolveVersion(%q) = %q, want %q", tc.ldflags, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestRunLifecycleDeploysAndRemovesSkills verifies skills deploy, survive sync edits, and uninstall cleanly.
-func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
-	fakeOpenCodeLifecycle(t)
-	root := t.TempDir()
-	skillPath, embedded := skillsutil.FirstSkill(t)
+// installPayload is the plan request the install tests send, with the selected components set when given.
+func installPayload(t *testing.T, components ...string) string {
+	t.Helper()
 	payload, err := json.Marshal(setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	var stdout, stderr bytes.Buffer
-	if err := run([]string{"setup", "install", "--root", root, "--yes"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
-		t.Fatalf("install run() error = %v", err)
+	if components == nil {
+		return string(payload)
 	}
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); err != nil {
+	var request setup.PlanRequest
+	if err := json.Unmarshal(payload, &request); err != nil {
+		t.Fatal(err)
+	}
+	request.Components = components
+	payload, err = json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(payload)
+}
+
+// TestRunLifecycleDeploysAndRemovesSkills verifies skills deploy, survive sync edits, and uninstall cleanly.
+func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
+	root := t.TempDir()
+	skillPath, embedded := skillsutil.FirstSkill(t)
+	skillFile := filepath.Join(root, filepath.FromSlash(skillPath))
+	payload := installPayload(t)
+
+	if res := s.runIn(payload, "setup", "install", "--root", root, "--yes"); res.code != 0 {
+		t.Fatalf("install exited %d: %s", res.code, res.stderr)
+	}
+	if _, err := os.Stat(skillFile); err != nil {
 		t.Fatalf("deployed skill file: %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -132,21 +93,21 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 	}
 
 	local := append(append([]byte(nil), embedded...), []byte("\nlocal edit")...)
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(skillPath)), local, 0o644); err != nil {
+	if err := os.WriteFile(skillFile, local, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stdout.Reset()
-	if err := run([]string{"setup", "sync", "--root", root, "--yes", "--json"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
-		t.Fatalf("sync run() error = %v", err)
+	res := s.runIn(payload, "setup", "sync", "--root", root, "--yes", "--json")
+	if res.code != 0 {
+		t.Fatalf("sync exited %d: %s", res.code, res.stderr)
 	}
 	var syncResult setup.DeploymentResult
-	if err := json.Unmarshal(stdout.Bytes(), &syncResult); err != nil {
+	if err := json.Unmarshal([]byte(res.stdout), &syncResult); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(syncResult.Changed, skillPath) {
 		t.Fatalf("sync changed = %v, want locally modified skill preserved", syncResult.Changed)
 	}
-	current, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(skillPath)))
+	current, err := os.ReadFile(skillFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,58 +117,51 @@ func TestRunLifecycleDeploysAndRemovesSkills(t *testing.T) {
 
 	// Uninstall preserves locally modified managed files, so restore the
 	// embedded content before uninstalling.
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(skillPath)), embedded, 0o644); err != nil {
+	if err := os.WriteFile(skillFile, embedded, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stdout.Reset()
-	if err := run([]string{"setup", "uninstall", "--root", root, "--yes"}, strings.NewReader(`{}`), &stdout, &stderr); err != nil {
-		t.Fatalf("uninstall run() error = %v", err)
+	// The CLI leaves a memory store's retain-or-discard decision to the TUI (PR-INS-42), so this
+	// uninstall runs where no store exists.
+	s.env = append(s.env, memory.EnvDir+"="+filepath.Join(t.TempDir(), "absent"))
+	if res := s.runIn("{}", "setup", "uninstall", "--root", root, "--yes"); res.code != 0 {
+		t.Fatalf("uninstall exited %d: %s", res.code, res.stderr)
 	}
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(skillPath))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(skillFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("skill file after uninstall stat error = %v, want removed", err)
 	}
 }
 
-// TestDecodeRequestAcceptsComponents verifies component selection passes through decoding.
-func TestDecodeRequestAcceptsComponents(t *testing.T) {
-	request, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["context7"]}`))
-	if err != nil {
-		t.Fatalf("decodeStrict() error = %v", err)
+// TestRunInstallBlocksOnAFileOnlyTheTUICanDecide verifies a user's own file at a managed path is reported, not overwritten.
+func TestRunInstallBlocksOnAFileOnlyTheTUICanDecide(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
+	root := t.TempDir()
+	owned := filepath.Join(".config", "opencode", "takt", "agents", "takt", "PERSONA.md")
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, owned)), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	want := []string{"context7"}
-	if !slices.Equal(request.Components, want) {
-		t.Fatalf("components = %v, want %v", request.Components, want)
+	if err := os.WriteFile(filepath.Join(root, owned), []byte("my own persona"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	requireRefusal(t, s.runIn(installPayload(t), "setup", "install", "--root", root, "--yes"), owned)
+	if got, err := os.ReadFile(filepath.Join(root, owned)); err != nil || string(got) != "my own persona" {
+		t.Fatalf("the refused install touched the file: %q, %v", got, err)
 	}
 }
 
-// TestDecodeRequestStillRejectsUnknownFields verifies typos in input fail instead of being ignored.
-func TestDecodeRequestStillRejectsUnknownFields(t *testing.T) {
-	if _, err := decodeStrict[setup.PlanRequest](strings.NewReader(`{"components":["context7"],"bogus":true}`)); err == nil {
-		t.Fatal("decodeStrict() error = nil, want unknown field rejection")
+// TestRunInstallRejectsUnknownRequestFields verifies typos in the request fail instead of being ignored.
+func TestRunInstallRejectsUnknownRequestFields(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
+	if res := s.runIn(`{"components":["context7"],"bogus":true}`, "setup", "install", "--root", t.TempDir(), "--yes"); res.code == 0 {
+		t.Fatal("install accepted an unknown request field")
 	}
 }
 
 // TestRunInstallDeploysSelectedComponents verifies chosen components land in the right files.
 func TestRunInstallDeploysSelectedComponents(t *testing.T) {
-	fakeOpenCodeLifecycle(t)
+	s := newSession(t, buildTaktAI(t))
 	root := t.TempDir()
-	payload, err := json.Marshal(setuputil.TestPlanRequest())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var request setup.PlanRequest
-	if err := json.Unmarshal(payload, &request); err != nil {
-		t.Fatal(err)
-	}
-	request.Components = []string{"context7"}
-	payload, err = json.Marshal(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	if err := run([]string{"setup", "install", "--root", root, "--yes"}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
-		t.Fatalf("install run() error = %v", err)
+	if res := s.runIn(installPayload(t, "context7"), "setup", "install", "--root", root, "--yes"); res.code != 0 {
+		t.Fatalf("install exited %d: %s", res.code, res.stderr)
 	}
 
 	config, err := os.ReadFile(filepath.Join(root, ".config", "opencode", "opencode.json"))
@@ -226,73 +180,20 @@ func TestRunInstallDeploysSelectedComponents(t *testing.T) {
 	}
 }
 
-// TestBlockOnConflictsHonorsPriorAcceptanceOnly verifies accepted edits pass while new conflicts block.
-func TestBlockOnConflictsHonorsPriorAcceptanceOnly(t *testing.T) {
-	preserve, err := blockOnConflicts("install", []setup.ConflictEntry{
-		{Path: "a", Reason: "user-edited", Impact: setup.ImpactUncertain, Accepted: true},
-		{Path: "b", Reason: "user-edited", Impact: setup.ImpactUnrelated},
-	})
-	if err != nil || len(preserve) != 2 {
-		t.Fatalf("accepted+unrelated must pass: preserve=%v err=%v", preserve, err)
+// TestUninstallWithAMemoryStoreIsRefusedBeforeMutation proves the CLI leaves the retain-or-discard
+// decision to the TUI (PR-INS-42, PR-INS-43): it fails naming the store and touches nothing.
+func TestUninstallWithAMemoryStoreIsRefusedBeforeMutation(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
+	res := s.runIn("{}", "setup", "uninstall", "--root", t.TempDir(), "--yes")
+	out := res.stdout + res.stderr
+	if res.code == 0 {
+		t.Fatalf("uninstall with a store succeeded:\n%s", out)
 	}
-	if _, err := blockOnConflicts("install", []setup.ConflictEntry{{Path: "c", Reason: "user-edited", Impact: setup.ImpactUncertain}}); err == nil {
-		t.Fatal("unaccepted uncertain conflict must block")
+	store := filepath.Join(s.memoryDir, memory.StoreFile)
+	if !strings.Contains(out, store) || !strings.Contains(out, "TUI") {
+		t.Fatalf("refusal does not name the store and the TUI:\n%s", out)
 	}
-}
-
-// fakeOpenCodeLifecycle exercises the production preflight and reload through
-// the process boundary without using the developer's running OpenCode service.
-func fakeOpenCodeLifecycle(t *testing.T) {
-	t.Helper()
-	bin := t.TempDir()
-	script := `#!/bin/sh
-case "$*" in
-  'api GET /api/info') printf '%s' '{"version":"2.0.16"}' ;;
-  'api GET /api/model') printf '%s' '{"location":{},"data":[]}' ;;
-  'service restart'|'api POST /api/location/reload') exit 0 ;;
-  *) echo "unexpected OpenCode invocation: $*" >&2; exit 1 ;;
-esac
-`
-	if err := os.WriteFile(filepath.Join(bin, "opencode"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// npm install --prefix <dir> …: lay down the package the sandbox adapter
-	// checks for, without the network.
-	npm := `#!/bin/sh
-mkdir -p "$3/node_modules/@anthropic-ai/sandbox-runtime" && echo '{}' > "$3/node_modules/@anthropic-ai/sandbox-runtime/package.json"
-`
-	if err := os.WriteFile(filepath.Join(bin, "npm"), []byte(npm), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
-func TestExecuteSetupPreservesPartialResultOnFailure(t *testing.T) {
-	original := runLifecycle
-	t.Cleanup(func() { runLifecycle = original })
-	wantErr := errors.New("provider action failed")
-	runLifecycle = func(context.Context, string, string, setup.PlanRequest, ...string) (lifecycle.LifecycleResult, error) {
-		return lifecycle.LifecycleResult{Changed: []string{"config.json"}}, wantErr
-	}
-
-	result, outcome, err := executeSetup(context.Background(), "install", t.TempDir(), setup.PlanRequest{})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("executeSetup() error = %v, want %v", err, wantErr)
-	}
-	deployed, ok := result.(setup.DeploymentResult)
-	if !ok || !slices.Equal(deployed.Changed, []string{"config.json"}) || !slices.Equal(outcome.Changed, []string{"config.json"}) {
-		t.Fatalf("partial result = %#v, lifecycle = %#v", result, outcome)
-	}
-}
-
-func TestRenderPartialResultTextIncludesAppliedWork(t *testing.T) {
-	var output bytes.Buffer
-	err := renderPartialResultText(&output, "install", setup.DeploymentResult{Changed: []string{"config.json"}}, errors.New("provider action failed"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := output.String()
-	if !strings.Contains(text, "Install failed after applying partial work") || !strings.Contains(text, "Install partial: 1 changed") || !strings.Contains(text, "[changed] config.json") {
-		t.Fatalf("partial output = %q", text)
+	if _, err := os.Stat(store); err != nil {
+		t.Fatalf("the store was touched: %v", err)
 	}
 }

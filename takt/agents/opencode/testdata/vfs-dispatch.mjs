@@ -247,8 +247,8 @@ assert.deepEqual(dispatched().slice(planningAt).find(r=>r.action==="deliver").re
 // deliver_result's own failure is an ordinary failed tool call: no special
 // casing, the caller sees it and can retry in the same turn.
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results"
-  ? { stdout: "", stderr: "handoff requires an Engram ID", code: 1 } : undefined
-await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "unreported", agent: "pm" }), /Engram ID/)
+  ? { stdout: "", stderr: "handoff requires a memory entry ID", code: 1 } : undefined
+await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "unreported", agent: "pm" }), /memory entry ID/)
 respond = () => undefined
 
 // A producer that never calls deliver_result never silently finishes: the
@@ -318,8 +318,8 @@ globalThis.createPermission = async (r) => ({ id: r.id, effect: "allow" })
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "switch"
   ? { stdout: "", stderr: "harness: the interlocutor interface is already held; no chaining", code: 1 } : undefined
 const switchAt = calls.length
-await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "o" }, root), /no chaining/)
-assert.deepEqual(requestOf(calls.slice(switchAt).find(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm" })
+await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", requirements: [] }, root), /no chaining/)
+assert.deepEqual(requestOf(calls.slice(switchAt).find(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm", requirements: [] })
 assert.equal(promptedSessions.includes("lent"), false, "a never-registered switch child was prompted")
 assert.deepEqual(interrupted, ["lent"])
 interrupted.length = 0
@@ -328,18 +328,18 @@ respond = () => undefined
 // A lent interface comes back to the orchestrator: an accepted handoff writes
 // the envelope into the root session and gives the holder nothing, then ends
 // its turn; a refused one tells only the holder why.
-await tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", expected_artifact: "brief.md" }, root)
-assert.deepEqual(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm", artifact: "brief.md" })
+await tools.dispatch_switch.execute({ target_agent: "pm", objective: "o", requirements: [] }, root)
+assert.deepEqual(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c).action === "switch")), { action: "switch", session: "root", child: "lent", agent: "pm", requirements: [] })
 const holder = { sessionID: "lent", agent: "pm" }
 const handoff = { result: "Standard", additional_context: "ctx", extra_artifacts: [] }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
-  ? { stdout: "", stderr: "handoff denied: standard artifact \"brief.md\" not found; produce it before handoff", code: 1 } : undefined
-await assert.rejects(tools.dispatch_handoff.execute(handoff, holder), /standard artifact "brief.md" not found/)
+  ? { stdout: "", stderr: "handoff denied: a completed result needs at least one entry ID", code: 1 } : undefined
+await assert.rejects(tools.dispatch_handoff.execute(handoff, holder), /needs at least one entry ID/)
 assert.equal(synthetic.length, 0, "a refused handoff reached the orchestrator")
-const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: { entries: [] } }
+const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: [] }
 const notice = "The interface is back from pm. Envelope: ..."
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
-  ? { stdout: JSON.stringify({ envelope, artifact: { path: "brief.md", present: true }, notice }), stderr: "", code: 0 } : undefined
+  ? { stdout: JSON.stringify({ envelope, notice }), stderr: "", code: 0 } : undefined
 const returned = await tools.dispatch_handoff.execute(handoff, holder)
 assert.equal(returned.content, "", "the holder received the envelope")
 assert.equal(synthetic.length, 1)
