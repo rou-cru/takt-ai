@@ -29,10 +29,6 @@ const (
 	normalizerType   = "BertNormalizer"
 	preTokenizerType = "BertPreTokenizer"
 	wordPieceType    = "WordPiece"
-	// dottedCapitalI is U+0130, whose full lowercase mapping is two characters.
-	dottedCapitalI = 'İ'
-	// combiningDot is U+0307, the second character of that mapping.
-	combiningDot = '̇'
 	// replacementRune is dropped by BERT text cleaning together with NUL.
 	replacementRune = '�'
 )
@@ -161,12 +157,7 @@ func normalize(text string) string {
 	}
 	var out strings.Builder
 	for _, r := range norm.NFD.String(cleaned.String()) {
-		switch {
-		case unicode.Is(unicode.Mn, r):
-		case r == dottedCapitalI:
-			out.WriteRune('i')
-			out.WriteRune(combiningDot)
-		default:
+		if !unicode.Is(unicode.Mn, r) {
 			out.WriteRune(unicode.ToLower(r))
 		}
 	}

@@ -106,3 +106,70 @@ func TestAcquireReplacesALargeCorruptFile(t *testing.T) {
 		t.Fatalf("large corrupt file was not replaced: %v", err)
 	}
 }
+
+func TestAcquireRefusesAnHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+	manifest := embed.Manifest{BaseURL: server.URL, Files: []embed.File{{Name: testFileName, Size: 1}}}
+	dir := t.TempDir()
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, dir); err == nil {
+		t.Fatal("expected the HTTP error to be refused")
+	}
+	if _, err := os.Stat(filepath.Join(dir, testFileName)); !os.IsNotExist(err) {
+		t.Fatalf("a file was installed after the error: %v", err)
+	}
+}
+
+func TestAcquireReportsAnUnreachableServer(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	baseURL := server.URL
+	server.Close()
+	manifest := embed.Manifest{BaseURL: baseURL, Files: []embed.File{{Name: testFileName, Size: 1}}}
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil {
+		t.Fatal("expected the connection failure to be reported")
+	}
+}
+
+func TestAcquireRefusesAnInvalidURL(t *testing.T) {
+	manifest := embed.Manifest{BaseURL: "http://\x7f", Files: []embed.File{{Name: testFileName, Size: 1}}}
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil {
+		t.Fatal("expected the invalid URL to be refused")
+	}
+}
+
+func TestAcquireRefusesABodyShorterThanTheManifest(t *testing.T) {
+	manifest := served(t, "model bytes", "model")
+	dir := t.TempDir()
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, dir); err == nil {
+		t.Fatal("expected the short body to be refused")
+	}
+	if _, err := os.Stat(filepath.Join(dir, testFileName)); !os.IsNotExist(err) {
+		t.Fatalf("refused file was installed: %v", err)
+	}
+}
+
+func TestAcquireFailsWhereTheModelDirectoryCannotBeCreated(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := served(t, "model bytes", "model bytes")
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, filepath.Join(blocker, "nested")); err == nil {
+		t.Fatal("expected the install to fail under a regular file")
+	}
+}
+
+func TestAcquireLeavesNoStagedFileWhenTheDestinationIsOccupied(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, testFileName, "inner"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := served(t, "model bytes", "model bytes")
+	if err := manifest.Acquire(context.Background(), http.DefaultClient, dir); err == nil {
+		t.Fatal("expected the install over a directory to fail")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("directory holds %d entries after the failed install, want only the occupied destination: %v", len(entries), err)
+	}
+}
