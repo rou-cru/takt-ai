@@ -44,7 +44,7 @@
       "title": "History",
       "items": [
         "Unit state is a pure fold over the append-only execution history; nothing is stored",
-        "Any in-flight condition accepts launch_uncertain, suspended, cancellation_requested, capture unmonitored and terminated; only the common paths are drawn",
+        "Any in-flight condition accepts launch_uncertain, suspended, cancellation_requested, unmonitored and terminated; only the common paths are drawn",
         "Outcomes: completed, failed, backtracked, interrupted",
         "Inactivity alone proves neither failure nor closure; only loss of the host event stream marks watched executions and open activities unmonitored"
       ]

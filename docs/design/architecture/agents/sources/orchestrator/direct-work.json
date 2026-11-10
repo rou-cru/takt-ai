@@ -196,14 +196,14 @@
       "title": "While working directly",
       "items": [
         "Record each concern with dispatch_activity_start and close it with dispatch_activity_finish before delegating or answering",
-        "Never run build, lint or full suites; direct checks are not independent verification, so report the missing assurance"
+        "Run build, lint or full suites only when the user asks; direct checks are not independent verification, so report the missing assurance"
       ]
     },
     {
       "dot": "rose",
       "title": "Limits",
       "items": [
-        "A technology choice or new implementation of a component is never direct work",
+        "A technology choice is never direct work; a new component is never trivial, so its implementation is direct work only on the user's explicit order",
         "Specialist judgment stays with its owner unless the user explicitly orders direct work; that order permits nontrivial, multi-pass work within its scope but no wider permissions, claims or budgets",
         "An adjustment is trivial only with one file, one concern, and no contract change or other lane's judgment"
       ]

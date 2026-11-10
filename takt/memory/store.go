@@ -52,7 +52,7 @@ type Store struct {
 func storePath(dir string) string { return filepath.Join(dir, StoreFile) }
 
 func dsn(path string, query url.Values) string {
-	u := url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}
+	u := url.URL{Scheme: "file", OmitHost: true, Path: path, RawQuery: query.Encode()}
 	return u.String()
 }
 
@@ -109,16 +109,30 @@ func writeTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
 	return mapBusy(tx.Commit())
 }
 
+// asCorrupt reports the SQLite corruption codes as ErrCorrupt. Every other failure,
+// such as a denied permission, an I/O error or a held lock, is not corruption: it
+// passes through unchanged, so only a damaged store tells the user to restore a backup.
+func asCorrupt(err error) error {
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		switch se.Code() & sqliteResultMask {
+		case sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB:
+			return fmt.Errorf("%w: %v", ErrCorrupt, err)
+		}
+	}
+	return mapBusy(err)
+}
+
 // verify checks the store read-only, so a refused file is never modified.
 func verify(path string) (err error) {
 	db, err := openReader(path)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCorrupt, err)
+		return asCorrupt(err)
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return fmt.Errorf("%w: %v", ErrCorrupt, err)
+		return asCorrupt(err)
 	}
 	if version > schemaVersion {
 		return fmt.Errorf("%w (store %d, build %d)", ErrNewerStore, version, schemaVersion)
@@ -128,21 +142,21 @@ func verify(path string) (err error) {
 	}
 	rows, err := db.Query("PRAGMA quick_check")
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCorrupt, err)
+		return asCorrupt(err)
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	var problems []string
 	for rows.Next() {
 		var line string
 		if err := rows.Scan(&line); err != nil {
-			return fmt.Errorf("%w: %v", ErrCorrupt, err)
+			return asCorrupt(err)
 		}
 		if line != "ok" {
 			problems = append(problems, line)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("%w: %v", ErrCorrupt, err)
+		return asCorrupt(err)
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrCorrupt, strings.Join(problems, "; "))
@@ -213,10 +227,18 @@ func initSchema(path string) (err error) {
 }
 
 // Backup writes a consistent copy of the store with VACUUM INTO to path, which must be
-// absolute and must not exist yet (SQLite refuses an existing non-empty target), and returns the path and its size in bytes.
+// absolute and must not exist yet, and returns the path and its size in bytes. The copy is private to the
+// local user like the store: the target is created exclusively with storeFileMode, which VACUUM INTO accepts empty.
 func (s *Store) Backup(ctx context.Context, path string) (string, int64, error) {
-	if _, err := s.reader.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, storeFileMode)
+	if err != nil {
 		return "", 0, err
+	}
+	if err := f.Close(); err != nil {
+		return "", 0, errors.Join(err, os.Remove(path))
+	}
+	if _, err := s.reader.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+		return "", 0, errors.Join(err, os.Remove(path))
 	}
 	info, err := os.Stat(path)
 	if err != nil {

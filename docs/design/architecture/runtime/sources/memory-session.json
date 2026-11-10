@@ -229,7 +229,7 @@
       "title": "Guards",
       "items": [
         "Personal scope or user orders ask for confirmation first",
-        "Only the agent holding the user conversation links or closes a session"
+        "Only the agent holding the user conversation links or closes a session; a fallback close skips this check"
       ]
     },
     {

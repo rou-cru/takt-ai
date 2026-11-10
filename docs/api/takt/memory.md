@@ -496,7 +496,7 @@ Open opens the existing store in the existing memory directory dir. It never cre
 func (s *Store) Backup(ctx context.Context, path string) (string, int64, error)
 ```
 
-Backup writes a consistent copy of the store with VACUUM INTO to path, which must be absolute and must not exist yet \(SQLite refuses an existing non\-empty target\), and returns the path and its size in bytes.
+Backup writes a consistent copy of the store with VACUUM INTO to path, which must be absolute and must not exist yet, and returns the path and its size in bytes. The copy is private to the local user like the store: the target is created exclusively with storeFileMode, which VACUUM INTO accepts empty.
 
 <a name="Store.Close"></a>
 ### func \(\*Store\) Close

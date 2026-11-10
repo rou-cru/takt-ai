@@ -209,6 +209,11 @@
       "label": "specialist hands back"
     },
     {
+      "from": "switch",
+      "to": "reeval",
+      "label": "user refuses"
+    },
+    {
       "from": "env",
       "to": "std"
     },

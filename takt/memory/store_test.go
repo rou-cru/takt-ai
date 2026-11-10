@@ -109,3 +109,55 @@ func TestBackupIsOpenable(t *testing.T) {
 	}
 	_ = b.Close()
 }
+
+func TestStoreOpensInARelativeDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("mem", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.Init("mem"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	s, err := memory.Open("mem")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	_ = s.Close()
+}
+
+func TestOpenDoesNotCallAnUnreadableStoreCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(storeFile(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := memory.Open(dir)
+	if err == nil || errors.Is(err, memory.ErrCorrupt) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestBackupIsPrivateAndNeverReplaces(t *testing.T) {
+	dir := t.TempDir()
+	if err := memory.Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := memory.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	dest := filepath.Join(t.TempDir(), "backup.db")
+	if _, _, err := s.Backup(t.Context(), dest); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("backup mode %v, want 0600", info.Mode().Perm())
+	}
+	if _, _, err := s.Backup(t.Context(), dest); !errors.Is(err, os.ErrExist) {
+		t.Fatalf("second backup to the same path: %v", err)
+	}
+}

@@ -154,9 +154,9 @@
           "end_line": 88
         },
         {
-          "path": "takt/vfs/operation.go",
-          "line": 176,
-          "end_line": 183
+          "path": "takt/vfs/claims.go",
+          "line": 28,
+          "end_line": 34
         }
       ]
     },

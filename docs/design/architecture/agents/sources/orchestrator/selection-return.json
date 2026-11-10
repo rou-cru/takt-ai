@@ -234,6 +234,11 @@
     },
     {
       "from": "o3",
+      "to": "m1",
+      "label": "new evidence"
+    },
+    {
+      "from": "o3",
       "to": "o4",
       "label": "no justifiable route or user's choice"
     }

@@ -179,7 +179,7 @@
     {
       "from": "validating",
       "to": "rejected",
-      "label": "incomplete, unbounded or unsafe-command cut",
+      "label": "incomplete, unbounded or unscoped-command cut",
       "variant": "security"
     },
     {

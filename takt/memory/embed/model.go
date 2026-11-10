@@ -92,6 +92,11 @@ func Load(dir string) (*Model, error) {
 	if info.Shape[0] != len(tok.vocab) {
 		return nil, fmt.Errorf("model has %d vectors for a %d-token vocabulary", info.Shape[0], len(tok.vocab))
 	}
+	for token, id := range tok.vocab {
+		if id < 0 || id >= info.Shape[0] {
+			return nil, fmt.Errorf("token %q has id %d outside the model's %d vectors", token, id, info.Shape[0])
+		}
+	}
 	return &Model{tokenizer: tok, weights: data[:size], dim: info.Shape[1]}, nil
 }
 
