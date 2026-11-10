@@ -56,7 +56,7 @@ func engramScreen(t *testing.T) uninstall.Model {
 func modifiedScreen(t *testing.T) (uninstall.Model, []string) {
 	t.Helper()
 	root := t.TempDir()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)

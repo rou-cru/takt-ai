@@ -10,6 +10,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -54,18 +55,29 @@ func renderCatalog(t *testing.T) renderedCatalog {
 
 var toolRegistration = regexp.MustCompile(`(?:name: |\bgc\(|\bdispatch\()"([a-z]+_[a-z_]+)"`)
 
+func memoryToolName(tool string) string { return memory.PrefixedToolName(tool) }
+
+// memoryToolNames lists the tools OpenCode exposes from the memory MCP server.
+func memoryToolNames() []string {
+	var names []string
+	for _, tool := range memory.Tools {
+		names = append(names, memoryToolName(tool.Name))
+	}
+	return names
+}
+
 // pluginTools lists every tool the Takt plugins register.
 func pluginTools(t *testing.T) []string {
 	t.Helper()
-	sources := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content) +
-		string(opencode.TaktMemoryPluginArtifact("/test/takt-ai").Content)
-	var tools []string
-	for _, m := range toolRegistration.FindAllStringSubmatch(sources, -1) {
+	source := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
+	// The memory tools are served by the memory MCP server, not registered by a plugin.
+	tools := memoryToolNames()
+	for _, m := range toolRegistration.FindAllStringSubmatch(source, -1) {
 		if !slices.Contains(tools, m[1]) {
 			tools = append(tools, m[1])
 		}
 	}
-	for _, want := range []string{"gc_request", "dispatch_commit", "vfs_bind", "deliver_result", "memory_record", "gc_verdict"} {
+	for _, want := range []string{"gc_request", "dispatch_commit", "vfs_bind", "deliver_result", memoryToolName(memory.ToolRecord), "gc_verdict"} {
 		if !slices.Contains(tools, want) {
 			t.Fatalf("tool registration pattern no longer matches the plugins: %s missing from %v", want, tools)
 		}
@@ -151,15 +163,17 @@ func TestMemoryPermissionsMatchEveryInstanceRole(t *testing.T) {
 	for _, spec := range r.specs {
 		t.Run(spec.ID, func(t *testing.T) {
 			rules := r.config.Agents[spec.ID].Permissions
-			if effectOf(rules, "memory_record", "*") != "allow" {
-				t.Fatal("record must remain available")
+			for _, name := range []string{memory.ToolRecord, memory.ToolSearch, memory.ToolRead, memory.ToolSessions} {
+				if got := effectOf(rules, memoryToolName(name), "*"); got != "allow" {
+					t.Errorf("%s = %s, want allow", name, got)
+				}
 			}
 			want := "deny"
 			if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
 				want = "allow"
 			}
-			for _, name := range []string{"memory_continue_session", "memory_close_session"} {
-				if got := effectOf(rules, name, "*"); got != want {
+			for _, name := range []string{memory.ToolContinueSession, memory.ToolCloseSession} {
+				if got := effectOf(rules, memoryToolName(name), "*"); got != want {
 					t.Errorf("%s = %s, want %s", name, got, want)
 				}
 			}

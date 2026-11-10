@@ -157,7 +157,7 @@ describe("plugin setup", () => {
       expect(requests.some(({ request }) => request.version === "plan-2" && JSON.stringify(request.qa_round) === JSON.stringify(qaRound))).toBe(true)
       await execute("dispatch_activity_start", { activity_id: "activity-1", node_kind: "orchestrator" }, orchestrator)
       await execute("dispatch_close_recovery", { objective: "restore", evidence: "tests pass", demonstrated: true }, orchestrator)
-      await execute("dispatch_switch", { target_agent: "dev", objective: "Implement feature", requirements: "typed", client: "review" }, orchestrator)
+      await execute("dispatch_switch", { target_agent: "dev", objective: "Implement feature", requirements: [7], client: "review" }, orchestrator)
       // No agent holds an abort (IR-24): the user's /takt-abort command does.
       expect(tools.has("dispatch_abort_switch")).toBe(false)
       await invokeHook(toolHooks, "execute.before", 0, {
@@ -421,10 +421,10 @@ describe("isInterlocutorReturn", () => {
     expect(isInterlocutorReturn(contracts.abort)).toBe(true)
   })
   test("rejects an envelope that is not exactly the four IR-22 fields", () => {
-    const envelope = { result: "Standard", additional_context: "x", extra_artifacts: [], memory: { entries: [] } }
+    const envelope = { result: "Standard", additional_context: "x", extra_artifacts: [], memory: [] }
     expect(isHandoffEnvelope(envelope)).toBe(true)
     expect(isHandoffEnvelope({ ...envelope, extra_artifacts: [1] })).toBe(false)
-    expect(isHandoffEnvelope({ ...envelope, memory: { entries: ["not a number"] } })).toBe(false)
+    expect(isHandoffEnvelope({ ...envelope, memory: ["not a number"] })).toBe(false)
     expect(isHandoffEnvelope({ ...envelope, artifact_verified: true })).toBe(false)
     expect(isInterlocutorReturn(envelope)).toBe(false)
   })
@@ -432,7 +432,7 @@ describe("isInterlocutorReturn", () => {
 
 describe("interlocutor return notice", () => {
   test("is the core's words, required beside the envelope", () => {
-    expect(contracts.handoff.notice).toContain("Declared standard document PRD.md: present.")
+    expect(contracts.handoff.notice).toContain("The interface is back from pm.")
     expect(isInterlocutorReturn({ ...contracts.handoff, notice: undefined })).toBe(false)
   })
 })

@@ -1187,15 +1187,15 @@ func TestVerifierRetryReplacesUnadoptedGate(t *testing.T) {
 	}
 }
 
-// An Engram invariant pins itself: its version needs no workspace document, and
+// A memory invariant pins itself: its version needs no workspace document, and
 // changes with the entries declared and their precedence order.
-func TestEngramInvariantsVersion(t *testing.T) {
+func TestMemoryInvariantsVersion(t *testing.T) {
 	versionOf := func(set ...int64) string {
 		t.Helper()
 		f, _, _ := newStore(t)
 		set2 := make(vfs.InvariantSet, 0, len(set))
 		for _, id := range set {
-			set2 = append(set2, vfs.EngramInvariant(id))
+			set2 = append(set2, vfs.MemoryInvariant(id))
 		}
 		key, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: set2}, []string{"a.go"})
 		if err != nil {
@@ -1220,10 +1220,10 @@ func TestEngramInvariantsVersion(t *testing.T) {
 	}
 }
 
-// An invariant that names no Engram entry is refused at binding instead of
+// An invariant that names no memory entry is refused at binding instead of
 // being pinned as if it were one.
-func TestMalformedEngramInvariantIsRefused(t *testing.T) {
-	for _, invariant := range []string{"engram:", "engram:abc", "engram:0", "engram:-3"} {
+func TestMalformedMemoryInvariantIsRefused(t *testing.T) {
+	for _, invariant := range []string{"takt_memory:", "takt_memory:abc", "takt_memory:0", "takt_memory:-3"} {
 		f, _, _ := newStore(t)
 		_, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: vfs.InvariantSet{invariant}}, []string{"a.go"})
 		if !errors.Is(err, vfs.ErrIdentity) {
@@ -1234,9 +1234,9 @@ func TestMalformedEngramInvariantIsRefused(t *testing.T) {
 
 // A gate in a unit of its own, declaring nothing, is judged against the
 // invariants its author was issued, so its verdict governs the author's work.
-func TestVerifierGateInheritsTheAuthorsEngramInvariants(t *testing.T) {
+func TestVerifierGateInheritsTheAuthorsMemoryInvariants(t *testing.T) {
 	f, _, _ := newStore(t)
-	set := vfs.InvariantSet{vfs.EngramInvariant(7), vfs.EngramInvariant(8)}
+	set := vfs.InvariantSet{vfs.MemoryInvariant(7), vfs.MemoryInvariant(8)}
 	author, err := f.Bind(vfs.Identity{SessionID: testSession, WorkUnitID: "impl", AttemptID: "1", AgentID: "author", Specialist: "dev", Invariants: set}, []string{"a.go"})
 	if err != nil {
 		t.Fatal(err)

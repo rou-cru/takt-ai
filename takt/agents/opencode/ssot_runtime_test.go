@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
 // Only native OpenCode and the CodeGraph index transport are doubles. Every
@@ -49,9 +50,16 @@ func TestRenderedVFSUsesLiveAuthorities(t *testing.T) {
 	write("ssot.mjs", data)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	// MemoryDir sets TAKT_MEMORY_DIR, so the CLI and the fixture share one service the CLI launches.
+	memoryDir := testutil.MemoryDir(t)
 	cmd = exec.CommandContext(ctx, node, "ssot.mjs", bin)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "HOME="+filepath.Join(dir, "home"))
+	init := exec.CommandContext(ctx, bin, "memory", "start", "--init")
+	init.Env = cmd.Env
+	if out, err := init.CombinedOutput(); err != nil {
+		t.Fatalf("memory start --init in %s: %v\n%s", memoryDir, err, out)
+	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("SSoT rendered integration: %v\n%s", err, out)
 	}
@@ -94,9 +102,15 @@ func TestRenderedNormalFlowRepairsUseRealCLI(t *testing.T) {
 	write("flow-recovery.mjs", data)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	memoryDir := testutil.MemoryDir(t)
 	cmd := exec.CommandContext(ctx, node, "flow-recovery.mjs", bin)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "HOME="+filepath.Join(dir, "home"))
+	init := exec.CommandContext(ctx, bin, "memory", "start", "--init")
+	init.Env = cmd.Env
+	if out, err := init.CombinedOutput(); err != nil {
+		t.Fatalf("memory start --init in %s: %v\n%s", memoryDir, err, out)
+	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("normal flow recovery integration: %v\n%s", err, out)
 	}

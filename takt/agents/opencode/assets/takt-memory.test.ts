@@ -1,495 +1,263 @@
-import { describe, expect, mock, test } from "bun:test"
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
-import memoryPlugin, { closeResult, isObject, recordResult, renderSearch, searchResult } from "./takt-memory"
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
-const contracts = JSON.parse(readFileSync(resolve(import.meta.dir, "../testdata/contracts.json"), "utf8"))
-type MemoryContextEvent = { agent: string; sessionID: string; tools: Record<string, MemoryTool | undefined>; system: Array<{ type: string; text: string }> }
-type MemoryTool = { name: string; execute: (input: unknown, context: never) => Promise<{ content: string }> }
+// The plugin is rendered the way the deployment renders it (test-render.ts), so the hook runs against a
+// fake /admin on a real Unix socket of this test's own.
+const WORKSPACE = "/workspace"
+const KEY = "ws-key"
+const dir = mkdtempSync(join(tmpdir(), "takt-memory-test-"))
+const SOCKET = join(dir, "memory.sock")
+let memoryPlugin: { setup: (ctx: never) => unknown }
 
-describe("plugin setup", () => {
-  test("registers memory tools and sends valid requests to takt-ai", async () => {
-    const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
-    const originalSpawn = runtime.Bun.spawn
-    const tools = new Map<string, { execute: (input: unknown, context: never) => Promise<{ content: string }> }>()
-    const requests: Array<{ command: string; request: Record<string, unknown> }> = []
-    runtime.Bun.spawn = ((argv: string[]) => {
-      if (argv[1]==="dispatch") return {stdout:"null",stderr:"",exited:Promise.resolve(0)}
-      let request: Record<string, unknown> = {}
-      const command = argv[2]
-      return {
-        stdin: { write(value: string) { request = JSON.parse(value) }, end() {} },
-        get stdout() {
-          requests.push({ command, request })
-          const result = command === "record" ? { id: 42, deduplicated: false } : command === "search" ? { results: [], omitted_superseded: 0 } : { end_anchor_id: 43, entries: 1 }
-          return JSON.stringify({ ok: true, result })
-        },
-        stderr: "",
-        exited: Promise.resolve(0),
-      }
-    }) as typeof originalSpawn
+beforeAll(async () => { memoryPlugin = (await import("./takt-memory")).default })
+afterAll(() => { rmSync(dir, { recursive: true, force: true }) })
 
-    try {
-      await memoryPlugin.setup({
-        location: { directory: "/workspace" },
-        session: { async hook() { return { dispose() {} } }, async get({ sessionID }: { sessionID: string }) { return { id: sessionID } } },
-        tool: { async transform(callback: (editor: { add: (definition: MemoryTool) => void }) => void) {
-          callback({ add(definition) { tools.set(definition.name, definition) } })
-          return { dispose() {} }
-        } },
-        event: { subscribe() { return { [Symbol.asyncIterator]() { return { next: () => new Promise<never>(() => {}) } } } } },
-      } as never)
+type Described = { id: number; exists: boolean; title?: string; outgoing?: Array<{ entry: number; kind: string }> }
+type AdminCall = { tool: string; args: Record<string, unknown> }
+type HookEvent = { tool: string; sessionID: string; agent: string; messageID: string; id: string; input: unknown }
 
-      const context = { sessionID: "root", agent: "takt", messageID: "message", id: "tool-call" } as never
-      expect((await tools.get("memory_record")!.execute({ nature: "observation", scope: "project", title: "title", content: "content" }, context)).content).toBe("Recorded #42")
-      expect((await tools.get("memory_continue_session")!.execute({ previous_session_id: "prior" }, context)).content).toBe("Will continue prior from the first new entry")
-      expect((await tools.get("memory_close_session")!.execute({ objective: "objective", state: "done" }, context)).content).toBe("Closed session as #43 with 1 entries")
-      expect((await tools.get("memory_search")!.execute({ query: "cache", scope: "project" }, context)).content).toBe("No memories found")
-      expect(requests.map(({ command }) => command)).toEqual(["record", "continue", "close", "search"])
-      expect(requests[0].request).toMatchObject({ author: "takt", caller_session: "root", directory: "/workspace", title: "title" })
-      expect(requests[3].request).toEqual({ query: "cache", scope: "project", directory: "/workspace" })
-    } finally {
-      runtime.Bun.spawn = originalSpawn
-    }
+// fakeAdmin answers /admin as the service does: it requires the headers the Streamable HTTP transport requires.
+function fakeAdmin(entries: Described[]) {
+  const calls: AdminCall[] = []
+  const server = Bun.serve({
+    unix: SOCKET,
+    async fetch(req) {
+      const accept = req.headers.get("accept") ?? ""
+      if (req.headers.get("content-type") !== "application/json" || !accept.includes("application/json") || !accept.includes("text/event-stream")) return new Response("bad headers", { status: 400 })
+      const body = await req.json() as { id: string; params: { name: string; arguments: Record<string, unknown> } }
+      calls.push({ tool: body.params.name, args: body.params.arguments })
+      const structured = body.params.name === "describe"
+        ? { entries: (body.params.arguments.ids as number[]).map(id => entries.find(e => e.id === id) ?? { id, exists: false }) }
+        : {}
+      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "{}" }], structuredContent: structured } })
+    },
   })
-})
-
-describe("isObject", () => {
-  test("accepts plain objects only", () => {
-    expect(isObject({})).toBe(true)
-    expect(isObject([])).toBe(false)
-    expect(isObject(null)).toBe(false)
-    expect(isObject("x")).toBe(false)
-  })
-})
-
-describe("recordResult", () => {
-  test("matches the real memory_record wire contract", () => {
-    expect(recordResult(contracts.memory_record.result)).toEqual({ id: 42, deduplicated: false })
-  })
-  test("rejects a non-integer, non-positive, or wrongly typed id", () => {
-    expect(() => recordResult({ id: 0, deduplicated: false })).toThrow("takt-ai memory record returned an invalid result")
-    expect(() => recordResult({ id: 1.5, deduplicated: false })).toThrow("takt-ai memory record returned an invalid result")
-    expect(() => recordResult({ id: "1", deduplicated: false })).toThrow("takt-ai memory record returned an invalid result")
-    expect(() => recordResult({ id: 1, deduplicated: "no" })).toThrow("takt-ai memory record returned an invalid result")
-    expect(() => recordResult(null)).toThrow("takt-ai memory record returned an invalid result")
-  })
-})
-
-describe("searchResult", () => {
-  test("matches the real memory_search wire contract", () => {
-    expect(searchResult(contracts.memory_search.result)).toEqual(contracts.memory_search.result)
-  })
-  test("rejects a malformed hit or omitted count", () => {
-    expect(() => searchResult({ results: [{ id: 0, type: "t", title: "t", preview: "p" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
-    expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", disputed: "yes" }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
-    expect(() => searchResult({ results: [], omitted_superseded: -1 })).toThrow("takt-ai memory search returned an invalid result")
-    expect(() => searchResult({ results: [{ id: 1, type: "t", title: "t", preview: "p", project: 1 }], omitted_superseded: 0 })).toThrow("takt-ai memory search returned an invalid result")
-  })
-})
-
-describe("renderSearch", () => {
-  test("distinguishes omitted history from an empty search", () => {
-    expect(renderSearch({ results: [], omitted_superseded: 2 })).toBe("No non-superseded entries in the returned candidates\n2 superseded entries omitted; pass include_history to see them")
-    expect(renderSearch({ results: [], omitted_superseded: 0 })).toBe("No memories found")
-  })
-  test("renders one marked line per entry and the omitted count", () => {
-    expect(renderSearch(searchResult(contracts.memory_search.result))).toBe(
-      "#42 [decision] [dev] Cache for ten minutes — Cache policy. [disputed] [exception]\n1 superseded entries omitted; pass include_history to see them",
-    )
-  })
-  test("collapses a multi-line preview and marks history", () => {
-    expect(renderSearch({ results: [{ id: 7, type: "proposal", title: "Old", preview: "a\n\nb", superseded: true }], omitted_superseded: 0 })).toBe("#7 [proposal] Old — a b [superseded]")
-  })
-  test("names the workspace of a hit that carries one", () => {
-    expect(renderSearch({ results: [{ id: 9, type: "session_anchor", title: "Session s started", preview: "p", project: "demo" }], omitted_superseded: 0 })).toBe("#9 [session_anchor] (demo) Session s started — p")
-  })
-})
-
-describe("closeResult", () => {
-  test("matches the real memory_close wire contract", () => {
-    expect(closeResult(contracts.memory_close.result)).toEqual({ end_anchor_id: 43, entries: 2 })
-  })
-  test("accepts zero entries but rejects a negative count or a non-positive anchor", () => {
-    expect(closeResult({ end_anchor_id: 1, entries: 0 })).toEqual({ end_anchor_id: 1, entries: 0 })
-    expect(() => closeResult({ end_anchor_id: 1, entries: -1 })).toThrow("takt-ai memory close returned an invalid result")
-    expect(() => closeResult({ end_anchor_id: 0, entries: 1 })).toThrow("takt-ai memory close returned an invalid result")
-    expect(() => closeResult({ end_anchor_id: 1.5, entries: 1 })).toThrow("takt-ai memory close returned an invalid result")
-  })
-})
-
-// The confirmation channel is the local OpenCode service; these tests replace
-// its discovery and client so no network or real service is ever touched.
-type PermissionRequest = { id: string; sessionID: string; action: string; resources: string[]; metadata: Record<string, unknown>; agent: string; source: unknown }
-type Effect = "allow" | "deny" | "ask"
-type Reply = { out?: string; err?: string; code?: number }
-type MemoryEvent = { type: string; data: Record<string, string> }
-
-const REPLY_SETTLE_ATTEMPTS = 50
-const context = { sessionID: "root", agent: "takt", messageID: "message", id: "tool-call" }
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-const until = async (ready: () => boolean, attempts = REPLY_SETTLE_ATTEMPTS): Promise<void> => {
-  if (ready() || attempts === 0) return
-  await sleep(1)
-  return until(ready, attempts - 1)
+  return { calls, stop: () => server.stop(true) }
 }
 
-// startMemory wires the plugin to a scripted takt-ai, a scripted session tree,
-// a scripted permission service and a controllable event stream.
-async function startMemory(options: {
-  respond?: (command: string, request: Record<string, unknown>) => Reply
-  sessions?: Record<string, { parentID?: string; metadata?: Record<string, unknown> }>
-  effects?: Effect[]
-  immediateReply?: string
-  endpoint?: { url: string } | undefined
-} = {}) {
+type Options = {
+  entries?: Described[]
+  sessions?: Record<string, { parentID?: string }>
+  effects?: Array<"allow" | "deny">
+  // Whether the service is already running when the plugin starts; otherwise `start` brings it up on the nth run.
+  running?: boolean
+  startsService?: boolean
+}
+
+async function startMemory(options: Options = {}) {
   const runtime = globalThis as unknown as { Bun: { spawn: (...args: never[]) => unknown } }
   const originalSpawn = runtime.Bun.spawn
-  const tools = new Map<string, MemoryTool>()
-  const requests: Array<{ command: string; request: Record<string, unknown> }> = []
-  const created: PermissionRequest[] = []
-  const events: MemoryEvent[] = []
+  const spawns: string[][] = []
+  const cwds: Array<string | undefined> = []
+  let admin = options.running === false ? undefined : fakeAdmin(options.entries ?? [])
+  const created: Array<{ id: string; action: string; resources: string[]; metadata: Record<string, unknown> }> = []
   const effects = [...(options.effects ?? [])]
-  let wake: (() => void) | undefined
-  let closed = false
-  let disconnected = false
-  let discoveries = 0
-  const endpoint = "endpoint" in options ? options.endpoint : { url: "http://service.invalid" }
-  mock.module("@opencode/client/service", () => ({
-    Service: { discover: async () => { discoveries++; return endpoint }, headers: () => ({}) },
-  }))
+  mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
   mock.module("@opencode/client", () => ({
-    OpenCode: { make: () => ({ permission: { create: async (request: PermissionRequest) => {
+    OpenCode: { make: () => ({ permission: { create: async (request: { id: string; action: string; resources: string[]; metadata: Record<string, unknown> }) => {
       created.push(request)
-      if (options.immediateReply) {
-        events.push({type:"permission.replied",data:{requestID:request.id,reply:options.immediateReply}});wake?.()
-        await sleep(3)
-      }
       return { effect: effects.shift() ?? "allow", id: request.id }
     } } }) },
   }))
-  runtime.Bun.spawn = ((argv: string[]) => {
-    let request: Record<string, unknown> = {}
-    const command = argv[2]
-    return {
-      stdin: { write(value: string) { request = JSON.parse(value) }, end() {} },
-      get stdout() {
-        requests.push({ command, request })
-        const reply = options.respond?.(command, request)
-        if (reply) return reply.out ?? ""
-        return JSON.stringify({ ok: true, result: command === "close" ? { end_anchor_id: 9, entries: 0 } : { id: 7, deduplicated: false } })
-      },
-      get stderr() { return options.respond?.(command, request)?.err ?? "" },
-      exited: Promise.resolve(options.respond?.(command, request)?.code ?? 0),
-    }
+  runtime.Bun.spawn = ((argv: string[], spawnOptions: { cwd?: string }) => {
+    spawns.push(argv)
+    cwds.push(spawnOptions.cwd)
+    if (options.startsService && spawns.length > 1) admin = fakeAdmin(options.entries ?? [])
+    return { stdout: `${JSON.stringify({ workspace: KEY, socket: SOCKET })}\n`, stderr: "", exited: Promise.resolve(0) }
   }) as typeof originalSpawn
-  async function* stream(): AsyncGenerator<MemoryEvent> {
-    while (!closed && !disconnected) {
-      while (events.length === 0 && !closed && !disconnected) await new Promise<void>((resolve) => { wake = resolve })
-      const event = events.shift()
-      if (event) yield event
-    }
-  }
-  let contextHook: (event: MemoryContextEvent) => Promise<void>
+  let hook: (event: HookEvent) => Promise<void> = async () => {}
+  const hookNames: string[] = []
   const cleanup = await memoryPlugin.setup({
-    location: { directory: "/workspace" },
-    session: { async hook(_name: string, callback: typeof contextHook) { contextHook = callback; return { dispose() {} } }, async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } } },
-    tool: { async transform(callback: (editor: { add: (definition: MemoryTool) => void }) => void) {
-      callback({ add(definition) { tools.set(definition.name, definition) } })
-      return { dispose() {} }
-    } },
-    event: { subscribe({ signal }: { signal: AbortSignal }) {
-      disconnected = false
-      signal.addEventListener("abort", () => { closed = true; wake?.() }, { once: true })
-      return { [Symbol.asyncIterator]: stream }
-    } },
+    location: { directory: WORKSPACE },
+    session: { async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } } },
+    tool: { async hook(name: string, callback: typeof hook) { hookNames.push(name); hook = callback; return { dispose() {} } } },
+    event: { subscribe() { return { [Symbol.asyncIterator]() { return { next: () => new Promise<never>(() => {}) } } } } },
   } as never)
   return {
-    context: async (agent: string, sessionID = "root", available = [...tools.keys()]) => {
-      const event = { agent, sessionID, tools: Object.fromEntries(available.map(name => [name, tools.get(name)])), system: [] as Array<{ type: string; text: string }> }
-      await contextHook(event)
-      return event
-    },
-    requests, created, discoveries: () => discoveries,
-    disconnect() {disconnected=true;wake?.()},
-    run: (name: string, input: unknown, ctx = context) => tools.get(name)!.execute(input, ctx as never),
-    publish(event: MemoryEvent) { events.push(event); wake?.() },
-    stop() { if (typeof cleanup === "function") cleanup(); runtime.Bun.spawn = originalSpawn },
+    spawns, cwds, created, hookNames, hook: (event: HookEvent) => hook(event),
+    calls: () => admin?.calls ?? [],
+    run: (tool: string, input: unknown, agent = "dev", sessionID = "root") =>
+      hook({ tool: `takt_memory_${tool}`, sessionID, agent, messageID: "message", id: "tool-call", input }),
+    stop() { if (typeof cleanup === "function") cleanup(); admin?.stop(); runtime.Bun.spawn = originalSpawn },
   }
 }
 
-const personalRecord = { nature: "decision", scope: "personal", title: "prefers tabs", content: "always tabs" }
+const record = (extra: Record<string, unknown> = {}) => ({ nature: "observation", scope: "workspace", title: "t", content: "c", evidence: "e", ...extra })
+const globalRecord = record({ scope: "global", nature: "decision", title: "prefers tabs", content: "always tabs" })
+const MATRIX = "Traceability Matrix: ship it"
 
-describe("confirmation flow", () => {
-  test("a personal record asks for approval with the entry as resource and records it confirmed", async () => {
-    const memory = await startMemory()
+describe("binding", () => {
+  test("every memory call binds its caller first and no process runs per call", async () => {
+    const memory = await startMemory({ sessions: { child: { parentID: "mid" }, mid: { parentID: "top" } } })
     try {
-      expect((await memory.run("memory_record", personalRecord)).content).toBe("Recorded #7")
-      expect(memory.created).toEqual([{
-        id:expect.any(String), sessionID: "root", action: "memory_personal", resources: ["prefers tabs"],
-        metadata: { title: "prefers tabs", content: "always tabs" }, agent: "takt",
-        source: { type: "tool", messageID: "message", id: "tool-call" },
-      }])
-      expect(memory.requests[0].request).toMatchObject({ scope: "personal", confirmed: true, user_order: false })
+      await memory.run("search", { query: "x", scope: "workspace" }, "dev", "child")
+      await memory.run("read", { id: 1 }, "dev", "child")
+      await memory.run("record", record(), "takt", "top")
+      expect(memory.hookNames).toEqual(["execute.before"])
+      expect(memory.calls()).toEqual([
+        { tool: "bind", args: { host_session: "child", agent: "dev", claimed_root: "top", workspace: KEY } },
+        { tool: "bind", args: { host_session: "child", agent: "dev", claimed_root: "top", workspace: KEY } },
+        { tool: "bind", args: { host_session: "top", agent: "takt", claimed_root: "top", workspace: KEY } },
+      ])
+      expect(memory.spawns).toEqual([["takt-ai", "memory", "start"]])
+      expect(memory.cwds).toEqual([WORKSPACE])
     } finally { memory.stop() }
   })
 
-  test("a user-ordered project record asks its own question and records the order", async () => {
+  test("a tool that is not a memory tool is left alone", async () => {
     const memory = await startMemory()
     try {
-      await memory.run("memory_record", { nature: "decision", scope: "project", title: "ship it", content: "c", user_order: true })
-      expect(memory.created).toHaveLength(1)
-      expect(memory.created[0]).toMatchObject({ action: "memory_user_order", metadata: { question: "Did you order recording this?" } })
-      expect(memory.requests[0].request).toMatchObject({ confirmed: false, user_order: true })
+      await memory.run("record", record(), "dev")
+      const before = memory.calls().length
+      await memory.hook({ tool: "shell", sessionID: "root", agent: "dev", messageID: "m", id: "i", input: {} })
+      expect(memory.calls()).toHaveLength(before)
     } finally { memory.stop() }
   })
 
-  test("a personal user-ordered record is confirmed twice over one discovered client", async () => {
+  test("an author outside the crew roster is refused and nothing is bound", async () => {
     const memory = await startMemory()
     try {
-      await memory.run("memory_record", { ...personalRecord, user_order: true })
-      expect(memory.created.map(({ action }) => action)).toEqual(["memory_personal", "memory_user_order"])
-      expect(memory.discoveries()).toBe(1)
+      await expect(memory.run("record", record(), "intruder")).rejects.toThrow('"intruder" is not a Takt crew member')
+      expect(memory.calls()).toEqual([])
+    } finally { memory.stop() }
+  })
+})
+
+describe("recovery through start", () => {
+  test("a silent socket makes the call start the service once and retry", async () => {
+    const memory = await startMemory({ running: false, startsService: true })
+    try {
+      await memory.run("search", { query: "x", scope: "workspace" })
+      expect(memory.spawns).toHaveLength(2)
+      expect(memory.calls().map(c => c.tool)).toEqual(["bind"])
     } finally { memory.stop() }
   })
 
-  test("a denial fails the call and nothing is recorded", async () => {
+  test("a service that still does not answer refuses the call as unavailable after one start", async () => {
+    const memory = await startMemory({ running: false })
+    try {
+      await expect(memory.run("search", { query: "x", scope: "workspace" })).rejects.toThrow("The Takt memory service is unavailable")
+      expect(memory.spawns).toHaveLength(2)
+    } finally { memory.stop() }
+  })
+})
+
+describe("global tier", () => {
+  test("workspace content in a global record is refused, naming workspace scope", async () => {
+    const memory = await startMemory()
+    try {
+      for (const field of [{ content: "see\n```go\nx\n```" }, { title: `in ${WORKSPACE}/src` }, { evidence: `${WORKSPACE}/a.go` }]) {
+        await expect(memory.run("record", { ...globalRecord, ...field })).rejects.toThrow("scope workspace")
+      }
+      expect(memory.created).toEqual([])
+      expect(memory.calls()).toEqual([])
+    } finally { memory.stop() }
+  })
+
+  test("a global record asks the user, then binds the approved arguments as its grant", async () => {
+    const memory = await startMemory()
+    try {
+      await memory.run("record", globalRecord)
+      expect(memory.created).toMatchObject([{ action: "memory_global", resources: ["prefers tabs"], metadata: { title: "prefers tabs", content: "always tabs" } }])
+      expect(memory.calls()).toEqual([{ tool: "bind", args: expect.objectContaining({ grants: [globalRecord] }) }])
+    } finally { memory.stop() }
+  })
+
+  test("a user-ordered record asks its own question; a global one asks twice", async () => {
+    const memory = await startMemory()
+    try {
+      await memory.run("record", record({ user_order: true }))
+      await memory.run("record", { ...globalRecord, user_order: true })
+      expect(memory.created.map(c => c.action)).toEqual(["memory_user_order", "memory_global", "memory_user_order"])
+      expect(memory.created[0].metadata).toMatchObject({ question: "Did you order recording this?" })
+    } finally { memory.stop() }
+  })
+
+  test("the confirmation carries the permission service's own identifier prefix", async () => {
+    const memory = await startMemory()
+    try {
+      await memory.run("record", globalRecord)
+      expect(memory.created[0].id).toMatch(/^per_/)
+    } finally { memory.stop() }
+  })
+
+  test("a denial throws and nothing is bound", async () => {
     const memory = await startMemory({ effects: ["deny"] })
     try {
-      await expect(memory.run("memory_record", personalRecord)).rejects.toThrow("Permission denied: memory_personal")
-      expect(memory.requests).toEqual([])
+      await expect(memory.run("record", globalRecord)).rejects.toThrow("The user declined: memory_global")
+      expect(memory.calls()).toEqual([])
     } finally { memory.stop() }
   })
 
-  test("an unreachable service fails the call before anything is recorded", async () => {
-    const memory = await startMemory({ endpoint: undefined })
-    try {
-      await expect(memory.run("memory_record", personalRecord)).rejects.toThrow("cannot reach the local OpenCode service to ask for confirmation")
-      expect(memory.requests).toEqual([])
-    } finally { memory.stop() }
-  })
-
-  test("an asked confirmation parks until its reply event, then honors the answer", async () => {
-    const memory = await startMemory({ effects: ["ask", "ask"] })
-    try {
-      const approved = memory.run("memory_record", personalRecord)
-      await until(() => memory.created.length === 1)
-      await sleep(1)
-      memory.publish({ type: "permission.replied", data: { requestID: memory.created[0].id, reply: "once" } })
-      expect((await approved).content).toBe("Recorded #7")
-
-      const rejected = memory.run("memory_record", personalRecord)
-      const outcome = rejected.then(() => "recorded", (error: Error) => error.message)
-      await until(() => memory.created.length === 2)
-      await sleep(1)
-      memory.publish({ type: "permission.replied", data: { requestID: memory.created[1].id, reply: "reject" } })
-      expect(await outcome).toBe("Permission denied: memory_personal")
-    } finally { memory.stop() }
-  })
-})
-
-describe("approval channel liveness", () => {
-  test("an immediate reply before create returns is not lost", async () => {
-    const memory=await startMemory({effects:["ask"],immediateReply:"once"})
-    try {expect((await memory.run("memory_record",personalRecord)).content).toBe("Recorded #7")}finally{memory.stop()}
-  })
-  test("disconnect rejects a waiter without recording and a new approval can be requested", async () => {
-    const memory=await startMemory({effects:["ask","ask"]})
-    try {
-      const old=memory.run("memory_record",personalRecord).then(()=>"recorded",(e:Error)=>e.message)
-      await until(()=>memory.created.length===1)
-      memory.disconnect()
-      expect(await old).toContain("request approval again")
-      expect(memory.requests).toEqual([])
-      const next=memory.run("memory_record",personalRecord)
-      await until(()=>memory.created.length===2)
-      memory.publish({type:"permission.replied",data:{requestID:memory.created[0].id,reply:"once"}})
-      await sleep(3);expect(memory.requests).toEqual([])
-      memory.publish({type:"permission.replied",data:{requestID:memory.created[1].id,reply:"once"}})
-      expect((await next).content).toBe("Recorded #7")
-      expect(memory.discoveries()).toBe(2)
-    } finally {memory.stop()}
-  })
-  test("plugin cancellation explicitly rejects pending human decisions", async () => {
-    const memory=await startMemory({effects:["ask"]})
-    const waiting=memory.run("memory_record",personalRecord).then(()=>"recorded",(e:Error)=>e.message)
-    await until(()=>memory.created.length===1);memory.stop()
-    expect(await waiting).toContain("memory plugin stopped")
-    expect(memory.requests).toEqual([])
-  })
-})
-
-describe("root session resolution", () => {
-  test("sends the calling host session and never a root of its own", async () => {
-    const memory = await startMemory({ sessions: { leaf: { parentID: "middle" } } })
-    try {
-      await memory.run("memory_continue_session", { previous_session_id: "prior" }, { ...context, sessionID: "leaf" })
-      expect(memory.requests[0].request).toMatchObject({ caller_session: "leaf", previous_session: "prior" })
-      expect(memory.requests[0].request).not.toHaveProperty("session")
-    } finally { memory.stop() }
-  })
-})
-
-describe("harness errors", () => {
-  test("each tool refuses a non-object input", async () => {
+  test("an ordinary workspace record asks nothing and carries no grant", async () => {
     const memory = await startMemory()
     try {
-      await Promise.all(["memory_record", "memory_continue_session", "memory_close_session"].map((name) =>
-        expect(memory.run(name, "text")).rejects.toThrow(`${name} input must be an object`)))
+      await memory.run("record", record())
+      expect(memory.created).toEqual([])
+      expect(memory.calls()[0].args).not.toHaveProperty("grants")
     } finally { memory.stop() }
-  })
-
-  test("a deduplicated record is reported as already recorded", async () => {
-    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: { id: 5, deduplicated: true } }) }) })
-    try {
-      expect((await memory.run("memory_record", { nature: "observation", scope: "project", title: "t", content: "c" })).content).toBe("Already recorded #5")
-    } finally { memory.stop() }
-  })
-
-  test("the reported error, or a generic failure, surfaces when takt-ai answers not ok", async () => {
-    const withError = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: false, error: "store locked" }), code: 1 }) })
-    try {
-      await expect(withError.run("memory_close_session", { objective: "o", state: "s" })).rejects.toThrow("store locked")
-    } finally { withError.stop() }
-    const bare = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: false }), code: 1 }) })
-    try {
-      await expect(bare.run("memory_continue_session", { previous_session_id: "prior" })).rejects.toThrow("takt-ai memory continue failed")
-    } finally { bare.stop() }
-  })
-
-  test("an ok flag that disagrees with the exit code is an invalid response", async () => {
-    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: {} }), code: 1 }) })
-    try {
-      await expect(memory.run("memory_continue_session", { previous_session_id: "prior" })).rejects.toThrow("takt-ai memory continue returned an invalid response")
-    } finally { memory.stop() }
-  })
-
-  test("unparseable output reports the exit code with stdout, or stderr when stdout is empty", async () => {
-    const withOutput = await startMemory({ respond: () => ({ out: "not json", code: 2 }) })
-    try {
-      await expect(withOutput.run("memory_continue_session", { previous_session_id: "prior" })).rejects.toThrow("takt-ai memory continue exited 2: not json")
-    } finally { withOutput.stop() }
-    const withStderr = await startMemory({ respond: () => ({ out: "", err: "panic: boom", code: 3 }) })
-    try {
-      await expect(withStderr.run("memory_continue_session", { previous_session_id: "prior" })).rejects.toThrow("takt-ai memory continue exited 3: panic: boom")
-    } finally { withStderr.stop() }
   })
 })
 
-describe("session deletion", () => {
-  test("a deleted session always asks the memory CLI for the fallback close, without a directory", async () => {
-    const memory = await startMemory()
+describe("traceability matrix", () => {
+  const entries: Described[] = [
+    { id: 1, exists: true, title: MATRIX },
+    { id: 2, exists: true, title: `${MATRIX}: Owning node`, outgoing: [{ entry: 1, kind: "supplements" }] },
+    // An external revision of the column keeps the chain; it is the head the next version supersedes.
+    { id: 3, exists: true, title: "revised by hand", outgoing: [{ entry: 2, kind: "supersedes" }] },
+    { id: 4, exists: true, title: `${MATRIX}: Evidence`, outgoing: [{ entry: 1, kind: "supplements" }] },
+    { id: 9, exists: true, title: "an unrelated fact" },
+  ]
+  const column = (title: string, relates_to?: unknown) => record({ title, relates_to })
+  const refused = async (agent: string, input: unknown, message: string) => {
+    const memory = await startMemory({ entries })
     try {
-      // A fresh plugin instance has recorded nothing: the CLI decides from its own store.
-      memory.publish({ type: "session.deleted", data: { sessionID: "root" } })
-      await until(() => memory.requests.some(({ command }) => command === "close"))
-      const closes = memory.requests.filter(({ command }) => command === "close")
-      expect(closes).toHaveLength(1)
-      expect(closes[0].request).toEqual({ author: "takt", session: "root", fallback: true })
+      await expect(memory.run("record", input, agent)).rejects.toThrow(message)
+      expect(memory.calls().filter(c => c.tool === "bind")).toEqual([])
     } finally { memory.stop() }
-  })
-  test("a failed fallback close diagnoses without blocking another session's approval",async()=>{
-    const originalError=console.error
-    const errors:unknown[][]=[]
-    console.error=(...args:unknown[])=>{errors.push(args)}
-    const memory=await startMemory({effects:["ask"],respond:command=>command==="close"?{out:JSON.stringify({ok:false,error:"held memory lock"}),code:1}:{out:JSON.stringify({ok:true,result:{id:7,deduplicated:false}})}})
+  }
+  const accepted = async (agent: string, input: unknown) => {
+    const memory = await startMemory({ entries })
     try {
-      const record=memory.run("memory_record",personalRecord)
-      await until(()=>memory.created.length===1)
-      memory.publish({type:"session.deleted",data:{sessionID:"another-session"}})
-      await until(()=>errors.some(e=>e[0]==="Takt memory fallback close"))
-      memory.publish({type:"permission.replied",data:{requestID:memory.created[0].id,reply:"once"}})
-      expect((await record).content).toBe("Recorded #7")
-      expect(errors.some(e=>e[0]==="Takt memory fallback close")).toBe(true)
-    }finally{memory.stop();console.error=originalError}
-  })
-})
+      await memory.run("record", input, agent)
+      expect(memory.calls().at(-1)?.tool).toBe("bind")
+    } finally { memory.stop() }
+  }
 
+  test("only qa creates the root, titled with its objective", async () => {
+    await accepted("qa", column(MATRIX))
+    await refused("tpm", column(MATRIX), "Only qa creates the traceability matrix root")
+    await refused("qa", column("Traceability Matrix"), `\`${"Traceability Matrix: "}<objective>\``)
+    await refused("dev", column(MATRIX), "Only qa, tpm and verify write the traceability matrix")
+  })
 
-const description = (tool: MemoryTool | undefined) => {
-  const text = (tool as { description?: unknown } | undefined)?.description
-  expect(typeof text).toBe("string")
-  return text as string
-}
-// All-turn context carries no continuation or closure procedure, however it is worded.
-const expectNoLifecycleProcedure = (system: Array<{ type: string; text: string }>) => {
-  const text = system.map(({ text }) => text).join("\n")
-  expect(text).not.toContain("memory_continue_session")
-  expect(text).not.toContain("memory_close_session")
-  expect(text).not.toMatch(/continu|clos/i)
-}
+  test("a column's first version supplements the root under its exact title", async () => {
+    await accepted("tpm", column(`${MATRIX}: Owning node`, { id: 1, relation: "supplements" }))
+    await accepted("verify", column(`${MATRIX}: Evidence`, { id: 1, relation: "supplements" }))
+    await refused("tpm", column("Owning node", { id: 1, relation: "supplements" }), `Title this entry exactly \`${MATRIX}: Owning node\``)
+    await refused("verify", column(`${MATRIX}: Owning node`, { id: 1, relation: "supplements" }), `\`${MATRIX}: Evidence\``)
+    await refused("tpm", column(`${MATRIX}: Owning node`), "supplements")
+    await refused("tpm", column(`${MATRIX}: Owning node`, { id: 1, relation: "exception-to" }), "supplements for its first version or supersedes")
+  })
 
-describe("effective memory catalog", () => {
-  test("Spec keeps record and never receives lifecycle schemas or instructions", async () => {
-    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
+  test("a later version supersedes the head of its own chain, whoever wrote that head", async () => {
+    await accepted("tpm", column(`${MATRIX}: Owning node`, { id: 3, relation: "supersedes" }))
+    await refused("tpm", column(`${MATRIX}: Owning node`, { id: 4, relation: "supersedes" }), "which is not yours")
+    await refused("tpm", column(`${MATRIX}: Owning node`, { id: 9, relation: "supersedes" }), "not a matrix column chain")
+  })
+
+  test("a record the matrix refuses never asks the user", async () => {
+    const memory = await startMemory({ entries })
     try {
-      const event = await memory.context("spec")
-      expect(Object.keys(event.tools)).toEqual(["memory_record", "memory_search"])
-      expect(JSON.stringify(event)).not.toContain("memory_continue_session")
-      expect(JSON.stringify(event)).not.toContain("memory_close_session")
-      expect(memory.requests[0].request).toEqual({ author: "spec", caller_session: "root", directory: "/workspace" })
+      await expect(memory.run("record", { ...column(MATRIX), scope: "global" }, "tpm")).rejects.toThrow("Only qa creates the traceability matrix root")
+      expect(memory.created).toEqual([])
     } finally { memory.stop() }
   })
-  test("both GC lanes retain recording without lifecycle names", async () => {
-    const memory = await startMemory({ sessions: { gcc: { metadata: { takt_gc: "cycle" } }, gcv: { metadata: { takt_gc: "cycle" } } }, respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record"] }) }) })
-    try {
-      for (const [agent, session] of [["simplify", "gcc"], ["verify", "gcv"]]) {
-        const event = await memory.context(agent, session)
-        expect(Object.keys(event.tools)).toEqual(["memory_record", "memory_search"])
-        expect(event.system).toEqual([])
-      }
-    } finally { memory.stop() }
-  })
-  // A07: lifecycle procedures live in the action-time tool descriptions, not in all-turn context.
-  test("ownership grants and revokes lifecycle on each turn for the calling session", async () => {
-    let holder = "architect"
-    const memory = await startMemory({ sessions: { child: { metadata: { takt_switch: "not-authority" } } }, respond: (_command, request) => ({ out: JSON.stringify({ ok: true, result: request.author === holder ? ["memory_record", "memory_continue_session", "memory_close_session"] : ["memory_record"] }) }) })
-    try {
-      const granted = await memory.context("architect", "child")
-      expect(Object.keys(granted.tools)).toHaveLength(4)
-      expect(Object.keys(granted.tools)).toEqual(expect.arrayContaining(["memory_continue_session", "memory_close_session"]))
-      expectNoLifecycleProcedure(granted.system)
-      expect(memory.requests[0].request.caller_session).toBe("child")
-      const again = await memory.context("architect", "child")
-      expect(Object.keys(again.tools)).toHaveLength(4)
-      expectNoLifecycleProcedure(again.system)
-      holder = "pm"
-      const revoked = await memory.context("architect", "child")
-      expect(Object.keys(revoked.tools)).toEqual(["memory_record", "memory_search"])
-      expect(revoked.system).toEqual([])
-      expect(memory.requests.at(-1)!.request).toMatchObject({ author: "architect", caller_session: "child" })
-      const holderTurn = await memory.context("pm")
-      expect(Object.keys(holderTurn.tools)).toHaveLength(4)
-      expectNoLifecycleProcedure(holderTurn.system)
-    } finally { memory.stop() }
-  })
-  test("the holder reaches the moved continuation and closure conditions in the tool descriptions", async () => {
-    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record", "memory_continue_session", "memory_close_session"] }) }) })
-    try {
-      const event = await memory.context("takt")
-      const continuation = description(event.tools.memory_continue_session)
-      for (const condition of [
-        /closed/i, // only a closed previous session
-        /user/i, /confirm/i, // identified by the user or a candidate the user confirms
-        /first/i, // the first new entry fixes the link
-        /replac/i, /withdraw|empty/i, // replace or withdraw before that entry
-        /interrupt/i, // interrupted sessions acquire no link
-        /refus|reject/i, /retry|resum|block/i, // a refusal does not block resuming and is not retried
-      ]) expect(continuation).toMatch(condition)
-      const closure = description(event.tools.memory_close_session)
-      for (const condition of [
-        /once/i, // called once
-        /compaction/i, // compaction is not closure
-        /(earlier|prior|previous|existing)\b[^.]*\banchors?\b|\banchors?\b[^.]*\b(kept|keeps|preserv\w*|retain\w*|remain\w*)/i, // later work keeps earlier close anchors
-      ]) expect(closure).toMatch(condition)
-    } finally { memory.stop() }
-  })
-  test("uncertain authority fails closed and never widens native grants", async () => {
-    for (const reply of [{ code: 1, out: "failure" }, { out: JSON.stringify({ ok: true, result: {} }) }]) {
-      const memory = await startMemory({ respond: () => reply })
-      try { expect(Object.keys((await memory.context("takt")).tools)).toEqual(["memory_record", "memory_search"]) } finally { memory.stop() }
-    }
-    const memory = await startMemory({ respond: () => ({ out: JSON.stringify({ ok: true, result: ["memory_record", "memory_continue_session", "memory_close_session"] }) }) })
-    try { expect((await memory.context("takt", "root", ["memory_record"])).system).toEqual([]) } finally { memory.stop() }
+
+  test("a dispute and an unrelated record stay open to any author", async () => {
+    await accepted("dev", record({ title: "the matrix is wrong", relates_to: { id: 2, relation: "disputes" } }))
+    await accepted("dev", record({ relates_to: { id: 9, relation: "supplements" } }))
   })
 })

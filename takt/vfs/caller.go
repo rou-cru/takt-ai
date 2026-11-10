@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -71,13 +72,13 @@ func errKeyNotHeld(key AgentID) error {
 func errForeignAuthor(key AgentID, invariants InvariantSet) error {
 	var ids []string
 	for _, invariant := range invariants {
-		if id, ok := strings.CutPrefix(invariant, engramInvariantPrefix); ok {
+		if id, ok := strings.CutPrefix(invariant, memoryInvariantPrefix); ok {
 			ids = append(ids, "#"+id)
 		}
 	}
-	inputs := "consumes no memory entry: return to the orchestrator a blocker naming what you need"
+	inputs := "consumes no Takt memory entry: return to the orchestrator a blocker naming what you need"
 	if len(ids) > 0 {
-		inputs = "consumes memory entries " + strings.Join(ids, ", ") + ": read them with mem_get_observation, and return to the orchestrator a blocker naming what they leave unsettled"
+		inputs = "consumes Takt memory entries " + strings.Join(ids, ", ") + ": read them with " + memory.PrefixedToolName(memory.ToolRead) + ", and return to the orchestrator a blocker naming what they leave unsettled"
 	}
 	return fmt.Errorf("%w: author_key %s is another unit's staged work, not an input of yours; your unit %s", ErrIdentity, key, inputs)
 }

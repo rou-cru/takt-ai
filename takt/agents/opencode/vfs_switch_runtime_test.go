@@ -61,10 +61,9 @@ export const Plugin = { define: definition => definition }
 	}
 }
 
-// GC's collector and verifier lanes must both keep memory tool access
-// alongside their gc_* tools; a static check on the rendered source needs no
-// Node process.
-func TestTaktVFSPluginGCLaneToolsGrantMemoryAccess(t *testing.T) {
+// GC's collector and verifier lanes grant their gc_* tools and no memory or
+// web tool; a static check on the rendered source needs no Node process.
+func TestTaktVFSPluginGCLaneToolsGrantNoMemoryOrWebAccess(t *testing.T) {
 	source := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
 	block := regexp.MustCompile(`(?s)const GC_LANE_TOOLS: Record<string, string\[\]> = \{(.*?)\n\}`).FindStringSubmatch(source)
 	if block == nil {
@@ -90,14 +89,10 @@ func TestTaktVFSPluginGCLaneToolsGrantMemoryAccess(t *testing.T) {
 				t.Errorf("%s grant for %s does not match its lane", role, tool)
 			}
 		}
-		for _, tool := range []string{"memory_record"} {
-			if !strings.Contains(line, `"`+tool+`"`) {
-				t.Errorf("GC_LANE_TOOLS.%s missing %q: %s", role, tool, line)
-			}
-		}
-		for _, tool := range []string{"memory_continue_session", "memory_close_session"} {
-			if strings.Contains(line, `"`+tool+`"`) {
-				t.Errorf("GC lane %s grants lifecycle tool %s", role, tool)
+		// A GC lane has no memory tool and no web tool.
+		for _, tool := range []string{"memory", "webfetch", "websearch"} {
+			if strings.Contains(line, tool) {
+				t.Errorf("GC_LANE_TOOLS.%s grants a %s tool: %s", role, tool, line)
 			}
 		}
 	}

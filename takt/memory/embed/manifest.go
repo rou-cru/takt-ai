@@ -80,11 +80,15 @@ func ModelDir(home string) string {
 	return filepath.Join(home, ".takt-ai", "models", filepath.FromSlash(modelRepo), modelRevision)
 }
 
-// Acquire downloads every manifest file into dir. Each download is capped at its
-// manifest size, verified against its SHA-256, and written atomically.
+// Acquire installs every manifest file into dir. A file already there that matches its manifest size
+// and SHA-256 is kept, so an install with the model present needs no network. Each download is capped
+// at its manifest size, verified against its SHA-256, and written atomically.
 func (m Manifest) Acquire(ctx context.Context, client *http.Client, dir string) error {
 	for _, file := range m.Files {
 		destination := filepath.Join(dir, file.Name)
+		if present, err := os.ReadFile(destination); err == nil && file.verify(present) == nil {
+			continue
+		}
 		body, err := download(ctx, client, m.BaseURL+"/"+file.Name, file.Size)
 		if err != nil {
 			return err

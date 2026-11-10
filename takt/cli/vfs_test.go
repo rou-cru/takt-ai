@@ -13,10 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package main_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,44 +32,37 @@ import (
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
-func TestVFSOfflineJournalCommand(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	fs, err := vfs.Open(root, state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, err := fs.Bind(vfs.Identity{SessionID: "s", WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", InvariantsHash: "h"}, []string{"file"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = fs.Apply(vfs.Operation{Key: key, CallID: "call", Action: vfs.OpCreate, Path: "file", Content: []byte("private content")}); err != nil {
-		t.Fatal(err)
-	}
-	if err = fs.Close(); err != nil {
-		t.Fatal(err)
-	}
-	var out, stderr bytes.Buffer
-	if err = run([]string{"vfs", "journal", "--workspace", root, "--state", state, "--session", "s", "--unit", "u", "--limit", "1"}, strings.NewReader(""), &out, &stderr); err != nil {
-		t.Fatal(err)
-	}
-	var entries []vfs.JournalEntry
-	if err = json.Unmarshal(out.Bytes(), &entries); err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].CallID != "call" || entries[0].Agent != "author" {
-		t.Fatalf("%s", out.String())
-	}
-	if strings.Contains(out.String(), "private content") || strings.Contains(out.String(), string(key)) {
-		t.Fatal("journal export leaked content or binding")
-	}
-	if err = runVFS([]string{"recover", "--workspace", root, "--state", state}, strings.NewReader(""), &out, &stderr); err == nil {
-		t.Fatal("recovery lacked explicit intent")
+// TestVFSCommand runs the scenarios below against one build of the command, each in its own installation.
+func TestVFSCommand(t *testing.T) {
+	bin := buildTaktAI(t)
+	for _, tc := range []struct {
+		name string
+		run  func(*testing.T, string)
+	}{
+		{"offline journal export hides content and bindings", scenarioVFSOfflineJournalCommand},
+		{"claim control commands", scenarioVFSClaimControlCommands},
+		{"assign with an author key and a partial scope returns the new key", scenarioVFSAssignWithAuthorKeyAndPartialScopeReturnsTheNewKey},
+		{"assign with an author key keeps staged work", scenarioVFSAssignWithAuthorKeyKeepsStagedWork},
+		{"verifier preparation assigns only validated gates", scenarioVerifierPreparationAssignsOnlyValidatedGates},
+		{"governed write path", scenarioVFSMutationIPC},
+		{"a wire version mismatch is refused", scenarioVFSIPCVersionMismatch},
+		{"an uncataloged identity cannot bind", scenarioVFSBindRejectsUncatalogedIdentity},
+		{"a verdict passes only through a held gate", scenarioVFSVerifyOnlyThroughAHeldGate},
+		{"units of one session stay separate", scenarioVFSUnitsOfOneSessionAreSeparate},
+		{"work carries across root sessions", scenarioVFSCrossSessionContinuation},
+		{"repeated reassign keeps the admitted attempt", scenarioVFSRepeatedReassignKeepsTheAdmittedAttempt},
+		{"a delegated bind needs admission", scenarioVFSDelegatedBindWithoutAdmissionIsRefused},
+		{"parallel invocations queue", scenarioVFSParallelInvocationsQueue},
+		{"discard releases retained work", scenarioVFSDiscardReleasesRetainedWork},
+		{"a forged cycle attribution is refused", scenarioVFSIPCRejectsForgedCycleAttribution},
+		{"a verdict with forged cycle attribution is refused", scenarioVFSVerifyRefusesForgedCycleAttribution},
+		{"a read before any write reports revision zero", scenarioVFSReadBeforeAnyWriteReportsRevisionZero},
+	} {
+		t.Run(tc.name, func(t *testing.T) { tc.run(t, bin) })
 	}
 }
 
-// Root sessions of the fixtures: the one that stages work and the one that
-// carries it on.
+// Root sessions of the scenarios: the one that stages work and the one that carries it on.
 const (
 	rootA = "s1"
 	rootB = "s2"
@@ -80,13 +72,36 @@ const (
 // per delegation the harness admits without a committed plan.
 const parallelInvocations = 4
 
+// memoryRefPrefix is the prefix of a memory invariant reference, taken from its one definition.
+var memoryRefPrefix = strings.TrimSuffix(vfs.MemoryInvariant(0), "0")
+
+// reply is the answer of a vfs mutation command.
+type reply struct {
+	OK                bool                 `json:"ok"`
+	Key               string               `json:"key"`
+	Content           string               `json:"content"`
+	Revision          *uint64              `json:"revision"`
+	DeltaHash         string               `json:"delta_hash"`
+	OutdatedPaths     []string             `json:"outdated_paths"`
+	Error             string               `json:"error"`
+	AttemptID         string               `json:"attempt_id"`
+	InvariantsVersion string               `json:"invariants_version"`
+	Claims            []vfs.OwnershipClaim `json:"claims"`
+	Collision         *vfs.CollisionError  `json:"collision"`
+}
+
+// gatesReply is the answer of adopt-gates.
+type gatesReply struct {
+	Gates []vfs.AdoptedGate `json:"gates"`
+}
+
 // vfsHost is the host session a delegation of agent on unit runs in.
 func vfsHost(agent, unit string) string { return "host/" + agent + "/" + unit }
 
 // vfsReqIn builds a request as the plugin does for agent's delegation on unit
 // of root: the harness-delivered caller block plus the command's fields.
 func vfsReqIn(root, unit, agent string, extra map[string]any) map[string]any {
-	req := map[string]any{"ipc_version": IPCVersion, "session_id": root, "caller_session": vfsHost(agent, unit),
+	req := map[string]any{"ipc_version": vfsIPCVersion, "session_id": root, "caller_session": vfsHost(agent, unit),
 		"caller_agent": agent, "work_unit_id": unit}
 	maps.Copy(req, extra)
 	return req
@@ -100,7 +115,7 @@ func vfsReq(unit, agent string, extra map[string]any) map[string]any {
 // orchReq is a request from root's orchestrator: its host session is the root
 // itself, which the plugin also derives as its unit.
 func orchReq(root string, extra map[string]any) map[string]any {
-	req := map[string]any{"ipc_version": IPCVersion, "session_id": root, "caller_session": root,
+	req := map[string]any{"ipc_version": vfsIPCVersion, "session_id": root, "caller_session": root,
 		"caller_agent": vfs.OrchestratorInstance, "work_unit_id": root}
 	maps.Copy(req, extra)
 	return req
@@ -114,78 +129,111 @@ func claimReq(root, unit, agent string, extra map[string]any) map[string]any {
 	return req
 }
 
-// invokeVFS runs one vfs command against a workspace, one process-equivalent
-// invocation, decoding its answer into out.
-func invokeVFS(root, state, command string, req map[string]any, out any) error {
+func refusedWith(t *testing.T, what string, err error, wants ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s was accepted", what)
+	}
+	for _, want := range wants {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s = %v; want it to name %q", what, err, want)
+		}
+	}
+}
+
+// vfsFixture drives one workspace through the binary as the plugin and the dispatch hook do.
+type vfsFixture struct {
+	t           *testing.T
+	s           *session
+	root, state string
+	dispatches  map[string]int
+}
+
+func newVFSFixture(t *testing.T, bin string) *vfsFixture {
+	t.Helper()
+	s := newSession(t, bin)
+	return &vfsFixture{t: t, s: s, root: s.root, state: s.state, dispatches: map[string]int{}}
+}
+
+// call runs one vfs command with req on stdin, decoding its answer into out. A refusal is the
+// command's exit status and stderr.
+func (fx *vfsFixture) call(command string, req map[string]any, out any) error {
+	fx.t.Helper()
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	var stdout, stderr bytes.Buffer
-	if err = runVFS([]string{command, "--workspace", root, "--state", state}, bytes.NewReader(payload), &stdout, &stderr); err != nil {
-		return fmt.Errorf("%s: %w (%s)", command, err, stderr.String())
-	}
-	return json.Unmarshal(stdout.Bytes(), out)
+	return fx.callRaw(command, string(payload), out)
 }
 
-// newVFSMutator returns a caller of the mutation IPC against one workspace and
-// state directory.
-func newVFSMutator(t *testing.T, root, state string) func(command string, req map[string]any) (response, error) {
-	t.Helper()
-	return func(command string, req map[string]any) (response, error) {
-		if command == "assign" {
-			p, e := history.ReadProjection(state)
-			if e != nil {
-				return response{}, e
-			}
-			root, _ := req["session_id"].(string)
-			unit, _ := req["work_unit_id"].(string)
-			if _, declared := p.Inputs[history.UnitKey(root, unit)]; !declared {
-				h, e := history.Open(state)
-				if e != nil {
-					return response{}, e
-				}
-				ids := []int64{}
-				if refs, ok := req["invariants"].([]string); ok {
-					for _, ref := range refs {
-						if strings.HasPrefix(ref, "engram:") {
-							var id int64
-							if _, err := fmt.Sscanf(ref, "engram:%d", &id); err != nil {
-								t.Errorf("invariant reference %q: %v", ref, err)
-							}
-							ids = append(ids, id)
+func (fx *vfsFixture) callRaw(command, payload string, out any) error {
+	fx.t.Helper()
+	res := fx.s.runIn(payload, "vfs", command, "--workspace", fx.root, "--state", fx.state)
+	if res.code != 0 {
+		return fmt.Errorf("%s: exit %d (%s)", command, res.code, res.stderr)
+	}
+	return json.Unmarshal([]byte(res.stdout), out)
+}
+
+// exec sends a dispatch request and decodes its answer; a refusal is the command's exit status and stderr.
+func (fx *vfsFixture) exec(r request) (map[string]any, error) {
+	fx.t.Helper()
+	res := fx.s.dispatch(r)
+	if res.code != 0 {
+		return nil, fmt.Errorf("%s: exit %d (%s)", r.Action, res.code, res.stderr)
+	}
+	var out map[string]any
+	res.decode(fx.t, &out)
+	return out, nil
+}
+
+// mutate runs a mutation command. An assign of a unit whose inputs the orchestrator has not declared
+// first declares them from its memory references, as the orchestrator does before delegating.
+func (fx *vfsFixture) mutate(command string, req map[string]any) (reply, error) {
+	fx.t.Helper()
+	if command == "assign" {
+		root, _ := req["session_id"].(string)
+		unit, _ := req["work_unit_id"].(string)
+		if _, declared := fx.s.projection().Inputs[history.UnitKey(root, unit)]; !declared {
+			ids := []int64{}
+			if refs, ok := req["invariants"].([]string); ok {
+				for _, ref := range refs {
+					if strings.HasPrefix(ref, memoryRefPrefix) {
+						var id int64
+						if _, err := fmt.Sscanf(ref, memoryRefPrefix+"%d", &id); err != nil {
+							fx.t.Errorf("invariant reference %q: %v", ref, err)
 						}
+						ids = append(ids, id)
 					}
 				}
-				e = h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: root, WorkUnitID: unit, ResultIDs: ids, None: len(ids) == 0, Cause: history.CauseNone})
-				_ = h.Close()
-				if e != nil {
-					return response{}, e
-				}
 			}
+			fx.declare(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: root, WorkUnitID: unit, ResultIDs: ids, None: len(ids) == 0, Cause: history.CauseNone})
 		}
-		var resp response
-		err := invokeVFS(root, state, command, req, &resp)
-		return resp, err
 	}
+	var resp reply
+	err := fx.call(command, req, &resp)
+	return resp, err
 }
 
-// vfsFixture drives one workspace as the plugin and the dispatch hook do.
-type vfsFixture struct {
-	t           *testing.T
-	root, state string
-	mutate      func(string, map[string]any) (response, error)
-	dispatches  map[string]int
-}
-
-func newVFSFixture(t *testing.T) *vfsFixture {
-	t.Helper()
-	root, state := t.TempDir(), filepath.Join(t.TempDir(), "private")
-	return &vfsFixture{t: t, root: root, state: state, mutate: newVFSMutator(t, root, state), dispatches: map[string]int{}}
+// declare appends entry to the execution history once no process holds it.
+func (fx *vfsFixture) declare(entry history.Entry) {
+	fx.t.Helper()
+	h, err := history.Open(fx.state)
+	if err != nil {
+		fx.t.Fatal(err)
+	}
+	defer func() {
+		if err := h.Close(); err != nil {
+			fx.t.Error(err)
+		}
+	}()
+	if err = h.Append(entry); err != nil {
+		fx.t.Fatal(err)
+	}
 }
 
 // must runs a command that has to succeed.
-func (fx *vfsFixture) must(command string, req map[string]any) response {
+func (fx *vfsFixture) must(command string, req map[string]any) reply {
 	fx.t.Helper()
 	resp, err := fx.mutate(command, req)
 	if err != nil || !resp.OK {
@@ -201,37 +249,30 @@ func (fx *vfsFixture) dispatch(action, root, unit, agent string) {
 	if action == "admit" {
 		fx.dispatches[root+"/"+unit]++
 	}
-	b, err := json.Marshal(coordinationRequest{Action: action, Event: unit, Session: root, Agent: agent,
+	fx.s.must(request{Action: action, Event: unit, Session: root, Agent: agent,
 		Dispatch: fmt.Sprintf("call-%s-%s-%d", root, unit, fx.dispatches[root+"/"+unit])})
+	if action != "admit" {
+		return
+	}
+	h, err := history.Open(fx.state)
 	if err != nil {
 		fx.t.Fatal(err)
 	}
-	var out, errout bytes.Buffer
-	if err = runDispatch([]string{"--workspace", fx.root, "--state", fx.state, "--request", string(b)}, &out, &errout); err != nil {
-		fx.t.Fatalf("%s %s: %v (%s)", action, unit, err, errout.String())
+	defer func() {
+		if err := h.Close(); err != nil {
+			fx.t.Error(err)
+		}
+	}()
+	u, _ := h.Project().Unit(root, unit)
+	if err = h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: root, WorkUnitID: unit, AttemptID: u.AttemptID, Dispatch: u.Dispatch, Agent: agent, Caller: root, Cause: history.CauseNone}); err != nil {
+		fx.t.Fatal(err)
 	}
-	if action == "admit" {
-		h, e := history.Open(fx.state)
-		if e != nil {
-			fx.t.Fatal(e)
-		}
-		defer func() {
-			if err := h.Close(); err != nil {
-				fx.t.Error(err)
-			}
-		}()
-		u, _ := h.Project().Unit(root, unit)
-		if e = h.Append(history.Entry{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: root, WorkUnitID: unit, AttemptID: u.AttemptID, Dispatch: u.Dispatch, Agent: agent, Caller: root, Cause: history.CauseNone}); e != nil {
-			fx.t.Fatal(e)
-		}
-		if e = h.ExecutionFact(h.Project().Executions[u.Dispatch], history.KindPrepared, "", "", nil); e != nil {
-			fx.t.Fatal(e)
-		}
-		if _, e = h.AttachChild(u.Dispatch, vfsHost(agent, unit), agent); e != nil {
-			fx.t.Fatal(e)
-		}
+	if err = h.ExecutionFact(h.Project().Executions[u.Dispatch], history.KindPrepared, "", "", nil); err != nil {
+		fx.t.Fatal(err)
 	}
-
+	if _, err = h.AttachChild(u.Dispatch, vfsHost(agent, unit), agent); err != nil {
+		fx.t.Fatal(err)
+	}
 }
 
 // delegate assigns scope to agent on root's unit, admits the unit and binds it
@@ -249,26 +290,22 @@ func (fx *vfsFixture) delegate(root, unit, agent string, scope ...string) string
 
 // adoptGates adopts the gates of agent's delegation on root's unit.
 func (fx *vfsFixture) adoptGates(root, unit, agent string) ([]vfs.AdoptedGate, error) {
-	var resp gatesResponse
-	err := invokeVFS(fx.root, fx.state, "adopt-gates", vfsReqIn(root, unit, agent, nil), &resp)
+	var resp gatesReply
+	err := fx.call("adopt-gates", vfsReqIn(root, unit, agent, nil), &resp)
 	return resp.Gates, err
 }
 
 // judge prepares the native delegation and adopts its core-issued gates.
 func (fx *vfsFixture) judge(root, unit, agent string, authors ...string) []vfs.AdoptedGate {
 	fx.t.Helper()
-	if _, err := executionRequest(fx.t, fx, coordinationRequest{Action: "inputs", Session: root, Event: unit}); err != nil {
-		fx.t.Fatal(err)
-	}
+	fx.s.must(request{Action: "inputs", Session: root, Event: unit})
 	fx.dispatches[root+"/"+unit]++
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: root, Event: unit, Agent: agent, Caller: root,
+	r := request{Action: "prepare", Owner: testOwnerInstance, Session: root, Event: unit, Agent: agent, Caller: root,
 		Dispatch: fmt.Sprintf("call-%s-%s-%d", root, unit, fx.dispatches[root+"/"+unit]), Child: vfsHost(agent, unit)}
 	for _, author := range authors {
 		r.AuthorKeys = append(r.AuthorKeys, vfs.AgentID(author))
 	}
-	if _, err := executionRequest(fx.t, fx, r); err != nil {
-		fx.t.Fatal(err)
-	}
+	fx.s.must(r)
 	gates, err := fx.adoptGates(root, unit, agent)
 	if err != nil || len(gates) != len(authors) {
 		fx.t.Fatalf("adopt-gates = %+v, %v; want %d gates", gates, err, len(authors))
@@ -282,13 +319,13 @@ func (fx *vfsFixture) judge(root, unit, agent string, authors ...string) []vfs.A
 }
 
 // write stages content at path through the binding of agent's delegation.
-func (fx *vfsFixture) write(root, unit, agent, call, path, content string) response {
+func (fx *vfsFixture) write(root, unit, agent, call, path, content string) reply {
 	fx.t.Helper()
 	return fx.must("op", vfsReqIn(root, unit, agent, map[string]any{"call_id": call, "action": "create", "path": path, "content": content}))
 }
 
 // read reads path through agent's delegation, naming author when given.
-func (fx *vfsFixture) read(root, unit, agent, call, path, author string) response {
+func (fx *vfsFixture) read(root, unit, agent, call, path, author string) reply {
 	fx.t.Helper()
 	fields := map[string]any{"call_id": call, "action": "read", "path": path}
 	if author != "" {
@@ -312,20 +349,8 @@ func (fx *vfsFixture) disk(rel string) string {
 	return string(content)
 }
 
-func refusedWith(t *testing.T, what string, err error, wants ...string) {
-	t.Helper()
-	if err == nil {
-		t.Fatalf("%s was accepted", what)
-	}
-	for _, want := range wants {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("%s = %v; want it to name %q", what, err, want)
-		}
-	}
-}
-
-func TestVFSClaimControlCommands(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSClaimControlCommands(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	assigned, err := fx.mutate("assign", claimReq(rootA, "u1", "dev", map[string]any{"scope": []string{"owned.go"}}))
 	assertVFSAssigned(t, assigned, err)
 	claims, err := fx.mutate("claims", orchReq(rootA, nil))
@@ -351,28 +376,28 @@ func TestVFSClaimControlCommands(t *testing.T) {
 	refusedWith(t, "a write through a released key", err)
 }
 
-func assertVFSAssigned(t *testing.T, assigned response, err error) {
+func assertVFSAssigned(t *testing.T, assigned reply, err error) {
 	t.Helper()
 	if err != nil || !assigned.OK || assigned.Key == "" {
 		t.Fatalf("assign = %+v, %v", assigned, err)
 	}
 }
 
-func assertVFSPendingClaim(t *testing.T, claims response, err error, wantKey string) {
+func assertVFSPendingClaim(t *testing.T, claims reply, err error, wantKey string) {
 	t.Helper()
 	if err != nil || len(claims.Claims) != 1 || !claims.Claims[0].Pending || claims.Claims[0].Active || string(claims.Claims[0].Key) != wantKey {
 		t.Fatalf("pending claim inspection = %+v, %v", claims, err)
 	}
 }
 
-func assertVFSActiveClaim(t *testing.T, claims response, err error) {
+func assertVFSActiveClaim(t *testing.T, claims reply, err error) {
 	t.Helper()
 	if err != nil || len(claims.Claims) != 1 || claims.Claims[0].Pending || !claims.Claims[0].Active {
 		t.Fatalf("active claim inspection = %+v, %v", claims, err)
 	}
 }
 
-func assertVFSCollisionRefusal(t *testing.T, refused response, err error, ownerAgent vfs.AgentID, ownerSession, ownerUnit string) {
+func assertVFSCollisionRefusal(t *testing.T, refused reply, err error, ownerAgent vfs.AgentID, ownerSession, ownerUnit string) {
 	t.Helper()
 	if err != nil || refused.OK || refused.Collision == nil {
 		t.Fatalf("collision refusal = %+v, %v", refused, err)
@@ -383,8 +408,8 @@ func assertVFSCollisionRefusal(t *testing.T, refused response, err error, ownerA
 	}
 }
 
-func TestVFSAssignWithAuthorKeyAndPartialScopeReturnsTheNewKey(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSAssignWithAuthorKeyAndPartialScopeReturnsTheNewKey(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	key := fx.delegate(rootA, "u1", "dev", "a.go", "b.go")
 	fx.write(rootA, "u1", "dev", "c1", "a.go", "A")
 	fx.write(rootA, "u1", "dev", "c2", "b.go", "B")
@@ -401,8 +426,8 @@ func TestVFSAssignWithAuthorKeyAndPartialScopeReturnsTheNewKey(t *testing.T) {
 	}
 }
 
-func TestVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	key := fx.delegate(rootA, "u1", "dev", "a.go")
 	fx.write(rootA, "u1", "dev", "c1", "a.go", "partial")
 	_, err := fx.mutate("release", orchReq(rootA, map[string]any{"key": key}))
@@ -417,12 +442,12 @@ func TestVFSAssignWithAuthorKeyKeepsStagedWork(t *testing.T) {
 	}
 }
 
-func TestVerifierPreparationAssignsOnlyValidatedGates(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVerifierPreparationAssignsOnlyValidatedGates(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	author := fx.delegate(rootA, "u1", "dev", "owned.go")
 	_, err := fx.mutate("assign-verifier", claimReq(rootA, "review", "verify", map[string]any{"author_key": author}))
 	refusedWith(t, "the retired standalone gate writer", err, "unknown vfs command")
-	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
+	if _, err = fx.exec(request{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -435,12 +460,11 @@ func TestVerifierPreparationAssignsOnlyValidatedGates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// The plugin sends author_keys as given, an empty list included.
-			data, err := json.Marshal(map[string]any{"action": "prepare", "session": rootA, "event": "review", "agent": "verify", "caller": rootA, "owner": testOwner, "dispatch": "review-" + tc.name, "author_keys": tc.authors})
+			data, err := json.Marshal(map[string]any{"action": "prepare", "session": rootA, "event": "review", "agent": "verify", "caller": rootA, "owner": testOwnerInstance, "dispatch": "review-" + tc.name, "author_keys": tc.authors})
 			if err != nil {
 				t.Fatal(err)
 			}
-			var out, stderr bytes.Buffer
-			if err := runDispatch([]string{"--workspace", fx.root, "--state", fx.state, "--request", string(data)}, &out, &stderr); err == nil {
+			if res := fx.s.run("dispatch", "--workspace", fx.root, "--state", fx.state, "--request", string(data)); res.code == 0 {
 				t.Fatal("invalid verifier preparation was accepted")
 			}
 		})
@@ -451,8 +475,8 @@ func TestVerifierPreparationAssignsOnlyValidatedGates(t *testing.T) {
 // TestVFSMutationIPC drives the full governed write path the OpenCode plugin
 // uses: bind, staged create, out-of-scope denial, gate read, verdict,
 // orchestrator consolidation, and physical flush.
-func TestVFSMutationIPC(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSMutationIPC(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	fx.dispatch("admit", rootA, "u1", "dev")
 	bound := fx.must("bind", vfsReq("u1", "dev", map[string]any{"scope": []string{"src/app.go"}, "invariants": []string{"AGENTS.md"}}))
 	// The attempt and the invariant set's version are issued here, not declared.
@@ -490,19 +514,17 @@ func TestVFSMutationIPC(t *testing.T) {
 
 // TestVFSIPCVersionMismatch rejects requests whose wire version differs so an
 // old plugin cannot drive a new binary with guessed semantics.
-func TestVFSIPCVersionMismatch(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(t.TempDir(), "private")
-	var out, stderr bytes.Buffer
+func scenarioVFSIPCVersionMismatch(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	payload := `{"ipc_version":4,"session_id":"s1","caller_session":"s1","caller_agent":"dev","work_unit_id":"u1"}`
-	err := runVFS([]string{"bind", "--workspace", root, "--state", state}, strings.NewReader(payload), &out, &stderr)
+	err := fx.callRaw("bind", payload, &reply{})
 	refusedWith(t, "a v4 request", err, "ipc_version 4", "setup sync")
 }
 
 // TestVFSBindRejectsUncatalogedIdentity refuses a bind for an identity that is
 // not a catalog instance, and does so before any store is created.
-func TestVFSBindRejectsUncatalogedIdentity(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSBindRejectsUncatalogedIdentity(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	// "takt" is the orchestrator: registered in opencode.json but not bindable.
 	for _, agent := range []string{"made-up-specialist", "takt", "pm"} {
 		_, err := fx.mutate("bind", vfsReq("u1", agent, map[string]any{"scope": []string{"a.go"}}))
@@ -515,8 +537,8 @@ func TestVFSBindRejectsUncatalogedIdentity(t *testing.T) {
 
 // TestVFSVerifyOnlyThroughAHeldGate lets a verdict through only from the host
 // session holding the gate over the author.
-func TestVFSVerifyOnlyThroughAHeldGate(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSVerifyOnlyThroughAHeldGate(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	author := fx.delegate(rootA, "u1", "dev", "a.go")
 	fx.write(rootA, "u1", "dev", "c1", "a.go", "x")
 	fx.judge(rootA, "review", "verify", author)
@@ -531,8 +553,8 @@ func TestVFSVerifyOnlyThroughAHeldGate(t *testing.T) {
 
 // TestVFSUnitsOfOneSessionAreSeparate keeps two units of one session apart in
 // journal and ownership; a refused operation blocks nothing afterwards.
-func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSUnitsOfOneSessionAreSeparate(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	units := map[string]*separateSessionUnit{"u1": {path: "a.go"}, "u2": {path: "b.go"}}
 	for id, u := range units {
 		u.author = fx.delegate(rootA, id, "dev", u.path)
@@ -554,7 +576,7 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 		}
 	}
 	for id, u := range units {
-		assertUnitJournalIsolated(t, fx.root, fx.state, id, u)
+		assertUnitJournalIsolated(t, fx, id, u)
 		if got := fx.disk(u.path); got != id {
 			t.Fatalf("%s not consolidated: %q", id, got)
 		}
@@ -562,7 +584,7 @@ func TestVFSUnitsOfOneSessionAreSeparate(t *testing.T) {
 }
 
 // separateSessionUnit is one unit's fixture in
-// TestVFSUnitsOfOneSessionAreSeparate: its author key and the path it owns.
+// scenarioVFSUnitsOfOneSessionAreSeparate: its author key and the path it owns.
 type separateSessionUnit struct {
 	author string
 	path   string
@@ -570,14 +592,14 @@ type separateSessionUnit struct {
 
 // assertUnitJournalIsolated checks that id's journal holds only its own
 // entries (no foreign unit or path leaks in) and contains its create.
-func assertUnitJournalIsolated(t *testing.T, root, state, id string, u *separateSessionUnit) {
+func assertUnitJournalIsolated(t *testing.T, fx *vfsFixture, id string, u *separateSessionUnit) {
 	t.Helper()
-	var out, stderr bytes.Buffer
-	if err := run([]string{"vfs", "journal", "--workspace", root, "--state", state, "--session", rootA, "--unit", id}, strings.NewReader(""), &out, &stderr); err != nil {
-		t.Fatal(err)
+	out := fx.s.run("vfs", "journal", "--workspace", fx.root, "--state", fx.state, "--session", rootA, "--unit", id)
+	if out.code != 0 {
+		t.Fatalf("journal exit %d: %s", out.code, out.stderr)
 	}
 	var entries []vfs.JournalEntry
-	if err := json.Unmarshal(out.Bytes(), &entries); err != nil {
+	if err := json.Unmarshal([]byte(out.stdout), &entries); err != nil {
 		t.Fatal(err)
 	}
 	created := false
@@ -588,7 +610,7 @@ func assertUnitJournalIsolated(t *testing.T, root, state, id string, u *separate
 		}
 	}
 	if !created {
-		t.Fatalf("unit %s journal lacks its create: %s", id, out.String())
+		t.Fatalf("unit %s journal lacks its create: %s", id, out.stdout)
 	}
 }
 
@@ -597,10 +619,10 @@ func assertUnitJournalIsolated(t *testing.T, root, state, id string, u *separate
 // history admits B's unit, B's dev adopts the key at that attempt and keeps
 // staging, B's judge adopts a gate over every author, reads, and verifies, and
 // B's orchestrator consolidates or discards.
-func TestVFSCrossSessionContinuation(t *testing.T) {
+func scenarioVFSCrossSessionContinuation(t *testing.T, bin string) {
 	for _, ending := range []string{"consolidate", "discard"} {
 		t.Run(ending, func(t *testing.T) {
-			fx := newVFSFixture(t)
+			fx := newVFSFixture(t, bin)
 			key := fx.delegate(rootA, "impl", "dev", "a.go")
 			fx.write(rootA, "impl", "dev", "a1", "a.go", "A1")
 			fx.dispatch("finish", rootA, "impl", "dev")
@@ -666,7 +688,7 @@ func TestVFSCrossSessionContinuation(t *testing.T) {
 			if err != nil || failing.OK || failing.Revision == nil || failing.DeltaHash == "" || !strings.Contains(failing.Error, vfs.ErrFailingVerdict.Error()) {
 				t.Fatalf("consolidation over a failing verdict = %+v, %v", failing, err)
 			}
-			accept := func(revision uint64, hash string) (response, error) {
+			accept := func(revision uint64, hash string) (reply, error) {
 				return fx.mutate("consolidate", orchReq(rootB, map[string]any{"author_key": docs, "accept_failing": true,
 					"accepted_revision": revision, "accepted_hash": hash}))
 			}
@@ -684,8 +706,8 @@ func TestVFSCrossSessionContinuation(t *testing.T) {
 
 // TestVFSRepeatedReassignKeepsTheAdmittedAttempt: however often a key is
 // reassigned, its next bind takes the attempt the history admitted.
-func TestVFSRepeatedReassignKeepsTheAdmittedAttempt(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSRepeatedReassignKeepsTheAdmittedAttempt(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	key := fx.delegate(rootA, "impl", "dev", "a.go")
 	fx.write(rootA, "impl", "dev", "a1", "a.go", "A1")
 	fx.dispatch("finish", rootA, "impl", "dev")
@@ -704,8 +726,8 @@ func TestVFSRepeatedReassignKeepsTheAdmittedAttempt(t *testing.T) {
 
 // TestVFSDelegatedBindWithoutAdmissionIsRefused: a unit binds only while the
 // history holds its delegation in flight.
-func TestVFSDelegatedBindWithoutAdmissionIsRefused(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSDelegatedBindWithoutAdmissionIsRefused(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	claim := fx.must("assign", claimReq(rootA, "u1", "dev", map[string]any{"scope": []string{"a.go"}}))
 	_, err := fx.mutate("bind", vfsReq("u1", "dev", nil))
 	refusedWith(t, "bind before admission", err, "work unit u1 has no admitted delegation", "the orchestrator delegates it")
@@ -719,8 +741,8 @@ func TestVFSDelegatedBindWithoutAdmissionIsRefused(t *testing.T) {
 
 // TestVFSParallelInvocationsQueue runs concurrent invocations against one
 // workspace: each waits for the workspace lock and every one succeeds.
-func TestVFSParallelInvocationsQueue(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSParallelInvocationsQueue(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	units := make([]string, parallelInvocations)
 	for i := range units {
 		units[i] = fmt.Sprintf("u%d", i)
@@ -730,8 +752,8 @@ func TestVFSParallelInvocationsQueue(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, unit := range units {
 		wg.Go(func() {
-			var resp response
-			errs <- invokeVFS(fx.root, fx.state, "op", vfsReq(unit, "dev", map[string]any{"call_id": "w-" + unit, "action": "create", "path": unit + ".go", "content": unit}), &resp)
+			var resp reply
+			errs <- fx.call("op", vfsReq(unit, "dev", map[string]any{"call_id": "w-" + unit, "action": "create", "path": unit + ".go", "content": unit}), &resp)
 		})
 	}
 	wg.Wait()
@@ -750,8 +772,8 @@ func TestVFSParallelInvocationsQueue(t *testing.T) {
 
 // TestVFSDiscardReleasesRetainedWork discards a failed author's staged work,
 // the orchestrator's decision, so its paths can be assigned again.
-func TestVFSDiscardReleasesRetainedWork(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSDiscardReleasesRetainedWork(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	author := fx.delegate(rootA, "u1", "dev", "a.go")
 	fx.write(rootA, "u1", "dev", "w", "a.go", "x")
 	if refused, err := fx.mutate("assign", claimReq(rootA, "u2", "fix", map[string]any{"scope": []string{"a.go"}})); err != nil || refused.OK {
@@ -764,8 +786,8 @@ func TestVFSDiscardReleasesRetainedWork(t *testing.T) {
 }
 
 // Maintenance attribution is harness authority, not an ordinary bind argument.
-func TestVFSIPCRejectsForgedCycleAttribution(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSIPCRejectsForgedCycleAttribution(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	fx.dispatch("admit", rootA, "u1", "dev")
 	req := vfsReq("u1", "dev", map[string]any{"scope": []string{"a.go"}, "cycle_id": "forged", "mandate_class": "dead-code"})
 	_, err := fx.mutate("bind", req)
@@ -778,8 +800,8 @@ func TestVFSIPCRejectsForgedCycleAttribution(t *testing.T) {
 // TestVFSVerifyRefusesForgedCycleAttribution: a verdict over ordinary work
 // that declares a maintenance cycle is refused; the same verdict without it
 // is attached.
-func TestVFSVerifyRefusesForgedCycleAttribution(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioVFSVerifyRefusesForgedCycleAttribution(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	author := fx.delegate(rootA, "u1", "dev", "a.go")
 	fx.write(rootA, "u1", "dev", "c1", "a.go", "x")
 	fx.judge(rootA, "review", "verify", author)
@@ -793,18 +815,53 @@ func TestVFSVerifyRefusesForgedCycleAttribution(t *testing.T) {
 }
 
 // TestVFSReadBeforeAnyWriteReportsRevisionZero covers a fix that reads the
-// workspace right after binding: the response must still state its revision.
-func TestVFSReadBeforeAnyWriteReportsRevisionZero(t *testing.T) {
-	fx := newVFSFixture(t)
+// workspace right after binding: the reply must still state its revision.
+func scenarioVFSReadBeforeAnyWriteReportsRevisionZero(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	if err := os.WriteFile(filepath.Join(fx.root, "app.go"), []byte("package main"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	fx.delegate(rootA, "u1", "dev", "app.go")
 	var raw map[string]any
-	if err := invokeVFS(fx.root, fx.state, "op", vfsReq("u1", "dev", map[string]any{"call_id": "r1", "action": "read", "path": "app.go"}), &raw); err != nil {
+	if err := fx.call("op", vfsReq("u1", "dev", map[string]any{"call_id": "r1", "action": "read", "path": "app.go"}), &raw); err != nil {
 		t.Fatal(err)
 	}
 	if raw["revision"] != float64(0) || raw["delta_hash"] == "" || raw["content"] != "package main" {
-		t.Fatalf("read response = %v", raw)
+		t.Fatalf("read reply = %v", raw)
+	}
+}
+
+func scenarioVFSOfflineJournalCommand(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
+	fs, err := vfs.Open(fx.root, fx.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := fs.Bind(vfs.Identity{SessionID: "s", WorkUnitID: "u", AttemptID: "1", AgentID: "author", Specialist: "dev", InvariantsHash: "h"}, []string{"file"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = fs.Apply(vfs.Operation{Key: key, CallID: "call", Action: vfs.OpCreate, Path: "file", Content: []byte("private content")}); err != nil {
+		t.Fatal(err)
+	}
+	if err = fs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out := fx.s.run("vfs", "journal", "--workspace", fx.root, "--state", fx.state, "--session", "s", "--unit", "u", "--limit", "1")
+	if out.code != 0 {
+		t.Fatalf("journal exit %d: %s", out.code, out.stderr)
+	}
+	var entries []vfs.JournalEntry
+	if err = json.Unmarshal([]byte(out.stdout), &entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].CallID != "call" || entries[0].Agent != "author" {
+		t.Fatalf("%s", out.stdout)
+	}
+	if strings.Contains(out.stdout, "private content") || strings.Contains(out.stdout, string(key)) {
+		t.Fatal("journal export leaked content or binding")
+	}
+	if res := fx.s.run("vfs", "recover", "--workspace", fx.root, "--state", fx.state); res.code == 0 {
+		t.Fatal("recovery lacked explicit intent")
 	}
 }

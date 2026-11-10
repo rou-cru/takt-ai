@@ -113,7 +113,7 @@ func TestAuthorRefusalsNameTheContinuation(t *testing.T) {
 func TestForeignAuthorReadNamesTheUnitsInputs(t *testing.T) {
 	f, _, state := newStore(t)
 	_, implementer := delegate(t, f, state, testSession, "dev", "impl", "a.go")
-	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "tests", AgentID: "test", Specialist: "test", Invariants: vfs.InvariantSet{vfs.EngramInvariant(7), vfs.EngramInvariant(9)}}, []string{"b.go"}); err != nil {
+	if _, err := f.AssignScope(vfs.Identity{SessionID: testSession, WorkUnitID: "tests", AgentID: "test", Specialist: "test", Invariants: vfs.InvariantSet{vfs.MemoryInvariant(7), vfs.MemoryInvariant(9)}}, []string{"b.go"}); err != nil {
 		t.Fatal(err)
 	}
 	ensureAdmitted(t, f, state, testSession, "tests", "test")
@@ -122,7 +122,7 @@ func TestForeignAuthorReadNamesTheUnitsInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := f.Operate(c, vfs.CallerOperation{CallID: "r", Action: vfs.OpRead, Path: "a.go", AuthorKey: implementer})
-	refusedNaming(t, "test author reading the implementer's staged work", err, vfs.ErrIdentity, "#7, #9", "mem_get_observation", "blocker")
+	refusedNaming(t, "test author reading the implementer's staged work", err, vfs.ErrIdentity, "#7, #9", "takt_memory_read", "blocker")
 }
 
 func TestAReleasedKeyNoLongerWorks(t *testing.T) {

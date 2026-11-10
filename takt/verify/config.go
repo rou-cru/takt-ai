@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -30,13 +31,42 @@ type serverConfig struct {
 	HTTPHeaders map[string]string `json:"http_headers"`
 }
 
+const (
+	// memoryServiceCheckID names the memory service status probe.
+	memoryServiceCheckID = "memory:service"
+)
+
+// memoryServiceCheck probes the memory service's status without starting it (PR-MSV-33), so an
+// unreachable service stays distinguishable from one that is not ready.
+func memoryServiceCheck(ctx context.Context) CheckResult {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return CheckResult{memoryServiceCheckID, NotVerifiable, fmt.Sprintf("Cannot resolve the memory directory: %v", err)}
+	}
+	status, health, err := memory.Assess(ctx, dir)
+	switch health {
+	case memory.HealthUnreachable:
+		return CheckResult{memoryServiceCheckID, NotVerified, fmt.Sprintf("No memory service answers in %s.", dir)}
+	case memory.HealthMalformed:
+		return CheckResult{memoryServiceCheckID, NotVerified, fmt.Sprintf("The memory service in %s answered with a malformed response: %v", dir, err)}
+	case memory.HealthNewerStore:
+		return CheckResult{memoryServiceCheckID, NotVerified, fmt.Sprintf("The memory store is newer than this Takt build: %s", status.Reason)}
+	case memory.HealthNotReady:
+		return CheckResult{memoryServiceCheckID, NotVerified, fmt.Sprintf("The memory service %s is not ready (%s): %s", status.Version, status.State, status.Reason)}
+	case memory.HealthUncovered:
+		// Setup has just acquired the model, so entries still without a vector mean the service did not get that capability.
+		return CheckResult{memoryServiceCheckID, NotVerified, fmt.Sprintf("The memory service %s is ready, but only %d of %d entries have semantic vectors.", status.Version, status.Covered, status.Total)}
+	}
+	return CheckResult{memoryServiceCheckID, Verified, fmt.Sprintf("The memory service %s reports %s; %d of %d entries have semantic vectors.", status.Version, status.State, status.Covered, status.Total)}
+}
+
 func managedMCPChecks(ctx context.Context, root string, target setup.OwnershipTarget) []CheckResult {
 	var checks []CheckResult
 	var status map[string]opencodeapi.MCPServer
 	var statusErr error
 	statusLoaded := false
-	// Engram and Codegraph are unconditional; Context7 is the only selectable MCP component.
-	for _, name := range []string{string(model.ComponentEngram), string(model.ComponentCodegraph), string(model.ComponentContext7)} {
+	// The memory server and Codegraph are unconditional; Context7 is the only selectable MCP component.
+	for _, name := range []string{memory.ServerKey, string(model.ComponentCodegraph), string(model.ComponentContext7)} {
 		id := fmt.Sprintf("mcp:%s:%s", target, name)
 		_, present, err := installedServer(root, target, name)
 		switch {
@@ -61,7 +91,7 @@ func managedMCPChecks(ctx context.Context, root string, target setup.OwnershipTa
 			checks = append(checks, mcpResult(id, server))
 		}
 	}
-	return checks
+	return append(checks, memoryServiceCheck(ctx))
 }
 
 func installedServer(root string, target setup.OwnershipTarget, name string) (serverConfig, bool, error) {

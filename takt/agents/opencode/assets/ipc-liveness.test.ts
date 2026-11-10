@@ -1,8 +1,7 @@
 import {expect,test} from "bun:test"
 import {ipcOutput as vfsIPC} from "./takt-vfs"
-import {ipcOutput as memoryIPC} from "./takt-memory"
 
-for (const [name,read] of [["VFS",vfsIPC],["memory",memoryIPC]] as const) {
+for (const [name,read] of [["VFS",vfsIPC]] as const) {
   test(`${name} drains stderr alongside stdout without backpressure`,async()=>{
     const proc=Bun.spawn(["/bin/sh","-c","i=0; while [ $i -lt 4096 ]; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >&2; i=$((i+1)); done; printf result"],{stdout:"pipe",stderr:"pipe"})
     const [out,err,code]=await read(proc,"test pipe",2000)

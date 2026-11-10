@@ -1,10 +1,7 @@
-package main
+package main_test
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,40 +10,37 @@ import (
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
-// testOwner names the harness instance the tests act as.
-const testOwner = "test-instance"
-
-func executionRequest(t *testing.T, fx *vfsFixture, r coordinationRequest) (map[string]any, error) {
-	t.Helper()
-	data, err := json.Marshal(r)
-	if err != nil {
-		t.Fatal(err)
+// TestExecutionPreparation runs the preparation scenarios against one build of the command, each in its own installation.
+func TestExecutionPreparation(t *testing.T) {
+	bin := buildTaktAI(t)
+	for _, tc := range []struct {
+		name string
+		run  func(*testing.T, string)
+	}{
+		{"absent inputs spend no attempt", scenarioPrepareInputsAbsenceDoesNotSpendAttempt},
+		{"an invalid second author leaves no gate behind", scenarioPrepareInvalidSecondAuthorDoesNotLeaveFirstGate},
+		{"a readiness persistence failure is compensated", scenarioPrepareReadyPersistenceFailureCompensates},
+		{"an interrupted preparation resumes its attempt and gates", scenarioInterruptedPreparationResumesItsExactAttemptAndGates},
+		{"an interrupted preparation uses the current inputs and exact identity", scenarioInterruptedPreparationUsesCurrentInputsAndExactIdentity},
+	} {
+		t.Run(tc.name, func(t *testing.T) { tc.run(t, bin) })
 	}
-	var out, stderr bytes.Buffer
-	err = runDispatch([]string{"--workspace", fx.root, "--state", fx.state, "--request", string(data)}, &out, &stderr)
-	var reply map[string]any
-	if err == nil {
-		if err = json.Unmarshal(out.Bytes(), &reply); err != nil {
-			t.Fatalf("decode %s: %v", out.String(), err)
-		}
-	}
-	return reply, err
 }
 
-func TestPrepareInputsAbsenceDoesNotSpendAttempt(t *testing.T) {
-	fx := newVFSFixture(t)
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "brief", Dispatch: "call", Caller: rootA, Agent: "pm"}
-	if _, err := executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "dispatch_inputs") {
+func scenarioPrepareInputsAbsenceDoesNotSpendAttempt(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
+	r := request{Action: "prepare", Owner: testOwnerInstance, Session: rootA, Event: "brief", Dispatch: "call", Caller: rootA, Agent: "pm"}
+	if _, err := fx.exec(r); err == nil || !strings.Contains(err.Error(), "dispatch_inputs") {
 		t.Fatalf("missing inputs: %v", err)
 	}
-	p := gcProjection(t, fx.state)
+	p := fx.s.projection()
 	if len(p.Executions) != 0 || p.InFlight() != 0 {
 		t.Fatal("invalid input declaration admitted execution")
 	}
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "brief"}); err != nil {
+	if _, err := fx.exec(request{Action: "inputs", Session: rootA, Event: "brief"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := executionRequest(t, fx, r)
+	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != "1" || got["launchable"] != true {
 		t.Fatalf("continuation: %v %v", got, err)
 	}
@@ -55,20 +49,20 @@ func TestPrepareInputsAbsenceDoesNotSpendAttempt(t *testing.T) {
 	}
 }
 
-func TestPrepareInvalidSecondAuthorDoesNotLeaveFirstGate(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioPrepareInvalidSecondAuthorDoesNotLeaveFirstGate(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	_, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"})
+	_, err := fx.exec(request{Action: "inputs", Session: rootA, Event: "review"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "review", Dispatch: "review-call", Caller: rootA, Agent: "verify", AuthorKeys: []vfs.AgentID{vfs.AgentID(a), "missing-author"}}
-	if _, err = executionRequest(t, fx, r); err == nil {
+	r := request{Action: "prepare", Owner: testOwnerInstance, Session: rootA, Event: "review", Dispatch: "review-call", Caller: rootA, Agent: "verify", AuthorKeys: []vfs.AgentID{vfs.AgentID(a), "missing-author"}}
+	if _, err = fx.exec(r); err == nil {
 		t.Fatal("invalid second author admitted")
 	}
-	p := gcProjection(t, fx.state)
+	p := fx.s.projection()
 	if _, ok := p.Executions[r.Dispatch]; ok {
 		t.Fatal("invalid authors spent attempt")
 	}
@@ -79,18 +73,18 @@ func TestPrepareInvalidSecondAuthorDoesNotLeaveFirstGate(t *testing.T) {
 		}
 	}
 	r.AuthorKeys = []vfs.AgentID{vfs.AgentID(a)}
-	got, err := executionRequest(t, fx, r)
+	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != "1" {
 		t.Fatalf("valid retry: %v %v", got, err)
 	}
 }
 
-func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioPrepareReadyPersistenceFailureCompensates(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.must("op", vfsReq("writer", "dev", map[string]any{"call_id": "write", "action": "create", "path": "a.txt", "content": "valid work"}))
 	fx.dispatch("finish", rootA, "writer", "dev")
-	if _, err := executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
+	if _, err := fx.exec(request{Action: "inputs", Session: rootA, Event: "review"}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(fx.state, "history.sqlite"))
@@ -105,11 +99,11 @@ func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
 	if _, err = db.Exec(`CREATE TRIGGER fail_ready BEFORE INSERT ON history WHEN json_extract(CAST(NEW.data AS TEXT),'$.kind')='execution-ready' BEGIN SELECT RAISE(ABORT,'injected readiness failure'); END;`); err != nil {
 		t.Fatal(err)
 	}
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "review", Dispatch: "failed-call", Caller: rootA, Agent: "verify", AuthorKeys: []vfs.AgentID{vfs.AgentID(a)}}
-	if _, err = executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "new subagent call") {
+	r := request{Action: "prepare", Owner: testOwnerInstance, Session: rootA, Event: "review", Dispatch: "failed-call", Caller: rootA, Agent: "verify", AuthorKeys: []vfs.AgentID{vfs.AgentID(a)}}
+	if _, err = fx.exec(r); err == nil || !strings.Contains(err.Error(), "new subagent call") {
 		t.Fatalf("preparation failure continuation: %v", err)
 	}
-	p := gcProjection(t, fx.state)
+	p := fx.s.projection()
 	if p.InFlight() != 0 || !p.Executions[r.Dispatch].Settled {
 		t.Fatalf("attempt stranded: %+v", p.Executions)
 	}
@@ -123,15 +117,15 @@ func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Dispatch = "next-call"
-	got, err := executionRequest(t, fx, r)
+	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != "2" {
 		t.Fatalf("orchestrator continuation: %v %v", got, err)
 	}
-	got, err = executionRequest(t, fx, r)
+	got, err = fx.exec(r)
 	if err != nil || got["launchable"] != false {
 		t.Fatalf("duplicate effect allowed: %v %v", got, err)
 	}
-	p = gcProjection(t, fx.state)
+	p = fx.s.projection()
 	if p.InFlight() != 1 || p.Executions[r.Dispatch].Settled {
 		t.Fatal("duplicate refusal cancelled existing admission")
 	}
@@ -142,18 +136,18 @@ func TestPrepareReadyPersistenceFailureCompensates(t *testing.T) {
 	}
 }
 
-func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
-	fx := newVFSFixture(t)
+func scenarioInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
 	a := fx.delegate(rootA, "writer", "dev", "a.txt")
 	fx.dispatch("finish", rootA, "writer", "dev")
 	b := fx.delegate(rootA, "writer-b", "dev", "b.txt")
 	fx.dispatch("finish", rootA, "writer-b", "dev")
-	r := coordinationRequest{Action: "inputs", Session: rootA, Event: "review"}
-	if _, err := executionRequest(t, fx, r); err != nil {
+	r := request{Action: "inputs", Session: rootA, Event: "review"}
+	if _, err := fx.exec(r); err != nil {
 		t.Fatal(err)
 	}
-	r = coordinationRequest{Action: "admit", Session: rootA, Event: "review", Dispatch: "interrupted-call", Caller: rootA, Agent: "verify"}
-	if _, err := executionRequest(t, fx, r); err != nil {
+	r = request{Action: "admit", Session: rootA, Event: "review", Dispatch: "interrupted-call", Caller: rootA, Agent: "verify"}
+	if _, err := fx.exec(r); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate process loss after the admission and core gate transaction, before
@@ -189,9 +183,9 @@ func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
 	}
 	// The interrupted record names no model, as one from before models were
 	// recorded; the retry names the model it runs and still resumes.
-	r.Action, r.Owner, r.Model, r.ConfiguredModel = "prepare", testOwner, "p/a", "p/a"
+	r.Action, r.Owner, r.Model, r.Configured = "prepare", testOwnerInstance, "p/a", "p/a"
 	r.AuthorKeys = []vfs.AgentID{vfs.AgentID(a)}
-	got, err := executionRequest(t, fx, r)
+	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != u.AttemptID || got["launchable"] != true {
 		t.Fatalf("interrupted retry: %v %v", got, err)
 	}
@@ -210,10 +204,10 @@ func TestInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T) {
 	}
 }
 
-func TestInterruptedPreparationUsesCurrentInputsAndExactIdentity(t *testing.T) {
-	fx := newVFSFixture(t)
-	r := coordinationRequest{Action: "admit", Session: rootA, Event: "brief", Dispatch: "interrupted-call", Caller: rootA, Agent: "pm"}
-	if _, err := executionRequest(t, fx, r); err != nil {
+func scenarioInterruptedPreparationUsesCurrentInputsAndExactIdentity(t *testing.T, bin string) {
+	fx := newVFSFixture(t, bin)
+	r := request{Action: "admit", Session: rootA, Event: "brief", Dispatch: "interrupted-call", Caller: rootA, Agent: "pm"}
+	if _, err := fx.exec(r); err != nil {
 		t.Fatal(err)
 	}
 	h, err := history.Open(fx.state)
@@ -235,90 +229,24 @@ func TestInterruptedPreparationUsesCurrentInputsAndExactIdentity(t *testing.T) {
 	if err = h.Close(); err != nil {
 		t.Fatal(err)
 	}
-	r.Action, r.Owner = "prepare", testOwner
+	r.Action, r.Owner = "prepare", testOwnerInstance
 	wrong := r
 	wrong.Agent = "analyst"
-	if _, err = executionRequest(t, fx, wrong); err == nil || !strings.Contains(err.Error(), "new subagent call") {
+	if _, err = fx.exec(wrong); err == nil || !strings.Contains(err.Error(), "new subagent call") {
 		t.Fatalf("identity mismatch: %v", err)
 	}
-	if gcProjection(t, fx.state).Executions[r.Dispatch].Settled {
+	if fx.s.projection().Executions[r.Dispatch].Settled {
 		t.Fatal("wrong caller cancelled preparation")
 	}
-	if _, err = executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "inputs changed") || !strings.Contains(err.Error(), "new subagent call") {
+	if _, err = fx.exec(r); err == nil || !strings.Contains(err.Error(), "inputs changed") || !strings.Contains(err.Error(), "new subagent call") {
 		t.Fatalf("stale input snapshot: %v", err)
 	}
-	if !gcProjection(t, fx.state).Executions[r.Dispatch].Settled {
+	if !fx.s.projection().Executions[r.Dispatch].Settled {
 		t.Fatal("stale preparation left admission stranded")
 	}
 	r.Dispatch = "next-call"
-	got, err := executionRequest(t, fx, r)
+	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != "2" {
 		t.Fatalf("current-input continuation: %v %v", got, err)
-	}
-}
-
-// TestPrepareRefusesResumingPMOnItsOwnInvariant covers PR-CRW-20: the pm
-// session that recorded a consumed invariant cannot be resumed to formalize
-// it, while a fresh pm delegation consuming the same invariant is admitted.
-func TestPrepareRefusesResumingPMOnItsOwnInvariant(t *testing.T) {
-	fakeEngramServer(t)
-	home, _ := os.UserHomeDir()
-	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
-	data, err := json.Marshal(index)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
-	if err = os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	fx := newVFSFixture(t)
-	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
-		t.Fatal(err)
-	}
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-call", Caller: rootA, Agent: "pm", Child: "pm-stories"}
-	if _, err = executionRequest(t, fx, r); err == nil || !strings.Contains(err.Error(), "fresh pm unit") {
-		t.Fatalf("resumed authoring pm: %v", err)
-	}
-	if p := gcProjection(t, fx.state); len(p.Executions) != 0 || p.InFlight() != 0 {
-		t.Fatal("refused resumption admitted execution")
-	}
-	r.Dispatch, r.Child = "fresh-call", ""
-	got, err := executionRequest(t, fx, r)
-	if err != nil || got["launchable"] != true {
-		t.Fatalf("fresh pm: %v %v", got, err)
-	}
-}
-
-// TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant: only the session that
-// recorded the invariant is barred; resuming another pm session is admitted.
-func TestPrepareAdmitsResumingPMOnAnotherSessionsInvariant(t *testing.T) {
-	fakeEngramServer(t)
-	home, _ := os.UserHomeDir()
-	index := map[string]any{"session": rootA, "entries": []map[string]any{{"id": 7, "author": "pm", "caller": "pm-stories"}}}
-	data, err := json.Marshal(index)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(home, ".takt-ai", "memory", "sessions")
-	if err = os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, rootA+".json"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	fx := newVFSFixture(t)
-	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "", ResultIDs: []int64{7}}); err == nil {
-		t.Fatal("inputs declared for no unit")
-	}
-	if _, err = executionRequest(t, fx, coordinationRequest{Action: "inputs", Session: rootA, Event: "business-docs", ResultIDs: []int64{7}}); err != nil {
-		t.Fatal(err)
-	}
-	r := coordinationRequest{Action: "prepare", Owner: testOwner, Session: rootA, Event: "business-docs", Dispatch: "resume-docs", Caller: rootA, Agent: "pm", Child: "pm-docs"}
-	if got, err := executionRequest(t, fx, r); err != nil || got["launchable"] != true {
-		t.Fatalf("resumed formalizing pm: %v %v", got, err)
 	}
 }

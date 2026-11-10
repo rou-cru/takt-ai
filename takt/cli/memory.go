@@ -23,132 +23,100 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/rou-cru/takt-ai/takt/engram"
-	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
-	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
-const invalidRequestExitStatus = 2
+// serveMemory runs the memory service on the resolved memory directory until SIGTERM or interrupt.
+func serveMemory() error {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	// The detached owner outlives the launcher that read its stderr, so a later write to that closed pipe
+	// must fail with an error instead of ending the service with SIGPIPE.
+	signal.Ignore(syscall.SIGPIPE)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	return memory.Serve(ctx, dir, resolveVersion(version))
+}
+
+// runMemory runs the memory service commands. `mcp` writes only MCP messages to stdout and `start` prints
+// the workspace key; `serve` runs until SIGTERM or interrupt.
+func runMemory(args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) == 0 {
+		return errors.New("usage: takt-ai memory serve|mcp|start")
+	}
+	switch args[0] {
+	case "serve":
+		return serveMemory()
+	case "mcp":
+		return runMemoryMCP(args[1:], stdin, stdout)
+	case "start":
+		return runMemoryStart(args[1:], stdout)
+	}
+	return fmt.Errorf("unknown memory command %q (valid: serve, mcp, start)", args[0])
+}
+
+func runMemoryMCP(args []string, stdin io.Reader, stdout io.Writer) error {
+	flags := flag.NewFlagSet("memory mcp", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	var opts memory.AdapterOptions
+	flags.BoolVar(&opts.Crew, "crew", false, "relay to the crew path")
+	flags.StringVar(&opts.Workspace, "workspace", "", "workspace directory")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		return errors.New("usage: takt-ai memory mcp [--crew] [--workspace <dir>]")
+	}
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	return memory.RunAdapter(ctx, dir, opts, stdin, stdout)
+}
+
+func runMemoryStart(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("memory start", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	create := flags.Bool("init", false, "create the memory directory and store when absent")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		return errors.New("usage: takt-ai memory start [--init]")
+	}
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	if _, err := memory.Start(ctx, dir, *create); err != nil {
+		return err
+	}
+	socket, err := memory.SocketPath(dir)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(stdout).Encode(memoryStartOutput{Workspace: memory.WorkspaceKey(ctx, cwd), Socket: socket})
+}
+
+// memoryStartOutput is the one JSON line `memory start` prints: the caller's workspace key and the socket
+// of the owner that serves it, so a client learns the socket from the runtime instead of resolving it.
+type memoryStartOutput struct {
+	Workspace string `json:"workspace"`
+	Socket    string `json:"socket"`
+}
 
 // exitCode is an error that already reported itself and only carries the process exit status.
 type exitCode int
 
 // Error renders the process exit status this error carries.
 func (c exitCode) Error() string { return fmt.Sprintf("exit status %d", int(c)) }
-
-// runMemory drives the memory core for the OpenCode plugin: one strict JSON request in, one JSON line out.
-func runMemory(args []string, stdin io.Reader, stdout io.Writer) error {
-	result, err := dispatchMemory(args, stdin)
-	var invalid *memory.ValidationError
-	switch {
-	case err == nil:
-		return writeMemoryLine(stdout, map[string]any{"ok": true, "result": result}, 0)
-	case errors.As(err, &invalid):
-		return writeMemoryLine(stdout, map[string]any{"ok": false, "error": invalid.Reason}, invalidRequestExitStatus)
-	default:
-		return writeMemoryLine(stdout, map[string]any{"ok": false, "error": err.Error()}, 1)
-	}
-}
-
-func dispatchMemory(args []string, stdin io.Reader) (any, error) {
-	if len(args) != 1 {
-		return nil, errors.New("usage: takt-ai memory record|search|continue|close|capabilities < request.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolve home directory: %w", err)
-	}
-	cfg := memory.Config{Root: home}
-	cfg.EngramBinary, _ = engram.Resolve(home)
-	ctx := context.Background()
-	switch args[0] {
-	case "capabilities":
-		req, err := decodeMemory[memory.CapabilitiesRequest](stdin)
-		if err != nil {
-			return nil, err
-		}
-		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Capabilities(req), nil })
-	case "record":
-		req, err := decodeMemory[memory.RecordRequest](stdin)
-		if err != nil {
-			return nil, err
-		}
-		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Record(ctx, cfg, req) })
-	case "search":
-		req, err := decodeMemory[memory.SearchRequest](stdin)
-		if err != nil {
-			return nil, err
-		}
-		return memory.Search(ctx, cfg, req)
-	case "continue":
-		req, err := decodeMemory[memory.ContinueRequest](stdin)
-		if err != nil {
-			return nil, err
-		}
-		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return struct{}{}, memory.Continue(ctx, cfg, req) })
-	case "close":
-		req, err := decodeMemory[memory.CloseRequest](stdin)
-		if err != nil {
-			return nil, err
-		}
-		if req.Fallback {
-			return memory.Close(ctx, cfg, req)
-		}
-		return underWorkspace(req.Directory, req.CallerSession, &req.Session, func() (any, error) { return memory.Close(ctx, cfg, req) })
-	}
-	return nil, fmt.Errorf("unknown memory command %q (valid: record, search, continue, close, capabilities)", args[0])
-}
-
-// underWorkspace runs a memory command under the workspace lock that
-// serializes the execution history, so the interlocutor holder a command
-// decides on cannot change before it acts. A caller session resolves the root
-// session from that history: the root of the delegation it runs, the root it
-// holds as interlocutor, or itself. A directory that does not exist has no
-// harness and nothing to lock.
-func underWorkspace(directory, caller string, session *string, run func() (any, error)) (_ any, err error) {
-	if _, statErr := os.Stat(directory); statErr == nil {
-		held, err := vfs.LockWorkspace(directory)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { err = errors.Join(err, held.Close()) }()
-	}
-	if caller != "" {
-		p, err := history.ReadProjection(history.StateDir(directory))
-		if err != nil {
-			return nil, err
-		}
-		*session = caller
-		if d, ok := p.ExecutionForChild(caller, ""); ok {
-			*session = d.Root
-		} else if root, ok := p.HeldRoot(caller); ok {
-			*session = root
-		}
-	}
-	return run()
-}
-
-// decodeMemory treats a malformed request as a contract rejection so the caller sees why (exit 2).
-func decodeMemory[T any](stdin io.Reader) (T, error) {
-	req, err := decodeStrict[T](stdin)
-	if err != nil {
-		return req, &memory.ValidationError{Reason: "invalid request: " + err.Error()}
-	}
-	return req, nil
-}
-
-func writeMemoryLine(stdout io.Writer, line map[string]any, code int) error {
-	if err := json.NewEncoder(stdout).Encode(line); err != nil {
-		return exitCode(1)
-	}
-	if code != 0 {
-		return exitCode(code)
-	}
-	return nil
-}
 
 // runDefaultRequest prints the default setup request so scripts can feed `setup install --input`.
 func runDefaultRequest(args []string, stdout io.Writer) error {

@@ -12,9 +12,12 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -102,6 +105,12 @@ func TestTaktVFSPluginArtifact(t *testing.T) {
 	if !strings.Contains(content, `const VFS_SHELL_ENFORCED: boolean = true as`) || strings.Contains(content, "__TAKT_VFS_SHELL_ENFORCED__") {
 		t.Error("plugin missing the injected shell enforcement switch")
 	}
+	tools, _ := json.Marshal(map[string]string{
+		"record": memory.PrefixedToolName(memory.ToolRecord), "read": memory.PrefixedToolName(memory.ToolRead),
+	})
+	if !strings.Contains(content, string(tools)) {
+		t.Errorf("plugin lacks the memory tool names %s", tools)
+	}
 	off := string(opencode.TaktVFSPluginArtifact("/usr/local/bin/takt-ai", false).Content)
 	if !strings.Contains(off, `const VFS_SHELL_ENFORCED: boolean = false as`) {
 		t.Error("plugin rendered with enforcement off keeps shell interception on")
@@ -174,24 +183,28 @@ func TestTaktMemoryPluginArtifact(t *testing.T) {
 		t.Fatalf("path = %q", artifact.Path)
 	}
 	content := string(artifact.Content)
-	if !strings.Contains(content, `const TAKT_AI = "/opt/takt \"ai\"/takt-ai"`) || strings.Contains(content, "__TAKT_AI_BINARY__") {
-		t.Fatalf("binary path not rendered as a JS string literal:\n%s", content[:400])
+	if strings.Contains(content, "__TAKT_") {
+		t.Fatalf("plugin has an unrendered placeholder:\n%s", content)
 	}
-	for _, want := range []string{
-		`name: "memory_record"`, `name: "memory_continue_session"`, `name: "memory_close_session"`,
-		"previous_session_id: str(", "objective: str(", "state: str(",
-		`user_order: { type: "boolean"`, "author: c.agent", "directory: pluginDirectory",
-		`"session.deleted"`, "fallback: true", "caller_session: c.sessionID",
-		// The two confirmations survive the V2 plugin API: ctx has no
-		// permission.create, so they ride the local service endpoint.
-		`confirm("memory_personal"`, `confirm("memory_user_order"`, "api.permission.create(",
-	} {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roster []string
+	for _, def := range pack.Agents {
+		roster = append(roster, def.Instances...)
+	}
+	slices.Sort(roster)
+	wantRoster, _ := json.Marshal(roster)
+	wantBinary, _ := json.Marshal(`/opt/takt "ai"/takt-ai`)
+	wire, _ := json.Marshal(map[string]string{
+		"tool_prefix": memory.PrefixedToolName(""), "record": memory.ToolRecord, "bind": memory.AdminBind,
+		"describe": memory.AdminDescribe, "admin_path": memory.PathAdmin,
+	})
+	for name, want := range map[string]string{"wire names": string(wire), "binary": string(wantBinary), "crew roster": string(wantRoster)} {
 		if !strings.Contains(content, want) {
-			t.Errorf("plugin missing %q", want)
+			t.Errorf("rendered plugin lacks the %s %s", name, want)
 		}
-	}
-	if strings.Contains(content, "dispose:") {
-		t.Error("plugin must not close sessions on dispose: exiting OpenCode is not a session end")
 	}
 }
 

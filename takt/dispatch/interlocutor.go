@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -27,9 +29,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
-// interlocutorRole resolves agent's catalog role. Duplicated from
-// takt/memory.authorRole (~10 lines) rather than importing takt/memory from
-// takt/dispatch, which would add a cross-package dependency for so little.
+// interlocutorRole resolves agent's catalog role.
 func interlocutorRole(agent string) (model.RoleClass, error) {
 	content, e := catalog.LoadNativeContent()
 	if e != nil {
@@ -42,31 +42,53 @@ func interlocutorRole(agent string) (model.RoleClass, error) {
 	return entry.Role, nil
 }
 
+// switchRefusal is the one place the switch checks live: the history cause that
+// records the refusal and the refusal itself, both empty when the switch is allowed.
+func switchRefusal(h *history.History, root, targetAgent string) (string, error) {
+	role, roleErr := interlocutorRole(targetAgent)
+	switch {
+	case roleErr != nil || !role.HoldsInterface():
+		return history.CauseInterlocutorRole, fmt.Errorf("harness: %q does not resolve to the direct-interlocutor role", targetAgent)
+	case h.Project().Budgets(root).InterlocutorHolder != "":
+		held := h.Project().Budgets(root)
+		return history.CauseInterlocutorHeld, fmt.Errorf("harness: the interlocutor interface is already held by %s (session %s); no chaining; to replace it, ask the user to run /takt-abort, then call dispatch_switch again", held.InterlocutorAgent, held.InterlocutorHolder)
+	}
+	return "", nil
+}
+
+// ValidateSwitch runs, read-only, the checks Switch runs before it binds and
+// records: the role of targetAgent and the active holder of root (PR-HAR-23).
+func ValidateSwitch(h *history.History, root, targetAgent string) error {
+	_, err := switchRefusal(h, root, targetAgent)
+	return err
+}
+
 // Switch registers a new temporary interlocutor-stack holder for root. Only a
 // targetAgent whose catalog role resolves to model.RoleDirectInterlocutor is
 // eligible (IR-1); a root with an active holder refuses a second one (IR-19: no
-// chaining). expectedArtifact is the standard artifact path this switch
-// declares, fixed here and never renegotiated (PR-HAR-24).
-func Switch(h *history.History, journalRef, root, childSession, targetAgent, expectedArtifact string) error {
-	role, roleErr := interlocutorRole(targetAgent)
+// chaining). A refused switch is recorded as a denial and never calls bind;
+// bind runs once the checks pass, and its failure fails the switch and records
+// nothing.
+func Switch(h *history.History, journalRef, root, childSession, targetAgent string, bind func() error) error {
 	entry := history.Entry{
 		Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched,
 		SessionID: root, WorkUnitID: childSession, AttemptID: history.FirstAttempt,
-		Agent: targetAgent, Artifact: expectedArtifact, Cause: history.CauseUncaptured,
+		Agent: targetAgent, Cause: history.CauseUncaptured,
 		JournalRef: journalRef,
 	}
-	var e error
-	switch {
-	case roleErr != nil || !role.HoldsInterface():
-		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorRole
-		e = fmt.Errorf("harness: %q does not resolve to the direct-interlocutor role", targetAgent)
-	case h.Project().Budgets(root).InterlocutorHolder != "":
-		held := h.Project().Budgets(root)
-		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorHeld
-		e = fmt.Errorf("harness: the interlocutor interface is already held by %s (session %s); no chaining; to replace it, ask the user to run /takt-abort, then call dispatch_switch again", held.InterlocutorAgent, held.InterlocutorHolder)
+	cause, refusal := switchRefusal(h, root, targetAgent)
+	if refusal != nil {
+		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, cause
+		return errors.Join(h.Append(entry), refusal)
 	}
-	return errors.Join(h.Append(entry), e)
+	if err := bind(); err != nil {
+		return err
+	}
+	return h.Append(entry)
 }
+
+// errNotHolder refuses a handoff from a session that does not hold the interface.
+var errNotHolder = errors.New("only the temporary interlocutor holder may hand off; in a delegation deliver with deliver_result, otherwise answer the user directly")
 
 // Handoff ends the current temporary holder's turn and returns the
 // interface to root. Only the session that is currently the holder may call
@@ -81,7 +103,7 @@ func Handoff(h *history.History, journalRef, root, callerSession, result string)
 	var e error
 	if callerSession != h.Project().Budgets(root).InterlocutorHolder {
 		entry.Author, entry.Kind, entry.Cause = history.AuthorHarness, history.KindDenied, history.CauseInterlocutorHolder
-		e = errors.New("harness: only the current interlocutor holder may hand off")
+		e = errNotHolder
 	}
 	return errors.Join(h.Append(entry), e)
 }
@@ -116,12 +138,6 @@ func Abort(h *history.History, journalRef, root, childSession, reason, origin st
 	return errors.Join(h.Append(entry), e)
 }
 
-// ExpectedArtifact returns the standard document path declared by the active
-// switch for root, or "" when it declares none.
-func ExpectedArtifact(h *history.History, root string) string {
-	return h.Project().Budgets(root).InterlocutorArtifact
-}
-
 // CurrentAgent returns the specialist holding root's interlocutor role, read
 // from its owner; empty when no switch is active.
 func CurrentAgent(h *history.History, root string) string {
@@ -134,9 +150,29 @@ func CurrentHolder(h *history.History, root string) string {
 	return h.Project().Budgets(root).InterlocutorHolder
 }
 
+// completedResult is the handoff result that delivers the holder's work (IR-23); every other
+// result closes early and needs no entry.
+const completedResult = "Standard"
+
+// handoffResults is the closed set of IR-23 handoff results.
+var handoffResults = []string{completedResult, "EarlyHandoff", "TechFault", "Outraged"}
+
+// entryRefPrefix marks an extra-artifact reference as a memory entry reference (#<id>).
+const entryRefPrefix = "#"
+
+// validArtifactRef reports whether ref is syntactically resolvable (PR-HAR-25): an entry
+// reference "#<positive integer>" or a non-empty path that does not start with "#".
+func validArtifactRef(ref string) bool {
+	if id, ok := strings.CutPrefix(ref, entryRefPrefix); ok {
+		n, err := strconv.ParseUint(id, 10, 63)
+		return err == nil && n > 0
+	}
+	return ref != ""
+}
+
 // HandoffOutcome is the negotiated result a handoff envelope carries: the
 // IR-23 result, any additional context, extra filesystem artifacts, and the
-// Engram IDs the holder recorded for delivered results.
+// memory entry IDs the holder recorded for delivered results.
 type HandoffOutcome struct {
 	Result            string
 	AdditionalContext string
@@ -144,40 +180,74 @@ type HandoffOutcome struct {
 	ResultIDs         []int64
 }
 
-// MemoryIndex is the bounded IR-22 index of the entries a lent session
-// recorded. NextAfter is the last listed entry when more remain, the cursor
-// LentEntries pages from; zero when the index is complete.
-type MemoryIndex struct {
-	Entries   []int64 `json:"entries"`
-	NextAfter int64   `json:"next_after,omitempty"`
-}
-
-// Envelope is the IR-22 output envelope: exactly these four fields.
+// Envelope is the IR-22 output envelope: exactly these four fields. Memory is
+// the delivered, validated entry IDs; a synthesized abort leaves it empty.
 type Envelope struct {
-	Result            string      `json:"result"`
-	AdditionalContext string      `json:"additional_context"`
-	ExtraArtifacts    []string    `json:"extra_artifacts"`
-	Memory            MemoryIndex `json:"memory"`
+	Result            string   `json:"result"`
+	AdditionalContext string   `json:"additional_context"`
+	ExtraArtifacts    []string `json:"extra_artifacts"`
+	Memory            []int64  `json:"memory"`
 }
 
-// BuildHandoffEnvelope requires Engram IDs the holder itself recorded in this
-// session for delivered results; extra filesystem artifacts are optional and do
-// not establish a handoff. memoryRoot is where the memory session index lives.
-func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, callerSession, agent string, outcome HandoffOutcome) (Envelope, error) {
-	if outcome.Result == "Standard" || len(outcome.ResultIDs) > 0 {
-		if e := memory.ValidateSessionResultIDs(context.Background(), memory.Config{Root: memoryRoot}, root, agent, outcome.ResultIDs); e != nil {
-			return Envelope{}, e
+// MemoryCheck validates entry IDs against a rule through the memory service's
+// one validator.
+type MemoryCheck func(ctx context.Context, ids []int64, rule memory.Rule) (memory.DescribeResult, error)
+
+// DeliveryRefusal words a refused delivery: the cause and the continuation that
+// makes a delivery valid (PR-HAR-24). retry is the call that delivers.
+func DeliveryRefusal(cause error, retry string) error {
+	return fmt.Errorf("%w; call %s again with the current IDs of Takt memory entries recorded in this session, recording with %s first only a result not yet recorded here", cause, retry, memory.PrefixedToolName(memory.ToolRecord))
+}
+
+// ValidateDelivery checks the entry IDs a session delivers: written by that exact
+// session and current. A completed delivery without IDs is refused.
+func ValidateDelivery(ctx context.Context, check MemoryCheck, session string, ids []int64) error {
+	if len(ids) == 0 {
+		return errors.New("refused: a completed result delivers at least one Takt memory entry ID")
+	}
+	_, e := check(ctx, ids, memory.Rule{WrittenBy: session})
+	return e
+}
+
+// handoffRetry is the call a refused handoff continues with.
+const handoffRetry = "dispatch_handoff"
+
+// ValidateHandoff is the check a handoff passes before it is recorded, and
+// before the user is asked (PR-HAR-23): only the holder may hand off; a
+// result is within its enumeration and every extra artifact is a resolvable reference
+// (PR-HAR-25); a completed result delivers valid IDs; an early close with no result passes
+// without a placeholder, and any IDs it declares are still validated (PR-HAR-24).
+func ValidateHandoff(ctx context.Context, h *history.History, check MemoryCheck, root, callerSession string, outcome HandoffOutcome) error {
+	b := h.Project().Budgets(root)
+	if callerSession != b.InterlocutorHolder {
+		return errNotHolder
+	}
+	if !slices.Contains(handoffResults, outcome.Result) {
+		return fmt.Errorf("harness: handoff result %q is not valid; valid values: %s; call %s again with one of them", outcome.Result, strings.Join(handoffResults, ", "), handoffRetry)
+	}
+	for _, ref := range outcome.ExtraArtifacts {
+		if !validArtifactRef(ref) {
+			return fmt.Errorf("harness: extra artifact %q is not a valid reference; use #<positive Takt memory entry ID> or a non-empty path not starting with %q; call %s again with valid references", ref, entryRefPrefix, handoffRetry)
 		}
 	}
-	// A caller that does not hold the turn has no index to read: Handoff
-	// records and returns its denial.
-	if callerSession != h.Project().Budgets(root).InterlocutorHolder {
-		return Envelope{}, Handoff(h, journalRef, root, callerSession, outcome.Result)
+	if outcome.Result != completedResult && len(outcome.ResultIDs) == 0 {
+		return nil
 	}
-	// The index is read before the handoff is recorded: a failed read leaves
-	// the holder in place, so the same handoff can be retried.
-	index, e := lentIndex(memoryRoot, root, callerSession, 0)
-	if e != nil {
+	if e := ValidateDelivery(ctx, check, callerSession, outcome.ResultIDs); e != nil {
+		return DeliveryRefusal(e, handoffRetry)
+	}
+	return nil
+}
+
+// BuildHandoffEnvelope requires memory IDs the holder itself recorded in this
+// lent session for delivered results; extra filesystem artifacts are optional and do
+// not establish a handoff.
+func BuildHandoffEnvelope(ctx context.Context, h *history.History, journalRef string, check MemoryCheck, root, callerSession string, outcome HandoffOutcome) (Envelope, error) {
+	if e := ValidateHandoff(ctx, h, check, root, callerSession, outcome); e != nil {
+		// A caller that does not hold the turn is refused by Handoff, which records its denial.
+		if errors.Is(e, errNotHolder) {
+			return Envelope{}, Handoff(h, journalRef, root, callerSession, outcome.Result)
+		}
 		return Envelope{}, e
 	}
 	if e := Handoff(h, journalRef, root, callerSession, outcome.Result); e != nil {
@@ -187,72 +257,23 @@ func BuildHandoffEnvelope(h *history.History, journalRef, memoryRoot, root, call
 	if extra == nil {
 		extra = []string{}
 	}
-	return Envelope{Result: outcome.Result, AdditionalContext: outcome.AdditionalContext, ExtraArtifacts: extra, Memory: index}, nil
+	delivered := outcome.ResultIDs
+	if delivered == nil {
+		delivered = []int64{}
+	}
+	return Envelope{Result: outcome.Result, AdditionalContext: outcome.AdditionalContext, ExtraArtifacts: extra, Memory: delivered}, nil
 }
 
 // BuildAbortEnvelope ends the temporary holder's turn (IR-24) and synthesizes
 // its envelope: no negotiated result, the abort's evidence as additional
-// context, and the entries the lent session recorded. It also returns the
-// aborted session.
-func BuildAbortEnvelope(h *history.History, journalRef, memoryRoot, root, childSession, reason, origin string) (Envelope, string, error) {
+// context, and no memory entries. It also returns the aborted session.
+func BuildAbortEnvelope(h *history.History, journalRef, root, childSession, reason, origin string) (Envelope, string, error) {
 	aborted := h.Project().Budgets(root).InterlocutorHolder
 	if childSession != "" {
 		aborted = childSession
 	}
-	// As for a handoff, the index is read before the abort is recorded. With
-	// no holder there is nothing to index, and Abort states the refusal.
-	var index MemoryIndex
-	if aborted != "" {
-		var e error
-		if index, e = lentIndex(memoryRoot, root, aborted, 0); e != nil {
-			return Envelope{}, "", e
-		}
-	}
 	if e := Abort(h, journalRef, root, childSession, reason, origin); e != nil {
 		return Envelope{}, "", e
 	}
-	return Envelope{Result: "Aborted", AdditionalContext: reason, ExtraArtifacts: []string{}, Memory: index}, aborted, nil
-}
-
-// LentEntries pages the memory index of child, a session that held root's
-// interface, from the entry after. Any other session is refused: the index
-// never carries unrelated root-session history (IR-22).
-func LentEntries(h *history.History, memoryRoot, root, child string, after int64) (MemoryIndex, error) {
-	lent := false
-	for _, e := range h.Entries() {
-		if e.Kind == history.KindInterlocutorSwitched && e.SessionID == root && e.WorkUnitID == child {
-			lent = true
-			break
-		}
-	}
-	if !lent {
-		return MemoryIndex{}, fmt.Errorf("harness: session %s never held the interface of %s; page a lent session named by its switch", child, root)
-	}
-	return lentIndex(memoryRoot, root, child, after)
-}
-
-// lentIndex lists one policy page of the entries child recorded in root after
-// the entry after (all from the start when after is zero).
-func lentIndex(memoryRoot, root, child string, after int64) (MemoryIndex, error) {
-	p, e := LoadAdmissionPolicy()
-	if e != nil {
-		return MemoryIndex{}, e
-	}
-	ids, e := memory.EntryIDsByCaller(memoryRoot, root, child)
-	if e != nil {
-		return MemoryIndex{}, e
-	}
-	if after != 0 {
-		i := slices.Index(ids, after)
-		if i < 0 {
-			return MemoryIndex{}, fmt.Errorf("harness: entry #%d is not in the lent session's index; page from its next_after", after)
-		}
-		ids = ids[i+1:]
-	}
-	index := MemoryIndex{Entries: ids}
-	if len(ids) > p.Interlocutor.MemoryPage {
-		index.Entries = ids[:p.Interlocutor.MemoryPage]
-		index.NextAfter = index.Entries[len(index.Entries)-1]
-	}
-	return index, nil
+	return Envelope{Result: "Aborted", AdditionalContext: reason, ExtraArtifacts: []string{}, Memory: []int64{}}, aborted, nil
 }

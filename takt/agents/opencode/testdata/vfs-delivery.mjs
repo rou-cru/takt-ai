@@ -197,8 +197,8 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   mark = dispatched().length
   await delegate("execute.before", "retry-ok", "call-retry", "pm")
   respond = (call) => call.verb === "dispatch" && requestOf(call).action === "deliver"
-    ? { stdout: "", stderr: "handoff requires an Engram ID", code: 1 } : undefined
-  await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "retry-ok", agent: "pm" }), /Engram ID/)
+    ? { stdout: "", stderr: "handoff requires a memory entry ID", code: 1 } : undefined
+  await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "retry-ok", agent: "pm" }), /memory entry ID/)
   respond = (_call) => undefined
   await tools.deliver_result.execute({ result_ids: [2] }, { sessionID: "retry-ok", agent: "pm" })
   await delegate("execute.after", "retry-ok", "call-retry", "pm")
@@ -262,7 +262,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   // A validate_results transport/network failure must read nothing like a
   // never-delivered fallback failure.
   respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results"
-    ? { stdout: "", stderr: "engram service unreachable: connect ECONNREFUSED", code: 1 } : undefined
+    ? { stdout: "", stderr: "memory service unreachable: connect ECONNREFUSED", code: 1 } : undefined
   let transportError
   try {
     await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "transport-fail", agent: "pm" })
@@ -349,7 +349,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   for (const callback of sessionHooks.context) await callback({ ...context, sessionID: "review-2", system: [] }) // NOSONAR: hooks run in registration order
   await tools.deliver_result.execute({ result_ids: [55] }, { sessionID: "review-2", agent: "verify" })
   const event = await delegate("execute.after", "review", "call-review-2", "verify", "completed", {}, { content: "Verdict attached." })
-  assert.match(String(event.result.content), /Delivered results: Engram #55/)
+  assert.match(String(event.result.content), /Delivered results: #55/)
 } else {
   throw new Error(`unknown scenario ${JSON.stringify(scenario)}`)
 }

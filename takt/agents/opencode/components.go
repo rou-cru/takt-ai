@@ -20,6 +20,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -99,10 +100,23 @@ func harnessCLIShellDenies() []permissionRule {
 //go:embed assets/takt-memory.ts
 var taktMemoryPluginSource string
 
-// TaktMemoryPluginArtifact returns the OpenCode plugin exposing the memory
-// tools; taktAIBinary is the absolute takt-ai path the plugin spawns.
+// TaktMemoryPluginArtifact returns the OpenCode plugin that binds each crew
+// memory call to its caller; taktAIBinary is the absolute takt-ai
+// path the plugin runs to start the memory service; the plugin learns the
+// service socket from what `memory start` prints.
 func TaktMemoryPluginArtifact(taktAIBinary string) Artifact {
-	return taktPluginArtifact(taktMemoryPluginSource, "takt-memory.ts", taktAIBinary)
+	artifact := taktPluginArtifact(taktMemoryPluginSource, "takt-memory.ts", taktAIBinary)
+	rosterJSON, _ := json.Marshal(crewRosterIDs()) // a string slice always marshals
+	wireJSON, _ := json.Marshal(map[string]string{ // a string map always marshals
+		"tool_prefix": memory.PrefixedToolName(""),
+		"record":      memory.ToolRecord,
+		"bind":        memory.AdminBind,
+		"describe":    memory.AdminDescribe,
+		"admin_path":  memory.PathAdmin,
+	})
+	content := strings.Replace(string(artifact.Content), `"__TAKT_MEMORY_WIRE__"`, string(wireJSON), 1)
+	artifact.Content = []byte(strings.Replace(content, `"__TAKT_CREW_ROSTER__"`, string(rosterJSON), 1))
+	return artifact
 }
 
 //go:embed assets/takt-vfs.ts
@@ -117,9 +131,14 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	resultAgents, _ := json.Marshal(resultAgentIDs())      // a string slice always marshals
 	sensitive, _ := json.Marshal(model.SensitivePathGlobs) // a string slice always marshals
 	authors, _ := json.Marshal(loadCatalog().VFSAuthors()) // a string slice always marshals
+	memoryTools, _ := json.Marshal(map[string]string{      // a string map always marshals
+		"record": memory.PrefixedToolName(memory.ToolRecord),
+		"read":   memory.PrefixedToolName(memory.ToolRead),
+	})
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
 	content = strings.Replace(content, `"__TAKT_SENSITIVE_READ_GLOBS__"`, string(sensitive), 1)
 	content = strings.Replace(content, `"__TAKT_VFS_AUTHORS__"`, string(authors), 1)
+	content = strings.Replace(content, `"__TAKT_MEMORY_TOOLS__"`, string(memoryTools), 1)
 	artifact.Content = []byte(strings.Replace(content, `"__TAKT_RESULT_AGENTS__"`, string(resultAgents), 1))
 	return artifact
 }
@@ -143,8 +162,20 @@ func loadCatalog() catalog.Catalog {
 	return pack
 }
 
+// crewRosterIDs lists, sorted, every deployable catalog instance: the crew roster
+// a memory author must belong to, read from the catalog that
+// VFSAuthors reads.
+func crewRosterIDs() []string {
+	ids := []string{}
+	for _, def := range loadCatalog().Agents {
+		ids = append(ids, def.Instances...)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
 // resultAgentIDs lists the catalog instances designed to use takt-result-handoff:
-// the producers that deliver a complete Engram artifact as their final result.
+// the producers that deliver a complete memory artifact as their final result.
 func resultAgentIDs() []string {
 	ids := []string{}
 	for _, def := range loadCatalog().Agents {

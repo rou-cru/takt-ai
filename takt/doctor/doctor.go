@@ -14,18 +14,15 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package doctor implements the `takt-ai doctor` system health check: tool
-// availability in PATH, ownership-manifest deployment state, engram
-// reachability, and free disk space.
+// availability in PATH, ownership-manifest deployment state, memory service
+// status, and free disk space.
 package doctor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,7 +35,6 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
-	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -49,8 +45,6 @@ import (
 const (
 	// doctorCheckCapacity reserves the expected number of health checks.
 	doctorCheckCapacity = 3
-	// doctorHTTPTimeout bounds each remote health probe.
-	doctorHTTPTimeout = 3 * time.Second
 )
 
 // CheckStatus is the outcome of a single doctor check.
@@ -85,7 +79,7 @@ type DoctorReport struct {
 // doctorTools are the CLI executables the Takt workflow depends on. The list
 // is hardcoded because these are plain executable names; no catalog mapping
 // exists for them.
-var doctorTools = []string{"takt-ai", "opencode", "engram"}
+var doctorTools = []string{"takt-ai", "opencode"}
 
 // controlPlaneCheck inspects the event store of the workspace doctor runs in:
 // it is the control plane's record, and the only part of it that outlives a
@@ -133,10 +127,7 @@ func Run(stdout io.Writer) error {
 	workspace := workingDirOrHome(home)
 	report.Checks = append(report.Checks, controlPlaneCheck(workspace))
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
-	report.Checks = append(report.Checks, engramChecks(home)...)
-	report.Checks = append(report.Checks, engramNativePluginCheck(home))
-	project := memory.ResolveProject(context.Background(), memory.Config{}, workspace)
-	report.Checks = append(report.Checks, engramDiagnosticsCheck(project), engramNeedsReviewCheck(project))
+	report.Checks = append(report.Checks, memoryServiceCheck(context.Background()))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home), opencodeDAGPluginCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
@@ -309,71 +300,6 @@ func codegraphChecks(home string) []CheckResult {
 	return checks
 }
 
-// engramChecks verifies the engram installation (a compatible binary on PATH
-// or Takt's managed copy, its version output) and the MCP health endpoint answers.
-func engramChecks(home string) []CheckResult {
-	binary, found := engram.Resolve(home)
-	checks, ok := binaryChecks("engram", engram.EngramVersion, engram.ManagedBinaryPath(home),
-		"Run 'takt-ai setup sync' to install engram so agents can reach the memory server",
-		binary, found, engram.VerifyVersion)
-	if !ok {
-		// Without the binary the remaining engram checks only produce noise.
-		return checks
-	}
-
-	const name = "engram:reachable"
-	healthURL := engramBaseURL() + "/health"
-	status, _, err := fetch(healthURL)
-	if err != nil {
-		checks = append(checks, CheckResult{
-			Name:   name,
-			Status: CheckStatusFail,
-			Detail: fmt.Sprintf("engram health endpoint unreachable at %s: %s", healthURL, err),
-			Remedy: "Start engram or check that it is configured as an MCP server",
-		})
-		return checks
-	}
-	if status < 200 || status >= 300 {
-		checks = append(checks, CheckResult{
-			Name:   name,
-			Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram health endpoint %s returned HTTP %d", healthURL, status),
-		})
-		return checks
-	}
-	checks = append(checks, CheckResult{
-		Name:   name,
-		Status: CheckStatusPass,
-		Detail: fmt.Sprintf("engram reachable at %s", healthURL),
-	})
-	return checks
-}
-
-// engramNativePluginCheck warns when Engram's own plugin is installed, since it injects a protocol that competes with Takt's memory contract.
-func engramNativePluginCheck(home string) CheckResult {
-	const name = "engram:native-plugin"
-	found := engram.NativePluginFootprints(home)
-	if len(found) == 0 {
-		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no Engram plugin competes with Takt's memory contract"}
-	}
-	return CheckResult{
-		Name:   name,
-		Status: CheckStatusWarn,
-		Detail: "Engram's own plugin injects a second memory protocol: " + strings.Join(found, ", "),
-		Remedy: "Remove it to keep Takt's memory contract the only source: delete " +
-			"~/" + model.OpenCodeConfigDir + "/" + model.OpenCodePluginsDir + "/" + model.EngramPluginFile,
-	}
-}
-
-// engramBaseURL resolves the Engram HTTP endpoint the same way every engram check does.
-func engramBaseURL() string {
-	base := os.Getenv(model.EnvEngramURL)
-	if base == "" {
-		base = model.DefaultEngramURL
-	}
-	return strings.TrimRight(base, "/")
-}
-
 // workingDirOrHome resolves the directory doctor should report a project
 // for. os.Getwd() failing is rare and not worth failing Run() over.
 func workingDirOrHome(home string) string {
@@ -383,131 +309,36 @@ func workingDirOrHome(home string) string {
 	return home
 }
 
-// unknownProjectDetail reports whether status/body is Engram's 404 for a
-// project it has never seen — the normal case for a brand-new repository,
-// which must read as pass, not warn.
-func unknownProjectDetail(status int, body []byte) (unknown bool, available []string) {
-	if status != http.StatusNotFound {
-		return false, nil
-	}
-	var payload struct {
-		Code      string   `json:"code"`
-		Available []string `json:"available_projects"`
-	}
-	if json.Unmarshal(body, &payload) != nil {
-		return false, nil
-	}
-	return payload.Code == "unknown_project", payload.Available
-}
-
-// errMessage extracts Engram's {"error": "..."} body, or the raw body when it isn't that shape.
-func errMessage(body []byte) string {
-	var payload struct {
-		Error string `json:"error"`
-	}
-	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-		return payload.Error
-	}
-	return strings.TrimSpace(string(body))
-}
-
-// engramDiagnosticsCheck surfaces Engram's own /doctor report — data-integrity
-// checks (e.g. orphaned sessions) that engramChecks' plain /health probe never sees.
-func engramDiagnosticsCheck(project string) CheckResult {
-	const name = "engram:diagnostics"
-	u := engramBaseURL() + "/doctor?project=" + url.QueryEscape(project)
-	status, body, err := fetch(u)
+// memoryServiceCheck probes the memory service's status and never starts it (PR-MSV-33): ready, not
+// ready with its reason, unreachable, malformed response, and newer store are each their own outcome.
+// A ready service with entries lacking a semantic vector is a coverage gap, reported as a warning.
+func memoryServiceCheck(ctx context.Context) CheckResult {
+	const name = "memory:service"
+	const startRemedy = "Run 'takt-ai memory start --init'"
+	dir, err := memory.ResolveDir()
 	if err != nil {
-		return CheckResult{Name: name, Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram diagnostics unreachable at %s: %s", u, err)}
+		return CheckResult{Name: name, Status: CheckStatusFail, Detail: "memory directory cannot be resolved: " + err.Error()}
 	}
-	if unknown, available := unknownProjectDetail(status, body); unknown {
-		return CheckResult{Name: name, Status: CheckStatusPass,
-			Detail: fmt.Sprintf("project %q has no Engram history yet (known: %s)", project, strings.Join(available, ", "))}
-	}
-	if status < 200 || status >= 300 {
-		return CheckResult{Name: name, Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram /doctor returned HTTP %d: %s", status, errMessage(body))}
-	}
-	var report struct {
-		Summary struct{ Total, OK, Warnings, Blocked, Errors int } `json:"summary"`
-		Checks  []struct {
-			CheckID      string `json:"check_id"`
-			Result       string `json:"result"`
-			Message      string `json:"message"`
-			SafeNextStep string `json:"safe_next_step"`
-		} `json:"checks"`
-	}
-	if json.Unmarshal(body, &report) != nil {
-		return CheckResult{Name: name, Status: CheckStatusWarn, Detail: "could not parse engram /doctor response"}
-	}
-	if report.Summary.Warnings+report.Summary.Blocked+report.Summary.Errors == 0 {
-		return CheckResult{Name: name, Status: CheckStatusPass,
-			Detail: fmt.Sprintf("%d engram diagnostic check(s), all clean", report.Summary.Total)}
-	}
-	var issues []string
-	var remedy string
-	for _, c := range report.Checks {
-		if c.Result == "ok" {
-			continue
+	status, health, err := memory.Assess(ctx, dir)
+	switch health {
+	case memory.HealthUnreachable:
+		return CheckResult{Name: name, Status: CheckStatusFail, Detail: "no memory service answers in " + dir, Remedy: startRemedy}
+	case memory.HealthMalformed:
+		return CheckResult{Name: name, Status: CheckStatusFail, Detail: fmt.Sprintf("the memory service in %s answered with a malformed response: %v", dir, err),
+			Remedy: "Stop whatever holds " + filepath.Join(dir, memory.SocketFile) + ", then run 'takt-ai memory start'"}
+	case memory.HealthNewerStore:
+		return CheckResult{Name: name, Status: CheckStatusFail, Detail: "the memory store is newer than this Takt build: " + status.Reason,
+			Remedy: "Update Takt to a release at least as new as the store"}
+	case memory.HealthNotReady:
+		result := CheckResult{Name: name, Status: CheckStatusFail, Detail: fmt.Sprintf("the memory service %s is not ready (%s): %s", status.Version, status.State, status.Reason)}
+		if status.State == memory.StateNoStore {
+			result.Remedy = startRemedy
 		}
-		issues = append(issues, fmt.Sprintf("%s: %s", c.CheckID, c.Message))
-		if remedy == "" {
-			remedy = c.SafeNextStep
-		}
-		if len(issues) == 3 {
-			break
-		}
+		return result
+	case memory.HealthUncovered:
+		return CheckResult{Name: name, Status: CheckStatusWarn, Detail: fmt.Sprintf("the memory service %s is ready, but %d of %d entries have no semantic vector", status.Version, status.Total-status.Covered, status.Total)}
 	}
-	return CheckResult{Name: name, Status: CheckStatusWarn,
-		Detail: fmt.Sprintf("engram diagnostics: %d ok, %d warning, %d blocked, %d error across %d check(s) — %s",
-			report.Summary.OK, report.Summary.Warnings, report.Summary.Blocked, report.Summary.Errors, report.Summary.Total, strings.Join(issues, "; ")),
-		Remedy: remedy}
-}
-
-// engramNeedsReviewCheck surfaces decisions Engram auto-flagged for review
-// (review_after passed) that nothing in Takt otherwise reads.
-func engramNeedsReviewCheck(project string) CheckResult {
-	const name = "engram:needs-review"
-	const limit = 5
-	u := fmt.Sprintf("%s/review?project=%s&limit=%d", engramBaseURL(), url.QueryEscape(project), limit)
-	status, body, err := fetch(u)
-	if err != nil {
-		return CheckResult{Name: name, Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram review list unreachable at %s: %s", u, err)}
-	}
-	if unknown, _ := unknownProjectDetail(status, body); unknown {
-		return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("project %q has no Engram history yet", project)}
-	}
-	if status < 200 || status >= 300 {
-		return CheckResult{Name: name, Status: CheckStatusWarn,
-			Detail: fmt.Sprintf("engram /review returned HTTP %d: %s", status, errMessage(body))}
-	}
-	var resp struct {
-		Observations []struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
-			Type  string `json:"type"`
-		} `json:"observations"`
-		Count int `json:"count"`
-	}
-	if json.Unmarshal(body, &resp) != nil {
-		return CheckResult{Name: name, Status: CheckStatusWarn, Detail: "could not parse engram /review response"}
-	}
-	if resp.Count == 0 {
-		return CheckResult{Name: name, Status: CheckStatusPass, Detail: "no observations are due for review"}
-	}
-	titles := make([]string, 0, len(resp.Observations))
-	for _, o := range resp.Observations {
-		titles = append(titles, fmt.Sprintf("#%d %q (%s)", o.ID, o.Title, o.Type))
-	}
-	hedge := ""
-	if resp.Count == limit {
-		hedge = fmt.Sprintf(" (showing first %d; more may exist)", limit)
-	}
-	return CheckResult{Name: name, Status: CheckStatusWarn,
-		Detail: fmt.Sprintf("%d observation(s) due for review%s: %s", resp.Count, hedge, strings.Join(titles, "; ")),
-		Remedy: "Record a fresh decision or observation via memory_record that reconfirms or supersedes the stale entry"}
+	return CheckResult{Name: name, Status: CheckStatusPass, Detail: fmt.Sprintf("the memory service %s is ready: %d entries, all with semantic vectors", status.Version, status.Total)}
 }
 
 func checkStatusForError(err error) CheckStatus {
@@ -517,9 +348,10 @@ func checkStatusForError(err error) CheckStatus {
 	return CheckStatusPass
 }
 
-// opencodeVersionCheck reports whether the installed OpenCode is new enough to
-// load Takt's plugins. Takt targets the V2 plugin API, and a V1 install skips
-// every Takt plugin without an error of its own.
+// opencodeVersionCheck reports whether the installed OpenCode meets the minimum
+// release Takt supports (opencodeapi.MinimumVersion). An older install skips
+// Takt's plugins or lacks the session identity the memory tools rely on, without
+// an error of its own.
 func opencodeVersionCheck() CheckResult {
 	const name = "opencode:version"
 	handshake, err := opencode.Handshake(context.Background())
@@ -549,11 +381,11 @@ func opencodeVFSPluginCheck(home string) CheckResult {
 	return opencodePluginCheck(home, "opencode:vfs-plugin", model.VFSPluginFile, "VFS plugin", "the governed VFS plugin")
 }
 
-// opencodeMemoryPluginCheck reports whether the governed memory writer is
-// deployed. Engram's MCP server is read-only; without this plugin an agent
-// cannot call memory_record even though its contract requires it.
+// opencodeMemoryPluginCheck reports whether the memory plugin is deployed.
+// Without it nothing binds each crew call to its session and agent, so the
+// memory tools refuse every call.
 func opencodeMemoryPluginCheck(home string) CheckResult {
-	return opencodePluginCheck(home, "opencode:memory-plugin", "takt-memory.ts", "Memory writer", "the memory writer that registers memory_record")
+	return opencodePluginCheck(home, "opencode:memory-plugin", "takt-memory.ts", "Memory binding", "the plugin that binds each crew memory call to its session and agent")
 }
 
 // opencodeSandboxAdapterCheck reports whether the sandbox adapter the VFS
@@ -648,22 +480,6 @@ func ClassifyFreeSpace(dir string, free uint64) CheckResult {
 	}
 }
 
-// fetch performs one GET and returns status plus body, capped so a
-// misbehaving server can't exhaust memory.
-func fetch(url string) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
-	if err != nil {
-		return 0, nil, err
-	}
-	resp, err := (&http.Client{Timeout: doctorHTTPTimeout}).Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	closeErr := resp.Body.Close()
-	return resp.StatusCode, data, errors.Join(readErr, closeErr)
-}
-
 // statfsFreeBytes reports bytes available to unprivileged users on dir's
 // filesystem (f_bsize * f_bavail).
 func statfsFreeBytes(dir string) (uint64, error) {
@@ -682,7 +498,7 @@ var checkIcons = map[CheckStatus]string{
 }
 
 // terminalText escapes control characters, line breaks included, in text a
-// check carries from outside (Engram responses, error bodies), so it can
+// check carries from outside (memory service responses, error bodies), so it can
 // neither drive the terminal nor forge report lines.
 func terminalText(s string) string {
 	var b strings.Builder

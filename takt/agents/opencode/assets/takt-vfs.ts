@@ -75,12 +75,16 @@ type CoordinatorResponse = Record<string, unknown> & {
   history?: GCCycle[]
 }
 // The IR-22 envelope: exactly these four fields.
-type MemoryIndex = { entries: number[]; next_after?: number }
-type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: MemoryIndex }
+type MemoryIDs = number[]
+type HandoffEnvelope = { result: string; additional_context: string; extra_artifacts: string[]; memory: MemoryIDs }
 // What the core delivers when the interface comes back: the envelope, with the
 // declared document's check and the ended session beside it, never inside.
-type InterlocutorReturn = { envelope: HandoffEnvelope; artifact?: { path: string; present: boolean }; child?: string; root?: string; notice: string }
+type InterlocutorReturn = { envelope: HandoffEnvelope; child?: string; root?: string; notice: string }
 type NotHeld = { aborted: false }
+// CycleClosing is the core's notice of a maintenance cycle that ended (PR-MNT-5).
+type CycleClosing = { cycle: string; outcome: string; unapplied_findings: unknown[] }
+const isCycleClosing = (value: unknown): value is CycleClosing =>
+  isResponseObject(value) && isString(value.cycle) && isString(value.outcome) && Array.isArray(value.unapplied_findings)
 type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
 // SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
 // a model this session has not seen complete work; the user may approve it.
@@ -96,23 +100,21 @@ export function modelName(value: unknown): string | undefined {
 export function withoutIdentity<Part extends { type: string; text: string }>(system: Part[], identity: string[]): Part[] {
   return system.map(part => ({ ...part, text: identity.reduce((text, block) => text.split(block).join(""), part.text) }))
 }
-type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | MemoryIndex | NotHeld | Record<string, unknown> | null
+type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | NotHeld | Record<string, unknown> | null
 const delegationOf = (value: unknown): Delegation | undefined =>
   value && isResponseObject(value) && typeof value.dispatch === "string" && typeof value.attempt === "string" && typeof value.root === "string" && typeof value.unit === "string" && typeof value.agent === "string" ? value as Delegation : undefined
 export function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
   return value !== null && "version" in value && "units" in value
 }
-export function isMemoryIndex(value: unknown): value is MemoryIndex {
-  return isResponseObject(value) && Array.isArray(value.entries) && value.entries.every(item => typeof item === "number") &&
-    isOptional(value.next_after, (n): n is number => typeof n === "number")
+export function isMemoryIDs(value: unknown): value is MemoryIDs {
+  return Array.isArray(value) && value.every(item => typeof item === "number")
 }
 export function isHandoffEnvelope(value: unknown): value is HandoffEnvelope {
   return isResponseObject(value) && Object.keys(value).length === 4 && typeof value.result === "string" && typeof value.additional_context === "string" &&
-    isStringArray(value.extra_artifacts) && isMemoryIndex(value.memory)
+    isStringArray(value.extra_artifacts) && isMemoryIDs(value.memory)
 }
 export function isInterlocutorReturn(value: Record<string, unknown>): value is InterlocutorReturn {
-  return isHandoffEnvelope(value.envelope) && isString(value.notice) && isOptional(value.child, isString) && isOptional(value.root, isString) &&
-    isOptional(value.artifact, (a): a is { path: string; present: boolean } => isResponseObject(a) && isString(a.path) && isBoolean(a.present))
+  return isHandoffEnvelope(value.envelope) && isString(value.notice) && isOptional(value.child, isString) && isOptional(value.root, isString)
 }
 type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[] }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
@@ -227,7 +229,6 @@ export function parseCoordinationResponse(value: unknown, verb: string[], action
   if (value === null) return null
   const result = responseObject(value, verb.join(" "))
   if (isInterlocutorReturn(result)) return result
-  if (action === "lent_entries" && isMemoryIndex(result)) return result
   if (verb[0] === "dispatch" && ["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"].includes(String(action))) return result
   if (verb[0] === "gc" && action === "prompt" && typeof result.allowed === "boolean") return result
   if (action === "session_deleted" && result.aborted === false) return { aborted: false }
@@ -250,6 +251,13 @@ export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
 const MAINTENANCE_DUE =
   "A cleanup cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
 const MAINTENANCE_DONE = "The cleanup cycle concluded. Delegation and normal work continue."
+// closingNotice reports how a cycle ended and the findings it left unapplied, which only the cycle record reports.
+const closingNotice = (closing: CycleClosing) => {
+  const findings = closing.unapplied_findings.length
+    ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.`
+    : "No finding was left unapplied."
+  return `Cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
+}
 
 // SANDBOX_ADAPTER is the sibling module takt-ai deploys next to this plugin. It
 // wraps a command with @anthropic-ai/sandbox-runtime; without it no shell
@@ -314,8 +322,8 @@ function withText<C>(content: string | ReadonlyArray<C> | undefined, text: strin
   if (typeof content === "string") return `${content}\n\n${text}`
   return [...content, { type: "text" as const, text }]
 }
-// engramRefs renders Engram entry IDs the way agents cite them.
-const engramRefs = (ids: number[]) => ids.map(id => `Engram #${id}`).join(", ")
+// entryRefs renders memory entry IDs the way agents cite them.
+const entryRefs = (ids: number[]) => ids.map(id => `#${id}`).join(", ")
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
@@ -344,12 +352,15 @@ const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknow
 
 // GC_LANE_TOOLS are the tools each GC lane keeps besides its gc_* tools: both
 // read the workspace natively to investigate or judge, and the verifier keeps
-// everything an ordinary verification uses (shell, web, Engram reads); only the
-// collector stages its authorized change.
+// the shell an ordinary verification uses; neither lane has a memory or web tool,
+// and only the collector stages its authorized change.
 const GC_LANE_TOOLS: Record<string, string[]> = {
-  collector: ["gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change", "read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete", "memory_record"],
-  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash", "webfetch", "websearch", "engram_mem_current_project", "engram_mem_get_observation", "engram_mem_context", "memory_record", "memory_search"],
+  collector: ["gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change", "read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete"],
+  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash"],
 }
+
+// Prefixed names of the memory tools this plugin names, rendered from the Go constants that define them.
+const MEMORY_TOOLS: { record: string; read: string } = "__TAKT_MEMORY_TOOLS__" as unknown as never
 
 // gcSessionPermissions is the ruleset a GC child session is created with: only
 // its lane's tools survive. A tool whose last matching rule is a blanket deny
@@ -910,6 +921,8 @@ export default Plugin.define({
     // GC policy and lifecycle live in Go. This queue only transports host events
     // and API-created child identities; no event handler waits for model work.
     let gcQueue: Promise<void> = Promise.resolve()
+    // closings are the notices of cycles that ended, held until the orchestrator's next context carries them.
+    const closings: CycleClosing[] = []
     // GC lane authority and prompt dispositions live in history/core.
     // phases and trigger bookkeeping, `dispatch` for ordinary crew admission
     // and lifecycle. Neither is the model's to choose; each call site below
@@ -923,7 +936,9 @@ export default Plugin.define({
       if (code !== 0) throw new Error(`${verb.join(" ")} ${asString(request.action, "unknown")}: ${err || out}`)
       const parsed: unknown = JSON.parse(out)
       if (isResponseObject(parsed) && parsed.ok === false) throw new VFSRefusal(asString(parsed.error, "coordination refused"), vfsResponse(parsed, false))
-      return parseCoordinationResponse(parsed, verb, request.action)
+      const result = parseCoordinationResponse(parsed, verb, request.action)
+      if (isResponseObject(result) && "closing" in result && isCycleClosing(result.closing)) closings.push(result.closing)
+      return result
     }
     const coordinate = (request: Record<string, unknown>): Promise<DispatchResponse> => {
       return spawnCoordination(["gc", "coordinate"], request)
@@ -1192,13 +1207,13 @@ export default Plugin.define({
       scheduleGC()
     })
 
-    // collectDelivery returns the Engram IDs a completed producer delivered for
+    // collectDelivery returns the memory entry IDs a completed producer delivered for
     // its unit. Bounded to one retry: a producer that forgot deliver_result gets
     // a single nudge, never an unbounded prompt loop.
     async function collectDelivery(delegation: string, child: string | undefined): Promise<number[]> {
       let d = await execution(delegation)
       if (!d?.delivery?.length && child) {
-        await promptChild(child, "Call deliver_result with this delegation's completed Engram entry IDs before ending your turn.")
+        await promptChild(child, "Call deliver_result with this delegation's completed Takt memory entry IDs before ending your turn.")
         await ctx.session.wait({ sessionID: child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
         d = await execution(delegation)
       }
@@ -1226,7 +1241,7 @@ export default Plugin.define({
           if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "")) {
             const delivered = await collectDelivery(delegation, d.child)
             // The orchestrator receives the delivered IDs with the result itself.
-            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${engramRefs(delivered)}`) }
+            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${entryRefs(delivered)}`) }
           }
         } finally {
           try { await endDelegation(delegation, d, event) }
@@ -1248,7 +1263,8 @@ export default Plugin.define({
     // included, reaches the orchestrator as the child's own notification.
     async function settleBackground(child: string) {
       const d = await executionFor(child)
-      if (d?.background) await reconcileStoredDelegations()
+      if (!d?.background) return
+      await reconcileStoredDelegations()
     }
 
     async function adoptChild(session: string, agent: string, invocation?: Pick<Delegation,"dispatch"|"attempt">): Promise<Delegation | undefined> {
@@ -1301,9 +1317,9 @@ export default Plugin.define({
       if (active) {
         maintenanceAnnounced = true
         event.system.push({ type: "text", text: MAINTENANCE_DUE })
-      } else if (maintenanceAnnounced) {
+      } else if (maintenanceAnnounced || closings.length) {
         maintenanceAnnounced = false
-        event.system.push({ type: "text", text: MAINTENANCE_DONE })
+        event.system.push({ type: "text", text: [MAINTENANCE_DONE, ...closings.splice(0).map(closingNotice)].join(" ") })
       }
     })
 
@@ -1602,10 +1618,10 @@ export default Plugin.define({
 
       editor.add({
         name: "dispatch_inputs",
-        description: "Before delegating a unit, declare the Engram IDs of the invariants it consumes; an empty list declares that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
+        description: "Before delegating a unit, declare the Takt memory entry IDs of the invariants it consumes; an empty list declares that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
         input: obj({
           work_unit_id: str("The unit the delegation will be named after"),
-          result_ids: { type: "array", items: { type: "integer" }, description: "Existing Engram entry IDs of the invariants this unit consumes; empty when none has been recorded yet" },
+          result_ids: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the invariants this unit consumes; empty when none has been recorded yet" },
         }, ["work_unit_id", "result_ids"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ work_unit_id: string; result_ids?: number[] }>(value)
@@ -1745,25 +1761,26 @@ export default Plugin.define({
       // the tools, so no tool grant in the agent's rules answers them.
       editor.add({
         name: "dispatch_switch",
-        description: "Switch the active interlocutor role to another specialist for the rest of this conversation. The user is asked to accept the target specialist and objective before the switch takes effect; on a refusal, reevaluate with the user.",
+        description: "Lend the interlocutor role to a direct-interlocutor specialist until it hands it back or the user aborts. The user is asked to accept the target specialist and objective before the switch takes effect; on a refusal, reevaluate with the user.",
         input: obj({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
-          requirements: str("Requirements for the incoming interlocutor: paths to formal, finalized documents, useful known Engram IDs, and settled decisions; declare explicit emptiness when none exists"),
+          requirements: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the knowledge the incoming interlocutor needs: finalized documents and settled decisions; an empty list states that nothing useful exists" },
           client: str("Client-facing context for the incoming interlocutor"),
-          expected_artifact: str("Repository path for the incoming specialist's standard document; sent to it at the switch"),
-        }, ["target_agent", "objective"]),
+        }, ["target_agent", "objective", "requirements"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ target_agent: string; objective: string; requirements?: string; client?: string; expected_artifact?: string }>(value)
+          const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client?: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_switch belongs to the root orchestrator")
-          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: args.requirements ?? "", client: args.client ?? "" }, c)
+          // A switch that would be refused is returned to the agent before the user is asked.
+          await dispatchAction({ action: "validate_switch", session, agent: args.target_agent, requirements: args.requirements })
+          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client ?? "" }, c)
+          const requirements = args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"
           const text = [
             "You are taking over as the active interlocutor for this workspace.",
             `Objective: ${args.objective}`,
-            args.requirements ? `Requirements: ${args.requirements}` : undefined,
+            `Requirements: ${requirements}`,
             args.client ? `Client: ${args.client}` : undefined,
-            args.expected_artifact ? `Standard artifact path: ${args.expected_artifact}` : undefined,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,
@@ -1772,7 +1789,7 @@ export default Plugin.define({
           })
           let result: DispatchResponse
           try {
-            result = await governed(c, { action: "switch", session, child, agent: args.target_agent, artifact: args.expected_artifact })
+            result = await governed(c, { action: "switch", session, child, agent: args.target_agent, requirements: args.requirements })
           } catch (error) {
             // The switch never registered, so the child is stopped rather than
             // left dangling unprompted.
@@ -1792,34 +1809,21 @@ export default Plugin.define({
         },
       })
       editor.add({
-        name: "dispatch_lent_entries",
-        description: "Page the memory index of a lent session whose returned envelope reports more entries, from its next_after.",
-        input: obj({
-          child: str("The lent session the envelope came from"),
-          after: { type: "integer", description: "The next_after of the previous page" },
-        }, ["child", "after"]),
-        async execute(value: unknown, c) {
-          const args = toolInput<{ child: string; after: number }>(value)
-          const session = await rootSession(c.sessionID)
-          if (c.sessionID !== session) throw new Error("dispatch_lent_entries belongs to the root orchestrator")
-          const page = await dispatchAction({ action: "lent_entries", session, child: args.child, after: args.after })
-          return { content: JSON.stringify(page) }
-        },
-      })
-      editor.add({
         name: "dispatch_handoff",
         description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. The user is asked to accept what is handed back (result, additional context, extra artifacts) before the handoff takes effect.",
         input: obj({
           result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
           additional_context: str("Context to carry back to the base"),
-          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional extra filesystem copies; none gates the handoff" },
-          result_ids: { type: "array", items: { type: "integer" }, description: "One existing Engram entry ID per delivered result; required for Standard handoff" },
+          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional references to extra evidence: `#<id>` of a Takt memory entry you recorded, or a filesystem copy the user ordered; none gates the handoff" },
+          result_ids: { type: "array", items: { type: "integer" }, description: "One current Takt memory entry ID per delivered result; required for Standard handoff" },
         }, ["result", "additional_context", "extra_artifacts", "result_ids"]),
         // Not built on dispatch(): the caller here is the temporary holder,
         // never the root, so dispatch()'s root-only guard does not apply.
         async execute(value: unknown, c) {
           const args = toolInput<{ result: string; additional_context: string; extra_artifacts: string[]; result_ids: number[] }>(value)
           const session = await rootSession(c.sessionID)
+          // A handoff that would be refused is returned to the holder before the user is asked.
+          await dispatchAction({ action: "validate_handoff", session, child: c.sessionID, result: args.result, extra_artifacts: args.extra_artifacts, result_ids: args.result_ids })
           await confirmWithUser("interlocutor_handoff", c.agent, { result: args.result, additional_context: args.additional_context, extra_artifacts: (args.extra_artifacts ?? []).join(", "), result_ids: (args.result_ids ?? []).join(", ") }, c)
           // A refused handoff throws here, and its reason is all the holder
           // receives: it corrects and retries.
@@ -1878,7 +1882,7 @@ export default Plugin.define({
           const consumed = (await executionFor(c.sessionID, c.agent))?.inputs ?? []
           const res = await taktUnlocked("bind", { ...who, scope: args.scope })
           const key = res.key ?? (() => { throw new Error("vfs bind response omitted key") })()
-          return { content: `Bound as ${c.agent} to scope ${JSON.stringify(args.scope)}; unit ${who.work_unit_id}, attempt ${res.attempt_id}; invariants ${engramRefs(consumed) || "none"} at version ${res.invariants_version}; author_key ${key}` }
+          return { content: `Bound as ${c.agent} to scope ${JSON.stringify(args.scope)}; unit ${who.work_unit_id}, attempt ${res.attempt_id}; invariants ${entryRefs(consumed) || "none"} at version ${res.invariants_version}; author_key ${key}` }
         },
       })
       // authorKey passes a model-named author_key through only when it is a string.
@@ -2000,26 +2004,25 @@ export default Plugin.define({
       })
       editor.add({
         name: "deliver_result",
-        description: "Deliver this delegation's completed result: the Engram entry IDs already recorded for it. Call this before your turn ends.",
+        description: "Deliver this delegation's completed result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ". Call this before your turn ends.",
         input: obj({
-          result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Existing Engram entry IDs this delegation delivers" },
+          result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
         }, ["result_ids"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ result_ids: number[] }>(input)
-          const root = await rootSession(c.sessionID)
           // Only the session a running delegation runs in delivers for it: an
           // earlier attempt's session of the same unit never credits this one.
           const call=c.id ? invocations.get(`${c.sessionID}:${c.id}`) : undefined
           const running = await adoptChild(c.sessionID, c.agent,call)
           const count = Array.isArray(args.result_ids) ? args.result_ids.length : 0
           if (!running) {
-            await governed(c, { action: "validate_results", session: root, agent: c.agent, result_ids: args.result_ids })
+            await governed(c, { action: "validate_results", session: c.sessionID, agent: c.agent, result_ids: args.result_ids })
             // A delegated session that runs no delegation has nobody to deliver
             // to; a top-level session (an interlocutor) hands off its results itself.
             if ((await ctx.session.get({ sessionID: c.sessionID })).parentID) {
-              throw new Error("deliver_result belongs to a running delegation, and this session runs none: nothing was credited; return the result IDs in your reply instead")
+              throw new Error("deliver_result belongs to a running delegation, and this session runs none: nothing was credited; only a result producer's delegation delivers, so report the Takt memory entry IDs you recorded in your reply to the caller")
             }
-            return { content: `Validated ${count} result id(s); no delegation to credit them to` }
+            return { content: `Validated ${count} result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff` }
           }
           await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids })
           return { content: `Delivered ${count} result id(s)` }
@@ -2087,7 +2090,7 @@ export default Plugin.define({
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
         if (consumed) event.system.push({ type: "text", text: consumed.length > 0
-          ? `Work unit ${unit} consumes these invariants: ${engramRefs(consumed)}. Read each with mem_get_observation; they bind as read-only and prevail over any restatement in the brief.`
+          ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
           : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }

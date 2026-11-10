@@ -30,13 +30,11 @@ const (
 	OpenCodeCLIConfigFile = "cli.json"
 	// OpenCodeCLIConfigRelativePath is the slash-separated manifest path of the terminal client configuration.
 	OpenCodeCLIConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeCLIConfigFile
-	// AgentsPromptFile is OpenCode's global agent prompt file.
-	AgentsPromptFile = "AGENTS.md"
+	// OpenCodeSkillsDir is the home-relative directory OpenCode V2 loads skills from.
+	OpenCodeSkillsDir = ".opencode/skills"
 
 	// OpenCodePluginsDir is the directory OpenCode loads plugins from.
 	OpenCodePluginsDir = "plugins"
-	// EngramPluginFile is the deployed Engram memory plugin filename.
-	EngramPluginFile = "engram.ts"
 	// VFSPluginFile is the deployed governed-VFS plugin filename.
 	VFSPluginFile = "takt-vfs.ts"
 )
@@ -56,28 +54,26 @@ const (
 // unrestricted; Takt imposes no domain of its own.
 const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
 
-// Engram endpoint single source of truth: env override name and its default.
-const (
-	// EnvEngramURL names the environment variable overriding the default endpoint.
-	EnvEngramURL = "ENGRAM_BASE_URL"
-	// DefaultEngramURL is the local Engram server endpoint used without the override.
-	DefaultEngramURL = "http://127.0.0.1:7437"
-)
-
-// SectionEngramProtocol is the markdown section ID shared by inject and remove.
-const SectionEngramProtocol = "engram-protocol"
-
 // OpenCodeConfigPath returns <home>/.config/opencode/opencode.json.
 func OpenCodeConfigPath(home string) string {
 	return filepath.Join(home, OpenCodeConfigDir, OpenCodeConfigFile)
 }
 
-// OpenCodePromptPath returns <home>/.config/opencode/AGENTS.md.
-func OpenCodePromptPath(home string) string {
-	return filepath.Join(home, OpenCodeConfigDir, AgentsPromptFile)
-}
-
 // OpenCodePluginPath returns <home>/.config/opencode/plugins/<file>.
 func OpenCodePluginPath(home, file string) string {
 	return filepath.Join(home, OpenCodeConfigDir, OpenCodePluginsDir, file)
+}
+
+// AgentsPromptFile is OpenCode's global agent prompt file.
+const AgentsPromptFile = "AGENTS.md"
+
+// EngramPluginFile is the deployed Engram memory plugin filename.
+const EngramPluginFile = "engram.ts"
+
+// SectionEngramProtocol is the markdown section ID shared by inject and remove.
+const SectionEngramProtocol = "engram-protocol"
+
+// OpenCodePromptPath returns <home>/.config/opencode/AGENTS.md.
+func OpenCodePromptPath(home string) string {
+	return filepath.Join(home, OpenCodeConfigDir, AgentsPromptFile)
 }

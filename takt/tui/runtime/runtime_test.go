@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,7 +24,7 @@ import (
 
 func TestAdapterLifecycleActions(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 
 	install, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 	if err != nil || len(install.Changed) == 0 {
@@ -47,7 +48,7 @@ func TestAdapterUpgradeHonorsReplaceAndPreserve(t *testing.T) {
 	t.Cleanup(func() { setup.BuildVersion = previous })
 	for _, preserve := range []bool{false, true} {
 		root := t.TempDir()
-		adapter := testAdapter(nil)
+		adapter := testAdapter(t, nil)
 		setup.BuildVersion = "0.0.25"
 		install, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 		if err != nil {
@@ -116,7 +117,7 @@ func olderInstallThenEdit(t *testing.T, root, path string) {
 
 func TestAdapterInstallDeploysSkills(t *testing.T) {
 	root := t.TempDir()
-	result, err := testAdapter(nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
+	result, err := testAdapter(t, nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root})
 	if err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -139,7 +140,7 @@ func TestAdapterInstallDeploysSkills(t *testing.T) {
 
 func TestAdapterSyncPreservesModifiedAndRedeploysDeletedSkills(t *testing.T) {
 	skillPath, embedded := skillsutil.FirstSkill(t)
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 
 	t.Run("locally modified skill is preserved", func(t *testing.T) {
 		root := t.TempDir()
@@ -193,7 +194,7 @@ func TestAdapterSyncPreservesModifiedAndRedeploysDeletedSkills(t *testing.T) {
 
 func TestAdapterUninstallRemovesSkills(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -227,7 +228,7 @@ func TestActionCommandReturnsErrorMessage(t *testing.T) {
 
 func TestAdapterExecuteCarriesComponents(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{
 		Action:     runtime.ActionInstall,
 		RootDir:    root,
@@ -256,7 +257,7 @@ func TestAdapterExecuteCarriesComponents(t *testing.T) {
 // definitions are not substituted for a different installed version.
 func TestCorrectDriftBlockedOnVersionMismatch(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	previous := setup.BuildVersion
 	setup.BuildVersion = "1.0.0"
 	t.Cleanup(func() { setup.BuildVersion = previous })
@@ -284,7 +285,7 @@ func TestCorrectDriftBlockedOnVersionMismatch(t *testing.T) {
 // handoff runs inside the runtime action.
 func TestAdapterUninstallAppliesRetentionChoices(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -317,7 +318,7 @@ func TestAdapterUninstallAppliesRetentionChoices(t *testing.T) {
 func TestAdapterUninstallEngramLeaveIsDefault(t *testing.T) {
 	for _, choice := range []string{"", lifecycle.EngramLeave} {
 		root := t.TempDir()
-		adapter := testAdapter(nil)
+		adapter := testAdapter(t, nil)
 		if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 			t.Fatalf("install error = %v", err)
 		}
@@ -341,7 +342,7 @@ func TestAdapterUninstallEngramLeaveIsDefault(t *testing.T) {
 // remover is honest Incomplete, never a failure.
 func TestAdapterUninstallEngramRemoveReportsIncomplete(t *testing.T) {
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -381,7 +382,7 @@ func TestAdapterUninstallEngramRetainDeliversMemoryBesideKeptFiles(t *testing.T)
 	_ = fixture.Close()
 
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -441,8 +442,8 @@ func TestInstalledPreviewResetsOpenCodeModelToDefault(t *testing.T) {
 	}
 }
 
-func testAdapter(calls *[][]string) runtime.Adapter {
-	return runtime.NewTestAdapter(lifecycle.Runtime{ProviderActions: setup.ProviderRuntime{
+func testAdapter(t *testing.T, calls *[][]string) runtime.Adapter {
+	return runtime.NewTestAdapter(lifecycle.Runtime{Model: testutil.FakeModel(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run: func(_ context.Context, program string, args ...string) ([]byte, error) {
 			if calls != nil {
@@ -459,7 +460,7 @@ func testAdapter(calls *[][]string) runtime.Adapter {
 func TestCommandReportsCompletedWhenCancelArrivesLate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter := runtime.NewTestAdapter(lifecycle.Runtime{ProviderActions: setup.ProviderRuntime{
+	adapter := runtime.NewTestAdapter(lifecycle.Runtime{Model: testutil.FakeModel(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run: func(context.Context, string, ...string) ([]byte, error) {
 			cancel()
@@ -479,7 +480,7 @@ func TestCorrectDriftCancellationBoundaries(t *testing.T) {
 	for _, partial := range []bool{false, true} {
 		t.Run(map[bool]string{false: "no changes", true: "partial"}[partial], func(t *testing.T) {
 			root := t.TempDir()
-			if _, err := testAdapter(nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
+			if _, err := testAdapter(t, nil).Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 				t.Fatal(err)
 			}
 			path := ".config/opencode/opencode.json"
@@ -488,7 +489,7 @@ func TestCorrectDriftCancellationBoundaries(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			adapter := runtime.NewTestAdapter(lifecycle.Runtime{ProviderActions: setup.ProviderRuntime{
+			adapter := runtime.NewTestAdapter(lifecycle.Runtime{Model: testutil.FakeModel(t), ProviderActions: setup.ProviderRuntime{
 				LookPath: func(string) (string, error) { return "/fake/opencode", nil },
 				Run:      func(context.Context, string, ...string) ([]byte, error) { cancel(); return nil, context.Canceled },
 			}})

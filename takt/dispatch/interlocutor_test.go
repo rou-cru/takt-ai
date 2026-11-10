@@ -16,6 +16,7 @@
 package dispatch_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -31,9 +32,71 @@ const interlocutorAgent = "pm"
 // model.RoleDirectInterlocutor.
 const ineligibleAgent = "analyst"
 
+// noBind is the bind of a switch whose memory binding is not under test.
+func noBind() error { return nil }
+
+// refusedSwitches are the two reasons a switch is refused before it binds: a
+// target outside the interlocutor role and a root that already has a holder.
+func refusedSwitches(t *testing.T) map[string]func() (*history.History, string) {
+	return map[string]func() (*history.History, string){
+		"role": func() (*history.History, string) { return newHistory(t), ineligibleAgent },
+		"holder": func() (*history.History, string) {
+			h := newHistory(t)
+			if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
+				t.Fatalf("first switch: %v", e)
+			}
+			return h, interlocutorAgent
+		},
+	}
+}
+
+func TestValidateSwitchRefusesWithoutRecording(t *testing.T) {
+	for name, setup := range refusedSwitches(t) {
+		h, agent := setup()
+		before := len(h.Entries())
+		if dispatch.ValidateSwitch(h, "root-1", agent) == nil {
+			t.Fatalf("%s: expected the switch to be refused", name)
+		}
+		if len(h.Entries()) != before {
+			t.Fatalf("%s: ValidateSwitch recorded an entry", name)
+		}
+	}
+	if e := dispatch.ValidateSwitch(newHistory(t), "root-1", interlocutorAgent); e != nil {
+		t.Fatalf("expected an eligible switch to validate, got %v", e)
+	}
+}
+
+func TestRefusedSwitchNeverBindsAndRecordsTheDenial(t *testing.T) {
+	for name, setup := range refusedSwitches(t) {
+		h, agent := setup()
+		bound := false
+		before := len(h.Entries())
+		e := dispatch.Switch(h, "", "root-1", "child-2", agent, func() error { bound = true; return nil })
+		if e == nil || bound {
+			t.Fatalf("%s: err = %v, bound = %v; want a refusal without bind", name, e, bound)
+		}
+		entries := h.Entries()
+		if len(entries) != before+1 || entries[before].Kind != history.KindDenied {
+			t.Fatalf("%s: expected one denial entry, got %d new entries", name, len(entries)-before)
+		}
+	}
+}
+
+func TestFailedBindFailsTheSwitchAndRecordsNothing(t *testing.T) {
+	h := newHistory(t)
+	failure := errors.New("bind failed")
+	before := len(h.Entries())
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, func() error { return failure }); !errors.Is(e, failure) {
+		t.Fatalf("expected the bind error, got %v", e)
+	}
+	if len(h.Entries()) != before {
+		t.Fatal("a failed bind recorded an entry")
+	}
+}
+
 func TestSwitchDeniesIneligibleRole(t *testing.T) {
 	h := newHistory(t)
-	if dispatch.Switch(h, "", "root-1", "child-1", ineligibleAgent, "artifact.md") == nil {
+	if dispatch.Switch(h, "", "root-1", "child-1", ineligibleAgent, noBind) == nil {
 		t.Fatal("expected switch to a non-interlocutor role to be denied")
 	}
 	if holder := h.Project().Budgets("root-1").InterlocutorHolder; holder != "" {
@@ -43,7 +106,7 @@ func TestSwitchDeniesIneligibleRole(t *testing.T) {
 
 func TestSwitchSucceedsAndRecordsHolder(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	budgets := h.Project().Budgets("root-1")
@@ -53,17 +116,14 @@ func TestSwitchSucceedsAndRecordsHolder(t *testing.T) {
 	if budgets.InterlocutorAgent != interlocutorAgent {
 		t.Fatalf("expected agent %q, got %q", interlocutorAgent, budgets.InterlocutorAgent)
 	}
-	if budgets.InterlocutorArtifact != "artifact.md" {
-		t.Fatalf("expected artifact artifact.md, got %q", budgets.InterlocutorArtifact)
-	}
 }
 
 func TestSwitchRefusesChaining(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected first switch to succeed, got %v", e)
 	}
-	if dispatch.Switch(h, "", "root-1", "child-2", interlocutorAgent, "other.md") == nil {
+	if dispatch.Switch(h, "", "root-1", "child-2", interlocutorAgent, noBind) == nil {
 		t.Fatal("expected a second switch while a holder is active to be denied")
 	}
 	budgets := h.Project().Budgets("root-1")
@@ -74,7 +134,7 @@ func TestSwitchRefusesChaining(t *testing.T) {
 
 func TestHandoffDeniesNonHolderCaller(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if dispatch.Handoff(h, "", "root-1", "someone-else", "Standard") == nil {
@@ -84,7 +144,7 @@ func TestHandoffDeniesNonHolderCaller(t *testing.T) {
 
 func TestHandoffSucceedsForCurrentHolder(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if e := dispatch.Handoff(h, "", "root-1", "child-1", "Standard"); e != nil {
@@ -97,7 +157,7 @@ func TestHandoffSucceedsForCurrentHolder(t *testing.T) {
 
 func TestAbortDeniesInvalidOrigin(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if dispatch.Abort(h, "", "root-1", "child-1", "drift", "specialist") == nil {
@@ -110,7 +170,7 @@ func TestAbortDeniesInvalidOrigin(t *testing.T) {
 
 func TestAbortSucceedsFromHarnessOrigin(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if e := dispatch.Abort(h, "", "root-1", "child-1", "drift", "harness"); e != nil {
@@ -118,19 +178,6 @@ func TestAbortSucceedsFromHarnessOrigin(t *testing.T) {
 	}
 	if holder := h.Project().Budgets("root-1").InterlocutorHolder; holder != "" {
 		t.Fatalf("expected holder to be cleared, got %q", holder)
-	}
-}
-
-func TestExpectedArtifactReflectsActiveSwitch(t *testing.T) {
-	h := newHistory(t)
-	if got := dispatch.ExpectedArtifact(h, "root-1"); got != "" {
-		t.Fatalf("expected no expected artifact before any switch, got %q", got)
-	}
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
-		t.Fatalf("expected switch to succeed, got %v", e)
-	}
-	if got := dispatch.ExpectedArtifact(h, "root-1"); got != "artifact.md" {
-		t.Fatalf("expected artifact.md, got %q", got)
 	}
 }
 
@@ -149,7 +196,7 @@ func TestAbortWithoutHolderIsRefusedAndRecorded(t *testing.T) {
 
 func TestAbortOfNonHolderChildIsRefused(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	e := dispatch.Abort(h, "", "root-1", "other", "drift", "harness")
@@ -163,7 +210,7 @@ func TestAbortOfNonHolderChildIsRefused(t *testing.T) {
 
 func TestAbortWithEmptyChildAbortsTheCurrentHolder(t *testing.T) {
 	h := newHistory(t)
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if e := dispatch.Abort(h, "", "root-1", "", "drift", "harness"); e != nil {
@@ -187,7 +234,7 @@ func TestCurrentHolderReadsTheHolderSession(t *testing.T) {
 	if got := dispatch.CurrentHolder(h, "root-1"); got != "" {
 		t.Fatalf("expected no holder before any switch, got %q", got)
 	}
-	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, "artifact.md"); e != nil {
+	if e := dispatch.Switch(h, "", "root-1", "child-1", interlocutorAgent, noBind); e != nil {
 		t.Fatalf("expected switch to succeed, got %v", e)
 	}
 	if got := dispatch.CurrentHolder(h, "root-1"); got != "child-1" {
@@ -198,7 +245,7 @@ func TestCurrentHolderReadsTheHolderSession(t *testing.T) {
 func TestHeldRootFindsOnlyTheMatchingRoot(t *testing.T) {
 	h := newHistory(t)
 	for _, pair := range [][2]string{{"root-1", "child-1"}, {"root-2", "child-2"}} {
-		if e := dispatch.Switch(h, "", pair[0], pair[1], interlocutorAgent, "artifact.md"); e != nil {
+		if e := dispatch.Switch(h, "", pair[0], pair[1], interlocutorAgent, noBind); e != nil {
 			t.Fatalf("switch: %v", e)
 		}
 	}

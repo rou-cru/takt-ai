@@ -28,17 +28,17 @@ import (
 // InvariantSet is the reference the verification gate judges a staged delta
 // against, in the precedence order PR-VFS-CSL-3 fixes (user goal and
 // directives, the work unit's contract, the framework's planning artifacts).
-// An entry is either an Engram reference (see EngramInvariant), which pins
+// An entry is either a memory reference (see MemoryInvariant), which pins
 // itself because an entry is immutable and a revision is another entry, or a
 // workspace-relative path pinned by its content on disk.
 type InvariantSet []string
 
-// engramInvariantPrefix marks an invariant that is an Engram entry.
-const engramInvariantPrefix = "engram:"
+// memoryInvariantPrefix marks an invariant that is a Takt memory entry.
+const memoryInvariantPrefix = "takt_memory:"
 
-// EngramInvariant is the invariant that names the Engram entry id.
-func EngramInvariant(id int64) string {
-	return engramInvariantPrefix + strconv.FormatInt(id, 10)
+// MemoryInvariant is the invariant that names the memory entry id.
+func MemoryInvariant(id int64) string {
+	return memoryInvariantPrefix + strconv.FormatInt(id, 10)
 }
 
 // invariantsVersionLocked is the set's version: it changes whenever a declared
@@ -47,12 +47,12 @@ func EngramInvariant(id int64) string {
 func (f *FS) invariantsVersionLocked(set InvariantSet) (string, error) {
 	var pinned []string
 	for _, invariant := range set {
-		if strings.HasPrefix(invariant, engramInvariantPrefix) {
-			id, perr := strconv.ParseInt(strings.TrimPrefix(invariant, engramInvariantPrefix), 10, 64)
+		if strings.HasPrefix(invariant, memoryInvariantPrefix) {
+			id, perr := strconv.ParseInt(strings.TrimPrefix(invariant, memoryInvariantPrefix), 10, 64)
 			if perr != nil || id <= 0 {
-				return "", fmt.Errorf("%w: invariant %q is not a valid Engram reference", ErrIdentity, invariant)
+				return "", fmt.Errorf("%w: invariant %q is not a valid Takt memory entry reference", ErrIdentity, invariant)
 			}
-			pinned = append(pinned, EngramInvariant(id))
+			pinned = append(pinned, MemoryInvariant(id))
 			continue
 		}
 		base, err := f.physical(invariant)
@@ -226,4 +226,12 @@ func (f *FS) failingVerdictsLocked(key AgentID) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrFailingVerdict, strings.Join(findings, "; "))
+}
+
+// engramInvariantPrefix marks an invariant that is an Engram entry.
+const engramInvariantPrefix = "engram:"
+
+// EngramInvariant is the invariant that names the Engram entry id.
+func EngramInvariant(id int64) string {
+	return engramInvariantPrefix + strconv.FormatInt(id, 10)
 }

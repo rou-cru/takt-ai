@@ -96,10 +96,10 @@ const root = { sessionID: "root", agent: "takt" }
 // 1a. A successful switch registers the created child with Go before ever
 // prompting it: order, not just presence, proves the fix.
 let mark = order.length
-await tools.dispatch_switch.execute({ target_agent: "pm", objective: "obj" }, root)
+await tools.dispatch_switch.execute({ target_agent: "pm", objective: "obj", requirements: [] }, root)
 let segment = order.slice(mark)
 const createdChild = segment.find(e => e.startsWith("create:")).split(":")[1]
-assert.deepEqual(segment, [`create:${createdChild}`, "dispatch:switch", `prompt:${createdChild}`])
+assert.deepEqual(segment, ["dispatch:validate_switch", `create:${createdChild}`, "dispatch:switch", `prompt:${createdChild}`])
 assert.equal(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c).action === "switch")).child, createdChild)
 
 // 1b. A registration failure stops the never-prompted child instead of
@@ -107,10 +107,10 @@ assert.equal(requestOf(calls.findLast(c => c.verb === "dispatch" && requestOf(c)
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "switch"
   ? { stdout: "", stderr: "harness: the interlocutor interface is already held; no chaining", code: 1 } : undefined
 mark = order.length
-await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "obj2" }, root), /no chaining/)
+await assert.rejects(tools.dispatch_switch.execute({ target_agent: "pm", objective: "obj2", requirements: [] }, root), /no chaining/)
 segment = order.slice(mark)
 const failedChild = segment.find(e => e.startsWith("create:")).split(":")[1]
-assert.deepEqual(segment, [`create:${failedChild}`, "dispatch:switch", `interrupt:${failedChild}`])
+assert.deepEqual(segment, ["dispatch:validate_switch", `create:${failedChild}`, "dispatch:switch", `interrupt:${failedChild}`])
 assert.equal(prompted.includes(failedChild), false, "a never-registered switch child was prompted")
 assert.equal(interrupted.includes(failedChild), true)
 respond = () => undefined
@@ -137,7 +137,7 @@ assert.equal(requestOf(ticks()[0]).session, "root", "rootSession() did not resol
 // 3. A dispatch_handoff from that same switch-created child reaches the
 // resolved root, not the child's own raw session id.
 const holder = { sessionID: "switch-root-child", agent: "pm" }
-const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: { entries: [] } }
+const envelope = { result: "Standard", additional_context: "ctx", extra_artifacts: [], memory: [] }
 respond = (call) => call.verb === "dispatch" && requestOf(call).action === "handoff"
   ? { stdout: JSON.stringify({ envelope, notice: "The interface is back from pm." }), stderr: "", code: 0 } : undefined
 mark = calls.filter(c => c.verb === "dispatch").length
