@@ -55,10 +55,10 @@ Errors are typed so consumers fail visibly and differently \(PR\-ART\-2: never m
 const DefaultTimeout = 10 * time.Second
 ```
 
-<a name="MinimumMajor"></a>MinimumMajor is the first OpenCode major release whose V2 API Takt targets; it mirrors opencode.MinimumVersion to keep this adapter decoupled.
+<a name="MinimumVersion"></a>MinimumVersion is the oldest OpenCode release Takt supports: v2.0.4 is the first to send \`\_meta\["ai.opencode/sessionID"\]\` on MCP tool calls, which the memory crew identity relies on.
 
 ```go
-const MinimumMajor = 2
+const MinimumVersion = "2.0.4"
 ```
 
 ## Variables

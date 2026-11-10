@@ -42,13 +42,11 @@ const (
     OpenCodeCLIConfigFile = "cli.json"
     // OpenCodeCLIConfigRelativePath is the slash-separated manifest path of the terminal client configuration.
     OpenCodeCLIConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeCLIConfigFile
-    // AgentsPromptFile is OpenCode's global agent prompt file.
-    AgentsPromptFile = "AGENTS.md"
+    // OpenCodeSkillsDir is the home-relative directory OpenCode V2 loads skills from.
+    OpenCodeSkillsDir = ".opencode/skills"
 
     // OpenCodePluginsDir is the directory OpenCode loads plugins from.
     OpenCodePluginsDir = "plugins"
-    // EngramPluginFile is the deployed Engram memory plugin filename.
-    EngramPluginFile = "engram.ts"
     // VFSPluginFile is the deployed governed-VFS plugin filename.
     VFSPluginFile = "takt-vfs.ts"
 )
@@ -66,21 +64,22 @@ const (
 )
 ```
 
-<a name="EnvEngramURL"></a>Engram endpoint single source of truth: env override name and its default.
-
-```go
-const (
-    // EnvEngramURL names the environment variable overriding the default endpoint.
-    EnvEngramURL = "ENGRAM_BASE_URL"
-    // DefaultEngramURL is the local Engram server endpoint used without the override.
-    DefaultEngramURL = "http://127.0.0.1:7437"
-)
-```
-
 <a name="AgentOpenCode"></a>AgentOpenCode names the OpenCode adapter, the identifier install, inject and verify agree on.
 
 ```go
 const AgentOpenCode = "opencode"
+```
+
+<a name="AgentsPromptFile"></a>AgentsPromptFile is OpenCode's global agent prompt file.
+
+```go
+const AgentsPromptFile = "AGENTS.md"
+```
+
+<a name="EngramPluginFile"></a>EngramPluginFile is the deployed Engram memory plugin filename.
+
+```go
+const EngramPluginFile = "engram.ts"
 ```
 
 <a name="EnvSandboxAllowedDomains"></a>EnvSandboxAllowedDomains names the environment variable with which the user opts shell sandboxes into a network allowlist: comma\-separated domain patterns such as "github.com,\*.npmjs.org". Unset or empty leaves the network unrestricted; Takt imposes no domain of its own.

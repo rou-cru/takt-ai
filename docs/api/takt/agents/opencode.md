@@ -259,7 +259,7 @@ TaktDagPluginArtifact returns the OpenCode TUI plugin rendering Takt's read\-onl
 func TaktMemoryPluginArtifact(taktAIBinary string) Artifact
 ```
 
-TaktMemoryPluginArtifact returns the OpenCode plugin exposing the memory tools; taktAIBinary is the absolute takt\-ai path the plugin spawns.
+TaktMemoryPluginArtifact returns the OpenCode plugin that binds each crew memory call to its caller; taktAIBinary is the absolute takt\-ai path the plugin runs to start the memory service; the plugin learns the service socket from what \`memory start\` prints.
 
 <a name="TaktSandboxAdapterArtifact"></a>
 ### func TaktSandboxAdapterArtifact
