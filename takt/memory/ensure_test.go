@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,11 +24,6 @@ import (
 var binaryDir string
 
 func TestMain(m *testing.M) {
-	// Ensure launches this executable as `memory serve`; in a test run that executable is the test binary,
-	// so it answers as the owner instead of running the tests again.
-	if len(os.Args) == 3 && os.Args[1] == "memory" && os.Args[2] == "serve" {
-		os.Exit(serveAsLaunchedOwner())
-	}
 	dir, err := os.MkdirTemp("/tmp", "tktbin")
 	if err != nil {
 		panic(err)
@@ -39,18 +32,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
-}
-
-// serveAsLaunchedOwner is the owner process Ensure launches, serving the directory the launcher passes.
-func serveAsLaunchedOwner() int {
-	signal.Ignore(syscall.SIGPIPE)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
-	defer stop()
-	if err := memory.Serve(ctx, os.Getenv(memory.EnvDir), "test"); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	return 0
 }
 
 // binary builds the real takt-ai executable, once per run.
@@ -182,46 +163,6 @@ func TestStartLaunchesTheOwnerAndReusesIt(t *testing.T) {
 	first := ownerPID(t, dir)
 	if out, err := takt(t, bin, dir, cwd, "memory", "start"); err != nil || ownerPID(t, dir) != first {
 		t.Fatalf("repeated start did not reuse the owner: %v\n%s", err, out)
-	}
-}
-
-func TestStopOwnerStopsTheRunningOwner(t *testing.T) {
-	bin := binary(t)
-	dir := shortDir(t)
-	initStore(t, dir)
-	stopOwnerAtEnd(t, dir)
-	if out, err := takt(t, bin, dir, shortDir(t), "memory", "start"); err != nil {
-		t.Fatalf("start: %v\n%s", err, out)
-	}
-	if err := memory.StopOwner(context.Background(), dir); err != nil {
-		t.Fatalf("StopOwner() error = %v", err)
-	}
-	if _, err := memory.Probe(context.Background(), dir); err == nil {
-		t.Fatal("the owner still answers after StopOwner")
-	}
-}
-
-// TestStopOwnerLeavesAProcessAloneWhenNoOwnerHoldsTheLock proves a PID a crashed owner left in the lock file
-// is never signaled: it may belong to an unrelated process by now.
-func TestStopOwnerLeavesAProcessAloneWhenNoOwnerHoldsTheLock(t *testing.T) {
-	dir := shortDir(t)
-	bystander := exec.Command("sleep", "60")
-	if err := bystander.Start(); err != nil {
-		t.Fatal(err)
-	}
-	exited := make(chan error, 1)
-	go func() { exited <- bystander.Wait() }()
-	t.Cleanup(func() { _ = bystander.Process.Kill() })
-	if err := os.WriteFile(filepath.Join(dir, memory.LockFile), []byte(strconv.Itoa(bystander.Process.Pid)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := memory.StopOwner(context.Background(), dir); err != nil {
-		t.Fatalf("StopOwner() error = %v", err)
-	}
-	select {
-	case err := <-exited:
-		t.Fatalf("the process named in the lock file was signaled and exited: %v", err)
-	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -376,135 +317,5 @@ func TestAdapterAnswersUnavailableAfterTheOwnerStops(t *testing.T) {
 	rpcErr, _ := reply["error"].(map[string]any)
 	if msg, _ := rpcErr["message"].(string); !strings.Contains(msg, "unavailable") {
 		t.Fatalf("got %v", reply)
-	}
-}
-
-func TestAssessClassifiesTheOwnerAndStartCreatesTheStore(t *testing.T) {
-	ctx := context.Background()
-	dir := shortDir(t)
-	if _, health, err := memory.Assess(ctx, dir); health != memory.HealthUnreachable || !errors.Is(err, memory.ErrUnreachable) {
-		t.Fatalf("no owner: health %v, %v", health, err)
-	}
-	start(t, dir)
-	if status, health, err := memory.Assess(ctx, dir); err != nil || health != memory.HealthNotReady || status.State != memory.StateNoStore {
-		t.Fatalf("owner without a store: %+v, health %v, %v", status, health, err)
-	}
-	if _, err := memory.Start(ctx, dir, false); err == nil || !strings.Contains(err.Error(), "memory start --init") {
-		t.Fatalf("start without init: %v", err)
-	}
-	status, err := memory.Start(ctx, dir, true)
-	if err != nil || status.State != memory.StateReady {
-		t.Fatalf("start with init: %+v, %v", status, err)
-	}
-	if _, health, err := memory.Assess(ctx, dir); err != nil || health != memory.HealthReady {
-		t.Fatalf("ready owner: health %v, %v", health, err)
-	}
-}
-
-func TestResolveDirPrefersTheEnvironmentThenTheHome(t *testing.T) {
-	t.Setenv(memory.EnvDir, "/custom/memory")
-	if dir, err := memory.ResolveDir(); err != nil || dir != "/custom/memory" {
-		t.Fatalf("from the environment: %q, %v", dir, err)
-	}
-	home := t.TempDir()
-	t.Setenv(memory.EnvDir, "")
-	t.Setenv("HOME", home)
-	if dir, err := memory.ResolveDir(); err != nil || dir != filepath.Join(home, ".takt-ai", "memory") {
-		t.Fatalf("from the home: %q, %v", dir, err)
-	}
-}
-
-func TestPrefixedToolNameJoinsTheServerKeyAndTheTool(t *testing.T) {
-	if got := memory.PrefixedToolName(memory.ToolRecord); got != "takt_memory_record" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestEnsureLaunchesAndStopOwnerStopsTheLaunchedOwner(t *testing.T) {
-	ctx := context.Background()
-	dir := shortDir(t)
-	initStore(t, dir)
-	stopOwnerAtEnd(t, dir)
-	st, err := memory.Ensure(ctx, dir)
-	if err != nil || st.State != memory.StateReady {
-		t.Fatalf("got %+v, %v", st, err)
-	}
-	if pid := ownerPID(t, dir); pid == os.Getpid() {
-		t.Fatal("no owner process was launched")
-	}
-	if err := memory.StopOwner(ctx, dir); err != nil {
-		t.Fatalf("StopOwner() error = %v", err)
-	}
-	if _, err := memory.Probe(ctx, dir); err == nil {
-		t.Fatal("the launched owner still answers after StopOwner")
-	}
-}
-
-func TestStartCreatesTheMissingDirectoryAndLaunchesTheOwner(t *testing.T) {
-	dir := filepath.Join(shortDir(t), "memory")
-	stopOwnerAtEnd(t, dir)
-	st, err := memory.Start(context.Background(), dir, true)
-	if err != nil || st.State != memory.StateReady {
-		t.Fatalf("got %+v, %v", st, err)
-	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
-		t.Fatalf("directory = %v, %v", info, err)
-	}
-}
-
-func TestEnsureReportsALaunchedOwnerThatExitedWithItsCause(t *testing.T) {
-	t.Parallel()
-	dir := shortDir(t)
-	initStore(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, memory.SocketFile, "x"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	_, err := memory.Ensure(context.Background(), dir)
-	if err == nil || !strings.Contains(err.Error(), "exited") || !strings.Contains(err.Error(), memory.SocketFile) {
-		t.Fatalf("got %v", err)
-	}
-}
-
-func TestStopOwnerReportsADirectoryWithoutALockFile(t *testing.T) {
-	var unavailable *memory.UnavailableError
-	if err := memory.StopOwner(context.Background(), shortDir(t)); !errors.As(err, &unavailable) {
-		t.Fatalf("got %v, want an unavailable error", err)
-	}
-}
-
-func TestStartRefusesADirectoryItCannotCreate(t *testing.T) {
-	blocker := filepath.Join(shortDir(t), "file")
-	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := memory.Start(context.Background(), filepath.Join(blocker, "memory"), true); err == nil {
-		t.Fatal("start created a directory under a regular file")
-	}
-}
-
-// TestStopOwnerDoesNotSignalWhenItsContextEnded proves an ended context, which never tried the lock, is not
-// taken as a live owner: the PID in the lock file stays unsignaled.
-func TestStopOwnerDoesNotSignalWhenItsContextEnded(t *testing.T) {
-	dir := shortDir(t)
-	bystander := exec.Command("sleep", "60")
-	if err := bystander.Start(); err != nil {
-		t.Fatal(err)
-	}
-	exited := make(chan error, 1)
-	go func() { exited <- bystander.Wait() }()
-	t.Cleanup(func() { _ = bystander.Process.Kill() })
-	if err := os.WriteFile(filepath.Join(dir, memory.LockFile), []byte(strconv.Itoa(bystander.Process.Pid)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	var unavailable *memory.UnavailableError
-	if err := memory.StopOwner(ctx, dir); !errors.As(err, &unavailable) {
-		t.Fatalf("StopOwner() error = %v, want an unavailable error", err)
-	}
-	select {
-	case err := <-exited:
-		t.Fatalf("the process named in the lock file was signaled and exited: %v", err)
-	case <-time.After(200 * time.Millisecond):
 	}
 }

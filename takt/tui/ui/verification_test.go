@@ -14,7 +14,7 @@ import (
 func TestVerificationRendersEachCheck(t *testing.T) {
 	report := verify.Report{
 		Checks: []verify.CheckResult{
-			{ID: "mcp:opencode:engram", State: verify.Verified, Explanation: "connected"},
+			{ID: "mcp:opencode:takt_memory", State: verify.Verified, Explanation: "connected"},
 			{ID: "mcp:opencode:codegraph", State: verify.NotVerified, Explanation: "no evidence"},
 			{ID: "skills:opencode:takt", State: verify.NotVerifiable, Explanation: "cannot query"},
 		},
@@ -35,6 +35,15 @@ func TestVerificationRendersEachCheck(t *testing.T) {
 	}
 }
 
+func TestVerificationNamesTheMemoryServiceProbe(t *testing.T) {
+	got := ansi.Strip(ui.Verification(verify.Report{Checks: []verify.CheckResult{
+		{ID: "memory:service", State: verify.NotVerified, Explanation: "No memory service answers."},
+	}}))
+	if !strings.Contains(got, "✗ Memory service") || strings.Contains(got, "memory:service") {
+		t.Errorf("Verification() = %q, want the probe named as the memory service, never by its identifier", got)
+	}
+}
+
 func TestVerificationWithNoChecks(t *testing.T) {
 	report := verify.Report{FinalNote: "nothing to show"}
 	got := ui.Verification(report)
@@ -45,14 +54,14 @@ func TestVerificationWithNoChecks(t *testing.T) {
 
 func TestVerificationSeparatesFailedFromUnconfirmed(t *testing.T) {
 	unconfirmed := ui.Verification(verify.Report{Checks: []verify.CheckResult{
-		{ID: "mcp:engram", State: verify.Verified, Explanation: "connected"},
+		{ID: "mcp:takt_memory", State: verify.Verified, Explanation: "connected"},
 		{ID: "skills", State: verify.NotVerifiable, Explanation: "cannot query"},
 	}})
 	if !strings.Contains(unconfirmed, ui.TextUnconfirmed) || strings.Contains(unconfirmed, ui.TextNotReady) {
 		t.Errorf("a check that could not run = %q, want unconfirmed and not a failure", unconfirmed)
 	}
 	failed := ui.Verification(verify.Report{Checks: []verify.CheckResult{
-		{ID: "mcp:engram", State: verify.NotVerified, Explanation: "absent"},
+		{ID: "mcp:takt_memory", State: verify.NotVerified, Explanation: "absent"},
 		{ID: "skills", State: verify.NotVerifiable, Explanation: "cannot query"},
 	}})
 	if !strings.Contains(failed, ui.TextNotReady) || strings.Count(failed, ui.TextNotReady) != 1 {

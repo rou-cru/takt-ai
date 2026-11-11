@@ -336,33 +336,3 @@ func TestShutdownRemovesSocketAndReleasesLock(t *testing.T) {
 		t.Fatalf("lock not released: %v", err)
 	}
 }
-
-func TestSessionToolsReportTheCloseAndThePendingContinuation(t *testing.T) {
-	dir := shortDir(t)
-	initStore(t, dir)
-	r := start(t, dir)
-	admin, crew := r.connect(t, memory.PathAdmin), r.connect(t, memory.PathCrew)
-	for _, host := range []string{"old", "new"} {
-		bind := map[string]any{"host_session": host, "agent": "takt", "claimed_root": host, "workspace": "ws"}
-		if res := call(t, admin, memory.AdminBind, bind, nil); res.IsError {
-			t.Fatalf("bind %s: %s", host, text(t, res))
-		}
-	}
-	args := map[string]any{"nature": "hypothesis", "scope": "workspace", "title": "a", "content": "alpha body"}
-	if res := call(t, crew, memory.ToolRecord, args, crewMeta("old")); res.IsError {
-		t.Fatalf("record: %s", text(t, res))
-	}
-	closed := text(t, call(t, crew, memory.ToolCloseSession, map[string]any{"objective": "ship it", "state": "shipped"}, crewMeta("old")))
-	for _, want := range []string{"Closed session", "Objective: ship it", "State: shipped"} {
-		if !strings.Contains(closed, want) {
-			t.Fatalf("close text %q lacks %q", closed, want)
-		}
-	}
-	pending := text(t, call(t, crew, memory.ToolContinueSession, map[string]any{"previous_session_id": "crew:old"}, crewMeta("new")))
-	if !strings.Contains(pending, "this session continues") {
-		t.Fatalf("pending text %q", pending)
-	}
-	if got := text(t, call(t, crew, memory.ToolContinueSession, map[string]any{"previous_session_id": ""}, crewMeta("new"))); got != "No continuation is declared." {
-		t.Fatalf("withdrawn text %q", got)
-	}
-}

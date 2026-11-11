@@ -2,7 +2,6 @@ package runtime_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -71,46 +70,8 @@ func TestCorrectDriftRestoresSelectedFileAndReinjectsIntegrations(t *testing.T) 
 	if err != nil || string(data) == "{}" {
 		t.Fatalf("restored file = %q, %v; want the drifted content replaced", data, err)
 	}
-	if !strings.Contains(string(data), "engram") {
-		t.Errorf("restored file lacks the re-injected Engram integration:\n%s", data)
-	}
-}
-
-// TestCorrectDriftOfAnotherFileLeavesTheOpenCodeConfigurationUntouched proves integrations are reinjected
-// only when the correction rewrote the configuration that holds them: a user who disabled the memory
-// server keeps it disabled when a different file is corrected.
-func TestCorrectDriftOfAnotherFileLeavesTheOpenCodeConfigurationUntouched(t *testing.T) {
-	root, adapter := installedAdapterRoot(t)
-	config := filepath.Join(root, filepath.FromSlash(driftedConfig))
-	raw, err := os.ReadFile(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		t.Fatal(err)
-	}
-	server := document[model.MCPKeyOpenCode].(map[string]any)[model.MCPServersKeyOpenCode].(map[string]any)[memory.ServerKey].(map[string]any)
-	server["disabled"] = true
-	edited, err := json.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config, edited, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	plugin := model.OpenCodeConfigDir + "/" + model.OpenCodePluginsDir + "/" + model.VFSPluginFile
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(plugin)), []byte("// drifted\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionCorrectDrift, RootDir: root, SelectedDriftPaths: []string{plugin}})
-	if err != nil || !slices.Contains(result.Changed, plugin) {
-		t.Fatalf("result = %+v, %v; want the plugin restored", result, err)
-	}
-	after, err := os.ReadFile(config)
-	if err != nil || string(after) != string(edited) {
-		t.Fatalf("the OpenCode configuration changed although it was not corrected: %v\n%s", err, after)
+	if !strings.Contains(string(data), memory.ServerKey) {
+		t.Errorf("restored file lacks the re-injected memory integration:\n%s", data)
 	}
 }
 

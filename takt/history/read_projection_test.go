@@ -36,7 +36,7 @@ func TestReadProjectionMatchesOpenedHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+	if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect"}); err != nil {
 		t.Fatal(err)
 	}
 	want := h.Project()
@@ -79,7 +79,7 @@ func TestReadPageFiltersAndBoundsTheRecordedOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, session := range []string{"root-a", "root-b", "root-a"} {
-		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: session, WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: session, WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -108,7 +108,7 @@ func TestReadPageClampsALimitBelowOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 3 {
-		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect", Artifact: "artifacts/report.md"}); err != nil {
+		if err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInterlocutorSwitched, SessionID: "root", WorkUnitID: "child", AttemptID: history.FirstAttempt, Cause: history.CauseNone, Agent: "architect"}); err != nil {
 			t.Fatal(err)
 		}
 	}

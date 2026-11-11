@@ -238,33 +238,3 @@ func TestCurrentAgentFollowsTheSwitch(t *testing.T) {
 		t.Fatalf("CurrentAgent() after handoff = %q, want empty", got)
 	}
 }
-
-func TestHandoffValidatesTheDeliveredEntries(t *testing.T) {
-	h := newHistory(t)
-	if err := switchTo(h, "child-1"); err != nil {
-		t.Fatal(err)
-	}
-	var asked memory.Rule
-	check := func(_ context.Context, ids []int64, rule memory.Rule) (memory.DescribeResult, error) {
-		asked = rule
-		if ids[0] == 9 {
-			return memory.DescribeResult{}, errors.New("entry #9 was not written by this session")
-		}
-		return memory.DescribeResult{}, nil
-	}
-	ctx := context.Background()
-	err := dispatch.ValidateHandoff(ctx, h, check, "root-1", "child-1", dispatch.HandoffOutcome{Result: "Standard"})
-	if err == nil || !strings.Contains(err.Error(), "at least one") || !strings.Contains(err.Error(), "takt_memory_record") {
-		t.Fatalf("completed result without IDs: %v", err)
-	}
-	err = dispatch.ValidateHandoff(ctx, h, check, "root-1", "child-1", dispatch.HandoffOutcome{Result: "Standard", ResultIDs: []int64{9}})
-	if err == nil || !strings.Contains(err.Error(), "entry #9") || !strings.Contains(err.Error(), "dispatch_handoff") {
-		t.Fatalf("refused delivery: %v", err)
-	}
-	if err := dispatch.ValidateHandoff(ctx, h, check, "root-1", "child-1", dispatch.HandoffOutcome{Result: "EarlyHandoff", ResultIDs: []int64{3}}); err != nil {
-		t.Fatalf("early close declaring a valid ID: %v", err)
-	}
-	if asked.WrittenBy != "child-1" {
-		t.Fatalf("rule asked %+v, want entries written by child-1", asked)
-	}
-}

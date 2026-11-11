@@ -139,7 +139,7 @@ const (
 	KindException Kind = "user_exception"
 	// KindInterlocutorSwitched records a new temporary interlocutor holder for a
 	// root session (IR-14..19); WorkUnitID names the child session, Agent the
-	// specialist, Artifact the standard artifact declared for it (PR-HAR-24).
+	// specialist.
 	KindInterlocutorSwitched Kind = "interlocutor_switched"
 	// KindInterlocutorHandoff records the temporary holder returning the
 	// interface to the base; Result carries the envelope's IR-23 value.
@@ -304,10 +304,6 @@ type Entry struct {
 	// empty here: it is recorded as missing, never defaulted (PR-DAG-MUT-9).
 	Result string   `json:"result,omitempty"`
 	Scope  []string `json:"scope,omitempty"`
-	// Artifact is the workspace-relative path a switch declares its temporary
-	// holder must produce before handoff (PR-HAR-24); set only on
-	// KindInterlocutorSwitched, fixed at switch time, never renegotiated.
-	Artifact string `json:"artifact,omitempty"`
 	// Actions and Attempts are the two declared allowances of PR-ORQ-13. On an
 	// action observation Actions is the observed increment instead.
 	Actions  int `json:"actions,omitempty"`

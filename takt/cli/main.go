@@ -25,12 +25,14 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/rou-cru/takt-ai/takt/doctor"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
@@ -319,6 +321,11 @@ func requireNoOpenDecisions(invocation setupInvocation, request setup.PlanReques
 	if invocation.command != "install" && invocation.command != "uninstall" {
 		return nil, nil
 	}
+	if invocation.command == "uninstall" {
+		if err := blockOnMemoryStore(); err != nil {
+			return nil, err
+		}
+	}
 	preview, err := previewSetup(invocation, request)
 	if err != nil {
 		return nil, err
@@ -335,6 +342,22 @@ func requireNoOpenDecisions(invocation setupInvocation, request setup.PlanReques
 		}
 	}
 	return preserve, nil
+}
+
+// blockOnMemoryStore stops uninstall while a memory store exists: retaining or discarding the user's
+// memory is a decision only the TUI can take (PR-INS-42, PR-INS-43).
+func blockOnMemoryStore() error {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	store := filepath.Join(dir, memory.StoreFile)
+	if _, err := os.Stat(store); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("setup uninstall: inspect memory store %s: %w", store, err)
+	}
+	return fmt.Errorf("setup uninstall: the memory store %s needs a retain or discard decision the CLI cannot make; open the TUI to decide", store)
 }
 
 // applySetup executes the authorized operation and emits its outcome.

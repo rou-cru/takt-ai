@@ -20,7 +20,7 @@ import (
 
 // AllComponents returns every selectable component in display and planning
 // order from the capability manifest. It is the single source of truth for
-// "install everything applicable"; Engram and skills are not selectable.
+// "install everything applicable"; skills are not selectable.
 func AllComponents() ([]model.ComponentID, error) {
 	order, err := catalog.SelectableOrder()
 	if err != nil {

@@ -63,17 +63,3 @@ func OpenCodeConfigPath(home string) string {
 func OpenCodePluginPath(home, file string) string {
 	return filepath.Join(home, OpenCodeConfigDir, OpenCodePluginsDir, file)
 }
-
-// AgentsPromptFile is OpenCode's global agent prompt file.
-const AgentsPromptFile = "AGENTS.md"
-
-// EngramPluginFile is the deployed Engram memory plugin filename.
-const EngramPluginFile = "engram.ts"
-
-// SectionEngramProtocol is the markdown section ID shared by inject and remove.
-const SectionEngramProtocol = "engram-protocol"
-
-// OpenCodePromptPath returns <home>/.config/opencode/AGENTS.md.
-func OpenCodePromptPath(home string) string {
-	return filepath.Join(home, OpenCodeConfigDir, AgentsPromptFile)
-}

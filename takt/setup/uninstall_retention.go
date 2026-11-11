@@ -2,15 +2,11 @@ package setup
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
-
-	_ "modernc.org/sqlite" // registers the "sqlite" driver used to snapshot Engram's database
 )
 
 // Retention modes keep uninstall evidence owner-only.
@@ -32,32 +28,26 @@ type RetentionChoices struct {
 	Keep []string
 	// Remove lists preserved files to delete.
 	Remove []string
-	// MemoryFrom is the Engram data directory whose database is handed off
-	// into the retained directory. Empty means no memory choice was made.
-	MemoryFrom string
+	// RetainedDir is a retained directory already reserved for this uninstall
+	// (ReserveRetentionDir), which kept files share. Empty reserves one on first use.
+	RetainedDir string
 }
 
-// EngramDataDirName is the default Engram data directory under the user's
-// home; ENGRAM_DATA_DIR overrides it (`engram help`, Environment).
-const EngramDataDirName = ".engram"
+// RetainedMemoryDirName is the directory inside the retained directory that receives the memory backup.
+const RetainedMemoryDirName = "memory"
 
-// EngramDatabaseName is the SQLite file Engram keeps inside its data directory.
-const EngramDatabaseName = "engram.db"
-
-// retainedMemoryDir holds the delivered Engram database inside the retained directory.
-const retainedMemoryDir = "engram"
-
-// EngramDataDir resolves where Engram keeps its data the way Engram does:
-// ENGRAM_DATA_DIR when set, otherwise ~/.engram.
-func EngramDataDir() (string, error) {
-	if dir := os.Getenv("ENGRAM_DATA_DIR"); dir != "" {
-		return dir, nil
-	}
-	home, err := os.UserHomeDir()
+// ReserveRetentionDir reserves the timestamped retained directory for one uninstall, owner-only, and
+// returns its path.
+func ReserveRetentionDir(rootDir string, now time.Time) (string, error) {
+	root, err := filepath.Abs(rootDir)
 	if err != nil {
-		return "", fmt.Errorf("resolve Engram data directory: %w", err)
+		return "", fmt.Errorf("resolve deployment root: %w", err)
 	}
-	return filepath.Join(home, EngramDataDirName), nil
+	return newRetentionDirectory(root, now).reserve()
+}
+
+func newRetentionDirectory(root string, now time.Time) *retentionDirectory {
+	return &retentionDirectory{base: filepath.Join(root, RetainedDirName, now.UTC().Format("20060102T150405Z"))}
 }
 
 // RetentionResult reports how RetentionChoices were carried out. Deliberate
@@ -70,9 +60,6 @@ type RetentionResult struct {
 	Retained []string
 	// RetainedDir is the timestamped directory holding kept content.
 	RetainedDir string
-	// Memory is the delivered Engram database inside RetainedDir; empty when
-	// no memory was handed off (no choice, or Engram holds no database).
-	Memory string
 	// Incomplete holds "path: reason" for every choice that could not be
 	// carried out; the file stays where it was.
 	Incomplete []string
@@ -99,25 +86,20 @@ func restorablePreExisting(root string, entry OwnershipEntry) bool {
 }
 
 // ApplyUninstallRetention carries out keep/remove choices after Uninstall,
-// moving retained files and the Engram database into one timestamped
-// directory.
+// moving retained files into one timestamped directory.
 func ApplyUninstallRetention(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time) (RetentionResult, error) {
 	result := RetentionResult{}
-	if len(choices.Keep) == 0 && len(choices.Remove) == 0 && choices.MemoryFrom == "" {
+	if len(choices.Keep) == 0 && len(choices.Remove) == 0 {
 		return result, nil
 	}
 	root, err := filepath.Abs(rootDir)
 	if err != nil {
 		return result, fmt.Errorf("resolve deployment root: %w", err)
 	}
-	retainedDir := &retentionDirectory{base: filepath.Join(root, RetainedDirName, now.UTC().Format("20060102T150405Z"))}
-	if len(choices.Keep) > 0 || len(choices.Remove) > 0 {
-		if err := applyFileChoices(ctx, root, retainedDir, choices, &result); err != nil {
-			return result, err
-		}
-	}
-	if choices.MemoryFrom != "" {
-		retainMemory(ctx, choices.MemoryFrom, retainedDir, &result)
+	retainedDir := newRetentionDirectory(root, now)
+	retainedDir.path = choices.RetainedDir
+	if err := applyFileChoices(ctx, root, retainedDir, choices, &result); err != nil {
+		return result, err
 	}
 	if len(result.NotApplied) > 0 {
 		return result, ctx.Err()
@@ -152,69 +134,6 @@ func applyFileChoices(ctx context.Context, root string, retainedDir *retentionDi
 	}
 	_, err = finishUninstall(manifest, root, UninstallResult{})
 	return err
-}
-
-// memoryNotApplied names the Engram memory choice a cancellation left untouched.
-const memoryNotApplied = "Engram memory"
-
-// retainMemory hands the Engram database in dataDir off to retainedDir as one
-// consistent file. The source is only read: it stays where it was, and a
-// failure is reported as Incomplete with no partial copy left behind. A data
-// directory without a database has nothing to retain.
-func retainMemory(ctx context.Context, dataDir string, retainedDir *retentionDirectory, result *RetentionResult) {
-	if ctx.Err() != nil {
-		result.NotApplied = append(result.NotApplied, memoryNotApplied)
-		return
-	}
-	source := filepath.Join(dataDir, EngramDatabaseName)
-	if _, err := os.Stat(source); errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	dir, err := retainedDir.reserve()
-	if err != nil {
-		result.Incomplete = append(result.Incomplete, memoryNotApplied+": "+err.Error())
-		return
-	}
-	destination := filepath.Join(dir, retainedMemoryDir, EngramDatabaseName)
-	if err := snapshotDatabase(ctx, source, destination); err != nil {
-		result.Incomplete = append(result.Incomplete, memoryNotApplied+": "+err.Error())
-		return
-	}
-	result.Memory, result.RetainedDir = destination, dir
-}
-
-// snapshotDatabase writes a consistent single-file copy of a SQLite database
-// with VACUUM INTO. Copying the file beside its -wal would miss committed pages
-// still in the log and tear while servers run; VACUUM INTO reads through
-// SQLite, so the snapshot is transactionally consistent. The source is opened
-// read-only and never modified.
-func snapshotDatabase(ctx context.Context, source, destination string) (err error) {
-	if err := os.MkdirAll(filepath.Dir(destination), RetainedDirectoryMode); err != nil {
-		return err
-	}
-	// Only this call's exclusively reserved file may be cleaned up on failure.
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, RetainedFileMode)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = os.Remove(destination)
-		}
-	}()
-	if err = file.Close(); err != nil {
-		return err
-	}
-	uri := url.URL{Scheme: "file", Path: source, RawQuery: "mode=ro"}
-	db, err := sql.Open("sqlite", uri.String())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", destination); err != nil {
-		return fmt.Errorf("snapshot %s: %w", source, err)
-	}
-	return nil
 }
 
 // retainOrRemove moves rel into retainedDir, or deletes it, and drops its

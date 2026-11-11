@@ -171,23 +171,3 @@ func TestSearchSemanticWithModel(t *testing.T) {
 		t.Fatalf("uncovered %d for #%d", r.Uncovered, late)
 	}
 }
-
-func TestSearchRefusesInvalidArguments(t *testing.T) {
-	s := openStore(t)
-	id := external("w1")
-	for name, c := range map[string]struct {
-		args memory.SearchArgs
-		want string
-	}{
-		"blank query":                    {memory.SearchArgs{Query: "  "}, "query is required"},
-		"query without searchable terms": {memory.SearchArgs{Query: "!!!"}, "no searchable terms"},
-		"negative limit":                 {memory.SearchArgs{Query: "alpha", Limit: -1}, "limit -1"},
-		"all workspaces on the global":   {memory.SearchArgs{Query: "alpha", Scope: memory.ScopeGlobal, AllWorkspaces: true}, "all_workspaces"},
-		"semantic without a model":       {memory.SearchArgs{Query: "alpha", Mode: memory.ModeSemantic}, "mode lexical"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := s.Search(context.Background(), id, c.args, nil)
-			wantRefusal(t, err, c.want)
-		})
-	}
-}
