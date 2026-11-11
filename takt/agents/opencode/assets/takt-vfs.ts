@@ -252,8 +252,12 @@ const MAINTENANCE_DUE =
   "A cleanup cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
 const MAINTENANCE_DONE = "The cleanup cycle concluded. Delegation and normal work continue."
 // closingNotice reports how a cycle ended and the findings it left unapplied, which only the cycle record reports.
-const closingNotice = (closing: CycleClosing) =>
-  `Cycle ${closing.cycle} ended: ${closing.outcome}. ${closing.unapplied_findings.length ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.` : "No finding was left unapplied."}`
+const closingNotice = (closing: CycleClosing) => {
+  const findings = closing.unapplied_findings.length
+    ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.`
+    : "No finding was left unapplied."
+  return `Cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
+}
 
 // SANDBOX_ADAPTER is the sibling module takt-ai deploys next to this plugin. It
 // wraps a command with @anthropic-ai/sandbox-runtime; without it no shell
@@ -1771,10 +1775,11 @@ export default Plugin.define({
           // A switch that would be refused is returned to the agent before the user is asked.
           await dispatchAction({ action: "validate_switch", session, agent: args.target_agent, requirements: args.requirements })
           await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client ?? "" }, c)
+          const requirements = args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"
           const text = [
             "You are taking over as the active interlocutor for this workspace.",
             `Objective: ${args.objective}`,
-            `Requirements: ${args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"}`,
+            `Requirements: ${requirements}`,
             args.client ? `Client: ${args.client}` : undefined,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({

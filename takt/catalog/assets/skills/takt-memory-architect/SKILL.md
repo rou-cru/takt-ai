@@ -1,6 +1,6 @@
 ---
 name: takt-memory-architect
-description: "Before recording memory as architect. What this role records, when, and what it never records."
+description: "Before recording Takt memory as architect. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,8 +12,8 @@ metadata:
 ## Records
 
 - Standard results: architecture, boundaries, interfaces and integration contracts.
-- `decision` (`project`): boundaries, data flow, integration points, and frozen interface contracts the user approved, with their rationale.
-- `proposal` (`project`): rejected alternatives and why they were rejected, in the past tense.
+- `decision` (`workspace`): boundaries, data flow, integration points, and frozen interface contracts the user approved, with their rationale.
+- `proposal` (`workspace`): rejected alternatives and why they were rejected, in the past tense.
 - A user decision outside architecture that surfaced in your session (for example a framework choice): record it as a `decision` and mention it in your result.
 
 ## Recognized documents

@@ -287,21 +287,26 @@ func (adapter Adapter) executeCorrectDrift(ctx context.Context, request ActionRe
 	}
 	if lifecycle.Cancelled(ctx, err) {
 		out.Outcome = lifecycle.CancelledOutcome(len(result.Changed))
-		return out, reinjectDrift(ctx, request.RootDir, engramCommand, len(result.Changed))
+		return out, reinjectDrift(ctx, request.RootDir, engramCommand, result.Changed)
 	}
 	if err != nil {
 		return ActionResult{}, err
 	}
-	return out, reinjectDrift(ctx, request.RootDir, engramCommand, len(result.Changed))
+	return out, reinjectDrift(ctx, request.RootDir, engramCommand, result.Changed)
 }
 
-// reinjectDrift restores installed integrations only after files changed.
-// Both Engram and CodeGraph are required harness capabilities.
-func reinjectDrift(ctx context.Context, root, engramCommand string, changed int) error {
-	if changed == 0 {
+// reinjectDrift restores the installed integrations when the correction rewrote the OpenCode
+// configuration that holds their MCP entries. A correction of any other file leaves that file, and
+// the user's own settings in it, untouched. Engram, CodeGraph and the memory service are required
+// harness capabilities.
+func reinjectDrift(ctx context.Context, root, engramCommand string, changed []string) error {
+	if !slices.Contains(changed, model.OpenCodeConfigRelativePath) {
 		return nil
 	}
 	if err := lifecycle.InjectEngram(root, engramCommand); err != nil {
+		return err
+	}
+	if err := lifecycle.InjectMemory(root); err != nil {
 		return err
 	}
 	return lifecycle.InstallCodegraph(ctx, root)

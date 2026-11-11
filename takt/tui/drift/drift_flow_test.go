@@ -32,7 +32,7 @@ func installedRootWithDrift(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -87,7 +87,7 @@ func viewText(m drift.Model) string {
 func TestDriftReportsCleanWhenNothingDiffers(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	model := scan(t, drift.New(root))

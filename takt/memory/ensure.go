@@ -121,9 +121,13 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 	}
 	defer func() { err = errors.Join(err, lock.Close()) }()
 	// A lock nobody holds means no owner runs, whatever PID a crashed owner left in the file: signaling
-	// it could end an unrelated process that reused the PID.
+	// it could end an unrelated process that reused the PID. An ended ctx never tried the lock, so it
+	// proves no owner: the stop is abandoned instead of signaling a PID the lock did not vouch for.
 	if flock.Exclusive(ctx, lock, flock.PollInterval) == nil {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return unavailable("stop the Takt memory service: %v", err)
 	}
 	pid, err := strconv.Atoi(lockOwner(lockPath))
 	if err != nil {

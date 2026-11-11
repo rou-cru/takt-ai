@@ -1,6 +1,6 @@
 ---
 name: takt-memory-product-designer
-description: "Before recording memory as product-designer. What this role records, when, and what it never records."
+description: "Before recording Takt memory as product-designer. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,9 +12,9 @@ metadata:
 ## Records
 
 - Standard results: interaction rules, experience invariants and observable UX criteria.
-- `decision` (`project`): design invariants, interaction rules, and accessibility commitments the user approved.
-- `proposal` (`project`): explored alternatives that were not chosen, with the reason.
-- `hypothesis` (`project`): unvalidated premises about users or context, stated as such.
+- `decision` (`workspace`): design invariants, interaction rules, and accessibility commitments the user approved.
+- `proposal` (`workspace`): explored alternatives that were not chosen, with the reason.
+- `hypothesis` (`workspace`): unvalidated premises about users or context, stated as such.
 
 ## Recognized documents
 

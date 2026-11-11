@@ -2,14 +2,23 @@ package lifecycle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/codegraph"
+	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
@@ -17,10 +26,27 @@ import (
 
 // TestMain keeps every lifecycle test off the host PATH and the network.
 func TestMain(m *testing.M) {
+	// startMemory launches this executable as `memory serve`; in a test run that is the test binary, which
+	// then answers as the owner instead of running the tests again.
+	if len(os.Args) == 3 && os.Args[1] == "memory" && os.Args[2] == "serve" {
+		os.Exit(serveAsLaunchedOwner())
+	}
 	acquireEngram = func(context.Context, string) (string, error) { return "/usr/local/bin/engram", nil }
 	acquireCodegraph = func(context.Context, string) (string, error) { return "/usr/local/bin/codegraph", nil }
 	installSandboxDependency = func(context.Context, string) error { return nil }
 	os.Exit(m.Run())
+}
+
+// serveAsLaunchedOwner is the owner process startMemory launches, serving the directory it passes.
+func serveAsLaunchedOwner() int {
+	signal.Ignore(syscall.SIGPIPE)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	if err := memory.Serve(ctx, os.Getenv(memory.EnvDir), "test"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
 }
 
 func withAcquire(t *testing.T, fn func(context.Context, string) (string, error)) {
@@ -42,7 +68,7 @@ func withAcquireCodegraph(t *testing.T, fn func(context.Context, string) (string
 func TestRunInstallFailsBeforeWritingWhenCodegraphUnavailable(t *testing.T) {
 	root := t.TempDir()
 	withAcquireCodegraph(t, func(context.Context, string) (string, error) { return "", errors.New("network unreachable") })
-	result, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err == nil || !strings.Contains(err.Error(), "codegraph capability unavailable") {
 		t.Fatalf("Run() error = %v, want CodeGraph prerequisite failure", err)
 	}
@@ -59,7 +85,7 @@ func TestRunInstallFailsBeforeWritingWhenCodegraphUnavailable(t *testing.T) {
 func TestRunInstallRecordsCodegraphInstallAction(t *testing.T) {
 	root := t.TempDir()
 	withAcquireCodegraph(t, func(context.Context, string) (string, error) { return "/custom/bin/codegraph", nil })
-	result, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +100,7 @@ func TestRunInstallReportsSandboxDependencyFailure(t *testing.T) {
 	installSandboxDependency = func(context.Context, string) error { return errors.New("npm unavailable") }
 	t.Cleanup(func() { installSandboxDependency = original })
 
-	result, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	result, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +118,7 @@ func TestRunInstallInjectsResolvedCodegraphCommand(t *testing.T) {
 	root := t.TempDir()
 	const command = "/custom/bin/codegraph"
 	withAcquireCodegraph(t, func(context.Context, string) (string, error) { return command, nil })
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(model.OpenCodeConfigPath(root))
@@ -109,7 +135,7 @@ func TestUninstallNeverTouchesReusedCodegraph(t *testing.T) {
 	}
 	withAcquireCodegraph(t, func(context.Context, string) (string, error) { return reused, nil })
 	request := setuputil.TestPlanRequest()
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -119,7 +145,7 @@ func TestUninstallNeverTouchesReusedCodegraph(t *testing.T) {
 	if _, owned := manifest.Entries[codegraph.ManagedMarkerKey()]; owned {
 		t.Fatal("a reused user binary was recorded as Takt-owned")
 	}
-	if _, err := (Runtime{}).Run(context.Background(), "uninstall", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "uninstall", root, request); err != nil {
 		t.Fatal(err)
 	}
 	if data, err := os.ReadFile(reused); err != nil || string(data) != "user binary" {
@@ -131,7 +157,7 @@ func TestRunInstallInjectsResolvedCommand(t *testing.T) {
 	root := t.TempDir()
 	const command = "/custom/bin/engram"
 	withAcquire(t, func(context.Context, string) (string, error) { return command, nil })
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(model.OpenCodeConfigPath(root))
@@ -148,7 +174,7 @@ func TestUninstallNeverTouchesReusedBinary(t *testing.T) {
 	}
 	withAcquire(t, func(context.Context, string) (string, error) { return reused, nil })
 	request := setuputil.TestPlanRequest()
-	if _, err := (Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
@@ -158,10 +184,21 @@ func TestUninstallNeverTouchesReusedBinary(t *testing.T) {
 	if _, owned := manifest.Entries[".takt-ai/bin/engram"]; owned {
 		t.Fatal("a reused user binary was recorded as Takt-owned")
 	}
-	if _, err := (Runtime{}).Run(context.Background(), "uninstall", root, request); err != nil {
+	if _, err := (Runtime{Model: fakeModel(t)}).Run(context.Background(), "uninstall", root, request); err != nil {
 		t.Fatal(err)
 	}
 	if data, err := os.ReadFile(reused); err != nil || string(data) != "user binary" {
 		t.Fatalf("reused binary was touched: %q, %v", data, err)
 	}
+}
+
+// fakeModel serves a one-file model over HTTP and returns the manifest that names it, so install
+// acquires a model without the network.
+func fakeModel(t *testing.T) *embed.Manifest {
+	t.Helper()
+	body := []byte("fake model file")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	t.Cleanup(server.Close)
+	digest := sha256.Sum256(body)
+	return &embed.Manifest{BaseURL: server.URL, Files: []embed.File{{Name: "model.bin", SHA256: hex.EncodeToString(digest[:]), Size: int64(len(body))}}}
 }
