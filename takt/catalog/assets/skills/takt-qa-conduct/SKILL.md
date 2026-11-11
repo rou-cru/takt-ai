@@ -17,7 +17,7 @@ on the project the same way; only the specialty differs.
 
 | Input | Where it is |
 | --- | --- |
-| The test plan, the traceability matrix and any earlier report your assignment continues | The memory entries consumed by your assignment, by ID |
+| The test plan, the traceability matrix and any earlier report your assignment continues | The Takt memory entries consumed by your assignment, by ID |
 | The deliverable | The files in the workspace, read with the native read, glob and grep tools and read-only git |
 | How the deliverable is built, run and tested | The test plan's environment and the repository's own instructions (AGENTS.md, task runner, CI) |
 
@@ -47,7 +47,7 @@ name the file in your report.
 
 ## Your report
 
-- One entry with `memory_record` before you return, in the shape your memory role skill
+- One entry with `takt_memory_record` before you return, in the shape your Takt memory role skill
   states: every finding with what reproduces it, and what you could not reach, with the
   reason.
 - Deliver the entry's ID as `takt-result-handoff` states.

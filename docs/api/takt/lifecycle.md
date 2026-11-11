@@ -14,6 +14,7 @@ Package lifecycle dispatches the install, sync and uninstall orchestration share
 - [func Cancelled\(ctx context.Context, err error\) bool](<#Cancelled>)
 - [func InjectCodegraph\(rootDir, codegraphCommand string\) error](<#InjectCodegraph>)
 - [func InjectEngram\(rootDir, engramCommand string\) error](<#InjectEngram>)
+- [func InjectMemory\(rootDir string\) error](<#InjectMemory>)
 - [func InstallCodegraph\(ctx context.Context, rootDir string\) error](<#InstallCodegraph>)
 - [func PreviewLifecycle\(action string, rootDir string, request setup.PlanRequest\) \(any, error\)](<#PreviewLifecycle>)
 - [type InstallPreview](<#InstallPreview>)
@@ -68,6 +69,15 @@ func InjectEngram(rootDir, engramCommand string) error
 ```
 
 InjectEngram wires the engram MCP server into OpenCode, using engramCommand verbatim. \`engram setup\` is never run: Takt's memory contract skill is the only source of memory rules.
+
+<a name="InjectMemory"></a>
+## func InjectMemory
+
+```go
+func InjectMemory(rootDir string) error
+```
+
+InjectMemory registers the crew's memory MCP server in OpenCode under memory.ServerKey. Its command is this takt\-ai executable.
 
 <a name="InstallCodegraph"></a>
 ## func InstallCodegraph
@@ -193,6 +203,12 @@ type Runtime struct {
     EngramChoice string
     // Progress reports phase and artifact events to an interactive caller.
     Progress func(setup.DeploymentProgress)
+    // StartMemory makes install and sync run the memory service and confirm it ready (PR-SET-37).
+    // Production constructors set it; image assembly leaves it false, because the volume that holds
+    // the store does not exist while the image is built.
+    StartMemory bool
+    // Model is the manifest install acquires; nil means the pinned model.
+    Model *embed.Manifest
 }
 ```
 

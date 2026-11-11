@@ -955,7 +955,7 @@ type SessionLine struct {
 
 ```go
 type SessionsInput struct {
-    Query         string `json:"query,omitempty" jsonschema:"Terms matched against close objectives and states and the titles of each session's entries."`
+    Query         string `json:"query,omitempty" jsonschema:"Terms matched against close objectives and states and the titles of each session's entries: a session matches only when all terms appear together in one close or in one entry title. A term that is a whole session ID, exactly as listed, matches that session."`
     AllWorkspaces bool   `json:"all_workspaces,omitempty" jsonschema:"List the sessions of every workspace instead of the active one."`
     Limit         int    `json:"limit,omitempty" jsonschema:"Maximum number of sessions."`
 }

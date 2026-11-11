@@ -1,6 +1,6 @@
 ---
 name: takt-memory-spec
-description: "Before recording memory as spec. What this role records, when, and what it never records."
+description: "Before recording Takt memory as spec. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,9 +12,9 @@ metadata:
 ## Records
 
 - Standard results: behavioral requirements, scenarios and acceptance criteria.
-- `decision` (`project`): requirements the user confirmed or discarded, with the approving entry `#id` or the specification file as evidence.
+- `decision` (`workspace`): requirements the user confirmed or discarded, with the approving entry `#id` or the specification file as evidence.
 - An `observation` that `corrects` an earlier recorded assumption a clarification proved wrong.
-- `proposal` (`project`): requirement options raised and not adopted.
+- `proposal` (`workspace`): requirement options raised and not adopted.
 
 ## Recognized documents
 

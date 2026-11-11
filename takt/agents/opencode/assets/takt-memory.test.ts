@@ -1,27 +1,18 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 
-// The plugin is rendered the way the deployment renders it: its placeholders replaced by the crew
-// roster and a socket of this test's own, so the hook runs against a fake /admin on a real Unix socket.
+// The plugin is rendered the way the deployment renders it (test-render.ts), so the hook runs against a
+// fake /admin on a real Unix socket of this test's own.
 const WORKSPACE = "/workspace"
 const KEY = "ws-key"
-const ROSTER = ["takt", "dev", "qa", "tpm", "verify"]
 const dir = mkdtempSync(join(tmpdir(), "takt-memory-test-"))
 const SOCKET = join(dir, "memory.sock")
-const rendered = resolve(import.meta.dir, `takt-memory.rendered-${process.pid}.ts`)
-let memoryPlugin: { setup: (ctx: never) => Promise<unknown> }
+let memoryPlugin: { setup: (ctx: never) => unknown }
 
-beforeAll(async () => {
-  const source = readFileSync(resolve(import.meta.dir, "takt-memory.ts"), "utf8")
-    .replace(`"__TAKT_MEMORY_WIRE__"`, JSON.stringify({ tool_prefix: "takt_memory_", record: "record", bind: "bind", describe: "describe", admin_path: "/admin" }))
-    .replace(`"__TAKT_CREW_ROSTER__"`, JSON.stringify(ROSTER))
-    .replace(`"__TAKT_AI_BINARY__"`, JSON.stringify("takt-ai"))
-  writeFileSync(rendered, source)
-  memoryPlugin = (await import(rendered)).default
-})
-afterAll(() => { rmSync(rendered, { force: true }); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { memoryPlugin = (await import("./takt-memory")).default })
+afterAll(() => { rmSync(dir, { recursive: true, force: true }) })
 
 type Described = { id: number; exists: boolean; title?: string; outgoing?: Array<{ entry: number; kind: string }> }
 type AdminCall = { tool: string; args: Record<string, unknown> }

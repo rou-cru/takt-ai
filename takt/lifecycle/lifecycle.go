@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,6 +36,9 @@ import (
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/engram"
+	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
+	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/memory/embed"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/skills"
@@ -141,6 +145,12 @@ type Runtime struct {
 	EngramChoice string
 	// Progress reports phase and artifact events to an interactive caller.
 	Progress func(setup.DeploymentProgress)
+	// StartMemory makes install and sync run the memory service and confirm it ready (PR-SET-37).
+	// Production constructors set it; image assembly leaves it false, because the volume that holds
+	// the store does not exist while the image is built.
+	StartMemory bool
+	// Model is the manifest install acquires; nil means the pinned model.
+	Model *embed.Manifest
 }
 
 // NewRuntime wires the production OpenCode V2 preflight and handoff while
@@ -151,7 +161,8 @@ func NewRuntime() Runtime {
 			_, err := opencode.Handshake(ctx)
 			return err
 		},
-		Reload: opencode.Reload,
+		Reload:      opencode.Reload,
+		StartMemory: true,
 	}
 }
 
@@ -259,6 +270,14 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return notApplied(LifecycleResult{}, fmt.Errorf("engram memory capability unavailable: requires the engram binary %s or newer, which is not on PATH and could not be installed: %w", engram.EngramVersion, err))
 	}
+	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Acquiring the memory model"})
+	err = runtime.acquireModel(ctx, rootDir)
+	if Cancelled(ctx, err) {
+		return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
+	}
+	if err != nil {
+		return notApplied(LifecycleResult{}, fmt.Errorf("memory model unavailable: %w", err))
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking CodeGraph capability"})
 	if aside, err = setAsideStale(rootDir, codegraph.ManagedPrefixKey(), codegraph.Resolve, aside); err != nil {
 		return notApplied(LifecycleResult{}, err)
@@ -300,7 +319,35 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return deployed, err
 	}
-	return runtime.finishInstall(ctx, rootDir, request, engramCommand, codegraphCommand, deployed)
+	return runtime.finishInstall(ctx, action, rootDir, request, engramCommand, codegraphCommand, deployed)
+}
+
+// acquireModel downloads and verifies the semantic model the memory service loads at start.
+func (runtime Runtime) acquireModel(ctx context.Context, rootDir string) error {
+	manifest := embed.Pinned()
+	if runtime.Model != nil {
+		manifest = *runtime.Model
+	}
+	return manifest.Acquire(ctx, http.DefaultClient, embed.ModelDir(rootDir))
+}
+
+// startMemory runs the memory service and returns only once it reports ready. Install creates the
+// store; sync only ensures the owner. A running owner that reports another version than this build is
+// replaced, here only (PR-SET-37).
+func startMemory(ctx context.Context, action string) error {
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return err
+	}
+	status, err := memory.Start(ctx, dir, action == "install")
+	if err != nil || status.Version == setup.BuildVersion {
+		return err
+	}
+	if err := memory.StopOwner(ctx, dir); err != nil {
+		return err
+	}
+	_, err = memory.Start(ctx, dir, false)
+	return err
 }
 
 // setAsideStale moves the managed prerequisite at rel into the backups when
@@ -346,10 +393,19 @@ func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPla
 	return setup.SyncContextProgress(ctx, rootDir, plans, provider, progress, preserve...)
 }
 
-func (runtime Runtime) finishInstall(ctx context.Context, rootDir string, request setup.PlanRequest, engramCommand, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, engramCommand, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing Engram integration"})
 	if err := InjectEngram(rootDir, engramCommand); err != nil {
 		return deployed, err
+	}
+	if err := InjectMemory(rootDir); err != nil {
+		return deployed, err
+	}
+	if runtime.StartMemory {
+		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Starting the memory service"})
+		if err := startMemory(ctx, action); err != nil {
+			return deployed, fmt.Errorf("memory service did not become ready: %w", err)
+		}
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing CodeGraph integration"})
 	if err := InjectCodegraph(rootDir, codegraphCommand); err != nil {
@@ -420,6 +476,12 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 	if err := removeEngram(rootDir); err != nil {
 		return removed, err
 	}
+	if err := removeMemoryServer(rootDir); err != nil {
+		return removed, err
+	}
+	if err := os.RemoveAll(embed.ModelDir(rootDir)); err != nil {
+		removed.Incomplete = append(removed.Incomplete, "memory model: "+err.Error())
+	}
 	if err := removeCodegraph(rootDir); err != nil {
 		return removed, err
 	}
@@ -469,6 +531,30 @@ func plannedPaths(plans []setup.TargetPlan) []string {
 // only source of memory rules.
 func InjectEngram(rootDir, engramCommand string) error {
 	return injectServer("engram", rootDir, engramCommand, engram.Inject, registerManagedEngram)
+}
+
+// memoryCrewArgs follow the takt-ai executable in the command of the crew's memory MCP server.
+var memoryCrewArgs = []string{"memory", "mcp", "--crew"}
+
+// InjectMemory registers the crew's memory MCP server in OpenCode under memory.ServerKey. Its command
+// is this takt-ai executable.
+func InjectMemory(rootDir string) error {
+	binary, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve takt-ai executable: %w", err)
+	}
+	injected, err := filemerge.InjectMCPServer(model.OpenCodeConfigPath(rootDir), memory.ServerKey, append([]string{binary}, memoryCrewArgs...))
+	if err != nil {
+		return fmt.Errorf("inject %s: %w", memory.ServerKey, err)
+	}
+	return refreshManagedOwnership(rootDir, injected.Files)
+}
+
+// removeMemoryServer unregisters the crew's memory MCP server, so new OpenCode starts spawn no adapter.
+func removeMemoryServer(rootDir string) error {
+	return removeServer(memory.ServerKey, rootDir, func(root string) (model.InjectionResult, error) {
+		return filemerge.RemoveMCPServer(model.OpenCodeConfigPath(root), memory.ServerKey)
+	})
 }
 
 // injectServer runs one MCP server's injection plus its ownership bookkeeping

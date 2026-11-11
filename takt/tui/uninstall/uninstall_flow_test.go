@@ -2,6 +2,7 @@ package uninstall_test
 
 import (
 	"context"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"maps"
 	"os"
 	"path/filepath"
@@ -37,7 +38,7 @@ func installedRootWithModifiedFile(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	manifest, err := setup.LoadOwnershipManifest(root)
