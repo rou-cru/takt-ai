@@ -168,8 +168,8 @@ type ActionRequest struct {
     // RetainPaths and RemovePaths carry uninstall decisions so kept files move aside instead of vanishing.
     RetainPaths []string
     RemovePaths []string
-    // EngramChoice carries the Engram database decision (lifecycle.EngramLeave, EngramRetain or EngramRemove) so uninstall honors it without new plumbing.
-    EngramChoice string
+    // RetainMemory carries the memory decision so uninstall backs the memory up before deleting it (PR-INS-35).
+    RetainMemory bool
     // ReassignOverrides names the reassignment the adapter diffs.
     ReassignOverrides map[string]model.ModelAssignment
 }
@@ -197,7 +197,7 @@ type ActionResult struct {
     RetainedDir string
     // BackedUp lists replaced files with the copy an install or sync wrote of their earlier content.
     BackedUp []setup.Backup
-    // RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
+    // RetainedMemory is the memory backup inside RetainedDir, empty when none was written.
     RetainedMemory string
     Incomplete     []string
     Verify         *verify.Report

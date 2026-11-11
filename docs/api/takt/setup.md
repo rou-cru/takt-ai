@@ -17,7 +17,6 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func BeginOperation\(rootDir, action string\) \(func\(\), error\)](<#BeginOperation>)
 - [func ContentMatches\(artifactPath string, current, want \[\]byte\) bool](<#ContentMatches>)
 - [func DriftLabel\(reason string\) \(label, severity, explanation string\)](<#DriftLabel>)
-- [func EngramDataDir\(\) \(string, error\)](<#EngramDataDir>)
 - [func ForgetInstallation\(rootDir string\) error](<#ForgetInstallation>)
 - [func InstalledVersion\(rootDir string\) string](<#InstalledVersion>)
 - [func IsCurrentVersion\(installed string\) bool](<#IsCurrentVersion>)
@@ -26,6 +25,7 @@ Package setup implements the install, sync, and uninstall lifecycle: it builds t
 - [func RecordInstallation\(rootDir string, request PlanRequest\) error](<#RecordInstallation>)
 - [func RecordRiskAcceptances\(rootDir string, accepted \[\]RiskAcceptance\) error](<#RecordRiskAcceptances>)
 - [func RejectKeptIncompatible\(rootDir string, plans \[\]TargetPlan, syncing bool, preserve ...string\) error](<#RejectKeptIncompatible>)
+- [func ReserveRetentionDir\(rootDir string, now time.Time\) \(string, error\)](<#ReserveRetentionDir>)
 - [func ResolveComponents\(names \[\]string\) \(\[\]model.ComponentID, \[\]catalog.Removal, error\)](<#ResolveComponents>)
 - [func SafeJoin\(root, rel string\) \(string, error\)](<#SafeJoin>)
 - [func SaveInstalledConfig\(rootDir string, request PlanRequest\) error](<#SaveInstalledConfig>)
@@ -137,18 +137,6 @@ const (
 const BackupDir = ".takt-backups"
 ```
 
-<a name="EngramDataDirName"></a>EngramDataDirName is the default Engram data directory under the user's home; ENGRAM\_DATA\_DIR overrides it \(\`engram help\`, Environment\).
-
-```go
-const EngramDataDirName = ".engram"
-```
-
-<a name="EngramDatabaseName"></a>EngramDatabaseName is the SQLite file Engram keeps inside its data directory.
-
-```go
-const EngramDatabaseName = "engram.db"
-```
-
 <a name="InstalledConfigFilename"></a>InstalledConfigFilename records the PlanRequest last applied, so later operations reapply real custom choices.
 
 ```go
@@ -185,6 +173,12 @@ const OwnershipManifestVersion = 1
 const RetainedDirName = "takt-retained"
 ```
 
+<a name="RetainedMemoryDirName"></a>RetainedMemoryDirName is the directory inside the retained directory that receives the memory backup.
+
+```go
+const RetainedMemoryDirName = "memory"
+```
+
 <a name="RiskAcceptanceFilename"></a>RiskAcceptanceFilename records uncertain conflicts the user chose to keep. Re\-asking stops only for identical content with identical impact; it never authorizes overwrites.
 
 ```go
@@ -206,7 +200,7 @@ var BuildVersion = "dev"
 func AllComponents() ([]model.ComponentID, error)
 ```
 
-AllComponents returns every selectable component in display and planning order from the capability manifest. It is the single source of truth for "install everything applicable"; Engram and skills are not selectable.
+AllComponents returns every selectable component in display and planning order from the capability manifest. It is the single source of truth for "install everything applicable"; skills are not selectable.
 
 <a name="BackupsSince"></a>
 ## func BackupsSince
@@ -243,15 +237,6 @@ func DriftLabel(reason string) (label, severity, explanation string)
 ```
 
 DriftLabel maps a conflict reason to one display label, severity, and explanation. CLI and TUI render from here so drift reasons always read the same.
-
-<a name="EngramDataDir"></a>
-## func EngramDataDir
-
-```go
-func EngramDataDir() (string, error)
-```
-
-EngramDataDir resolves where Engram keeps its data the way Engram does: ENGRAM\_DATA\_DIR when set, otherwise \~/.engram.
 
 <a name="ForgetInstallation"></a>
 ## func ForgetInstallation
@@ -324,6 +309,15 @@ func RejectKeptIncompatible(rootDir string, plans []TargetPlan, syncing bool, pr
 ```
 
 RejectKeptIncompatible refuses an apply that would keep a file which cannot work with it: a conflict of ImpactIncompatible whose on\-disk version stays because the caller preserved its path, or, when syncing, because it is a user\-edited managed file. The error names the file and the way out; nothing is written. Restoring Takt's version \(not preserving\) is always applicable.
+
+<a name="ReserveRetentionDir"></a>
+## func ReserveRetentionDir
+
+```go
+func ReserveRetentionDir(rootDir string, now time.Time) (string, error)
+```
+
+ReserveRetentionDir reserves the timestamped retained directory for one uninstall, owner\-only, and returns its path.
 
 <a name="ResolveComponents"></a>
 ## func ResolveComponents
@@ -837,9 +831,9 @@ type RetentionChoices struct {
     Keep []string
     // Remove lists preserved files to delete.
     Remove []string
-    // MemoryFrom is the Engram data directory whose database is handed off
-    // into the retained directory. Empty means no memory choice was made.
-    MemoryFrom string
+    // RetainedDir is a retained directory already reserved for this uninstall
+    // (ReserveRetentionDir), which kept files share. Empty reserves one on first use.
+    RetainedDir string
 }
 ```
 
@@ -856,9 +850,6 @@ type RetentionResult struct {
     Retained []string
     // RetainedDir is the timestamped directory holding kept content.
     RetainedDir string
-    // Memory is the delivered Engram database inside RetainedDir; empty when
-    // no memory was handed off (no choice, or Engram holds no database).
-    Memory string
     // Incomplete holds "path: reason" for every choice that could not be
     // carried out; the file stays where it was.
     Incomplete []string
@@ -874,7 +865,7 @@ type RetentionResult struct {
 func ApplyUninstallRetention(ctx context.Context, rootDir string, choices RetentionChoices, now time.Time) (RetentionResult, error)
 ```
 
-ApplyUninstallRetention carries out keep/remove choices after Uninstall, moving retained files and the Engram database into one timestamped directory.
+ApplyUninstallRetention carries out keep/remove choices after Uninstall, moving retained files into one timestamped directory.
 
 <a name="RiskAcceptance"></a>
 ## type RiskAcceptance

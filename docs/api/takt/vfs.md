@@ -12,11 +12,9 @@ Package vfs implements the Virtual File System, the transactional execution laye
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
-- [func EngramInvariant\(id int64\) string](<#EngramInvariant>)
 - [func GitShellDecision\(role model.RoleClass, command string\) \(decision, reason string\)](<#GitShellDecision>)
 - [func GuardGitMutation\(role model.RoleClass\) error](<#GuardGitMutation>)
 - [func GuardShellGit\(command string\) error](<#GuardShellGit>)
-- [func LockWorkspace\(rootDir string\) \(\*os.File, error\)](<#LockWorkspace>)
 - [func MemoryInvariant\(id int64\) string](<#MemoryInvariant>)
 - [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func RequireVFSCapability\(instance string, capability model.VFSCapability\) error](<#RequireVFSCapability>)
@@ -259,15 +257,6 @@ var (
 var ErrWorkspaceBusy = errors.New("workspace busy")
 ```
 
-<a name="EngramInvariant"></a>
-## func EngramInvariant
-
-```go
-func EngramInvariant(id int64) string
-```
-
-EngramInvariant is the invariant that names the Engram entry id.
-
 <a name="GitShellDecision"></a>
 ## func GitShellDecision
 
@@ -294,15 +283,6 @@ func GuardShellGit(command string) error
 ```
 
 GuardShellGit refuses a command that executes a Git mutation, for a caller that is not the orchestrator and whose shell runs natively, outside any shell plan.
-
-<a name="LockWorkspace"></a>
-## func LockWorkspace
-
-```go
-func LockWorkspace(rootDir string) (*os.File, error)
-```
-
-LockWorkspace takes the workspace lock Open takes, without opening the store, for a harness command that decides from the execution history under the same serialization point. Closing the returned file releases it.
 
 <a name="MemoryInvariant"></a>
 ## func MemoryInvariant
