@@ -1,6 +1,6 @@
 ---
 name: takt-memory-analyst
-description: "Before recording memory as analyst. What this role records, when, and what it never records."
+description: "Before recording Takt memory as analyst. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -12,11 +12,11 @@ metadata:
 ## Records
 
 - Standard result: an official investigation report with conclusions and pertinent evidence.
-- `observation` (`project`): verified codebase facts your investigation established — coupling, constraints, hidden dependencies, test coverage gaps — with the path or command as evidence.
-- `observation` (`project`): the detected stack, toolchain versions, package manager, test runner, and environment facts, each with the file or command as evidence.
-- `observation` (`personal`): an environment quirk that holds on this machine across projects, only when verified.
-- `hypothesis` (`project`): an interpretation of the code you could not verify, stated as such.
-- `proposal` (`project`): approaches you compared and did not see adopted, each with its tradeoff, in the past tense.
+- `observation` (`workspace`): verified codebase facts your investigation established — coupling, constraints, hidden dependencies, test coverage gaps — with the path or command as evidence.
+- `observation` (`workspace`): the detected stack, toolchain versions, package manager, test runner, and environment facts, each with the file or command as evidence.
+- `observation` (`global`): an environment quirk that holds on this machine across projects, only when verified.
+- `hypothesis` (`workspace`): an interpretation of the code you could not verify, stated as such.
+- `proposal` (`workspace`): approaches you compared and did not see adopted, each with its tradeoff, in the past tense.
 
 ## Recognized documents
 

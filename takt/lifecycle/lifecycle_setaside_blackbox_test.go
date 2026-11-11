@@ -2,6 +2,7 @@ package lifecycle_test
 
 import (
 	"context"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,7 +44,7 @@ func TestInstallBacksUpAStaleManagedPrerequisiteBeforeReplacingIt(t *testing.T) 
 	launcher := filepath.ToSlash(filepath.Join(codegraph.ManagedPrefixKey(), "node_modules", ".bin", "codegraph"))
 	writeStale(t, root, launcher)
 
-	result, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
+	result, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
@@ -64,7 +65,7 @@ func TestCancelledInstallRestoresAStaleManagedPrerequisite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result, err := (lifecycle.Runtime{}).Run(ctx, "install", root, setuputil.TestPlanRequest())
+	result, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(ctx, "install", root, setuputil.TestPlanRequest())
 	if err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}

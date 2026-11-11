@@ -2,6 +2,7 @@ package runtime_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
@@ -44,7 +46,7 @@ func reassignedAgent(t *testing.T) string {
 func installedAdapterRoot(t *testing.T) (string, runtime.Adapter) {
 	t.Helper()
 	root := t.TempDir()
-	adapter := testAdapter(nil)
+	adapter := testAdapter(t, nil)
 	if _, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionInstall, RootDir: root}); err != nil {
 		t.Fatalf("install error = %v", err)
 	}
@@ -71,6 +73,44 @@ func TestCorrectDriftRestoresSelectedFileAndReinjectsIntegrations(t *testing.T) 
 	}
 	if !strings.Contains(string(data), "engram") {
 		t.Errorf("restored file lacks the re-injected Engram integration:\n%s", data)
+	}
+}
+
+// TestCorrectDriftOfAnotherFileLeavesTheOpenCodeConfigurationUntouched proves integrations are reinjected
+// only when the correction rewrote the configuration that holds them: a user who disabled the memory
+// server keeps it disabled when a different file is corrected.
+func TestCorrectDriftOfAnotherFileLeavesTheOpenCodeConfigurationUntouched(t *testing.T) {
+	root, adapter := installedAdapterRoot(t)
+	config := filepath.Join(root, filepath.FromSlash(driftedConfig))
+	raw, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	server := document[model.MCPKeyOpenCode].(map[string]any)[model.MCPServersKeyOpenCode].(map[string]any)[memory.ServerKey].(map[string]any)
+	server["disabled"] = true
+	edited, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plugin := model.OpenCodeConfigDir + "/" + model.OpenCodePluginsDir + "/" + model.VFSPluginFile
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(plugin)), []byte("// drifted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.Execute(runtime.ActionRequest{Action: runtime.ActionCorrectDrift, RootDir: root, SelectedDriftPaths: []string{plugin}})
+	if err != nil || !slices.Contains(result.Changed, plugin) {
+		t.Fatalf("result = %+v, %v; want the plugin restored", result, err)
+	}
+	after, err := os.ReadFile(config)
+	if err != nil || string(after) != string(edited) {
+		t.Fatalf("the OpenCode configuration changed although it was not corrected: %v\n%s", err, after)
 	}
 }
 
@@ -165,7 +205,7 @@ func TestReassignModelsReportsEverythingNotAppliedWhenCancelledUpFront(t *testin
 }
 
 func TestReassignModelsFailsWithoutAnInstallation(t *testing.T) {
-	_, err := testAdapter(nil).Execute(runtime.ActionRequest{
+	_, err := testAdapter(t, nil).Execute(runtime.ActionRequest{
 		Action: runtime.ActionReassignModels, RootDir: t.TempDir(),
 		ReassignOverrides: map[string]model.ModelAssignment{reassignedAgent(t): {Model: reassignedModel}},
 	})
@@ -177,7 +217,7 @@ func TestReassignModelsFailsWithoutAnInstallation(t *testing.T) {
 func TestCommandReportsProgressToTheObserverAndVerifiesInstalls(t *testing.T) {
 	var events []setup.DeploymentProgress
 	request := runtime.ActionRequest{ID: 21, Action: runtime.ActionInstall, RootDir: t.TempDir()}
-	message := testAdapter(nil).Command(context.Background(), request, func(event setup.DeploymentProgress) {
+	message := testAdapter(t, nil).Command(context.Background(), request, func(event setup.DeploymentProgress) {
 		events = append(events, event)
 	})().(runtime.ActionResultMsg)
 	if message.Err != nil || message.Result.Verify == nil {

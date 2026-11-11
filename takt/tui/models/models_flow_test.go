@@ -2,6 +2,7 @@ package models_test
 
 import (
 	"context"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,7 +51,7 @@ func viewText(m models.Model) string {
 func TestModelsPasteFiltersPickerWhileOpen(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 
@@ -76,7 +77,7 @@ func TestModelsPasteFiltersPickerWhileOpen(t *testing.T) {
 func TestModelsReassignFlow(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 

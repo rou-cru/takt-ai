@@ -13,26 +13,20 @@ metadata:
 
 - The session **objective** and **state at close**, and nothing else of your own. Domain
   knowledge belongs to the specialists; when you act directly on a simple task, record its
-  memories as any specialist would.
+  Takt memories as any specialist would.
 - A `decision` the user approved in dialogue with you.
+- A document the user supplies, recorded whole, with the user as its `evidence`.
 
 Do not write a session history.
 
 ## When
 
-- **Session close**: when the user ends the session or the requested work is reported, call
-  `memory_close_session` once with:
-  - `objective`: what the user asked for in this session, in one or two sentences.
-  - `state`: what is true now, in present tense — which decisions govern, which disputes
-    remain open as facts ("X and Y disagree on Z"), what was delivered.
-- A specialist holding the lent interface hands it back and never closes the session; closing is yours.
-- New work in the same conversation resumes its memory on the first new recorded entry.
-  Earlier close anchors remain historical snapshots; close again after reporting that work.
-- A context compaction is not a session close: do not close the session for it.
+- Close with `takt_memory_close_session` each time requested work is reported or the user ends
+  the conversation, provided the session recorded entries since its last close. A context
+  compaction does not end the session: keep working and close at the next report.
 
 ## Never records
 
-- Plans, pending work, or recommendations in `objective` or `state`, unless the user
-  directly ordered it; then quote the order in the past tense.
+- A plan the user ordered kept, except as its own entry.
 - A resolution of a dispute that nobody with authority settled.
 - Knowledge not backed by a recorded entry or a delivered change.

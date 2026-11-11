@@ -1,6 +1,6 @@
 ---
 name: takt-memory-dev
-description: "Before recording memory as dev. What this role records, when, and what it never records."
+description: "Before recording Takt memory as dev. What this role records, when, and what it never records."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -11,7 +11,7 @@ metadata:
 
 ## Records
 
-- `observation` (`project`): non-obvious facts the implementation revealed — a hidden constraint, a surprising behavior, a convention the code relies on — with the path or test as evidence.
+- `observation` (`workspace`): non-obvious facts the implementation revealed — a hidden constraint, a surprising behavior, a convention the code relies on — with the path or test as evidence.
 - An `observation` that `disputes` a recorded decision when the code you built contradicts it and you could not follow it.
 
 ## When
@@ -20,6 +20,5 @@ metadata:
 
 ## Never records
 
-- Task progress, completed checkboxes, or apply state: they live in their own files.
 - What the diff already shows plainly.
 - Remaining work or follow-ups.
