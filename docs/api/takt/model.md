@@ -14,7 +14,6 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 - [Variables](<#variables>)
 - [func OpenCodeConfigPath\(home string\) string](<#OpenCodeConfigPath>)
 - [func OpenCodePluginPath\(home, file string\) string](<#OpenCodePluginPath>)
-- [func OpenCodePromptPath\(home string\) string](<#OpenCodePromptPath>)
 - [func ValidateRoleClass\(subject string, r RoleClass\) error](<#ValidateRoleClass>)
 - [type ComponentID](<#ComponentID>)
 - [type InjectionResult](<#InjectionResult>)
@@ -70,28 +69,10 @@ const (
 const AgentOpenCode = "opencode"
 ```
 
-<a name="AgentsPromptFile"></a>AgentsPromptFile is OpenCode's global agent prompt file.
-
-```go
-const AgentsPromptFile = "AGENTS.md"
-```
-
-<a name="EngramPluginFile"></a>EngramPluginFile is the deployed Engram memory plugin filename.
-
-```go
-const EngramPluginFile = "engram.ts"
-```
-
 <a name="EnvSandboxAllowedDomains"></a>EnvSandboxAllowedDomains names the environment variable with which the user opts shell sandboxes into a network allowlist: comma\-separated domain patterns such as "github.com,\*.npmjs.org". Unset or empty leaves the network unrestricted; Takt imposes no domain of its own.
 
 ```go
 const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
-```
-
-<a name="SectionEngramProtocol"></a>SectionEngramProtocol is the markdown section ID shared by inject and remove.
-
-```go
-const SectionEngramProtocol = "engram-protocol"
 ```
 
 ## Variables
@@ -132,15 +113,6 @@ func OpenCodePluginPath(home, file string) string
 
 OpenCodePluginPath returns \<home\>/.config/opencode/plugins/\<file\>.
 
-<a name="OpenCodePromptPath"></a>
-## func OpenCodePromptPath
-
-```go
-func OpenCodePromptPath(home string) string
-```
-
-OpenCodePromptPath returns \<home\>/.config/opencode/AGENTS.md.
-
 <a name="ValidateRoleClass"></a>
 ## func ValidateRoleClass
 
@@ -159,17 +131,15 @@ ComponentID names an installable piece so setup and lifecycle can select parts w
 type ComponentID string
 ```
 
-<a name="ComponentEngram"></a>Component IDs are the closed set of independently installable pieces.
+<a name="ComponentSkills"></a>Component IDs are the closed set of independently installable pieces.
 
 ```go
 const (
-    // ComponentEngram names the memory-graph piece so installs can toggle memory independently.
-    ComponentEngram ComponentID = "engram"
     // ComponentSkills names the skills piece so installs can toggle skills independently.
     ComponentSkills ComponentID = "skills"
     // ComponentContext7 names the docs-lookup integration so installs can toggle it independently.
     ComponentContext7 ComponentID = "context7"
-    // ComponentCodegraph names the codebase-exploration MCP integration, mandatory core like Engram.
+    // ComponentCodegraph names the codebase-exploration MCP integration, mandatory core.
     ComponentCodegraph ComponentID = "codegraph"
 )
 ```

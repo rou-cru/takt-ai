@@ -123,10 +123,9 @@ const (
     // StateModified asks what to do with each externally modified managed
     // file. Skipped when the preview finds none.
     StateModified State = iota
-    // StateEngram asks what to do with the Engram database, which lives
-    // outside Takt's footprint. Leave is preselected: the safe default with
-    // zero behavior change.
-    StateEngram
+    // StateMemory asks whether to retain the memory before it is deleted.
+    // Retain is preselected: the safe default.
+    StateMemory
     // StateReview is the commitment point: scope, removals, kept content and
     // the Uninstall action. There is no second confirmation.
     StateReview

@@ -12,6 +12,7 @@ Package shared holds helpers reused by the OpenCode target adapter.
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func MemorySkillPath\(authorID string\) string](<#MemorySkillPath>)
 - [func NewManagedPaths\(generated \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
 - [func ResolveBinary\(candidates \[\]string, isCompatible func\(absolute string\) bool\) \(string, bool\)](<#ResolveBinary>)
 - [func VersionAtLeast\(have, want string\) bool](<#VersionAtLeast>)
@@ -28,11 +29,26 @@ const Context7RemoteURL = "https://mcp.context7.com/mcp"
 
 ## Variables
 
+<a name="ContractSkillPath"></a>ContractSkillPath is the memory contract every agent loads before memory calls.
+
+```go
+var ContractSkillPath = path.Join(model.OpenCodeSkillsDir, contractSkillID, catalog.SkillFileName)
+```
+
 <a name="OrchestratorID"></a>OrchestratorID names the selectable top\-level agent across harnesses.
 
 ```go
 var OrchestratorID = orchestratorDefinition.ID
 ```
+
+<a name="MemorySkillPath"></a>
+## func MemorySkillPath
+
+```go
+func MemorySkillPath(authorID string) string
+```
+
+MemorySkillPath returns the deployed memory skill for one author.
 
 <a name="NewManagedPaths"></a>
 ## func NewManagedPaths
@@ -50,7 +66,7 @@ NewManagedPaths returns OpenCode's owned paths, normalized and sorted for stable
 func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool)
 ```
 
-ResolveBinary scans candidates in order and returns the absolute path of the first that exists, is a regular file, and satisfies isCompatible — the scan loop shared by every managed\-binary resolver \(engram, codegraph\).
+ResolveBinary scans candidates in order and returns the absolute path of the first that exists, is a regular file, and satisfies isCompatible — the scan loop shared by every managed\-binary resolver \(codegraph\).
 
 <a name="VersionAtLeast"></a>
 ## func VersionAtLeast

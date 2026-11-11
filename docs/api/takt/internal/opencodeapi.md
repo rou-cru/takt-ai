@@ -74,8 +74,8 @@ var (
     // answer as expected: server down, unreachable, call failed or timed out.
     ErrUnavailable = errors.New("opencode API is not available")
 
-    // ErrVersion means the server answered but its version predates the V2
-    // API surface Takt requires. Consumers must abort before mutating.
+    // ErrVersion means the server answered but its version predates
+    // MinimumVersion. Consumers must abort before mutating.
     ErrVersion = errors.New("opencode version is too old for Takt")
 
     // ErrInvalidResponse means the API answered but the body could not be

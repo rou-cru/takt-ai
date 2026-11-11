@@ -105,7 +105,7 @@ Pinned returns the manifest of the model Takt ships.
 func (m Manifest) Acquire(ctx context.Context, client *http.Client, dir string) error
 ```
 
-Acquire installs every manifest file into dir. A file already there that matches its manifest size and SHA\-256 is kept, so an install with the model present needs no network. Each download is capped at its manifest size, verified against its SHA\-256, and written atomically.
+Acquire downloads every manifest file into dir. Each download is capped at its manifest size, verified against its SHA\-256, and written atomically.
 
 <a name="Model"></a>
 ## type Model
