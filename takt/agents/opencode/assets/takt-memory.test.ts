@@ -61,7 +61,7 @@ async function startMemory(options: Options = {}) {
   const spawns: string[][] = []
   const cwds: Array<string | undefined> = []
   let admin = options.running === false ? undefined : fakeAdmin(options.entries ?? [])
-  const created: Array<{ id: string; action: string; resources: string[]; metadata: Record<string, unknown> }> = []
+  const created: Array<{ action: string; resources: string[]; metadata: Record<string, unknown> }> = []
   const effects = [...(options.effects ?? [])]
   mock.module("@opencode/client/service", () => ({ Service: { discover: async () => ({ url: "http://service.invalid" }), headers: () => ({}) } }))
   mock.module("@opencode/client", () => ({
@@ -184,14 +184,6 @@ describe("global tier", () => {
     } finally { memory.stop() }
   })
 
-  test("the confirmation carries the permission service's own identifier prefix", async () => {
-    const memory = await startMemory()
-    try {
-      await memory.run("record", globalRecord)
-      expect(memory.created[0].id).toMatch(/^per_/)
-    } finally { memory.stop() }
-  })
-
   test("a denial throws and nothing is bound", async () => {
     const memory = await startMemory({ effects: ["deny"] })
     try {
@@ -255,14 +247,6 @@ describe("traceability matrix", () => {
     await accepted("tpm", column(`${MATRIX}: Owning node`, { id: 3, relation: "supersedes" }))
     await refused("tpm", column(`${MATRIX}: Owning node`, { id: 4, relation: "supersedes" }), "which is not yours")
     await refused("tpm", column(`${MATRIX}: Owning node`, { id: 9, relation: "supersedes" }), "not a matrix column chain")
-  })
-
-  test("a record the matrix refuses never asks the user", async () => {
-    const memory = await startMemory({ entries })
-    try {
-      await expect(memory.run("record", { ...column(MATRIX), scope: "global" }, "tpm")).rejects.toThrow("Only qa creates the traceability matrix root")
-      expect(memory.created).toEqual([])
-    } finally { memory.stop() }
   })
 
   test("a dispute and an unrelated record stay open to any author", async () => {

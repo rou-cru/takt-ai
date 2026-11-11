@@ -115,16 +115,6 @@ func Assess(ctx context.Context, dir string) (StatusOutput, Health, error) {
 // An owner that is already gone is not a failure.
 func StopOwner(ctx context.Context, dir string) (err error) {
 	lockPath := filepath.Join(dir, LockFile)
-	lock, err := os.OpenFile(lockPath, os.O_RDWR, ownerFileMode)
-	if err != nil {
-		return unavailable("open %s: %v", lockPath, err)
-	}
-	defer func() { err = errors.Join(err, lock.Close()) }()
-	// A lock nobody holds means no owner runs, whatever PID a crashed owner left in the file: signaling
-	// it could end an unrelated process that reused the PID.
-	if flock.Exclusive(ctx, lock, flock.PollInterval) == nil {
-		return nil
-	}
 	pid, err := strconv.Atoi(lockOwner(lockPath))
 	if err != nil {
 		return unavailable("a Takt memory service runs but %s records no PID to stop", lockPath)
@@ -132,6 +122,11 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return unavailable("stop the Takt memory service (pid %d): %v", pid, err)
 	}
+	lock, err := os.OpenFile(lockPath, os.O_RDWR, ownerFileMode)
+	if err != nil {
+		return unavailable("open %s: %v", lockPath, err)
+	}
+	defer func() { err = errors.Join(err, lock.Close()) }()
 	deadline := time.Now().Add(stopWait)
 	for {
 		err := flock.Exclusive(ctx, lock, stopPoll)

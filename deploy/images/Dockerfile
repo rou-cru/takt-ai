@@ -118,7 +118,7 @@ LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
       org.opencontainers.image.title="takt-ai" \
       org.opencontainers.image.description="Prepared Takt AI + OpenCode v2 workspace runtime"
 # Pinned to OpenCode 2.x on purpose; never "latest".
-ARG OPENCODE_VERSION=2.2.5
+ARG OPENCODE_VERSION=2.2.7
 # SHA-256 of https://opencode.ai/v2/install. The installer endpoint is shared
 # across all CLI versions and carries no vendor-published checksum of its own,
 # so this pin substitutes one and the build verifies it before ever executing
@@ -180,7 +180,7 @@ LABEL org.opencontainers.image.source="https://github.com/rou-cru/takt-ai" \
       org.opencontainers.image.vendor="Takt AI Contributors" \
       org.opencontainers.image.title="takt-ai (dev)" \
       org.opencontainers.image.description="Takt AI + OpenCode v2, ready for interactive Go/TS/Python work"
-ARG OPENCODE_VERSION=2.2.5
+ARG OPENCODE_VERSION=2.2.7
 ARG OPENCODE_INSTALL_SHA256=bbc4584fd6a888bcd14623b8a63afa0f1b4075a2e84a2c3518cd509b446b3135
 ARG DEV_UID=1000
 ARG DEV_GID=1000

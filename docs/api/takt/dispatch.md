@@ -423,10 +423,6 @@ type AdmissionPolicy struct {
         MaxActions  int `yaml:"max_actions"`
         MaxAttempts int `yaml:"max_attempts"`
     }   `yaml:"recovery"`
-    // Interlocutor bounds the memory index a returned envelope carries (IR-22).
-    Interlocutor struct {
-        MemoryPage int `yaml:"memory_page"`
-    }   `yaml:"interlocutor"`
 }
 ```
 

@@ -6,14 +6,13 @@
 import "github.com/rou-cru/takt-ai/takt/lifecycle"
 ```
 
-Package lifecycle dispatches the install, sync and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime, composing setup, skills and engram. It sits above them because hosting this dispatch in setup would create an import cycle through skills.
+Package lifecycle dispatches the install, sync and uninstall orchestration shared by the CLI \(takt/cli\) and the TUI runtime, composing setup, skills and the memory service. It sits above them because hosting this dispatch in setup would create an import cycle through skills.
 
 ## Index
 
-- [Constants](<#constants>)
 - [func Cancelled\(ctx context.Context, err error\) bool](<#Cancelled>)
 - [func InjectCodegraph\(rootDir, codegraphCommand string\) error](<#InjectCodegraph>)
-- [func InjectEngram\(rootDir, engramCommand string\) error](<#InjectEngram>)
+- [func InjectMemory\(rootDir string\) error](<#InjectMemory>)
 - [func InstallCodegraph\(ctx context.Context, rootDir string\) error](<#InstallCodegraph>)
 - [func PreviewLifecycle\(action string, rootDir string, request setup.PlanRequest\) \(any, error\)](<#PreviewLifecycle>)
 - [type InstallPreview](<#InstallPreview>)
@@ -24,23 +23,6 @@ Package lifecycle dispatches the install, sync and uninstall orchestration share
   - [func NewRuntime\(\) Runtime](<#NewRuntime>)
   - [func \(runtime Runtime\) Run\(ctx context.Context, action string, rootDir string, request setup.PlanRequest, preserve ...string\) \(LifecycleResult, error\)](<#Runtime.Run>)
 
-
-## Constants
-
-<a name="EngramLeave"></a>Engram retention choices for uninstall: the Engram database lives outside Takt's footprint, so uninstall never touches it unless the user explicitly chooses EngramRemove. Empty means EngramLeave.
-
-```go
-const (
-    // EngramLeave keeps the Engram database where it is: zero behavior change.
-    EngramLeave = "leave"
-    // EngramRetain hands a consistent copy of the Engram database to the
-    // retained directory so files and memory share one directory. The database
-    // stays in place.
-    EngramRetain = "retain"
-    // EngramRemove asks for the Engram database to be removed too.
-    EngramRemove = "remove"
-)
-```
 
 <a name="Cancelled"></a>
 ## func Cancelled
@@ -60,14 +42,14 @@ func InjectCodegraph(rootDir, codegraphCommand string) error
 
 InjectCodegraph wires the codegraph MCP server into OpenCode, using codegraphCommand \(from codegraph.Acquire\) verbatim.
 
-<a name="InjectEngram"></a>
-## func InjectEngram
+<a name="InjectMemory"></a>
+## func InjectMemory
 
 ```go
-func InjectEngram(rootDir, engramCommand string) error
+func InjectMemory(rootDir string) error
 ```
 
-InjectEngram wires the engram MCP server into OpenCode, using engramCommand verbatim. \`engram setup\` is never run: Takt's memory contract skill is the only source of memory rules.
+InjectMemory registers the crew's memory MCP server in OpenCode under memory.ServerKey. Its command is this takt\-ai executable.
 
 <a name="InstallCodegraph"></a>
 ## func InstallCodegraph
@@ -122,6 +104,10 @@ type LifecycleResult struct {
     // cancellation left undone.
     Outcome    Outcome
     NotApplied []string
+    // RetainedDir is the retained directory reserved for the memory backup, and RetainedMemory the
+    // backup file inside it; both are empty when no memory was retained.
+    RetainedDir    string
+    RetainedMemory string
     // BackupDir is set when a cancelled operation replaced files whose
     // copies were written to setup.BackupDir during this run.
     BackupDir string
@@ -189,10 +175,17 @@ type Runtime struct {
     OpenCodeHandshake func(context.Context) error
     // Reload is the final handoff after a completed OpenCode deployment.
     Reload func(context.Context) error
-    // EngramChoice is EngramLeave (default), EngramRetain or EngramRemove; see above.
-    EngramChoice string
+    // RetainMemory makes uninstall back the memory up into the retained directory before deleting
+    // it (PR-INS-35). The zero value discards it.
+    RetainMemory bool
     // Progress reports phase and artifact events to an interactive caller.
     Progress func(setup.DeploymentProgress)
+    // StartMemory makes install and sync run the memory service and confirm it ready (PR-SET-37).
+    // Production constructors set it; image assembly leaves it false, because the volume that holds
+    // the store does not exist while the image is built.
+    StartMemory bool
+    // Model is the manifest install acquires; nil means the pinned model.
+    Model *embed.Manifest
 }
 ```
 

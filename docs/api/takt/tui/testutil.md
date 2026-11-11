@@ -12,12 +12,10 @@ Package testutil provides shared test helpers for the TUI test suites.
 
 - [func ActionRequest\(t \*testing.T, cmd tea.Cmd\) runtime.ActionRequest](<#ActionRequest>)
 - [func FakeCodegraphScript\(version string\) \[\]byte](<#FakeCodegraphScript>)
-- [func FakeEngramScript\(version string\) \[\]byte](<#FakeEngramScript>)
 - [func FakeModel\(t \*testing.T\) \*embed.Manifest](<#FakeModel>)
 - [func FakeOpenCodeScript\(\) \[\]byte](<#FakeOpenCodeScript>)
 - [func MemoryDir\(t \*testing.T\) string](<#MemoryDir>)
 - [func RequireFixtures\(t \*testing.T, render func\(width, height int\) string\)](<#RequireFixtures>)
-- [func RunWithFakeEngram\(m \*testing.M\) int](<#RunWithFakeEngram>)
 - [func RunWithFakeTools\(m \*testing.M\) int](<#RunWithFakeTools>)
 - [func ServeMemoryIfRequested\(\)](<#ServeMemoryIfRequested>)
 - [func Shows\(view, want string\) bool](<#Shows>)
@@ -42,15 +40,6 @@ func FakeCodegraphScript(version string) []byte
 ```
 
 FakeCodegraphScript is the single fake \`codegraph \-\-version\` stub, so a CodegraphVersion bump cannot leave a stale fixture below the minimum.
-
-<a name="FakeEngramScript"></a>
-## func FakeEngramScript
-
-```go
-func FakeEngramScript(version string) []byte
-```
-
-FakeEngramScript is the single fake \`engram version\` stub every test uses, so version\-output drift fails in one place instead of four.
 
 <a name="FakeModel"></a>
 ## func FakeModel
@@ -87,15 +76,6 @@ func RequireFixtures(t *testing.T, render func(width, height int) string)
 ```
 
 RequireFixtures compares render's output with the committed golden file for every size and color mode: testdata/\<Test\>/\<mode\>/\<W\>x\<H\>.golden. render must build its screen inside the call, after the mode is set, so styles resolve for that mode. Regenerate with \`go test ./takt/tui/... \-update\` and review before committing.
-
-<a name="RunWithFakeEngram"></a>
-## func RunWithFakeEngram
-
-```go
-func RunWithFakeEngram(m *testing.M) int
-```
-
-RunWithFakeEngram runs m with a compatible fake engram first on PATH, so tests never use the host binary or download one. Call it from TestMain.
 
 <a name="RunWithFakeTools"></a>
 ## func RunWithFakeTools

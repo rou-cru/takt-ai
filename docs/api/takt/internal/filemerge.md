@@ -12,11 +12,9 @@ Package filemerge merges Takt\-managed content into user\-owned JSON, TOML, and 
 
 - [Constants](<#constants>)
 - [func InjectMCPServer\(path, name string, command \[\]string\) \(model.InjectionResult, error\)](<#InjectMCPServer>)
-- [func InjectMarkdownSection\(existing, sectionID, content string\) string](<#InjectMarkdownSection>)
 - [func MergeJSONObjects\(baseJSON, overlayJSON \[\]byte\) \(\[\]byte, error\)](<#MergeJSONObjects>)
 - [func NormalizeJSON\(raw \[\]byte\) \[\]byte](<#NormalizeJSON>)
 - [func ParseJSONObject\(raw \[\]byte\) \(map\[string\]any, error\)](<#ParseJSONObject>)
-- [func ReadFileOrEmpty\(path string\) \(string, error\)](<#ReadFileOrEmpty>)
 - [func ReadRegularFile\(path string\) \(\[\]byte, error\)](<#ReadRegularFile>)
 - [func RemoveJSONKey\(path string, key string, parents ...string\) \(bool, error\)](<#RemoveJSONKey>)
 - [func RemoveMCPServer\(path, name string\) \(model.InjectionResult, error\)](<#RemoveMCPServer>)
@@ -60,15 +58,6 @@ func InjectMCPServer(path, name string, command []string) (model.InjectionResult
 
 InjectMCPServer registers a local stdio MCP server under name in the OpenCode config at path. OpenCode requires command as an array for type:local servers \(a separate "args" field is rejected\); ReplaceSentinel swaps the whole server object so upgrades from the old shape converge instead of accumulating both, and the merge patch leaves shared configs' user keys untouched.
 
-<a name="InjectMarkdownSection"></a>
-## func InjectMarkdownSection
-
-```go
-func InjectMarkdownSection(existing, sectionID, content string) string
-```
-
-InjectMarkdownSection replaces or appends the section marked with HTML comments \<\!\-\- takt\-ai:SECTION\_ID \-\-\> in a markdown file.
-
 <a name="MergeJSONObjects"></a>
 ## func MergeJSONObjects
 
@@ -95,15 +84,6 @@ func ParseJSONObject(raw []byte) (map[string]any, error)
 ```
 
 ParseJSONObject reads raw as a JSON object under MergeJSONObjects' rules, returning an \*InvalidJSONError when it is not one.
-
-<a name="ReadFileOrEmpty"></a>
-## func ReadFileOrEmpty
-
-```go
-func ReadFileOrEmpty(path string) (string, error)
-```
-
-ReadFileOrEmpty reads the file at path, returning an empty string instead of an error when the file does not exist.
 
 <a name="ReadRegularFile"></a>
 ## func ReadRegularFile

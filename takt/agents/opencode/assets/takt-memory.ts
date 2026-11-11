@@ -148,8 +148,7 @@ export default Plugin.define({
       startEvents()
       if (disposed) throw new Error("approvals are no longer available; no approval was granted; request approval again")
       const api = await confirmations()
-      // The permission service accepts only its own `per` identifier prefix.
-      const id = `per_${randomUUID()}`
+      const id = randomUUID()
       const controller = new AbortController()
       const reply = new Promise<string>((resolve, reject) => pending.set(id, { session: c.sessionID, controller, resolve, reject }))
       void reply.catch(() => undefined)
@@ -249,13 +248,12 @@ export default Plugin.define({
         throw new Error("The global tier holds cross-project preferences, habits and environment quirks, never workspace content. Record this entry with scope workspace, or remove the code and the workspace directory from its title, content, and evidence.")
       }
       const userOrder = args.user_order === true
-      // The matrix check only reads, so a record it refuses never costs the user an answer.
-      await checkMatrix(event.agent, args)
       if (isGlobal || userOrder) {
         const shown = { title, content }
         if (isGlobal) await confirm(GLOBAL_ACTION, title, shown, event)
         if (userOrder) await confirm(USER_ORDER_ACTION, title, { ...shown, question: "Did you order recording this?" }, event)
       }
+      await checkMatrix(event.agent, args)
       return isGlobal || userOrder ? [args] : []
     }
 
