@@ -263,6 +263,31 @@ func TestStopOwnerNeverSignalsAProcessThatHoldsTheLockWithoutServing(t *testing.
 	}
 }
 
+// TestStopOwnerSucceedsWhenTheHolderExitsBeforeAnswering covers an owner that exits on its own while
+// the stop waits for its socket: the freed lock is the stop asked for.
+func TestStopOwnerSucceedsWhenTheHolderExitsBeforeAnswering(t *testing.T) {
+	flockPath, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("flock(1) is not available")
+	}
+	dir := shortDir(t)
+	lock := filepath.Join(dir, memory.LockFile)
+	holder := exec.Command(flockPath, lock, "sleep", "1")
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holder.Process.Kill(); _ = holder.Wait() })
+	for i := 0; exec.Command(flockPath, "-n", lock, "true").Run() == nil; i++ {
+		if i == 100 {
+			t.Fatal("the holder never took the lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := memory.StopOwner(context.Background(), dir); err != nil {
+		t.Fatalf("StopOwner() error = %v, want success once the holder exits", err)
+	}
+}
+
 func TestStartInitCreatesDirectoryAndStoreAndPrintsTheKeyAndSocket(t *testing.T) {
 	bin := binary(t)
 	dir := filepath.Join(shortDir(t), "mem")

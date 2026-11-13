@@ -130,7 +130,11 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 	case !errors.Is(err, flock.ErrTimeout):
 		return unavailable("check the lock %s: %v", lockPath, err)
 	}
-	if err := requestShutdown(ctx, dir); err != nil {
+	if err := requestShutdown(ctx, dir, lock); err != nil {
+		// An owner that exited on its own meanwhile released the lock: that is the stop asked for.
+		if flock.Exclusive(ctx, lock, flock.PollInterval) == nil {
+			return nil
+		}
 		return unavailable("the Takt memory service (pid %s) holds %s but did not accept a stop: %v", lockOwner(lockPath), lockPath, err)
 	}
 	deadline := time.Now().Add(stopWait)
@@ -146,14 +150,17 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 }
 
 // requestShutdown sends the shutdown request to the owner of dir. An owner that took the lock but has
-// not bound its socket yet is given launchWait to answer.
-func requestShutdown(ctx context.Context, dir string) error {
+// not bound its socket yet is given launchWait to answer; one that releases lock meanwhile has stopped.
+func requestShutdown(ctx context.Context, dir string, lock *os.File) error {
 	ctx, cancel := context.WithTimeout(ctx, launchWait)
 	defer cancel()
 	for {
 		err := shutdownOnce(ctx, dir)
 		if !errors.Is(err, ErrUnreachable) {
 			return err
+		}
+		if flock.Exclusive(ctx, lock, flock.PollInterval) == nil {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
