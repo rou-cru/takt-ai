@@ -15,6 +15,7 @@ Package lifecycle dispatches the install, sync and uninstall orchestration share
 - [func InjectMemory\(rootDir string\) error](<#InjectMemory>)
 - [func InstallCodegraph\(ctx context.Context, rootDir string\) error](<#InstallCodegraph>)
 - [func PreviewLifecycle\(action string, rootDir string, request setup.PlanRequest\) \(any, error\)](<#PreviewLifecycle>)
+- [func SetAsideMemoryDirs\(dir string\) \(\[\]string, error\)](<#SetAsideMemoryDirs>)
 - [type InstallPreview](<#InstallPreview>)
 - [type LifecycleResult](<#LifecycleResult>)
 - [type Outcome](<#Outcome>)
@@ -68,6 +69,15 @@ func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) 
 ```
 
 PreviewLifecycle computes what one lifecycle action would do without changing the environment.
+
+<a name="SetAsideMemoryDirs"></a>
+## func SetAsideMemoryDirs
+
+```go
+func SetAsideMemoryDirs(dir string) ([]string, error)
+```
+
+SetAsideMemoryDirs lists the directories earlier uninstalls set dir aside into, each still holding a memory that needs a retain\-or\-discard decision. The configured path is matched literally, never as a glob pattern, so no unrelated directory is ever selected.
 
 <a name="InstallPreview"></a>
 ## type InstallPreview

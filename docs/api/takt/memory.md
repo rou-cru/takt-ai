@@ -30,6 +30,7 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
   - [func \(a \*Admin\) Close\(\) error](<#Admin.Close>)
   - [func \(a \*Admin\) Describe\(ctx context.Context, in DescribeInput\) \(DescribeResult, error\)](<#Admin.Describe>)
   - [func \(a \*Admin\) Init\(ctx context.Context\) \(StatusOutput, error\)](<#Admin.Init>)
+  - [func \(a \*Admin\) Shutdown\(ctx context.Context\) error](<#Admin.Shutdown>)
   - [func \(a \*Admin\) Status\(ctx context.Context\) \(StatusOutput, error\)](<#Admin.Status>)
 - [type BackupInput](<#BackupInput>)
 - [type BackupOutput](<#BackupOutput>)
@@ -214,6 +215,9 @@ const (
     AdminStatus   = "status"
     AdminInit     = "init"
     AdminBackup   = "backup"
+    // AdminShutdown asks the owner answering on the socket to stop; only the lock holder binds the
+    // socket, so the request reaches the owner and never another process.
+    AdminShutdown = "shutdown"
 )
 ```
 
@@ -420,7 +424,7 @@ SocketPath is the owner's socket inside dir. A path the platform cannot bind is 
 func StopOwner(ctx context.Context, dir string) (err error)
 ```
 
-StopOwner sends SIGTERM to the PID in the lock file and waits, bounded, for the lock to be released. An owner that is already gone is not a failure.
+StopOwner asks the owner of dir to stop through its own socket and waits, bounded, for the lock to be released. An owner that is already gone is not a failure. No PID is ever signaled: only the lock holder binds the socket, so the request reaches the owner and never a process that reused a stale PID. A lock that cannot be checked, or an owner that holds the lock but never answers, is reported and left alone.
 
 <a name="WorkspaceKey"></a>
 ## func WorkspaceKey
@@ -509,6 +513,15 @@ func (a *Admin) Init(ctx context.Context) (StatusOutput, error)
 ```
 
 Init creates the store when there is none.
+
+<a name="Admin.Shutdown"></a>
+### func \(\*Admin\) Shutdown
+
+```go
+func (a *Admin) Shutdown(ctx context.Context) error
+```
+
+Shutdown asks the owner to stop. It returns once the owner accepted; the caller waits for the lock.
 
 <a name="Admin.Status"></a>
 ### func \(\*Admin\) Status
