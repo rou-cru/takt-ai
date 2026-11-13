@@ -344,20 +344,28 @@ func requireNoOpenDecisions(invocation setupInvocation, request setup.PlanReques
 	return preserve, nil
 }
 
-// blockOnMemoryStore stops uninstall while a memory store exists: retaining or discarding the user's
-// memory is a decision only the TUI can take (PR-INS-42, PR-INS-43).
+// blockOnMemoryStore stops uninstall while a memory store exists, live or set aside: retaining or
+// discarding the user's memory is a decision only the TUI can take (PR-INS-42, PR-INS-43).
 func blockOnMemoryStore() error {
 	dir, err := memory.ResolveDir()
 	if err != nil {
 		return err
 	}
+	// A memory an earlier uninstall set aside needs the same decision as the live store.
+	stores, err := lifecycle.SetAsideMemoryDirs(dir)
+	if err != nil {
+		return fmt.Errorf("setup uninstall: inspect memory directories beside %s: %w", dir, err)
+	}
 	store := filepath.Join(dir, memory.StoreFile)
-	if _, err := os.Stat(store); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
+	if _, err := os.Stat(store); err == nil {
+		stores = append([]string{store}, stores...)
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("setup uninstall: inspect memory store %s: %w", store, err)
 	}
-	return fmt.Errorf("setup uninstall: the memory store %s needs a retain or discard decision the CLI cannot make; open the TUI to decide", store)
+	if len(stores) == 0 {
+		return nil
+	}
+	return fmt.Errorf("setup uninstall: the memory in %s needs a retain or discard decision the CLI cannot make; open the TUI to decide", strings.Join(stores, ", "))
 }
 
 // applySetup executes the authorized operation and emits its outcome.

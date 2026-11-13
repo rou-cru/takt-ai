@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -111,8 +110,10 @@ func Assess(ctx context.Context, dir string) (StatusOutput, Health, error) {
 	return status, HealthReady, nil
 }
 
-// StopOwner sends SIGTERM to the PID in the lock file and waits, bounded, for the lock to be released.
-// An owner that is already gone is not a failure.
+// StopOwner asks the owner of dir to stop through its own socket and waits, bounded, for the lock to be
+// released. An owner that is already gone is not a failure. No PID is ever signaled: only the lock holder
+// binds the socket, so the request reaches the owner and never a process that reused a stale PID. A lock
+// that cannot be checked, or an owner that holds the lock but never answers, is reported and left alone.
 func StopOwner(ctx context.Context, dir string) (err error) {
 	lockPath := filepath.Join(dir, LockFile)
 	lock, err := os.OpenFile(lockPath, os.O_RDWR, ownerFileMode)
@@ -120,21 +121,17 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 		return unavailable("open %s: %v", lockPath, err)
 	}
 	defer func() { err = errors.Join(err, lock.Close()) }()
-	// A lock nobody holds means no owner runs, whatever PID a crashed owner left in the file: signaling
-	// it could end an unrelated process that reused the PID. An ended ctx never tried the lock, so it
-	// proves no owner: the stop is abandoned instead of signaling a PID the lock did not vouch for.
-	if flock.Exclusive(ctx, lock, flock.PollInterval) == nil {
+	// A lock nobody holds means no owner runs, whatever PID a crashed owner left in the file.
+	switch err := flock.Exclusive(ctx, lock, flock.PollInterval); {
+	case err == nil:
 		return nil
+	case ctx.Err() != nil:
+		return unavailable("stop the Takt memory service: %v", ctx.Err())
+	case !errors.Is(err, flock.ErrTimeout):
+		return unavailable("check the lock %s: %v", lockPath, err)
 	}
-	if err := ctx.Err(); err != nil {
-		return unavailable("stop the Takt memory service: %v", err)
-	}
-	pid, err := strconv.Atoi(lockOwner(lockPath))
-	if err != nil {
-		return unavailable("a Takt memory service runs but %s records no PID to stop", lockPath)
-	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return unavailable("stop the Takt memory service (pid %d): %v", pid, err)
+	if err := requestShutdown(ctx, dir); err != nil {
+		return unavailable("the Takt memory service (pid %s) holds %s but did not accept a stop: %v", lockOwner(lockPath), lockPath, err)
 	}
 	deadline := time.Now().Add(stopWait)
 	for {
@@ -143,9 +140,37 @@ func StopOwner(ctx context.Context, dir string) (err error) {
 			return nil
 		}
 		if !errors.Is(err, flock.ErrTimeout) || ctx.Err() != nil || time.Now().After(deadline) {
-			return unavailable("the Takt memory service (pid %d) did not stop: %v", pid, err)
+			return unavailable("the Takt memory service (pid %s) did not stop: %v", lockOwner(lockPath), err)
 		}
 	}
+}
+
+// requestShutdown sends the shutdown request to the owner of dir. An owner that took the lock but has
+// not bound its socket yet is given launchWait to answer.
+func requestShutdown(ctx context.Context, dir string) error {
+	ctx, cancel := context.WithTimeout(ctx, launchWait)
+	defer cancel()
+	for {
+		err := shutdownOnce(ctx, dir)
+		if !errors.Is(err, ErrUnreachable) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(launchPoll):
+		}
+	}
+}
+
+// shutdownOnce dials the owner once and asks it to stop.
+func shutdownOnce(ctx context.Context, dir string) (err error) {
+	admin, err := DialAdmin(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, admin.Close()) }()
+	return admin.Shutdown(ctx)
 }
 
 // launch starts `memory serve` detached in its own session and polls status until it answers. A launched

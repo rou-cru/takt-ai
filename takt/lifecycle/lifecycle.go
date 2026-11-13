@@ -654,7 +654,7 @@ func (runtime Runtime) retireMemory(ctx context.Context, rootDir string, result 
 	if err != nil {
 		return err
 	}
-	pending, err := setAsideMemoryDirs(dir)
+	pending, err := SetAsideMemoryDirs(dir)
 	if err != nil {
 		return err
 	}
@@ -712,9 +712,10 @@ func stopMemoryOwner(ctx context.Context, dir string) error {
 	return memory.StopOwner(ctx, dir)
 }
 
-// setAsideMemoryDirs lists the directories earlier uninstalls set dir aside into. The configured path is
-// matched literally, never as a glob pattern, so no unrelated directory is ever selected.
-func setAsideMemoryDirs(dir string) ([]string, error) {
+// SetAsideMemoryDirs lists the directories earlier uninstalls set dir aside into, each still holding a
+// memory that needs a retain-or-discard decision. The configured path is matched literally, never as a
+// glob pattern, so no unrelated directory is ever selected.
+func SetAsideMemoryDirs(dir string) ([]string, error) {
 	parent := filepath.Dir(dir)
 	entries, err := os.ReadDir(parent)
 	if errors.Is(err, os.ErrNotExist) {

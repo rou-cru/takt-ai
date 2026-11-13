@@ -197,3 +197,30 @@ func TestUninstallWithAMemoryStoreIsRefusedBeforeMutation(t *testing.T) {
 		t.Fatalf("the store was touched: %v", err)
 	}
 }
+
+// TestUninstallWithASetAsideMemoryIsRefusedBeforeMutation proves a memory an earlier uninstall left set
+// aside needs the same TUI decision as a live store: a CLI retry cannot discard it.
+func TestUninstallWithASetAsideMemoryIsRefusedBeforeMutation(t *testing.T) {
+	s := newSession(t, buildTaktAI(t))
+	dir := filepath.Join(t.TempDir(), "memory")
+	setAside := filepath.Join(dir+".removed-1", memory.StoreFile)
+	if err := os.MkdirAll(filepath.Dir(setAside), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(setAside, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The later value wins: the configured memory directory has no live store, only the set-aside copy.
+	s.env = append(s.env, memory.EnvDir+"="+dir)
+	res := s.runIn("{}", "setup", "uninstall", "--root", t.TempDir(), "--yes")
+	out := res.stdout + res.stderr
+	if res.code == 0 {
+		t.Fatalf("uninstall with a set-aside memory succeeded:\n%s", out)
+	}
+	if !strings.Contains(out, filepath.Dir(setAside)) || !strings.Contains(out, "TUI") {
+		t.Fatalf("refusal does not name the set-aside memory and the TUI:\n%s", out)
+	}
+	if data, err := os.ReadFile(setAside); err != nil || string(data) != "kept" {
+		t.Fatalf("the set-aside memory was touched: %q, %v", data, err)
+	}
+}

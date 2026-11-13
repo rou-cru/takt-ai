@@ -74,6 +74,8 @@ func lockOwner(path string) string {
 // returns the reason when it cannot start. It never creates the directory or the store: without a store the service is not ready and answers only
 // `status` and `init`. version is the release version `status` reports.
 func Serve(ctx context.Context, dir, version string) (err error) {
+	ctx, shutdown := context.WithCancel(ctx)
+	defer shutdown()
 	info, err := os.Stat(dir)
 	if err != nil {
 		return fmt.Errorf("memory directory is not available: %w; create it with `takt-ai memory start --init`", err)
@@ -105,7 +107,7 @@ func Serve(ctx context.Context, dir, version string) (err error) {
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	trigger := make(chan struct{}, 1)
-	svc := &service{dir: dir, version: version, embedNow: func() {
+	svc := &service{dir: dir, version: version, shutdown: shutdown, embedNow: func() {
 		select {
 		case trigger <- struct{}{}:
 		default:

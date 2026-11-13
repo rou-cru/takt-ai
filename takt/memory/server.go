@@ -94,6 +94,9 @@ type service struct {
 	version  string
 	model    *embed.Model
 	embedNow func()
+	// shutdown ends Serve gracefully: in-flight requests, the reply to the shutdown request included,
+	// finish before the listener closes.
+	shutdown func()
 
 	mu     sync.RWMutex
 	store  *Store
@@ -419,5 +422,9 @@ func (s *service) newAdminServer() *mcp.Server {
 		path, size, err := st.Backup(ctx, in.Path)
 		return BackupOutput{Path: path, Size: size}, err
 	}))
+	mcp.AddTool(srv, text(AdminShutdown), func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+		s.shutdown()
+		return nil, struct{}{}, nil
+	})
 	return srv
 }

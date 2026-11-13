@@ -630,6 +630,62 @@ func TestUninstallLosesNoAcknowledgedWrite(t *testing.T) {
 	}
 }
 
+// TestUninstallRetainsNothingFromAMemoryWithoutAStore covers a memory directory that never got a store:
+// retaining it has nothing to back up and is not incomplete work.
+func TestUninstallRetainsNothingFromAMemoryWithoutAStore(t *testing.T) {
+	dir := filepath.Join(testutil.MemoryDir(t), "m")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(memory.EnvDir, dir)
+	result, err := (lifecycle.Runtime{RetainMemory: true}).Run(context.Background(), "uninstall", t.TempDir(), setuputil.TestPlanRequest())
+	if err != nil {
+		t.Fatalf("Run(uninstall) error = %v", err)
+	}
+	if len(result.Incomplete) != 0 || result.RetainedMemory != "" || result.RetainedDir != "" {
+		t.Fatalf("result = %+v, want nothing retained and nothing incomplete", result)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("memory directory: %v, want it retired", err)
+	}
+}
+
+// TestUninstallRetainsEveryPendingMemory covers a live store plus one an earlier uninstall set aside:
+// both are backed up and the earlier backup is still reported.
+func TestUninstallRetainsEveryPendingMemory(t *testing.T) {
+	root, dir := installedWithMemory(t, 1)
+	pending := dir + ".removed-1"
+	if _, err := memory.Start(context.Background(), pending, true); err != nil {
+		t.Fatalf("memory.Start(%s): %v", pending, err)
+	}
+	if err := memory.StopOwner(context.Background(), pending); err != nil {
+		t.Fatalf("memory.StopOwner(%s): %v", pending, err)
+	}
+	result, err := (lifecycle.Runtime{RetainMemory: true}).Run(context.Background(), "uninstall", root, setuputil.TestPlanRequest())
+	if err != nil {
+		t.Fatalf("Run(uninstall) error = %v", err)
+	}
+	if len(result.Incomplete) != 0 || result.RetainedMemory == "" {
+		t.Fatalf("result = %+v, want every memory retained", result)
+	}
+	if !slices.ContainsFunc(result.Actions, func(action string) bool { return strings.HasPrefix(action, "retained memory backup: ") }) {
+		t.Fatalf("Actions = %v, want the earlier backup reported", result.Actions)
+	}
+	if left := setAsideDirs(t, dir); len(left) != 0 {
+		t.Errorf("set-aside directories = %v, want none", left)
+	}
+}
+
+// TestUninstallWithAMemoryDirectoryWithoutParentHasNothingToRetire covers a configured memory path whose
+// parent does not exist.
+func TestUninstallWithAMemoryDirectoryWithoutParentHasNothingToRetire(t *testing.T) {
+	t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent", "memory"))
+	result, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", t.TempDir(), setuputil.TestPlanRequest())
+	if err != nil || len(result.Incomplete) != 0 {
+		t.Fatalf("Run(uninstall) = %+v, %v; want a completed uninstall", result, err)
+	}
+}
+
 // TestUninstallTreatsTheMemoryPathLiterally proves a configured memory path with glob characters never
 // selects another directory as one of its set-aside copies.
 func TestUninstallTreatsTheMemoryPathLiterally(t *testing.T) {
