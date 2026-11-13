@@ -25,6 +25,7 @@ Package runtime provides Bubble Tea lifecycle action boundaries.
 - [type ActionResultMsg](<#ActionResultMsg>)
 - [type Adapter](<#Adapter>)
   - [func NewAdapter\(\) Adapter](<#NewAdapter>)
+  - [func NewAdapterFor\(runtime lifecycle.Runtime\) Adapter](<#NewAdapterFor>)
   - [func \(adapter Adapter\) Command\(ctx context.Context, request ActionRequest, observers ...func\(setup.DeploymentProgress\)\) tea.Cmd](<#Adapter.Command>)
   - [func \(adapter Adapter\) Execute\(request ActionRequest\) \(ActionResult, error\)](<#Adapter.Execute>)
   - [func \(adapter Adapter\) ExecuteContext\(ctx context.Context, request ActionRequest\) \(ActionResult, error\)](<#Adapter.ExecuteContext>)
@@ -260,7 +261,16 @@ type Adapter struct {
 func NewAdapter() Adapter
 ```
 
-NewAdapter wires the production lifecycle, including OpenCode V2 preflight and reload. Tests may continue using Adapter\{\} or NewTestAdapter with a zero lifecycle to avoid external processes.
+NewAdapter wires the production lifecycle, including OpenCode V2 preflight and reload. Tests may use Adapter\{\}, or NewAdapterFor with their own lifecycle, to avoid external processes and the network.
+
+<a name="NewAdapterFor"></a>
+### func NewAdapterFor
+
+```go
+func NewAdapterFor(runtime lifecycle.Runtime) Adapter
+```
+
+NewAdapterFor runs requests through the given lifecycle runtime.
 
 <a name="Adapter.Command"></a>
 ### func \(Adapter\) Command

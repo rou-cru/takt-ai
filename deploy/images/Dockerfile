@@ -126,6 +126,9 @@ ARG OPENCODE_VERSION=2.2.7
 # this check fails closed: re-download, review the diff, refresh the pin.
 ARG OPENCODE_INSTALL_SHA256=bbc4584fd6a888bcd14623b8a63afa0f1b4075a2e84a2c3518cd509b446b3135
 ENV PATH="/usr/local/go/bin:/home/takt/.opencode/bin:/home/takt/.local/bin:/home/takt/.takt-ai/bin:/home/takt/.takt-ai/codegraph/node_modules/.bin:${PATH}"
+# The memory store lives on the persisted XDG data mount of chart and Coder
+# workspaces; setup image renders the crew configuration against the same path.
+ENV TAKT_MEMORY_DIR=/home/takt/.local/share/takt-ai/memory
 RUN useradd --create-home --uid 10001 --shell /bin/bash takt; \
     install -d -o takt -g takt \
       /workspace \

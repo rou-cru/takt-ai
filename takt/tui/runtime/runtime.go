@@ -14,7 +14,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
-	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -56,8 +55,8 @@ type ActionRequest struct {
 	// RetainPaths and RemovePaths carry uninstall decisions so kept files move aside instead of vanishing.
 	RetainPaths []string
 	RemovePaths []string
-	// EngramChoice carries the Engram database decision (lifecycle.EngramLeave, EngramRetain or EngramRemove) so uninstall honors it without new plumbing.
-	EngramChoice string
+	// RetainMemory carries the memory decision so uninstall backs the memory up before deleting it (PR-INS-35).
+	RetainMemory bool
 	// ReassignOverrides names the reassignment the adapter diffs.
 	ReassignOverrides map[string]model.ModelAssignment
 }
@@ -79,7 +78,7 @@ type ActionResult struct {
 	RetainedDir string
 	// BackedUp lists replaced files with the copy an install or sync wrote of their earlier content.
 	BackedUp []setup.Backup
-	// RetainedMemory is the delivered Engram database inside RetainedDir, empty when none was handed off.
+	// RetainedMemory is the memory backup inside RetainedDir, empty when none was written.
 	RetainedMemory string
 	Incomplete     []string
 	Verify         *verify.Report
@@ -123,10 +122,15 @@ type Adapter struct {
 }
 
 // NewAdapter wires the production lifecycle, including OpenCode V2 preflight
-// and reload. Tests may continue using Adapter{} or NewTestAdapter with a
-// zero lifecycle to avoid external processes.
+// and reload. Tests may use Adapter{}, or NewAdapterFor with their own
+// lifecycle, to avoid external processes and the network.
 func NewAdapter() Adapter {
-	return Adapter{lifecycle: lifecycle.NewRuntime()}
+	return NewAdapterFor(lifecycle.NewRuntime())
+}
+
+// NewAdapterFor runs requests through the given lifecycle runtime.
+func NewAdapterFor(runtime lifecycle.Runtime) Adapter {
+	return Adapter{lifecycle: runtime}
 }
 
 // Command defers a request to a Bubble Tea command.
@@ -178,8 +182,8 @@ func (adapter Adapter) execute(ctx context.Context, request ActionRequest, progr
 		return ActionResult{}, err
 	}
 	// The choice travels on the adapter copy so Run's signature
-	// stays shared with the CLI, whose zero value is Leave.
-	adapter.lifecycle.EngramChoice = request.EngramChoice
+	// stays shared with the CLI, whose zero value discards the memory.
+	adapter.lifecycle.RetainMemory = request.RetainMemory
 	adapter.lifecycle.Progress = progress
 	result, err := adapter.lifecycle.Run(ctx, string(request.Action), request.RootDir, planRequest, request.PreservePaths...)
 	out := actionResult(request.Action, result)
@@ -208,18 +212,14 @@ func (adapter Adapter) finishExecution(ctx context.Context, request ActionReques
 			return out, err
 		}
 		defer end()
-		choices := setup.RetentionChoices{Keep: request.RetainPaths, Remove: request.RemovePaths}
-		if request.EngramChoice == lifecycle.EngramRetain {
-			// The handoff shares the retained directory with kept files, so it goes through the same call.
-			if dir, dirErr := setup.EngramDataDir(); dirErr != nil {
-				out.Incomplete = append(out.Incomplete, "Engram memory: "+dirErr.Error())
-			} else {
-				choices.MemoryFrom = dir
-			}
-		}
+		// Kept files share the retained directory the memory backup reserved.
+		choices := setup.RetentionChoices{Keep: request.RetainPaths, Remove: request.RemovePaths, RetainedDir: out.RetainedDir}
 		retention, err := setup.ApplyUninstallRetention(ctx, request.RootDir, choices, time.Now())
 		out.Removed = append(out.Removed, retention.Removed...)
-		out.Retained, out.RetainedDir, out.RetainedMemory, out.NotApplied = retention.Retained, retention.RetainedDir, retention.Memory, retention.NotApplied
+		out.Retained, out.NotApplied = retention.Retained, retention.NotApplied
+		if retention.RetainedDir != "" {
+			out.RetainedDir = retention.RetainedDir
+		}
 		out.Incomplete = append(out.Incomplete, retention.Incomplete...)
 		if lifecycle.Cancelled(ctx, err) {
 			out.Outcome = lifecycle.CancelledOutcome(len(out.Removed) + len(out.Restored) + len(out.Retained))
@@ -254,8 +254,9 @@ func (adapter Adapter) planRequest(request ActionRequest) (setup.PlanRequest, er
 	return built, nil
 }
 
+// actionResult projects a lifecycle result onto the action result the screens render.
 func actionResult(action Action, result lifecycle.LifecycleResult) ActionResult {
-	return ActionResult{Action: action, Changed: result.Changed, Unchanged: result.Unchanged, Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, Actions: result.Actions, Incomplete: result.Incomplete, BackedUp: result.BackedUp, Outcome: result.Outcome, NotApplied: result.NotApplied, BackupDir: result.BackupDir, ReloadAttempted: result.ReloadAttempted, ReloadError: result.ReloadError}
+	return ActionResult{Action: action, Changed: result.Changed, Unchanged: result.Unchanged, Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, Actions: result.Actions, Incomplete: result.Incomplete, BackedUp: result.BackedUp, Outcome: result.Outcome, NotApplied: result.NotApplied, BackupDir: result.BackupDir, RetainedDir: result.RetainedDir, RetainedMemory: result.RetainedMemory, ReloadAttempted: result.ReloadAttempted, ReloadError: result.ReloadError}
 }
 
 // executeCorrectDrift restores selected paths from the installed record so other paths survive.
@@ -266,11 +267,6 @@ func (adapter Adapter) executeCorrectDrift(ctx context.Context, request ActionRe
 	preview, err := installedPreview(request.RootDir)
 	if err != nil {
 		return ActionResult{}, err
-	}
-	// Restored files are reinjected with Engram below, so its binary is acquired before anything is written.
-	engramCommand, err := engram.Acquire(ctx, request.RootDir)
-	if err != nil {
-		return ActionResult{}, fmt.Errorf("correct drift: Engram memory capability unavailable: requires the engram binary %s or newer: %w", engram.EngramVersion, err)
 	}
 	end, err := setup.BeginOperation(request.RootDir, string(request.Action))
 	if err != nil {
@@ -287,24 +283,21 @@ func (adapter Adapter) executeCorrectDrift(ctx context.Context, request ActionRe
 	}
 	if lifecycle.Cancelled(ctx, err) {
 		out.Outcome = lifecycle.CancelledOutcome(len(result.Changed))
-		return out, reinjectDrift(ctx, request.RootDir, engramCommand, result.Changed)
+		return out, reinjectDrift(ctx, request.RootDir, result.Changed)
 	}
 	if err != nil {
 		return ActionResult{}, err
 	}
-	return out, reinjectDrift(ctx, request.RootDir, engramCommand, result.Changed)
+	return out, reinjectDrift(ctx, request.RootDir, result.Changed)
 }
 
 // reinjectDrift restores the installed integrations when the correction rewrote the OpenCode
 // configuration that holds their MCP entries. A correction of any other file leaves that file, and
-// the user's own settings in it, untouched. Engram, CodeGraph and the memory service are required
-// harness capabilities.
-func reinjectDrift(ctx context.Context, root, engramCommand string, changed []string) error {
+// the user's own settings in it, untouched. CodeGraph and the memory service are required harness
+// capabilities.
+func reinjectDrift(ctx context.Context, root string, changed []string) error {
 	if !slices.Contains(changed, model.OpenCodeConfigRelativePath) {
 		return nil
-	}
-	if err := lifecycle.InjectEngram(root, engramCommand); err != nil {
-		return err
 	}
 	if err := lifecycle.InjectMemory(root); err != nil {
 		return err

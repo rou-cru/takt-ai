@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Takt AI Contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package diagnostics
+package diagnostics_test
 
 import (
 	"strings"
@@ -10,16 +10,39 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rou-cru/takt-ai/takt/setup"
-	"github.com/rou-cru/takt-ai/takt/tui/keys"
+	"github.com/rou-cru/takt-ai/takt/tui/diagnostics"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
 
-func TestNotInstalledDiagnosticsSkipsCollectionAndReturnsToMenu(t *testing.T) {
-	model := New(t.TempDir())
-	if model.state != StateNotInstalled {
-		t.Fatalf("state = %v, want StateNotInstalled", model.state)
+// installedModel returns a diagnostics screen over a root that holds an installation, so it starts collecting.
+func installedModel(t *testing.T) diagnostics.Model {
+	t.Helper()
+	root := t.TempDir()
+	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{}); err != nil {
+		t.Fatal(err)
 	}
+	return diagnostics.New(root)
+}
+
+func renderDiagnostics(model diagnostics.Model) string {
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 400, Height: 60})
+	return ansi.Strip(updated.(diagnostics.Model).View().Content)
+}
+
+func requireBackOnEscape(t *testing.T, model diagnostics.Model) {
+	t.Helper()
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if command == nil {
+		t.Fatal("Escape returned no navigation command")
+	}
+	if _, ok := command().(ui.BackMsg); !ok {
+		t.Fatal("Escape did not request BackMsg")
+	}
+}
+
+func TestNotInstalledDiagnosticsSkipsCollectionAndReturnsToMenu(t *testing.T) {
+	model := diagnostics.New(t.TempDir())
 	if model.Init() != nil {
 		t.Fatal("Init() should skip collection when nothing is installed")
 	}
@@ -29,21 +52,11 @@ func TestNotInstalledDiagnosticsSkipsCollectionAndReturnsToMenu(t *testing.T) {
 	if got := renderDiagnostics(model); !strings.Contains(got, setup.NotInstalledMessage) {
 		t.Fatalf("View() = %q, want not-installed message", got)
 	}
-
-	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if command == nil {
-		t.Fatal("Escape returned no navigation command")
-	}
-	if _, ok := command().(ui.BackMsg); !ok {
-		t.Fatal("Escape did not request BackMsg")
-	}
-	if updated.(Model).state != StateNotInstalled {
-		t.Fatal("navigation changed the diagnostics state")
-	}
+	requireBackOnEscape(t, model)
 }
 
 func TestDiagnosticsCollectingAndReportViews(t *testing.T) {
-	model := Model{root: t.TempDir(), state: StateCollecting, keymap: keys.Default()}
+	model := installedModel(t)
 	if model.Init() == nil {
 		t.Fatal("Init() should start collection while installed-state checks are pending")
 	}
@@ -53,9 +66,9 @@ func TestDiagnosticsCollectingAndReportViews(t *testing.T) {
 
 	empty := verify.Report{FinalNote: "No capabilities were reported."}
 	updated, command := model.Update(empty)
-	model = updated.(Model)
-	if command != nil || model.state != StateReport {
-		t.Fatalf("Update(report) = state %v, command %v; want report and no command", model.state, command)
+	model = updated.(diagnostics.Model)
+	if command != nil {
+		t.Fatalf("Update(report) returned a command %v", command)
 	}
 	if got := model.Title(); got != ui.TextDiagReportTitle {
 		t.Fatalf("Title() = %q, want %q", got, ui.TextDiagReportTitle)
@@ -65,48 +78,46 @@ func TestDiagnosticsCollectingAndReportViews(t *testing.T) {
 	}
 
 	populated := verify.Report{
-		Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.NotVerified, Explanation: "absent from installed configuration"}},
+		Checks: []verify.CheckResult{
+			{ID: "mcp:opencode:takt_memory", State: verify.NotVerified, Explanation: "absent from installed configuration"},
+			{ID: "memory:service", State: verify.NotVerified, Explanation: "memory service is not running"},
+		},
 	}
 	updated, _ = model.Update(populated)
-	model = updated.(Model)
-	if got := renderDiagnostics(model); !strings.Contains(got, "Memory") || !strings.Contains(got, "absent from installed configuration") || strings.Contains(got, "mcp:opencode") {
-		t.Fatalf("populated report View() = %q, want the capability name and why it failed, never the check ID", got)
+	model = updated.(diagnostics.Model)
+	got := renderDiagnostics(model)
+	for _, want := range []string{"Memory", "Memory service", "absent from installed configuration", "memory service is not running"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("populated report View() = %q, want %q", got, want)
+		}
 	}
-
-	_, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if command == nil {
-		t.Fatal("Escape from report returned no navigation command")
+	if strings.Contains(got, "mcp:opencode") || strings.Contains(got, "memory:service") {
+		t.Fatalf("populated report View() = %q, must name capabilities, never check IDs", got)
 	}
-	if _, ok := command().(ui.BackMsg); !ok {
-		t.Fatal("Escape from report did not request BackMsg")
-	}
+	requireBackOnEscape(t, model)
 }
 
-func TestDiagnosticsForwardsResizeAndIgnoresUnrelatedMessages(t *testing.T) {
-	model := Model{state: StateCollecting}
+func TestDiagnosticsKeepsStateOnResizeAndUnrelatedMessages(t *testing.T) {
+	model := installedModel(t)
 	updated, command := model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	model = updated.(Model)
-	if command != nil || model.width != 100 || model.height != 30 {
-		t.Fatalf("resize = (%d, %d), command %v; want (100, 30), nil", model.width, model.height, command)
+	if command != nil {
+		t.Fatalf("resize returned a command %v", command)
 	}
+	model = updated.(diagnostics.Model)
 	updated, command = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if command != nil || updated.(Model).state != StateCollecting {
+	if command != nil || updated.(diagnostics.Model).Title() != ui.TextDiagCheckingTitle {
 		t.Fatal("unrelated input changed state or emitted a command")
 	}
-}
-
-func renderDiagnostics(model Model) string {
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 400, Height: 60})
-	return ansi.Strip(updated.(Model).View().Content)
+	if got := renderDiagnostics(updated.(diagnostics.Model)); !strings.Contains(got, ui.TextDiagBusy) {
+		t.Fatalf("View() = %q, want the screen still collecting", got)
+	}
 }
 
 // A failed capability offers Repair first; it asks to open the configure flow.
 func TestFailedReportOffersRepair(t *testing.T) {
-	model := New(t.TempDir())
-	model.state = StateReport
-	failed := verify.Report{Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.NotVerified, Explanation: "absent"}}}
-	updated, _ := model.Update(failed)
-	model = updated.(Model)
+	failed := verify.Report{Checks: []verify.CheckResult{{ID: "mcp:opencode:takt_memory", State: verify.NotVerified, Explanation: "absent"}}}
+	updated, _ := installedModel(t).Update(failed)
+	model := updated.(diagnostics.Model)
 	if got := renderDiagnostics(model); !strings.Contains(got, ui.TextActionRepair) {
 		t.Fatalf("failed report must offer Repair:\n%s", got)
 	}
@@ -114,11 +125,11 @@ func TestFailedReportOffersRepair(t *testing.T) {
 	if command == nil {
 		t.Fatal("Repair returned no command")
 	}
-	if _, ok := command().(OpenRepairMsg); !ok {
+	if _, ok := command().(diagnostics.OpenRepairMsg); !ok {
 		t.Fatal("Repair must ask to open the configure flow")
 	}
-	passed, _ := New(t.TempDir()).Update(verify.Report{Ready: true, Checks: []verify.CheckResult{{ID: "mcp:opencode:engram", State: verify.Verified}}})
-	if got := renderDiagnostics(passed.(Model)); strings.Contains(got, ui.TextActionRepair) {
+	passed, _ := installedModel(t).Update(verify.Report{Ready: true, Checks: []verify.CheckResult{{ID: "mcp:opencode:takt_memory", State: verify.Verified}}})
+	if got := renderDiagnostics(passed.(diagnostics.Model)); strings.Contains(got, ui.TextActionRepair) {
 		t.Fatalf("a passing report must not offer Repair:\n%s", got)
 	}
 }

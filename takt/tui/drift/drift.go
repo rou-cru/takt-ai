@@ -534,7 +534,7 @@ func (m Model) failedBody() string {
 		writePaths(&b, ui.TextDriftRestoredHead, changed)
 	} else {
 		// The runtime may fail after some files were written (for example
-		// while reapplying Engram content), so nothing is claimed as unchanged.
+		// while reapplying memory content), so nothing is claimed as unchanged.
 		b.WriteString(ui.Status(ui.StateFailed, ui.TextDriftFailedIntro+m.correctErr.Error()))
 	}
 	b.WriteString("\n\n" + theme.Label.Render(ui.TextDriftSeeCurrent))

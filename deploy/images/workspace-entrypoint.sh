@@ -17,6 +17,9 @@ if [[ -z "${OPENCODE_PASSWORD:-}" ]]; then
 fi
 export OPENCODE_PASSWORD
 
+# Creates the memory store on a fresh volume and starts the memory service before OpenCode.
+takt-ai memory start --init
+
 opencode serve --hostname 0.0.0.0 --port "$server_port" &
 server_pid=$!
 

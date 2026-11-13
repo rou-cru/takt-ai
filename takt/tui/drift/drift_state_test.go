@@ -528,8 +528,8 @@ func TestResultBodies(t *testing.T) {
 		{
 			name:       "failure after some restores",
 			correction: runtime.ActionResult{Changed: []string{"agents/missing.md"}},
-			err:        errors.New("engram gone"),
-			want:       []string{"engram gone", ui.TextDriftRestoredHead, "agents/missing.md", ui.TextDriftSeeCurrent},
+			err:        errors.New("memory gone"),
+			want:       []string{"memory gone", ui.TextDriftRestoredHead, "agents/missing.md", ui.TextDriftSeeCurrent},
 		},
 		{
 			name: "failure before any restore",

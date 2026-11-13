@@ -43,16 +43,3 @@ func MergeJSONFile(path string, overlay []byte) (WriteResult, error) {
 
 	return EditFileAtomic(path, merged)
 }
-
-// ReadFileOrEmpty reads the file at path, returning an empty string instead
-// of an error when the file does not exist.
-func ReadFileOrEmpty(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", fmt.Errorf("read file %q: %w", path, err)
-	}
-	return string(data), nil
-}

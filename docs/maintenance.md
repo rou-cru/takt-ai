@@ -8,10 +8,10 @@ Checking health, updating, uninstalling and recovering files. Commands and flags
 
 | Area | What it checks |
 | --- | --- |
-| Tools | `takt-ai`, `opencode` and `engram` resolve in `PATH`, and duplicates that shadow each other are flagged. |
+| Tools | `takt-ai` and `opencode` resolve in `PATH`, and duplicates that shadow each other are flagged. |
 | Control plane | The event store of the current workspace (`.takt-ai/events.db`): it opens, has its tables and passes SQLite's integrity check. A workspace without a store yet passes. A store readable by other users warns; an unusable one fails. Nothing is created or changed. |
 | Deployment | The files Takt manages are present. |
-| Engram | A compatible binary, the native plugin, project diagnostics and whether memories need review. |
+| Memory | The Takt memory service answers, its store is ready and not newer than this build, and every entry has a semantic vector. |
 | CodeGraph | A compatible binary. |
 | OpenCode | Version 2 or newer with a working API, and the VFS plugin, memory plugin and sandbox adapter deployed. |
 | Disk | Free space where `~/.takt-ai` lives: a warning under 100 MB, a failure under 10 MB. |
@@ -28,14 +28,14 @@ Before Takt overwrites a file, it keeps a copy under `.takt-backups` in the inst
 
 ## Uninstall
 
-`takt-ai setup uninstall` removes the files Takt installed and the Engram and CodeGraph entries it added to OpenCode's configuration. For each file:
+`takt-ai setup uninstall` removes the files Takt installed, the memory and CodeGraph entries it added to OpenCode's configuration. For each file:
 
 - A file that existed before Takt, and has not changed since Takt wrote it, goes back to its original content.
 - A file you edited after Takt installed it is preserved, and the command stops until you decide to keep or remove it. That decision is made in the TUI; the command line cannot make it.
 
-Kept files are moved to `takt-retained/<UTC timestamp>/` in the install root, readable only by your user. The TUI can also hand off a snapshot of your Engram database to the same place.
+Kept files are moved to `takt-retained/<UTC timestamp>/` in the install root, readable only by your user.
 
-Uninstall never removes the Engram database. It lives in `~/.engram`, or in the directory named by `ENGRAM_DATA_DIR`, and stays where it is.
+Uninstall also retires the Takt memory store (`~/.takt-ai/memory`, or `TAKT_MEMORY_DIR`) and its model. Before that, the TUI asks whether to retain or discard it: retain, the default, writes a backup of the store to the same `takt-retained/` directory. The command line cannot make this decision, so `takt-ai setup uninstall` stops while a store exists. If retirement fails, the store is kept at `<memory dir>.removed-<time>`, the failure is reported as incomplete work, and Takt stays recorded as installed so the next uninstall resumes it.
 
 ## Restore
 

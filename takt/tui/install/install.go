@@ -49,14 +49,10 @@ const (
 // result screen and wants the standalone model-assignment flow.
 type OpenModelsMsg struct{}
 
-// lookPath is the executable lookup seam (same pattern as doctor.go and
-// setup.ProviderRuntime): tests stub it to fake an OpenCode on PATH.
-var lookPath = exec.LookPath
-
 // openCodeOnPath reports whether the OpenCode CLI is on PATH. Its absence is
 // a notice, never a block: installing configuration needs no binary.
 func openCodeOnPath() bool {
-	_, err := lookPath("opencode")
+	_, err := exec.LookPath("opencode")
 	return err == nil
 }
 

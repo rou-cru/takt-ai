@@ -1,6 +1,6 @@
 ---
 name: takt-invariant-authoring
-description: "Before authoring a deliverable you will record in memory. The generic
+description: "Before authoring a deliverable you will record in Takt memory. The generic
   skeleton for a document that matches none of your role's recognized types, and how many
   documents one result needs — never an arbitrary length cut of one document."
 license: AGPL-3.0
@@ -11,7 +11,7 @@ metadata:
 
 # Takt Invariant Authoring
 
-Shapes the document(s) a planning result becomes, before the general memory contract and your
+Shapes the document(s) a planning result becomes, before the general Takt memory contract and your
 own `takt-memory-<role>` skill govern how you record them. Your own skill lists the document
 types your role recognizes; this one covers what's shared across all of them.
 
@@ -25,4 +25,4 @@ section skeleton to use.
 One recognized type, or this generic skeleton, covers it → one document. Content spanning
 two or more distinct types — an architecture decision and its interface contract, say — is
 one document per type, each authored and recorded on its own. Never split one type's content
-into pieces to keep it short; the general memory contract already says how to size it.
+into pieces to keep it short; it stays one complete document, whatever its length.

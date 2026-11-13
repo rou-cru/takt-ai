@@ -76,8 +76,7 @@ it when building the DAG. Ends when the plan is committed.
 
 ## 4. Dispatch
 
-A lane starts once every result it consumes has been delivered. Declare its consumed Engram IDs
-with `dispatch_inputs`, or declare that none exists yet; the brief never restates them. Issue
+A lane starts once every result it consumes has been delivered. Issue
 every lane of a round in the same response. Ends when every lane has delivered.
 
 ## 5. Coherence

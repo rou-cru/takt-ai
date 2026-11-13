@@ -54,7 +54,7 @@ func NewManagedPaths(generated []string) ([]string, error) {
 
 // ResolveBinary scans candidates in order and returns the absolute path of
 // the first that exists, is a regular file, and satisfies isCompatible —
-// the scan loop shared by every managed-binary resolver (engram, codegraph).
+// the scan loop shared by every managed-binary resolver (codegraph).
 func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool) {
 	for _, candidate := range candidates {
 		absolute, err := filepath.Abs(candidate)

@@ -146,8 +146,6 @@ spec:
               value: /home/takt/.cache/go/pkg/mod
             - name: GOCACHE
               value: /home/takt/.cache/go/build
-            - name: ENGRAM_DATA_DIR
-              value: /home/takt/.local/share/engram
             {{- with .Values.server.env }}{{ toYaml . | nindent 12 }}{{- end }}
             {{- with .Values.runtime.env }}{{ toYaml . | nindent 12 }}{{- end }}
           {{- if or .Values.server.envFrom .Values.runtime.envFrom }}
@@ -199,7 +197,7 @@ spec:
           {{- end }}
           {{- end }}
           # One PVC holds every runtime write, split into sibling subPaths so
-          # private state (VFS store, OpenCode data, Engram) stays outside the
+          # private state (VFS store, OpenCode data, memory store) stays outside the
           # workspace tree the agents operate on.
           volumeMounts:
             - name: workspace

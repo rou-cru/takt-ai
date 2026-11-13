@@ -15,15 +15,14 @@ else you do along the way stays inside your own work.
 
 ## What a submission must carry
 
-A handoff carries the values the operation declares: an allowed outcome, and for a result,
-the IDs of the entries you recorded for it in this session. Write the prose plainly and
+A handoff carries the values the operation declares. Write the prose plainly and
 completely, for the orchestrator that reads it next.
 
 Before submitting a result:
 
-- Write each standard document you authored to the repository with native file tools, with
-  the same content as its memory entry.
-- If that write failed, state persistence as unmet in the submission.
+- When the user asked for a repository copy of a standard document you authored, write it
+  with native file tools.
+- If that write failed, state the copy as unmet in the submission.
 
 ## A failed attempt is simply corrected
 

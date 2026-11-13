@@ -71,8 +71,8 @@ func TestCorrectDriftRestoresSelectedFileAndReinjectsIntegrations(t *testing.T) 
 	if err != nil || string(data) == "{}" {
 		t.Fatalf("restored file = %q, %v; want the drifted content replaced", data, err)
 	}
-	if !strings.Contains(string(data), "engram") {
-		t.Errorf("restored file lacks the re-injected Engram integration:\n%s", data)
+	if !strings.Contains(string(data), memory.ServerKey) {
+		t.Errorf("restored file lacks the re-injected memory integration:\n%s", data)
 	}
 }
 

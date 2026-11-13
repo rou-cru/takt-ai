@@ -26,7 +26,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/dispatch"
-	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/skills"
 )
@@ -255,8 +254,8 @@ func memorySkills(t *testing.T) map[string]string {
 // TestEveryAuthorHasExactlyOneMemoryRoleSkill verifies no specialist ships without memory rules and no role skill is orphaned.
 func TestEveryAuthorHasExactlyOneMemoryRoleSkill(t *testing.T) {
 	skills := memorySkills(t)
-	if _, ok := skills[engram.ContractSkillPath]; !ok {
-		t.Fatalf("contract skill missing at %s", engram.ContractSkillPath)
+	if _, ok := skills[shared.ContractSkillPath]; !ok {
+		t.Fatalf("contract skill missing at %s", shared.ContractSkillPath)
 	}
 	content, err := catalog.LoadNativeContent()
 	if err != nil {
@@ -266,9 +265,9 @@ func TestEveryAuthorHasExactlyOneMemoryRoleSkill(t *testing.T) {
 	for id := range content {
 		authors = append(authors, id)
 	}
-	used := map[string]bool{engram.ContractSkillPath: true}
+	used := map[string]bool{shared.ContractSkillPath: true}
 	for _, author := range authors {
-		rolePath := engram.MemorySkillPath(author)
+		rolePath := shared.MemorySkillPath(author)
 		if _, ok := skills[rolePath]; !ok {
 			t.Errorf("author %s has no memory skill at %s", author, rolePath)
 		}

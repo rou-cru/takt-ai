@@ -173,11 +173,11 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
 // The plan states what the install sets up, in the TUI review's terms.
 func TestRenderInstallPlanStatesTheSummary(t *testing.T) {
 	var output strings.Builder
-	summary := runtime.InstallSummary{Agents: make([]runtime.AgentModel, 13), Skills: 27, MCPServers: []string{"codegraph", "engram"}}
+	summary := runtime.InstallSummary{Agents: make([]runtime.AgentModel, 13), Skills: 27, MCPServers: []string{"codegraph", "takt_memory"}}
 	if err := renderInstallPlanText(&output, "install", lifecycle.InstallPreview{}, summary); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Agents        13", "Skills        27", "MCP servers   codegraph, engram"} {
+	for _, want := range []string{"Agents        13", "Skills        27", "MCP servers   codegraph, takt_memory"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("plan output lacks %q:\n%s", want, output.String())
 		}

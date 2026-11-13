@@ -8,8 +8,7 @@ Variables you can set to change how `takt-ai` behaves. Everything else Takt AI r
 | `TAKT_LOGO` | Forces how the TUI draws the logo: `image` (kitty graphics) or `quadrants` (block characters). Any other value is ignored and the terminal is probed instead. |
 | `NO_COLOR` | Any non-empty value, `0` included, keeps the TUI without color whatever the terminal supports, and turns off color in `install.sh`. |
 | `TERM` | `dumb` has the same effect as `NO_COLOR`. |
-| `ENGRAM_BASE_URL` | Address of the Engram memory server used by `takt-ai` and `doctor`. Defaults to `http://127.0.0.1:7437`. |
-| `ENGRAM_DATA_DIR` | Directory holding the Engram database. Defaults to `~/.engram`. Uninstall reads it to offer a copy of your memory. |
+| `TAKT_MEMORY_DIR` | Directory of the Takt memory service: its store, socket and lock. Defaults to `~/.takt-ai/memory`. Install, `doctor` and uninstall all use it. |
 
 Model provider keys, such as `ANTHROPIC_API_KEY`, are read by OpenCode, not by Takt AI.
 

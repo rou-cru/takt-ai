@@ -2,14 +2,16 @@ package install_test
 
 import (
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rou-cru/takt-ai/takt/codegraph"
+	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/install"
@@ -48,22 +50,7 @@ func nonJSONManagedPath(t *testing.T) string {
 }
 
 func TestInstallConflictFlow(t *testing.T) {
-	dir, err := os.MkdirTemp("", "takt-install-fake-bin-")
-	if err != nil {
-		t.Fatalf("MkdirTemp() error = %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	if err := os.WriteFile(filepath.Join(dir, "engram"), testutil.FakeEngramScript("dev"), 0o755); err != nil {
-		t.Fatalf("WriteFile(engram) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "opencode"), testutil.FakeOpenCodeScript(), 0o755); err != nil {
-		t.Fatalf("WriteFile(opencode) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "codegraph"), testutil.FakeCodegraphScript(codegraph.CodegraphVersion), 0o755); err != nil {
-		t.Fatalf("WriteFile(codegraph) error = %v", err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
+	const userContent = "pre-existing user content that will not match"
 	conflictPath := nonJSONManagedPath(t)
 
 	root := t.TempDir()
@@ -71,7 +58,7 @@ func TestInstallConflictFlow(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(full, []byte("pre-existing user content that will not match"), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(userContent), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -117,11 +104,15 @@ func TestInstallConflictFlow(t *testing.T) {
 		t.Fatalf("request.PreservePaths = %v, want it to exclude %q: choosing restore means Takt's version overwrites it, nothing is preserved", request.PreservePaths, conflictPath)
 	}
 
-	result, err := (runtime.Adapter{}).Execute(request)
+	result, err := runtime.NewAdapterFor(lifecycle.Runtime{Model: testutil.FakeModel(t)}).Execute(request)
 	if err != nil {
 		t.Fatalf("Adapter.Execute() error = %v", err)
 	}
-	resultMsg := runtime.ActionResultMsg{Request: request, Result: result, Err: err}
+	backup := path.Join(setup.BackupDir, conflictPath)
+	if !slices.Contains(result.BackedUp, setup.Backup{Path: conflictPath, Copy: backup}) {
+		t.Fatalf("result.BackedUp = %v, want %q copied to %q", result.BackedUp, conflictPath, backup)
+	}
+	resultMsg := runtime.ActionResultMsg{Request: request, Result: result}
 	next, _ = m.Update(resultMsg)
 	m = next.(install.Model)
 	if m.Step() != install.StepResult {
@@ -138,12 +129,11 @@ func TestInstallConflictFlow(t *testing.T) {
 	if !setup.IsInstalled(root) {
 		t.Error("IsInstalled() after a completed install = false, want true")
 	}
-	restored, err := os.ReadFile(full)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
+	if replaced, err := os.ReadFile(full); err != nil || strings.Contains(string(replaced), userContent) {
+		t.Errorf("installed %s = %q, %v; want Takt's version in place of the user's", conflictPath, replaced, err)
 	}
-	if strings.Contains(string(restored), "pre-existing user content") {
-		t.Error("choosing restore did not overwrite the pre-existing content")
+	if kept, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(backup))); err != nil || string(kept) != userContent {
+		t.Errorf("backup %s = %q, %v; want the user's content", backup, kept, err)
 	}
 }
 

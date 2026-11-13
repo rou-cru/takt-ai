@@ -30,7 +30,7 @@ reason and evidence, in view.
      A general or ambiguous request requires final user stories among those invariants; a
      trivial or narrowly technical request does not.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
-     Engram entry holds it, judged by title and relations, not body, and its consumer reads the body; it is missing when no such
+     Takt memory entry holds it, judged by title and relations, not body; it is missing when no such
      entry exists, and to refine when the objective changes what the entry holds. A specification is
      also settled when a repository artifact of equivalent rigor holds it. QA is planned, as the
      exception, only when acceptance needs the QA workflow rather than individual quality

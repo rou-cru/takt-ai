@@ -227,11 +227,3 @@ func (f *FS) failingVerdictsLocked(key AgentID) error {
 	}
 	return fmt.Errorf("%w: %s", ErrFailingVerdict, strings.Join(findings, "; "))
 }
-
-// engramInvariantPrefix marks an invariant that is an Engram entry.
-const engramInvariantPrefix = "engram:"
-
-// EngramInvariant is the invariant that names the Engram entry id.
-func EngramInvariant(id int64) string {
-	return engramInvariantPrefix + strconv.FormatInt(id, 10)
-}

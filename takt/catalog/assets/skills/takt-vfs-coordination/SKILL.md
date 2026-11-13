@@ -32,7 +32,7 @@ Consolidate authorized staged work with `vfs_consolidate`; its label is optional
 phase is verified is a planned DAG decision. Declare the phase's `author_keys` in one verifier
 delegation; every gate is ready when the verifier starts, retries included; each judge holds one verdict per
 author, and delegating it again replaces its earlier one; verdicts inform you; consolidating over a
-current failing one needs the user's acceptance, which the harness asks for, and the staged work of an author whose verdict fails is normally
+current failing one needs the user's acceptance, which `vfs_consolidate` asks for, and the staged work of an author whose verdict fails is normally
 corrected: whoever corrects it continues that work through `claim_assign` with its author_key. On a physical-base change, keep the affected path frozen and
 report the competing state.
 

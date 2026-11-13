@@ -25,8 +25,8 @@ not move; the freeform text returns to the agent that asked, for it to weigh and
 still needed.
 
 **Requesting a different specialist mid-session reports as an early handoff.** If the user
-asks to bring in someone else before the standard artifact is complete, that is `Early
-Handoff`, not `Aborted` — the session still produced what it could and says so.
+asks to bring in someone else before the standard artifact is complete, that is
+`EarlyHandoff`, not `Aborted` — the session still produced what it could and says so.
 
 **A change from outside the session is named, not absorbed.** If something changes
 underneath a lent session that the specialist did not cause, state the affected scope and

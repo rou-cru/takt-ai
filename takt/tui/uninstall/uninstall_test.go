@@ -1,4 +1,4 @@
-package uninstall
+package uninstall_test
 
 import (
 	"errors"
@@ -7,39 +7,40 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/ui"
+	"github.com/rou-cru/takt-ai/takt/tui/uninstall"
 )
 
-var (
-	enter = tea.KeyPressMsg{Code: tea.KeyEnter}
-	tab   = tea.KeyPressMsg{Code: tea.KeyTab}
-	down  = tea.KeyPressMsg{Code: tea.KeyDown}
-	right = tea.KeyPressMsg{Code: tea.KeyRight}
-	left  = tea.KeyPressMsg{Code: tea.KeyLeft}
-	esc   = tea.KeyPressMsg{Code: tea.KeyEscape}
-)
+var rightKey = tea.KeyPressMsg{Code: tea.KeyRight}
 
 // installedRoot returns a temp root recorded as installed.
 func installedRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{}); err != nil {
+	if err := setup.SaveInstalledConfig(root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("SaveInstalledConfig() error = %v", err)
 	}
 	return root
 }
 
+// busyReview confirms the default answers and the Uninstall action, returning the running model and
+// the request it dispatched.
+func busyReview(t *testing.T) (uninstall.Model, runtime.ActionRequest) {
+	t.Helper()
+	return uninstallRequest(t, press(t, uninstall.New(installedRoot(t)), enterKey))
+}
+
 func TestNotInstalledShowsGuardAndBackNavigation(t *testing.T) {
-	screen := New(t.TempDir())
-	if screen.State() != StateNotInstalled || !strings.Contains(view(screen), setup.NotInstalledMessage) {
-		t.Fatalf("state = %v, view = %s", screen.State(), view(screen))
+	screen := uninstall.New(t.TempDir())
+	if screen.State() != uninstall.StateNotInstalled || !strings.Contains(viewText(screen), setup.NotInstalledMessage) {
+		t.Fatalf("state = %v, view = %s", screen.State(), viewText(screen))
 	}
-	_, command := screen.Update(esc)
+	_, command := screen.Update(escKey)
 	if command == nil {
 		t.Fatal("Esc did not request back navigation")
 	}
@@ -48,14 +49,13 @@ func TestNotInstalledShowsGuardAndBackNavigation(t *testing.T) {
 	}
 }
 
-// The flow opens on the Engram question with the full scope and nothing to
-// apply yet; Esc leaves it.
-func TestFlowStartsOnEngramWithFixedScope(t *testing.T) {
-	screen := New(installedRoot(t))
-	if screen.State() != StateEngram || screen.Dirty() {
+// The flow opens on the memory question with nothing to apply yet; Esc leaves it.
+func TestFlowStartsOnTheMemoryQuestion(t *testing.T) {
+	screen := uninstall.New(installedRoot(t))
+	if screen.State() != uninstall.StateMemory || screen.Dirty() {
 		t.Fatalf("state = %v dirty = %v", screen.State(), screen.Dirty())
 	}
-	_, command := screen.Update(esc)
+	_, command := screen.Update(escKey)
 	if command == nil {
 		t.Fatal("Esc on the first screen did not request back navigation")
 	}
@@ -64,86 +64,71 @@ func TestFlowStartsOnEngramWithFixedScope(t *testing.T) {
 	}
 }
 
-// TestEngramRemoveChoiceCarriedIntoRequest verifies that an explicit
-// Remove choice reaches the runtime request.
-func TestEngramRemoveChoiceCarriedIntoRequest(t *testing.T) {
+// TestRetainIsTheDefaultMemoryAnswer verifies that confirming the preselected answer retains the
+// memory, and the review names where the copy will go.
+func TestRetainIsTheDefaultMemoryAnswer(t *testing.T) {
 	root := installedRoot(t)
-	screen := New(root)
-	screen = update(t, update(t, update(t, screen, down), down), enter) // choose Remove, advancing to review
-	if screen.State() != StateReview {
-		t.Fatalf("state = %v, want review", screen.State())
+	screen := press(t, uninstall.New(root), enterKey)
+	if screen.State() != uninstall.StateReview || screen.Dirty() {
+		t.Fatalf("state = %v dirty = %v, want review and a flow with nothing to apply", screen.State(), screen.Dirty())
 	}
-	_, command := update(t, screen, left).Update(enter) // Uninstall
-	if got := testutil.ActionRequest(t, command).EngramChoice; got != lifecycle.EngramRemove {
-		t.Fatalf("request EngramChoice = %q, want %q", got, lifecycle.EngramRemove)
-	}
-}
-
-// TestEngramRetainChoiceCarriedIntoRequest verifies that Retain reaches the
-// runtime request and the review names where the copy will go.
-func TestEngramRetainChoiceCarriedIntoRequest(t *testing.T) {
-	root := installedRoot(t)
-	screen := New(root)
-	screen = update(t, update(t, screen, down), enter) // choose Retain, advancing to review
-	if screen.State() != StateReview {
-		t.Fatalf("state = %v, want review", screen.State())
-	}
-	if v := view(screen); !testutil.Shows(v, ui.TextUninstallEngramRetains) || !testutil.Shows(v, filepath.Join(root, setup.RetainedDirName)) {
+	if v := viewText(screen); !testutil.Shows(v, ui.TextUninstallMemoryRetains) || !testutil.Shows(v, filepath.Join(root, setup.RetainedDirName)) {
 		t.Fatalf("review must say the memory is retained and where: %s", v)
 	}
-	_, command := update(t, screen, left).Update(enter) // Uninstall
-	if got := testutil.ActionRequest(t, command).EngramChoice; got != lifecycle.EngramRetain {
-		t.Fatalf("request EngramChoice = %q, want %q", got, lifecycle.EngramRetain)
+	if _, request := uninstallRequest(t, screen); !request.RetainMemory {
+		t.Fatal("request.RetainMemory = false, want the default to retain")
 	}
 }
 
-// TestResultReportsRetainedMemoryLocation verifies that the delivered
-// memory's location reaches the final screen and is not incomplete work.
+// TestDiscardMemoryChoiceCarriedIntoRequest verifies that choosing Discard makes the flow dirty and
+// reaches the runtime request.
+func TestDiscardMemoryChoiceCarriedIntoRequest(t *testing.T) {
+	screen := press(t, uninstall.New(installedRoot(t)), downKey, enterKey)
+	if screen.State() != uninstall.StateReview || !screen.Dirty() {
+		t.Fatalf("state = %v dirty = %v, want review and a dirty flow", screen.State(), screen.Dirty())
+	}
+	if v := viewText(screen); !testutil.Shows(v, ui.TextUninstallMemoryGoes) {
+		t.Fatalf("review must say the memory is deleted: %s", v)
+	}
+	if _, request := uninstallRequest(t, screen); request.RetainMemory {
+		t.Fatal("request.RetainMemory = true after choosing Discard")
+	}
+}
+
+// TestResultReportsRetainedMemoryLocation verifies that the delivered memory's location reaches the
+// final screen and is not incomplete work.
 func TestResultReportsRetainedMemoryLocation(t *testing.T) {
-	screen := busyReview(t)
-	location := "/home/u/takt-retained/20260912T103000Z/engram/engram.db"
-	screen = update(t, screen, runtime.ActionResultMsg{Request: screen.run.Request, Result: runtime.ActionResult{
+	screen, request := busyReview(t)
+	location := "/home/u/takt-retained/20260912T103000Z/memory/memory.db"
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{
 		Removed: []string{"c.md"}, RetainedDir: "/home/u/takt-retained/20260912T103000Z", RetainedMemory: location,
 	}})
-	v := view(screen)
+	v := viewText(screen)
 	if !strings.Contains(v, ui.TextUninstallMemoryKept+location) || strings.Contains(v, ui.TextUninstallIncomplete) {
 		t.Fatalf("result must name the delivered memory and report no incomplete work: %s", v)
 	}
 }
 
-// Esc on the review returns to the Engram question so answers can be fixed.
-func TestReviewBackReturnsToEngram(t *testing.T) {
-	screen := update(t, update(t, New(installedRoot(t)), tab), enter)
-	if screen.State() != StateReview {
-		t.Fatalf("state = %v, want review", screen.State())
-	}
-	screen = update(t, screen, esc)
-	if screen.State() != StateEngram {
-		t.Fatalf("state = %v, want engram", screen.State())
-	}
-}
-
 func TestResultSeparatesKeptFromIncomplete(t *testing.T) {
-	screen := busyReview(t)
-	screen.modified = []string{"a.md", "b.md"}
-	screen.decisions = map[string]bool{"a.md": true, "b.md": false}
-	screen.preview.PreservedReasons = map[string]string{"d.md": "pre-existing"}
-	screen = update(t, screen, runtime.ActionResultMsg{Request: screen.run.Request, Result: runtime.ActionResult{
-		Removed: []string{"c.md"}, Restored: []string{"original.md"}, Preserved: []string{"a.md", "b.md", "c.md", "d.md"},
-		Retained: []string{"a.md"}, RetainedDir: "/home/u/takt-retained/x", Incomplete: []string{"b.md: permission denied"},
+	screen, edited := modifiedScreen(t)
+	screen = press(t, screen, enterKey, downKey, enterKey, enterKey) // keep the first file, remove the second, retain the memory
+	screen, request := uninstallRequest(t, screen)
+	kept, failed := edited[0], edited[1]
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{
+		Removed: []string{"c.md"}, Restored: []string{"original.md"}, Preserved: []string{kept, failed, "c.md"},
+		Retained: []string{kept}, RetainedDir: "/home/u/takt-retained/x", Incomplete: []string{failed + ": permission denied"},
 	}})
-	v := view(screen)
+	v := viewText(screen)
 	for _, text := range []string{
 		ui.TextUninstallRestoreTitle, "original.md", ui.TextUninstallKeptChoice,
-		ui.TextUninstallRetainedIn + "/home/u/takt-retained/x", ui.TextUninstallKeepInPlace,
-		"d.md" + ui.TextReasonSep + ui.TextReasonPreexisting,
-		ui.TextUninstallIncomplete, "b.md: permission denied",
+		ui.TextUninstallRetainedIn + "/home/u/takt-retained/x",
+		ui.TextUninstallIncomplete, failed + ": permission denied",
 	} {
 		if !strings.Contains(v, text) {
 			t.Errorf("result missing %q:\n%s", text, v)
 		}
 	}
-	for _, path := range []string{"a.md", "b.md", "c.md", "d.md"} {
+	for _, path := range []string{kept, failed, "c.md"} {
 		if count := strings.Count(v, path); count != 1 {
 			t.Errorf("%s reported %d times; each path must have one outcome:\n%s", path, count, v)
 		}
@@ -151,80 +136,62 @@ func TestResultSeparatesKeptFromIncomplete(t *testing.T) {
 }
 
 func TestStaleResultIDIgnored(t *testing.T) {
-	screen := busyReview(t)
-	stale := screen.run.Request
-	stale.ID++
-	screen = update(t, screen, runtime.ActionResultMsg{Request: stale})
-	if screen.State() != StateReview || !screen.run.Busy() {
-		t.Fatalf("stale result accepted: state %v busy %v", screen.State(), screen.run.Busy())
+	screen, request := busyReview(t)
+	request.ID++
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request})
+	if screen.State() != uninstall.StateReview || !screen.Run().Busy() {
+		t.Fatalf("stale result accepted: state %v busy %v", screen.State(), screen.Run().Busy())
 	}
 }
 
-// TestResultPartialWhenFailureFollowsRemoval: files removed before an error
-// are reported with it, not hidden behind a total failure.
+// TestResultPartialWhenFailureFollowsRemoval: files removed before an error are reported with it, not
+// hidden behind a total failure.
 func TestResultPartialWhenFailureFollowsRemoval(t *testing.T) {
-	screen := busyReview(t)
-	screen = update(t, screen, runtime.ActionResultMsg{Request: screen.run.Request, Result: runtime.ActionResult{Removed: []string{"c.md"}}, Err: errors.New("remove engram: boom")})
-	v := view(screen)
-	if !strings.Contains(v, "c.md") || !strings.Contains(v, "remove engram: boom") {
+	screen, request := busyReview(t)
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Removed: []string{"c.md"}}, Err: errors.New("remove memory: boom")})
+	v := viewText(screen)
+	if !strings.Contains(v, "c.md") || !strings.Contains(v, "remove memory: boom") {
 		t.Fatalf("result must report what was removed and the failure: %s", v)
 	}
 }
 
 func TestCancelRequestShowsCancellationRequested(t *testing.T) {
-	screen := busyReview(t)
-	screen = update(t, screen, runtime.CancelRequest{ID: screen.run.Request.ID + 1})
-	if screen.run.CancelRequested {
+	screen, request := busyReview(t)
+	screen = press(t, screen, runtime.CancelRequest{ID: request.ID + 1})
+	if screen.Run().CancelRequested {
 		t.Fatal("cancel for another request was accepted")
 	}
-	screen = update(t, screen, runtime.CancelRequest{ID: screen.run.Request.ID})
-	if !screen.run.CancelRequested {
+	screen = press(t, screen, runtime.CancelRequest{ID: request.ID})
+	if !screen.Run().CancelRequested {
 		t.Fatal("cancel for the running request was not recorded")
 	}
 }
 
 func TestFailedResultAndActions(t *testing.T) {
-	screen := busyReview(t)
-	screen = update(t, screen, runtime.ActionResultMsg{Request: screen.run.Request, Err: errors.New("manifest unavailable")})
-	if screen.State() != StateResult {
+	screen, request := busyReview(t)
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Err: errors.New("manifest unavailable")})
+	if screen.State() != uninstall.StateResult {
 		t.Fatalf("state = %v, want result", screen.State())
 	}
-	_, command := screen.Update(enter)
+	_, command := screen.Update(enterKey)
 	if _, ok := command().(ui.BackMsg); !ok {
 		t.Fatal("Back to menu did not emit BackMsg")
 	}
-	_, command = update(t, screen, right).Update(enter)
+	_, command = press(t, screen, rightKey).Update(enterKey)
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatal("Quit did not quit")
 	}
 }
 
-func busyReview(t *testing.T) Model {
-	t.Helper()
-	screen := update(t, New(installedRoot(t)), enter) // choose Leave, advancing to review
-	return update(t, update(t, screen, left), enter)  // Uninstall (focus starts on Back)
-}
-
-func update(t *testing.T, screen Model, message tea.Msg) Model {
-	t.Helper()
-	updated, _ := screen.Update(message)
-	return updated.(Model)
-}
-
-func view(screen Model) string {
-	screen.width, screen.height = 200, 60
-	return ansi.Strip(screen.View().Content)
-}
-
 func TestCancelledPartialResultKeepsCurrentState(t *testing.T) {
-	screen := busyReview(t)
-	screen = update(t, screen, runtime.ActionResultMsg{Request: screen.run.Request, Result: runtime.ActionResult{
+	screen, request := busyReview(t)
+	screen = press(t, screen, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{
 		Outcome: lifecycle.OutcomeCancelledPartial, Removed: []string{"c.md"}, NotApplied: []string{"d.md"},
 	}})
-	if screen.State() != StateResult {
+	if screen.State() != uninstall.StateResult {
 		t.Fatalf("state = %v, want result", screen.State())
 	}
-	if _, command := screen.Update(enter); command == nil {
+	if _, command := screen.Update(enterKey); command == nil {
 		t.Fatal("Keep current state emitted nothing")
 	} else if _, ok := command().(ui.BackMsg); !ok {
 		t.Fatal("Keep current state did not return to the menu")

@@ -59,10 +59,6 @@ type AdmissionPolicy struct {
 		MaxActions  int `yaml:"max_actions"`
 		MaxAttempts int `yaml:"max_attempts"`
 	} `yaml:"recovery"`
-	// Interlocutor bounds the memory index a returned envelope carries (IR-22).
-	Interlocutor struct {
-		MemoryPage int `yaml:"memory_page"`
-	} `yaml:"interlocutor"`
 }
 
 // LoadAdmissionPolicy returns the shared embedded policy; callers must not mutate the result.
@@ -81,7 +77,7 @@ func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	if p.Recovery.MaxActions <= 0 || p.Recovery.MaxAttempts <= 0 {
 		return AdmissionPolicy{}, errors.New("admission policy: every declared recovery budget needs a positive ceiling")
 	}
-	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Modules.MaxFileLines <= 0 || p.Interlocutor.MemoryPage <= 0 {
+	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Modules.MaxFileLines <= 0 {
 		return AdmissionPolicy{}, errors.New("admission policy: every ceiling, budget and size limit must be positive")
 	}
 	return p, nil

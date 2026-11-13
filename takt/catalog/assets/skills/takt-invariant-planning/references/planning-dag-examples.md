@@ -44,7 +44,7 @@ Empty workspace; the user's request, general and still ambiguous, is the only in
 
 ## 2. Settled intent, known environment
 
-Assessment: an approved PRD and a validated stack in memory; experience, structure, and
+Assessment: an approved PRD and a validated stack in Takt memory; experience, structure, and
 behavior to generate.
 
 ```
