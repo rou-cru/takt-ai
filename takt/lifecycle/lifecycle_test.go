@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -626,6 +627,84 @@ func TestUninstallLosesNoAcknowledgedWrite(t *testing.T) {
 	// One write may commit without being acknowledged; none acknowledged may be missing.
 	if got := entryTotal(t, filepath.Dir(result.RetainedMemory)); got < int64(acked) || got > int64(acked)+1 {
 		t.Errorf("entries in the backup = %d, acknowledged writes = %d", got, acked)
+	}
+}
+
+// TestUninstallTreatsTheMemoryPathLiterally proves a configured memory path with glob characters never
+// selects another directory as one of its set-aside copies.
+func TestUninstallTreatsTheMemoryPathLiterally(t *testing.T) {
+	base := testutil.MemoryDir(t)
+	dir := filepath.Join(base, "mem[12]")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(memory.EnvDir, dir)
+	// "mem[12].removed-*" read as a pattern would match this unrelated directory.
+	unrelated := filepath.Join(base, "mem1"+".removed-1")
+	if err := os.MkdirAll(unrelated, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	result, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", t.TempDir(), setuputil.TestPlanRequest())
+	if err != nil {
+		t.Fatalf("Run(uninstall) error = %v", err)
+	}
+	if len(result.Incomplete) != 0 {
+		t.Fatalf("Incomplete = %v, want none", result.Incomplete)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Fatalf("unrelated directory %s: %v, want it untouched", unrelated, err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("memory directory: %v, want it retired", err)
+	}
+}
+
+// TestUninstallKeepsAMemoryWhoseOwnerHoldsTheLockWithoutASocket covers an owner that took the lock but has
+// not bound its socket yet: the store is never deleted under it.
+func TestUninstallKeepsAMemoryWhoseOwnerHoldsTheLockWithoutASocket(t *testing.T) {
+	flockPath, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("flock(1) is not available")
+	}
+	root := t.TempDir()
+	if _, err := installRuntime(t).Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+		t.Fatalf("Run(install) error = %v", err)
+	}
+	dir := filepath.Join(testutil.MemoryDir(t), "m")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(memory.EnvDir, dir)
+	lock := filepath.Join(dir, memory.LockFile)
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	holder := exec.Command(flockPath, lock, "sleep", "60")
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holder.Process.Kill(); _ = holder.Wait() })
+	// The holder owns the lock once a non-blocking attempt fails.
+	for i := 0; exec.Command(flockPath, "-n", lock, "true").Run() == nil; i++ {
+		if i == 100 {
+			t.Fatal("the holder never took the lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	result, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, setuputil.TestPlanRequest())
+	if err != nil {
+		t.Fatalf("Run(uninstall) error = %v", err)
+	}
+	kept := setAsideDirs(t, dir)
+	if len(kept) != 1 {
+		t.Fatalf("set-aside directories = %v, want the store kept", kept)
+	}
+	if len(result.Incomplete) != 1 || !strings.Contains(result.Incomplete[0], kept[0]) {
+		t.Fatalf("Incomplete = %v, want one entry naming %s", result.Incomplete, kept[0])
+	}
+	if !setup.IsInstalled(root) {
+		t.Error("the installation was forgotten while its memory stayed set aside")
 	}
 }
 

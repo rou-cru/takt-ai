@@ -654,7 +654,7 @@ func (runtime Runtime) retireMemory(ctx context.Context, rootDir string, result 
 	if err != nil {
 		return err
 	}
-	pending, err := filepath.Glob(dir + removedMemorySuffix + "*")
+	pending, err := setAsideMemoryDirs(dir)
 	if err != nil {
 		return err
 	}
@@ -698,12 +698,39 @@ func (runtime Runtime) finishRetirement(ctx context.Context, rootDir, setAside s
 func stopMemoryOwner(ctx context.Context, dir string) error {
 	probeCtx, cancel := context.WithTimeout(ctx, memory.ProbeTimeout)
 	defer cancel()
-	if _, err := memory.Probe(probeCtx, dir); errors.Is(err, memory.ErrUnreachable) {
-		return nil
-	} else if err != nil {
+	_, err := memory.Probe(probeCtx, dir)
+	if err != nil && !errors.Is(err, memory.ErrUnreachable) {
 		return err
 	}
+	if errors.Is(err, memory.ErrUnreachable) {
+		// An owner takes the lock before it binds its socket, so an unanswered socket proves no owner
+		// only when there is no lock file. StopOwner leaves a lock nobody holds alone.
+		if _, statErr := os.Stat(filepath.Join(dir, memory.LockFile)); errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
+	}
 	return memory.StopOwner(ctx, dir)
+}
+
+// setAsideMemoryDirs lists the directories earlier uninstalls set dir aside into. The configured path is
+// matched literally, never as a glob pattern, so no unrelated directory is ever selected.
+func setAsideMemoryDirs(dir string) ([]string, error) {
+	parent := filepath.Dir(dir)
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	prefix := filepath.Base(dir) + removedMemorySuffix
+	var found []string
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
+			found = append(found, filepath.Join(parent, entry.Name()))
+		}
+	}
+	return found, nil
 }
 
 // backupMemory starts an owner reachable only at setAside, writes the backup into the retained

@@ -24,7 +24,7 @@ function memoryCall(path,name,args,meta){
  })
 }
 async function recordResult(title){
- const workspaceKey=execFileSync(bin,['memory','start'],{env:process.env,cwd:workspace,encoding:'utf8'}).trim()
+ const workspaceKey=JSON.parse(execFileSync(bin,['memory','start'],{env:process.env,cwd:workspace,encoding:'utf8'})).workspace
  await memoryCall('/admin','bind',{host_session:'judge',agent:'verify',claimed_root:'root-b',workspace:workspaceKey})
  const res=await memoryCall('/crew','record',{nature:'observation',scope:'workspace',title,content:'All four staged authors checked',evidence:'Read all staged files'},{'ai.opencode/sessionID':'judge'})
  return Number(res.content[0].text.replace('Recorded #',''))
