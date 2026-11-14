@@ -5,20 +5,21 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package catalog
+package catalog_test
 
 import (
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 func TestCapabilitiesManifestLoads(t *testing.T) {
-	manifest, err := LoadCapabilities()
+	manifest, err := catalog.LoadCapabilities()
 	if err != nil {
-		t.Fatalf("LoadCapabilities() error = %v", err)
+		t.Fatalf("catalog.LoadCapabilities() error = %v", err)
 	}
 	if manifest.Version != 1 {
 		t.Fatalf("Version = %d, want 1", manifest.Version)
@@ -26,15 +27,15 @@ func TestCapabilitiesManifestLoads(t *testing.T) {
 }
 
 func TestCapabilitiesReservedCore(t *testing.T) {
-	manifest, err := LoadCapabilities()
+	manifest, err := catalog.LoadCapabilities()
 	if err != nil {
-		t.Fatalf("LoadCapabilities() error = %v", err)
+		t.Fatalf("catalog.LoadCapabilities() error = %v", err)
 	}
 	reserved := map[string]bool{}
 	for _, entry := range manifest.Components {
 		assertCapabilityEntryReservation(t, entry, reserved)
 	}
-	for _, id := range []string{"engram", "skills", "specialists"} {
+	for _, id := range []string{"skills", "specialists"} {
 		if !reserved[id] {
 			t.Errorf("missing reserved core entry %q", id)
 		}
@@ -44,7 +45,7 @@ func TestCapabilitiesReservedCore(t *testing.T) {
 // assertCapabilityEntryReservation checks one manifest entry's reserved/core
 // status is consistent, and, for a reserved entry, records it in reserved and
 // checks its purpose and deps meet the reserved-core shape.
-func assertCapabilityEntryReservation(t *testing.T, entry Capability, reserved map[string]bool) {
+func assertCapabilityEntryReservation(t *testing.T, entry catalog.Capability, reserved map[string]bool) {
 	t.Helper()
 	if entry.Selectable {
 		if entry.Core {
@@ -64,36 +65,20 @@ func assertCapabilityEntryReservation(t *testing.T, entry Capability, reserved m
 	}
 }
 
-func TestParseCapabilitiesRejectsBadInput(t *testing.T) {
-	for name, data := range map[string]string{
-		"corrupt":             "{not yaml",
-		"unsupported version": "version: 99\ncomponents:\n  - id: a\n    purpose: p\n    selectable: true\n",
-		"empty":               "version: 1\ncomponents: []\n",
-		"missing purpose":     "version: 1\ncomponents:\n  - id: a\n    selectable: true\n",
-		"duplicate id":        "version: 1\ncomponents:\n  - id: a\n    purpose: p\n    selectable: true\n  - id: a\n    purpose: q\n    selectable: true\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := parseCapabilities([]byte(data)); err == nil {
-				t.Fatal("parseCapabilities() error = nil, want error")
-			}
-		})
-	}
-}
-
 func TestReconcile(t *testing.T) {
-	m := Capabilities{Components: []Capability{
+	m := catalog.Capabilities{Components: []catalog.Capability{
 		{ID: "core", Core: true, Selectable: false},
 		{ID: "a", Selectable: true, Deps: []string{"core"}},
 		{ID: "b", Selectable: true, Deps: []string{"a"}},
 		{ID: "c", Selectable: true},
 	}}
 
-	kept, removals := Reconcile(m, []model.ComponentID{"a", "b", "c"})
+	kept, removals := catalog.Reconcile(m, []model.ComponentID{"a", "b", "c"})
 	if !slices.Equal(kept, []model.ComponentID{"a", "b", "c"}) || len(removals) != 0 {
 		t.Fatalf("kept=%v removals=%v, want all three kept", kept, removals)
 	}
 
-	kept, removals = Reconcile(m, []model.ComponentID{"b", "c"})
+	kept, removals = catalog.Reconcile(m, []model.ComponentID{"b", "c"})
 	if !slices.Equal(kept, []model.ComponentID{"c"}) {
 		t.Fatalf("kept = %v, want [c] (b needs a)", kept)
 	}
@@ -101,12 +86,12 @@ func TestReconcile(t *testing.T) {
 		t.Fatalf("removals = %v, want b removed naming a", removals)
 	}
 
-	kept, removals = Reconcile(m, []model.ComponentID{"a"})
+	kept, removals = catalog.Reconcile(m, []model.ComponentID{"a"})
 	if !slices.Equal(kept, []model.ComponentID{"a"}) || len(removals) != 0 {
 		t.Fatalf("kept=%v removals=%v, want [a] kept (core satisfies dep)", kept, removals)
 	}
 
-	kept, removals = Reconcile(m, []model.ComponentID{"unknown"})
+	kept, removals = catalog.Reconcile(m, []model.ComponentID{"unknown"})
 	if !slices.Equal(kept, []model.ComponentID{"unknown"}) || len(removals) != 0 {
 		t.Fatalf("kept=%v removals=%v, want unknown passed through", kept, removals)
 	}

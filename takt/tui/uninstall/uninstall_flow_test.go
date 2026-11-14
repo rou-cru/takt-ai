@@ -2,7 +2,6 @@ package uninstall_test
 
 import (
 	"context"
-	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"maps"
 	"os"
 	"path/filepath"
@@ -14,9 +13,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
+	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
+	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/uninstall"
 )
 
@@ -63,6 +64,8 @@ func installedRootWithModifiedFile(t *testing.T) (string, string) {
 }
 
 func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
+	// The uninstall deletes the memory directory: this test must never reach the user's.
+	t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
 	root, edited := installedRootWithModifiedFile(t)
 	m := uninstall.New(root)
 	if m.State() != uninstall.StateModified {
@@ -79,16 +82,16 @@ func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
 		t.Fatal("Dirty() after deciding a retention choice = false, want true")
 	}
 
-	// The only file is decided, so the flow advances to the Engram question.
-	if m.State() != uninstall.StateEngram {
-		t.Fatalf("State() after deciding the modified file = %v, want StateEngram", m.State())
+	// The only file is decided, so the flow advances to the memory question.
+	if m.State() != uninstall.StateMemory {
+		t.Fatalf("State() after deciding the modified file = %v, want StateMemory", m.State())
 	}
 
-	// Leave is preselected: Enter chooses it and advances to review.
+	// Retain is preselected: Enter chooses it and advances to review.
 	next, _ = m.Update(enterKey)
 	m = next.(uninstall.Model)
 	if m.State() != uninstall.StateReview {
-		t.Fatalf("State() after the Engram question = %v, want StateReview", m.State())
+		t.Fatalf("State() after the memory question = %v, want StateReview", m.State())
 	}
 	if got := viewText(m); !strings.Contains(got, "Uninstall") {
 		t.Errorf("review View() = %q, want it to mention the uninstall action", got)
@@ -117,8 +120,8 @@ func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
 	if len(request.RetainPaths) != 1 || request.RetainPaths[0] != edited {
 		t.Fatalf("request.RetainPaths = %v, want [%q] (kept)", request.RetainPaths, edited)
 	}
-	if request.EngramChoice != lifecycle.EngramLeave {
-		t.Fatalf("request.EngramChoice = %q, want %q", request.EngramChoice, lifecycle.EngramLeave)
+	if !request.RetainMemory {
+		t.Fatal("request.RetainMemory = false, want the default to retain")
 	}
 
 	result, err := (runtime.Adapter{}).Execute(request)
@@ -142,14 +145,14 @@ func TestUninstallFullFlowKeepModifiedFile(t *testing.T) {
 	}
 }
 
-func TestUninstallReviewBackReturnsToEngram(t *testing.T) {
+func TestUninstallReviewBackReturnsToMemory(t *testing.T) {
 	root := t.TempDir()
 	if err := setup.SaveInstalledConfig(root, setuputil.TestPlanRequest()); err != nil {
 		t.Fatalf("SaveInstalledConfig() error = %v", err)
 	}
 	m := uninstall.New(root)
-	if m.State() != uninstall.StateEngram {
-		t.Fatalf("State() with nothing on disk = %v, want StateEngram (no modified files to ask about)", m.State())
+	if m.State() != uninstall.StateMemory {
+		t.Fatalf("State() with nothing on disk = %v, want StateMemory (no modified files to ask about)", m.State())
 	}
 
 	next, _ := m.Update(tabKey)
@@ -166,8 +169,8 @@ func TestUninstallReviewBackReturnsToEngram(t *testing.T) {
 	if cmd != nil {
 		t.Error("Back from review returned a command, want a plain state change")
 	}
-	if m.State() != uninstall.StateEngram {
-		t.Fatalf("State() after Back from review = %v, want StateEngram", m.State())
+	if m.State() != uninstall.StateMemory {
+		t.Fatalf("State() after Back from review = %v, want StateMemory", m.State())
 	}
 }
 

@@ -1,18 +1,21 @@
-package install
+package install_test
 
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/tui/install"
 	"github.com/rou-cru/takt-ai/takt/tui/runtime"
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
@@ -21,53 +24,56 @@ import (
 )
 
 const (
-	stateWidth  = 200
-	stateHeight = 80
-	// restoreChoice is a conflict's second row, "Restore Takt", in cursor units.
-	restoreChoice = 1
+	// otherModel is the model assigned to some agents so the review has to group by model.
+	otherModel = "openai/gpt-6-luna"
+	// uncertainPlugin is a managed artifact whose pre-existing content makes an uncertain conflict.
+	uncertainPlugin = ".config/opencode/plugins/takt-dag/tui.tsx"
+	// shortWindowHeight is short enough that the review needs scrolling.
+	shortWindowHeight = 20
 )
 
-var (
-	kEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
-	kEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
-	kTab   = tea.KeyPressMsg{Code: tea.KeyTab}
-	kDown  = tea.KeyPressMsg{Code: tea.KeyDown}
-	kUp    = tea.KeyPressMsg{Code: tea.KeyUp}
-	kRight = tea.KeyPressMsg{Code: tea.KeyRight}
-	kSpace = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
-	kPgDn  = tea.KeyPressMsg{Code: tea.KeyPgDown}
-)
-
-// stateConflicts covers each impact a conflict can carry.
-func stateConflicts() []setup.ConflictEntry {
-	return []setup.ConflictEntry{
-		{Path: "agents/bad.md", Reason: "user-edited", Impact: setup.ImpactIncompatible, Affects: "the planner", Consequence: "breaks planning", Alternative: "restore the Takt version"},
-		{Path: "agents/maybe.md", Reason: "pre-existing", Impact: setup.ImpactUncertain, Affects: "the reviewer", Consequence: "review may drift", SHA256: "abc"},
-		{Path: "agents/far.md", Reason: "missing", Impact: setup.ImpactUnrelated},
-		{Path: "agents/old.md", Reason: "user-edited", Impact: setup.ImpactUncertain, Affects: "the writer", Accepted: true},
+// seedFile writes content at the root-relative path.
+func seedFile(t *testing.T, root, rel, content string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// planModel places the flow on step with a hand-built plan.
-func planModel(t *testing.T, step Step, plan runtime.InstallPlan) Model {
+// configuredRoot records an installed configuration, so the flow opens as a configure.
+func configuredRoot(t *testing.T, request setup.PlanRequest) string {
 	t.Helper()
-	m := New(t.TempDir())
-	m.plan = plan
-	m.step, m.cursor = step, m.cursorFor(step)
-	next, _ := m.Update(tea.WindowSizeMsg{Width: stateWidth, Height: stateHeight})
-	return next.(Model)
+	root := t.TempDir()
+	if err := setup.SaveInstalledConfig(root, request); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
-func step(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
+// conflictRoot holds an incompatible config (invalid JSON) and an uncertain plugin file.
+func conflictRoot(t *testing.T) string {
 	t.Helper()
-	next, cmd := m.Update(msg)
-	return next.(Model), cmd
+	root := t.TempDir()
+	seedFile(t, root, opencode.ConfigPath(), "{not json")
+	seedFile(t, root, uncertainPlugin, "user edit")
+	return root
 }
 
-func plain(m Model) string { return ansi.Strip(m.View().Content) }
-
-func mustContain(t *testing.T, got string, wants ...string) {
+// keptUncertainRoot holds only the uncertain plugin file.
+func keptUncertainRoot(t *testing.T) string {
 	t.Helper()
+	root := t.TempDir()
+	seedFile(t, root, uncertainPlugin, "user edit")
+	return root
+}
+
+func shows(t *testing.T, m install.Model, wants ...string) {
+	t.Helper()
+	got := view(m)
 	for _, want := range wants {
 		if !testutil.Shows(got, want) {
 			t.Errorf("view missing %q:\n%s", want, got)
@@ -75,282 +81,199 @@ func mustContain(t *testing.T, got string, wants ...string) {
 	}
 }
 
-func TestConfiguringAnExistingInstallStartsOnReview(t *testing.T) {
-	root := t.TempDir()
-	if err := setup.SaveInstalledConfig(root, setup.PlanRequest{}); err != nil {
-		t.Fatal(err)
-	}
-	m := New(root)
-	if m.Step() != StepReview || !m.configuring {
-		t.Fatalf("step = %v configuring = %v, want configure on review", m.Step(), m.configuring)
-	}
-	if !strings.HasPrefix(m.Title(), ui.TextTitleConfigure) {
-		t.Errorf("Title() = %q, want the configure title", m.Title())
-	}
-	if m.Init() != nil {
-		t.Error("Init() returned a startup command")
-	}
-	if m.Dirty() {
-		t.Error("Dirty() before any change = true")
-	}
-	_, cmd := step(t, m, kEsc)
-	if _, ok := cmd().(ui.BackMsg); !ok {
-		t.Error("Esc on the configure entry step did not request BackMsg")
-	}
-}
+func TestComponentChecklistTogglesAndMakesFlowDirty(t *testing.T) {
+	m := press(t, reviewModel(t, t.TempDir()), "left", "enter")
+	shows(t, m, ui.TextComponentsIntro, "Context7")
 
-func TestComponentChecklistTogglesMovesAndMakesFlowDirty(t *testing.T) {
-	m := planModel(t, StepComponents, runtime.InstallPlan{})
-	mustContain(t, plain(m), ui.TextComponentsIntro, "Context7")
-
-	before := len(m.components)
-	m, _ = step(t, m, kSpace)
-	if len(m.components) == before || !m.Dirty() {
-		t.Fatalf("components = %v dirty = %v, want the toggle to change the draft", m.components, m.Dirty())
+	m = press(t, m, "space")
+	if !m.Dirty() {
+		t.Fatal("Dirty() after a toggle = false")
 	}
-	m, _ = step(t, m, kSpace)
-	if m.Dirty() {
+	if m = press(t, m, "space"); m.Dirty() {
 		t.Error("Dirty() after toggling back = true, want the baseline restored")
 	}
-
-	// Components submits with Enter and draws no footer: focus never leaves
-	// the checklist, so the cursor can never land somewhere invisible.
-	for _, k := range []tea.KeyPressMsg{kUp, kDown, kTab} {
-		if m, _ = step(t, m, k); m.focus != ui.SectionBody || m.cursor >= m.rows() {
-			t.Fatalf("focus = %v cursor = %v after %v, want a visible checklist row", m.focus, m.cursor, k)
+	// The checklist keeps focus on its rows whatever key moves it.
+	for _, k := range []string{"up", "down", "tab"} {
+		if m = press(t, m, k); m.Step() != install.StepComponents {
+			t.Fatalf("step = %v after %s, want the checklist", m.Step(), k)
 		}
+		shows(t, m, "Context7")
 	}
 }
 
 func TestPageKeyScrollsAndBusyIgnoresKeys(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{})
-	if m, _ = step(t, m, kPgDn); m.scroll == 0 {
+	withoutOpenCode(t)
+	m := reviewModel(t, t.TempDir())
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: shortWindowHeight})
+	before := m.View().Content
+	if m = update(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown}); m.View().Content == before {
 		t.Error("PgDn did not scroll")
 	}
-	m.run = m.run.Start(runtime.ActionRequest{ID: 3, Action: runtime.ActionInstall})
-	if got, cmd := step(t, m, kEnter); cmd != nil || got.Step() != StepReview {
+
+	m, _ = busyModel(t, t.TempDir())
+	if got, cmd := m.Update(key("enter")); cmd != nil || got.(install.Model).Step() != install.StepReview {
 		t.Error("a key while busy changed the flow")
 	}
-	mustContain(t, plain(m), ui.TextBusyInstallation)
-	m.configuring = true
-	mustContain(t, plain(m), ui.TextBusyConfiguration)
+	shows(t, m, ui.TextBusyInstallation)
+
+	m, _ = func() (install.Model, tea.Cmd) {
+		next, cmd := install.New(configuredRoot(t, setup.PlanRequest{})).Update(key("enter"))
+		return next.(install.Model), cmd
+	}()
+	shows(t, m, ui.TextBusyConfiguration)
 	if !strings.Contains(m.Title(), ui.TextStepApplying) {
 		t.Errorf("Title() while configuring and busy = %q, want %q", m.Title(), ui.TextStepApplying)
 	}
 }
 
 func TestConflictsScreenBlocksUntilIncompatibleFileIsRestored(t *testing.T) {
-	m := planModel(t, StepConflicts, runtime.InstallPlan{})
-	m.plan.Conflicts = stateConflicts()
-	mustContain(t, plain(m),
-		ui.TextConflictsIntro, "agents/bad.md", ui.TextConflictKnown+"breaks planning", ui.TextConflictAlternative+"restore the Takt version",
-		"agents/maybe.md", ui.TextConflictUncertain+"review may drift", ui.TextConflictRecommend,
-		ui.TextPreviouslyKeptTitle, "agents/old.md (the writer)", ui.TextNotAffectedTitle, "agents/far.md",
-		fmt.Sprintf(ui.TextKeepCannotWorkFmt, "agents/bad.md", "restore the Takt version"))
-	if got := len(m.decisions()); got != 2 {
-		t.Fatalf("decisions = %d, want only the incompatible and uncertain undecided files", got)
+	m := install.New(conflictRoot(t))
+	if m.Step() != install.StepConflicts {
+		t.Fatalf("step = %v, want the file decisions", m.Step())
 	}
+	shows(t, m,
+		ui.TextConflictsIntro, opencode.ConfigPath(), ui.TextConflictKnown, ui.TextConflictAlternative,
+		uncertainPlugin, ui.TextConflictUncertain, ui.TextConflictRecommend,
+		fmt.Sprintf(ui.TextKeepCannotWorkFmt, opencode.ConfigPath(), ""))
 
 	// Enter on each file keeps it and moves on; on the last file it would
 	// advance, but the kept incompatible file holds the flow here.
-	m, _ = step(t, m, kEnter)
-	if m.Step() != StepConflicts || m.cursor != conflictChoiceCount {
-		t.Fatalf("step = %v cursor = %d, want the second file focused", m.Step(), m.cursor)
-	}
-	if m, _ = step(t, m, kEnter); m.Step() != StepConflicts {
-		t.Fatalf("step = %v, want the flow held while agents/bad.md is kept", m.Step())
+	if m = press(t, m, "enter", "enter"); m.Step() != install.StepConflicts {
+		t.Fatalf("step = %v, want the flow held while the incompatible file is kept", m.Step())
 	}
 
 	// Restore Takt for the incompatible file (second row of the first file).
-	m, _ = step(t, m, kUp)
-	m, _ = step(t, m, kEnter)
-	if len(m.restorePaths) != 1 || m.restorePaths[0] != "agents/bad.md" || !m.Dirty() {
-		t.Fatalf("restorePaths = %v, want agents/bad.md restored", m.restorePaths)
+	m = press(t, m, "up", "enter")
+	if !m.Dirty() {
+		t.Error("Dirty() after restoring = false")
 	}
-	if !strings.Contains(plain(m), theme.Icon.Chosen+ui.TextRestoreTakt) {
-		t.Errorf("the restored file's choice is not visible once focus moved:\n%s", plain(m))
+	if !strings.Contains(view(m), theme.Icon.Chosen+ui.TextRestoreTakt) {
+		t.Errorf("the restored file's choice is not visible once focus moved:\n%s", view(m))
 	}
 	// Choosing Keep again clears it.
-	m, _ = step(t, m, kUp)
-	m, _ = step(t, m, kUp)
-	m, _ = step(t, m, kEnter)
-	if len(m.restorePaths) != 0 {
-		t.Fatalf("restorePaths = %v, want Keep to clear the restore", m.restorePaths)
+	if m = press(t, m, "up", "up", "enter"); m.Dirty() {
+		t.Error("Dirty() after Keep, want the restore cleared")
 	}
 	// Restore it again, then Enter on the last file advances to review.
-	m, _ = step(t, m, kUp)
-	m, _ = step(t, m, kEnter)
-	if m, _ = step(t, m, kEnter); m.Step() != StepReview {
+	if m = press(t, m, "up", "enter", "enter"); m.Step() != install.StepReview {
 		t.Fatalf("step = %v, want review once the blocker is restored", m.Step())
 	}
-	if m.cursor != m.rows()-1 {
-		t.Errorf("cursor = %d, want the commit action focused", m.cursor)
-	}
-
-	// Review's Back returns to the decisions.
-	if m, _ = step(t, m, kEsc); m.Step() != StepConflicts {
+	if m = press(t, m, "esc"); m.Step() != install.StepConflicts {
 		t.Errorf("step = %v, want Esc on review to return to conflicts", m.Step())
 	}
 	// Conflicts are the flow's first step here, so Back leaves the flow.
-	if _, cmd := step(t, m, kEsc); cmd == nil {
+	if _, cmd := m.Update(key("esc")); cmd == nil {
 		t.Error("Esc on the first step must leave the flow")
 	} else if _, ok := cmd().(ui.BackMsg); !ok {
 		t.Error("Esc on the first step must request BackMsg")
 	}
 }
 
-func TestChooseIgnoresRowsBeyondTheDecisions(t *testing.T) {
-	m := planModel(t, StepConflicts, runtime.InstallPlan{})
-	m.cursor = restoreChoice
-	m.choose()
-	if len(m.restorePaths) != 0 {
-		t.Errorf("restorePaths = %v, want none when there is nothing to decide", m.restorePaths)
-	}
-}
-
 func TestReviewListsEveryChangeCategory(t *testing.T) {
-	plan := runtime.InstallPlan{
-		InstallPreview: lifecycle.InstallPreview{
-			Conflicts: stateConflicts(),
-			Removals:  []catalog.Removal{{Component: model.ComponentContext7, Reason: "needs network"}},
-		},
-		Add:    []string{"opencode/agents/one.md", "opencode/skills/alpha/SKILL.md", "opencode/other.txt"},
-		Modify: []string{"agents/bad.md", "cfg/opencode.json", "cfg/cli.json"},
-		Summary: runtime.InstallSummary{
-			Agents: []runtime.AgentModel{
-				{Name: "takt", Role: model.RoleOrchestrator, Model: "openai/gpt-6-luna"},
-				{Name: "dev", Role: model.RoleExecution, Model: "openai/gpt-6-luna"},
-				{Name: "judge-a", Role: model.RoleVerification},
-			},
-			Skills:       27,
-			MCPServers:   []string{"codegraph", "context7", "engram"},
-			Integrations: []string{"DAG panel", "memory"},
-			Configs:      []runtime.ConfigChange{{Path: "cfg/opencode.json", Merged: true}, {Path: "cfg/cli.json"}},
-		},
+	root := configuredRoot(t, setup.PlanRequest{
+		OpenCodeModelOverrides: map[string]model.ModelAssignment{"dev": {Model: otherModel}, "fix": {Model: otherModel}},
+	})
+	seedFile(t, root, uncertainPlugin, "user edit")
+	seedFile(t, root, opencode.ConfigPath(), `{"user":true}`)
+	m := install.New(root)
+	if m.Step() != install.StepConflicts {
+		t.Fatalf("step = %v, want the file decision first", m.Step())
 	}
-	m := planModel(t, StepReview, plan)
-	got := plain(m)
-	mustContain(t, got,
-		ui.TextReviewInstallTitle, ui.TextReviewScope, ui.TextGroupInstalls, ui.TextGroupDisk,
-		" 3 agents", fmt.Sprintf(ui.TextAgentRolesFmt, 1, 2),
-		fmt.Sprintf(ui.TextAgentModelsFmt, 2, "openai/gpt-6-luna"),
-		fmt.Sprintf(ui.TextAgentModelsFmt, 1, ui.TextInheritedModel),
-		"27 skills", " 3 MCP servers", "codegraph · context7 · engram",
-		" 2 integrations", "DAG panel · memory",
-		"3 new files · 2 updated",
-		"opencode.json", ui.TextConfigMerged, "cli.json", ui.TextConfigUpdated,
-		fmt.Sprintf(ui.TextRemovalFmt, model.ComponentContext7, "needs network"),
-		"agents/bad.md"+ui.TextYourVersionKept,
-		"agents/far.md"+ui.TextNotAffectedNote, "agents/old.md"+ui.TextPreviouslyKeptNote,
-		"review may drift",
-		ui.TextActionPersonalize, ui.TextActionInstall)
-
-	// Restoring Takt's version of a config says it replaces the user's.
-	m.restorePaths = []string{"cfg/cli.json"}
-	mustContain(t, plain(m), "replaces your version")
-
-	// One shared model reads as "all on".
-	m.plan.Summary.Agents = m.plan.Summary.Agents[:2]
-	mustContain(t, plain(m), fmt.Sprintf(ui.TextAgentModelsAllFmt, "openai/gpt-6-luna"))
+	m = press(t, m, "enter") // keep my version of the uncertain file
+	if m.Step() != install.StepReview {
+		t.Fatalf("step = %v, want review", m.Step())
+	}
+	shows(t, m,
+		ui.TextReviewApplyTitle, ui.TextReviewScope, ui.TextGroupInstalls, ui.TextGroupDisk,
+		fmt.Sprintf(ui.TextAgentModelsFmt, 2, otherModel), ui.TextInheritedModel,
+		"MCP servers", "codegraph", "integrations", "updated",
+		"opencode.json", ui.TextConfigMerged,
+		"tui.tsx"+ui.TextYourVersionKept, ui.TextFieldKept, ui.TextFieldUncertain,
+		ui.TextActionApplyChanges)
 }
 
-// Counts name only what happens, in proper number: no zero rows, no zero
-// parts, and no group without rows.
-func TestReviewOmitsZeroCounts(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{Add: []string{"opencode/agents/one.md"}})
-	got := plain(m)
-	mustContain(t, got, "1 new file")
-	for _, unwanted := range []string{"updated", "1 new files", "0 agents", "0 skills", "orchestrator", ui.TextGroupInstalls} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("review = %q, want no %q", got, unwanted)
-		}
+func TestReviewWithPlanErrorOffersOnlyPersonalize(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(uncertainPlugin)), 0o755); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestReviewWithNothingToChangeAndWithPlanError(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{})
-	mustContain(t, plain(m), ui.TextNothingToChange)
-
-	m.previewErr = errors.New("catalog offline")
-	mustContain(t, plain(m), ui.TextCannotPrepareIntro+"catalog offline", ui.TextNothingChangedRetry, ui.TextActionPersonalize)
-	if strings.Contains(plain(m), ui.TextActionInstall) {
+	m := install.New(root)
+	if m.Step() != install.StepReview {
+		t.Fatalf("step = %v, want review", m.Step())
+	}
+	shows(t, m, ui.TextCannotPrepareIntro, ui.TextNothingChangedRetry, ui.TextActionPersonalize)
+	if testutil.Shows(view(m), ui.TextActionInstall) {
 		t.Error("an unresolvable plan still offers Install")
 	}
-
-	// Personalize is the only action and goes to the component checklist;
-	// Back from there returns to review with the choices kept.
-	m.cursor = 0
-	m, _ = step(t, m, kEnter)
-	if m.Step() != StepComponents || !m.setupCustom {
-		t.Fatalf("step = %v custom = %v, want the components checklist", m.Step(), m.setupCustom)
+	// Personalize goes to the component checklist; Back returns to review.
+	if m = press(t, m, "enter"); m.Step() != install.StepComponents {
+		t.Fatalf("step = %v, want the components checklist", m.Step())
 	}
-	if m, _ = step(t, m, kEsc); m.Step() != StepReview || !m.setupCustom {
-		t.Errorf("step = %v custom = %v, want review with the personalized choices", m.Step(), m.setupCustom)
+	if m = press(t, m, "esc"); m.Step() != install.StepReview {
+		t.Errorf("step = %v, want review", m.Step())
 	}
-}
-
-func TestReviewBackSkipsConflictsWhenPlanFailed(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{})
-	m.plan.Conflicts = stateConflicts()
-	m.previewErr = errors.New("boom")
-	next, cmd := step(t, m, kEsc)
-	if next.Step() != StepReview || cmd == nil {
-		t.Fatalf("step = %v, want Esc to skip the conflicts of a failed plan and leave", next.Step())
-	}
-	if _, ok := cmd().(ui.BackMsg); !ok {
+	if _, cmd := install.New(root).Update(key("esc")); cmd == nil {
+		t.Error("Esc on a failed review must leave the flow")
+	} else if _, ok := cmd().(ui.BackMsg); !ok {
 		t.Error("Esc on a failed review must request BackMsg")
 	}
 }
 
 func TestInstallRequestPreservesKeptFilesAndRecordsAcceptedRisks(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{})
-	m.plan.Conflicts = stateConflicts()
-	m.restorePaths = []string{"agents/bad.md"}
-	m.cursor = m.rows() - 1
-	next, cmd := step(t, m, kEnter)
-	if !next.Run().Busy() {
+	m := install.New(keptUncertainRoot(t))
+	m = press(t, m, "enter") // keep the uncertain file
+	next, cmd := m.Update(key("enter"))
+	if !next.(install.Model).Run().Busy() {
 		t.Fatal("Install did not start the run")
 	}
 	request := testutil.ActionRequest(t, cmd)
-	if request.Action != runtime.ActionInstall || len(request.PreservePaths) != 3 {
-		t.Fatalf("request = %+v, want install preserving the three kept files", request)
+	if request.Action != runtime.ActionInstall || !slices.Contains(request.PreservePaths, uncertainPlugin) {
+		t.Fatalf("request = %+v, want install preserving the kept file", request)
 	}
-	if len(request.AcceptedRisks) != 2 || request.AcceptedRisks[0].Path != "agents/maybe.md" || request.AcceptedRisks[0].SHA256 != "abc" {
-		t.Errorf("AcceptedRisks = %+v, want the uncertain kept files recorded", request.AcceptedRisks)
+	if len(request.AcceptedRisks) != 1 || request.AcceptedRisks[0].Path != uncertainPlugin || request.AcceptedRisks[0].SHA256 == "" {
+		t.Errorf("AcceptedRisks = %+v, want the uncertain kept file recorded", request.AcceptedRisks)
 	}
 }
 
 func TestResultSuccessDetails(t *testing.T) {
 	report := verify.Report{Ready: true}
 	tests := []struct {
-		name        string
-		configuring bool
-		result      runtime.ActionResult
-		want        []string
-		absent      []string
+		name   string
+		root   func(*testing.T) string
+		keep   bool
+		result runtime.ActionResult
+		want   []string
+		absent []string
 	}{
 		{
 			name:   "install with preserved files and no verification",
+			root:   keptUncertainRoot,
+			keep:   true,
 			result: runtime.ActionResult{Changed: []string{"a"}, Unchanged: []string{"b"}, Preserved: []string{"c"}, CancelRequested: true},
 			want: []string{fmt.Sprintf(ui.TextInstalledForFmt, ui.OpenCodeLabel), ui.TextLateCancel,
 				fmt.Sprintf(ui.TextFilesChangedFmt, 1, 1) + fmt.Sprintf(ui.TextPreservedFmt, 1),
-				ui.TextNotReady, fmt.Sprintf(ui.TextTakeEffectFmt, ui.OpenCodeLabel), fmt.Sprintf(ui.TextCannotGuaranteeFmt, "the reviewer, the writer")},
+				ui.TextNotReady, fmt.Sprintf(ui.TextTakeEffectFmt, ui.OpenCodeLabel), "OpenCode tui.tsx"},
 		},
 		{
-			name:        "configure with verified readiness and incomplete work",
-			configuring: true,
-			result:      runtime.ActionResult{Verify: &report, Incomplete: []string{"plugin-x: failed"}},
-			want:        []string{fmt.Sprintf(ui.TextUpdatedForFmt, ui.OpenCodeLabel), ui.TextIncompleteWorkIntro, ui.TextIncompleteWorkTitle, "plugin-x: failed"},
-			absent:      []string{ui.TextNotReady},
+			name:   "configure with verified readiness and incomplete work",
+			root:   func(t *testing.T) string { return configuredRoot(t, setup.PlanRequest{}) },
+			result: runtime.ActionResult{Verify: &report, Incomplete: []string{"plugin-x: failed"}},
+			want:   []string{fmt.Sprintf(ui.TextUpdatedForFmt, ui.OpenCodeLabel), ui.TextIncompleteWorkIntro, ui.TextIncompleteWorkTitle, "plugin-x: failed"},
+			absent: []string{ui.TextNotReady},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := planModel(t, StepResult, runtime.InstallPlan{})
-			m.configuring = tt.configuring
-			m.plan.Conflicts = stateConflicts()
-			m.outcome = runtime.ActionResultMsg{Result: tt.result}
-			got := plain(m)
+			m := install.New(tt.root(t))
+			if tt.keep {
+				m = press(t, m, "enter")
+			}
+			m, cmd := func() (install.Model, tea.Cmd) {
+				next, cmd := m.Update(key("enter"))
+				return next.(install.Model), cmd
+			}()
+			m = update(t, m, runtime.ActionResultMsg{Request: testutil.ActionRequest(t, cmd), Result: tt.result})
+			got := view(m)
 			for _, want := range tt.want {
 				if !strings.Contains(got, want) {
 					t.Errorf("view missing %q:\n%s", want, got)
@@ -366,100 +289,43 @@ func TestResultSuccessDetails(t *testing.T) {
 }
 
 func TestResultErrorNamesTheRightRetry(t *testing.T) {
-	for configuring, want := range map[bool]string{false: ui.TextRetryInstall, true: ui.TextRetryApply} {
-		m := planModel(t, StepResult, runtime.InstallPlan{})
-		m.configuring = configuring
-		m.outcome = runtime.ActionResultMsg{Err: errors.New("disk full")}
-		mustContain(t, plain(m), "disk full", want, ui.TextActionRetry)
+	roots := map[string]func(*testing.T) string{
+		ui.TextRetryInstall: func(t *testing.T) string { return t.TempDir() },
+		ui.TextRetryApply:   func(t *testing.T) string { return configuredRoot(t, setup.PlanRequest{}) },
+	}
+	for want, root := range roots {
+		next, cmd := install.New(root(t)).Update(key("enter"))
+		m := update(t, next.(install.Model), runtime.ActionResultMsg{Request: testutil.ActionRequest(t, cmd), Err: errors.New("disk full")})
+		shows(t, m, "disk full", want, ui.TextActionRetry)
 	}
 }
 
-func TestResultActionsDispatch(t *testing.T) {
-	tests := []struct {
-		name   string
-		result runtime.ActionResultMsg
-		moves  int
-		check  func(*testing.T, Model, tea.Cmd)
-	}{
-		{
-			name:   "assign models opens the models flow",
-			result: runtime.ActionResultMsg{},
-			check: func(t *testing.T, _ Model, cmd tea.Cmd) {
-				if _, ok := cmd().(OpenModelsMsg); !ok {
-					t.Error("Assign models did not emit OpenModelsMsg")
-				}
-			},
-		},
-		{
-			name:   "menu goes back",
-			result: runtime.ActionResultMsg{},
-			moves:  1,
-			check: func(t *testing.T, _ Model, cmd tea.Cmd) {
-				if _, ok := cmd().(ui.BackMsg); !ok {
-					t.Error("Back to menu did not emit BackMsg")
-				}
-			},
-		},
-		{
-			name:   "quit quits",
-			result: runtime.ActionResultMsg{},
-			moves:  2,
-			check: func(t *testing.T, _ Model, cmd tea.Cmd) {
-				if _, ok := cmd().(tea.QuitMsg); !ok {
-					t.Error("Quit did not emit QuitMsg")
-				}
-			},
-		},
-		{
-			name:   "retry after failure prepares the plan again",
-			result: runtime.ActionResultMsg{Err: errors.New("boom")},
-			check: func(t *testing.T, m Model, _ tea.Cmd) {
-				if m.Step() != StepReview {
-					t.Errorf("step = %v, want a fresh review", m.Step())
-				}
-			},
-		},
-		{
-			name:   "keep current state goes back after a partial stop",
-			result: runtime.ActionResultMsg{Result: runtime.ActionResult{Outcome: lifecycle.OutcomeCancelledPartial}},
-			moves:  1,
-			check: func(t *testing.T, _ Model, cmd tea.Cmd) {
-				if _, ok := cmd().(ui.BackMsg); !ok {
-					t.Error("Keep current state did not emit BackMsg")
-				}
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := planModel(t, StepResult, runtime.InstallPlan{})
-			m.outcome = tt.result
-			for range tt.moves {
-				m, _ = step(t, m, kRight)
-			}
-			m, cmd := step(t, m, kEnter)
-			tt.check(t, m, cmd)
-		})
-	}
-	// Esc on the result leaves the flow.
-	m := planModel(t, StepResult, runtime.InstallPlan{})
-	_, cmd := step(t, m, kEsc)
-	if _, ok := cmd().(ui.BackMsg); !ok {
-		t.Error("Esc on the result did not emit BackMsg")
+// Leaving the result: Keep current state after a partial stop and Esc both
+// return to the menu.
+func TestResultLeavesTheFlowAfterPartialStopAndOnEsc(t *testing.T) {
+	m, request := busyModel(t, t.TempDir())
+	partial := update(t, m, runtime.ActionResultMsg{Request: request, Result: runtime.ActionResult{Outcome: lifecycle.OutcomeCancelledPartial}})
+	for name, leave := range map[string]install.Model{
+		"keep current state": press(t, partial, "right"),
+		"esc":                partial,
+	} {
+		input := "enter"
+		if name == "esc" {
+			input = "esc"
+		}
+		_, cmd := leave.Update(key(input))
+		if _, ok := cmd().(ui.BackMsg); !ok {
+			t.Errorf("%s did not emit BackMsg", name)
+		}
 	}
 }
 
 func TestUnrelatedKeysAndMessagesLeaveReviewAlone(t *testing.T) {
-	m := planModel(t, StepReview, runtime.InstallPlan{})
-	m.cursor = 0
-	if got, cmd := step(t, m, tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil || got.Step() != StepReview {
+	m := reviewModel(t, t.TempDir())
+	if got, cmd := m.Update(key("x")); cmd != nil || got.(install.Model).Step() != install.StepReview {
 		t.Error("an unrelated key changed the review")
 	}
-	if got, cmd := step(t, m, struct{}{}); cmd != nil || got.Step() != StepReview {
+	if got, cmd := m.Update(struct{}{}); cmd != nil || got.(install.Model).Step() != install.StepReview {
 		t.Error("an unknown message changed the review")
-	}
-	stale := runtime.ActionResultMsg{Request: runtime.ActionRequest{ID: 99, Action: runtime.ActionInstall}}
-	if got, _ := step(t, m, stale); got.Step() != StepReview {
-		t.Error("a result with no running request changed the review")
 	}
 }

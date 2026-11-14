@@ -118,8 +118,8 @@ func TestMergeJSONObjectsRejectsInvalidBase(t *testing.T) {
 // ─── __replace__ sentinel tests ───────────────────────────────────────────────
 
 func TestMergeJSONObjectsReplaceSentinelErasesBaseKeys(t *testing.T) {
-	base := []byte(`{"mcp":{"engram":{"command":"/opt/homebrew/bin/engram","args":["mcp","--tools=agent"],"type":"local"}}}`)
-	overlay := []byte(`{"mcp":{"engram":{"__replace__":{"command":["/opt/homebrew/bin/engram","mcp","--tools=agent"],"type":"local"}}}}`)
+	base := []byte(`{"mcp":{"example":{"command":"/opt/homebrew/bin/example","args":["mcp","--tools=agent"],"type":"local"}}}`)
+	overlay := []byte(`{"mcp":{"example":{"__replace__":{"command":["/opt/homebrew/bin/example","mcp","--tools=agent"],"type":"local"}}}}`)
 
 	merged, err := filemerge.MergeJSONObjects(base, overlay)
 	if err != nil {
@@ -132,19 +132,19 @@ func TestMergeJSONObjectsReplaceSentinelErasesBaseKeys(t *testing.T) {
 	}
 
 	mcp := got["mcp"].(map[string]any)
-	eng := mcp["engram"].(map[string]any)
+	eng := mcp["example"].(map[string]any)
 
 	// args must be gone
 	if _, ok := eng["args"]; ok {
-		t.Fatalf("engram still has 'args' after __replace__; got: %v", eng)
+		t.Fatalf("example still has 'args' after __replace__; got: %v", eng)
 	}
 	// command must be an array
 	cmd, ok := eng["command"].([]any)
 	if !ok {
-		t.Fatalf("engram command is not an array; got: %T = %v", eng["command"], eng["command"])
+		t.Fatalf("example command is not an array; got: %T = %v", eng["command"], eng["command"])
 	}
 	if len(cmd) != 3 {
-		t.Fatalf("engram command has %d elements, want 3", len(cmd))
+		t.Fatalf("example command has %d elements, want 3", len(cmd))
 	}
 	// __replace__ must not appear in output
 	if _, ok := eng["__replace__"]; ok {
@@ -536,14 +536,14 @@ func TestMergeJSONObjectsUnionsUserArrays(t *testing.T) {
 // scalars merge exactly as before.
 func TestMergeJSONObjectsNonUnionArraysStillReplace(t *testing.T) {
 	base := []byte(`{
-  "mcp": {"engram": {"args": ["mcp","--old"]}},
+  "mcp": {"example": {"args": ["mcp","--old"]}},
   "customArray": ["keep-me","me-too"],
   "settings": {"flags": {"x": true}},
   "plugins": ["user-a.ts"],
   "scalar": "old"
 }`)
 	overlay := []byte(`{
-  "mcp": {"engram": {"args": ["mcp","--new"]}},
+  "mcp": {"example": {"args": ["mcp","--new"]}},
   "customArray": ["only-overlay"],
   "settings": {"flags": {"y": true}},
   "plugins": ["./tui-plugins/takt-logo.tsx"],
@@ -570,7 +570,7 @@ func TestMergeJSONObjectsNonUnionArraysStillReplace(t *testing.T) {
 	}
 
 	// Nested arrays inside objects must also keep replacement semantics.
-	args := got["mcp"].(map[string]any)["engram"].(map[string]any)["args"].([]any)
+	args := got["mcp"].(map[string]any)["example"].(map[string]any)["args"].([]any)
 	if !reflect.DeepEqual(args, []any{"mcp", "--new"}) {
 		t.Fatalf("nested args = %#v, want [mcp --new] (nested arrays must be replaced)", args)
 	}

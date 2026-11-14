@@ -16,11 +16,11 @@ RUN go mod download && \
     GOBIN=/opt/tools go install golang.org/x/tools/cmd/deadcode
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /opt/codegraph /opt/codegraph
-ENV PATH="/opt/codegraph/bin:/opt/tools:$PATH" TAKT_E2E_CODEGRAPH=/opt/codegraph/bin/codegraph TAKT_E2E_DEADCODE=/opt/tools/deadcode CODEGRAPH_TELEMETRY=0
+ENV PATH="/opt/codegraph/bin:/opt/tools:$PATH" TAKT_E2E_CODEGRAPH=/opt/codegraph/bin/codegraph TAKT_E2E_DEADCODE=/opt/tools/deadcode TAKT_E2E_MODEL=/opt/models CODEGRAPH_TELEMETRY=0
 # development/testing/test-containerized.sh always runs this image as `runner`
 # account below (no --user override), so ownership can be scoped to it
 # instead of opened up to everyone.
 RUN go version && node --version && codegraph --version && \
     useradd -m -s /bin/bash runner && \
-    mkdir -p /src /go && chown -R runner:runner /src /go /opt/tools /opt/codegraph
+    mkdir -p /src /go /opt/models && chown -R runner:runner /src /go /opt/tools /opt/codegraph /opt/models
 USER runner

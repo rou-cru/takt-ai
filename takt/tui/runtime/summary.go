@@ -43,8 +43,8 @@ type ConfigChange struct {
 }
 
 // injectedServers are configured after the files are written (lifecycle's
-// InjectEngram/InjectMemory/InjectCodegraph), so no planned artifact names them.
-var injectedServers = []string{string(model.ComponentCodegraph), string(model.ComponentEngram), memory.ServerKey}
+// InjectMemory/InjectCodegraph), so no planned artifact names them.
+var injectedServers = []string{string(model.ComponentCodegraph), memory.ServerKey}
 
 // integrationLabels names the deployed plugins by their artifact base name.
 var integrationLabels = map[string]string{

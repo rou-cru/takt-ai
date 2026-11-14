@@ -55,9 +55,10 @@ cosign verify docker.io/roucru/takt-ai:<version> \
 Takt AI is built to avoid creating security gaps, within these limits:
 
 - **No telemetry.** Takt AI sends no usage data. Its own network traffic is
-  to the local memory service on the same machine, and the download of the
-  pinned Engram release during installation, checked against a fixed SHA-256.
-  OpenCode's requests to the model providers you configure, and to the remote
+  the download of the semantic memory model during installation, at a pinned
+  revision and checked against fixed SHA-256 digests. The memory service
+  listens on a Unix socket that only the local user can open, not on a network
+  port. OpenCode's requests to the model providers you configure, and to the remote
   Context7 service when enabled, are not Takt's traffic.
 - **Sensitive files blocked by default.** Agent reads and writes are denied for
   obvious secret-bearing paths such as `.env`, `.ssh/**`, `.aws/credentials`,

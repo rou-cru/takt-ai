@@ -7,4 +7,4 @@ import (
 	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 )
 
-func TestMain(m *testing.M) { os.Exit(testutil.RunWithFakeEngram(m)) }
+func TestMain(m *testing.M) { os.Exit(testutil.RunWithFakeTools(m)) }

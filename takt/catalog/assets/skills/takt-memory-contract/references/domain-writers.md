@@ -12,5 +12,5 @@
 | Non-obvious implementation facts | dev |
 | Resolved defects | fix |
 | Verified acceptance results and the defects they localize | verify |
-| Review findings that contradict memory | judges |
+| Review findings that contradict Takt memory | judges |
 | Session objective and state | orchestrator |

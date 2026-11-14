@@ -10,11 +10,6 @@ components:
     selectable: true
     deps: []
   # Reserved, non-omittable core: always installed, never user-selectable.
-  - id: engram
-    purpose: Engram — persistent memory for agents
-    core: true
-    selectable: false
-    deps: []
   - id: skills
     purpose: Takt skills — workflows and conventions agents load on demand
     core: true
@@ -26,7 +21,7 @@ components:
     selectable: false
     deps: []
   # Non-omittable: acquired via npm and wired by Takt with an absolute path
-  # (takt/codegraph), like Engram; not a rendered artifact.
+  # (takt/codegraph); not a rendered artifact.
   - id: codegraph
     purpose: CodeGraph — codebase navigation for agents
     core: true

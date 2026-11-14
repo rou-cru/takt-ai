@@ -26,6 +26,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
 
@@ -70,7 +71,7 @@ func LoadSkills() ([]SkillDefinition, error) {
 // The path format is the preferred OpenCode V2 location:
 // .opencode/skills/<ID>/<filename>
 func skillDeploymentPath(skill SkillDefinition) string {
-	return path.Join(".opencode", "skills", skill.Name, skill.FileName)
+	return path.Join(model.OpenCodeSkillsDir, skill.Name, skill.FileName)
 }
 
 // BuildSkillArtifacts converts skill definitions into setup.Artifact values

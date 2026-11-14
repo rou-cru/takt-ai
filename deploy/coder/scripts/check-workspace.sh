@@ -91,7 +91,6 @@ stage_ok "runtime paths"
 # Installed Takt/OpenCode toolchain baked into the image.
 require_executable executables opencode
 require_executable executables takt-ai
-require_executable executables engram
 require_executable executables codegraph
 stage_ok executables
 

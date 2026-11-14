@@ -38,7 +38,6 @@ CONTAINER_TEST_PKGS=(
     ./takt/agents/opencode
     ./takt/codegraph
     ./takt/doctor
-    ./takt/engram
     ./takt/gc
     ./takt/internal/filemerge
     ./takt/lifecycle

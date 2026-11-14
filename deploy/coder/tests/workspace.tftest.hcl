@@ -116,8 +116,8 @@ run "identity_owner_a_workspace_a1" {
     error_message = "display_apps must enable web_terminal and ssh_helper only; vscode, vscode_insiders and port_forwarding_helper stay disabled."
   }
   assert {
-    condition     = coder_app.opencode.slug == "opencode" && coder_app.opencode.display_name == "OpenCode" && coder_app.opencode.command == "cd /workspace && exec opencode" && coder_app.opencode.agent_id == coder_agent.workspace.id
-    error_message = "coder_app.opencode must be the terminal command app 'cd /workspace && exec opencode', bound to the workspace agent."
+    condition     = coder_app.opencode.slug == "opencode" && coder_app.opencode.display_name == "OpenCode" && coder_app.opencode.command == "cd /workspace && takt-ai memory start --init && exec opencode" && coder_app.opencode.agent_id == coder_agent.workspace.id
+    error_message = "coder_app.opencode must start the memory service before OpenCode: 'cd /workspace && takt-ai memory start --init && exec opencode', bound to the workspace agent."
   }
   assert {
     condition     = try(coder_app.opencode.url, null) == null && coder_app.opencode.share == "owner" && try(coalesce(coder_app.opencode.subdomain, false), false) == false
@@ -333,8 +333,8 @@ run "runtime_mounts_env_and_persistent_runtime_volume" {
     error_message = "The init source must create the workspace/data/state/cache siblings and must not clone a repository or use the network."
   }
   assert {
-    condition     = try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "HOME"][0], null) == "/home/takt" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_DATA_HOME"][0], null) == "/home/takt/.local/share" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_STATE_HOME"][0], null) == "/home/takt/.local/state" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_CACHE_HOME"][0], null) == "/home/takt/.cache" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "ENGRAM_DATA_DIR"][0], null) == "/home/takt/.local/share/engram"
-    error_message = "The Pod must set HOME=/home/takt and the XDG and ENGRAM_DATA_DIR paths as plain values, so Engram data lands on a persisted mount."
+    condition     = try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "HOME"][0], null) == "/home/takt" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_DATA_HOME"][0], null) == "/home/takt/.local/share" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_STATE_HOME"][0], null) == "/home/takt/.local/state" && try([for e in kubernetes_pod_v1.workspace[0].spec[0].container[0].env : e.value if e.name == "XDG_CACHE_HOME"][0], null) == "/home/takt/.cache"
+    error_message = "The Pod must set HOME=/home/takt and the XDG paths as plain values, so tool data lands on a persisted mount."
   }
   assert {
     condition     = try(coder_agent.workspace.env["TAKT_WORKSPACE_DIR"], "missing") == "/workspace" && try(coder_agent.workspace.env["TAKT_REPOSITORY_URL"], "missing") == ""

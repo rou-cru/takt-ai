@@ -137,24 +137,6 @@ func lockWithin(held *os.File) error {
 	return err
 }
 
-// LockWorkspace takes the workspace lock Open takes, without opening the
-// store, for a harness command that decides from the execution history under
-// the same serialization point. Closing the returned file releases it.
-func LockWorkspace(rootDir string) (*os.File, error) {
-	canonical, err := filepath.EvalSymlinks(rootDir)
-	if err != nil {
-		return nil, err
-	}
-	held, err := os.Open(canonical)
-	if err != nil {
-		return nil, err
-	}
-	if err = lockWithin(held); err != nil {
-		return nil, errors.Join(err, held.Close())
-	}
-	return held, nil
-}
-
 // resolveStateDir returns the private state directory with symlinks resolved.
 func resolveStateDir(stateDir, workspace string) (string, error) {
 	abs, err := filepath.Abs(stateDir)

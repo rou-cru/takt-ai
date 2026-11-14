@@ -92,7 +92,7 @@ resource "coder_app" "opencode" {
   agent_id     = coder_agent.workspace.id
   slug         = "opencode"
   display_name = "OpenCode"
-  command      = "cd /workspace && exec opencode"
+  command      = "cd /workspace && takt-ai memory start --init && exec opencode"
   share        = "owner"
 }
 
@@ -224,7 +224,6 @@ resource "kubernetes_pod_v1" "workspace" {
 
       # Explicit runtime environment selects the persistent subpaths of the
       # workspace claim; agent sessions and tools inherit the Pod environment.
-      # ENGRAM_DATA_DIR keeps Engram data on the persisted share subpath.
       env {
         name  = "XDG_DATA_HOME"
         value = "/home/takt/.local/share"
@@ -238,11 +237,6 @@ resource "kubernetes_pod_v1" "workspace" {
       env {
         name  = "XDG_CACHE_HOME"
         value = "/home/takt/.cache"
-      }
-
-      env {
-        name  = "ENGRAM_DATA_DIR"
-        value = "/home/takt/.local/share/engram"
       }
 
       # The Backstage endpoint comes solely from the operator variable. The

@@ -22,12 +22,11 @@ it returns.
 
 ## Lending
 
-1. Call `dispatch_switch` naming the specialist and the objective. The harness asks the user to
-   accept them before the switch takes effect; a refusal means no lending: reevaluate. Its
-   `requirements` carry the finalized formal document paths the specialist needs, plus useful
-   known Engram IDs of the invariants it consumes and the settled decisions that bind it. Pass
-   references, never copied content; the specialist retrieves a known ID directly. When no
-   useful reference exists, state `requirements` as empty rather than inventing one. `client`
+1. Call `dispatch_switch` naming the specialist and the objective. The user accepts them
+   before the switch takes effect; a refusal means no lending: reevaluate. Its
+   `requirements` list the current entry IDs of the invariants the specialist consumes and of
+   the settled decisions that bind it. When no useful entry exists, pass `requirements` empty
+   rather than inventing one. `client`
    carries what is known of the user. The specialist starts from `objective`, `requirements`
    and `client` alone.
 2. Only the user aborts a lent session: if they ask, tell them to run `/takt-abort`.
@@ -39,7 +38,7 @@ specialist.
 
 | `Result` | Conduct |
 | --- | --- |
-| `Standard` | Consume the delivered Engram IDs as the invariant |
+| `Standard` | Consume the delivered entry IDs as the invariant |
 | `EarlyHandoff` | Take the artifact as returned, in its actual partial state |
 | `Aborted` | No content to interpret and no fault to any agent: consult the user, never reconstruct |
 | `TechFault`, objective, authority and continuity established | Reconcile transition and artifact evidence; route bounded diagnosis or correction |
@@ -47,7 +46,7 @@ specialist.
 | `Outraged` | Your own brief or inputs caused the failure: read the incident, correct them, do not chase it into a broader pattern the evidence does not support |
 
 - What happened during the session comes from the accepted transition history; the envelope
-  carries the declared payload; governing knowledge comes from memory and the referenced
+  carries the declared payload; governing knowledge comes from Takt memory and the referenced
   documents, queried by topic. Never fill a gap with what seems plausible: declare it and investigate within
   authority; consult the user if continuity remains indeterminable.
 - Inspect `ExtraArtifacts` only as deeply as `AdditionalContext` says they matter.

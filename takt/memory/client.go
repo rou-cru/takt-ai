@@ -109,6 +109,12 @@ func (a *Admin) Backup(ctx context.Context, in BackupInput) (BackupOutput, error
 	return adminCall[BackupOutput](ctx, a, AdminBackup, in)
 }
 
+// Shutdown asks the owner to stop. It returns once the owner accepted; the caller waits for the lock.
+func (a *Admin) Shutdown(ctx context.Context) error {
+	_, err := adminCall[struct{}](ctx, a, AdminShutdown, struct{}{})
+	return err
+}
+
 // Probe reads the service's status and never starts it, for doctor and verification (PR-MSV-33). The
 // error wraps ErrUnreachable when nothing listens and ErrMalformed when the answer is not a memory service.
 func Probe(ctx context.Context, dir string) (_ StatusOutput, err error) {

@@ -68,6 +68,7 @@ class TaktOpenCode(OpenCode):
             f"takt-ai setup default-request | jq --arg m {model} --argjson o {shlex.quote(OVERRIDES)} "
             "'.opencode.model=$m | .opencode_model_overrides=$o' "
             "| takt-ai setup image --root \"$HOME\" --yes --json; "
+            "takt-ai memory start --init; "
             "mkdir -p \"$HOME/.config/opencode/skills\"; "
             "cp -a \"$HOME/.config/opencode/takt/skills/.\" \"$HOME/.config/opencode/skills/\"; "
             "echo \"$HOME\"",

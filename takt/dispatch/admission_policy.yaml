@@ -22,7 +22,3 @@ recovery:
   # a declaration above its ceiling is unbounded recovery in disguise.
   max_actions: 200
   max_attempts: 3
-interlocutor:
-  # IR-22: entries of a lent session listed per page of a returned envelope's
-  # memory index; the remainder is paged with lent_entries.
-  memory_page: 50

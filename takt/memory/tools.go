@@ -25,6 +25,9 @@ const (
 	AdminStatus   = "status"
 	AdminInit     = "init"
 	AdminBackup   = "backup"
+	// AdminShutdown asks the owner answering on the socket to stop; only the lock holder binds the
+	// socket, so the request reaches the owner and never another process.
+	AdminShutdown = "shutdown"
 )
 
 // Tool is one tool's name and its caller-facing description; argument descriptions are the jsonschema tags of its argument type.

@@ -32,7 +32,7 @@ Names are `takt-<workspace UUID>` for the Pod, the claim, and the network policy
 
 Every supported workspace has exactly one per-workspace RWO claim. Only compute is gated on start: stopping removes the Pod and keeps the claim; starting creates a fresh Pod and agent that reuse it. The claim does not wait for binding (`wait_until_bound=false`), so storage classes with delayed binding do not block the Pod.
 
-The Pod runs as UID and GID 10001 with `/workspace` as the working directory and `/home/takt` as home, and mounts the claim through sibling subPaths: `workspace` at `/workspace`, and `data`, `state`, and `cache` at `/home/takt/.local/share`, `/home/takt/.local/state`, and `/home/takt/.cache`. `/tmp` is an emptyDir. The Pod sets `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` to those directories and `ENGRAM_DATA_DIR=/home/takt/.local/share/engram`, so tool data and per-workspace memory (Engram) persist on the claim. Files outside the declared mounts — an ad-hoc `~/.ssh`, edits to the baked configuration under `/home/takt` — are not durable; durable files belong in `/workspace` or the persisted XDG directories. The claim is storage, not a backup.
+The Pod runs as UID and GID 10001 with `/workspace` as the working directory and `/home/takt` as home, and mounts the claim through sibling subPaths: `workspace` at `/workspace`, and `data`, `state`, and `cache` at `/home/takt/.local/share`, `/home/takt/.local/state`, and `/home/takt/.cache`. `/tmp` is an emptyDir. The Pod sets `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` to those directories, and the image sets `TAKT_MEMORY_DIR=/home/takt/.local/share/takt-ai/memory`, so tool data and the per-workspace memory store persist on the claim. Files outside the declared mounts — an ad-hoc `~/.ssh`, edits to the baked configuration under `/home/takt` — are not durable; durable files belong in `/workspace` or the persisted XDG directories. The claim is storage, not a backup.
 
 OpenCode and the Takt setup are baked into the image at build time; no workspace runs an installer or a second OpenCode installation. Only the Coder web terminal and SSH are enabled. The template creates no Service, Ingress, or route and exposes no port: the terminal is the access path, and OpenCode's own HTTP authentication is not involved on it. Workspace Pods run with the service-account token unmounted; the provisioner's identity never enters a workspace.
 
@@ -107,11 +107,11 @@ owner_secret_env = {
 }
 ```
 
-The template reads only the entry whose key matches the workspace's actual owner, so an owner never receives another owner's variables. Reserved names (`HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, `ENV`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `BACKSTAGE_URL`, and every `CODER_*`, `TAKT_*`, `OPENCODE_*`, `XDG_*`, `ENGRAM_*` name) are rejected, because they would override bootstrap, access, or memory defaults, or duplicate the template's own `BACKSTAGE_URL` input. The template never reads Secret contents, and no output carries a credential.
+The template reads only the entry whose key matches the workspace's actual owner, so an owner never receives another owner's variables. Reserved names (`HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, `ENV`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `BACKSTAGE_URL`, and every `CODER_*`, `TAKT_*`, `OPENCODE_*`, `XDG_*` name) are rejected, because they would override bootstrap, access, or memory defaults, or duplicate the template's own `BACKSTAGE_URL` input. The template never reads Secret contents, and no output carries a credential.
 
 The template declares these non-secret outputs: `workspace_name`, `owner_id`, `pod_name` (null while stopped), `namespace`, `image`, `architecture`, `persistence_mode` (`workspace-pvc`), and `pvc_name`.
 
-Earlier published versions exposed `persist_workspace` and `persistence_allowed`. Those inputs are gone from the current module, and existing workspaces are not silently migrated: moving an older workspace to the persistent layout is an explicit transition you plan and confirm, and existing data at the previous `~/.engram` path is neither deleted nor silently relocated.
+Earlier published versions exposed `persist_workspace` and `persistence_allowed`. Those inputs are gone from the current module, and existing workspaces are not silently migrated: moving an older workspace to the persistent layout is an explicit transition you plan and confirm, and existing data is neither deleted nor silently relocated.
 
 ## What each person sees
 
@@ -140,7 +140,7 @@ The OpenCode app in the Coder dashboard runs that same command; only the workspa
 
 ## Startup and readiness
 
-Coder's agent startup runs `scripts/check-workspace.sh` as a blocking startup script. It verifies that `/workspace` and the runtime paths under `/home/takt` are writable, that `opencode`, `takt-ai`, `engram`, and `codegraph` are present, and that the installed configuration is readable; it reports the versions of `opencode` and `takt-ai`, and prints stage names and failures only — never environment values or tokens. Exit 0 means the local bootstrap prerequisites are met. It does not prove that a model, an MCP server, or a Backstage credential is ready, and a running workspace with a connected agent means provisioning succeeded, not that a crew session works. Both are acceptance evidence to record ([ACCEPTANCE.md](ACCEPTANCE.md)).
+Coder's agent startup runs `scripts/check-workspace.sh` as a blocking startup script. It verifies that `/workspace` and the runtime paths under `/home/takt` are writable, that `opencode`, `takt-ai`, and `codegraph` are present, and that the installed configuration is readable; it reports the versions of `opencode` and `takt-ai`, and prints stage names and failures only — never environment values or tokens. Exit 0 means the local bootstrap prerequisites are met. It does not prove that a model, an MCP server, or a Backstage credential is ready, and a running workspace with a connected agent means provisioning succeeded, not that a crew session works. Both are acceptance evidence to record ([ACCEPTANCE.md](ACCEPTANCE.md)).
 
 The agent sets `TAKT_WORKSPACE_DIR=/workspace` and `TAKT_REPOSITORY_URL=<repository_url>`. The repository URL remains a hint the person chooses to use, not an instruction the workspace executes.
 
@@ -160,7 +160,7 @@ Coder's own operations drive the lifecycle; this template adds no controller, sc
 
 Stop is a deliberate pause, not a data operation. Delete is Coder's destructive operation: it removes every resource the template created for that workspace, including the claim and everything on it. Confirm the workspace name and what is lost before confirming deletion. The storage backend's reclaim policy decides the backing volume, and no secure erasure is guaranteed. Push work you want to keep to the remote repository before deleting.
 
-The template claims no automatic stop: no idle detection, dormancy, autostop, quota, or sweeper. If a long job is running and you disconnect, nothing stops the workspace. Coder's native scheduling, if you configure it, is your explicit choice with its own consequences; a disconnected background job is not idleness. Per-workspace project memory (Engram under `ENGRAM_DATA_DIR`) persists with the claim; shared team memory across workspaces is a separate, later concern this template does not provide.
+The template claims no automatic stop: no idle detection, dormancy, autostop, quota, or sweeper. If a long job is running and you disconnect, nothing stops the workspace. Coder's native scheduling, if you configure it, is your explicit choice with its own consequences; a disconnected background job is not idleness. The per-workspace memory store (under `TAKT_MEMORY_DIR`) persists with the claim; shared team memory across workspaces is a separate, later concern this template does not provide.
 
 ## Backstage
 

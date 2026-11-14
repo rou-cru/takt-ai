@@ -7,7 +7,7 @@ settings, context files, and on-demand skill links; it must not contain prompt p
 OpenCode installs this tree once at `~/.config/opencode/takt/`. Its native JSON
 registers each instance with direct file references in this order:
 BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause naming the
-memory contract and, for recording, the agent's memory skill. Only undeclared optional files are omitted.
+Takt memory contract and, for recording, the agent's Takt memory skill. Only undeclared optional files are omitted.
 This order does not introduce an authority hierarchy. PERSONA and SOUL carry identity and voice only: every working procedure, contract, and judgment criterion a role needs lives in BASELINE, OPERATIONS, or skills, so a substitute composed without them can hold an unavailable seat (`PR-CRW-13`). Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
 discovers them; they are not injected into initial prompts. `shared/GUIDELINES.md` is registered in `instructions`, so every session loads it. Resource bytes are
@@ -23,15 +23,15 @@ install as 0755. All other files install as 0644. Paths must stay inside package
 The native registry is published after package dependencies. Editing an installed
 Markdown file takes effect on a new OpenCode load, not necessarily an active
 session. Missing declared context is an installation/diagnostic error. No second
-compiled prompt is generated; the only global addition is the short "Takt Memory"
-section Engram's wiring places in `~/.config/opencode/AGENTS.md`.
+compiled prompt is generated, and nothing is added to `~/.config/opencode/AGENTS.md`:
+the memory clause is the only static Takt memory context.
 
 ## VFS by role
 
 | Role | How it changes the workspace |
 | --- | --- |
 | orchestrator | native edit outside claimed paths; assigns, discards and consolidates staged work; reads the journal and execution history |
-| planning_author, direct_interlocutor | native edit outside claimed paths, delivering documents to the paths named |
+| planning_author, direct_interlocutor | native edit outside claimed paths, writing a repository copy only when the user asks |
 | execution | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
 | quality_assurance | none; native edit denied |
 | verification | none; reads staged work when assigned a gate, including GC deltas; shell and network run natively with native edit denied |

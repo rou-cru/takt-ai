@@ -53,8 +53,7 @@ tighten it, never loosen it. With no test policy, this baseline is the Definitio
 | Owning DAG node | `tpm` |
 | Evidence, with the evaluated scope | `verify` |
 
-Every addition is an entry that supplements the matrix, never a rewrite. A requirement with no
-test condition, a condition with no owning node, and a row with no evidence when acceptance closes
+A requirement with no test condition, a condition with no owning node, and a row with no evidence when acceptance closes
 each stay visible as such.
 
 ## Oracles

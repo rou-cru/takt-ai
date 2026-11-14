@@ -3,9 +3,10 @@ package lifecycle_test
 import (
 	"context"
 	"errors"
-	"github.com/rou-cru/takt-ai/takt/tui/testutil"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
 
-	installed, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request)
+	installed, err := installRuntime(t).Run(context.Background(), "install", root, request)
 	if err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
@@ -91,7 +92,7 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 		t.Error("IsInstalled() after Run(install) = false, want true")
 	}
 
-	uninstalled, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "uninstall", root, request)
+	uninstalled, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
 	if err != nil {
 		t.Fatalf("Run(uninstall) error = %v", err)
 	}
@@ -106,31 +107,15 @@ func TestRunInstallThenUninstallRoundTrip(t *testing.T) {
 func TestRunSyncAfterInstall(t *testing.T) {
 	root := t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := installRuntime(t).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
-	result, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "sync", root, request)
+	result, err := installRuntime(t).Run(context.Background(), "sync", root, request)
 	if err != nil {
 		t.Fatalf("Run(sync) error = %v", err)
 	}
 	if result.Outcome != lifecycle.OutcomeCompleted {
 		t.Errorf("Run(sync) Outcome = %v, want %v", result.Outcome, lifecycle.OutcomeCompleted)
-	}
-}
-
-func TestRunUninstallEngramRemoveReportsIncomplete(t *testing.T) {
-	root := t.TempDir()
-	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
-		t.Fatalf("Run(install) error = %v", err)
-	}
-	runtime := lifecycle.Runtime{Model: testutil.FakeModel(t), EngramChoice: lifecycle.EngramRemove}
-	result, err := runtime.Run(context.Background(), "uninstall", root, request)
-	if err != nil {
-		t.Fatalf("Run(uninstall, EngramRemove) error = %v", err)
-	}
-	if len(result.Incomplete) != 1 {
-		t.Errorf("Run(uninstall, EngramRemove) Incomplete = %v, want one entry explaining the database was left in place", result.Incomplete)
 	}
 }
 
@@ -169,7 +154,7 @@ func TestInstallCodegraphInjectsIntoRoot(t *testing.T) {
 
 func TestRunInstallHandshakeFailurePropagates(t *testing.T) {
 	root := t.TempDir()
-	runtime := lifecycle.Runtime{Model: testutil.FakeModel(t), OpenCodeHandshake: func(context.Context) error { return errors.New("preflight refused") }}
+	runtime := lifecycle.Runtime{OpenCodeHandshake: func(context.Context) error { return errors.New("preflight refused") }}
 	if _, err := runtime.Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err == nil {
 		t.Fatal("Run(install) with a failing handshake error = nil, want an error")
 	}
@@ -184,7 +169,7 @@ func TestRunInstallHandshakeFailurePropagates(t *testing.T) {
 func TestRunUninstallRefusesSymlinkedStateDir(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	request := setuputil.TestPlanRequest()
-	if _, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "install", root, request); err != nil {
+	if _, err := installRuntime(t).Run(context.Background(), "install", root, request); err != nil {
 		t.Fatalf("Run(install) error = %v", err)
 	}
 	victim := filepath.Join(outside, "codegraph", "keep.txt")
@@ -201,11 +186,70 @@ func TestRunUninstallRefusesSymlinkedStateDir(t *testing.T) {
 	if err := os.Symlink(outside, state); err != nil {
 		t.Fatal(err)
 	}
-	_, err := (lifecycle.Runtime{Model: testutil.FakeModel(t)}).Run(context.Background(), "uninstall", root, request)
+	_, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
 	if err == nil || !strings.Contains(err.Error(), "remove managed codegraph") {
 		t.Errorf("Run(uninstall) through a symlinked state directory = %v; want the codegraph removal refused", err)
 	}
 	if _, err := os.Stat(victim); err != nil {
 		t.Fatalf("outside tree deleted: %v", err)
+	}
+}
+
+func TestRunRejectsUnsupportedAction(t *testing.T) {
+	result, err := (lifecycle.Runtime{}).Run(context.Background(), "remove", t.TempDir(), setup.PlanRequest{})
+	if err == nil || !strings.Contains(err.Error(), `unsupported action "remove"`) {
+		t.Fatalf("Run() error = %v, want unsupported action", err)
+	}
+	if len(result.Changed)+len(result.Unchanged)+len(result.Removed)+len(result.Preserved) != 0 {
+		t.Fatalf("Run() result = %+v, want zero value", result)
+	}
+}
+
+// TestRunInstallPersistsCustomInstalledConfig verifies a custom install's chosen components survive on
+// disk, so a later partial change can reapply the real configuration instead of the default request.
+func TestRunInstallPersistsCustomInstalledConfig(t *testing.T) {
+	root := t.TempDir()
+	request := setuputil.TestPlanRequest()
+	request.Components = []string{"context7"}
+	if _, err := installRuntime(t).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	loaded, err := setup.LoadInstalledConfig(root)
+	if err != nil {
+		t.Fatalf("LoadInstalledConfig() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, request) {
+		t.Fatalf("loaded installed config = %+v, want %+v", loaded, request)
+	}
+}
+
+// TestRunUninstallRestoresPreExistingMergedConfig verifies that an uninstall without later edits leaves
+// a user's pre-existing opencode.json as before the install.
+func TestRunUninstallRestoresPreExistingMergedConfig(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, ".config", "opencode", "opencode.json")
+	original := []byte("{\n  \"user_setting\": true\n}\n")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request := setuputil.TestPlanRequest()
+	if _, err := installRuntime(t).Run(context.Background(), "install", root, request); err != nil {
+		t.Fatalf("install error = %v", err)
+	}
+	if merged, _ := os.ReadFile(configPath); string(merged) == string(original) {
+		t.Fatal("install did not merge into opencode.json; test premise broken")
+	}
+	result, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, request)
+	if err != nil {
+		t.Fatalf("uninstall error = %v", err)
+	}
+	if !slices.Contains(result.Restored, ".config/opencode/opencode.json") {
+		t.Fatalf("restored = %v, want opencode.json", result.Restored)
+	}
+	if got, _ := os.ReadFile(configPath); string(got) != string(original) {
+		t.Fatalf("opencode.json = %s, want the pre-install content", got)
 	}
 }

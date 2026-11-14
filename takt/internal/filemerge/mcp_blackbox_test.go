@@ -11,7 +11,7 @@ import (
 
 func TestInjectMCPServerOnFreshFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
-	result, err := filemerge.InjectMCPServer(path, "engram", []string{"engram", "mcp"})
+	result, err := filemerge.InjectMCPServer(path, "example", []string{"example", "mcp"})
 	if err != nil {
 		t.Fatalf("InjectMCPServer() error = %v", err)
 	}
@@ -23,18 +23,18 @@ func TestInjectMCPServerOnFreshFile(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	got := string(content)
-	if !strings.Contains(got, `"engram"`) || !strings.Contains(got, `"servers"`) {
-		t.Errorf("config = %s, want the engram server nested under mcp.servers", got)
+	if !strings.Contains(got, `"example"`) || !strings.Contains(got, `"servers"`) {
+		t.Errorf("config = %s, want the example server nested under mcp.servers", got)
 	}
 }
 
 func TestInjectMCPServerDropsLegacyV1Entry(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
-	seed := `{"mcp":{"engram":{"command":["old-engram"],"type":"local","disabled":false}}}`
+	seed := `{"mcp":{"example":{"command":["old-example"],"type":"local","disabled":false}}}`
 	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if _, err := filemerge.InjectMCPServer(path, "engram", []string{"engram", "mcp"}); err != nil {
+	if _, err := filemerge.InjectMCPServer(path, "example", []string{"example", "mcp"}); err != nil {
 		t.Fatalf("InjectMCPServer() error = %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -42,7 +42,7 @@ func TestInjectMCPServerDropsLegacyV1Entry(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	got := string(content)
-	if strings.Count(got, `"engram": {`) != 1 {
+	if strings.Count(got, `"example": {`) != 1 {
 		t.Errorf("config = %s, want the flat V1 entry dropped and only the V2 object left", got)
 	}
 	if !strings.Contains(got, `"servers"`) {
@@ -52,11 +52,11 @@ func TestInjectMCPServerDropsLegacyV1Entry(t *testing.T) {
 
 func TestRemoveMCPServerPrunesEmptyMCP(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
-	seed := `{"theme":"x","mcp":{"servers":{"engram":{"type":"local","command":["engram","mcp"]}}}}`
+	seed := `{"theme":"x","mcp":{"servers":{"example":{"type":"local","command":["example","mcp"]}}}}`
 	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := filemerge.RemoveMCPServer(path, "engram")
+	result, err := filemerge.RemoveMCPServer(path, "example")
 	if err != nil {
 		t.Fatalf("RemoveMCPServer() error = %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRemoveMCPServerPrunesEmptyMCP(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	got := string(content)
-	if strings.Contains(got, "engram") || strings.Contains(got, `"mcp"`) {
+	if strings.Contains(got, "example") || strings.Contains(got, `"mcp"`) {
 		t.Errorf("config = %s, want the mcp section pruned once empty", got)
 	}
 	if !strings.Contains(got, `"theme"`) {
@@ -81,7 +81,7 @@ func TestRemoveMCPServerAbsentIsNoop(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"theme":"x"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := filemerge.RemoveMCPServer(path, "engram")
+	result, err := filemerge.RemoveMCPServer(path, "example")
 	if err != nil {
 		t.Fatalf("RemoveMCPServer() error = %v", err)
 	}
@@ -91,7 +91,7 @@ func TestRemoveMCPServerAbsentIsNoop(t *testing.T) {
 }
 
 func TestRemoveMCPServerMissingFileIsNoop(t *testing.T) {
-	result, err := filemerge.RemoveMCPServer(filepath.Join(t.TempDir(), "missing.json"), "engram")
+	result, err := filemerge.RemoveMCPServer(filepath.Join(t.TempDir(), "missing.json"), "example")
 	if err != nil {
 		t.Fatalf("RemoveMCPServer() on a missing file error = %v, want nil", err)
 	}
@@ -130,27 +130,6 @@ func TestMergeJSONFileMergesOverExisting(t *testing.T) {
 	got := string(content)
 	if !strings.Contains(got, `"a"`) || !strings.Contains(got, "3") {
 		t.Errorf("config = %s, want a preserved and b updated to 3", got)
-	}
-}
-
-func TestReadFileOrEmptyMissingFile(t *testing.T) {
-	got, err := filemerge.ReadFileOrEmpty(filepath.Join(t.TempDir(), "missing.txt"))
-	if err != nil {
-		t.Fatalf("ReadFileOrEmpty() on a missing file error = %v, want nil", err)
-	}
-	if got != "" {
-		t.Errorf("ReadFileOrEmpty() on a missing file = %q, want empty", got)
-	}
-}
-
-func TestReadFileOrEmptyExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "present.txt")
-	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	got, err := filemerge.ReadFileOrEmpty(path)
-	if err != nil || got != "hello" {
-		t.Errorf("ReadFileOrEmpty() = %q, %v, want %q, nil", got, err, "hello")
 	}
 }
 

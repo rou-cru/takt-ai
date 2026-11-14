@@ -6,8 +6,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/engram"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -58,7 +58,7 @@ func ComposePrompt(def catalog.AgentDefinition, instanceID string) string {
 // MemoryClause names installed skill paths without injecting their content.
 func MemoryClause(authorID string) string {
 	return "## Memory\n\n" +
-		"Before using memory, read `~/" + engram.ContractSkillPath +
-		"`; before recording, also `~/" + engram.MemorySkillPath(authorID) +
+		"Before using memory, read `~/" + shared.ContractSkillPath +
+		"`; before recording, also `~/" + shared.MemorySkillPath(authorID) +
 		"`. They are the only memory rules that apply to you.\n"
 }

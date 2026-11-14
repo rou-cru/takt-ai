@@ -323,8 +323,6 @@ type Budgets struct {
 	// InterlocutorAgent is the specialist agent id of the current holder, so a
 	// caller's own agent identity can be checked against it directly.
 	InterlocutorAgent string `json:"interlocutor_agent,omitempty"`
-	// InterlocutorArtifact is the optional filesystem copy path declared at switch time.
-	InterlocutorArtifact string `json:"interlocutor_artifact,omitempty"`
 }
 
 // Projection is the derived execution DAG state. It is never edited in place:
@@ -597,9 +595,9 @@ func budgeted(b *Budgets, e Entry) bool {
 		}
 		b.Recoveries[e.Objective] = r
 	case KindInterlocutorSwitched:
-		b.InterlocutorHolder, b.InterlocutorAgent, b.InterlocutorArtifact = e.WorkUnitID, e.Agent, e.Artifact
+		b.InterlocutorHolder, b.InterlocutorAgent = e.WorkUnitID, e.Agent
 	case KindInterlocutorHandoff, KindInterlocutorAborted:
-		b.InterlocutorHolder, b.InterlocutorAgent, b.InterlocutorArtifact = "", "", ""
+		b.InterlocutorHolder, b.InterlocutorAgent = "", ""
 	case KindRevised:
 		// A valid revision advances the tracked plan version; the per-unit
 		// changes it produced are recorded as ordinary KindPlanned/KindWithdrawn
