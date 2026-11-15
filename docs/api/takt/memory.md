@@ -296,7 +296,8 @@ var Tools = []Tool{
         Name: ToolRecord,
         Description: "Record one Takt memory entry: something that happened or is true now, such as an idea explored, " +
             "a fact verified, a decision taken, or an artifact changed. Never record plans, next steps, pending work, " +
-            "or predictions unless the user directly ordered it. Entries are never changed or deleted; a change in " +
+            "or predictions of your own unless the user directly ordered it. An artifact you were assigned to author (a " +
+            "test plan, a task breakdown, a design) is recorded whole: it is the artifact authored. Entries are never changed or deleted; a change in " +
             "understanding is a new entry whose relates_to names the affected entry. A new entry sends content. An entry " +
             "that corrects or supersedes another is stored as the complete current artifact: send the complete content. " +
             "Returns `Recorded #<id>`. A request larger than the transport's request cap is refused, stating the cap.",
@@ -791,7 +792,7 @@ type RecordArgs struct {
     Content   string     `json:"content,omitempty" jsonschema:"The entry body: what happened or is true, why, and the files or artifacts involved. Keep routine entries concise; record an artifact or a user-ordered Takt memory entry whole, at any length."`
     Evidence  string     `json:"evidence,omitempty" jsonschema:"What supports the entry, distinct from its writer: a file, command, test output, entry #<id>, or the user's approval. Required for observation and decision; add it, or choose the nature the support actually allows."`
     RelatesTo *RelatesTo `json:"relates_to,omitempty" jsonschema:"The existing entry this entry relates to, and how."`
-    UserOrder bool       `json:"user_order,omitempty" jsonschema:"Set only when the user directly ordered recording this entry. Such an entry may record a plan, next step, or prediction, attributed to that order."`
+    UserOrder bool       `json:"user_order,omitempty" jsonschema:"Set only when the user directly ordered recording this entry; the user is asked to confirm it. An assigned artifact never sets it. Such an entry may record a plan, next step, or prediction, attributed to that order."`
 }
 ```
 
