@@ -46,5 +46,5 @@ If a command modified a project file anyway, such as a cache a tool offered no w
 - Record the report as one entry: each requirement as verified, failed or unverified, the
   commands and results that show it, the evidence scope, and anything your tools or
   permissions prevented you from checking.
-- Deliver it as `takt-result-handoff` states.
+- Deliver its ID with `deliver_result` (takt-result-handoff).
 - State evidence only. Whoever delegated you decides what follows.

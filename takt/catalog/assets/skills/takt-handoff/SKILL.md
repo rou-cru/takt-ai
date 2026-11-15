@@ -15,7 +15,8 @@ else you do along the way stays inside your own work.
 
 ## What a submission must carry
 
-A handoff carries the values the operation declares. Write the prose plainly and
+A handoff carries the values the operation declares; a result travels as the IDs of the Takt
+memory entries you recorded for it in this session, never as its text. Write the prose plainly and
 completely, for the orchestrator that reads it next.
 
 Before submitting a result:

@@ -565,7 +565,7 @@ describe("delegation lifecycle", () => {
       await admitProducer(vfs)
       const event = finished()
       event.result.content = content
-      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow("the specialist ended without delivering its result; resume its session to ask for it")
+      await expect(vfs.fire(vfs.tool, "execute.after", event)).rejects.toThrow('the specialist ended without delivering its result; delegate unit "unit-r" again with sessionID child-r to ask for it')
       expect(vfs.log.prompts).toHaveLength(1)
       expect(vfs.log.prompts[0]).toMatchObject({ sessionID: "child-r" })
       expect(vfs.log.prompts[0].text).toContain("Call deliver_result")
@@ -573,6 +573,21 @@ describe("delegation lifecycle", () => {
       expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", attempt:"1", session: "root" }])
       expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
     } finally { await vfs.stop() }
+  })
+
+  test("a producer learns the delivery call with its delegation, and an unlinked one fails naming the unit", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      await expect(vfs.fire(vfs.tool, "execute.after", finished())).rejects.toThrow('the specialist ended without delivering its result; no session was linked to it: delegate unit "unit-r" again')
+      expect(vfs.log.prompts).toEqual([])
+    } finally { await vfs.stop() }
+    const linked = await startVfs({ sessions: producerSessions })
+    try {
+      const system = await admitProducer(linked)
+      expect(system.map((entry) => entry.text)).toContain("Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit unit-r (takt-result-handoff).")
+    } finally { await linked.stop() }
   })
 
   test("a producer that delivered ends cleanly without a nudge", async () => {

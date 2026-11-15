@@ -1213,11 +1213,11 @@ export default Plugin.define({
     async function collectDelivery(delegation: string, child: string | undefined): Promise<number[]> {
       let d = await execution(delegation)
       if (!d?.delivery?.length && child) {
-        await promptChild(child, "Call deliver_result with this delegation's completed Takt memory entry IDs before ending your turn.")
+        await promptChild(child, `Call deliver_result with the IDs of the Takt memory entries you recorded for this delegation. If you recorded none, first record your result, or the blocker that stops you, with ${MEMORY_TOOLS.record}, then deliver its ID.`)
         await ctx.session.wait({ sessionID: child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
         d = await execution(delegation)
       }
-      if (!d?.delivery?.length) throw new Error("the specialist ended without delivering its result; resume its session to ask for it")
+      if (!d?.delivery?.length) throw new Error(`the specialist ended without delivering its result; ${child ? `delegate unit "${d?.unit}" again with sessionID ${child} to ask for it` : `no session was linked to it: delegate unit "${d?.unit}" again`}`)
       return d.delivery
     }
 
@@ -1679,7 +1679,7 @@ export default Plugin.define({
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close an open declared recovery. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
+      dispatch("dispatch_close_recovery", "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false after its last attempt abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
@@ -2092,6 +2092,7 @@ export default Plugin.define({
         if (consumed) event.system.push({ type: "text", text: consumed.length > 0
           ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
           : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.` })
+        if (delegation && RESULT_AGENTS.includes(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]
