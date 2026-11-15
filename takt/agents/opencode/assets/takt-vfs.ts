@@ -1778,7 +1778,7 @@ export default Plugin.define({
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false after its last attempt abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
+      dispatch("dispatch_close_recovery", "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false once its attempt budget is spent abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
