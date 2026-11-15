@@ -1252,7 +1252,7 @@ function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undef
     if (lane === at) return item.glyph
     return target === undefined ? " " : "│"
   }
-  const cells = lanes.map(laneGlyph)
+  const cells = lanes.map((target, lane) => laneGlyph(target, lane))
   const gutter = chain > 0 ? `${CHAIN_INDENT.repeat(Math.min(chain - 1, MAX_CHAIN_INDENT))}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
   return { text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) }
 }

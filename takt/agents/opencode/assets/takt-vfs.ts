@@ -235,10 +235,10 @@ export function gcCoordinateResponse(result: Record<string, unknown>, action: un
     default: return isCoordinator(result) ? result : undefined
   }
 }
-const DISPATCH_ANSWERS = ["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"]
+const DISPATCH_ANSWERS = new Set(["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"])
 // dispatchResponse returns result when it is the shape `dispatch` answers action with; null acknowledges a switch or result validation.
 function dispatchResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
-  if (DISPATCH_ANSWERS.includes(String(action))) return result
+  if (DISPATCH_ANSWERS.has(String(action))) return result
   if (action === "switch" || action === "validate_results") return Object.keys(result).length === 0 || result.ok === true ? null : undefined
   return isCoordinator(result) ? result : undefined
 }
