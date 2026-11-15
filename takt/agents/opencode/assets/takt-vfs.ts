@@ -1313,7 +1313,10 @@ export default Plugin.define({
         await ctx.session.wait({ sessionID: child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
         d = await execution(delegation)
       }
-      if (!d?.delivery?.length) throw new Error(`the specialist ended without delivering its result; ${child ? `delegate unit "${d?.unit}" again with sessionID ${child} to ask for it` : `no session was linked to it: delegate unit "${d?.unit}" again`}`)
+      if (!d?.delivery?.length) {
+        const ask = child ? `delegate unit "${d?.unit}" again with sessionID ${child} to ask for it` : `no session was linked to it: delegate unit "${d?.unit}" again`
+        throw new Error(`the specialist ended without delivering its result; ${ask}`)
+      }
       return d.delivery
     }
 
