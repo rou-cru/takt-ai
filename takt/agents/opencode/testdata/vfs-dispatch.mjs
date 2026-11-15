@@ -22,10 +22,11 @@ globalThis.Bun = {
     const answer = () => {
       if(cached)return cached
       const custom=respond(call)
-      if(custom?.code || (custom?.stdout && JSON.parse(custom.stdout).ok===false))return cached=custom
+      if(custom?.code || (custom?.stdout && JSON.parse(custom.stdout).ok===false)){ cached = custom; return cached }
       if(call.argv[2]==="release" && (!custom || JSON.parse(custom.stdout).ok!==false))released.push(call.stdin.key)
       const fact=call.verb==="dispatch"?owner.answer("dispatch",requestOf(call).action,requestOf(call),coreClaims):undefined
-      return cached=custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      cached = custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      return cached
     }
     return {
       // VFS commands take their request on stdin; coordination takes --request.
@@ -220,7 +221,7 @@ admission = undefined
 owner.executions["yield-cycle/collector"]={dispatch:"yield-cycle/collector",root:"root",unit:"gc-cycle",attempt:"1",agent:"simplify",caller:"root",child:"lane-c",inputs:[],cycle:"yield-cycle",role:"collector"}
 owner.executions["yield-cycle/verifier"]={dispatch:"yield-cycle/verifier",root:"root",unit:"gc-cycle/verify",attempt:"1",agent:"verify",caller:"root",child:"lane-v",inputs:[],cycle:"yield-cycle",role:"verifier"}
 unreachable.add("lane-c")
-await assert.rejects(delegate("execute.before", "yield-admitted", "call-y2", "pm"),/lane interruption failed/)
+await assert.rejects(() => delegate("execute.before", "yield-admitted", "call-y2", "pm"),/lane interruption failed/)
 assert.deepEqual(interrupted, ["lane-v"], "failed lane must not keep the others running")
 assert.equal(owner.executions["root:call-y2"],undefined,"failed interruption admitted ordinary work")
 unreachable.clear()

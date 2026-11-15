@@ -147,6 +147,7 @@ case "$NAME" in
 esac
 case "$NAME" in
     *[!A-Za-z0-9_.-]*) echo "invalid container name: '$NAME'" >&2; exit 2 ;;
+    *) ;;
 esac
 
 command -v "$DOCKER" >/dev/null 2>&1 || fail 'the Docker CLI is required for the workspace smoke (prerequisite, not a failed check)'
@@ -191,6 +192,7 @@ while [[ "$i" -lt "${#RUN_ARGS[@]}" ]]; do
                 *127.0.0.1:*) ;;
                 *) fail "the HTTP mapping must be loopback-only: $arg" ;;
             esac ;;
+        *) ;;
     esac
     i=$((i + 1))
 done
@@ -212,6 +214,7 @@ gid=$("$DOCKER" exec "$CONTAINER_ID" id -g || true)
 configured_user=$("$DOCKER" inspect --format '{{.Config.User}}' "$CONTAINER_ID")
 case "$configured_user" in
     ''|0|root) fail "the image must not run as root (Config.User='$configured_user')" ;;
+    *) ;;
 esac
 pass 'the container runs as UID/GID 10001 with a non-root image user'
 

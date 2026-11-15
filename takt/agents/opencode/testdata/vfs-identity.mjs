@@ -175,7 +175,7 @@ for (const reverse of [false, true]) {
   // The verifier names only the author and its verdict; the judged revision
   // and hash stay with the core, never filled in by the plugin.
   const args = author_key => ({ author_key, pass: true, finding: "" })
-  for (const { ctx, unit, key } of expectations) {
+  for (const { ctx, unit } of expectations) {
     const before = messages.length
     await tools.vfs_verify.execute(args(keys[unit]), ctx)
     assert.equal(messages.length, before + 1)
@@ -217,7 +217,7 @@ for (const reverse of [false, true]) {
   claims = [{ key: "retry-pending", root_session_id: "root", work_unit_id: "review-a",
     agent_id: reviewerA.agent, target_instance: reviewerA.agent, pending: true, scope: [], author_key: nextAuthor }]
   for (const hook of contextHooks) await hook({ ...reviewerA, system: [] }) // NOSONAR: hooks run in registration order over shared claims
-  const nextVerifier = messages.findLast(message => message.command === "adopt-gates").key
+  assert.ok(messages.findLast(message => message.command === "adopt-gates"), "the next verifier adopts its gates")
   await tools.vfs_verify.execute(args(nextAuthor), reviewerA)
   const next = messages.at(-1)
   assert.equal(next.command, "verify")

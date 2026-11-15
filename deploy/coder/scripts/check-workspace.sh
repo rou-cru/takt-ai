@@ -82,11 +82,12 @@ require_writable_dir workspace "$workspace_dir" workspace
 stage_ok workspace
 
 # Writable runtime mount points of the Coder Pod.
-require_writable_dir "runtime paths" "$home_dir/.local/share" "runtime path"
-require_writable_dir "runtime paths" "$home_dir/.local/state" "runtime path"
-require_writable_dir "runtime paths" "$home_dir/.cache" "runtime path"
-require_writable_dir "runtime paths" /tmp "runtime path"
-stage_ok "runtime paths"
+runtime_paths_stage='runtime paths'
+require_writable_dir "$runtime_paths_stage" "$home_dir/.local/share" "runtime path"
+require_writable_dir "$runtime_paths_stage" "$home_dir/.local/state" "runtime path"
+require_writable_dir "$runtime_paths_stage" "$home_dir/.cache" "runtime path"
+require_writable_dir "$runtime_paths_stage" /tmp "runtime path"
+stage_ok "$runtime_paths_stage"
 
 # Installed Takt/OpenCode toolchain baked into the image.
 require_executable executables opencode

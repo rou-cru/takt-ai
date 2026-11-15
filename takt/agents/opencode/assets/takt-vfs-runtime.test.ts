@@ -2317,7 +2317,7 @@ describe("permission responses are outside telemetry's critical path",()=>{
       const before=vfs.requests("dispatch","resolve").length
       await vfs.fire(vfs.tool,"execute.before",{tool:"question",sessionID:"root",agent:ORCHESTRATOR,id:"question",input:{}})
       await vfs.fire(vfs.tool,"execute.after",{tool:"question",sessionID:"root",agent:ORCHESTRATOR,id:"question",status:"completed"})
-      expect(vfs.requests("dispatch","resolve").length).toBe(before)
+      expect(vfs.requests("dispatch","resolve")).toHaveLength(before)
     }finally{await vfs.stop()}
   })
   test("post-result context failures diagnose without rejecting an already successful VFS result",async()=>{

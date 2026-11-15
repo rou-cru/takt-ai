@@ -5,7 +5,7 @@ for (const [name,read] of [["VFS",vfsIPC]] as const) {
   test(`${name} drains stderr alongside stdout without backpressure`,async()=>{
     const proc=Bun.spawn(["/bin/sh","-c","i=0; while [ $i -lt 4096 ]; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >&2; i=$((i+1)); done; printf result"],{stdout:"pipe",stderr:"pipe"})
     const [out,err,code]=await read(proc,"test pipe",2000)
-    expect(code).toBe(0);expect(out).toBe("result");expect(err.length).toBe(262144)
+    expect(code).toBe(0);expect(out).toBe("result");expect(err).toHaveLength(262144)
   })
   test(`${name} cancels an owned hung IPC process on its deadline`,async()=>{
     const proc=Bun.spawn(["/bin/sh","-c","exec sleep 30"],{stdout:"pipe",stderr:"pipe"})

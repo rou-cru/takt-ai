@@ -437,20 +437,33 @@ interface Sizing {
   readonly bandGap: number
 }
 
-// layoutComponent lays one connected component out as columns, wrapped into
-// bands that, gutters included, fit width whenever one column per band does.
-function layoutComponent(snapshot: DagSnapshot, members: readonly string[], depthOf: (id: string) => number, width: number, sizing: Sizing): Piece {
-  const inside = new Set(members)
-  const edges = snapshot.edges.filter((e) => inside.has(e.from))
-  const slots = new Map<string, Slot>()
-  const slot = (id: string) => slots.get(id) as Slot
-  for (const id of members) slots.set(`n:${id}`, { id: `n:${id}`, depth: depthOf(id), node: id, height: NODE_ROWS })
-  // Origins whose layer-skipping edges reach the same targets share one track:
-  // one pass-through per skipped column, so they run as one trunk instead of
-  // one slot per edge and column.
+interface TrackSpan {
+  readonly origins: string[]
+  readonly targets: Set<string>
+  readonly first: number
+  readonly last: number
+}
+
+// centreOf is the row at the middle of a slot's box.
+const centreOf = (top: ReadonlyMap<string, number>, slots: ReadonlyMap<string, Slot>, id: string) =>
+  (top.get(id) as number) + ((slots.get(id) as Slot).height - 1) / 2
+
+// nearestFree is the row closest to home that free accepts, trying the row below before the one above.
+function nearestFree(home: number, free: (row: number) => boolean): number {
+  if (free(home)) return home
+  for (let distance = 1; ; distance++) {
+    if (free(home + distance)) return home + distance
+    if (free(home - distance)) return home - distance
+  }
+}
+
+// Origins whose layer-skipping edges reach the same targets share one track:
+// one pass-through per skipped column, so they run as one trunk instead of
+// one slot per edge and column.
+function skipTracks(members: readonly string[], edges: readonly DagEdge[], depthOf: (id: string) => number) {
   const skips = (id: string) => edges.filter((e) => e.from === id && depthOf(e.to) > depthOf(id) + 1).map((e) => e.to)
   const trackOf = new Map<string, string>()
-  const trackSpans = new Map<string, { origins: string[]; targets: Set<string>; first: number; last: number }>()
+  const trackSpans = new Map<string, TrackSpan>()
   for (const id of members.toSorted((x, y) => depthOf(x) - depthOf(y) || ordinal(x, y))) {
     const targets = skips(id).toSorted(ordinal)
     if (targets.length === 0) continue
@@ -460,6 +473,104 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     trackSpans.set(key, span)
     trackOf.set(id, key)
   }
+  return { trackOf, trackSpans }
+}
+
+// Order each column by the mean position of its neighbours, sweeping both
+// ways, so edges cross as little as the layering allows.
+function orderColumns(cols: string[][], parents: ReadonlyMap<string, string[]>, children: ReadonlyMap<string, string[]>): void {
+  const lastDepth = cols.length - 1
+  const index = new Map<string, number>()
+  const reindex = (c: number) => cols[c].forEach((id, i) => index.set(id, i))
+  cols.forEach((_, c) => reindex(c))
+  const reorder = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
+    const mean = (id: string) => {
+      const around = neighbours.get(id) ?? []
+      return around.length === 0 ? (index.get(id) as number) : around.reduce((sum, n) => sum + (index.get(n) as number), 0) / around.length
+    }
+    const keyed = cols[c].map((id) => [id, mean(id)] as const)
+    keyed.sort((x, y) => x[1] - y[1] || (index.get(x[0]) as number) - (index.get(y[0]) as number))
+    cols[c] = keyed.map(([id]) => id)
+    reindex(c)
+  }
+  for (let sweep = 0; sweep < ORDER_SWEEPS; sweep++) {
+    for (let c = 1; c <= lastDepth; c++) reorder(c, parents)
+    for (let c = lastDepth - 1; c >= 0; c--) reorder(c, children)
+  }
+}
+
+// Rows: each box sits on the mean row of the boxes it links to, pushed down
+// just enough to clear the box above it.
+function placeRows(cols: readonly string[][], slots: ReadonlyMap<string, Slot>, edges: readonly DagEdge[]): Map<string, number> {
+  const slot = (id: string) => slots.get(id) as Slot
+  const lastDepth = cols.length - 1
+  const nodeLinks = (key: (e: DagEdge) => string, other: (e: DagEdge) => string) => {
+    const linked = new Map<string, string[]>()
+    for (const e of edges) linked.set(`n:${key(e)}`, [...(linked.get(`n:${key(e)}`) ?? []), `n:${other(e)}`])
+    return linked
+  }
+  const nodeParents = nodeLinks((e) => e.to, (e) => e.from)
+  const nodeChildren = nodeLinks((e) => e.from, (e) => e.to)
+  const top = new Map<string, number>()
+  const centre = (id: string) => centreOf(top, slots, id)
+  const place = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
+    let floor = 0
+    for (const id of cols[c].filter((id) => slot(id).node !== undefined)) {
+      const height = slot(id).height
+      const around = (neighbours.get(id) ?? []).filter((n) => top.has(n))
+      const want = around.length === 0 ? (top.get(id) ?? floor) : Math.round(around.reduce((sum, n) => sum + centre(n), 0) / around.length - (height - 1) / 2)
+      const row = Math.max(want, floor)
+      top.set(id, row)
+      floor = row + height + SLOT_GAP
+    }
+  }
+  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
+  for (let c = lastDepth - 1; c >= 0; c--) place(c, nodeChildren)
+  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
+  return top
+}
+
+// Tracks: each shared track runs along one row through every column it
+// skips, so its edges bend only where they leave and where they arrive. The
+// row clears every box it passes, every other track from its first origin's
+// column to its farthest target's, and the edge rows of the other boxes at
+// both ends; the first origin's row is tried first, then the nearest rows.
+function routeTracks(members: readonly string[], cols: readonly string[][], slots: ReadonlyMap<string, Slot>, depthOf: (id: string) => number, top: Map<string, number>, trackSpans: ReadonlyMap<string, TrackSpan>): void {
+  const centre = (id: string) => centreOf(top, slots, id)
+  const boxRows = cols.map(() => new Set<number>())
+  const edgeRow = cols.map(() => new Map<number, string>())
+  for (const id of members) {
+    const row = top.get(`n:${id}`) as number
+    for (let r = row; r < row + NODE_ROWS; r++) boxRows[depthOf(id)].add(r)
+    edgeRow[depthOf(id)].set(centre(`n:${id}`), id)
+  }
+  const trackRows = cols.map(() => new Set<number>())
+  const spans = [...trackSpans].sort(([kx, x], [ky, y]) => x.last - x.first - (y.last - y.first) || ordinal(kx, ky))
+  for (const [key, { origins, targets, first, last }] of spans) {
+    const free = (r: number) => {
+      for (let c = first; c <= last; c++) {
+        if (trackRows[c].has(r)) return false
+        const owner = edgeRow[c].get(r)
+        if (c === first || c === last) { if (owner !== undefined && !origins.includes(owner) && !targets.has(owner)) return false }
+        else if (boxRows[c].has(r)) return false
+      }
+      return true
+    }
+    const row = nearestFree(centre(`n:${origins[0]}`), free)
+    for (let c = first; c <= last; c++) trackRows[c].add(row)
+    for (let c = first + 1; c < last; c++) top.set(`p:${key}:${c}`, row)
+  }
+}
+
+// layoutComponent lays one connected component out as columns, wrapped into
+// bands that, gutters included, fit width whenever one column per band does.
+function layoutComponent(snapshot: DagSnapshot, members: readonly string[], depthOf: (id: string) => number, width: number, sizing: Sizing): Piece {
+  const inside = new Set(members)
+  const edges = snapshot.edges.filter((e) => inside.has(e.from))
+  const slots = new Map<string, Slot>()
+  const slot = (id: string) => slots.get(id) as Slot
+  for (const id of members) slots.set(`n:${id}`, { id: `n:${id}`, depth: depthOf(id), node: id, height: NODE_ROWS })
+  const { trackOf, trackSpans } = skipTracks(members, edges, depthOf)
   const chains = edges.map((e) => {
     const chain = [`n:${e.from}`]
     for (let depth = depthOf(e.from) + 1; depth < depthOf(e.to); depth++) {
@@ -484,89 +595,18 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   const cols: string[][] = Array.from({ length: lastDepth + 1 }, () => [])
   for (const id of [...slots.keys()].sort(ordinal)) cols[slot(id).depth].push(id)
 
-  // Order each column by the mean position of its neighbours, sweeping both
-  // ways, so edges cross as little as the layering allows.
-  const index = new Map<string, number>()
-  const reindex = (c: number) => cols[c].forEach((id, i) => index.set(id, i))
-  cols.forEach((_, c) => reindex(c))
-  const reorder = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
-    const mean = (id: string) => {
-      const around = neighbours.get(id) ?? []
-      return around.length === 0 ? (index.get(id) as number) : around.reduce((sum, n) => sum + (index.get(n) as number), 0) / around.length
-    }
-    const keyed = cols[c].map((id) => [id, mean(id)] as const)
-    keyed.sort((x, y) => x[1] - y[1] || (index.get(x[0]) as number) - (index.get(y[0]) as number))
-    cols[c] = keyed.map(([id]) => id)
-    reindex(c)
-  }
-  for (let sweep = 0; sweep < ORDER_SWEEPS; sweep++) {
-    for (let c = 1; c <= lastDepth; c++) reorder(c, parents)
-    for (let c = lastDepth - 1; c >= 0; c--) reorder(c, children)
-  }
+  orderColumns(cols, parents, children)
 
-  // Rows: each box sits on the mean row of the boxes it links to, pushed down
-  // just enough to clear the box above it.
-  const nodeLinks = (key: (e: DagEdge) => string, other: (e: DagEdge) => string) => {
-    const linked = new Map<string, string[]>()
-    for (const e of edges) linked.set(`n:${key(e)}`, [...(linked.get(`n:${key(e)}`) ?? []), `n:${other(e)}`])
-    return linked
-  }
-  const nodeParents = nodeLinks((e) => e.to, (e) => e.from)
-  const nodeChildren = nodeLinks((e) => e.from, (e) => e.to)
-  const top = new Map<string, number>()
-  const centre = (id: string) => (top.get(id) as number) + (slot(id).height - 1) / 2
-  const place = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
-    let floor = 0
-    for (const id of cols[c].filter((id) => slot(id).node !== undefined)) {
-      const height = slot(id).height
-      const around = (neighbours.get(id) ?? []).filter((n) => top.has(n))
-      const want = around.length === 0 ? (top.get(id) ?? floor) : Math.round(around.reduce((sum, n) => sum + centre(n), 0) / around.length - (height - 1) / 2)
-      const row = Math.max(want, floor)
-      top.set(id, row)
-      floor = row + height + SLOT_GAP
-    }
-  }
-  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
-  for (let c = lastDepth - 1; c >= 0; c--) place(c, nodeChildren)
-  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
+  const top = placeRows(cols, slots, edges)
+  const centre = (id: string) => centreOf(top, slots, id)
 
-  // Tracks: each shared track runs along one row through every column it
-  // skips, so its edges bend only where they leave and where they arrive. The
-  // row clears every box it passes, every other track from its first origin's
-  // column to its farthest target's, and the edge rows of the other boxes at
-  // both ends; the first origin's row is tried first, then the nearest rows.
-  const boxRows = cols.map(() => new Set<number>())
-  const edgeRow = cols.map(() => new Map<number, string>())
-  for (const id of members) {
-    const row = top.get(`n:${id}`) as number
-    for (let r = row; r < row + NODE_ROWS; r++) boxRows[depthOf(id)].add(r)
-    edgeRow[depthOf(id)].set(centre(`n:${id}`), id)
-  }
-  const trackRows = cols.map(() => new Set<number>())
-  const spans = [...trackSpans].sort(([kx, x], [ky, y]) => x.last - x.first - (y.last - y.first) || ordinal(kx, ky))
-  for (const [key, { origins, targets, first, last }] of spans) {
-    const free = (r: number) => {
-      for (let c = first; c <= last; c++) {
-        if (trackRows[c].has(r)) return false
-        const owner = edgeRow[c].get(r)
-        if (c === first || c === last) { if (owner !== undefined && !origins.includes(owner) && !targets.has(owner)) return false }
-        else if (boxRows[c].has(r)) return false
-      }
-      return true
-    }
-    const home = centre(`n:${origins[0]}`)
-    let row = home
-    for (let d = 0; !free(row); d++) row = free(home + d) ? home + d : home - d
-    for (let c = first; c <= last; c++) trackRows[c].add(row)
-    for (let c = first + 1; c < last; c++) top.set(`p:${key}:${c}`, row)
-  }
-
+  routeTracks(members, cols, slots, depthOf, top, trackSpans)
 
   // Every box is as wide as the longest identity, so none is shorter for no reason.
   const boxWidth = Math.max(...members.map((id) => Math.min(Bun.stringWidth(id), sizing.cap))) + NODE_CHROME
   const colWidth = cols.map((col) => (col.some((id) => slot(id).node !== undefined) ? boxWidth : PASS_WIDTH))
   const depthOfSlot = (id: string) => slot(id).depth
-  const stripRow = (id: string) => (top.get(id) as number) + (slot(id).height - 1) / 2
+  const stripRow = centre
   const segOf = (l: Link, row: (id: string) => number): LaneSeg => ({ a: l.a, b: l.b, from: row(l.a), to: row(l.b) })
 
   // Lanes of every gap between adjacent columns, as if the flow never wrapped.
@@ -1208,7 +1248,11 @@ function isChainLink(
 // unitRow draws a unit's row: its glyph in lane `at` among the open lanes, or,
 // for the chain-th link of a chain, the indented chain marker; then its label.
 function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undefined)[], chain: number): SidebarRow {
-  const cells = lanes.map((target, lane) => (lane === at ? item.glyph : target === undefined ? " " : "│"))
+  const laneGlyph = (target: string | undefined, lane: number) => {
+    if (lane === at) return item.glyph
+    return target === undefined ? " " : "│"
+  }
+  const cells = lanes.map(laneGlyph)
   const gutter = chain > 0 ? `${CHAIN_INDENT.repeat(Math.min(chain - 1, MAX_CHAIN_INDENT))}${CHAIN_GLYPH}${item.glyph}` : cells.join(" ").trimEnd()
   return { text: `${gutter} ${fit(item.label, SIDEBAR_COLUMNS - Bun.stringWidth(gutter) - 1)}`, ...(item.tone ? { tone: item.tone } : {}) }
 }
