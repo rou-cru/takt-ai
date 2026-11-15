@@ -13,7 +13,8 @@ A failure that touches a contract, another unit's paths, or the objective is not
 it is a contract defect, it goes to a declared recovery: declare with
 `dispatch_declare_recovery` a binary result, scope, an action budget (at
 most {{policy.recovery_max_actions}}) and an attempt budget (at most {{policy.recovery_max_attempts}}) before acting, and close it
-with `dispatch_close_recovery`.
+with `dispatch_close_recovery`. After the last attempt returns, close with `demonstrated` true and
+its evidence; `demonstrated` false abandons the scope.
 Reversibility is confined to unconsolidated governed state, never promised for external effects.
 
 ## Recovery and escalation

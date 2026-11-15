@@ -127,7 +127,7 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 		e = fmt.Errorf("harness: action consumption of this recovery is unestablished; admission waits for reconciliation, which only a dispatch_exception the user agrees to on %s for objective %q provides", history.BoundRecoveryActions, objective)
 	case objective != "" && len(recovery.Attempted) >= attempts:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryAttempts
-		e = fmt.Errorf("harness: attempt budget of %d consumed for this recovery; the admitted attempt may still finish; for more attempts propose dispatch_exception (the harness asks the user) on %s for objective %q", attempts, history.BoundRecoveryAttempts, objective)
+		e = fmt.Errorf("harness: attempt budget of %d consumed for this recovery; the admitted attempt may still finish; close the recovery with dispatch_close_recovery, stating whether its result was demonstrated; for more attempts propose dispatch_exception (the harness asks the user) on %s for objective %q", attempts, history.BoundRecoveryAttempts, objective)
 	case objective != "" && recovery.Used >= actions:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundRecoveryActions
 		e = fmt.Errorf("harness: action budget of %d consumed for this recovery; for more actions propose dispatch_exception (the harness asks the user) on %s for objective %q", actions, history.BoundRecoveryActions, objective)

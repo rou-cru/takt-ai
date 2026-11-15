@@ -59,8 +59,8 @@ func stagedUnits(f *vfs.FS) map[string]bool {
 }
 
 // abandonedScope runs both units once with staged work, declares a recovery
-// over them with a single attempt, spends it without the result, and returns
-// the state after the harness abandoned the scope.
+// over them with a single attempt, spends it, closes it without the result,
+// and returns the state after the harness abandoned the scope.
 func abandonedScope(t *testing.T) (*history.History, dispatch.AdmissionPolicy, *vfs.FS) {
 	t.Helper()
 	h, p, f := newHistory(t), loadPolicy(t), openRecoveryFS(t)
@@ -81,8 +81,8 @@ func abandonedScope(t *testing.T) (*history.History, dispatch.AdmissionPolicy, *
 	}
 	mustAdmit(t, h, p, "a", "retry-a")
 	mustFinish(t, h, "a")
-	if err := dispatch.Account(h, nil); err != nil {
-		t.Fatalf("Account() error = %v", err)
+	if err := dispatch.CloseRecovery(h, "", "recover", recoverySession, recoveryObjective, "", false); err != nil {
+		t.Fatalf("CloseRecovery() error = %v", err)
 	}
 	if recovery := h.Project().Budgets(recoverySession).Recoveries[recoveryObjective]; !recovery.Backtracked {
 		t.Fatalf("the spent attempt left the recovery %+v, want it abandoned", recovery)
@@ -101,6 +101,30 @@ func namesAll(err error, tools ...string) bool {
 		}
 	}
 	return true
+}
+
+// A recovery that spent its whole attempt allowance stays open until the
+// orchestrator closes it, so a demonstrated result closes it completed (PR-HAR-6).
+func TestSpentAttemptsCloseAsDemonstrated(t *testing.T) {
+	h, p := newHistory(t), loadPolicy(t)
+	declaration := dispatch.RecoveryDeclaration{Objective: recoveryObjective, Result: "r", Scope: recoveryUnits, Actions: 10, Attempts: 1}
+	if err := dispatch.DeclareRecovery(h, p, "", "recover", recoverySession, declaration); err != nil {
+		t.Fatalf("DeclareRecovery() error = %v", err)
+	}
+	mustAdmit(t, h, p, "a", "retry-a")
+	mustFinish(t, h, "a")
+	if err := dispatch.Account(h, nil); err != nil {
+		t.Fatalf("Account() error = %v", err)
+	}
+	if err := admitUnit(t, h, p, "b", "retry-b"); !namesAll(err, "dispatch_close_recovery", "dispatch_exception") {
+		t.Errorf("Admit() past the attempt allowance error = %v, want it to name the close and the exception", err)
+	}
+	if err := dispatch.CloseRecovery(h, "", "recover", recoverySession, recoveryObjective, "entry #1", true); err != nil {
+		t.Fatalf("CloseRecovery() of a demonstrated result error = %v", err)
+	}
+	if recovery := h.Project().Budgets(recoverySession).Recoveries[recoveryObjective]; recovery.Open || recovery.Backtracked || recovery.Failures != 0 {
+		t.Errorf("the demonstrated close left the recovery %+v, want it closed completed", recovery)
+	}
 }
 
 func TestAbandonedScopeGuidesToTheUsersDecision(t *testing.T) {
@@ -172,8 +196,8 @@ func TestRestoreNeedsNoStagedWork(t *testing.T) {
 	}
 	mustAdmit(t, h, p, "a", "retry-a")
 	mustFinish(t, h, "a")
-	if err := dispatch.Account(h, nil); err != nil {
-		t.Fatalf("Account() error = %v", err)
+	if err := dispatch.CloseRecovery(h, "", "recover", recoverySession, recoveryObjective, "", false); err != nil {
+		t.Fatalf("CloseRecovery() error = %v", err)
 	}
 	if err := dispatch.Restore(h, openRecoveryFS(t), "", recoverySession, recoveryObjective); err != nil {
 		t.Errorf("Restore() of a scope with nothing staged error = %v", err)
