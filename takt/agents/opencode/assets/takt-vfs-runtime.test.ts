@@ -127,7 +127,7 @@ async function startVfs(options: Options = {}) {
     created: [] as unknown[], interrupts: [] as string[], waits: [] as string[],
     prompts: [] as Array<{ sessionID: string; text: string }>, synthetics: [] as Array<{ sessionID: string; text: string }>,
   }
-  const nativeSubagent = { input: options.nativeInput ?? { type: "object", properties: { description: { type: "string" }, agent: { type: "string" }, model: { type: "string", description: "Native model description" } } } as unknown }
+  const nativeSubagent = { input: options.nativeInput ?? { type: "object", properties: { description: { type: "string" }, agent: { type: "string" }, sessionID: { type: "string", description: "Native session description" }, model: { type: "string", description: "Native model description" } } } as unknown }
   const nativeRead = { input: { type: "object", properties: { filePath: { type: "string" } } }, execute: async (value: unknown) => options.nativeRead ? options.nativeRead(value) : ({ content: "native read", original: value }) }
   const tools = new Map<string, { execute?: (...args: never[]) => unknown }>()
   tools.set("read", nativeRead)
@@ -601,6 +601,20 @@ describe("delegation lifecycle", () => {
     } finally { await vfs.stop() }
   })
 
+  test("the orchestrator reads that a delegation takes no follow-up and continues only after a blocker", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await admitProducer(vfs)
+      const native = "The subagent is working in the background (sessionID: child-r).\nTo send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
+      const event = { ...finished(), result: { content: [{ type: "text", text: native }], metadata: { sessionID: "child-r", status: "running" } } }
+      await vfs.fire(vfs.tool, "execute.after", event)
+      const text = (event.result.content as Array<{ text: string }>)[0].text
+      expect(text).not.toContain("To send it follow-ups")
+      expect(text).toContain("It takes no follow-up while it runs: wait for its return.")
+      expect(text).toContain("continue this session only after it delivers a blocker")
+    } finally { await vfs.stop() }
+  })
+
   test("repeated launch callbacks neither terminate nor credit another attempt", async () => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
@@ -608,7 +622,8 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", finished())
       await vfs.fire(vfs.tool, "execute.after", finished())
       expect(vfs.requests("dispatch", "finish")).toEqual([])
-      await vfs.run("deliver_result", { result_ids: [4] }, { sessionID: "child-r", agent: RESULT_AGENT })
+      await vfs.run("deliver_result", { result_ids: [4], blocker: true }, { sessionID: "child-r", agent: RESULT_AGENT })
+      expect(vfs.requests("dispatch", "deliver").at(-1)).toMatchObject({ result_ids: [4], blocker: true })
       await idleProducer(vfs)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "next", input: { description: "unit-r", agent: RESULT_AGENT, sessionID: "child-r" } })
       await vfs.fire(vfs.tool, "execute.after", finished())

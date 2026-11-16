@@ -49,6 +49,8 @@ type coordinationRequest struct {
 	AdditionalContext string           `json:"additional_context"`
 	ExtraArtifacts    []string         `json:"extra_artifacts"`
 	ResultIDs         []int64          `json:"result_ids"`
+	// Blocker marks a delivery whose entries record a blocker (PR-HAR-38).
+	Blocker bool `json:"blocker,omitempty"`
 	// Requirements are the entry IDs a switch declares for the lent session;
 	// an empty list states that nothing useful exists (CTX-6).
 	Requirements []int64 `json:"requirements"`

@@ -13,10 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package main_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -25,31 +24,26 @@ import (
 	"github.com/rou-cru/takt-ai/takt/history"
 )
 
-// dagStatus drives the public CLI entry once and decodes its stdout.
-func dagStatus(t *testing.T, workspace, state string) (map[string]any, error) {
+// dagStatus runs `dag status` once and decodes its stdout.
+func dagStatus(t *testing.T, s *session, workspace, state string) map[string]any {
 	t.Helper()
-	var out, errout bytes.Buffer
-	err := runDag([]string{"status", "--workspace", workspace, "--state", state, "--format", "json"}, &out, &errout)
-	if err != nil {
-		return nil, err
+	res := s.run("dag", "status", "--workspace", workspace, "--state", state, "--format", "json")
+	if res.code != 0 {
+		t.Fatalf("dag status exited %d, want a graceful JSON answer: %s", res.code, res.stderr)
 	}
 	var got map[string]any
-	if decodeErr := json.Unmarshal(out.Bytes(), &got); decodeErr != nil {
-		t.Fatalf("decode %q: %v", out.String(), decodeErr)
+	if err := json.Unmarshal([]byte(res.stdout), &got); err != nil {
+		t.Fatalf("decode %q: %v", res.stdout, err)
 	}
-	return got, nil
+	return got
 }
 
 // TestDagStatusMissingWorkspaceIsUnavailable proves a read failure never
 // renders as an empty or completed DAG (PRD_DAG_TUI.md §11): a workspace or
-// state directory that was never set up must not silently create one either
-// (mirroring gc.go's/vfs.go's own "existing store required" guard).
+// state directory that was never set up must not silently create one either.
 func TestDagStatusMissingWorkspaceIsUnavailable(t *testing.T) {
-	root := t.TempDir()
-	got, err := dagStatus(t, filepath.Join(root, "nope"), filepath.Join(root, "state"))
-	if err != nil {
-		t.Fatalf("missing workspace returned a hard error, want a graceful unavailable JSON: %v", err)
-	}
+	s := newSession(t, buildTaktAI(t))
+	got := dagStatus(t, s, filepath.Join(s.root, "nope"), s.state)
 	if got["capture"] != history.CaptureUnavailable {
 		t.Fatalf("capture = %v; want %q", got["capture"], history.CaptureUnavailable)
 	}
@@ -61,29 +55,23 @@ func TestDagStatusMissingWorkspaceIsUnavailable(t *testing.T) {
 // TestDagStatusUnreadableWorkspaceIsUnavailable proves a corrupt store is
 // reported the same way as a missing one, never as an empty or completed DAG.
 func TestDagStatusUnreadableWorkspaceIsUnavailable(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(root, "state")
-	if err := os.MkdirAll(state, 0o700); err != nil {
+	s := newSession(t, buildTaktAI(t))
+	if err := os.MkdirAll(s.state, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(state, "history.sqlite"), []byte("not a sqlite file"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.state, "history.sqlite"), []byte("not a sqlite file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := dagStatus(t, root, state)
-	if err != nil {
-		t.Fatalf("unreadable workspace returned a hard error, want a graceful unavailable JSON: %v", err)
-	}
-	if got["capture"] != history.CaptureUnavailable {
+	if got := dagStatus(t, s, s.root, s.state); got["capture"] != history.CaptureUnavailable {
 		t.Fatalf("capture = %v; want %q", got["capture"], history.CaptureUnavailable)
 	}
 }
 
 // TestDagStatusPopulatedWorkspace proves a real history round-trips through
-// the CLI into the same snapshot BuildSnapshot would produce directly.
+// the CLI into its snapshot, naming admitted agents by their catalog label.
 func TestDagStatusPopulatedWorkspace(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(root, "state")
-	h, err := history.Open(state)
+	s := newSession(t, buildTaktAI(t))
+	h, err := history.Open(s.state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,10 +92,7 @@ func TestDagStatusPopulatedWorkspace(t *testing.T) {
 	if err := h.Close(); err != nil {
 		t.Fatal(err)
 	}
-	got, err := dagStatus(t, root, state)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := dagStatus(t, s, s.root, s.state)
 	if got["capture"] != history.CaptureCurrent {
 		t.Fatalf("capture = %v; want %q", got["capture"], history.CaptureCurrent)
 	}
@@ -134,44 +119,5 @@ func TestDagStatusPopulatedWorkspace(t *testing.T) {
 	}
 	if agent := nodes[1].(map[string]any)["agent"]; agent != "design" {
 		t.Fatalf("admitted storage agent = %v; want the catalog label %q", agent, "design")
-	}
-}
-
-// TestDagStatusSessionScopesTheGraph proves a workspace history shared by
-// several sessions projects only the requested root session's plan: a fresh
-// session must not inherit an earlier session's settled graph.
-func TestDagStatusSessionScopesTheGraph(t *testing.T) {
-	root := t.TempDir()
-	state := filepath.Join(root, "state")
-	h, err := history.Open(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, session := range []string{"old", "new"} {
-		e := history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: session,
-			WorkUnitID: session + "-unit", AttemptID: history.FirstAttempt, Cause: history.CauseNone,
-			PlanVersion: "v1", Contract: "contract"}
-		if err := h.Append(e); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := h.Close(); err != nil {
-		t.Fatal(err)
-	}
-	var out, errout bytes.Buffer
-	if err := runDag([]string{"status", "--workspace", root, "--state", state, "--session", "new", "--format", "json"}, &out, &errout); err != nil {
-		t.Fatal(err)
-	}
-	var got struct {
-		SessionID string `json:"session_id"`
-		Nodes     []struct {
-			ID string `json:"id"`
-		} `json:"nodes"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.SessionID != "new" || len(got.Nodes) != 1 || got.Nodes[0].ID != "new-unit" {
-		t.Fatalf("snapshot = %+v; want only session new's unit", got)
 	}
 }

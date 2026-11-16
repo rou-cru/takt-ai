@@ -337,6 +337,18 @@ const closingNotice = (closing: CycleClosing) => {
   return `Cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
 }
 
+// The native subagent result invites follow-ups by sessionID; a Takt
+// delegation takes none, and a returned session continues only after it
+// delivered a blocker (PR-ORQ-39, PR-HAR-38).
+const NATIVE_SUBAGENT_FOLLOW_UP = "To send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
+const SUBAGENT_FOLLOW_UP = "It takes no follow-up while it runs: wait for its return. A retry is a new delegation without sessionID; continue this session only after it delivers a blocker, to give it the datum that unblocks it."
+const SUBAGENT_SESSION_DESCRIPTION = "Omit it: every delegation, a retry included, starts a new session. Set it only to continue a returned delegation that delivered a blocker, with the datum that unblocks it."
+type ToolContent = string | ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string }> | undefined
+const truthfulSubagentContent = (content: ToolContent): ToolContent =>
+  typeof content === "string"
+    ? content.replaceAll(NATIVE_SUBAGENT_FOLLOW_UP, SUBAGENT_FOLLOW_UP)
+    : content?.map(part => part.type === "text" ? { ...part, text: part.text.replaceAll(NATIVE_SUBAGENT_FOLLOW_UP, SUBAGENT_FOLLOW_UP) } : part)
+
 // SANDBOX_ADAPTER is the sibling module takt-ai deploys next to this plugin. It
 // wraps a command with @anthropic-ai/sandbox-runtime; without it no shell
 // command runs at all, because running one unwrapped would be a way around the
@@ -647,7 +659,7 @@ export default Plugin.define({
 
     async function delegatedUnit(sessionID: string): Promise<string> {
       const d = await executionFor(sessionID)
-      if (!d) throw new Error(`session ${sessionID} has no running delegation; return to the orchestrator to resume its exact sessionID`)
+      if (!d) throw new Error(`session ${sessionID} has no running delegation; report your result in your reply`)
       return d.unit
     }
 
@@ -1323,6 +1335,7 @@ export default Plugin.define({
     // observes the child's eventual idle/deletion using the existing owner.
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool === "subagent") {
+        if (event.status === "completed") event.result = { ...event.result, content: truthfulSubagentContent(event.result.content) }
         const delegation = `${event.sessionID}:${event.id}`
         try {
           const d = await execution(delegation)
@@ -1622,6 +1635,7 @@ export default Plugin.define({
         editor.update("subagent", (tool) => {
           tool.input = { ...schema, properties: {
             ...toolInput(schema.properties),
+            ...("sessionID" in toolInput(schema.properties) ? { sessionID: { ...toolInput(toolInput(schema.properties).sessionID), description: SUBAGENT_SESSION_DESCRIPTION } } : {}),
             model: { ...toolInput(toolInput(schema.properties).model), description:
               'Set only for a model or variant the user explicitly requests, or to restore an unavailable seat under the restoration conditions in your Takt operations. Otherwise omit it. It must be a chat model; image and decision models cannot run subagents. Use "providerID/modelID" or "providerID/modelID#variant". Do not guess the ID: look it up with the models tool, filtering to your own provider first.' },
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
@@ -2102,9 +2116,10 @@ export default Plugin.define({
         description: "Deliver this delegation's completed result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ". Call this before your turn ends.",
         input: obj({
           result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
+          blocker: { type: "boolean", description: "true when these entries record a blocker instead of the assigned deliverable" },
         }, ["result_ids"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ result_ids: number[] }>(input)
+          const args = toolInput<{ result_ids: number[]; blocker?: boolean }>(input)
           // Only the session a running delegation runs in delivers for it: an
           // earlier attempt's session of the same unit never credits this one.
           const call=c.id ? invocations.get(`${c.sessionID}:${c.id}`) : undefined
@@ -2119,7 +2134,7 @@ export default Plugin.define({
             }
             return { content: `Validated ${count} result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff` }
           }
-          await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids })
+          await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids, blocker: args.blocker === true })
           return { content: `Delivered ${count} result id(s)` }
         },
       })

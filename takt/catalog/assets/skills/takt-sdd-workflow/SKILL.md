@@ -24,7 +24,7 @@ does not select a replacement or authorize direct execution.
 **The objective outranks the graph.** The DAG is the orchestrator's map — it exists to keep
 the work oriented, to surface concurrency the domain actually allows, and to stop a plan
 from serializing out of habit. It is never the thing being delivered. Where process
-completeness conflicts with what the user asked for, the objective wins: name the trade-off,
+completeness conflicts with what the user asked for, beyond this route's input, the objective wins: name the trade-off,
 record it, and keep moving within the permissions and approvals you were given.
 
 **Input premise.** Start from formal, broken-down specifications with their acceptance, held
@@ -74,10 +74,6 @@ writes, not shared access to settled output.
 
 **Plan for safe concurrency.** Governed staging does not replace disjoint scopes and frozen
 contracts. Resolve shared access before dispatch rather than relying on reverts after a collision.
-
-**Value over ceremony.** Intermediate artifacts exist strictly to make parallel delegation
-safe. If process completeness conflicts with user value, surface the trade-off, recommend a
-path, and keep moving.
 
 ---
 
@@ -176,7 +172,7 @@ grant — it is never assumed from silence.
 
 ### 3.5 The Orchestrator's Two Jobs Here
 
-1. **Validate completeness and execution bounds**: reject incomplete contracts or contracts
+1. **Validate completeness and execution bounds**: reject incomplete task contracts or contracts
    specifying broad/unscoped acceptance commands back to their author.
 2. **Remove avoidable waits.** Ask the contract owner to settle an interface when that
    enables independent work.

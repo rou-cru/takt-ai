@@ -192,6 +192,34 @@ func inputsAreCurrent(t *testing.T, bin string) {
 	s.must(other)
 }
 
+// continuationNeedsBlocker covers PR-HAR-38: a session whose delegation returned a
+// deliverable is never continued, and the refusal names a new delegation; one
+// whose delegation returned a blocker is continued to unblock it.
+func continuationNeedsBlocker(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	input := s.record("analyst-child", "declared input", 0)
+	returned := func(unit, child string, blocker bool) {
+		s.must(request{Action: "inputs", Session: rootSession, Event: unit, ResultIDs: []int64{input}})
+		s.must(request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: unit, Dispatch: unit + "-first", Caller: rootSession, Agent: "architect", Child: child})
+		s.must(request{Action: "deliver", Session: rootSession, Child: child, Agent: "architect", ResultIDs: []int64{s.record(child, unit+" result", 0)}, Blocker: blocker})
+		s.must(request{Action: "finish", Session: rootSession, Event: unit, Agent: "architect"})
+	}
+	continued := func(unit, child string) request {
+		return request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: unit, Dispatch: unit + "-again", Caller: rootSession, Agent: "architect", Child: child}
+	}
+
+	returned("design", "design-child", false)
+	requireNamed(t, s.rejected(continued("design", "design-child")), "without a blocker", "without sessionID")
+	if _, admitted := s.projection().Executions["design-again"]; admitted {
+		t.Fatal("a refused continuation admitted an execution")
+	}
+	fresh := continued("design", "")
+	s.must(fresh)
+
+	returned("contracts", "contracts-child", true)
+	s.must(continued("contracts", "contracts-child"))
+}
+
 // failedSwitchBind: a switch whose lent session cannot be bound to the convening root fails
 // and records nothing, and validate_switch refuses an absent or non-current requirements list.
 func failedSwitchBind(t *testing.T, bin string) {

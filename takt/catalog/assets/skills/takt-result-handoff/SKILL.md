@@ -10,7 +10,7 @@ metadata:
 # Takt Result Handoff
 
 In a delegation (your session opened with a work unit and its consumed invariants), `deliver_result` is how you present a complete Takt memory artifact as your
-final result. A documented blocker is a completed diagnostic result: name what is missing and its evidence; do not fabricate a standard artifact or present partial work as final. Record each artifact with `takt_memory_record` first, as its own
+final result. A documented blocker is a completed diagnostic result, delivered with `blocker` set: name what is missing and its evidence; do not fabricate a standard artifact or present partial work as final. Record each artifact with `takt_memory_record` first, as its own
 dedicated entry; only entries you recorded in this session count as your result.
 `deliver_result` then takes those IDs.
 
@@ -25,13 +25,13 @@ takt_memory_record input:
             backoff; retries change observable billing behavior.
   evidence: src/billing/charge.go returns ErrDeclined and no caller retries it
 → Recorded #412
-deliver_result input: { "result_ids": [412] }
+deliver_result input: { "result_ids": [412], "blocker": true }
 ```
 
 A refused `deliver_result` is corrected in the same turn: fix the IDs as the error states and
 call it again. Re-record an entry only when the error says the entry itself was wrong. A refusal
 saying no running delegation was credited is not cleared by any correction: end your turn with
-the recorded IDs in your reply, so the orchestrator delegates the unit again.
+the recorded IDs in your reply.
 
 Otherwise, end your turn only after `deliver_result` succeeds. A question, a missing input, or an approval
 you need is a blocker: record it and deliver its ID; never ask it in your reply.
