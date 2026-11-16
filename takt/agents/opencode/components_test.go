@@ -142,6 +142,7 @@ func TestOpenCodePluginPackageArtifact(t *testing.T) {
 		Private      bool              `json:"private"`
 		Type         string            `json:"type"`
 		Dependencies map[string]string `json:"dependencies"`
+		Overrides    map[string]string `json:"overrides"`
 	}
 	if err := json.Unmarshal(artifact.Content, &manifest); err != nil {
 		t.Fatalf("invalid manifest: %v", err)
@@ -156,6 +157,9 @@ func TestOpenCodePluginPackageArtifact(t *testing.T) {
 	}
 	if got := manifest.Dependencies["@anthropic-ai/sandbox-runtime"]; got != opencode.SandboxRuntimeVersion {
 		t.Errorf("sandbox-runtime = %q, want %q", got, opencode.SandboxRuntimeVersion)
+	}
+	if got := manifest.Overrides["zod"]; got != opencode.SandboxZodVersion {
+		t.Errorf("zod override = %q, want %q", got, opencode.SandboxZodVersion)
 	}
 }
 
@@ -174,6 +178,18 @@ func TestSandboxRuntimeVersionMatchesAdapterManifest(t *testing.T) {
 	}
 	if got := manifest.Dependencies["@anthropic-ai/sandbox-runtime"]; got != opencode.SandboxRuntimeVersion {
 		t.Errorf("takt/runtime/sandbox/package.json pins sandbox-runtime %q, SandboxRuntimeVersion is %q", got, opencode.SandboxRuntimeVersion)
+	}
+}
+
+// The runtime install has no lockfile, so its zod override must equal the pin
+// that the adapter's lockfile resolves.
+func TestSandboxZodVersionMatchesAdapterWorkspace(t *testing.T) {
+	content, err := os.ReadFile("../../runtime/sandbox/pnpm-workspace.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "zod: " + opencode.SandboxZodVersion; !strings.Contains(string(content), want) {
+		t.Errorf("takt/runtime/sandbox/pnpm-workspace.yaml lacks %q", want)
 	}
 }
 
