@@ -35,9 +35,10 @@ globalThis.Bun = {
     let cached
     const answer=()=>{
       if(cached)return cached
-      const custom=respond(call);if(custom?.code)return cached=custom
+      const custom=respond(call);if(custom?.code){ cached = custom; return cached }
       const fact=call.verb==="dispatch"?owner.answer("dispatch",requestOf(call).action,requestOf(call)):undefined
-      return cached=custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      cached = custom??(fact?{stdout:fact.out??"",stderr:fact.err??"",code:fact.code}:{stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      return cached
     }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },

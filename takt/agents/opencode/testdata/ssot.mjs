@@ -30,15 +30,15 @@ async function recordResult(title){
  return Number(res.content[0].text.replace('Recorded #',''))
 }
 const history=r=>JSON.parse(execFileSync(bin,['dispatch','--workspace',workspace,'--state',state,'--request',JSON.stringify(r)],{env:process.env,encoding:'utf8'}))
-const sessions=new Map(),waiting=new Map(),hostMessages=new Map()
+const sessions=new Map(),hostMessages=new Map()
 const permissions=['vfs_bind','vfs_read','vfs_write','vfs_delete','vfs_verify'].map(action=>({action,resource:'*',effect:'allow'}))
 async function start(){
  const tools={},hooks={},contexts=[]
- await plugin.setup({location:{directory:workspace},storage:{get(){throw Error('plugin authority read')},set(){throw Error('plugin authority write')}},
- session:{get:async({sessionID})=>sessions.get(sessionID)??{id:sessionID},context:async({sessionID})=>hostMessages.get(sessionID)??[],hook:async(name,cb)=>{if(name==='context')contexts.push(cb);return {dispose(){}}},wait:({sessionID})=>new Promise(r=>{waiting.set(sessionID,r)}),interrupt:async()=>{},prompt:async()=>{},synthetic:async()=>{}},
- agent:{get:async()=>({data:{permissions}})},tool:{hook:async(name,cb)=>{(hooks[name]??=[]).push(cb);return {dispose(){}}},transform:async(cb)=>{cb({list:()=>[],get:()=>undefined,update(){},add(d){tools[d.name]=d},namespace(){},remove(){}});return {dispose(){}}}},
+ await plugin.setup({location:{directory:workspace},storage:{get(){throw new Error('plugin authority read')},set(){throw new Error('plugin authority write')}},
+ session:{get:async({sessionID})=>sessions.get(sessionID)??{id:sessionID},context:async({sessionID})=>hostMessages.get(sessionID)??[],hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},wait:()=>new Promise(()=>{}),interrupt:async()=>{},prompt:async()=>{},synthetic:async()=>{}},
+ agent:{get:async()=>({data:{permissions}})},tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async(cb)=>{cb({list:()=>[],get:()=>undefined,update(){},add(d){tools[d.name]=d},namespace(){},remove(){}});return {dispose(){}}}},
  permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:()=>({next:()=>new Promise(()=>{})})})}})
- return {tools,async fire(name,e){for(const cb of hooks[name]??[])await cb(e)},async context(sessionID,agent){const e={sessionID,agent,system:[]};for(const cb of contexts)await cb(e);return e}}
+ return {tools,async fire(name,e){for(const cb of hooks[name]??[])await cb(e)},async context(sessionID,agent){const e={sessionID,agent,system:[]};for(const cb of contexts){await cb(e)}return e}}
 }
 const a=await start(),rootA={sessionID:'root-a',agent:'takt'},rootB={sessionID:'root-b',agent:'takt'}
 const units=Array.from({length:4},(_,i)=>`author-${i}`)

@@ -28,5 +28,10 @@ takt_memory_record input:
 deliver_result input: { "result_ids": [412] }
 ```
 
-Re-record an entry after a refused `deliver_result` only when the error says the entry itself
-was wrong.
+A refused `deliver_result` is corrected in the same turn: fix the IDs as the error states and
+call it again. Re-record an entry only when the error says the entry itself was wrong. A refusal
+saying no running delegation was credited is not cleared by any correction: end your turn with
+the recorded IDs in your reply, so the orchestrator delegates the unit again.
+
+Otherwise, end your turn only after `deliver_result` succeeds. A question, a missing input, or an approval
+you need is a blocker: record it and deliver its ID; never ask it in your reply.

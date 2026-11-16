@@ -18,9 +18,10 @@ globalThis.Bun = {
     const answer = () => {
       if (cached) return cached
       const custom = respond(call)
-      if (custom?.code) return cached = custom
+      if (custom?.code) { cached = custom; return cached }
       const fact = call.verb === "dispatch" ? owner.answer("dispatch",requestOf(call).action,requestOf(call),claims) : undefined
-      return cached = custom ?? (fact ? {stdout:fact.out??"",stderr:fact.err??"",code:fact.code} : {stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      cached = custom ?? (fact ? {stdout:fact.out??"",stderr:fact.err??"",code:fact.code} : {stdout:JSON.stringify(defaultAnswer(call)),stderr:"",code:0})
+      return cached
     }
     return {
       stdin: { write(json) { call.stdin = JSON.parse(json) }, end() {} },
@@ -115,7 +116,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
       throw failure
     }
   }
-  await assert.rejects(delegate("execute.after", unit, "call-failed", "pm"), error => error === failure)
+  await assert.rejects(() => delegate("execute.after", unit, "call-failed", "pm"), error => error === failure)
   assert.deepEqual(promptedSessions, [unit])
   assert.deepEqual(waitedSessions, scenario === "wait_error" ? [unit] : [])
   const finishes = dispatched().filter(r => r.action === "finish")
@@ -128,7 +129,7 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   onPrompt = async () => { assert.fail("retry reused the previous child") }
   onWait = async () => { assert.fail("retry waited on the previous child") }
   await delegate("execute.before", unit, "call-retry", "pm")
-  await assert.rejects(delegate("execute.after", unit, "call-retry", "pm"),
+  await assert.rejects(() => delegate("execute.after", unit, "call-retry", "pm"),
     /the specialist ended without delivering its result/)
   assert.equal(dispatched().filter(r => r.action === "finish").length, 2,
     "failed retry must also settle; a stale delivery must not satisfy it")
@@ -180,7 +181,10 @@ if (scenario === "wait_error" || scenario === "prompt_error") {
   // Locale-independent ordering: the default `sort()` compares strings in
   // code-unit order, which is fine here but Sonar's S2871 wants the invariant
   // spelled out so the assertion never depends on host collation.
-  const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+  const byCodeUnit = (a, b) => {
+    if (a < b) return -1
+    return a > b ? 1 : 0
+  }
   assert.deepEqual([...waitedSessions].sort(byCodeUnit), ["first", "second"])
   assert.deepEqual([...promptedSessions].sort(byCodeUnit), ["first", "second"])
 } else if (scenario === "retry") {

@@ -228,7 +228,7 @@ const deliverRetry = "deliver_result"
 func deliverExecution(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
 	d, ok := h.Project().ExecutionForChild(r.Child, r.Agent)
 	if !ok || d.Cycle != "" || (r.Dispatch != "" && r.Dispatch != d.Dispatch) || (r.Attempt != "" && r.Attempt != d.Attempt) {
-		return nil, errors.New("deliver_result belongs to a running delegation; nothing credited; return the IDs in your reply or resume its exact session")
+		return nil, errors.New("deliver_result belongs to a running delegation; nothing credited; report the IDs in your reply so the orchestrator delegates the unit again with this sessionID")
 	}
 	if err := protocol.ValidateDelivery(ctx, checkMemory, r.Child, r.ResultIDs); err != nil {
 		return nil, protocol.DeliveryRefusal(err, deliverRetry)

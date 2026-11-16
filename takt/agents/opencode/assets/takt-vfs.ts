@@ -85,6 +85,7 @@ type NotHeld = { aborted: false }
 type CycleClosing = { cycle: string; outcome: string; unapplied_findings: unknown[] }
 const isCycleClosing = (value: unknown): value is CycleClosing =>
   isResponseObject(value) && isString(value.cycle) && isString(value.outcome) && Array.isArray(value.unapplied_findings)
+type Inspection = NonNullable<VFSResponse["inspections"]>[number]
 type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
 // SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
 // a model this session has not seen complete work; the user may approve it.
@@ -163,18 +164,27 @@ function parseRepair(value: unknown): Repair | undefined {
  if (!isResponseObject(value) || !["manifest", "cycle"].includes(String(value.kind)) || !isString(value.id) || !isString(value.author) || !isStringArray(value.paths) || !isString(value.state) || !isBoolean(value.preserve) || !isString(value.reason)) return undefined
  return value as Repair
 }
+function parseStopCycle(value: unknown): VFSResponse["stop_cycle"] | undefined {
+  if (!isResponseObject(value) || !isString(value.cycle) || !Array.isArray(value.lanes)) return undefined
+  return value.lanes.every(lane => isResponseObject(lane) && isString(lane.dispatch) && isString(lane.attempt) && isString(lane.child)) ? value as VFSResponse["stop_cycle"] : undefined
+}
+function parseInspections(value: unknown): VFSResponse["inspections"] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.every(item => isResponseObject(item) && isString(item.call_id) && isString(item.session_id) && isString(item.caller_session) && isString(item.caller_agent) && isOptional(item.tool_call_id, isString)) ? value as VFSResponse["inspections"] : undefined
+}
 // vfsResponse keeps the fields of a `takt-ai vfs` answer the plugin knows, each only when well typed.
 export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
   const shell = parseVFSShell(parsed.shell)
   const repair = parseRepair(parsed.repair)
+  const stopCycle = parseStopCycle(parsed.stop_cycle)
+  const inspections = parseInspections(parsed.inspections)
   return {
     ok,
     ...(repair ? { repair } : {}),
-    ...(isResponseObject(parsed.stop_cycle) && isString(parsed.stop_cycle.cycle) && Array.isArray(parsed.stop_cycle.lanes) && parsed.stop_cycle.lanes.every(lane => isResponseObject(lane) && isString(lane.dispatch) && isString(lane.attempt) && isString(lane.child)) ? { stop_cycle: parsed.stop_cycle as VFSResponse["stop_cycle"] } : {}),
+    ...(stopCycle ? { stop_cycle: stopCycle } : {}),
     ...(typeof parsed.key === "string" ? { key: parsed.key } : {}),
     ...(typeof parsed.content === "string" ? { content: parsed.content } : {}),
-    ...(Array.isArray(parsed.inspections) && parsed.inspections.every(item => isResponseObject(item) && isString(item.call_id) && isString(item.session_id) && isString(item.caller_session) && isString(item.caller_agent) && isOptional(item.tool_call_id,isString))
-      ? { inspections: parsed.inspections as VFSResponse["inspections"] } : {}),
+    ...(inspections ? { inspections } : {}),
     ...(typeof parsed.revision === "number" ? { revision: parsed.revision } : {}),
     ...(typeof parsed.delta_hash === "string" ? { delta_hash: parsed.delta_hash } : {}),
     ...(typeof parsed.error === "string" ? { error: parsed.error } : {}),
@@ -225,26 +235,93 @@ export function gcCoordinateResponse(result: Record<string, unknown>, action: un
     default: return isCoordinator(result) ? result : undefined
   }
 }
+const DISPATCH_ANSWERS = new Set(["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"])
+// dispatchResponse returns result when it is the shape `dispatch` answers action with; null acknowledges a switch or result validation.
+function dispatchResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
+  if (DISPATCH_ANSWERS.has(String(action))) return result
+  if (action === "switch" || action === "validate_results") return Object.keys(result).length === 0 || result.ok === true ? null : undefined
+  return isCoordinator(result) ? result : undefined
+}
+function verbResponse(verb: string[], result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
+  if (verb[0] === "gc" && verb[1] === "coordinate") return gcCoordinateResponse(result, action)
+  if (verb[0] === "dispatch") return dispatchResponse(result, action)
+  return undefined
+}
 export function parseCoordinationResponse(value: unknown, verb: string[], action: unknown): DispatchResponse {
   if (value === null) return null
   const result = responseObject(value, verb.join(" "))
   if (isInterlocutorReturn(result)) return result
-  if (verb[0] === "dispatch" && ["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"].includes(String(action))) return result
   if (verb[0] === "gc" && action === "prompt" && typeof result.allowed === "boolean") return result
   if (action === "session_deleted" && result.aborted === false) return { aborted: false }
-  const coordinated = verb[0] === "gc" && verb[1] === "coordinate" ? gcCoordinateResponse(result, action) : undefined
-  if (coordinated !== undefined) return coordinated
-  if (verb[0] === "dispatch") {
-    const acknowledgement = action === "switch" || action === "validate_results"
-    if (acknowledgement && (Object.keys(result).length === 0 || result.ok === true)) return null
-    if (!acknowledgement && isCoordinator(result)) return result
-  }
+  const shaped = verbResponse(verb, result, action)
+  if (shaped !== undefined) return shaped
   throw new Error(`${verb.join(" ")} ${asString(action, "unknown")} returned an unexpected response shape`)
+}
+
+// sequentially awaits step for each item in order. Steps are not concurrent:
+// each reads what the previous one wrote, and an error ends the rest.
+export async function sequentially<T>(items: readonly T[], step: (item: T) => Promise<unknown>): Promise<void> {
+  await items.reduce<Promise<unknown>>((previous, item) => previous.then(() => step(item)), Promise.resolve())
+}
+
+// nativeReadPath is the first of filePath, path or directory a native reader was given as text.
+export function nativeReadPath(args: Record<string, unknown>): string {
+  for (const key of ["filePath", "path", "directory"]) {
+    const value = args[key]
+    if (typeof value === "string") return value
+  }
+  return ""
+}
+// allowsExplicitly reports whether the last permission rule naming toolName, or every tool, allows it.
+function allowsExplicitly(rules: unknown, toolName: string): boolean {
+  if (!Array.isArray(rules)) return false
+  let decision: unknown
+  for (const rule of rules) {
+    if (isResponseObject(rule) && (rule.resource === toolName || rule.resource === "*") && (rule.action === "*" || rule.action === toolName)) decision = rule.effect
+  }
+  return decision === "allow"
+}
+// invariantsNotice tells a delegated unit which recorded invariants it consumes.
+const invariantsNotice = (unit: string, consumed: number[]) => consumed.length > 0
+  ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
+  : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.`
+// gateLine reports one adopted gate of a verifier's assignment.
+const gateLine = (gate: AdoptedGate) => {
+  const refusal = gate.error ? ` (gate not adopted: ${gate.error}; report it as unverified)` : ""
+  return `author_key ${gate.author_key}: ${gate.scope.join(", ")}${refusal}`
+}
+// gateNotice is the assignment of a verifier whose gates already arrived bound.
+const gateNotice = (unit: string, allowed: string[], gates: AdoptedGate[]) => {
+  const reading = allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""
+  const verdict = allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""
+  return `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${reading} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.${verdict}\n${gates.map(gateLine).join("\n")}`
+}
+// authorNotice is the assignment of an author: the paths it owns and the VFS conduct it may use.
+const authorNotice = (unit: string, scope: string[], allowed: string[], unbound: string) => {
+  const conduct = [
+    allowed.includes("vfs_write") ? "Stage changes with vfs_write." : "",
+    allowed.includes("vfs_delete") ? "Stage deletions with vfs_delete." : "",
+    allowed.includes("vfs_read") ? "Read your staged view with vfs_read." : "",
+  ].filter(Boolean).join(" ")
+  return `Work unit ${unit} owns exactly these workspace-relative paths: ${scope.join(", ")}.${unbound} ${conduct}`
 }
 
 // orchestratorOnly refuses a claim operation from any agent but the orchestrator.
 export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
   if (c.agent !== ORCHESTRATOR_ID) throw new Error(`${operation} belongs to the orchestrator`)
+}
+
+// GC_INSTRUCTIONS is the prompt each cycle phase gives its lane.
+const GC_INSTRUCTIONS: Record<string, string> = {
+  baseline: "Execute gc_baseline to record the acceptance baseline before any mutation. Then stop.",
+  investigate: "Use gc_findings. Investigate each finding and record evidence with gc_investigate. Absence of refutation is not authorization. Public contracts, framework entries, new symbols and semantic documentation are protected. If only proposals/no changes, call gc_no_change. Otherwise call gc_authorize; change only its authorized files through vfs_write/vfs_delete and call gc_collected. Never consolidate yourself.",
+  verify: "Use gc_delta to inspect the exact staged delta. Independently verify it preserves behavior and stays within the declared mandate/scope. Call gc_verdict with your explicit evidence. Do not author changes or verify your own work.",
+  acceptance: "Call gc_acceptance to execute the same prepared checks on the materialized workspace. Then stop.",
+}
+// gcRoleOf is the lane role a cycle phase prompts, if any.
+const gcRoleOf = (phase: string): "verifier" | "collector" | undefined => {
+  if (phase === "baseline" || phase === "verify" || phase === "acceptance") return "verifier"
+  return phase === "investigate" ? "collector" : undefined
 }
 
 // Notices the orchestrator receives around a maintenance cycle: conduct only.
@@ -472,24 +549,76 @@ export default Plugin.define({
       await dispatchAction({ action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit })
       scheduleGC()
     }
+    const reconcileNativeInspection = async (call: Inspection) => {
+      try {
+        // A deleted caller session can never complete the call: it is terminal.
+        let gone = false
+        const messages = await ctx.session.context({sessionID:call.caller_session},{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)])})
+          .catch((error: unknown) => { if (notFound(error)) { gone = true; return [] } throw error })
+        const observed = messages.flatMap(message => message.type === "assistant" ? message.content : [])
+          .find(part => part.type === "tool" && part.id === (call.tool_call_id || call.call_id))
+        if (!gone && (observed?.type !== "tool" || (observed.state.status !== "completed" && observed.state.status !== "error"))) return
+        await taktUnlocked("native-inspection-end", {
+          ipc_version: IPC_VERSION, session_id: call.session_id, caller_session: call.caller_session,
+          caller_agent: call.caller_agent, caller_dispatch: "", work_unit_id: "", call_id: call.call_id,
+        })
+      } catch (error) { console.error("Takt native inspection reconciliation",call.call_id,error) }
+    }
+    // Inspections are reconciled one at a time: each one ends a call the host reports on.
     const reconcileNativeInspections = async () => {
       const response = await taktUnlocked("native-inspections", { session_id:"reconcile", caller_session:"reconcile", caller_agent:"harness" })
-      const pending = response.inspections ?? []
-      for (const call of pending) {
-        try {
-          // A deleted caller session can never complete the call: it is terminal.
-          let gone = false
-          const messages = await ctx.session.context({sessionID:call.caller_session},{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)])})
-            .catch((error: unknown) => { if (notFound(error)) { gone = true; return [] } throw error })
-          const observed = messages.flatMap(message => message.type === "assistant" ? message.content : [])
-            .find(part => part.type === "tool" && part.id === (call.tool_call_id || call.call_id))
-          if (!gone && (observed?.type !== "tool" || (observed.state.status !== "completed" && observed.state.status !== "error"))) continue
-          await taktUnlocked("native-inspection-end", {
-            ipc_version: IPC_VERSION, session_id: call.session_id, caller_session: call.caller_session,
-            caller_agent: call.caller_agent, caller_dispatch: "", work_unit_id: "", call_id: call.call_id,
-          })
-        } catch (error) { console.error("Takt native inspection reconciliation",call.call_id,error) }
+      await sequentially(response.inspections ?? [], reconcileNativeInspection)
+    }
+    // backgroundChildEnded reports whether the child of a background launch was deleted, ending the delegation.
+    // Exact launch completion plus verified child deletion is terminal;
+    // a transport failure or an expired owner lease is not.
+    const backgroundChildEnded = async (d: Delegation, child: string): Promise<boolean> => {
+      try {
+        await ctx.session.get({ sessionID:child }, { signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)]) })
+      } catch (error) {
+        if (notFound(error)) {
+          await endDelegation(d.dispatch,d)
+          return true
+        }
+        console.error("Takt background child reconciliation",d.dispatch,error)
       }
+      return false
+    }
+    const watchChild = (d: Delegation, child: string) => {
+      watching.add(d.dispatch)
+      void ctx.session.wait({ sessionID:child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) }).then(async () => {
+        // A child idle before a foreground call ends is not that call's
+        // termination. Background launch completion plus host idle is terminal.
+        const state = await callState(d)
+        if (state !== "open") await settle(d, state)
+      }).catch(async error => {
+        if (notFound(error)) {
+          const state = await callState(d)
+          if (state !== "open") {
+            await settle(d, state)
+            return
+          }
+        }
+        console.error("Takt native delegation reconciliation",d.dispatch,error)
+      }).catch(error => console.error("Takt native delegation reconciliation",d.dispatch,error))
+        .finally(() => watching.delete(d.dispatch))
+    }
+    // Every exact call is checked, including our own lost callbacks and
+    // executions whose linked child disappeared. Lease expiry proves nothing.
+    const reconcileDelegation = async (d: Delegation & { mine: boolean }) => {
+      if (d.cycle) return
+      let backgroundLaunched = false
+      try {
+        const state = await callState(d)
+        if (state === "gone" || state === "error" || (!d.background && state === "completed")) {
+          await settle(d, state)
+          return
+        }
+        backgroundLaunched = state === "completed"
+      } catch (error) { console.error("Takt native call reconciliation", d.dispatch, error) }
+      if (d.background && backgroundLaunched && d.child && await backgroundChildEnded(d, d.child)) return
+      if (watching.has(d.dispatch) || !d.child || !d.mine || (d.background && !backgroundLaunched)) return
+      watchChild(d, d.child)
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
@@ -505,51 +634,7 @@ export default Plugin.define({
           .then(activities => markActivitiesUnmonitored(activities.filter(a => a.orphaned && !a.own && !a.unmonitored)))
           .catch(error => console.error("Takt orphaned activity reconciliation", error))
       }
-      for (const d of await unsettledExecutions()) {
-        if (d.cycle) continue
-        let backgroundLaunched = false
-        // Every exact call is checked, including our own lost callbacks and
-        // executions whose linked child disappeared. Lease expiry proves nothing.
-        try {
-          const state = await callState(d)
-          if (state === "gone" || state === "error" || (!d.background && state === "completed")) {
-            await settle(d, state)
-            continue
-          }
-          backgroundLaunched = state === "completed"
-        } catch (error) { console.error("Takt native call reconciliation", d.dispatch, error) }
-        if (d.background && backgroundLaunched && d.child) {
-          try {
-            await ctx.session.get({ sessionID:d.child }, { signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60_000)]) })
-          } catch (error) {
-            // Exact launch completion plus verified child deletion is terminal;
-            // a transport failure or an expired owner lease is not.
-            if (notFound(error)) {
-              await endDelegation(d.dispatch,d)
-              continue
-            }
-            console.error("Takt background child reconciliation",d.dispatch,error)
-          }
-        }
-        if (watching.has(d.dispatch) || !d.child || !d.mine || (d.background && !backgroundLaunched)) continue
-        watching.add(d.dispatch)
-        void ctx.session.wait({ sessionID:d.child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) }).then(async () => {
-          // A child idle before a foreground call ends is not that call's
-          // termination. Background launch completion plus host idle is terminal.
-          const state = await callState(d)
-          if (state !== "open") await settle(d, state)
-        }).catch(async error => {
-          if (notFound(error)) {
-            const state = await callState(d)
-            if (state !== "open") {
-              await settle(d, state)
-              return
-            }
-          }
-          console.error("Takt native delegation reconciliation",d.dispatch,error)
-        }).catch(error => console.error("Takt native delegation reconciliation",d.dispatch,error))
-          .finally(() => watching.delete(d.dispatch))
-      }
+      await sequentially(await unsettledExecutions(), reconcileDelegation)
     }
     function stateDir(): string {
       return resolve(workspace, ".takt-ai", "vfs")
@@ -904,17 +989,18 @@ export default Plugin.define({
       // revision, and an error must leave later admissions untouched.
       await ctx.tool.hook("execute.after", async (event) => {
         const toolKey = toolKeyOf(event)
-        for (const [token, d] of [...directShell]) if (d.toolKey === toolKey) directShell.delete(token)
+        for (const [token, d] of directShell) if (d.toolKey === toolKey) directShell.delete(token)
         const ended = [...admittedShell].filter(([, a]) => a.session === event.sessionID && a.toolKey === toolKey)
-        for (const [token, admitted] of ended) await finishShell(token, admitted, event.sessionID, true)
+        await sequentially(ended, ([token, admitted]) => finishShell(token, admitted, event.sessionID, true))
       })
 
       // A call whose execute.after never arrives ends with its session: an idle
       // session has no call in flight (its delta is still imported), a deleted one
       // has no binding left to import into.
       releaseShellSession = async (sessionID, importDelta) => {
-        for (const [token, d] of [...directShell]) if (d.toolKey.startsWith(`${sessionID}:`)) directShell.delete(token)
-        for (const [token, admitted] of [...admittedShell]) if (admitted.session === sessionID) await finishShell(token, admitted, sessionID, importDelta)
+        for (const [token, d] of directShell) if (d.toolKey.startsWith(`${sessionID}:`)) directShell.delete(token)
+        const ended = [...admittedShell].filter(([, admitted]) => admitted.session === sessionID)
+        await sequentially(ended, ([token, admitted]) => finishShell(token, admitted, sessionID, importDelta))
       }
     }
 
@@ -1020,7 +1106,7 @@ export default Plugin.define({
     function scheduleGC() {
       // setTimeout releases tool/event hooks before the SDK is asked to prompt.
       setTimeout(() => {
-        gcQueue = gcQueue.then(pumpGC).catch(async error => {
+        gcQueue = gcQueue.then(pumpGC).catch(error => {
           console.error("Takt GC", error)
         })
       }, 0)
@@ -1037,6 +1123,36 @@ export default Plugin.define({
         console.error("Takt GC", error)
       }
     }
+    // gcLane returns the session of the cycle's lane for role, creating and
+    // attaching it when absent. It returns undefined once a concurrent pump's
+    // lane or a changed cycle superseded the one created here, which is stopped.
+    async function gcLane(cycle: GCCycle, role: "verifier" | "collector"): Promise<string | undefined> {
+      const cycleID = cycle.plan.cycle_id
+      const existing = cycle.sessions?.[role]
+      if (existing) return existing
+      // V2 sessions have no settable parent, so a GC lane is its own session,
+      // marked and permission-bounded at creation. The cycle's ordinary root
+      // stays in cycle.plan.session_id; the lane names it as its root.
+      const child = await createChildSession({
+        title: `Takt GC ${cycleID} ${role}`,
+        agent: role === "collector" ? "simplify" : "verify",
+        metadata: { takt_gc: cycleID },
+        permissions: gcSessionPermissions(role),
+      })
+      try { await coordinate({ action: "attach", event:cycleID, role, child, owner: INSTANCE }) }
+      catch {
+        // A concurrent pump may have attached its child, or the cycle may
+        // have changed while the host created ours. Only the owner's current
+        // link can decide whether this native session should be retained.
+        const current = await coordinate({action:"status"})
+        if (!isCoordinatorResponse(current) || current.cycle?.plan.cycle_id!==cycleID || current.cycle.sessions?.[role]!==child) {
+          await stopChild(child)
+          scheduleGC()
+          return undefined
+        }
+      }
+      return child
+    }
     // pumpGC prompts the lane the in-flight cycle's phase needs, once per phase.
     async function pumpGC() {
       await restoreGCCycle()
@@ -1052,35 +1168,10 @@ export default Plugin.define({
       // Another live instance drives this cycle's lanes until its lease lapses.
       if ((await unsettledExecutions()).some(d => d.cycle === cycleID && !d.mine)) return
       try {
-      let role: "verifier" | "collector" | undefined
-      if (cycle.phase === "baseline" || cycle.phase === "verify" || cycle.phase === "acceptance") role = "verifier"
-      else if (cycle.phase === "investigate") role = "collector"
+      const role = gcRoleOf(cycle.phase)
       if (!role) return
-      let child = cycle.sessions?.[role]
-      const agent = role === "collector" ? "simplify" : "verify"
-      if (!child) {
-        // V2 sessions have no settable parent, so a GC lane is its own session,
-        // marked and permission-bounded at creation. The cycle's ordinary root
-        // stays in cycle.plan.session_id; the lane names it as its root.
-        child = await createChildSession({
-          title: `Takt GC ${cycle.plan.cycle_id} ${role}`,
-          agent,
-          metadata: { takt_gc: cycle.plan.cycle_id },
-          permissions: gcSessionPermissions(role),
-        })
-        try { await coordinate({ action: "attach", event:cycleID, role, child, owner: INSTANCE }) }
-        catch {
-          // A concurrent pump may have attached its child, or the cycle may
-          // have changed while the host created ours. Only the owner's current
-          // link can decide whether this native session should be retained.
-          const current = await coordinate({action:"status"})
-          if (!isCoordinatorResponse(current) || current.cycle?.plan.cycle_id!==cycleID || current.cycle.sessions?.[role]!==child) {
-            await stopChild(child)
-            scheduleGC()
-            return
-          }
-        }
-      }
+      const child = await gcLane(cycle, role)
+      if (!child) return
       // A deleted lane is an incomplete cycle, never an invitation to resend.
       await ctx.session.get({ sessionID:child })
       const permit = await coordinate({ action: "prompt", event:cycleID, child, phase: cycle.phase, owner: INSTANCE })
@@ -1088,15 +1179,9 @@ export default Plugin.define({
         watchIncompletePrompt(cycleID, cycle.phase, child)
         return
       }
-      const instructions: Record<string, string> = {
-        baseline: "Execute gc_baseline to record the acceptance baseline before any mutation. Then stop.",
-        investigate: "Use gc_findings. Investigate each finding and record evidence with gc_investigate. Absence of refutation is not authorization. Public contracts, framework entries, new symbols and semantic documentation are protected. If only proposals/no changes, call gc_no_change. Otherwise call gc_authorize; change only its authorized files through vfs_write/vfs_delete and call gc_collected. Never consolidate yourself.",
-        verify: "Use gc_delta to inspect the exact staged delta. Independently verify it preserves behavior and stays within the declared mandate/scope. Call gc_verdict with your explicit evidence. Do not author changes or verify your own work.",
-        acceptance: "Call gc_acceptance to execute the same prepared checks on the materialized workspace. Then stop.",
-      }
       // A failed transport does not prove the host never ran this prompt.
       // Keep the reservation until scoped recovery interrupts the native lane.
-      await promptChild(child, `Maintenance cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${instructions[cycle.phase]}`)
+      await promptChild(child, `Maintenance cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
       watchIncompletePrompt(cycleID, cycle.phase, child)
       } catch(error) {
         // Recovery is scoped to the cycle this pump actually observed. A late
@@ -1121,7 +1206,7 @@ export default Plugin.define({
         await coordinate({ action:"abort", event:cycle, stopped, evidence:`lane ended without completing reserved phase ${phase}; prompt is never resent` })
       }
       void ctx.session.wait({ sessionID:child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
-        .then(finishIncomplete, async error => {
+        .then(finishIncomplete, error => {
           if (notFound(error)) return finishIncomplete()
           throw error
         }).catch(error => console.error("Takt incomplete GC prompt", error)).finally(() => incompletePrompts.delete(key))
@@ -1151,6 +1236,23 @@ export default Plugin.define({
       })
     })
 
+    // admissionRequest is the `prepare` request admitting one subagent call as a delegation.
+    function admissionRequest(a: { delegation: string; root: string; unit: string; specialist: string; caller: string; input: Record<string, unknown>; model?: string; configured?: string }): Request {
+      const { input } = a
+      return { action: "prepare", event: a.unit, dispatch: a.delegation, session: a.root,
+        agent: a.specialist, caller: a.caller, background: input.background === true, owner: INSTANCE,
+        ...(typeof input.sessionID === "string" && input.sessionID ? { child: input.sessionID } : {}),
+        ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }),
+        ...(a.model ? { model: a.model } : {}), ...(a.configured ? { configured_model: a.configured } : {}),
+        ...(typeof input.seat_reason === "string" && input.seat_reason ? { seat_reason: input.seat_reason } : {}),
+        ...(input.seat_substitute === true ? { substitute: true } : {}) }
+    }
+    // unsettledNotice tells a refused admission which delegations still hold their unit.
+    const unsettledNotice = (held: Delegation[]) => {
+      const named = held.map(d => `dispatch ${d.dispatch} (unit ${d.unit}, session ${d.child ?? d.caller}, attempt ${d.attempt})`).join(", ")
+      return `; unsettled delegations: ${named}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept`
+    }
+
     await ctx.tool.hook("execute.before", async (event) => {
       if (event.tool !== "subagent" || invocations.get(toolKeyOf(event))?.cycle) return
       await reconcileStoredDelegations()
@@ -1167,13 +1269,7 @@ export default Plugin.define({
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
       try {
-        const request: Request = { action: "prepare", event: unit, dispatch: delegation, session: root,
-          agent: specialist, caller: event.sessionID, background: input.background === true, owner: INSTANCE,
-          ...(typeof input.sessionID === "string" && input.sessionID ? { child: input.sessionID } : {}),
-          ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }),
-          ...(model ? { model } : {}), ...(configured ? { configured_model: configured } : {}),
-          ...(typeof input.seat_reason === "string" && input.seat_reason ? { seat_reason: input.seat_reason } : {}),
-          ...(input.seat_substitute === true ? { substitute: true } : {}) }
+        const request = admissionRequest({ delegation, root, unit, specialist, caller: event.sessionID, input, model, configured })
         const prepare = async (): Promise<DispatchResponse> => {
           try { return await dispatchAction(request) }
           catch (error) {
@@ -1196,7 +1292,7 @@ export default Plugin.define({
       } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error))
         const held = (await unsettledExecutions().catch(() => [])).filter(d => !d.cycle)
-        if (held.length) cause.message += `; unsettled delegations: ${held.map(d => `dispatch ${d.dispatch} (unit ${d.unit}, session ${d.child ?? d.caller}, attempt ${d.attempt})`).join(", ")}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept`
+        if (held.length) cause.message += unsettledNotice(held)
         throw refused(cause.message.includes("claim_assign") ? "missing_claim" : "admission_denied", specialist, root, cause, unit)
       }
       // This instance already owns the host callback for this native call.
@@ -1213,11 +1309,14 @@ export default Plugin.define({
     async function collectDelivery(delegation: string, child: string | undefined): Promise<number[]> {
       let d = await execution(delegation)
       if (!d?.delivery?.length && child) {
-        await promptChild(child, "Call deliver_result with this delegation's completed Takt memory entry IDs before ending your turn.")
+        await promptChild(child, `Call deliver_result with the IDs of the Takt memory entries you recorded for this delegation. If you recorded none, first record your result, or the blocker that stops you, with ${MEMORY_TOOLS.record}, then deliver its ID.`)
         await ctx.session.wait({ sessionID: child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
         d = await execution(delegation)
       }
-      if (!d?.delivery?.length) throw new Error("the specialist ended without delivering its result; resume its session to ask for it")
+      if (!d?.delivery?.length) {
+        const ask = child ? `delegate unit "${d?.unit}" again with sessionID ${child} to ask for it` : `no session was linked to it: delegate unit "${d?.unit}" again`
+        throw new Error(`the specialist ended without delivering its result; ${ask}`)
+      }
       return d.delivery
     }
 
@@ -1679,7 +1778,7 @@ export default Plugin.define({
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close an open declared recovery. A scope whose budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
+      dispatch("dispatch_close_recovery", "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false once its attempt budget is spent abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
         "recovered",
         obj({
           objective: str("Identity of the recovered objective"),
@@ -2039,9 +2138,7 @@ export default Plugin.define({
           tool.execute = async (value, c) => {
             if (c.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(c.agent) || !VFS_AUTHORS.includes(c.agent)) return native(value,c)
             const args = toolInput(value)
-            const pathValue = typeof args.filePath === "string" ? args.filePath :
-              typeof args.path === "string" ? args.path :
-              typeof args.directory === "string" ? args.directory : ""
+            const pathValue = nativeReadPath(args)
             // Reconciliation finds a reservation only by the host's own call id.
             if (typeof c.id !== "string" || !c.id) throw new Error(`${name} call has no host call id, so its read reservation could never be reconciled; issue the call again`)
             const callID = c.id
@@ -2063,6 +2160,13 @@ export default Plugin.define({
       }
     })
 
+    // bindAuthor adopts the claim the harness assigned. It returns what an agent
+    // needs to bind itself when adoption was refused, and nothing when it succeeded.
+    async function bindAuthor(event: Caller, scope: string[]): Promise<string> {
+      try { await takt("bind", event, { scope }) }
+      catch (error) { return ` The harness could not bind you (${error instanceof Error ? error.message : error}); bind with vfs_bind using exactly this scope.` }
+      return ""
+    }
     // Delegated VFS context is granted per exact agent instance and only while
     // its exact root/unit/identity claim remains pending or active. Permission
     // rules are read from that instance; no role defaults are inferred here.
@@ -2077,21 +2181,12 @@ export default Plugin.define({
         if (delegation?.identity?.length) event.system = withoutIdentity(event.system, delegation.identity)
         const agent = await ctx.agent.get({ agentID: event.agent })
         const rules = agent.data.permissions
-        const explicitlyAllows = (toolName: string) => {
-          if (!Array.isArray(rules)) return false
-          let decision: string | undefined
-          for (const rule of rules) {
-            if (rule && (rule.resource === toolName || rule.resource === "*") && ["*", toolName].includes(rule.action)) decision = rule.effect
-          }
-          return decision === "allow"
-        }
-        const allowed = VFS_TOOL_NAMES.filter(name => explicitlyAllows(name))
+        const allowed = VFS_TOOL_NAMES.filter(name => allowsExplicitly(rules, name))
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
-        if (consumed) event.system.push({ type: "text", text: consumed.length > 0
-          ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
-          : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.` })
+        if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed) })
+        if (delegation && RESULT_AGENTS.includes(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]
@@ -2100,25 +2195,15 @@ export default Plugin.define({
           // author's files is the delivery of the assignment, never the verifier's task.
           delete event.tools?.vfs_bind
           const { gates = [] } = await takt("adopt-gates", event)
-          const lines = gates.map(gate => `author_key ${gate.author_key}: ${gate.scope.join(", ")}${gate.error ? ` (gate not adopted: ${gate.error}; report it as unverified)` : ""}`)
-          event.system.push({ type: "text", text: `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.${allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""}\n${lines.join("\n")}` })
+          event.system.push({ type: "text", text: gateNotice(unit, allowed, gates) })
           return
         }
         // An author arrives bound too: the harness adopts the claim it assigned,
         // so the agent never echoes a scope the harness already holds. A refused
         // adoption leaves vfs_bind to the agent, with the reason.
-        let unbound = ""
-        if (claim.pending && allowed.includes("vfs_bind")) {
-          try { await takt("bind", event, { scope: claim.scope ?? [] }) }
-          catch (error) { unbound = ` The harness could not bind you (${error instanceof Error ? error.message : error}); bind with vfs_bind using exactly this scope.` }
-        }
+        const unbound = claim.pending && allowed.includes("vfs_bind") ? await bindAuthor(event, claim.scope ?? []) : ""
         if (!unbound) delete event.tools?.vfs_bind
-        const conduct = [
-          allowed.includes("vfs_write") ? "Stage changes with vfs_write." : "",
-          allowed.includes("vfs_delete") ? "Stage deletions with vfs_delete." : "",
-          allowed.includes("vfs_read") ? "Read your staged view with vfs_read." : "",
-        ].filter(Boolean).join(" ")
-        event.system.push({ type: "text", text: `Work unit ${unit} owns exactly these workspace-relative paths: ${(claim.scope ?? []).join(", ")}.${unbound} ${conduct}` })
+        event.system.push({ type: "text", text: authorNotice(unit, claim.scope ?? [], allowed, unbound) })
       } catch (error) { console.error("Takt delegated VFS context",error); removeVFS() }
     })
 

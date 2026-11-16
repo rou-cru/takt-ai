@@ -71,7 +71,7 @@ type RecordArgs struct {
 	Content   string     `json:"content,omitempty" jsonschema:"The entry body: what happened or is true, why, and the files or artifacts involved. Keep routine entries concise; record an artifact or a user-ordered Takt memory entry whole, at any length."`
 	Evidence  string     `json:"evidence,omitempty" jsonschema:"What supports the entry, distinct from its writer: a file, command, test output, entry #<id>, or the user's approval. Required for observation and decision; add it, or choose the nature the support actually allows."`
 	RelatesTo *RelatesTo `json:"relates_to,omitempty" jsonschema:"The existing entry this entry relates to, and how."`
-	UserOrder bool       `json:"user_order,omitempty" jsonschema:"Set only when the user directly ordered recording this entry. Such an entry may record a plan, next step, or prediction, attributed to that order."`
+	UserOrder bool       `json:"user_order,omitempty" jsonschema:"Set only when the user directly ordered recording this entry; the user is asked to confirm it. An assigned artifact never sets it. Such an entry may record a plan, next step, or prediction, attributed to that order."`
 }
 
 // RecordResult is the outcome of a record: Recorded #ID.

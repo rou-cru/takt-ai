@@ -8,6 +8,7 @@ import plugin from './takt-vfs.ts'
 const bin=process.argv[2], workspace=resolve('workspace'),state=resolve('workspace/.takt-ai/vfs')
 await mkdir(workspace,{recursive:true});await mkdir(process.env.HOME,{recursive:true})
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
+const sessionNotFound=()=>Object.assign(new Error('session not found'),{_tag:'SessionNotFoundError'})
 const call=(verb,request)=>JSON.parse(execFileSync(bin,[...verb,'--workspace',workspace,'--state',state,'--request',JSON.stringify(request)],{env:process.env,encoding:'utf8'}))
 const db=resolve(state,'vfs.sqlite')
 // One short-lived handle per access: the CLI under test writes the same file.
@@ -38,9 +39,9 @@ globalThis.Bun={spawn(argv,opts){
  return {stdin:p.stdin,stdout:Readable.toWeb(p.stdout),stderr:Readable.toWeb(p.stderr),kill:signal=>p.kill(signal),exited:new Promise((r,j)=>{p.on('error',j);p.on('close',r)})}
 }}
 const cleanup=await plugin.setup({location:{directory:workspace},
- session:{get:async({sessionID})=>{if(!sessions.has(sessionID))throw {_tag:'SessionNotFoundError'};return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID))throw {_tag:'SessionNotFoundError'};return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context')contexts.push(cb);return {dispose(){}}},interrupt:async({sessionID})=>{if(interruptFails)throw Error('host interruption failed');interrupted.push(sessionID)},wait:async()=>{},prompt:async()=>{promptCount++},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
+ session:{get:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},interrupt:async({sessionID})=>{if(interruptFails){throw new Error('host interruption failed')}interrupted.push(sessionID)},wait:async()=>{},prompt:async()=>{promptCount++},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
  agent:{get:async()=>({data:{permissions:[{action:'*',resource:'*',effect:'allow'}]}})},
- tool:{hook:async(name,cb)=>{(hooks[name]??=[]).push(cb);return {dispose(){}}},transform:async cb=>{await cb({list:()=>[],get:()=>undefined,update(){},add:d=>tools[d.name]=d,namespace(){},remove(){}});return {dispose(){}}}},permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:stream})}})
+ tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async cb=>{await cb({list:()=>[],get:()=>undefined,update(){},add:d=>tools[d.name]=d,namespace(){},remove(){}});return {dispose(){}}}},permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:stream})}})
 const root={sessionID:'root',agent:'takt',id:'root-tool',messageID:'root-message'},other={...root,sessionID:'other-root'}
 const fire=async(name,e)=>{for(const cb of hooks[name]??[])await cb(e)}
 const context=async(sessionID,agent)=>{for(const cb of contexts)await cb({sessionID,agent,system:[]})}
@@ -93,7 +94,7 @@ try {
  await tools.dispatch_inputs.execute({work_unit_id:'next',result_ids:[]},root)
  const admission={...root,id:'next-call',tool:'subagent',input:{description:'next',agent:'spec'}}
  interruptFails=true
- await assert.rejects(fire('execute.before',admission),/interruption failed/)
+ await assert.rejects(()=>fire('execute.before',admission),/interruption failed/)
  assert.equal(readState().Maintenance.cycle.plan.cycle_id,'audit-cycle')
  assert.equal(call(['dispatch'],{action:'executions'}).executions['root:next-call'],undefined)
  const incompleteClosure=readState()
@@ -136,7 +137,7 @@ try {
  call(['dispatch'],{action:'admit',event:'orphan',session:'root',agent:'spec',dispatch:'root:no-execution'})
  assert.notEqual(call(['dispatch'],{action:'executions'}).executions['root:no-execution'].ready,true)
  messages.set('root',[{type:'assistant',content:[{type:'tool',name:'subagent',id:'no-execution',state:{status:'error'}}]}])
- await assert.rejects(fire('execute.before',{...root,id:'missing-inputs',tool:'subagent',input:{description:'missing-inputs',agent:'spec'}}),/inputs absent/)
+ await assert.rejects(()=>fire('execute.before',{...root,id:'missing-inputs',tool:'subagent',input:{description:'missing-inputs',agent:'spec'}}),/inputs absent/)
  assert.equal(call(['dispatch'],{action:'executions'}).executions['root:no-execution'],undefined)
 
  // Restart sees a durable prompt reservation with no submitted turn, or a lane
@@ -175,7 +176,7 @@ try {
  // declaration continues. When the user cannot be asked, the harness's own
  // error surfaces as is: no invented continuation, no command for the user.
  await inject('candidate')
- beforeApproval=()=>{throw Error('approval service down')}
+ beforeApproval=()=>{throw new Error('approval service down')}
  const offline=await tools.dispatch_commit.execute({version:'v-repair',plan:[{unit:'planned',contract:'c'}]},root).then(()=>assert.fail('commit ran over a pending repair'),e=>e.message)
  assert.ok(/approval service down/.test(offline)&&!/run:|could not be asked/.test(offline),offline)
  assert.ok(readState().Recovery)
@@ -198,7 +199,7 @@ try {
  await tools.dispatch_inputs.execute({work_unit_id:'stuck',result_ids:[]},root)
  call(['dispatch'],{action:'prepare',event:'stuck',session:'root',agent:'spec',dispatch:'root:stuck-call',caller:'root',owner:'dead',background:false})
  call(['dispatch'],{action:'attach_child',dispatch:'root:stuck-call',child:'stuck-child',agent:'spec'})
- await assert.rejects(fire('execute.before',{...root,id:'stuck-retry',tool:'subagent',input:{description:'stuck',agent:'spec'}}),/root:stuck-call/)
+ await assert.rejects(()=>fire('execute.before',{...root,id:'stuck-retry',tool:'subagent',input:{description:'stuck',agent:'spec'}}),/root:stuck-call/)
  const before=approvalCount
  await tools.dispatch_abandon.execute({dispatch:'root:stuck-call'},root)
  assert.equal(approvalCount,before+1)

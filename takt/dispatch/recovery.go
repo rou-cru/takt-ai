@@ -131,16 +131,22 @@ func CloseRecovery(h *history.History, journalRef, event, session, objective, ev
 	if demonstrated && evidence == "" {
 		return errors.New("harness: a demonstrated recovery result must link its evidence")
 	}
-	outcome := history.OutcomeFailed
-	if demonstrated {
-		outcome = history.OutcomeCompleted
-	}
-	return h.Append(history.Entry{
+	budgets := h.Project().Budgets(session)
+	recovery := budgets.Recoveries[objective]
+	entry := history.Entry{
 		Author: history.AuthorHarness, Kind: history.KindRecoveryClosed, SessionID: session,
 		WorkUnitID: event, AttemptID: history.FirstAttempt, Cause: history.CauseUncaptured,
 		JournalRef: journalRef, PolicyRef: AdmissionPolicyRef, Objective: objective,
-		Outcome: outcome, Evidence: evidence,
-	})
+		Outcome: history.OutcomeFailed, Evidence: evidence,
+	}
+	switch {
+	case demonstrated:
+		entry.Outcome = history.OutcomeCompleted
+	case len(recovery.Attempted) >= recovery.Attempts+budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]:
+		// The attempt allowance is spent without the demonstrated result: the scope is abandoned (PR-HAR-6).
+		entry.WorkUnitID, entry.Cause, entry.Outcome, entry.Scope = recovery.Unit, history.BoundRecoveryAttempts, history.OutcomeBacktracked, recovery.Scope
+	}
+	return h.Append(entry)
 }
 
 // Account attributes recorded bus actions to the recovery scope that declared
@@ -193,7 +199,7 @@ func accountRecovery(h *history.History, entries []vfs.JournalEntry, scope recov
 			return e
 		}
 	}
-	return forceBacktrackIfExhausted(h, scope.Session, scope.Objective, scope.Recovery, scope.Budgets, scope.Projection, head)
+	return forceBacktrackIfExhausted(h, scope.Session, scope.Objective, scope.Recovery, scope.Budgets, head)
 }
 
 // scopeActions counts the tool executions of session recorded past the
@@ -210,26 +216,15 @@ func scopeActions(entries []vfs.JournalEntry, session string, recovery history.R
 }
 
 // forceBacktrackIfExhausted abandons the recovery scope when the action budget is
-// spent, or when no attempt allowance remains and every admitted attempt has
-// finished without the declared result. It needs no renewed orchestrator
-// approval (PR-DAG-TMP-5).
-func forceBacktrackIfExhausted(h *history.History, session, objective string, recovery history.Recovery, budgets history.Budgets, projection history.Projection, head int) error {
+// spent; it needs no renewed orchestrator approval (PR-DAG-TMP-5). A spent
+// attempt allowance stops further admissions and leaves the close to the
+// orchestrator, which states whether the result was demonstrated (PR-HAR-6).
+func forceBacktrackIfExhausted(h *history.History, session, objective string, recovery history.Recovery, budgets history.Budgets, head int) error {
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
-	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
-	inFlight := slices.ContainsFunc(recovery.Scope, func(unit string) bool {
-		u, _ := projection.Unit(session, unit)
-		return u.State == history.StateInFlight
-	})
-	cause := history.BoundRecoveryActions
-	switch {
-	case recovery.Used >= actions:
-	case len(recovery.Attempted) >= attempts && !inFlight:
-		cause = history.BoundRecoveryAttempts
-	default:
-		// The last admitted attempt may still finish and present evidence while
-		// action allowance remains.
+	if recovery.Used < actions {
 		return nil
 	}
+	cause := history.BoundRecoveryActions
 	// At exhaustion missing evidence is not success: the scope is abandoned with
 	// its result undemonstrated, and no evidence is linked.
 	return h.Append(history.Entry{

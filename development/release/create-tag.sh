@@ -43,19 +43,19 @@ existing_target() {
 # HTTP 422 (including reserved tags); other API failures exit with status 1.
 # A failed ref creation leaves the newly created tag object in the repository.
 create_tag() {
-	local tag_sha err
+	local tag=$1 tag_sha err
 	tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
-		-f tag="$1" \
-		-f message="Release $1" \
+		-f tag="$tag" \
+		-f message="Release $tag" \
 		-f object="$sha" \
 		-f type=commit \
 		-f "tagger[name]=$TAGGER_NAME" \
 		-f "tagger[email]=$TAGGER_EMAIL" \
-		--jq .sha) || die "creating the $1 tag object failed"
-	if err=$(gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$1" -f sha="$tag_sha" 2>&1 >/dev/null); then
+		--jq .sha) || die "creating the $tag tag object failed"
+	if err=$(gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$tag_sha" 2>&1 >/dev/null); then
 		return 0
 	fi
-	[[ "$err" == *"HTTP 422"* ]] || die "creating refs/tags/$1 failed: $err"
+	[[ "$err" == *"HTTP 422"* ]] || die "creating refs/tags/$tag failed: $err"
 	return 2
 }
 

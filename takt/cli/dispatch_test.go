@@ -1347,7 +1347,8 @@ func attemptBudget(t *testing.T, bin string) {
 	s.must(declaration("declaring", "goal", []string{"last-attempt", "never"}, 40, 1))
 	s.must(call("admit", "last-attempt"))
 	s.deniedAs(call("admit", "never"), history.BoundRecoveryAttempts)
-	// The admitted attempt finishes and presents evidence while allowance remains.
+	// The admitted attempt finishes and the recovery stays open for its evidence.
+	s.must(call("finish", "last-attempt"))
 	s.must(tick())
 	if r := s.recovery("goal"); !r.Open || r.Backtracked {
 		t.Fatalf("last attempt cut short: %+v", r)
@@ -1359,12 +1360,12 @@ func attemptBudget(t *testing.T, bin string) {
 	if r := s.recovery("goal"); r.Open || r.Backtracked || r.Failures != 0 {
 		t.Fatalf("demonstrated recovery: %+v", r)
 	}
-	// A second recovery whose only attempt finishes without the declared result is
-	// backtracked by the harness, with no renewed approval.
+	// A second recovery whose only attempt finishes and closes without the declared
+	// result is backtracked by the harness.
 	s.must(declaration("declaring", "other", []string{"only-attempt"}, 40, 1))
 	s.must(call("admit", "only-attempt"))
 	s.must(call("finish", "only-attempt"))
-	s.must(tick())
+	s.must(request{Action: "recovered", Event: "declaring", Session: rootSession, Objective: "other"})
 	if r := s.recovery("other"); r.Open || !r.Backtracked || r.Failures != 1 {
 		t.Fatalf("exhausted attempts did not force backtracking: %+v", r)
 	}
