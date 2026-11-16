@@ -31,13 +31,25 @@ async function recordResult(title){
 }
 const history=r=>JSON.parse(execFileSync(bin,['dispatch','--workspace',workspace,'--state',state,'--request',JSON.stringify(r)],{env:process.env,encoding:'utf8'}))
 const sessions=new Map(),hostMessages=new Map(),idleSessions=new Set(),idleWaiters=new Map()
-const markIdle=child=>{idleSessions.add(child);for(const resolve of idleWaiters.get(child)??[])resolve();idleWaiters.delete(child)}
-const waitForIdle=async({sessionID})=>{if(idleSessions.has(sessionID))return;await new Promise(resolve=>{const waits=idleWaiters.get(sessionID)??[];waits.push(resolve);idleWaiters.set(sessionID,waits)})}
+const markIdle=child=>{
+ idleSessions.add(child)
+ for(const resolve of idleWaiters.get(child)??[]){resolve()}
+ idleWaiters.delete(child)
+}
+const waitForIdle=async({sessionID})=>{
+ if(idleSessions.has(sessionID)){return}
+ await new Promise(resolve=>{const waits=idleWaiters.get(sessionID)??[];waits.push(resolve);idleWaiters.set(sessionID,waits)})
+}
 const permissions=['vfs_bind','vfs_read','vfs_write','vfs_delete','vfs_verify'].map(action=>({action,resource:'*',effect:'allow'}))
 async function start(){
  const tools={},hooks={},contexts=[],events=[]
  let wake
- async function* stream(){for(;;){if(!events.length)await new Promise(resolve=>wake=resolve);while(events.length)yield events.shift()}}
+ async function* stream(){
+  for(;;){
+   if(!events.length){await new Promise(resolve=>wake=resolve)}
+   while(events.length){yield events.shift()}
+  }
+ }
  await plugin.setup({location:{directory:workspace},storage:{get(){throw new Error('plugin authority read')},set(){throw new Error('plugin authority write')}},
  session:{get:async({sessionID})=>sessions.get(sessionID)??{id:sessionID},context:async({sessionID})=>hostMessages.get(sessionID)??[],hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},wait:waitForIdle,interrupt:async()=>{},prompt:async()=>{},synthetic:async()=>{}},
  agent:{get:async()=>({data:{permissions}})},tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async(cb)=>{cb({list:()=>[],get:()=>undefined,update(){},add(d){tools[d.name]=d},namespace(){},remove(){}});return {dispose(){}}}},

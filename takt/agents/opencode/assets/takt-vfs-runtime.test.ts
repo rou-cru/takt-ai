@@ -45,6 +45,7 @@ type Ctx = { sessionID: string; agent: string; id?: string }
 type SessionInfo = { agent?: string; model?: { providerID: string; id: string }; parentID?: string; title?: string; metadata?: Record<string, unknown>; time?: { created: number } }
 type Options = {
   nativeCalls?: Record<string,"completed"|"error"|"running">
+  nativeMetadata?: Record<string,Record<string,string>>
   history?: { inputs?: Record<string,number[]>; executions?: Record<string,Partial<FixtureExecution>>; holders?: Record<string,string>; activities?: Record<string,Partial<FixtureActivity>>; leases?: string[] }
   nativeInput?: unknown
   respond?: (call: Call) => Reply | undefined
@@ -206,7 +207,7 @@ async function startVfs(options: Options = {}) {
       location: { directory: options.home ? homedir() : WORKSPACE },
       storage: { async get(key: string) { reads.push(key); return storage.get(key) }, async set(key: string, value: unknown) { writes.push(key); storage.set(key, value) }, async remove(key: string) { storage.delete(key) } },
       session: {
-        context: async ({sessionID}:{sessionID:string}) => { if (options.missing?.includes(sessionID)) throw {_tag:"SessionNotFoundError",message:`session ${sessionID} not found`}; return [{type:"assistant",content:[...nativeCalls].filter(([dispatch])=>dispatch.startsWith(`${sessionID}:`)).map(([dispatch,status])=>({type:"tool",name:"subagent",id:dispatch.slice(sessionID.length+1),state:{status}}))}] },
+        context: async ({sessionID}:{sessionID:string}) => { if (options.missing?.includes(sessionID)) throw {_tag:"SessionNotFoundError",message:`session ${sessionID} not found`}; return [{type:"assistant",content:[...nativeCalls].filter(([dispatch])=>dispatch.startsWith(`${sessionID}:`)).map(([dispatch,status])=>({type:"tool",name:"subagent",id:dispatch.slice(sessionID.length+1),state:{status,...(options.nativeMetadata?.[dispatch] ? {metadata:options.nativeMetadata[dispatch]} : {})}}))}] },
         async get({ sessionID }: { sessionID: string }) {
           if (options.missing?.includes(sessionID)) throw {_tag:"SessionNotFoundError",message:`session ${sessionID} not found`}
           return { id: sessionID, ...options.sessions?.[sessionID] }
@@ -571,7 +572,7 @@ describe("delegation lifecycle", () => {
     const before = vfs.requests("dispatch", "finish").length
     vfs.publish({ id: `idle-${before}`, created: 1, type: "session.idle", data: { sessionID: child } } as OpenCodeEvent)
     await until(() => vfs.requests("dispatch", "finish").length > before)
-    expect(vfs.requests("dispatch", "finish").length).toBe(before + 1)
+    expect(vfs.requests("dispatch", "finish")).toHaveLength(before + 1)
   }
 
   test("a launch return neither nudges nor liquidates a live child", async () => {
@@ -2030,6 +2031,20 @@ describe("shell admission", () => {
     } finally { await vfs.stop() }
   })
 
+  test("a child going idle imports its captured command before its delegation can finish", async () => {
+    sandboxed()
+    const vfs = await startVfs({ sessions: unitSessions, respond: importOk })
+    try {
+      await vfs.run("vfs_bind", { scope: ["src/a.go"] })
+      await admit(vfs, shellEvent())
+      vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "dispatch" } } as OpenCodeEvent)
+      await until(() => vfs.requests("vfs", "shell-complete").length === 1)
+      const order = vfs.calls.map((call) => `${call.kind}:${call.command}`)
+      const finished = order.indexOf("dispatch:finish")
+      if (finished >= 0) expect(order.indexOf("vfs:shell-complete")).toBeLessThan(finished)
+    } finally { await vfs.stop() }
+  })
+
   test("an import the core refuses because the staged work moved reaches the caller unchanged", async () => {
     sandboxed()
     const moved = "the staged work changed while the command ran; run the command again"
@@ -2434,6 +2449,16 @@ test("a background delegation whose launch call left the caller's context still 
     await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
     await until(()=>!!vfs.history.executions["old:call"].settled)
     expect(vfs.requests("dispatch","finish")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1"}))
+  }finally{await vfs.stop()}
+})
+
+test("a launch left unlinked by a failed attach is linked from its native call",async()=>{
+  const vfs=await startVfs({nativeCalls:{"old:call":"completed"},nativeMetadata:{"old:call":{sessionID:"child-l"}},history:{executions:saved({"old:call":{unit:"orphan",root:"root",owner:"expired"}})}})
+  try {
+    await vfs.run("dispatch_inputs",{work_unit_id:"next",result_ids:[]},orchestrator)
+    await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",agent:ORCHESTRATOR,id:"next",input:{description:"next",agent:RESULT_AGENT}})
+    expect(vfs.requests("dispatch","attach_child")).toContainEqual(expect.objectContaining({dispatch:"old:call",attempt:"1",child:"child-l"}))
+    expect(vfs.history.executions["old:call"].child).toBe("child-l")
   }finally{await vfs.stop()}
 })
 

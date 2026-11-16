@@ -93,8 +93,9 @@ const SEAT_UNPROVEN = "seat/unproven-model"
 // modelName is the native model reference, including a selected variant.
 export function modelName(value: unknown): string | undefined {
   if (typeof value === "string" && value) return value
-  if (isResponseObject(value) && typeof value.providerID === "string" && typeof value.id === "string") return `${value.providerID}/${value.id}${typeof value.variant === "string" && value.variant ? `#${value.variant}` : ""}`
-  return undefined
+  if (!isResponseObject(value) || typeof value.providerID !== "string" || typeof value.id !== "string") return undefined
+  const variant = typeof value.variant === "string" && value.variant ? `#${value.variant}` : ""
+  return `${value.providerID}/${value.id}${variant}`
 }
 // withoutIdentity removes a substitute's PERSONA and SOUL texts from its
 // composed system prompt: it holds the seat without its identity or voice.
@@ -596,11 +597,21 @@ export default Plugin.define({
       }).catch(error => console.error("Takt native delegation reconciliation",d.dispatch,error))
         .finally(() => watching.delete(d.dispatch))
     }
+    // recoverChild links a launched delegation whose attach failed: the host
+    // recorded the child on the exact completed native call.
+    async function recoverChild(d: Delegation): Promise<string | undefined> {
+      const call = await nativeCall(d)
+      const child = call?.type === "tool" && call.state.status === "completed" ? call.state.metadata?.sessionID : undefined
+      if (typeof child !== "string" || !child) return undefined
+      await adoptChild(child, d.agent, d)
+      return child
+    }
     // Every exact call is checked, including our own lost callbacks and
     // executions whose linked child disappeared. Lease expiry proves nothing.
     const reconcileDelegation = async (d: Delegation & { mine: boolean }) => {
       if (d.cycle) return
       let launched = false
+      let child = d.child
       try {
         const state = await callState(d)
         if (state === "gone" || state === "error") {
@@ -608,10 +619,11 @@ export default Plugin.define({
           return
         }
         launched = state === "completed"
+        if (launched && !child) child = await recoverChild(d)
       } catch (error) { console.error("Takt native call reconciliation", d.dispatch, error) }
-      if (launched && d.child && await backgroundChildEnded(d, d.child)) return
-      if (watching.has(d.dispatch) || !d.child || !d.mine || !launched) return
-      watchChild(d, d.child)
+      if (launched && child && await backgroundChildEnded(d, child)) return
+      if (watching.has(d.dispatch) || !child || !d.mine || !launched) return
+      watchChild(d, child)
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
@@ -1246,6 +1258,15 @@ export default Plugin.define({
       return `; unsettled delegations: ${named}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept`
     }
 
+    // effectiveModel is the model a native launch would run before any override,
+    // matching native create/follow-up semantics: the same agent retains its
+    // child's model; switching agents uses its configuration if present.
+    async function effectiveModel(input: Record<string, unknown>, specialist: string, caller: string, configured: string | undefined) {
+      if (typeof input.sessionID !== "string" || !input.sessionID) return configured ?? modelName((await ctx.session.get({ sessionID: caller })).model)
+      const existing = await ctx.session.get({ sessionID: input.sessionID })
+      return (existing.agent === specialist ? undefined : configured) ?? modelName(existing.model)
+    }
+
     await ctx.tool.hook("execute.before", async (event) => {
       if (event.tool !== "subagent" || invocations.get(toolKeyOf(event))?.cycle) return
       await reconcileStoredDelegations()
@@ -1261,13 +1282,7 @@ export default Plugin.define({
       const delegation = `${event.sessionID}:${event.id}`
       try {
         const configured = modelName((await ctx.agent.get({ agentID: specialist })).data.model)
-        const existing = typeof input.sessionID === "string" && input.sessionID
-          ? await ctx.session.get({ sessionID: input.sessionID }) : undefined
-        // Match native create/follow-up semantics. The same agent retains the
-        // child's model; switching agents uses its configuration if present.
-        const previous = existing
-          ? (existing.agent !== specialist ? configured : undefined) ?? modelName(existing.model)
-          : configured ?? modelName((await ctx.session.get({ sessionID: event.sessionID })).model)
+        const previous = await effectiveModel(input, specialist, event.sessionID, configured)
         const model = modelName(input.model) ?? previous
         const request = admissionRequest({ delegation, root, unit, specialist, caller: event.sessionID, input, model, previous })
         const prepare = async (): Promise<DispatchResponse> => {
@@ -1499,8 +1514,10 @@ export default Plugin.define({
           } else if (event.type === "session.idle") {
             const session = event.data.sessionID
             void (async () => {
-              await onChildIdle(session)
+              // The captured shell delta is imported before the child's finish
+              // can cancel its pending shell preparation.
               await releaseShellSession(session, true)
+              await onChildIdle(session)
               await startCycleWhenIdle(session)
               scheduleGC()
             })().catch(error => console.error("Takt session idle", error))

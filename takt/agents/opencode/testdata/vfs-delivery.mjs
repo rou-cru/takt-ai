@@ -101,10 +101,11 @@ await plugin.setup({
 
 // delegate runs the subagent hooks of one phase for a delegation; extra adds
 // fields to its input, and result is the host's reply the after hooks amend.
-const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result = { content: "Working", metadata: { sessionID: description, status: "running" } }) => {
+const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result) => {
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, { sessionID: "root", agent: "takt" })
+  const reply = result ?? { content: "Working", metadata: { sessionID: description, status: "running" } }
   const event = { tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
-    input: { agent, description, prompt: "p", ...extra }, status, result }
+    input: { agent, description, prompt: "p", ...extra }, status, result: reply }
   nativeCalls.set(id, phase === "execute.before" ? "running" : status)
   for (const hook of hooks[phase]) await hook(event) // NOSONAR: hooks run in registration order
   return event
@@ -142,7 +143,8 @@ if (scenario === "retry") {
   respond = () => undefined
   await deliver("retry", [2])
   await idle("retry")
-  assert.deepEqual(Object.keys(finishes()[0]).sort(), Object.keys(finishes()[1]).sort())
+  const byName = (a, b) => a.localeCompare(b)
+  assert.deepEqual(Object.keys(finishes()[0]).sort(byName), Object.keys(finishes()[1]).sort(byName))
 } else if (scenario === "async_delivery" || scenario === "async_missing" || scenario === "tpm") {
   const unit = "producer"
   const agent = scenario === "tpm" ? "tpm" : "pm"
@@ -154,7 +156,7 @@ if (scenario === "retry") {
   assert.deepEqual(owner.executions[`root:${unit}`].delivery ?? [], scenario === "async_missing" ? [] : [2])
 } else if (scenario === "wait_error") {
   await launch("unreachable")
-  onWait = async () => { throw Error("host unavailable") }
+  onWait = async () => { throw new Error("host unavailable") }
   events.push({ id: "idle", created: 1, type: "session.idle", data: { sessionID: "unreachable" } }); wake?.()
   await spinUntil(() => waitedSessions.length > 0)
   await new Promise(resolve => setTimeout(resolve, 10))
@@ -209,6 +211,6 @@ if (scenario === "retry") {
   await deliver("review", [55], "verify")
   await idle("review")
 } else {
-  throw Error(`unknown scenario ${scenario}`)
+  throw new Error(`unknown scenario ${scenario}`)
 }
 assert.deepEqual(promptedSessions, [], "native launch must not nudge or reprompt the child")

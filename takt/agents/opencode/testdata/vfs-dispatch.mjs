@@ -167,7 +167,8 @@ assert.equal(calls.slice(before).filter(c=>c.verb==="dispatch" && requestOf(c).a
 // A delegation executes the work unit its description names: admission,
 // launch and the end of the call all speak for that unit, and the host call
 // identity travels as the dispatch so a retry is told from a repetition.
-const delegate = async (phase, description, id = "call-1", agent = "dev", result = { metadata: { sessionID: description.trim(), status: "running" } }) => {
+const delegate = async (phase, description, id = "call-1", agent = "dev") => {
+  const result = { metadata: { sessionID: description.trim(), status: "running" } }
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, root)
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
