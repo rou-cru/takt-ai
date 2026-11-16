@@ -100,10 +100,10 @@ await plugin.setup({
 })
 
 // delegate runs the subagent hooks of one phase for a delegation; extra adds
-// fields to its input, and result is the host's reply the after hooks amend.
-const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result) => {
+// fields to its input. The host's reply is the native launch result.
+const delegate = async (phase, description, id, agent, status = "completed", extra = {}) => {
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, { sessionID: "root", agent: "takt" })
-  const reply = result ?? { content: "Working", metadata: { sessionID: description, status: "running" } }
+  const reply = { content: "Working", metadata: { sessionID: description, status: "running" } }
   const event = { tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
     input: { agent, description, prompt: "p", ...extra }, status, result: reply }
   nativeCalls.set(id, phase === "execute.before" ? "running" : status)
