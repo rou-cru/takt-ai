@@ -28,7 +28,7 @@ import (
 )
 
 // CodegraphVersion is the minimum codegraph release Takt configures and the one it installs.
-const CodegraphVersion = "1.6.1"
+const CodegraphVersion = "1.6.2"
 
 const (
 	// codegraphDirectoryMode keeps the installed tool directory traversable by its owner.
