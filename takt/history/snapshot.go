@@ -81,14 +81,13 @@ type Node struct {
 	State     State    `json:"state"`
 	Flight    Flight   `json:"flight,omitempty"`
 	// Outcome is set only once the unit is settled.
-	Outcome Outcome `json:"outcome,omitempty"`
-	// Assurance is the prevailing result of the current attempt, apart from
-	// Outcome: delivery is not acceptance (PR-DAG-TMP-9). Absent until a result
-	// is recorded; absence is never success.
-	Assurance     *Assurance `json:"assurance,omitempty"`
-	Launched      bool       `json:"launched"`
-	Contract      string     `json:"contract,omitempty"`
-	Prerequisites []string   `json:"prerequisites,omitempty"`
+	Outcome       Outcome  `json:"outcome,omitempty"`
+	Launched      bool     `json:"launched"`
+	Contract      string   `json:"contract,omitempty"`
+	Prerequisites []string `json:"prerequisites,omitempty"`
+	// Layer is the unit's depth: 0 without prerequisites, otherwise one more than
+	// its deepest prerequisite (PR-DTUI-9). The view never recomputes it.
+	Layer int `json:"layer"`
 	// Agent identifies the specialist admitted for the current attempt; empty
 	// until the unit is first admitted.
 	Agent string `json:"agent,omitempty"`
@@ -127,26 +126,53 @@ type Snapshot struct {
 	PlanVersion string `json:"plan_version,omitempty"`
 	// Stopped and Escalated mirror Budgets' own counters: distinguishable
 	// from an enabling decision, never inferred from Nodes/Edges.
-	Stopped   int    `json:"stopped,omitempty"`
-	Escalated int    `json:"escalated,omitempty"`
-	Nodes     []Node `json:"nodes"`
-	Edges     []Edge `json:"edges"`
+	Stopped   int `json:"stopped,omitempty"`
+	Escalated int `json:"escalated,omitempty"`
+	// Counts tallies the units by what the view shows; withdrawn units are
+	// counted apart and are not work.
+	Counts Counts `json:"counts"`
+	Nodes  []Node `json:"nodes"`
+	Edges  []Edge `json:"edges"`
 	// Activities are direct orchestrator and maintenance records. They are
 	// rendered in a separate lane and never participate in graph edges.
 	Activities []ActivityNode `json:"activities"`
 }
 
+// Counts is the number of units in each state the view tells apart.
+type Counts struct {
+	Planned     int `json:"planned"`
+	InFlight    int `json:"in_flight"`
+	Completed   int `json:"completed"`
+	Failed      int `json:"failed"`
+	Backtracked int `json:"backtracked"`
+	Interrupted int `json:"interrupted"`
+	Withdrawn   int `json:"withdrawn"`
+}
+
 // BuildSnapshot derives the content-free DAG snapshot from the recorded
-// prefix, mapping Project's output without recomputing any state. Because
+// prefix, mapping Project's output; layers and counts are the only facts it
+// derives, so every view reads them from here (PR-DTUI-3). Work delegated
+// without a committed plan is a node with no edges: the projection records
+// observed work, never invented prerequisites (PR-DAG-REP-3). Because
 // Project is a pure fold over entries (PR-DAG-REP-1), entry count alone gives a
 // deterministic, monotonic projection_revision equal to history_position. The
 // plan belongs to one root session, named as the earliest-appearing SessionID
 // in Seq order, and only that session's units and activities are drawn: a unit
 // name is unique within its root, so another root's units would collide. A
 // caller that wants another root filters the entries to it first.
-func BuildSnapshot(entries []Entry) Snapshot {
-	p, inferred := projectWithExecutionOrder(entries)
+//
+// A root that declared continuity with earlier roots (PR-DAG-USE-1) passes
+// them, oldest first, as continued: the snapshot is then scoped to that root
+// and the sessions it continued, the earlier history preceding the new entries,
+// and a unit name the root reuses shows the root's own unit, not the earlier one.
+func BuildSnapshot(entries []Entry, continued ...string) Snapshot {
+	p := Project(entries)
 	session := rootSession(entries)
+	scope := []string{session}
+	if len(continued) > 0 {
+		session = continued[len(continued)-1]
+		scope = continued
+	}
 	s := Snapshot{
 		SchemaVersion:      SnapshotSchemaVersion,
 		ProjectionRevision: len(entries),
@@ -166,34 +192,40 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	// Units is a map; iterating it directly would make node and edge order
 	// vary run to run even though the projection itself is deterministic. IDs
 	// are sorted so two Snapshot calls over the same prefix agree byte for
-	// byte (PRD_DAG_TUI.md §8's "same prefix yields same snapshot").
-	keys := make([]string, 0, len(p.Units))
-	for key := range p.Units {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	for _, key := range keys {
-		u := p.Units[key]
-		if u.SessionID != session {
+	// byte (PRD_DAG_TUI.md §8's "same prefix yields same snapshot"). A name in
+	// several scoped sessions is drawn once, from the latest.
+	drawn := map[string]Unit{}
+	for _, u := range p.Units {
+		at := slices.Index(scope, u.SessionID)
+		if at < 0 {
 			continue
 		}
+		if known, seen := drawn[u.WorkUnitID]; !seen || slices.Index(scope, known.SessionID) < at {
+			drawn[u.WorkUnitID] = u
+		}
+	}
+	names := make([]string, 0, len(drawn))
+	for name := range drawn {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		u := drawn[name]
 		id := u.WorkUnitID
 		if u.Flight == FlightUncertain {
 			s.Capture = CaptureUncertain
 		}
-		prerequisites := u.Prerequisites
-		if !u.Committed {
-			prerequisites = inferred[key]
-		}
 		s.Nodes = append(s.Nodes, Node{
 			ID: id, NodeKind: NodeKindDelegated, SessionID: u.SessionID, AttemptID: u.AttemptID,
-			State: u.State, Flight: u.Flight, Outcome: u.Outcome, Assurance: u.Assurance,
-			Launched: u.Launched, Contract: u.Contract, Prerequisites: prerequisites, Agent: u.Agent,
+			State: u.State, Flight: u.Flight, Outcome: u.Outcome,
+			Launched: u.Launched, Contract: u.Contract, Prerequisites: u.Prerequisites, Agent: u.Agent,
 		})
-		for _, from := range prerequisites {
+		for _, from := range u.Prerequisites {
 			s.Edges = append(s.Edges, Edge{From: from, To: id})
 		}
 	}
+	s.assignLayers()
+	s.countUnits()
 	activityIDs := make([]string, 0, len(p.Activities))
 	for id := range p.Activities {
 		activityIDs = append(activityIDs, id)
@@ -201,7 +233,7 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	slices.Sort(activityIDs)
 	for _, id := range activityIDs {
 		a := p.Activities[id]
-		if a.SessionID != session {
+		if !slices.Contains(scope, a.SessionID) {
 			continue
 		}
 		s.Activities = append(s.Activities, ActivityNode{
@@ -212,83 +244,6 @@ func BuildSnapshot(entries []Entry) Snapshot {
 	return s
 }
 
-// projectWithExecutionOrder is Project plus the inferred structure of ordinary
-// work the orchestrator delegated without a plan commitment: such a unit has no
-// declared prerequisites, so it follows the units settled at its admission
-// (reduced to the frontier) and units admitted together stay side by side.
-// Activities are folded separately and get no edges. Committed units keep
-// exactly their declared prerequisites. Units only follow units of their own
-// root session. The inferred map is keyed by UnitKey and names prerequisites
-// by unit name. The result is a pure fold of the recorded prefix.
-func projectWithExecutionOrder(entries []Entry) (Projection, map[string][]string) {
-	p := newProjection()
-	inferred := map[string][]string{}
-	for _, e := range entries {
-		_, known := p.Unit(e.SessionID, e.WorkUnitID)
-		var settled []string
-		if e.Kind == KindAdmitted && !known {
-			settled = settledUnitIDs(&p, e.SessionID)
-		}
-		p.fold(e)
-		if _, now := p.Unit(e.SessionID, e.WorkUnitID); e.Kind == KindAdmitted && !known && now {
-			inferred[UnitKey(e.SessionID, e.WorkUnitID)] = frontier(settled, prerequisitesOf(&p, e.SessionID, inferred))
-		}
-	}
-	return p, inferred
-}
-
-// settledUnitIDs lists the names of session's units already settled in p, the
-// candidates an admitted-but-uncovered unit's inferred prerequisites are drawn from.
-func settledUnitIDs(p *Projection, session string) []string {
-	var settled []string
-	for _, u := range p.Units {
-		if u.SessionID == session && u.State == StateSettled {
-			settled = append(settled, u.WorkUnitID)
-		}
-	}
-	return settled
-}
-
-// prerequisitesOf resolves a unit of session's prerequisites for frontier
-// reduction: a committed unit's declared prerequisites, or an inferred unit's
-// already computed ones.
-func prerequisitesOf(p *Projection, session string, inferred map[string][]string) func(string) []string {
-	return func(id string) []string {
-		if u, _ := p.Unit(session, id); u.Committed {
-			return u.Prerequisites
-		}
-		return inferred[UnitKey(session, id)]
-	}
-}
-
-// frontier keeps the candidates no other candidate already depends on,
-// directly or transitively, sorted so the result is deterministic.
-func frontier(candidates []string, prerequisitesOf func(string) []string) []string {
-	implied := map[string]bool{}
-	for _, c := range candidates {
-		seen := map[string]bool{}
-		var walk func(string)
-		walk = func(id string) {
-			for _, prerequisite := range prerequisitesOf(id) {
-				if !seen[prerequisite] {
-					seen[prerequisite] = true
-					implied[prerequisite] = true
-					walk(prerequisite)
-				}
-			}
-		}
-		walk(c)
-	}
-	var out []string
-	for _, c := range candidates {
-		if !implied[c] {
-			out = append(out, c)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
 // rootSession names the session Snapshot treats as the plan's owner; see
 // BuildSnapshot's doc comment.
 func rootSession(entries []Entry) string {
@@ -296,4 +251,53 @@ func rootSession(entries []Entry) string {
 		return ""
 	}
 	return entries[0].SessionID
+}
+
+// assignLayers sets every node's Layer from the edges it carries. The plan is
+// acyclic by its validation (PR-DAG-MUT-6), so the recursion ends.
+func (s *Snapshot) assignLayers() {
+	index := make(map[string]int, len(s.Nodes))
+	for i, n := range s.Nodes {
+		index[n.ID] = i
+	}
+	done := make([]bool, len(s.Nodes))
+	var layerOf func(i int) int
+	layerOf = func(i int) int {
+		if done[i] {
+			return s.Nodes[i].Layer
+		}
+		layer := 0
+		for _, prerequisite := range s.Nodes[i].Prerequisites {
+			if j, ok := index[prerequisite]; ok {
+				layer = max(layer, layerOf(j)+1)
+			}
+		}
+		s.Nodes[i].Layer, done[i] = layer, true
+		return layer
+	}
+	for i := range s.Nodes {
+		layerOf(i)
+	}
+}
+
+// countUnits tallies Nodes into Counts.
+func (s *Snapshot) countUnits() {
+	for _, n := range s.Nodes {
+		switch {
+		case n.State == StatePlanned:
+			s.Counts.Planned++
+		case n.State == StateInFlight:
+			s.Counts.InFlight++
+		case n.State == StateWithdrawn:
+			s.Counts.Withdrawn++
+		case n.Outcome == OutcomeCompleted:
+			s.Counts.Completed++
+		case n.Outcome == OutcomeFailed:
+			s.Counts.Failed++
+		case n.Outcome == OutcomeBacktracked:
+			s.Counts.Backtracked++
+		case n.Outcome == OutcomeInterrupted:
+			s.Counts.Interrupted++
+		}
+	}
 }

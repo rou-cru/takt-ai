@@ -79,6 +79,12 @@ const CauseNoFailure = "control/no-terminal-failure"
 const CauseRepetition = "control/unit-in-flight"
 ```
 
+<a name="CauseUnitName"></a>CauseUnitName denies admitting a new unit whose name breaks the unit\-name contract \(PR\-DAG\-REP\-8\).
+
+```go
+const CauseUnitName = "control/unit-name"
+```
+
 <a name="CauseWithdrawn"></a>CauseWithdrawn denies delegating a unit its plan withdrew.
 
 ```go

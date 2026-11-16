@@ -15,6 +15,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [func LaneUnit\(cycle, role string\) \(unit, agent string\)](<#LaneUnit>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
+- [func ValidateUnitName\(name string\) error](<#ValidateUnitName>)
 - [type Activity](<#Activity>)
 - [type ActivityNode](<#ActivityNode>)
 - [type Assurance](<#Assurance>)
@@ -24,6 +25,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(b Budgets\) QARoundFor\(unit string\) \(string, Strengthening\)](<#Budgets.QARoundFor>)
   - [func \(b Budgets\) Scope\(unit string\) \(string, Recovery\)](<#Budgets.Scope>)
   - [func \(b Budgets\) StrengtheningUsed\(objective string\) int](<#Budgets.StrengtheningUsed>)
+- [type Counts](<#Counts>)
 - [type Edge](<#Edge>)
 - [type Entry](<#Entry>)
   - [func ReadEntries\(stateDir string\) \(\_ \[\]Entry, err error\)](<#ReadEntries>)
@@ -61,7 +63,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
 - [type ResultStatus](<#ResultStatus>)
 - [type Snapshot](<#Snapshot>)
-  - [func BuildSnapshot\(entries \[\]Entry\) Snapshot](<#BuildSnapshot>)
+  - [func BuildSnapshot\(entries \[\]Entry, continued ...string\) Snapshot](<#BuildSnapshot>)
 - [type State](<#State>)
   - [func \(s State\) MarshalJSON\(\) \(\[\]byte, error\)](<#State.MarshalJSON>)
 - [type Strengthening](<#Strengthening>)
@@ -168,6 +170,12 @@ const LeaseTTL = 90 * time.Second
 const MaxPageSize = 500
 ```
 
+<a name="MaxUnitNameCells"></a>MaxUnitNameCells bounds a unit name's display width \(PR\-DAG\-REP\-8\). The DAG view sizes every box to it, so a name is never cut to fit.
+
+```go
+const MaxUnitNameCells = 24
+```
+
 <a name="SnapshotSchemaVersion"></a>SnapshotSchemaVersion is the wire shape version every snapshot reports, so a future breaking change to the contract is visible to a caller instead of silently changing shape under it.
 
 ```go
@@ -209,6 +217,15 @@ func UnitKey(session, unit string) string
 ```
 
 UnitKey names session's work unit unit in Projection.Units.
+
+<a name="ValidateUnitName"></a>
+## func ValidateUnitName
+
+```go
+func ValidateUnitName(name string) error
+```
+
+ValidateUnitName is the one contract a unit name keeps, in a plan declaration and in the admission of work without a plan \(PR\-DAG\-REP\-8\): a single line of at most MaxUnitNameCells display cells with no control characters. The refusal names the rule and how to satisfy it.
 
 <a name="Activity"></a>
 ## type Activity
@@ -349,6 +366,23 @@ func (b Budgets) StrengtheningUsed(objective string) int
 ```
 
 StrengtheningUsed counts started rounds, not attempts or plan revisions.
+
+<a name="Counts"></a>
+## type Counts
+
+Counts is the number of units in each state the view tells apart.
+
+```go
+type Counts struct {
+    Planned     int `json:"planned"`
+    InFlight    int `json:"in_flight"`
+    Completed   int `json:"completed"`
+    Failed      int `json:"failed"`
+    Backtracked int `json:"backtracked"`
+    Interrupted int `json:"interrupted"`
+    Withdrawn   int `json:"withdrawn"`
+}
+```
 
 <a name="Edge"></a>
 ## type Edge
@@ -788,14 +822,13 @@ type Node struct {
     State     State    `json:"state"`
     Flight    Flight   `json:"flight,omitempty"`
     // Outcome is set only once the unit is settled.
-    Outcome Outcome `json:"outcome,omitempty"`
-    // Assurance is the prevailing result of the current attempt, apart from
-    // Outcome: delivery is not acceptance (PR-DAG-TMP-9). Absent until a result
-    // is recorded; absence is never success.
-    Assurance     *Assurance `json:"assurance,omitempty"`
-    Launched      bool       `json:"launched"`
-    Contract      string     `json:"contract,omitempty"`
-    Prerequisites []string   `json:"prerequisites,omitempty"`
+    Outcome       Outcome  `json:"outcome,omitempty"`
+    Launched      bool     `json:"launched"`
+    Contract      string   `json:"contract,omitempty"`
+    Prerequisites []string `json:"prerequisites,omitempty"`
+    // Layer is the unit's depth: 0 without prerequisites, otherwise one more than
+    // its deepest prerequisite (PR-DTUI-9). The view never recomputes it.
+    Layer int `json:"layer"`
     // Agent identifies the specialist admitted for the current attempt; empty
     // until the unit is first admitted.
     Agent string `json:"agent,omitempty"`
@@ -1066,10 +1099,13 @@ type Snapshot struct {
     PlanVersion string `json:"plan_version,omitempty"`
     // Stopped and Escalated mirror Budgets' own counters: distinguishable
     // from an enabling decision, never inferred from Nodes/Edges.
-    Stopped   int    `json:"stopped,omitempty"`
-    Escalated int    `json:"escalated,omitempty"`
-    Nodes     []Node `json:"nodes"`
-    Edges     []Edge `json:"edges"`
+    Stopped   int `json:"stopped,omitempty"`
+    Escalated int `json:"escalated,omitempty"`
+    // Counts tallies the units by what the view shows; withdrawn units are
+    // counted apart and are not work.
+    Counts Counts `json:"counts"`
+    Nodes  []Node `json:"nodes"`
+    Edges  []Edge `json:"edges"`
     // Activities are direct orchestrator and maintenance records. They are
     // rendered in a separate lane and never participate in graph edges.
     Activities []ActivityNode `json:"activities"`
@@ -1080,10 +1116,12 @@ type Snapshot struct {
 ### func BuildSnapshot
 
 ```go
-func BuildSnapshot(entries []Entry) Snapshot
+func BuildSnapshot(entries []Entry, continued ...string) Snapshot
 ```
 
-BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
+BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output; layers and counts are the only facts it derives, so every view reads them from here \(PR\-DTUI\-3\). Work delegated without a committed plan is a node with no edges: the projection records observed work, never invented prerequisites \(PR\-DAG\-REP\-3\). Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
+
+A root that declared continuity with earlier roots \(PR\-DAG\-USE\-1\) passes them, oldest first, as continued: the snapshot is then scoped to that root and the sessions it continued, the earlier history preceding the new entries, and a unit name the root reuses shows the root's own unit, not the earlier one.
 
 <a name="State"></a>
 ## type State

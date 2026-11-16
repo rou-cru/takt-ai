@@ -25,6 +25,8 @@ const (
 	AdminStatus   = "status"
 	AdminInit     = "init"
 	AdminBackup   = "backup"
+	// AdminContinuations lists the crew sessions a root session continued.
+	AdminContinuations = "continuations"
 	// AdminShutdown asks the owner answering on the socket to stop; only the lock holder binds the
 	// socket, so the request reaches the owner and never another process.
 	AdminShutdown = "shutdown"

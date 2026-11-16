@@ -57,6 +57,17 @@ func (s *session) record(host, title string, supersedes int64) int64 {
 	if supersedes != 0 {
 		args["relates_to"] = map[string]any{"id": supersedes, "relation": memory.RelationSupersedes}
 	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(s.crewCall(host, memory.ToolRecord, args), "Recorded #"), 10, 64)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return id
+}
+
+// crewCall calls a tool of the memory service's crew path as host, a session already bound, and returns its text.
+func (s *session) crewCall(host, tool string, args map[string]any) string {
+	s.t.Helper()
+	ctx := context.Background()
 	sock := filepath.Join(s.memoryDir, memory.SocketFile)
 	crew, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint: "http://memory" + memory.PathCrew, DisableStandaloneSSE: true,
@@ -68,15 +79,25 @@ func (s *session) record(host, title string, supersedes int64) int64 {
 		s.t.Fatal(err)
 	}
 	defer func() { _ = crew.Close() }()
-	res, err := crew.CallTool(ctx, &mcp.CallToolParams{Name: memory.ToolRecord, Arguments: args, Meta: mcp.Meta{memory.MetaHostSession: host}})
+	res, err := crew.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args, Meta: mcp.Meta{memory.MetaHostSession: host}})
 	if err != nil || res.IsError {
-		s.t.Fatalf("record %q as %s: %v %+v", title, host, err, res)
+		s.t.Fatalf("%s as %s: %v %+v", tool, host, err, res)
 	}
-	id, err := strconv.ParseInt(strings.TrimPrefix(res.Content[0].(*mcp.TextContent).Text, "Recorded #"), 10, 64)
+	return res.Content[0].(*mcp.TextContent).Text
+}
+
+// bindRoot binds host as the root crew session of its own conversation.
+func (s *session) bindRoot(host string) {
+	s.t.Helper()
+	ctx := context.Background()
+	admin, err := memory.DialAdmin(ctx, s.memoryDir)
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	return id
+	defer func() { _ = admin.Close() }()
+	if err := admin.Bind(ctx, memory.BindArgs{HostSession: host, Agent: "takt", ClaimedRoot: host, Workspace: "ws"}); err != nil {
+		s.t.Fatal(err)
+	}
 }
 
 // requireNamed fails unless the refusal's text contains every want.

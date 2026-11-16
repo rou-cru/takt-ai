@@ -113,19 +113,19 @@ func TestUnmonitoredExecutionStaysInFlightAndKeepsItsReservation(t *testing.T) {
 	}
 }
 
-func TestSnapshotCarriesAssuranceAndUnmonitoredWireNames(t *testing.T) {
+// The wire carries the in-flight condition by name and never an acceptance
+// verdict: the view shows delegation, not assurance (PR-DTUI-12).
+func TestSnapshotWireCarriesUnmonitoredAndNoAssurance(t *testing.T) {
 	entries := append(settledUnit(t, "wire-a"), resultAt(t, "wire-a", history.ResultVerified, 4, "journal/7"),
 		observed(t, "wire-b", history.KindAdmitted, ""), observed(t, "wire-b", history.KindUnmonitored, ""))
-	raw, err := json.Marshal(history.BuildSnapshot(entries).Nodes)
+	raw, err := json.Marshal(history.BuildSnapshot(entries))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"assurance":{"status":"verified","revision":4,"evidence":"journal/7","author":"verification"}`, `"flight":"unmonitored"`} {
-		if !strings.Contains(string(raw), want) {
-			t.Errorf("nodes %s lack %s", raw, want)
-		}
+	if !strings.Contains(string(raw), `"flight":"unmonitored"`) {
+		t.Errorf("snapshot %s lacks the unmonitored flight", raw)
 	}
-	if strings.Contains(strings.SplitN(string(raw), `"id":"wire-b"`, 2)[1], "assurance") {
-		t.Errorf("a unit with no result reports assurance: %s", raw)
+	if strings.Contains(string(raw), "assurance") {
+		t.Errorf("snapshot %s carries assurance", raw)
 	}
 }

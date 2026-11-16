@@ -1694,7 +1694,7 @@ export default Plugin.define({
           version: str("Identifier of this baseline version"),
           base_version: str("The standing plan version this declaration revises; omit only for the first commitment"),
           plan: { type: "array", items: obj({
-            unit: str("Work unit identity"), contract: str("Frozen contract this unit is dispatched against"),
+            unit: str("Work unit name: a short one-line label of the work"), contract: str("Frozen contract this unit is dispatched against"),
             prerequisites: { type: "array", items: { type: "string" }, description: "Prerequisite work unit identities" },
           }, ["unit", "contract"]), description: "Every unit this baseline covers, or that a revision adds or replaces" },
           qa_round: obj({ objective: str("Stable acceptance objective; never rename it to reset strengthening"),

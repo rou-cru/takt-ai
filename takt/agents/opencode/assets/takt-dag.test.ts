@@ -19,7 +19,8 @@ describe("DAG snapshot wire contract", () => {
       session_id: "root-session",
       capture: "current",
       plan_version: "plan-1",
-      nodes: [{ id: "unit-1", node_kind: "delegated", session_id: "root-session", attempt_id: "attempt-1", state: "settled", outcome: "completed", launched: true, prerequisites: [] }],
+      counts: { planned: 0, in_flight: 0, completed: 1, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 },
+      nodes: [{ id: "unit-1", node_kind: "delegated", session_id: "root-session", attempt_id: "attempt-1", state: "settled", outcome: "completed", launched: true, layer: 0, prerequisites: [] }],
       edges: [],
       activities: [],
     })
@@ -28,9 +29,9 @@ describe("DAG snapshot wire contract", () => {
 
   test("normalizes optional node and activity metadata while preserving valid wire fields", () => {
     const decoded = decodeSnapshot({
-      schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "empty", plan_version: "plan-2",
-      nodes: [{ id: "active", node_kind: "delegated", session_id: "child", attempt_id: "try-1", state: "in_flight", flight: "observed_running", launched: true, contract: "ship safely", prerequisites: ["first"], agent: "arch" },
-        { id: "done", node_kind: "delegated", state: "settled", outcome: "completed", launched: false }],
+      schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "empty", plan_version: "plan-2", counts: { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 },
+      nodes: [{ id: "active", node_kind: "delegated", session_id: "child", attempt_id: "try-1", state: "in_flight", flight: "observed_running", launched: true, layer: 1, contract: "ship safely", prerequisites: ["first"], agent: "arch" },
+        { id: "done", node_kind: "delegated", state: "settled", outcome: "completed", launched: false, layer: 0 }],
       edges: [{ from: "active", to: "done" }],
       activities: [{ activity_id: "work-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" },
         { activity_id: "maintenance-1", node_kind: "maintenance", state: "settled", outcome: "interrupted" }],
@@ -44,33 +45,35 @@ describe("DAG snapshot wire contract", () => {
   })
 
   test("accepts an unmonitored activity and rejects a flight an activity cannot have", () => {
-    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current", nodes: [], edges: [] }
+    const base = { schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current", counts: { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 }, nodes: [], edges: [] }
     const activity = (flight: string) => ({ ...base, activities: [{ activity_id: "a", node_kind: "orchestrator", state: "in_flight", flight }] })
     expect(decodeSnapshot(activity("unmonitored"))).toMatchObject({ activities: [{ activity_id: "a", state: "in_flight", flight: "unmonitored" }] })
     expect(() => decodeSnapshot(activity("uncertain"))).toThrow("invalid DAG snapshot JSON")
   })
 
-  test("keeps a valid assurance and the unmonitored flight, and adds none to a node without it", () => {
+  test("keeps the layer and the counts Takt derived, and the unmonitored flight", () => {
+    const counts = { planned: 1, in_flight: 1, completed: 1, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 }
+    const nodes = [
+      { id: "a", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true, layer: 1 },
+      { id: "b", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, layer: 0 },
+      { id: "c", node_kind: "delegated", state: "planned", launched: false, layer: 2 },
+    ]
+    const decoded = decodeSnapshot({ schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current", counts, nodes, edges: [], activities: [] })
+    expect(decoded).toHaveProperty("nodes", nodes)
+    expect(decoded).toHaveProperty("counts", counts)
+  })
+
+  test("ignores an assurance a stale producer still sends: acceptance is not part of the view", () => {
     const decoded = decodeSnapshot({
-      schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current",
-      nodes: [
-        { id: "a", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true },
-        { id: "b", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "failed", revision: 0, evidence: "journal/7", author: "verification" } },
-        { id: "c", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "unverified", author: "harness" } },
-        { id: "d", node_kind: "delegated", state: "settled", outcome: "completed", launched: true },
-      ],
+      schema_version: 1, projection_revision: 1, history_position: 1, session_id: "root", capture: "current", counts: { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 },
+      nodes: [{ id: "a", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, layer: 0, assurance: { status: "verified", author: "verification" } }],
       edges: [], activities: [],
     })
-    expect(decoded).toHaveProperty("nodes", [
-      { id: "a", node_kind: "delegated", state: "in_flight", flight: "unmonitored", launched: true },
-      { id: "b", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "failed", revision: 0, evidence: "journal/7", author: "verification" } },
-      { id: "c", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, assurance: { status: "unverified", author: "harness" } },
-      { id: "d", node_kind: "delegated", state: "settled", outcome: "completed", launched: true },
-    ])
+    expect(decoded).toHaveProperty("nodes", [{ id: "a", node_kind: "delegated", state: "settled", outcome: "completed", launched: true, layer: 0 }])
   })
 
   test("rejects malformed snapshot, node, edge, and activity fields", () => {
-    const base = { schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "current", nodes: [], edges: [] }
+    const base = { schema_version: 1, projection_revision: 0, history_position: 0, session_id: "root", capture: "current", counts: { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 }, nodes: [], edges: [] }
     const invalidNodes: unknown[] = [
       null, { id: "", state: "planned", launched: false }, { id: "unit", state: "unknown", launched: false },
       { id: "unit", node_kind: "orchestrator", state: "planned", launched: false },
@@ -82,10 +85,9 @@ describe("DAG snapshot wire contract", () => {
       { id: "unit", state: "planned", launched: "false" }, { id: "unit", state: "planned", launched: false, contract: 1 },
       { id: "unit", state: "planned", launched: false, prerequisites: ["valid", 3] },
       { id: "unit", state: "planned", launched: false, agent: 7 },
-      { id: "unit", state: "settled", launched: false, assurance: "verified" },
-      { id: "unit", state: "settled", launched: false, assurance: { status: "accepted" } },
-      { id: "unit", state: "settled", launched: false, assurance: { status: "verified", revision: -1 } },
-      { id: "unit", state: "settled", launched: false, assurance: { status: "verified", evidence: 3 } },
+      { id: "unit", node_kind: "delegated", state: "planned", launched: false },
+      { id: "unit", node_kind: "delegated", state: "planned", launched: false, layer: -1 },
+      { id: "unit", node_kind: "delegated", state: "planned", launched: false, layer: 1.5 },
     ]
     for (const node of invalidNodes) {
       expect(() => decodeSnapshot({ ...base, nodes: [node] })).toThrow("invalid DAG snapshot JSON")
@@ -98,6 +100,9 @@ describe("DAG snapshot wire contract", () => {
       { ...base, session_id: 1 },
       { ...base, capture: "missing" },
       { ...base, plan_version: 1 },
+      { ...base, counts: null },
+      { ...base, counts: { planned: 0 } },
+      { ...base, counts: { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: -1 } },
       { ...base, nodes: {} },
       { ...base, activities: {} },
       { ...base, edges: [null] },

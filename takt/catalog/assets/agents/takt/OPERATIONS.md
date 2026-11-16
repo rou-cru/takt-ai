@@ -80,8 +80,10 @@ Issue each delegation in this order: `dispatch_commit` when a plan applies, `dis
 for its unit, `claim_assign` for an implementation lane, then the delegation itself.
 For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts. Its `dispatch_inputs` repeats its authors' invariants.
 Name every delegation after the work unit it executes: its description is the unit identity,
-and for planned work it is exactly the unit you committed with `dispatch_commit`. Delegating
-the same name again retries that unit; new work gets a new name.
+and for planned work it is exactly the unit you committed with `dispatch_commit`. A unit name is
+a short one-line label of the work, never the project name; the harness refuses a name that is
+too long and states the bound. Delegating the same name again retries that unit; new work gets
+a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`, cutting claims so units do not pile onto one oversized file; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through takt-vfs-coordination, or re-cut the scope.
 Staged work keeps its paths until it is consolidated or explicitly discarded; taking each delivery, retrying, reassigning, and releasing it follow takt-vfs-coordination.

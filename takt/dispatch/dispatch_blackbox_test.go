@@ -2,6 +2,7 @@ package dispatch_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
@@ -485,4 +486,46 @@ func TestDeclareRecoveryRecordsTheRefusingCause(t *testing.T) {
 	if got == history.BoundRecoveryActions || got == history.BoundRecoveryAttempts {
 		t.Errorf("overlap: cause = %q, want one that names no budget", got)
 	}
+}
+
+// The unit-name contract (PR-DAG-REP-8) holds at every way a unit enters the
+// execution history: a commitment, a revision's additions and the admission of
+// work without a plan.
+func TestUnitNameContractHoldsAtEveryEntryPoint(t *testing.T) {
+	tooLong := strings.Repeat("x", history.MaxUnitNameCells+1)
+	t.Run("a commitment with a bad name covers nothing", func(t *testing.T) {
+		h := newHistory(t)
+		if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: tooLong, Contract: "c"}}); err == nil {
+			t.Fatal("Commit() with a name over the bound error = nil, want a refusal")
+		}
+		if _, known := h.Project().Unit("s1", tooLong); known {
+			t.Error("the refused commitment left the unit planned")
+		}
+	})
+	t.Run("a revision adding a bad name is recorded invalid", func(t *testing.T) {
+		h := newHistory(t)
+		if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{{Unit: tooLong, Contract: "c"}}, nil); err == nil {
+			t.Fatal("Revise() adding a name over the bound error = nil, want an invalid revision")
+		}
+		if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision {
+			t.Errorf("last entry = %+v, want the invalid revision recorded", last)
+		}
+	})
+	t.Run("admission of unplanned work with a bad name is denied", func(t *testing.T) {
+		h := newHistory(t)
+		err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: tooLong, Session: "s1", Agent: "agent", Dispatch: "d1"})
+		if err == nil {
+			t.Fatal("Admit() with a name over the bound error = nil, want a denial")
+		}
+		last := h.Entries()[len(h.Entries())-1]
+		if last.Kind != history.KindDenied || last.Cause != dispatch.CauseUnitName {
+			t.Errorf("last entry = %+v, want a denial caused by %s", last, dispatch.CauseUnitName)
+		}
+		if _, known := h.Project().Unit("s1", tooLong); known {
+			t.Error("the denied admission left the unit in the projection")
+		}
+	})
 }

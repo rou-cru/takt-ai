@@ -39,6 +39,9 @@ func Commit(h *history.History, journalRef, session, version string, units []Pla
 	if session == "" || version == "" || len(units) == 0 {
 		return errors.New("dispatch: a commitment records an identified baseline version and its work")
 	}
+	if e := checkUnitNames(units); e != nil {
+		return e
+	}
 	if e := validPlan(h.Project(), session, units); e != nil {
 		return e
 	}
@@ -68,6 +71,18 @@ func Declare(h *history.History, journalRef, session, version, baseVersion strin
 		return fmt.Errorf("dispatch: plan version %s already stands; name it as the base version to revise it", standing)
 	}
 	return Revise(h, journalRef, session, baseVersion, version, units, withdrawals, qaRound...)
+}
+
+// checkUnitNames holds every newly declared unit to the name contract
+// (PR-DAG-REP-8). A revision checks only its additions, so a standing plan is
+// never blocked by names it already holds.
+func checkUnitNames(units []PlanUnit) error {
+	for _, u := range units {
+		if err := history.ValidateUnitName(u.Unit); err != nil {
+			return fmt.Errorf("dispatch: %w", err)
+		}
+	}
+	return nil
 }
 
 // validPlan rejects the declarations PR-DAG-MUT-6 calls invalid: duplicate or
@@ -178,6 +193,9 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 			return invalidRevision(h, journalRef, session, baseVersion, newVersion,
 				fmt.Sprintf("dispatch: %s is both added and withdrawn in one revision", u.Unit))
 		}
+	}
+	if e := checkUnitNames(adds); e != nil {
+		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
 	}
 	current := currentPlan(projection, session)
 	resulting := reviseUnits(current, adds, withdrawals)

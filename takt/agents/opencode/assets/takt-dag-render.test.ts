@@ -5,27 +5,46 @@ import {
   activityBoxWidth,
   activityError,
   activityText,
-  computeLayout,
+  computeLayout as computeLayoutOf,
+  countsLine,
   edgePorts,
   edgeRows,
-  GraphView,
+  GraphView as GraphViewOf,
   glyphFor,
   hasContent,
   headerLine,
-  progressLine,
   nodeText,
   ordinal,
   packActivities,
   sidebarDetail,
-  sidebarRows,
-  SidebarGraph,
+  sidebarRows as sidebarRowsOf,
+  SidebarGraph as SidebarGraphOf,
   topologyError,
   topologyKey,
 } from "./takt-dag"
 
-const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string; assurance: object }> = {}) =>
-  ({ id: "unit-1", node_kind: "delegated", state: "planned", launched: false, ...overrides,
-    ...(overrides.assurance ? { assurance: { author: "verification", ...overrides.assurance } } : {}) }) as never
+const node = (overrides: Partial<{ id: string; state: string; flight: string; outcome: string; node_kind: string; launched: boolean; agent: string }> = {}) =>
+  ({ id: "unit-1", node_kind: "delegated", state: "planned", launched: false, ...overrides }) as never
+
+// The fixtures stand in for Takt's snapshot: layers follow the edges and counts
+// follow the nodes, as Takt derives them; the view reads both and computes neither.
+type Fixture = { nodes: { id: string; state?: string; outcome?: string }[]; edges: { from: string; to: string }[]; counts?: object }
+function layered(snapshot: never): never {
+  const { nodes, edges, counts } = snapshot as unknown as Fixture
+  const memo = new Map<string, number>()
+  const layerOf = (id: string): number => {
+    if (!memo.has(id)) memo.set(id, Math.max(-1, ...edges.filter((e) => e.to === id).map((e) => layerOf(e.from))) + 1)
+    return memo.get(id) as number
+  }
+  const tally: Record<string, number> = { planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0 }
+  for (const n of nodes) tally[n.state === "settled" ? (n.outcome ?? "completed") : (n.state ?? "planned")]++
+  return { ...(snapshot as object), nodes: nodes.map((n) => ({ ...n, layer: layerOf(n.id) })), counts: counts ?? tally } as never
+}
+type Layout = ReturnType<typeof computeLayoutOf>
+const computeLayout = (snapshot: never, previous?: Layout, viewport?: { width: number; height: number }): Layout => computeLayoutOf(layered(snapshot), previous, viewport)
+const sidebarRows = (snapshot: never) => sidebarRowsOf(layered(snapshot))
+const GraphView = (props: { snapshot: never; mode: "route" | "sidebar" }) => GraphViewOf({ ...props, snapshot: layered(props.snapshot) })
+const SidebarGraph = (props: { snapshot: unknown }) => SidebarGraphOf({ snapshot: props.snapshot === undefined ? undefined : (layered(props.snapshot as never) as never) })
 
 describe("ordinal", () => {
   test("orders strings lexicographically", () => {
@@ -132,20 +151,53 @@ describe("graph layout", () => {
     expect(rows.every((row) => row.length === layout.width)).toBe(true)
   })
 
-  test("cuts identities instead of overflowing the width when the bands do not fit the height", () => {
-    const named = { ...base, nodes: ["overhaul-defect-evidence", "overhaul-integration", "overhaul-acceptance"].map((id) => node({ id })),
-      edges: [{ from: "overhaul-defect-evidence", to: "overhaul-integration" }, { from: "overhaul-integration", to: "overhaul-acceptance" }] } as never
-    const natural = computeLayout(named)
-    const viewport = { width: 60, height: 5 }
+  test("never cuts a name when the bands do not fit the height: the view scrolls instead", async () => {
+    const ids = ["overhaul-defect-evidence", "overhaul-integration", "overhaul-acceptance"]
+    const named = { ...base, nodes: ids.map((id) => node({ id })),
+      edges: [{ from: ids[0], to: ids[1] }, { from: ids[1], to: ids[2] }] } as never
+    const viewport = { width: 80, height: 5 }
     const layout = computeLayout(named, undefined, viewport)
     expect(layout.width).toBeLessThanOrEqual(viewport.width)
-    expect(layout.labelCap).toBeLessThan(natural.labelCap)
-    expect(layout.height).toBeLessThan(computeLayout(named, undefined, { width: 60, height: 100 }).height)
+    expect(layout.height).toBeGreaterThan(viewport.height)
+    const setup = await testRender(() => GraphView({ snapshot: named, mode: "route" }) as never, { width: 80, height: 30 })
+    try {
+      await setup.renderOnce()
+      const frame = setup.captureCharFrame()
+      for (const id of ids) expect(frame).toContain(id)
+      expect(frame).not.toContain("…")
+    } finally {
+      setup.renderer.destroy()
+    }
   })
 
-  test("never draws wider than the viewport, however narrow", () => {
+  test("every box is as wide as the longest name plus its chrome", () => {
+    const named = { ...base, nodes: ["a", "a-much-longer-name"].map((id) => node({ id })), edges: [{ from: "a", to: "a-much-longer-name" }] } as never
+    for (const placed of computeLayout(named).nodes.values()) expect(placed.width).toBe("a-much-longer-name".length + 4)
+  })
+
+  test("splits the columns into bands of even width", () => {
+    const layout = computeLayout(chain(7), undefined, { width: 60, height: 100 })
+    const perBand = new Map<number, number>()
+    for (const placed of layout.nodes.values()) perBand.set(placed.y, (perBand.get(placed.y) ?? 0) + 1)
+    const sizes = [...perBand.values()]
+    expect(sizes.length).toBeGreaterThan(1)
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1)
+  })
+
+  test("keeps a blank column at both edges and between parallel rails, and tells a crossing from a junction", () => {
+    for (const viewport of [{ width: 200, height: 1000 }, { width: 120, height: 50 }, { width: 100, height: 50 }]) {
+      const rows = edgeRows(computeLayout(realSession as never, undefined, viewport))
+      expect(rows.every((row) => row.startsWith(" ") && row.endsWith(" "))).toBe(true)
+      expect(rows.some((row) => /[│╫]{2}/.test(row))).toBe(false)
+    }
+    expect(edgeRows(computeLayout(realSession as never, undefined, { width: 120, height: 50 })).join("\n")).toContain("╫")
+  })
+
+  test("never draws wider than the viewport, down to one column per band", () => {
     const graph = chain(6)
-    for (const width of [12, 16, 20, 30, 45, 60, 90, 400]) {
+    const narrowest = computeLayout(graph, undefined, { width: 1, height: 100 })
+    expect(narrowest.bands).toBe(6)
+    for (const width of [narrowest.width, 30, 45, 60, 90, 400]) {
       for (const height of [3, 10, 100]) {
         const layout = computeLayout(graph, undefined, { width, height })
         expect(layout.width).toBeLessThanOrEqual(width)
@@ -189,7 +241,7 @@ describe("graph layout", () => {
   })
 
   // Every cell each edge occupies, with whether the edge runs straight through it.
-  const edgeCells = (layout: ReturnType<typeof computeLayout>) => {
+  const edgeCells = (layout: Layout) => {
     const boxes = [...layout.nodes.values()]
     const beside = (x: number, y: number) => boxes.find((n) => n.y + 1 === y && (n.x + n.width === x || n.x - 1 === x))?.id
     const cells = new Map<string, { edge: string; through: boolean; across: boolean }[]>()
@@ -251,16 +303,10 @@ describe("node presentation", () => {
   test("glyphFor covers every state/flight/outcome combination", () => {
     expect(glyphFor(node({ state: "planned" }))).toBe("◌")
     expect(glyphFor(node({ state: "withdrawn" }))).toBe("×")
+    expect(glyphFor(node({ state: "settled", outcome: "completed" }))).toBe("✓")
     expect(glyphFor(node({ state: "settled", outcome: "failed" }))).toBe("✗")
     expect(glyphFor(node({ state: "settled", outcome: "backtracked" }))).toBe("↩")
     expect(glyphFor(node({ state: "settled", outcome: "interrupted" }))).toBe("⊘")
-    expect(glyphFor(node({ state: "settled" }))).toBe("◔")
-    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "verified" } }))).toBe("✓")
-    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "unverified" } }))).toBe("◔")
-    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "failed" } }))).toBe("✗")
-    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "blocked" } }))).toBe("◔")
-    expect(glyphFor(node({ state: "settled", outcome: "completed", assurance: { status: "impossible" } }))).toBe("◔")
-    expect(glyphFor(node({ state: "settled", outcome: "failed", assurance: { status: "verified" } }))).toBe("✗")
     expect(glyphFor(node({ state: "in_flight", flight: "unmonitored" }))).toBe("◐")
     expect(glyphFor(node({ state: "in_flight", flight: "pending_launch" }))).toBe("○")
     expect(glyphFor(node({ state: "in_flight", flight: "uncertain" }))).toBe("!")
@@ -269,14 +315,9 @@ describe("node presentation", () => {
     expect(glyphFor(node({ state: "in_flight" }))).toBe("●")
   })
 
-  test("nodeText composes the kind glyph, state glyph, kind label and id", () => {
-    expect(nodeText(node({ id: "unit-7", state: "settled", assurance: { status: "verified" } }))).toBe("✓ unit-7")
-  })
-
-  test("nodeText cuts the id to the layout's label cap with an ellipsis", () => {
-    const accepted = { state: "settled", assurance: { status: "verified" } }
-    expect(nodeText(node({ id: "overhaul-defect-evidence", ...accepted }), 8)).toBe("✓ overhau…")
-    expect(nodeText(node({ id: "unit-7", ...accepted }), 8)).toBe("✓ unit-7")
+  test("nodeText composes the state glyph and the whole name", () => {
+    expect(nodeText(node({ id: "unit-7", state: "settled", outcome: "completed" }))).toBe("✓ unit-7")
+    expect(nodeText(node({ id: "overhaul-defect-evidence" }))).toBe("◌ overhaul-defect-evidence")
   })
 
   test("renders activity-only and layered graph views in both layouts", async () => {
@@ -347,20 +388,16 @@ describe("sidebar rows", () => {
     ])
   })
 
-  test("keeps completed units in the graph, muted; only the glyph tells the state", () => {
+  test("draws the frontier only: completed units are the title's count, not rows", () => {
     const snapshot = { ...base, edges: diamond, nodes: [
-      node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm", assurance: { status: "verified" } }),
-      node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design", assurance: { status: "verified" } }),
+      node({ id: "intent-pm", state: "settled", outcome: "completed", agent: "pm" }),
+      node({ id: "experience-design", state: "settled", outcome: "completed", agent: "design" }),
       node({ id: "structure-arch", state: "in_flight", flight: "observed_running", agent: "arch" }),
       node({ id: "behavior-spec" }),
     ] } as never
     expect(sidebarRows(snapshot)).toEqual([
-      { text: "✓ intent-pm", tone: "muted" },
-      { text: "├─┐" },
-      { text: "✓ │ experience-design", tone: "muted" },
-      { text: "│ ● structure-arch" },
-      { text: "├─┘" },
-      { text: "◌ behavior-spec" },
+      { text: "● structure-arch" },
+      { text: "└─◌ behavior-spec" },
     ])
   })
 
@@ -385,13 +422,10 @@ describe("sidebar rows", () => {
     expect(text(snapshot)).toEqual(["◌ a", "└─≡ ◌◌◌◌ 4 parallel", "  └─◌ f"])
   })
 
-  test("mutes a group only once every unit in it is completed", () => {
-    const wide = ["b", "c", "d", "e"]
-    const done = { state: "settled", outcome: "completed", agent: "x", assurance: { status: "verified" } }
-    const group = (nodes: object[]) => sidebarRows({ ...base, nodes: [node({ id: "a", ...done }), ...nodes],
-      edges: wide.map((id) => ({ from: "a", to: id })) } as never)[1]
-    expect(group(wide.map((id) => node({ id, ...done })))).toEqual({ text: "└─≡ ✓✓✓✓ 4 parallel", tone: "muted" })
-    expect(group(wide.map((id, i) => node({ id, ...(i ? done : {}) })))).toEqual({ text: "└─≡ ◌✓✓✓ 4 parallel" })
+  test("a unit that ended without completing stays in the frontier, a failure in the error tone", () => {
+    const snapshot = { ...base, nodes: [node({ id: "a", state: "settled", outcome: "completed" }), node({ id: "b", state: "settled", outcome: "backtracked" }),
+      node({ id: "c", state: "settled", outcome: "failed" })], edges: [] } as never
+    expect(sidebarRows(snapshot)).toEqual([{ text: "↩ b" }, { text: "✗ c", tone: "error" }])
   })
 
   test("falls back to a flat list in dependency order when lanes exceed the budget", () => {
@@ -474,39 +508,31 @@ describe("hasContent / headerLine / sidebarDetail", () => {
   test("headerLine reports the failure health without a snapshot", () => {
     expect(headerLine(undefined, "unavailable")).toBe("Takt DAG · unavailable")
   })
-  test("headerLine shows progress, not internal revisions, for a current capture", () => {
-    expect(headerLine({ ...base, nodes: [], plan_version: "plan-9" } as never, "confirmed")).toBe("Takt DAG")
-    const nodes = [node({ id: "a", state: "settled", assurance: { status: "verified" } }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "planned" })]
-    expect(headerLine({ ...base, nodes } as never, "confirmed")).toBe("Takt DAG · 1/3 accepted · 1 running")
+  const counts = (overrides: object = {}) => ({ planned: 0, in_flight: 0, completed: 0, failed: 0, backtracked: 0, interrupted: 0, withdrawn: 0, ...overrides })
+
+  test("headerLine shows where the delegation stands, not internal revisions, for a current capture", () => {
+    expect(headerLine({ ...base, nodes: [], counts: counts(), plan_version: "plan-9" } as never, "confirmed")).toBe("Takt DAG")
+    expect(headerLine({ ...base, nodes: [], counts: counts({ completed: 7, in_flight: 1, planned: 2 }) } as never, "confirmed")).toBe("Takt DAG · 7 done · 1 in flight · 2 planned")
   })
   test("headerLine reports the view's health over the snapshot's capture when stale", () => {
-    const snapshot = { ...base, nodes: [] } as never
+    const snapshot = { ...base, nodes: [], counts: counts() } as never
     expect(headerLine(snapshot, "stale")).toBe("Takt DAG · stale")
   })
 
-  test("sidebarDetail shows the health that needs attention, otherwise completed over live units", () => {
-    expect(sidebarDetail(undefined, "waiting")).toBe("waiting")
-    expect(sidebarDetail({ ...base, nodes: [] } as never, "confirmed")).toBe("")
-    expect(sidebarDetail({ ...base, nodes: [] } as never, "invalid")).toBe("invalid")
-    const nodes = [node({ id: "a", state: "settled", assurance: { status: "verified" } }), node({ id: "b", state: "in_flight" }), node({ id: "c", state: "withdrawn" })]
-    expect(sidebarDetail({ ...base, nodes } as never, "confirmed")).toBe("1/2")
-  })
-  test("sidebarDetail does not count a delivery without verified assurance as accepted", () => {
-    const nodes = [node({ id: "a", state: "settled", outcome: "completed" }), node({ id: "b", state: "settled", outcome: "completed", assurance: { status: "failed" } })]
-    expect(sidebarDetail({ ...base, nodes } as never, "confirmed")).toBe("0/2")
+  test("countsLine leaves out a state with no unit and never counts a withdrawn one", () => {
+    expect(countsLine(counts({ completed: 3, failed: 1, backtracked: 2, interrupted: 1, withdrawn: 4 }))).toBe("3 done · 1 failed · 2 backtracked · 1 interrupted")
   })
 
-  test("progressLine counts only verified deliveries as accepted, and never calls unmonitored running", () => {
-    const settled = { state: "settled", outcome: "completed" }
-    const nodes = [
-      node({ id: "a", ...settled, assurance: { status: "verified", revision: 1 } }),
-      node({ id: "b", ...settled }),
-      node({ id: "c", ...settled, assurance: { status: "unverified" } }),
-      node({ id: "d", ...settled, assurance: { status: "failed", revision: 2 } }),
-      node({ id: "e", state: "in_flight", flight: "unmonitored" }),
-      node({ id: "f", state: "in_flight", flight: "observed_running" }),
-    ]
-    expect(progressLine({ ...base, nodes } as never)).toBe("1/6 accepted · 1 running")
+  test("the route and the sidebar read the same counts", () => {
+    const snapshot = { ...base, nodes: [], counts: counts({ completed: 7, in_flight: 1, planned: 2, failed: 1 }) } as never
+    expect(sidebarDetail(snapshot, "confirmed")).toBe("✓7 ●1 ◌2 ✗1")
+    expect(headerLine(snapshot, "confirmed")).toBe("Takt DAG · 7 done · 1 in flight · 2 planned · 1 failed")
+  })
+
+  test("sidebarDetail shows the health that needs attention, otherwise the counts", () => {
+    expect(sidebarDetail(undefined, "waiting")).toBe("waiting")
+    expect(sidebarDetail({ ...base, nodes: [], counts: counts() } as never, "confirmed")).toBe("")
+    expect(sidebarDetail({ ...base, nodes: [], counts: counts() } as never, "invalid")).toBe("invalid")
   })
 })
 
