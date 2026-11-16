@@ -8,5 +8,5 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81"
   },
-  "packageManager": "pnpm@11.17.0"
+  "packageManager": "pnpm@11.28.8"
 }
