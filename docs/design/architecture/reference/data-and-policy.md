@@ -1,6 +1,6 @@
 # Data and policy
 
-Tables only; no diagram. Stores and files are those named in code at the pinned revision.
+Tables only; no diagram. Stores and files are those named in the current code.
 
 ## Stores written by the harness
 
@@ -12,17 +12,19 @@ Two `.takt-ai` directories: `<workspace>/.takt-ai` holds per-workspace state; `$
 | `<workspace>/.takt-ai/vfs/history.sqlite` | SQLite | history | Append-only execution history; lives in the private state directory beside the VFS store. | `takt/history/history.go`, `takt/cli/dag.go` |
 | `<workspace>/.takt-ai/vfs/vfs.sqlite` | SQLite | vfs | Staged deltas, claims, journal and recovery state; workspace-level file lock. Private mode. | `takt/vfs/storage.go` |
 | GC state in `<workspace>/.takt-ai/vfs/`: maintenance record in `vfs.sqlite`, plus `gc-preparation.json` and `gc-refutations.json` | SQLite maintenance field, JSON files | vfs for maintenance; gc for preparation and refutations | Cycle state is stored with the VFS bindings, not in a separate coordinator file; reconstructed projections are stripped on save. Preparation and refutations are files. | `takt/vfs/gc_state.go`, `takt/gc/coordinator.go`, `takt/gc/preparation.go`, `takt/gc/refutation.go` |
-| `$HOME/.takt-ai/memory/sessions/` | JSON per session, with a lock file | memory | Session index: start and end anchors, continuity, entries. Private mode. | `takt/memory/session_index.go`, `takt/cli/memory.go` |
+| `$HOME/.takt-ai/memory/memory.db` | SQLite | memory service | Canonical entries, relations, sessions, closes, crew bindings, FTS indexes and derived vectors. Only the service opens it. `TAKT_MEMORY_DIR` relocates the directory. | `takt/memory/store.go`, `takt/memory/schema.go`, `takt/memory/serve.go` |
+| `$HOME/.takt-ai/memory/memory.sock` and `serve.lock` | Unix socket, lock file | memory service | Private local MCP transport and single-owner process lock; not a second memory store. | `takt/memory/serve.go` |
+| `$HOME/.takt-ai/models/` | Verified model assets | memory/embed | Local semantic model; derived vectors can be rebuilt without replacing canonical entries. | `takt/memory/embed/manifest.go`, `takt/memory/embedding.go` |
 | `$HOME/.takt-ai/codegraph/` | npm prefix | codegraph | Managed CodeGraph copy acquired by Takt. | `takt/codegraph/acquire.go` |
-| `$HOME/.takt-ai/bin/engram` | Binary | engram | Managed Engram binary acquired by Takt. | `takt/engram/acquire.go` |
 | `~/.config/opencode/plugins/node_modules/` | npm prefix | agents/opencode | Sandbox runtime dependency of the sandbox adapter. | `takt/agents/opencode/components.go` |
 
 ## Stores Takt reads but does not own
 
 | Store | Owner | Notes | Evidence |
 | :--- | :--- | :--- | :--- |
-| `~/.engram/engram.db` | Engram | Memory database (`ENGRAM_DATA_DIR` overrides the directory). Uninstall leaves it in place unless the user chooses to remove it; it can also hand a copy to the retained directory. | `takt/setup/uninstall_retention.go`, `takt/lifecycle/lifecycle.go` |
 | `<workspace>/.takt/gc.json` | Workspace | Reviewed GC project configuration; preparation requires it. | `takt/gc/preparation.go` |
+
+The TUI asks whether to retain memory before uninstall. Retention requests a consistent backup through the service before retirement; unresolved retention or deletion failures leave the installation recorded as incomplete (`takt/lifecycle/lifecycle.go`).
 
 ## Records written by setup
 

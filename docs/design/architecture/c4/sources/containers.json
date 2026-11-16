@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/c4/diagrams/containers.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -105,7 +105,7 @@
       "label": "OpenCode v2",
       "sublabel": "host runtime",
       "pos": [
-        620,
+        900,
         190
       ],
       "size": [
@@ -171,8 +171,8 @@
     {
       "id": "bins",
       "type": "backend",
-      "label": "Managed MCP servers",
-      "sublabel": "Engram, CodeGraph",
+      "label": "CodeGraph MCP",
+      "sublabel": "Node package",
       "pos": [
         640,
         30
@@ -183,12 +183,76 @@
       ],
       "sources": [
         {
-          "path": "takt/engram/acquire.go",
-          "line": 56
-        },
-        {
           "path": "takt/codegraph/acquire.go",
           "line": 67
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "Takt Memory service",
+      "sublabel": "takt-ai memory serve",
+      "pos": [
+        900,
+        30
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/serve.go",
+          "line": 74,
+          "end_line": 94
+        },
+        {
+          "path": "takt/memory/server.go",
+          "line": 17,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "memory-store",
+      "type": "database",
+      "label": "Memory store",
+      "sublabel": "memory.db (SQLite)",
+      "pos": [
+        1210,
+        30
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/store.go",
+          "line": 175,
+          "end_line": 197
+        }
+      ]
+    },
+    {
+      "id": "external",
+      "type": "external",
+      "label": "External MCP client",
+      "sublabel": "takt-ai memory mcp",
+      "pos": [
+        1210,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/adapter.go",
+          "line": 21,
+          "end_line": 53
         }
       ]
     }
@@ -267,10 +331,34 @@
       "label": "MCP"
     },
     {
-      "id": "cli-engram-http",
+      "id": "cli-memory",
       "from": "cli",
-      "to": "bins",
-      "label": "Engram HTTP"
+      "to": "memory",
+      "label": "start, admin MCP"
+    },
+    {
+      "id": "crew-memory",
+      "from": "opencode",
+      "to": "memory",
+      "label": "stdio relay /crew"
+    },
+    {
+      "id": "plugin-memory",
+      "from": "plugins",
+      "to": "memory",
+      "label": "bind /admin"
+    },
+    {
+      "id": "memory-store",
+      "from": "memory",
+      "to": "memory-store",
+      "label": "sole owner"
+    },
+    {
+      "id": "external-memory",
+      "from": "external",
+      "to": "memory",
+      "label": "stdio relay /external"
     }
   ],
   "cards": [
@@ -291,6 +379,15 @@
         "Container: workspace image (setup image at build) exposes OpenCode on 4096; dev target via compose",
         "Cluster: Helm chart from GHCR, or deploy/workspace/helm.sh",
         "Release: GoReleaser, cosign-signed checksums, image and chart"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Memory process boundary",
+      "items": [
+        "OpenCode spawns a stdio adapter, not the store owner; the adapter ensures the independent owner is running",
+        "The memory plugin vets calls and binds attribution; it registers no tools",
+        "TAKT_MEMORY_DIR relocates the store and socket; no client opens memory.db"
       ]
     }
   ]

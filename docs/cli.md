@@ -12,6 +12,8 @@
 | `setup default-request` | Prints the recommended setup request as JSON. |
 | `restore` | Puts back the files Takt replaced. Always prints JSON. |
 | `doctor` | Checks tools, configuration and capabilities. |
+| `memory start [--init]` | Starts or reuses Takt Memory and confirms readiness; `--init` creates an absent store. |
+| `memory mcp [--workspace DIR]` | Exposes the memory MCP tools over stdio for an external client. |
 | `version` | Prints `takt-ai` and its version. Also `--version` and `-v`. |
 | `help` | Prints the help. Also `--help` and `-h`. |
 
@@ -59,6 +61,12 @@ The installer checks the SHA-256 checksums of the download and, when `cosign` is
 
 The `go` method builds from source with `go install`, which names the binary `cli`; the installer renames it to `takt-ai`.
 
+## Memory clients
+
+Configure an external MCP client to run `takt-ai memory mcp`, optionally with `--workspace DIR`. The adapter connects to the independent local service and supplies an external session identity. It exposes the same six tools as the crew: `record`, `search`, `read`, `sessions`, `continue_session` and `close_session`. External sessions cannot write into or close crew sessions. No OpenCode installation is needed to use this interface.
+
+Initialize a new store explicitly with `takt-ai memory start --init`. Later starts reuse the owner and existing store; an adapter can start the owner but never silently creates a missing store. `TAKT_MEMORY_DIR` selects the memory directory (see [Environment](environment.md)).
+
 ## Internal commands
 
-`memory`, `vfs`, `obs`, `gc`, `dispatch`, `dag`, `codegraph` and `setup image` are called by Takt's OpenCode plugins and by image builds. They are not part of the user interface and may change without notice.
+`memory serve`, `memory mcp --crew`, `vfs`, `obs`, `gc`, `dispatch`, `dag`, `codegraph` and `setup image` are called by Takt's OpenCode plugins and by image builds. They are not part of the user interface and may change without notice.

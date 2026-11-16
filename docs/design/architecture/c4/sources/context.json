@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/c4/diagrams/context.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -111,7 +111,7 @@
       "id": "github",
       "type": "cloud",
       "label": "GitHub Releases",
-      "sublabel": "takt-ai + Engram binaries",
+      "sublabel": "takt-ai release archives",
       "pos": [
         230,
         40
@@ -124,10 +124,6 @@
         {
           "path": "install.sh",
           "line": 370
-        },
-        {
-          "path": "takt/engram/acquire.go",
-          "line": 56
         }
       ]
     },
@@ -181,8 +177,8 @@
     {
       "id": "mcp",
       "type": "backend",
-      "label": "MCP servers",
-      "sublabel": "Engram, CodeGraph",
+      "label": "CodeGraph",
+      "sublabel": "code index MCP",
       "pos": [
         480,
         360
@@ -193,7 +189,7 @@
       ],
       "sources": [
         {
-          "path": "takt/verify/config.go",
+          "path": "takt/codegraph/acquire.go",
           "line": 38,
           "end_line": 39
         }
@@ -219,6 +215,48 @@
           "end_line": 25
         }
       ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "Takt Memory",
+      "sublabel": "independent local service",
+      "pos": [
+        620,
+        600
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/serve.go",
+          "line": 74,
+          "end_line": 94
+        }
+      ]
+    },
+    {
+      "id": "external",
+      "type": "external",
+      "label": "External clients",
+      "sublabel": "no OpenCode required",
+      "pos": [
+        900,
+        600
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/adapter.go",
+          "line": 21,
+          "end_line": 53
+        }
+      ]
     }
   ],
   "connections": [
@@ -240,19 +278,7 @@
       "id": "dev-works-in-opencode",
       "from": "dev",
       "to": "opencode",
-      "label": "crew dialogue",
-      "fromSide": "bottom",
-      "toSide": "bottom",
-      "via": [
-        [
-          105,
-          480
-        ],
-        [
-          695,
-          480
-        ]
-      ]
+      "label": "crew dialogue"
     },
     {
       "id": "opencode-llm",
@@ -293,12 +319,6 @@
       "toSide": "top"
     },
     {
-      "id": "takt-engram",
-      "from": "takt",
-      "to": "mcp",
-      "label": "Engram HTTP"
-    },
-    {
       "id": "opencode-mcp",
       "from": "opencode",
       "to": "mcp",
@@ -312,6 +332,24 @@
       "to": "context7",
       "label": "remote MCP",
       "variant": "dashed"
+    },
+    {
+      "id": "takt-memory",
+      "from": "takt",
+      "to": "memory",
+      "label": "admin MCP"
+    },
+    {
+      "id": "crew-memory",
+      "from": "opencode",
+      "to": "memory",
+      "label": "crew MCP"
+    },
+    {
+      "id": "external-memory",
+      "from": "external",
+      "to": "memory",
+      "label": "external MCP"
     }
   ],
   "cards": [
@@ -329,6 +367,14 @@
       "items": [
         "takt-ai ships through GitHub Releases (install.sh), the Homebrew tap, and the GHCR / Docker Hub image and Helm chart",
         "Deployment detail is in the container view"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Memory boundary",
+      "items": [
+        "Takt Memory owns its store; clients use MCP over a private Unix socket",
+        "Crew attribution is bound by the integration; external adapters supply their own session identity"
       ]
     }
   ]

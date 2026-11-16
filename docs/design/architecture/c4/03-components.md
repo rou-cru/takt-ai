@@ -6,7 +6,7 @@ One diagram per container area of the `takt-ai` binary. Each section lists its c
 
 Diagram: [components-cli-setup.html](diagrams/components-cli-setup.html)
 
-Scope: the installer side of the `takt-ai` binary. Harness packages (vfs, dispatch, history, gc, obs, memory, session) are in 03b, the TUI in 03c, and the catalog and OpenCode renderer in 03d.
+Scope: the installer side of the `takt-ai` binary. Harness packages (vfs, dispatch, history, gc, obs, memory, session) are below, followed by the TUI and the catalog and OpenCode renderer.
 
 | Component | Responsibility | Evidence |
 | :--- | :--- | :--- |
@@ -14,7 +14,7 @@ Scope: the installer side of the `takt-ai` binary. Harness packages (vfs, dispat
 | lifecycle | Orchestrates install, sync and uninstall across targets. | `takt/lifecycle/lifecycle.go` |
 | setup | Plans, authorizes and applies changes; owns ownership records, drift, risk acceptance and restore. | `takt/setup/deploy.go` |
 | filemerge | Merges Takt-managed content into user-owned JSON and TOML. | `takt/internal/filemerge/read.go` |
-| engram | Downloads, injects and verifies the Engram binary. | `takt/engram/acquire.go` |
+| memory | Independent MCP service and its clients; setup registers its stdio adapter, starts the owner and checks readiness. | `takt/memory/serve.go`, `takt/lifecycle/lifecycle.go` |
 | codegraph | Installs CodeGraph through npm and wires its MCP entry. | `takt/codegraph/acquire.go` |
 | skills | Deploys catalog skills. | `takt/skills/skills.go` |
 | agents/opencode | Renders the OpenCode projection (detail under Catalog and OpenCode adapter). | `takt/setup/deploy.go` |
@@ -24,18 +24,17 @@ Scope: the installer side of the `takt-ai` binary. Harness packages (vfs, dispat
 
 ### Import table
 
-The diagram shows principal dependencies. The full set, taken from the packages' imports at the pinned revision:
+The diagram shows principal dependencies. The full set, taken from the current packages' imports:
 
 | Package | Imports (within Takt) |
 | :--- | :--- |
-| cli | catalog, codegraph, dispatch, doctor, engram, gc, history, lifecycle, memory, model, obs, session, setup, tui, tui/runtime, verify, vfs |
-| lifecycle | agents/opencode, catalog, codegraph, engram, model, setup, skills |
-| setup | agents/opencode, agents/shared, catalog, dispatch, engram, internal/artifacts, internal/filemerge, model |
-| skills | catalog, dispatch, setup |
-| engram | agents/shared, catalog, internal/filemerge, model |
+| cli | catalog, codegraph, dispatch, doctor, gc, history, lifecycle, memory, model, obs, session, setup, tui, tui/runtime, verify, vfs |
+| lifecycle | agents/opencode, catalog, codegraph, internal/filemerge, memory, memory/embed, model, setup, skills |
+| setup | agents/opencode, agents/shared, catalog, dispatch, internal/artifacts, internal/filemerge, memory, model |
+| skills | catalog, dispatch, model, setup |
 | codegraph | agents/shared, internal/filemerge, model |
-| doctor | agents/opencode, codegraph, engram, internal/opencodeapi, memory, model, setup |
-| verify | agents/shared, internal/opencodeapi, model, setup, skills |
+| doctor | agents/opencode, codegraph, internal/opencodeapi, memory, model, obs, setup |
+| verify | agents/opencode, agents/shared, catalog, internal/opencodeapi, memory, model, setup, skills |
 | filemerge | model |
 
 ### Notes
@@ -54,7 +53,7 @@ Scope: the harness packages inside the `takt-ai` binary, plus the VFS plugin tha
 | dispatch | Generic admission and lifecycle protocol for crew work. | `takt/dispatch/dispatch.go` |
 | vfs | Transactional execution layer for agent file operations. | `takt/vfs/vfs.go` |
 | history | Append-only execution history, stored in SQLite in the private state directory. | `takt/history/history.go` |
-| memory | Writes agent memories into Engram with harness metadata, links and session anchors. | `takt/memory/memory.go` |
+| memory | Serves attributed entries, relations, retrieval and session lifecycle through MCP; only its service process opens the memory store. | `takt/memory/server.go`, `takt/memory/store.go` |
 | gc | Computes and coordinates the workspace GC cycle. | `takt/gc/trigger.go` |
 | gc analysis | Preparation (`gc_prepare`), the manual verbs (`takt-ai gc plan`, `findings`, `refute`, `acceptance`), the dead-code and complexity analyzers, and the CodeGraph dependents closure. | `takt/gc/preparation.go`, `takt/gc/analyzers.go`, `takt/gc/deadcode.go`, `takt/gc/codegraph.go`, `takt/cli/gc.go` |
 | VFS plugin | Tool surface inside OpenCode: the `vfs_*` and `gc_*` tools, permission hooks, GC lane tool sets and orchestrator-only guards. Spawns `takt-ai vfs` and `takt-ai gc coordinate`, and runs `takt-ai codegraph ensure-index` at load. | `takt/agents/opencode/assets/takt-vfs.ts` |
@@ -64,14 +63,14 @@ Scope: the harness packages inside the `takt-ai` binary, plus the VFS plugin tha
 
 ### Import table
 
-Taken from the packages' imports at the pinned revision.
+Taken from the current packages' imports.
 
 | Package | Imports (within Takt) |
 | :--- | :--- |
 | dispatch | catalog, history, memory, model, vfs |
-| vfs | catalog, model, obs |
+| vfs | catalog, history, internal/flock, memory, model, obs |
 | gc | dispatch, history, internal/filemerge, obs, vfs |
-| memory | agents/shared, catalog, history, internal/filemerge, model |
+| memory | internal/flock, memory/embed |
 | session | obs, vfs |
 | history | none |
 | obs | none |
@@ -115,7 +114,7 @@ Scope: the interactive surface of the `takt-ai` binary (Bubble Tea v2). The cli 
 | models | internal/opencodeapi, setup, tui/keys, tui/modelpicker, tui/runtime, tui/theme, tui/ui |
 | modelpicker | catalog, internal/opencodeapi, model, tui/keys, tui/theme, tui/ui |
 | diagnostics | setup, tui/keys, tui/theme, tui/ui, verify |
-| runtime | agents/opencode, catalog, engram, internal/opencodeapi, lifecycle, model, setup, tui/theme, tui/ui, verify |
+| runtime | agents/opencode, catalog, internal/opencodeapi, lifecycle, memory, model, setup, tui/theme, tui/ui, verify |
 | ui | tui/keys, tui/theme, verify |
 
 ### Notes
@@ -148,7 +147,7 @@ Scope: how declarative content becomes OpenCode configuration and plugins. The p
 | :--- | :--- |
 | catalog | model |
 | agents/shared | catalog, internal/artifacts, model |
-| agents/opencode | agents/shared, catalog, engram, internal/opencodeapi, model, obs, vfs |
+| agents/opencode | agents/shared, catalog, internal/opencodeapi, memory, model, obs, vfs |
 
 ### Agents in the catalog
 

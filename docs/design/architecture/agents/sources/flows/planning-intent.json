@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/flows/planning-intent.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -71,14 +71,19 @@
     },
     {
       "id": "memory",
-      "type": "database",
-      "label": "Memory",
-      "sublabel": "Engram",
+      "type": "backend",
+      "label": "Takt Memory",
+      "sublabel": "MCP service",
       "sources": [
         {
-          "path": "takt/memory/memory.go",
-          "line": 333,
-          "end_line": 351
+          "path": "takt/memory/server.go",
+          "line": 321,
+          "end_line": 342
+        },
+        {
+          "path": "takt/memory/record.go",
+          "line": 127,
+          "end_line": 163
         }
       ]
     }
@@ -137,7 +142,7 @@
       "from": "pm",
       "to": "memory",
       "y": 328,
-      "label": "memory_record: draft (hypothesis)",
+      "label": "takt_memory_record: draft (hypothesis)",
       "variant": "dashed"
     },
     {
@@ -153,7 +158,7 @@
       "from": "pm",
       "to": "memory",
       "y": 384,
-      "label": "memory_record: decision, supersedes draft",
+      "label": "takt_memory_record: decision, supersedes draft",
       "variant": "dashed"
     },
     {
@@ -161,7 +166,7 @@
       "from": "pm",
       "to": "harness",
       "y": 412,
-      "label": "dispatch_handoff: Standard + Engram IDs",
+      "label": "dispatch_handoff: Standard + Takt memory IDs",
       "variant": "security"
     },
     {

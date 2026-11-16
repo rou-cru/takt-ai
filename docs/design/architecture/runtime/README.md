@@ -16,7 +16,7 @@ Observability and TUI state machines are notes only; they have no diagram.
 
 Entry is `takt-ai setup install|sync|uninstall|image`. Without `--yes` nothing is applied. Conflicts block unless unrelated, or accepted with a matching path, hash and impact.
 
-Install order: OpenCode handshake, acquire Engram and CodeGraph (a failure here leaves the root untouched), begin the operation record, apply plans, inject MCP configuration, record ownership, install sandbox dependencies, record the installation, reload OpenCode, then verify.
+Install order: OpenCode handshake, acquire the verified local memory model and resolve or acquire CodeGraph, begin the operation record, apply plans and ownership records, register the Takt Memory adapter, start the memory service and confirm readiness, register CodeGraph, install sandbox dependencies, record the installation, reload OpenCode, then verify. A prerequisite failure restores any managed copy set aside before deployment; a failure after deployment reports the work already applied.
 
 | Concern | Behavior | Evidence |
 | :--- | :--- | :--- |
@@ -28,7 +28,7 @@ Install order: OpenCode handshake, acquire Engram and CodeGraph (a failure here 
 | Sync | Files whose hash differs from the manifest are skipped as locally edited; deleted files are redeployed. | `takt/setup/operations.go` |
 | Uninstall | Per file: keep, preserve or remove; edited files are preserved or restored from backup. | `takt/setup/operations.go` |
 | Restore | Rewrites entries that have a backup path. | `takt/setup/restore.go` |
-| Drift | A scan compares the installed preview with current files; correction applies the selected paths and re-injects Engram and CodeGraph. | `takt/tui/runtime/runtime.go` |
+| Drift | A scan compares the installed preview with current files; correction applies the selected paths and re-registers Takt Memory and CodeGraph. | `takt/tui/runtime/runtime.go` |
 
 ## VFS staged revision
 
@@ -46,7 +46,13 @@ Preparation is ordinary work, refused during a cycle; it freezes the reviewed pr
 
 ## Memory session
 
-Writes go through `takt-ai memory record`, with author, session and directory supplied by the harness. Entries link to the session start anchor and to a related target; a continued session links to the previous end anchor. Only a successfully linked new entry resumes a closed host conversation, preserving the historical close anchors; failed writes and deduplicated retries leave the close intact. An explicit repeat close of a closed session is rejected, while a fallback close is idempotent for an unknown, empty or already closed session. The plugin sends that fallback on session deletion.
+`takt-ai memory serve` is an independent process and the sole owner of `memory.db`. MCP runs over its private Unix socket. OpenCode registers `takt_memory` as `takt-ai memory mcp --crew`; external clients use `takt-ai memory mcp [--workspace <dir>]`, with no crew or OpenCode dependency. Both expose `record`, `search`, `read`, `sessions`, `continue_session` and `close_session`.
+
+Before each crew call, the memory plugin vets required approvals and binds the host session, catalog agent, claimed root and workspace through `/admin`. The service resolves this binding when the tool arrives on `/crew`. External adapters instead supply their own session identity on `/external`; external clients cannot write into or close crew sessions. Neither client opens the store.
+
+The first committed entry establishes the session. Continuity with a closed session remains pending until that first entry; it can be replaced or withdrawn before then. Only a root session closes or declares continuity. A close stores objective, current state and the range of entries since the last close. A later entry reopens the session without changing earlier closes; closing with nothing new is refused without recording anything. Session listings derive chronology from entries. Exiting or deleting an OpenCode session does not automatically close memory.
+
+Startup is explicit and idempotent (`memory start`; installation initializes an absent store). Missing, corrupt or newer stores are reported rather than silently replaced. The semantic worker backfills derived vectors; entries remain searchable by terms when the model is unavailable, and diagnostics expose semantic coverage. Uninstall retention obtains a consistent backup through the service before stopping the owner and retiring its store.
 
 **Dreaming is planned, not implemented.** No dream cycles, diary or scheduler exist in code; `PRD_DREAMING.md` reports no complete requirements.
 
@@ -81,9 +87,9 @@ All five flows run through one generic table-driven FSM.
 | Flow | States |
 | :--- | :--- |
 | install | Components, Conflicts, Review, Result |
-| uninstall | Modified, Engram, Review, Result, NotInstalled |
+| uninstall | Modified, Memory, Review, Result, NotInstalled |
 | drift | Report, Select, Review, Result, NotInstalled |
 | models | Picker, Result |
 | diagnostics | Collecting, Report, NotInstalled |
 
-Install: Components confirms into Review; Review confirms into the install or back to Components to personalize; Result returns to Review on retry or leaves to the menu, models or quit. Uninstall moves Modified, Engram, Review, Result on confirm, and back reverses. Drift moves Report, Select, Review, Result, and a rescan returns to Report. Models stays in Picker while an action runs. Diagnostics moves Collecting to Report, and repair opens the repair flow.
+Install: Components confirms into Review; Review confirms into the install or back to Components to personalize; Result returns to Review on retry or leaves to the menu, models or quit. Uninstall moves Modified, Memory, Review, Result on confirm, and back reverses. Drift moves Report, Select, Review, Result, and a rescan returns to Report. Models stays in Picker while an action runs. Diagnostics moves Collecting to Report, and repair opens the repair flow.
