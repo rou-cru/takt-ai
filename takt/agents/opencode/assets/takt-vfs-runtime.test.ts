@@ -2036,12 +2036,16 @@ describe("shell admission", () => {
     const vfs = await startVfs({ sessions: unitSessions, respond: importOk })
     try {
       await vfs.run("vfs_bind", { scope: ["src/a.go"] })
-      await admit(vfs, shellEvent())
+      const marked = await admit(vfs, shellEvent())
+      await vfs.fire(vfs.shell, "create.before", { command: marked })
       vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "dispatch" } } as OpenCodeEvent)
-      await until(() => vfs.requests("vfs", "shell-complete").length === 1)
+      await until(() => vfs.requests("vfs", "shell-complete").length === 1 && vfs.requests("dispatch", "finish").length === 1)
       const order = vfs.calls.map((call) => `${call.kind}:${call.command}`)
+      const imported = order.indexOf("vfs:shell-complete")
       const finished = order.indexOf("dispatch:finish")
-      if (finished >= 0) expect(order.indexOf("vfs:shell-complete")).toBeLessThan(finished)
+      expect(imported).toBeGreaterThanOrEqual(0)
+      expect(finished).toBeGreaterThanOrEqual(0)
+      expect(imported).toBeLessThan(finished)
     } finally { await vfs.stop() }
   })
 
