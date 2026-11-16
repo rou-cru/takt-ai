@@ -18,6 +18,26 @@ func TestReadUnknownIDAndSection(t *testing.T) {
 	wantRefusal(t, err, "Missing", "Intro", "Usage")
 }
 
+func TestReadSupersededIDKeepsItsIdentityAndBody(t *testing.T) {
+	s := openStore(t)
+	w := external("w1")
+	old := rec(t, s, w, memory.ScopeWorkspace, memory.NatureObservation, "artifact old", "body old")
+	current := mustRecord(t, s, w, memory.RecordArgs{Nature: memory.NatureObservation, Scope: memory.ScopeWorkspace,
+		Title: "artifact new", Content: "body new", Evidence: "verified revision", RelatesTo: rel(old, memory.RelationSupersedes)}).ID
+	r, err := s.Read(context.Background(), old, "")
+	if err != nil || r.ID != old || r.Title != "artifact old" || r.Body != "body old" || r.CurrentID != current || r.CurrentTitle != "artifact new" {
+		t.Fatalf("read #%d: %+v, current #%d, error %v", old, r, current, err)
+	}
+	if text := r.Text(); !strings.Contains(text, "body old") || strings.Contains(text, "body new") {
+		t.Fatalf("read substituted the current body: %s", text)
+	}
+	if len(r.Relations) == 0 {
+		t.Fatal("read lost the supersession relation")
+	}
+	_, err = s.Read(context.Background(), current+1, "")
+	wantRefusal(t, err, "#"+itoa(current+1), "not found")
+}
+
 func TestReadSmallEntryReturnsEverything(t *testing.T) {
 	s := openStore(t)
 	ctx := context.Background()

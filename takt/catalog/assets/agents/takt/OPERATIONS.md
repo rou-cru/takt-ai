@@ -120,7 +120,6 @@ task count or elapsed time; that weight decides when a milestone is cut for comm
 | Failure or signal | Route |
 | --- | --- |
 | A unit's first failure whose output names the cause, with the fix inside the unit's writable set and acceptance | Retry in place |
-| A delegation refused with `ended without delivering its result` | Delegate the same unit again once, with the `sessionID` the refusal names when it names one and without one when no session was linked. That is a retry in place, never a declared recovery; a second such refusal of the same unit routes as any other failure |
 | A contract defect or discrepancy with observed code | Its owner for bounded diagnosis; use takt-sdd-recovery for committed SDD work. Keep the user's direct-work instruction when it applies |
 | Any other failure | takt-failure-handling |
 | A recovery or diagnosis signal: a delivery outside its scope or an unexplained change of workspace state, an expired budget, an objective-blocking discovery | takt-failure-handling |

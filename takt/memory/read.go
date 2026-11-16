@@ -115,7 +115,7 @@ type ReadResult struct {
 	Body         string
 }
 
-// Read returns the entry with the given ID: metadata, the current version when it is superseded, relations,
+// Read returns the entry with the given ID: metadata, a pointer to the current version when it is superseded, relations,
 // the body, and the head version of each supplement. When the body and supplements exceed the read budget it
 // returns the outline, the section named by section (the first when empty), and the supplements by ID and
 // title. An unknown ID or section is refused as such and never substituted (MEM-RET-8).

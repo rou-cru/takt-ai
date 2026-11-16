@@ -336,15 +336,14 @@ type Entry struct {
 	// to explain it (PR-DAG-MUT-6).
 	Reason string `json:"reason,omitempty"`
 	// Execution facts are internal harness observations and declarations.
-	Caller     string  `json:"caller,omitempty"`
-	Child      string  `json:"child,omitempty"`
-	Background bool    `json:"background,omitempty"`
-	CreatedAt  int64   `json:"created_at,omitempty"`
-	ResultIDs  []int64 `json:"result_ids,omitempty"`
-	None       bool    `json:"none,omitempty"`
-	CycleID    string  `json:"cycle_id,omitempty"`
-	Role       string  `json:"role,omitempty"`
-	Phase      string  `json:"phase,omitempty"`
+	Caller    string  `json:"caller,omitempty"`
+	Child     string  `json:"child,omitempty"`
+	CreatedAt int64   `json:"created_at,omitempty"`
+	ResultIDs []int64 `json:"result_ids,omitempty"`
+	None      bool    `json:"none,omitempty"`
+	CycleID   string  `json:"cycle_id,omitempty"`
+	Role      string  `json:"role,omitempty"`
+	Phase     string  `json:"phase,omitempty"`
 	// Owner is the harness instance an execution or lease belongs to.
 	Owner string `json:"owner,omitempty"`
 	// Model is the provider/model an execution runs, or a restored seat's.

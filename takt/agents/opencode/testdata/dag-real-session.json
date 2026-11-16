@@ -394,7 +394,7 @@
       "state": "settled",
       "outcome": "completed",
       "launched": true,
-      "contract": "Generate missing QA policy, plan, traceability matrix and environment requirements against Engram #14912 corrected by #14913, consuming the preserved-overhaul contracts and judge findings; no implementation or DAG authorship.",
+      "contract": "Generate missing QA policy, plan, traceability matrix and environment requirements against the approved product contracts and judge findings declared as consumed inputs; no implementation or DAG authorship.",
       "agent": "qa"
     },
     {

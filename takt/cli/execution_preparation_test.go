@@ -183,7 +183,7 @@ func scenarioInterruptedPreparationResumesItsExactAttemptAndGates(t *testing.T, 
 	}
 	// The interrupted record names no model, as one from before models were
 	// recorded; the retry names the model it runs and still resumes.
-	r.Action, r.Owner, r.Model, r.Configured = "prepare", testOwnerInstance, "p/a", "p/a"
+	r.Action, r.Owner, r.Model, r.Previous = "prepare", testOwnerInstance, "p/a", "p/a"
 	r.AuthorKeys = []vfs.AgentID{vfs.AgentID(a)}
 	got, err := fx.exec(r)
 	if err != nil || got["attempt"] != u.AttemptID || got["launchable"] != true {

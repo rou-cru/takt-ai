@@ -12,7 +12,7 @@ metadata:
 ## Records
 
 - Standard results: behavioral requirements, scenarios and acceptance criteria.
-- `decision` (`workspace`): requirements the user confirmed or discarded, with the approving entry `#id` or the specification file as evidence.
+- `decision` (`workspace`): requirements the user confirmed or discarded, with the approving entry `#id` or attributable user approval as evidence; the specification just authored is not itself proof of approval.
 - An `observation` that `corrects` an earlier recorded assumption a clarification proved wrong.
 - `proposal` (`workspace`): requirement options raised and not adopted.
 

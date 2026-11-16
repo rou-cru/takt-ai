@@ -62,7 +62,7 @@ var Tools = []Tool{
 	{
 		Name: ToolRead,
 		Description: "Read one Takt memory entry by ID; a known ID needs no search first. Returns its metadata, relations, " +
-			"and complete body, its current version when it was corrected or superseded, and the current version of " +
+			"and complete original body, a pointer to its current version when it was corrected or superseded, and the current version of " +
 			"each entry that supplements it. When that exceeds the read budget, it returns instead an outline of " +
 			"section headings with sizes, the requested or first section, and the supplements by ID and title. An " +
 			"unknown ID or section is refused as such and never replaced by another entry: report the ID as not " +

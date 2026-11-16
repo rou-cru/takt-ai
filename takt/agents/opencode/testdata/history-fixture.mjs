@@ -35,15 +35,21 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
    if (executions[r.dispatch]) return reply({execution:executions[r.dispatch],launchable:false})
    if (Object.values(executions).some(d=>!d.settled && d.root===r.session && d.unit===r.event)) return denied("unit already in flight")
    const attempt=String(1+Object.values(executions).filter(d=>d.root===r.session && d.unit===r.event).length)
-   const d={dispatch:r.dispatch,root:r.session,unit:r.event,attempt,agent:r.agent,caller:r.caller,background:r.background??false,admitted_at:Date.now(),inputs:[...ids],...(r.child?{child:r.child}:{}),...(r.owner?{owner:r.owner}:{})}
+   const d={dispatch:r.dispatch,root:r.session,unit:r.event,attempt,agent:r.agent,caller:r.caller,admitted_at:Date.now(),inputs:[...ids],...(r.child?{child:r.child}:{}),...(r.owner?{owner:r.owner}:{})}
    executions[r.dispatch]=d;
    for(const author of r.author_keys??[])claims.push({key:`gate-${r.dispatch}-${author}`,root_session_id:r.session,work_unit_id:r.event,agent_id:r.agent,target_instance:r.agent,pending:true,scope:[],author_key:author})
    return reply({...d,launchable:true})
   },
   attach_child(r) {
-   const bound=activeChild(r.child,r.agent);if(bound)return reply(bound)
+   const bound=activeChild(r.child,r.agent)
+   if (r.dispatch) {
+    const d=executions[r.dispatch]
+    if(!d || d.settled || (r.attempt && r.attempt!==d.attempt) || (d.child && d.child!==r.child) || (bound && bound!==d))return denied("native callback no longer names its prepared attempt")
+    d.child=r.child;d.launched=true;return reply(d)
+   }
+   if(bound)return reply(bound)
    if(Object.values(executions).some(d=>d.child===r.child))return reply(null)
-   const d=r.dispatch?executions[r.dispatch]:Object.values(executions).find(d=>!d.settled&&!d.child&&d.root===r.session&&d.unit===r.event&&d.agent===r.agent&&d.caller===r.caller&&(!r.created_at||r.created_at>=d.admitted_at-1000))
+   const d=Object.values(executions).find(d=>!d.settled&&!d.child&&d.root===r.session&&d.unit===r.event&&d.agent===r.agent&&d.caller===r.caller&&(!r.created_at||r.created_at>=d.admitted_at-1000))
    if(!d){return reply(null)}d.child=r.child;d.launched=true;return reply(d)
   },
   deliver(r) {

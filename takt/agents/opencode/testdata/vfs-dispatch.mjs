@@ -52,6 +52,14 @@ function requestOf(call) {
 
 // A delegation left by a process that died is already in storage at start.
 const store = new Map([["takt/vfs/delegations", { "old:call-0": { unit: "orphan", root: "old-root" } }]])
+const events = []
+let wake
+async function* stream() {
+  while (true) {
+    if(!events.length) await new Promise(resolve=>{wake=resolve})
+    while(events.length) yield events.shift()
+  }
+}
 const tools = {}
 const hooks = {}
 const permissionHooks = {}
@@ -60,7 +68,6 @@ const synthetic = []
 const interrupted = []
 const unreachable = new Set()
 const promptedSessions = []
-let onPrompt = async (_sessionID, _text) => {}
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
@@ -69,7 +76,7 @@ await plugin.setup({
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: sessionID } },
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
-    prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
+    prompt: async ({ sessionID }) => { promptedSessions.push(sessionID) },
     wait: async () => {},
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => {
@@ -87,7 +94,7 @@ await plugin.setup({
       return { dispose() {} }
     },
   },
-  event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
+  event: { subscribe: () => ({ [Symbol.asyncIterator]: stream }) },
 })
 
 const root = { sessionID: "root", agent: "takt" }
@@ -160,11 +167,19 @@ assert.equal(calls.slice(before).filter(c=>c.verb==="dispatch" && requestOf(c).a
 // A delegation executes the work unit its description names: admission,
 // launch and the end of the call all speak for that unit, and the host call
 // identity travels as the dispatch so a retry is told from a repetition.
-const delegate = async (phase, description, id = "call-1", agent = "dev", result = {}) => {
+const delegate = async (phase, description, id = "call-1", agent = "dev", result = { metadata: { sessionID: description.trim(), status: "running" } }) => {
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, root)
   for (const hook of hooks[phase]) {
     await hook({ tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
       input: { agent, description, prompt: "p" }, status: "completed", result })
+  }
+  if (phase === "execute.after") {
+    assert.equal(owner.executions[`root:${id}`].settled, undefined, "native launch ended active work")
+    // Drive the existing reconciliation from the native child's idle event.
+    events.push({id:`idle-${id}`,created:1,type:"session.idle",data:{sessionID:result.metadata.sessionID}})
+    wake?.()
+    for(let i=0;i<100 && !owner.executions[`root:${id}`].settled;i++) await new Promise(resolve=>setTimeout(resolve,2))
+    assert.ok(owner.executions[`root:${id}`].settled, "idle child was not reconciled")
   }
 }
 const dispatched = () => calls.filter(c => c.verb === "dispatch").map(requestOf)
@@ -252,25 +267,21 @@ respond = (call) => call.verb === "dispatch" && requestOf(call).action === "vali
 await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "unreported", agent: "pm" }), /memory entry ID/)
 respond = () => undefined
 
-// A producer that never calls deliver_result never silently finishes: the
-// delegation fails distinctly instead, but its unit still settles so a
-// retry is not blocked behind a stranded in-flight state.
+// Idle settles termination without inventing a delivered result or a verdict.
 planningAt = dispatched().length
 await delegate("execute.before", "missing-result", "call-6", "pm")
-await assert.rejects(() => delegate("execute.after", "missing-result", "call-6", "pm"), /the specialist ended without delivering its result/)
+await delegate("execute.after", "missing-result", "call-6", "pm")
+assert.deepEqual(owner.executions["root:call-6"].delivery ?? [], [])
 assert.deepEqual(dispatched().slice(planningAt).filter(r=>["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
 
-// The context hook records a producer's own session as its unit's child. A
-// delegation that ends without a delivery re-prompts that exact child once;
-// a delivery made on that nudge still reaches finish.
+// A result delivered after launch is credited to its own child, without a nudge.
 planningAt = dispatched().length
-await delegate("execute.before", "nudge", "call-7", "pm")
-const nudgeEvent = { agent: "pm", sessionID: "nudge", tools: {}, system: [] }
-for (const callback of sessionHooks.context) await callback(nudgeEvent)
-onPrompt = async (sessionID) => { await tools.deliver_result.execute({ result_ids: [789] }, { sessionID, agent: "pm" }) }
-await delegate("execute.after", "nudge", "call-7", "pm")
-onPrompt = async () => {}
-assert.deepEqual(promptedSessions.slice(-1), ["nudge"])
+await delegate("execute.before", "late", "call-7", "pm")
+const lateContext = { agent: "pm", sessionID: "late", tools: {}, system: [] }
+for (const callback of sessionHooks.context) await callback(lateContext)
+await tools.deliver_result.execute({ result_ids: [789] }, { sessionID: "late", agent: "pm" })
+await delegate("execute.after", "late", "call-7", "pm")
+assert.deepEqual(promptedSessions, [])
 assert.deepEqual(dispatched().slice(planningAt).filter(r=>["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "deliver", "finish"])
 
 coreClaims=[]

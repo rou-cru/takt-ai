@@ -37,7 +37,6 @@ type Execution struct {
 	Agent      string  `json:"agent"`
 	Caller     string  `json:"caller"`
 	Child      string  `json:"child,omitempty"`
-	Background bool    `json:"background,omitempty"`
 	AdmittedAt int64   `json:"admitted_at"`
 	Inputs     []int64 `json:"inputs"`
 	Delivery   []int64 `json:"delivery,omitempty"`
@@ -99,7 +98,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, Background: e.Background, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
