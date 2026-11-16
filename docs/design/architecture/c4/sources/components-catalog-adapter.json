@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/c4/diagrams/components-catalog-adapter.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -54,10 +54,10 @@
       ]
     },
     {
-      "id": "engram",
+      "id": "memory-wire",
       "type": "backend",
-      "label": "engram",
-      "sublabel": "acquire + inject",
+      "label": "memory tool contract",
+      "sublabel": "server key + tool names",
       "pos": [
         620,
         40
@@ -68,8 +68,14 @@
       ],
       "sources": [
         {
-          "path": "takt/engram/acquire.go",
-          "line": 56
+          "path": "takt/memory/tools.go",
+          "line": 3,
+          "end_line": 19
+        },
+        {
+          "path": "takt/agents/opencode/renderer.go",
+          "line": 24,
+          "end_line": 29
         }
       ]
     },
@@ -259,11 +265,12 @@
       "label": "helpers"
     },
     {
-      "id": "renderer-engram",
+      "id": "renderer-memory-wire",
       "from": "renderer",
-      "to": "engram",
+      "to": "memory-wire",
       "fromSide": "top",
-      "toSide": "bottom"
+      "toSide": "bottom",
+      "label": "render wire names"
     },
     {
       "id": "renderer-plugins",
@@ -308,6 +315,14 @@
         "Everything also depends on model; not drawn",
         "agents/opencode also imports obs and vfs to build permission rules",
         "Three plugins and the sandbox adapter, loaded by the VFS plugin, are embedded in the binary and written into OpenCode on install"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Projection",
+      "items": [
+        "The renderer injects the memory tool names and crew roster into the plugin",
+        "Lifecycle registers the stdio MCP command; the plugin registers no tools"
       ]
     }
   ]

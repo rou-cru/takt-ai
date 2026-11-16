@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/runtime/diagrams/memory-session.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -18,77 +18,77 @@
   },
   "participants": [
     {
+      "id": "crew",
+      "type": "backend",
+      "label": "Crew / OpenCode",
+      "sublabel": "takt_memory tools",
+      "sources": [
+        {
+          "path": "takt/memory/tools.go",
+          "line": 11,
+          "end_line": 19
+        }
+      ]
+    },
+    {
       "id": "plugin",
-      "type": "backend",
+      "type": "security",
       "label": "memory plugin",
-      "sublabel": "takt-memory.ts",
+      "sublabel": "approvals + binding",
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-memory.ts",
-          "line": 200,
-          "end_line": 234
-        },
-        {
-          "path": "takt/agents/opencode/assets/takt-memory.ts",
-          "line": 160,
-          "end_line": 170
+          "line": 250,
+          "end_line": 273
         }
       ]
     },
     {
-      "id": "cli",
+      "id": "adapter",
       "type": "backend",
-      "label": "cli",
-      "sublabel": "memory subcommand",
+      "label": "stdio adapter",
+      "sublabel": "memory mcp --crew",
       "sources": [
         {
-          "path": "takt/cli/memory.go",
-          "line": 56,
-          "end_line": 110
+          "path": "takt/memory/adapter.go",
+          "line": 21,
+          "end_line": 53
         }
       ]
     },
     {
-      "id": "memory",
+      "id": "service",
       "type": "backend",
-      "label": "memory",
-      "sublabel": "Record, Close",
+      "label": "Takt Memory",
+      "sublabel": "MCP /crew + /admin",
       "sources": [
         {
-          "path": "takt/memory/memory.go",
-          "line": 333,
-          "end_line": 351
+          "path": "takt/memory/server.go",
+          "line": 321,
+          "end_line": 342
         },
         {
-          "path": "takt/memory/memory.go",
-          "line": 864,
-          "end_line": 887
+          "path": "takt/memory/server.go",
+          "line": 372,
+          "end_line": 390
         }
       ]
     },
     {
-      "id": "index",
+      "id": "store",
       "type": "database",
-      "label": "session index",
-      "sublabel": "JSON file",
+      "label": "memory.db",
+      "sublabel": "service-owned SQLite",
       "sources": [
         {
-          "path": "takt/memory/session_index.go",
-          "line": 39,
-          "end_line": 60
-        }
-      ]
-    },
-    {
-      "id": "engram",
-      "type": "external",
-      "label": "Engram",
-      "sublabel": "HTTP service",
-      "sources": [
+          "path": "takt/memory/record.go",
+          "line": 127,
+          "end_line": 163
+        },
         {
-          "path": "takt/memory/client.go",
-          "line": 282,
-          "end_line": 291
+          "path": "takt/memory/session.go",
+          "line": 38,
+          "end_line": 83
         }
       ]
     }
@@ -96,156 +96,151 @@
   "messages": [
     {
       "id": "m01",
-      "from": "plugin",
-      "to": "cli",
+      "from": "crew",
+      "to": "plugin",
       "y": 160,
-      "label": "memory record (JSON stdin)",
-      "variant": "emphasis"
+      "label": "before memory call: vet request",
+      "variant": "security"
     },
     {
       "id": "m02",
-      "from": "cli",
-      "to": "memory",
+      "from": "plugin",
+      "to": "service",
       "y": 190,
-      "label": "Record",
-      "variant": "default"
+      "label": "bind host, agent, root, workspace",
+      "variant": "security"
     },
     {
       "id": "m03",
-      "from": "memory",
-      "to": "engram",
+      "from": "crew",
+      "to": "adapter",
       "y": 220,
-      "label": "start service if needed",
-      "variant": "default"
+      "label": "record / continue_session",
+      "variant": "emphasis"
     },
     {
       "id": "m04",
-      "from": "memory",
-      "to": "engram",
+      "from": "adapter",
+      "to": "service",
       "y": 250,
-      "label": "start anchor (first entry)",
+      "label": "relay MCP with host-session meta",
       "variant": "default"
     },
     {
       "id": "m05",
-      "from": "memory",
-      "to": "index",
+      "from": "service",
+      "to": "store",
       "y": 280,
-      "label": "check id, save entry",
-      "variant": "default"
-    },
-    {
-      "id": "m06",
-      "from": "memory",
-      "to": "engram",
-      "y": 310,
-      "label": "write observation",
+      "label": "resolve binding; commit entry + relation",
       "variant": "emphasis"
     },
     {
+      "id": "m06",
+      "from": "store",
+      "to": "service",
+      "y": 310,
+      "label": "committed entry ID",
+      "variant": "return"
+    },
+    {
       "id": "m07",
-      "from": "memory",
-      "to": "engram",
+      "from": "service",
+      "to": "adapter",
       "y": 340,
-      "label": "link to anchor and target",
-      "variant": "dashed"
+      "label": "Recorded #<id>",
+      "variant": "return"
     },
     {
       "id": "m08",
-      "from": "memory",
-      "to": "cli",
+      "from": "adapter",
+      "to": "crew",
       "y": 370,
-      "label": "stored or deduplicated; reopen only when linked",
+      "label": "tool result",
       "variant": "return"
     },
     {
       "id": "m09",
-      "from": "cli",
+      "from": "crew",
       "to": "plugin",
       "y": 400,
-      "label": "result",
-      "variant": "return"
+      "label": "root close_session: vet and bind",
+      "variant": "security"
     },
     {
       "id": "m10",
       "from": "plugin",
-      "to": "cli",
+      "to": "service",
       "y": 430,
-      "label": "memory close, or session.deleted",
-      "variant": "emphasis"
+      "label": "bind caller",
+      "variant": "security"
     },
     {
       "id": "m11",
-      "from": "cli",
-      "to": "memory",
+      "from": "crew",
+      "to": "adapter",
       "y": 460,
-      "label": "Close",
-      "variant": "default"
+      "label": "close_session: objective, state",
+      "variant": "emphasis"
     },
     {
       "id": "m12",
-      "from": "memory",
-      "to": "engram",
+      "from": "adapter",
+      "to": "service",
       "y": 490,
-      "label": "end anchor + closing links",
+      "label": "relay MCP close_session",
       "variant": "default"
     },
     {
       "id": "m13",
-      "from": "memory",
-      "to": "index",
+      "from": "service",
+      "to": "store",
       "y": 520,
-      "label": "set end anchor",
-      "variant": "default"
+      "label": "commit close + entry range",
+      "variant": "emphasis"
     },
     {
       "id": "m14",
-      "from": "memory",
-      "to": "cli",
+      "from": "service",
+      "to": "adapter",
       "y": 550,
-      "label": "closed",
+      "label": "recorded close, or nothing-new refusal",
       "variant": "return"
     },
     {
       "id": "m15",
-      "from": "cli",
-      "to": "plugin",
+      "from": "adapter",
+      "to": "crew",
       "y": 580,
-      "label": "result",
+      "label": "tool result",
       "variant": "return"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Anchors",
+      "title": "Sessions",
       "items": [
-        "Each session gets a start anchor on its first entry and an end anchor on close",
-        "A continued session links its start to the previous end"
+        "The first entry establishes the session; a declared continuation becomes permanent with that entry",
+        "A close covers only entries since the preceding close; a new entry reopens the session without changing earlier closes",
+        "Nothing new to close is refused without effect; exiting OpenCode does not close memory"
       ]
     },
     {
-      "dot": "amber",
-      "title": "Guards",
+      "dot": "cyan",
+      "title": "Attribution",
       "items": [
-        "Personal scope or user orders ask for confirmation first",
-        "Only the agent holding the user conversation links or closes a session; a fallback close skips this check"
+        "Crew attribution comes from a service-owned binding, not agent-supplied entry fields",
+        "External clients use the same six tools through /external; the adapter supplies their session identity and optional workspace",
+        "Only a root session continues or closes; an external client cannot act on crew sessions"
       ]
     },
     {
-      "dot": "violet",
-      "title": "Reopen",
+      "dot": "cyan",
+      "title": "Ownership and availability",
       "items": [
-        "A new entry resumes a closed host conversation only after its anchor and target links are written; historical close anchors remain",
-        "A failed write or a deduplicated retry leaves the previous close intact"
-      ]
-    },
-    {
-      "dot": "rose",
-      "title": "Close",
-      "items": [
-        "An explicit repeat close of a closed session is rejected",
-        "A fallback close is idempotent: an unknown, empty or already closed session is a no-op"
+        "Only the service opens memory.db; its Unix socket is private to the local user",
+        "Explicit startup reuses the owner; missing, corrupt and newer stores remain distinct states",
+        "Backups come from the service; semantic vectors are derived and coverage gaps remain visible"
       ]
     }
   ]

@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/flows/planning-decompose.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -67,13 +67,19 @@
     },
     {
       "id": "memory",
-      "type": "database",
-      "label": "Memory",
-      "sublabel": "Engram",
+      "type": "backend",
+      "label": "Takt Memory",
+      "sublabel": "MCP service",
       "sources": [
         {
-          "path": "takt/memory/memory.go",
-          "line": 16
+          "path": "takt/memory/server.go",
+          "line": 321,
+          "end_line": 342
+        },
+        {
+          "path": "takt/memory/record.go",
+          "line": 127,
+          "end_line": 163
         }
       ]
     }
@@ -100,7 +106,7 @@
       "from": "spec",
       "to": "memory",
       "y": 216,
-      "label": "memory_record: BDD spec",
+      "label": "takt_memory_record: BDD spec",
       "variant": "dashed"
     },
     {
@@ -132,7 +138,7 @@
       "from": "tpm",
       "to": "memory",
       "y": 328,
-      "label": "memory_record: WBS",
+      "label": "takt_memory_record: WBS",
       "variant": "dashed"
     },
     {

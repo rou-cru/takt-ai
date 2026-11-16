@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/c4/diagrams/components-cli-setup.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -95,10 +95,10 @@
       ]
     },
     {
-      "id": "engram",
+      "id": "memory",
       "type": "backend",
-      "label": "engram",
-      "sublabel": "binary acquire + inject",
+      "label": "memory",
+      "sublabel": "MCP client + service",
       "pos": [
         620,
         180
@@ -109,8 +109,14 @@
       ],
       "sources": [
         {
-          "path": "takt/engram/acquire.go",
-          "line": 56
+          "path": "takt/memory/client.go",
+          "line": 45,
+          "end_line": 60
+        },
+        {
+          "path": "takt/lifecycle/lifecycle.go",
+          "line": 381,
+          "end_line": 401
         }
       ]
     },
@@ -258,10 +264,10 @@
       "toSide": "top"
     },
     {
-      "id": "lifecycle-engram",
+      "id": "lifecycle-memory",
       "from": "lifecycle",
-      "to": "engram",
-      "label": "acquire"
+      "to": "memory",
+      "label": "start, register MCP"
     },
     {
       "id": "lifecycle-codegraph",
@@ -310,6 +316,12 @@
       "label": "query",
       "fromSide": "bottom",
       "toSide": "top"
+    },
+    {
+      "id": "doctor-memory",
+      "from": "doctor",
+      "to": "memory",
+      "label": "probe MCP"
     }
   ],
   "cards": [

@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/runtime/diagrams/install-sequence.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -62,23 +62,18 @@
     {
       "id": "tools",
       "type": "backend",
-      "label": "tool installers",
-      "sublabel": "engram, codegraph, npm",
+      "label": "prerequisites",
+      "sublabel": "model, CodeGraph, sandbox",
       "sources": [
         {
           "path": "takt/lifecycle/lifecycle.go",
-          "line": 233,
-          "end_line": 241
+          "line": 258,
+          "end_line": 275
         },
         {
           "path": "takt/lifecycle/lifecycle.go",
-          "line": 296,
-          "end_line": 302
-        },
-        {
-          "path": "takt/agents/opencode/components.go",
-          "line": 274,
-          "end_line": 286
+          "line": 383,
+          "end_line": 415
         }
       ]
     },
@@ -165,7 +160,7 @@
       "from": "lifecycle",
       "to": "tools",
       "y": 384,
-      "label": "acquire binaries",
+      "label": "verify model; resolve CodeGraph",
       "variant": "default"
     },
     {
@@ -189,7 +184,7 @@
       "from": "lifecycle",
       "to": "tools",
       "y": 468,
-      "label": "inject MCP; npm sandbox runtime",
+      "label": "register MCP; start memory; sandbox",
       "variant": "default"
     },
     {
@@ -241,6 +236,14 @@
         "Files are staged and renamed; a commit error restores backups and removes new files",
         "Cancellation keeps applied files and lists the rest; a reload failure is reported, not rolled back",
         "A failed sandbox runtime install is non-fatal: the result lists it as Incomplete"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Memory readiness",
+      "items": [
+        "Register takt_memory as takt-ai memory mcp --crew, start the independent service, and confirm readiness before success",
+        "Install initializes an absent store; sync preserves it. A post-deployment failure reports the files already applied"
       ]
     }
   ]

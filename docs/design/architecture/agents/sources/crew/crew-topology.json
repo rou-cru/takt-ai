@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/crew/crew-topology.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -651,7 +651,7 @@
       "items": [
         "Dispatch admits every delegation and lend switch and keeps the execution history",
         "VFS holds claims, staged work, verdict gates and consolidation; only takt claims and consolidates",
-        "Every agent records to Memory with memory_record (not drawn)"
+        "Every agent records to Memory with takt_memory_record (not drawn)"
       ]
     },
     {

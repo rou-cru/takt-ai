@@ -8,9 +8,12 @@ Takt splits at runtime: the installer runs as a CLI, and the harness runs inside
 | :--- | :--- | :--- | :--- |
 | takt-ai binary | Go, Bubble Tea | Setup, doctor, TUI and the harness subcommands (`codegraph`, `dag`, `dispatch`, `gc`, `memory`, `obs`, `vfs`). Single entry point. Embeds the catalog as a component, not a separate unit. | `takt/cli/main.go`, `takt/catalog/packages.go` |
 | OpenCode configuration | Files | Written by the binary, loaded by OpenCode: `opencode.json`, `AGENTS.md`, `plugins/` and the `takt/` package dir under `~/.config/opencode`, plus `.opencode/skills/`. | `takt/model/paths.go`, `takt/agents/opencode/layout.go`, `takt/skills/skills.go` |
-| OpenCode plugins | TypeScript, Bun | VFS, DAG view and memory plugins; the VFS plugin loads the sandbox adapter (`takt-sandbox.mjs`). They spawn `takt-ai` subcommands. | `takt/agents/opencode/assets/takt-vfs.ts`, `takt-memory.ts`, `takt-dag.tsx` |
+| OpenCode plugins | TypeScript, Bun | VFS, DAG view and memory plugins; the VFS plugin loads the sandbox adapter (`takt-sandbox.mjs`). VFS and DAG spawn `takt-ai` subcommands. The memory plugin vets MCP calls and binds crew attribution through the service admin endpoint. | `takt/agents/opencode/assets/takt-vfs.ts`, `takt-memory.ts`, `takt-dag.tsx` |
 | Local state | SQLite, files | Execution history, event store and VFS staging under the private `.takt-ai` state directory. | `takt/history/history.go`, `takt/obs/store.go` |
-| Managed MCP servers | Engram binary, CodeGraph npm package | Acquired by Takt into `.takt-ai`, run by OpenCode. The binary also calls Engram over HTTP. | `takt/engram/acquire.go`, `takt/codegraph/acquire.go`, `takt/memory/client.go` |
+| Takt Memory service | Go, MCP over Unix socket | Independent `takt-ai memory serve` process; sole reader and writer of `memory.db`. `/crew` and `/external` expose the same six tools; `/admin` handles binding, readiness, backup and shutdown. | `takt/memory/serve.go`, `takt/memory/server.go` |
+| Memory store | SQLite, FTS5, derived embeddings | `$HOME/.takt-ai/memory/memory.db`, relocated by `TAKT_MEMORY_DIR`. Only the service opens it; clients use MCP. | `takt/memory/store.go`, `takt/memory/schema.go` |
+| Memory stdio adapters | Go | `takt-ai memory mcp --crew` relays crew requests unchanged. Without `--crew`, the adapter supplies an external session identity and optional workspace. | `takt/memory/adapter.go` |
+| CodeGraph MCP server | Node package | Resolved from PATH or acquired under `.takt-ai/codegraph`; OpenCode runs its MCP command. | `takt/codegraph/acquire.go` |
 | OpenCode v2 | External runtime | Hosts the crew; the binary writes its configuration files and calls its HTTP API through one adapter. | `takt/internal/opencodeapi/client.go` |
 | Workspace image and Helm chart | Docker, Helm | Package opencode and takt-ai; the image build runs `takt-ai setup image` and exposes OpenCode on port 4096. | `deploy/images/Dockerfile` |
 

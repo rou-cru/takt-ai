@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/orchestrator/session.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -96,8 +96,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 109,
-          "end_line": 116
+          "line": 108,
+          "end_line": 115
         }
       ]
     },
@@ -123,7 +123,7 @@
       "id": "reporting",
       "type": "success",
       "label": "Reported and closed",
-      "sublabel": "memory_close_session",
+      "sublabel": "takt_memory_close_session",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-memory-orchestrator/SKILL.md",

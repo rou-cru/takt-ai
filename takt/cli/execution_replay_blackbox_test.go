@@ -61,17 +61,6 @@ func TestPreparedAndSettledDispatchRejectsIdentityReuseBeforeReplay(t *testing.T
 					}
 				})
 			}
-			body, err := json.Marshal(struct {
-				request
-				Background bool `json:"background"`
-			}{original, true})
-			if err != nil {
-				t.Fatal(err)
-			}
-			changedMode := s.run("dispatch", "--workspace", s.root, "--state", s.state, "--request", string(body))
-			if changedMode.code == 0 || !strings.Contains(changedMode.stderr, "already identifies") {
-				t.Fatalf("background identity mismatch: %+v", changedMode)
-			}
 			if len(s.entries()) != count {
 				t.Fatal("replay or identity refusal changed history")
 			}

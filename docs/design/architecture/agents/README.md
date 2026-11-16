@@ -51,17 +51,17 @@ Role classes come from `agent.yaml`.
 | Class | Agents | VFS capabilities | Receives | Produces |
 | :--- | :--- | :--- | :--- | :--- |
 | orchestrator | takt | claim_list, claim_assign, claim_release, discard, consolidate | Objective from the user | Briefs, plan, DAG, final report |
-| planning_author | analyst, spec, tpm, qa | none | Brief and consumed invariants | One Engram record per artifact, returned as IDs |
+| planning_author | analyst, spec, tpm, qa | none | Brief and consumed invariants | One Takt memory entry per artifact, returned as IDs |
 | direct_interlocutor | pm, architect, product-designer | none | Brief, or a lent session with requirements | Decisions with user approval, returned as IDs |
 | execution | dev, fix, simplify, test | bind, write, read, delete | Brief, writable set, acceptance | Staged work and an author key |
 | verification | verify, judge-a, judge-b | read, verify (gates arrive bound; no bind tool) | Brief, author keys | A verdict per author key, plus a report |
-| quality_assurance | mutation, explorer, quality | none | Brief, test plan and matrix by ID | A report recorded in Engram and delivered by ID |
+| quality_assurance | mutation, explorer, quality | none | Brief, test plan and matrix by ID | A report recorded in Takt memory and delivered by ID |
 
 ## Messages
 
-- Delegation: one-paragraph brief (objective, authorized scope, expected output, acceptance). Invariants never travel in the brief; they are declared by Engram ID.
+- Delegation: one-paragraph brief (objective, authorized scope, expected output, acceptance). Invariants never travel in the brief; they are declared by Takt memory ID.
 - Lend: Takt calls `dispatch_switch` with requirements, client and objective; the harness asks the user to accept the specialist before the switch takes effect, and a refusal means no lend. The specialist hands back one of Standard, EarlyHandoff, TechFault or Outraged (or the lend is aborted).
-- Delivery: planning and interlocutor results are Engram IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Engram and delivered by ID with `deliver_result`. A later report is a new entry related to the earlier one by its content: `supersedes` for a complete new version, `corrects` for a correction, and `supplements` only for a distinct additive artifact.
+- Delivery: planning and interlocutor results are Takt memory IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Takt memory and delivered by ID with `deliver_result`. A later report is a new entry related to the earlier one by its content: `supersedes` for a complete new version, `corrects` for a correction, and `supplements` only for a distinct additive artifact.
 - Two-part delivery: a specialist's delivery ends in VFS; takt releases each one where the plan sends it (phase verification, consolidation or a correction) before delegating more.
 - Ownership: only Takt owns claims, the DAG, delegation, consolidation and Git.
 
@@ -78,7 +78,7 @@ Role classes come from `agent.yaml`.
 | Any VFS operation is refused | The refusal blocks only that operation; a collision is recorded for observation and never latches | Deterministic | `takt/vfs/vfs.go` |
 | Takt consolidates | Orchestrator-only; flushes through a manifest and verifies bases; partial flush blocks all calls until recovery | Deterministic | `takt/vfs/vfs.go`, `takt/vfs/recovery.go` |
 | Takt lends an interface | Records a switch; denies a role that is ineligible or a second holder | Deterministic | `takt/dispatch/interlocutor.go` |
-| Agent writes memory | Validates, anchors to the session, links to related entries, deduplicates by ID | Deterministic | `takt/memory/memory.go` |
+| Agent writes memory | Resolves the service-owned attribution binding, validates the entry and its relation, and commits it transactionally | Deterministic | `takt/memory/bind.go`, `takt/memory/record.go` |
 | Anyone runs Git | Git mutation is guarded by role | Permission rule from the renderer | `takt/agents/opencode/renderer.go` |
 | Orchestrator goes idle | GC coordinator decides whether a cycle is due | Deterministic | `takt/cli/gc_coordinate.go` |
 | Any tool or dispatch event | Event envelope validated and appended to the event store | Deterministic | `takt/cli/obs.go` |
@@ -88,7 +88,7 @@ Role classes come from `agent.yaml`.
 - Choosing a route with the workflow-selection tree, and never re-adopting a route under identical evidence.
 - Cutting a DAG for concurrency and the width self-check before commit.
 - Comparing outputs across product, behavior, architecture and experience, and returning incompatibilities to their owners.
-- Resuming a session from its anchors and reconciling only the conflicts or unknowns that remain with the user.
+- Resuming a session from its closes and entry chronology and reconciling only the conflicts or unknowns that remain with the user.
 - The recovery and diagnosis signals and the recovery conduct (freeze, restore only the abandoned scope, report).
 
 ## Fidelity notes

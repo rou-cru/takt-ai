@@ -33,21 +33,21 @@ import (
 const UnprovenModelCause = "seat/unproven-model"
 
 // Seat is what a delegation declares about the seat it fills (PR-CRW-13):
-// the model it runs, the instance's configured model, and, when it restores
+// the model it runs, its effective model before any override, and, when it restores
 // an unavailable seat, the reason and whether a substitute fills it.
 type Seat struct {
 	Agent         string
 	Model         string
-	Configured    string
+	Previous      string
 	Reason        string
 	Substitute    bool
 	UserConfirmed bool
 }
 
 // Restores reports whether the delegation restores the seat: another model
-// than the configured one, or a substitute.
+// than the effective one before the override, or a substitute.
 func (s Seat) Restores() bool {
-	return s.Substitute || (s.Model != "" && s.Model != s.Configured)
+	return s.Substitute || (s.Model != "" && s.Model != s.Previous)
 }
 
 // ValidateSeat refuses a restoration PR-CRW-13 does not admit, before any
@@ -56,6 +56,9 @@ func (s Seat) Restores() bool {
 // the user's approval, a model this session has not seen complete work.
 func ValidateSeat(h *history.History, root string, s Seat) error {
 	if !s.Restores() {
+		if s.Reason != "" {
+			return fmt.Errorf("dispatch: seat_reason declares a restoration of %s but its effective model is unchanged; choose another model, or omit seat_reason for an ordinary retry", s.Agent)
+		}
 		return nil
 	}
 	role, e := interlocutorRole(s.Agent)

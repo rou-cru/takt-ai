@@ -32,6 +32,9 @@ through the assigned handoff operation, not through a phrase in your final answe
 
 Orchestrator acceptance of an autonomous result permits downstream use; it does not turn
 that result into a user-approved `decision`.
+Revising an artifact does not itself change its nature: a corrected proposal remains a
+proposal. Existing approval remains valid within its original scope; an unapproved change
+does not inherit that approval.
 
 ## 4. Relations
 

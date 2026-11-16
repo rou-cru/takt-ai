@@ -66,7 +66,7 @@ type request struct {
 	Caller            string        `json:"caller,omitempty"`
 	Owner             string        `json:"owner,omitempty"`
 	Model             string        `json:"model,omitempty"`
-	Configured        string        `json:"configured_model,omitempty"`
+	Previous          string        `json:"previous_model,omitempty"`
 	SeatReason        string        `json:"seat_reason,omitempty"`
 	Substitute        bool          `json:"substitute,omitempty"`
 	Confirmed         bool          `json:"user_confirmed,omitempty"`
@@ -943,9 +943,19 @@ func cancellationRetainsCapacity(t *testing.T, bin string) {
 func seatRestoration(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	s.must(commit("plan-1", "brief", "spec-1", "spec-2", "brief-2", "design-1", "design-2", "self"))
-	delegate := func(unit, dispatch, agent, modelID, configured string) request {
+	delegate := func(unit, dispatch, agent, modelID, previous string) request {
 		s.must(request{Action: "inputs", Session: rootSession, Event: unit})
-		return request{Action: "prepare", Session: rootSession, Event: unit, Dispatch: dispatch, Caller: rootSession, Agent: agent, Owner: "instance", Model: modelID, Configured: configured}
+		return request{Action: "prepare", Session: rootSession, Event: unit, Dispatch: dispatch, Caller: rootSession, Agent: agent, Owner: "instance", Model: modelID, Previous: previous}
+	}
+	// A declared no-op restoration spends neither an attempt nor a restoration.
+	noop := delegate("brief", "d1", "pm", "p/a", "p/a")
+	noop.SeatReason = "pm timed out"
+	before := len(s.entries())
+	if res := s.refused(noop); !strings.Contains(res.stderr, "effective model is unchanged") {
+		t.Fatalf("no-op restoration was not refused: %s", res.stderr)
+	}
+	if len(s.entries()) != before {
+		t.Fatal("refused no-op restoration changed execution history")
 	}
 	s.must(delegate("brief", "d1", "pm", "p/a", "p/a"))
 	finished := call("finish", "brief")

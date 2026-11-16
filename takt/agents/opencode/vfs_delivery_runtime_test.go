@@ -12,11 +12,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 )
 
-// The deliver_result protocol: a malformed handoff corrected on retry must
-// finish indistinguishably from a clean first try; a producer that never
-// delivers gets exactly one bounded nudge before a distinct failure; and tpm,
-// once omitted from the producer catalog, must be enforced like any other
-// producer at runtime.
+// Native launches return before delivery. Termination, delivery, and verdicts
+// remain separate facts in the rendered plugin.
 func TestTaktVFSPluginDeliveryProtocol(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Node 24 plugin integration test")
@@ -64,27 +61,7 @@ export const Plugin = { define: definition => definition }
 		}
 	}
 
-	// A deliver_result call that fails validation and is retried with valid
-	// IDs in the same delegation must finish exactly like a clean first try:
-	// same finish request shape, no side channel marking the earlier failure.
-	t.Run("retry_indistinguishable_from_clean", func(t *testing.T) { run(t, "retry") })
-	t.Run("async_delivery_waits_for_child", func(t *testing.T) { run(t, "async_delivery") })
-	t.Run("async_missing_waits_for_child", func(t *testing.T) { run(t, "async_missing") })
-	t.Run("wait_error_settles_and_cleans_up", func(t *testing.T) { run(t, "wait_error") })
-	t.Run("prompt_error_does_not_wait", func(t *testing.T) { run(t, "prompt_error") })
-	t.Run("delivered_or_failed_calls_do_not_wait", func(t *testing.T) { run(t, "no_unnecessary_wait") })
-	t.Run("concurrent_deliveries_wait_for_their_own_child", func(t *testing.T) { run(t, "concurrent_delivery") })
-
-	// A producer that never calls deliver_result gets exactly one bounded
-	// nudge, then a failure textually distinct from a validate_results
-	// transport failure.
-	t.Run("bounded_fallback_distinct_error", func(t *testing.T) { run(t, "fallback") })
-
-	// tpm was hardcoded out of the producer list before; it must now be
-	// enforced like analyst/pm/architect/product-designer/spec.
-	t.Run("tpm_enforced_as_producer", func(t *testing.T) { run(t, "tpm") })
-
-	// verify is both a verifier and a result producer: its gate is delivered
-	// bound and judges, and its delegation still owes and hands back a result.
-	t.Run("verifier_is_also_a_producer", func(t *testing.T) { run(t, "dual_role") })
+	for _, scenario := range []string{"retry", "async_delivery", "async_missing", "wait_error", "concurrent_delivery", "tpm", "dual_role", "repeated_callbacks", "continued_child"} {
+		t.Run(scenario, func(t *testing.T) { run(t, scenario) })
+	}
 }

@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/c4/diagrams/components-harness.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -15,8 +15,8 @@
     {
       "id": "memory",
       "type": "backend",
-      "label": "memory",
-      "sublabel": "Engram writes + anchors",
+      "label": "memory client",
+      "sublabel": "MCP describe + binding",
       "pos": [
         40,
         190
@@ -27,8 +27,14 @@
       ],
       "sources": [
         {
-          "path": "takt/memory/memory.go",
-          "line": 16
+          "path": "takt/memory/client.go",
+          "line": 45,
+          "end_line": 60
+        },
+        {
+          "path": "takt/memory/client.go",
+          "line": 94,
+          "end_line": 104
         }
       ]
     },
@@ -233,6 +239,53 @@
           "line": 287
         }
       ]
+    },
+    {
+      "id": "memory-service",
+      "type": "backend",
+      "label": "Takt Memory service",
+      "sublabel": "independent process",
+      "pos": [
+        40,
+        490
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/serve.go",
+          "line": 74,
+          "end_line": 94
+        },
+        {
+          "path": "takt/memory/server.go",
+          "line": 321,
+          "end_line": 342
+        }
+      ]
+    },
+    {
+      "id": "memory-store",
+      "type": "database",
+      "label": "memory.db",
+      "sublabel": "service-owned SQLite",
+      "pos": [
+        330,
+        490
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "takt/memory/store.go",
+          "line": 175,
+          "end_line": 197
+        }
+      ]
     }
   ],
   "connections": [
@@ -255,12 +308,6 @@
       "label": "records",
       "fromSide": "bottom",
       "toSide": "top"
-    },
-    {
-      "id": "memory-history",
-      "from": "memory",
-      "to": "history",
-      "label": "links"
     },
     {
       "id": "gc-dispatch",
@@ -330,6 +377,18 @@
       "from": "analysis",
       "to": "codegraph",
       "label": "dependents closure"
+    },
+    {
+      "id": "memory-service",
+      "from": "memory",
+      "to": "memory-service",
+      "label": "admin MCP"
+    },
+    {
+      "id": "service-store",
+      "from": "memory-service",
+      "to": "memory-store",
+      "label": "sole owner"
     }
   ],
   "cards": [
@@ -339,6 +398,14 @@
       "items": [
         "The cli is the other caller; it is not drawn",
         "Edges show principal dependencies; the note has the full import table"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Memory",
+      "items": [
+        "Crew and external stdio adapters call the same tools through /crew and /external",
+        "No direct execution-history or client-to-store write path; attribution is resolved by the memory service"
       ]
     }
   ]

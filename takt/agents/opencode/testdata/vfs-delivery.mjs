@@ -48,6 +48,15 @@ function requestOf(call) {
 }
 
 const scenario = process.env.TAKT_VFS_TEST_SCENARIO
+const events = []
+let wake
+async function* stream() {
+  while (true) {
+    if (!events.length) await new Promise(resolve => { wake = resolve })
+    while (events.length) yield events.shift()
+  }
+}
+const nativeCalls = new Map()
 // A verifier that is also a result producer judges an author bound earlier.
 const author = { key: "author-1", agent: "dev", session: "root", dispatch: "dev-child", unit: "writer", revision: 1, deltaHash: "h1" }
 const store = new Map(scenario === "dual_role" ? [["takt/vfs/bindings", [author]]] : [])
@@ -58,18 +67,21 @@ const hooks = {}
 const sessionHooks = {}
 const promptedSessions = []
 const waitedSessions = []
-let onPrompt = async (_sessionID, _text) => {}
-let onWait = async (_sessionID) => {}
+const idleSessions = new Set()
+const idleWaiters = new Map()
+let onWait = async sessionID => {
+  if (!idleSessions.has(sessionID)) await new Promise(resolve => { idleWaiters.set(sessionID, resolve) })
+}
 await plugin.setup({
   location: { directory: "/workspace" },
   storage: { async get(key) { return store.get(key) }, async set(key, value) { store.set(key, value) } },
   session: {
-    context: async () => [],
+    context: async () => [{type:"assistant",content:[...nativeCalls].map(([id,status])=>({type:"tool",name:"subagent",id,state:{status}}))}],
     // The host titles a child after its delegation's description.
     async get({ sessionID }) { return sessionID === "root" ? {} : { parentID: "root", title: titles[sessionID] ?? sessionID } },
     hook: async (name, callback) => { sessionHooks[name] ??= []; sessionHooks[name].push(callback); return { dispose() {} } },
     create: async () => ({ id: "lent" }),
-    prompt: async ({ sessionID, text }) => { promptedSessions.push(sessionID); await onPrompt(sessionID, text) },
+    prompt: async ({ sessionID }) => { promptedSessions.push(sessionID) },
     wait: async ({ sessionID }) => { waitedSessions.push(sessionID); await onWait(sessionID) },
     synthetic: async () => {},
     interrupt: async () => {},
@@ -84,276 +96,121 @@ await plugin.setup({
       return { dispose() {} }
     },
   },
-  event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) }) },
+  event: { subscribe: () => ({ [Symbol.asyncIterator]: stream }) },
 })
 
 // delegate runs the subagent hooks of one phase for a delegation; extra adds
-// fields to its input, and result is the host's reply the after hooks amend.
-const delegate = async (phase, description, id, agent, status = "completed", extra = {}, result = {}) => {
+// fields to its input. The host's reply is the native launch result.
+const delegate = async (phase, description, id, agent, status = "completed", extra = {}) => {
   if (phase === "execute.before" && description.trim()) await tools.dispatch_inputs.execute({ work_unit_id: description.trim(), result_ids: [] }, { sessionID: "root", agent: "takt" })
+  const reply = { content: "Working", metadata: { sessionID: description, status: "running" } }
   const event = { tool: "subagent", sessionID: "root", agent: "takt", messageID: "m", id,
-    input: { agent, description, prompt: "p", ...extra }, status, result }
+    input: { agent, description, prompt: "p", ...extra }, status, result: reply }
+  nativeCalls.set(id, phase === "execute.before" ? "running" : status)
   for (const hook of hooks[phase]) await hook(event) // NOSONAR: hooks run in registration order
   return event
 }
 // dispatched lists the coordination requests sent so far.
 const dispatched = () => calls.filter(c => c.verb === "dispatch").map(requestOf)
 
-if (scenario === "wait_error" || scenario === "prompt_error") {
-  const unit = "failed-resume"
-  await delegate("execute.before", unit, "call-failed", "pm")
-  for (const callback of sessionHooks.context) {
-    await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
-  }
-  const failure = new Error(`${scenario}: child session unavailable`)
-  if (scenario === "prompt_error") {
-    onPrompt = async () => { throw failure }
-  } else {
-    onWait = async (sessionID) => {
-      assert.equal(sessionID, unit)
-      // Even a result delivered before wait rejects must be cleared on exit.
-      await tools.deliver_result.execute({ result_ids: [42] }, { sessionID, agent: "pm" })
-      throw failure
-    }
-  }
-  await assert.rejects(() => delegate("execute.after", unit, "call-failed", "pm"), error => error === failure)
-  assert.deepEqual(promptedSessions, [unit])
-  assert.deepEqual(waitedSessions, scenario === "wait_error" ? [unit] : [])
-  const finishes = dispatched().filter(r => r.action === "finish")
-  assert.deepEqual(finishes, [{ action: "finish", event: unit, dispatch: "root:call-failed", attempt: "1", session: "root" }])
+const spinUntil = async (ready) => {
+  for (let i = 0; i < 100 && !ready(); i++) await new Promise(resolve => setTimeout(resolve, 2))
+  assert.ok(ready(), "expected lifecycle observation never arrived")
+}
+const idle = async (sessionID) => {
+  idleSessions.add(sessionID)
+  idleWaiters.get(sessionID)?.()
+  events.push({ id: `idle-${sessionID}`, created: 1, type: "session.idle", data: { sessionID } })
+  wake?.()
+  await spinUntil(() => dispatched().some(r => r.action === "finish" && owner.executions[r.dispatch]?.child === sessionID))
+}
+const deliver = (sessionID, ids, agent = "pm") => tools.deliver_result.execute({ result_ids: ids }, { sessionID, agent })
+const finishes = () => dispatched().filter(r => r.action === "finish")
+const launch = async (unit, id = unit, agent = "pm", extra = {}) => {
+  await delegate("execute.before", unit, id, agent, "completed", extra)
+  await delegate("execute.after", unit, id, agent)
+  assert.equal(owner.executions[`root:${id}`].settled, undefined, "launch return settled active work")
+}
 
-  // A repeated host notification must not settle the same delegation twice.
-  await delegate("execute.after", unit, "call-failed", "pm")
-  assert.deepEqual(dispatched().filter(r => r.action === "finish"), finishes)
-
-  onPrompt = async () => { assert.fail("retry reused the previous child") }
-  onWait = async () => { assert.fail("retry waited on the previous child") }
-  await delegate("execute.before", unit, "call-retry", "pm")
-  await assert.rejects(() => delegate("execute.after", unit, "call-retry", "pm"),
-    /the specialist ended without delivering its result/)
-  assert.equal(dispatched().filter(r => r.action === "finish").length, 2,
-    "failed retry must also settle; a stale delivery must not satisfy it")
-} else if (scenario === "no_unnecessary_wait") {
-  onWait = async () => { assert.fail("no child turn was resumed") }
-  for (const status of ["completed", "error", "cancelled"]) {
-    const unit = `no-wait-${status}`
-    await delegate("execute.before", unit, unit, "pm")
-    for (const callback of sessionHooks.context) {
-      await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
-    }
-    if (status === "completed") {
-      await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: unit, agent: "pm" })
-    }
-    await delegate("execute.after", unit, unit, "pm", status)
-  }
-  assert.deepEqual(promptedSessions, [])
-  assert.deepEqual(waitedSessions, [])
-  assert.equal(dispatched().filter(r => r.action === "finish").length, 3)
-} else if (scenario === "concurrent_delivery") {
-  const turns = new Map()
-  const entered = new Map()
-  const releases = new Map()
-  for (const unit of ["first", "second"]) {
-    await delegate("execute.before", unit, `call-${unit}`, "pm")
-    for (const callback of sessionHooks.context) {
-      await callback({ agent: "pm", sessionID: unit, tools: {}, system: [] })
-    }
-    turns.set(unit, new Promise(resolve => { releases.set(unit, resolve) }))
-    entered.set(unit, Promise.withResolvers())
-  }
-  onWait = async (sessionID) => {
-    assert.ok(turns.has(sessionID), `unexpected child ${sessionID}`)
-    entered.get(sessionID).resolve()
-    await turns.get(sessionID)
-    await tools.deliver_result.execute({ result_ids: [sessionID === "first" ? 1 : 2] }, { sessionID, agent: "pm" })
-  }
-  const first = delegate("execute.after", "first", "call-first", "pm")
-  const second = delegate("execute.after", "second", "call-second", "pm")
-  await Promise.all([...entered.values()].map(entry => entry.promise))
-  assert.equal(dispatched().filter(r => r.action === "finish").length, 0)
-  releases.get("second")()
-  await second
-  assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second"],
-    "one child's result must not finish another waiting delegation")
-  releases.get("first")()
-  await first
-  assert.deepEqual(dispatched().filter(r => r.action === "finish").map(r => r.event), ["second", "first"])
-  // Locale-independent ordering: the default `sort()` compares strings in
-  // code-unit order, which is fine here but Sonar's S2871 wants the invariant
-  // spelled out so the assertion never depends on host collation.
-  const byCodeUnit = (a, b) => {
-    if (a < b) return -1
-    return a > b ? 1 : 0
-  }
-  assert.deepEqual([...waitedSessions].sort(byCodeUnit), ["first", "second"])
-  assert.deepEqual([...promptedSessions].sort(byCodeUnit), ["first", "second"])
-} else if (scenario === "retry") {
-  // Baseline: a clean, single-shot delivery.
-  let mark = dispatched().length
-  await delegate("execute.before", "clean-ok", "call-clean", "pm")
-  await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "clean-ok", agent: "pm" })
-  await delegate("execute.after", "clean-ok", "call-clean", "pm")
-  const cleanFinish = dispatched().slice(mark).find(r => r.action === "finish")
-  assert.ok(cleanFinish, "clean delivery never finished")
-
-  // A malformed first deliver_result call, corrected by a retry within the
-  // same delegation, must finish exactly as the clean case above did.
-  mark = dispatched().length
-  await delegate("execute.before", "retry-ok", "call-retry", "pm")
-  respond = (call) => call.verb === "dispatch" && requestOf(call).action === "deliver"
+if (scenario === "retry") {
+  await launch("clean")
+  await deliver("clean", [1])
+  await idle("clean")
+  await launch("retry")
+  respond = call => call.verb === "dispatch" && requestOf(call).action === "deliver"
     ? { stdout: "", stderr: "handoff requires a memory entry ID", code: 1 } : undefined
-  await assert.rejects(tools.deliver_result.execute({ result_ids: [] }, { sessionID: "retry-ok", agent: "pm" }), /memory entry ID/)
-  respond = (_call) => undefined
-  await tools.deliver_result.execute({ result_ids: [2] }, { sessionID: "retry-ok", agent: "pm" })
-  await delegate("execute.after", "retry-ok", "call-retry", "pm")
-  const retryFinish = dispatched().slice(mark).find(r => r.action === "finish")
-  assert.ok(retryFinish, "corrected retry never finished")
-
-  // The orchestrator's own view of completion carries no trace of the
-  // earlier failed attempt: identical shape to a clean first try.
+  await assert.rejects(deliver("retry", []), /memory entry ID/)
+  respond = () => undefined
+  await deliver("retry", [2])
+  await idle("retry")
   const byName = (a, b) => a.localeCompare(b)
-  assert.deepEqual(Object.keys(retryFinish).sort(byName), Object.keys(cleanFinish).sort(byName))
-  assert.deepEqual(Object.keys(retryFinish).sort(byName), ["action", "attempt", "dispatch", "event", "session"])
-  const validateCalls = dispatched().slice(mark).filter(r => r.action === "deliver")
-  assert.equal(validateCalls.length, 2, "expected one failed and one corrected validate_results call")
-} else if (scenario === "async_delivery") {
-  await delegate("execute.before", "async-result", "call-async", "pm")
-  const nudgeEvent = { agent: "pm", sessionID: "async-result", tools: {}, system: [] }
-  for (const callback of sessionHooks.context) await callback(nudgeEvent)
-  let resume
-  const resumed = new Promise(resolve => { resume = resolve })
-  let release
-  const turn = new Promise(resolve => { release = resolve })
-  onPrompt = async () => { resume() }
-  onWait = async () => {
-    await turn
-    await tools.deliver_result.execute({ result_ids: [2] }, { sessionID: "async-result", agent: "pm" })
-  }
-  let settled = false
-  const completion = delegate("execute.after", "async-result", "call-async", "pm").finally(() => { settled = true })
-  await resumed
-  await Promise.resolve()
-  assert.equal(settled, false, "the parent finished while the producer was still active")
-  assert.equal(dispatched().filter(r => r.action === "finish").length, 0)
-  release()
-  await completion
-  assert.deepEqual(waitedSessions, ["async-result"])
-  assert.deepEqual(promptedSessions, ["async-result"])
-  assert.deepEqual(dispatched().filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "deliver", "finish"])
-} else if (scenario === "async_missing") {
-  await delegate("execute.before", "async-missing", "call-async-missing", "pm")
-  const nudgeEvent = { agent: "pm", sessionID: "async-missing", tools: {}, system: [] }
-  for (const callback of sessionHooks.context) await callback(nudgeEvent)
-  let resume
-  const resumed = new Promise(resolve => { resume = resolve })
-  let release
-  const turn = new Promise(resolve => { release = resolve })
-  onPrompt = async () => { resume() }
-  onWait = async () => { await turn }
-  let settled = false
-  const completion = delegate("execute.after", "async-missing", "call-async-missing", "pm")
-    .then(() => { settled = true; return undefined }, error => { settled = true; return error })
-  await resumed
-  await Promise.resolve()
-  assert.equal(settled, false, "the parent was told the producer failed before its turn ended")
-  release()
-  const error = await completion
-  assert.deepEqual(waitedSessions, ["async-missing"])
-  assert.deepEqual(promptedSessions, ["async-missing"])
-  assert.match(error.message, /the specialist ended without delivering its result/)
-  assert.deepEqual(dispatched().filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
-} else if (scenario === "fallback") {
-  // A validate_results transport/network failure must read nothing like a
-  // never-delivered fallback failure.
-  respond = (call) => call.verb === "dispatch" && requestOf(call).action === "validate_results"
-    ? { stdout: "", stderr: "memory service unreachable: connect ECONNREFUSED", code: 1 } : undefined
-  let transportError
-  try {
-    await tools.deliver_result.execute({ result_ids: [1] }, { sessionID: "transport-fail", agent: "pm" })
-  } catch (error) { transportError = error }
-  assert.ok(transportError, "a transport failure did not reject deliver_result")
-  assert.match(transportError.message, /ECONNREFUSED/)
-  respond = (_call) => undefined
-
-  // A producer that never calls deliver_result is nudged exactly once, then
-  // fails distinctly from the transport failure above.
-  await delegate("execute.before", "never-delivers", "call-nudge", "pm")
-  const nudgeEvent = { agent: "pm", sessionID: "never-delivers", tools: {}, system: [] }
-  for (const callback of sessionHooks.context) await callback(nudgeEvent)
-  const promptedBefore = promptedSessions.length
-  let fallbackError
-  try {
-    await delegate("execute.after", "never-delivers", "call-nudge", "pm")
-  } catch (error) { fallbackError = error }
-  assert.ok(fallbackError, "a never-delivered producer finished silently")
-  assert.match(fallbackError.message, /the specialist ended without delivering its result/)
-  const nudges = promptedSessions.slice(promptedBefore)
-  assert.deepEqual(nudges, ["never-delivers"], "expected exactly one bounded nudge")
-
-  assert.ok(!fallbackError.message.includes("ECONNREFUSED"), "fallback error borrowed the transport failure's wording")
-  assert.ok(!transportError.message.includes("delivering a result via deliver_result"), "transport failure borrowed the fallback's wording")
-} else if (scenario === "tpm") {
-  // A successful tpm delivery reaches validate_results with its IDs: the
-  // producer catalog's tpm entry is wired through end to end, not merely
-  // present in a static list somewhere.
-  let mark = dispatched().length
-  await delegate("execute.before", "tpm-brief", "call-tpm-ok", "tpm")
-  await tools.deliver_result.execute({ result_ids: [777, 778] }, { sessionID: "tpm-brief", agent: "tpm" })
-  const validateCall = dispatched().slice(mark).find(r => r.action === "deliver")
-  assert.ok(validateCall, "tpm's deliver_result never reached validate_results")
-  assert.deepEqual(validateCall.result_ids, [777, 778])
-  await delegate("execute.after", "tpm-brief", "call-tpm-ok", "tpm")
-  const finished = dispatched().slice(mark).find(r => r.action === "finish")
-  assert.ok(finished, "tpm's delivered delegation never finished")
-
-  // The old hardcoded producer list omitted tpm, so a tpm delegation that
-  // never delivered would finish anyway. It must now fail like any other
-  // producer's missing delivery, and the unit must still settle (finish)
-  // rather than being stranded in flight for a retry to hit.
-  mark = dispatched().length
-  await delegate("execute.before", "tpm-missing", "call-tpm-missing", "tpm")
-  await assert.rejects(() => delegate("execute.after", "tpm-missing", "call-tpm-missing", "tpm"),
-    /the specialist ended without delivering its result/)
-  assert.deepEqual(dispatched().slice(mark).filter(r => ["prepare","deliver","finish"].includes(r.action)).map(r => r.action), ["prepare", "finish"])
+  assert.deepEqual(Object.keys(finishes()[0]).sort(byName), Object.keys(finishes()[1]).sort(byName))
+} else if (scenario === "async_delivery" || scenario === "async_missing" || scenario === "tpm") {
+  const unit = "producer"
+  const agent = scenario === "tpm" ? "tpm" : "pm"
+  await launch(unit, unit, agent)
+  assert.deepEqual(finishes(), [])
+  if (scenario !== "async_missing") await deliver(unit, [2], agent)
+  assert.deepEqual(finishes(), [], "delivery alone ended the child")
+  await idle(unit)
+  assert.deepEqual(owner.executions[`root:${unit}`].delivery ?? [], scenario === "async_missing" ? [] : [2])
+} else if (scenario === "wait_error") {
+  await launch("unreachable")
+  onWait = async () => { throw new Error("host unavailable") }
+  events.push({ id: "idle", created: 1, type: "session.idle", data: { sessionID: "unreachable" } }); wake?.()
+  await spinUntil(() => waitedSessions.length > 0)
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.deepEqual(finishes(), [], "transport failure is not termination")
+  onWait = async () => {}
+  await idle("unreachable")
+} else if (scenario === "concurrent_delivery") {
+  await launch("first")
+  await launch("second")
+  await deliver("second", [2])
+  await deliver("first", [1])
+  await idle("second")
+  assert.deepEqual(finishes().map(r => r.event), ["second"])
+  await idle("first")
+  assert.deepEqual(finishes().map(r => r.event), ["second", "first"])
+} else if (scenario === "repeated_callbacks") {
+  await launch("repeat")
+  await delegate("execute.after", "repeat", "repeat", "pm")
+  await deliver("repeat", [3])
+  await idle("repeat")
+  await delegate("execute.after", "repeat", "repeat", "pm")
+  await idle("repeat")
+  assert.equal(finishes().length, 1)
+} else if (scenario === "continued_child") {
+  await launch("continued", "first")
+  await deliver("continued", [1])
+  await idle("continued")
+  idleSessions.delete("continued")
+  await launch("continued", "second", "pm", {sessionID:"continued"})
+  await deliver("continued", [2])
+  assert.deepEqual(owner.executions["root:first"].delivery, [1])
+  assert.deepEqual(owner.executions["root:second"].delivery, [2])
 } else if (scenario === "dual_role") {
-  // verify is a verifier and a result producer at once: it adopts its gate,
-  // attaches its verdict, and its delegation still owes its delivered result.
-  claims.push(
-    { key: "author-1", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", active: true, scope: ["a.go"] },
-  )
-  respond = (call) => {
-    // reply is takt-ai's successful answer carrying value.
-    const reply = (value) => ({ stdout: JSON.stringify(value), stderr: "", code: 0 })
-    if (call.argv[2] === "claims") return reply({ ok: true, claims })
+  claims.push({ key: "author-1", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", active: true, scope: ["a.go"] })
+  respond = call => {
+    const reply = value => ({ stdout: JSON.stringify(value), stderr: "", code: 0 })
+    if (call.argv[2] === "claims") return reply({ok:true,claims})
     if (call.argv[2] === "adopt-gates") {
-      const gate=claims.find(c=>c.agent_id==="verify" && c.pending)
-      gate.pending=false;gate.active=true;gate.scope=["a.go"]
+      const gate = claims.find(c => c.agent_id === "verify" && c.pending)
+      gate.pending = false; gate.active = true; gate.scope = ["a.go"]
       return reply({ok:true,gates:[{key:gate.key,author_key:"author-1",scope:gate.scope}]})
     }
-    return undefined
   }
-  const gates = { author_keys: ["author-1"] }
-  await delegate("execute.before", "review", "call-review", "verify", "completed", gates)
-  const context = { agent: "verify", sessionID: "review", tools: {}, system: [] }
-  for (const callback of sessionHooks.context) await callback(context) // NOSONAR: hooks run in registration order
-  assert.ok(context.system.some(part => part.text.includes("You judge the staged work")), "the gate was not delivered bound")
-  await tools.vfs_verify.execute({ author_key: "author-1", pass: true, finding: "reviewed" }, { sessionID: "review", agent: "verify" })
-  const verdict = calls.find(c => c.argv[2] === "verify")
-  assert.ok(verdict, "the verdict never reached the core")
-  assert.equal(verdict.stdin.caller_session, "review")
-  assert.equal(verdict.stdin.caller_agent, "verify")
-  assert.equal(verdict.stdin.author_key, "author-1")
-  assert.equal(verdict.stdin.verifier_key, undefined)
-  // Without its delivery the verifier's delegation fails like any producer's.
-  await assert.rejects(() => delegate("execute.after", "review", "call-review", "verify", "completed", gates), /the specialist ended without delivering its result/)
-  assert.deepEqual(promptedSessions, ["review"], "the verifier was not nudged once to deliver")
-  // A second review that delivers ends cleanly with the result handed back.
-  claims.splice(1)
-  await delegate("execute.before", "review", "call-review-2", "verify", "completed", gates)
-  for (const callback of sessionHooks.context) await callback({ ...context, sessionID: "review-2", system: [] }) // NOSONAR: hooks run in registration order
-  await tools.deliver_result.execute({ result_ids: [55] }, { sessionID: "review-2", agent: "verify" })
-  const event = await delegate("execute.after", "review", "call-review-2", "verify", "completed", {}, { content: "Verdict attached." })
-  assert.match(String(event.result.content), /Delivered results: #55/)
+  await launch("review", "review", "verify", {author_keys:["author-1"]})
+  const context = {agent:"verify",sessionID:"review",tools:{},system:[]}
+  for (const callback of sessionHooks.context) await callback(context)
+  assert.ok(context.system.some(part => part.text.includes("You judge the staged work")))
+  assert.ok(context.system.some(part => part.text.includes("deliver_result")))
+  await tools.vfs_verify.execute({author_key:"author-1",pass:true,finding:"reviewed"},{sessionID:"review",agent:"verify"})
+  assert.deepEqual(owner.executions["root:review"].delivery ?? [], [], "verdict is not delivery")
+  assert.deepEqual(finishes(), [], "verdict is not termination")
+  await deliver("review", [55], "verify")
+  await idle("review")
 } else {
-  throw new Error(`unknown scenario ${JSON.stringify(scenario)}`)
+  throw new Error(`unknown scenario ${scenario}`)
 }
+assert.deepEqual(promptedSessions, [], "native launch must not nudge or reprompt the child")

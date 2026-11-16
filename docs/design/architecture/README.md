@@ -7,7 +7,7 @@ Derived view of Takt AI using the C4 model. Diagrams are standalone HTML produce
 Takt is two systems under one Constitution:
 
 - **Application**: the CLI/TUI that plans, authorizes, applies and reports installation and configuration into OpenCode v2.
-- **Meta-harness**: the capabilities installed into OpenCode v2 (crew, memory, orchestration, VFS, observability, maintenance). It runs inside OpenCode, not inside the application.
+- **Meta-harness**: the capabilities installed into OpenCode v2 (crew, memory, orchestration, VFS, observability, maintenance). Its plugins run inside OpenCode; Takt Memory runs as an independent service reached through MCP, not in the installation TUI.
 
 They share patterns (events, state machines, declarative tables) but not a runtime, clock or event bus.
 
@@ -34,6 +34,7 @@ Each topic folder keeps its notes at the top, its standalone diagrams in `diagra
 | TUI | `app/tui/PRD_TUI.md`, `app/tui/VDS_TUI.md` | components, runtime |
 | Platform projection | `meta-harness/platforms/PRD_PLATFORMS.md` | containers, components |
 | Crew and context | `meta-harness/crew/PRD_CREW.md`, `meta-harness/context/ARCH_CONTEXT.md`, `meta-harness/context/ARCH_MEMORY.md` | containers, components, runtime, agents |
+| Independent memory service | `meta-harness/context/PRD_MEMORY_SERVICE.md` | context, containers, components, memory session |
 | Orchestration and execution history | `meta-harness/orchestration/PRD_ORCHESTRATION.md`, `PRD_DAG.md`, `PIRS_ORCHESTRATION.md` | components, runtime, agents |
 | Workflow selection | `meta-harness/orchestration/WORKFLOW_SELECTION.md` | agents |
 | DAG TUI sidebar | `meta-harness/orchestration/PRD_DAG_TUI.md` | containers |
@@ -45,7 +46,7 @@ Paths are relative to `product/`. The SMC documents (`prd-smc.md`, `meta-harness
 
 ## Conventions
 
-- One binary (`takt/cli/main.go`) serves both systems; plugins inside OpenCode call back into its subcommands.
+- One binary (`takt/cli/main.go`) serves both systems; plugins inside OpenCode call back into its subcommands. The same executable also runs the independent memory service and its stdio MCP adapters.
 - Every box and edge is checked against code or a PRD before it is drawn; unresolved facts are stated as unknown, not guessed.
 - API reference lives in `docs/api/` (generated); this set does not duplicate it.
 

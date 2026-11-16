@@ -36,8 +36,8 @@ func TestSeatRestores(t *testing.T) {
 		want bool
 	}{
 		{dispatch.Seat{}, false},
-		{dispatch.Seat{Model: "m1", Configured: "m1"}, false},
-		{dispatch.Seat{Model: "m2", Configured: "m1"}, true},
+		{dispatch.Seat{Model: "m1", Previous: "m1"}, false},
+		{dispatch.Seat{Model: "m2", Previous: "m1"}, true},
 		{dispatch.Seat{Substitute: true}, true},
 	}
 	for _, tc := range cases {
@@ -54,11 +54,12 @@ func TestValidateSeatRefusesInadmissibleRestorations(t *testing.T) {
 		seat dispatch.Seat
 		want string
 	}{
-		{"unknown instance", dispatch.Seat{Agent: "nobody", Model: "m2", Configured: "m1", Reason: "down"}, "not a Takt crew member"},
-		{"no reason", dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "  "}, "seat_reason"},
+		{"unknown instance", dispatch.Seat{Agent: "nobody", Model: "m2", Previous: "m1", Reason: "down"}, "not a Takt crew member"},
+		{"declared no-op", dispatch.Seat{Agent: seatAgent, Model: "m1", Previous: "m1", Reason: "down", UserConfirmed: true}, "effective model is unchanged"},
+		{"no reason", dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "  "}, "seat_reason"},
 		{"no model", dispatch.Seat{Agent: seatAgent, Reason: "down", Substitute: true}, "seat_reason"},
-		{"substitute first", dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "down", Substitute: true}, "reassign its model first"},
-		{"unproven model", dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "down"}, dispatch.UnprovenModelCause},
+		{"substitute first", dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "down", Substitute: true}, "reassign its model first"},
+		{"unproven model", dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "down"}, dispatch.UnprovenModelCause},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,14 +73,14 @@ func TestValidateSeatRefusesInadmissibleRestorations(t *testing.T) {
 
 func TestValidateSeatAdmitsUnchangedSeat(t *testing.T) {
 	h := newHistory(t)
-	if err := dispatch.ValidateSeat(h, seatRoot, dispatch.Seat{Agent: "nobody", Model: "m1", Configured: "m1"}); err != nil {
+	if err := dispatch.ValidateSeat(h, seatRoot, dispatch.Seat{Agent: "nobody", Model: "m1", Previous: "m1"}); err != nil {
 		t.Fatalf("ValidateSeat() of a seat it does not restore error = %v, want nil", err)
 	}
 }
 
 func TestValidateSeatAdmitsApprovedOrProvenModel(t *testing.T) {
 	h := newHistory(t)
-	seat := dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "provider outage"}
+	seat := dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "provider outage"}
 
 	approved := seat
 	approved.UserConfirmed = true
@@ -111,9 +112,12 @@ func TestValidateSeatAdmitsApprovedOrProvenModel(t *testing.T) {
 func TestValidateSeatAdmitsSubstituteAfterFailedReassignment(t *testing.T) {
 	h := newHistory(t)
 	completeWith(t, h, "done", "m2")
-	reassign := dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "provider outage"}
+	reassign := dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "provider outage"}
 	substitute := reassign
 	substitute.Substitute = true
+	// Replacing identity may keep the reassigned model. It is a restoration
+	// only after the recorded reassignment failed, not a model no-op bypass.
+	substitute.Previous = substitute.Model
 	run := func(unit string, kinds ...history.Kind) {
 		t.Helper()
 		if err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: unit, Session: seatRoot, Agent: seatAgent, Dispatch: "call-" + unit}); err != nil {
@@ -169,7 +173,7 @@ func TestValidateSeatAdmitsSubstituteAfterFailedReassignment(t *testing.T) {
 }
 
 func TestSeatEntryRecordsTheRestoration(t *testing.T) {
-	seat := dispatch.Seat{Agent: seatAgent, Model: "m2", Configured: "m1", Reason: "provider outage", Substitute: true}
+	seat := dispatch.Seat{Agent: seatAgent, Model: "m2", Previous: "m1", Reason: "provider outage", Substitute: true}
 	e := dispatch.SeatEntry(seatRoot, "u1", "a1", seat)
 	if e.Kind != history.KindSeatRestored || e.Author != history.AuthorOrchestrator || e.SessionID != seatRoot || e.WorkUnitID != "u1" || e.AttemptID != "a1" ||
 		e.Agent != seatAgent || e.Model != "m2" || e.Reason != "provider outage" || !e.Substitute {

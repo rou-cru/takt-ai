@@ -195,7 +195,7 @@ func TestReconciledUnmonitoredNonStartIsInterrupted(t *testing.T) {
 	if u, _ = h.Project().Unit(root, unit); u.State != history.StateSettled || u.Outcome != history.OutcomeInterrupted {
 		t.Fatalf("unit = %+v; want a reconciled non-start settled interrupted", u)
 	}
-	seat := dispatch.Seat{Agent: seatAgent, Model: "m9", Configured: "m1", Reason: "provider outage"}
+	seat := dispatch.Seat{Agent: seatAgent, Model: "m9", Previous: "m1", Reason: "provider outage"}
 	if err := dispatch.ValidateSeat(h, root, seat); err == nil || !strings.HasPrefix(err.Error(), dispatch.UnprovenModelCause) {
 		t.Fatalf("ValidateSeat() after an interrupted non-start = %v; want the model still unproven", err)
 	}

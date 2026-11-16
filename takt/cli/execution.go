@@ -35,7 +35,7 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 // this command's lifetime and therefore outside the workspace lock.
 func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
 	if prior, ok := h.Project().Executions[r.Dispatch]; ok {
-		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent || prior.Background != r.Background {
+		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent {
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
 		}
 		// The seat is part of what the execution record names: a retry may not
@@ -63,7 +63,7 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	if err := refuseRecycledProductManager(r, described); err != nil {
 		return nil, err
 	}
-	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Configured: r.ConfiguredModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
+	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Previous: r.PreviousModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
 	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 			if r.CreatedAt == 0 {
 				r.CreatedAt = time.Now().UnixMilli()
 			}
-			entries := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, Background: r.Background, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
+			entries := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
 			if seat.Restores() {
 				entries = append(entries, protocol.SeatEntry(r.Session, r.Event, u.AttemptID, seat))
 			}

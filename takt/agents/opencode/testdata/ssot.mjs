@@ -30,25 +30,59 @@ async function recordResult(title){
  return Number(res.content[0].text.replace('Recorded #',''))
 }
 const history=r=>JSON.parse(execFileSync(bin,['dispatch','--workspace',workspace,'--state',state,'--request',JSON.stringify(r)],{env:process.env,encoding:'utf8'}))
-const sessions=new Map(),hostMessages=new Map()
+const sessions=new Map(),hostMessages=new Map(),idleSessions=new Set(),idleWaiters=new Map()
+const markIdle=child=>{
+ idleSessions.add(child)
+ for(const resolve of idleWaiters.get(child)??[]){resolve()}
+ idleWaiters.delete(child)
+}
+const waitForIdle=async({sessionID})=>{
+ if(idleSessions.has(sessionID)){return}
+ await new Promise(resolve=>{const waits=idleWaiters.get(sessionID)??[];waits.push(resolve);idleWaiters.set(sessionID,waits)})
+}
 const permissions=['vfs_bind','vfs_read','vfs_write','vfs_delete','vfs_verify'].map(action=>({action,resource:'*',effect:'allow'}))
 async function start(){
- const tools={},hooks={},contexts=[]
+ const tools={},hooks={},contexts=[],events=[]
+ let wake
+ async function* stream(){
+  for(;;){
+   if(!events.length){await new Promise(resolve=>wake=resolve)}
+   while(events.length){yield events.shift()}
+  }
+ }
  await plugin.setup({location:{directory:workspace},storage:{get(){throw new Error('plugin authority read')},set(){throw new Error('plugin authority write')}},
- session:{get:async({sessionID})=>sessions.get(sessionID)??{id:sessionID},context:async({sessionID})=>hostMessages.get(sessionID)??[],hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},wait:()=>new Promise(()=>{}),interrupt:async()=>{},prompt:async()=>{},synthetic:async()=>{}},
+ session:{get:async({sessionID})=>sessions.get(sessionID)??{id:sessionID},context:async({sessionID})=>hostMessages.get(sessionID)??[],hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},wait:waitForIdle,interrupt:async()=>{},prompt:async()=>{},synthetic:async()=>{}},
  agent:{get:async()=>({data:{permissions}})},tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async(cb)=>{cb({list:()=>[],get:()=>undefined,update(){},add(d){tools[d.name]=d},namespace(){},remove(){}});return {dispose(){}}}},
- permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:()=>({next:()=>new Promise(()=>{})})})}})
- return {tools,async fire(name,e){for(const cb of hooks[name]??[])await cb(e)},async context(sessionID,agent){const e={sessionID,agent,system:[]};for(const cb of contexts){await cb(e)}return e}}
+ permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:stream})}})
+ return {tools,idle(child){markIdle(child);events.push({id:`idle-${child}`,type:"session.idle",data:{sessionID:child}});wake?.()},async fire(name,e){for(const cb of hooks[name]??[])await cb(e)},async context(sessionID,agent){const e={sessionID,agent,system:[]};for(const cb of contexts){await cb(e)}return e}}
 }
+const launchHosts=new Map()
 const a=await start(),rootA={sessionID:'root-a',agent:'takt'},rootB={sessionID:'root-b',agent:'takt'}
 const units=Array.from({length:4},(_,i)=>`author-${i}`)
 await a.tools.dispatch_commit.execute({version:'a',plan:units.map(unit=>({unit,contract:`stage ${unit}`}))},rootA)
 async function launch(p,root,unit,agent,id,extra={}){
  const e={tool:'subagent',sessionID:root.sessionID,agent:'takt',id,input:{description:unit,agent,...extra}}
+ if(extra.sessionID)idleSessions.delete(extra.sessionID)
  await p.fire('execute.before',e)
+ launchHosts.set(`${e.sessionID}:${e.id}`,p)
  return e
 }
-async function done(p,e){await p.fire('execute.after',{...e,status:'completed',result:{content:'done'}})}
+async function done(p,e){
+ const dispatch=`${e.sessionID}:${e.id}`,d=history({action:'execution',dispatch})
+ const content=hostMessages.get(e.sessionID)?.[0]?.content??[]
+ hostMessages.set(e.sessionID,[{type:'assistant',content:[...content.filter(part=>part.id!==e.id),{type:'tool',name:'subagent',id:e.id,state:{status:'completed'}}]}])
+ const callback={...e,status:'completed',result:{content:'running',metadata:{sessionID:d.child,status:'running'}}}
+ await p.fire('execute.after',callback)
+ // Earlier fixture hosts remain alive: their native callback and child idle
+ // still reach the host that launched the call, even if another also sees it.
+ const host=launchHosts.get(dispatch)??p
+ if(host!==p)await host.fire('execute.after',callback)
+ if(d.settled)return
+ assert.ok(!history({action:'execution',dispatch}).settled,'launch return ended active child')
+ host.idle(d.child)
+ for(let i=0;i<100 && !history({action:'execution',dispatch}).settled;i++)await new Promise(resolve=>setTimeout(resolve,5))
+ assert.ok(history({action:'execution',dispatch}).settled,'idle did not terminate exact attempt')
+}
 const authors=[]
 for(const [i,unit] of units.entries()){
  await a.tools.dispatch_inputs.execute({work_unit_id:unit,result_ids:[]},rootA)

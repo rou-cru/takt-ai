@@ -17,7 +17,9 @@ const readState=()=>withDB(d=>JSON.parse(d.prepare('SELECT CAST(data AS TEXT) AS
 const writeState=s=>withDB(d=>d.prepare('UPDATE state SET data=? WHERE id=1').run(JSON.stringify(s)))
 const events=[],hooks={},contexts=[],tools={},sessions=new Map([['root',{}],['other-root',{}]]),messages=new Map()
 let wake,finished=false,interruptFails=false,beforeApproval=async()=>{},approvalCount=0,promptCount=0
-const interrupted=[]
+const interrupted=[],idleSessions=new Set(),idleWaiters=new Map()
+const markIdle=child=>{idleSessions.add(child);idleWaiters.get(child)?.();idleWaiters.delete(child)}
+const waitForIdle=async({sessionID})=>{if(sessions.get(sessionID)?.running&&!idleSessions.has(sessionID))await new Promise(resolve=>idleWaiters.set(sessionID,resolve))}
 async function* stream(){
  for(;;){
   if(events.length){yield events.shift();continue}
@@ -39,7 +41,7 @@ globalThis.Bun={spawn(argv,opts){
  return {stdin:p.stdin,stdout:Readable.toWeb(p.stdout),stderr:Readable.toWeb(p.stderr),kill:signal=>p.kill(signal),exited:new Promise((r,j)=>{p.on('error',j);p.on('close',r)})}
 }}
 const cleanup=await plugin.setup({location:{directory:workspace},
- session:{get:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},interrupt:async({sessionID})=>{if(interruptFails){throw new Error('host interruption failed')}interrupted.push(sessionID)},wait:async()=>{},prompt:async()=>{promptCount++},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
+ session:{get:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},interrupt:async({sessionID})=>{if(interruptFails){throw new Error('host interruption failed')}interrupted.push(sessionID);markIdle(sessionID)},wait:waitForIdle,prompt:async()=>{promptCount++},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
  agent:{get:async()=>({data:{permissions:[{action:'*',resource:'*',effect:'allow'}]}})},
  tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async cb=>{await cb({list:()=>[],get:()=>undefined,update(){},add:d=>tools[d.name]=d,namespace(){},remove(){}});return {dispose(){}}}},permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:stream})}})
 const root={sessionID:'root',agent:'takt',id:'root-tool',messageID:'root-message'},other={...root,sessionID:'other-root'}
@@ -57,7 +59,10 @@ try {
  await context('child','dev')
  await tools.vfs_bind.execute({scope:['a.txt']},{sessionID:'child',agent:'dev'})
  await tools.vfs_write.execute({path:'a.txt',content:'candidate'},{sessionID:'child',agent:'dev'})
- await fire('execute.after',{...root,id:'author-call',tool:'subagent',status:'completed',result:{content:'done'}})
+ await fire('execute.after',{...root,id:'author-call',tool:'subagent',status:'completed',result:{content:'running',metadata:{sessionID:'child',status:'running'}}})
+ markIdle('child');publish({id:'author-idle',type:'session.idle',data:{sessionID:'child'}})
+ for(let i=0;i<100&&!call(['dispatch'],{action:'execution',dispatch:'root:author-call'}).settled;i++)await sleep(5)
+ assert.ok(call(['dispatch'],{action:'execution',dispatch:'root:author-call'}).settled)
  const inject=async(content)=>{
   const s=readState();s.Recovery={Agent:key,Items:[{Path:'a.txt',Temp:'.takt-test-temp',Before:base('base'),After:base('candidate')}],Intent:1,Dirs:[]};writeState(s)
   await writeFile(resolve(workspace,'a.txt'),content,{mode:0o600})
@@ -124,7 +129,7 @@ try {
  // Native orphan correlation checks the exact call even after its child vanished.
  await fire('execute.after',{...admission,status:'error',result:{content:'cancelled'}})
  await tools.dispatch_inputs.execute({work_unit_id:'orphan',result_ids:[]},root)
- call(['dispatch'],{action:'prepare',event:'orphan',session:'root',agent:'spec',dispatch:'root:orphan-call',caller:'root',owner:'dead',background:false})
+ call(['dispatch'],{action:'prepare',event:'orphan',session:'root',agent:'spec',dispatch:'root:orphan-call',caller:'root',owner:'dead'})
  call(['dispatch'],{action:'attach_child',dispatch:'root:orphan-call',child:'deleted-child',agent:'spec'})
  messages.set('root',[{type:'assistant',content:[{type:'tool',name:'subagent',id:'orphan-call',state:{status:'error'}}]}])
  await tools.dispatch_inputs.execute({work_unit_id:'after-orphan',result_ids:[]},root)
@@ -188,7 +193,7 @@ try {
  // A delegation whose calling session is gone can never return: the next
  // reconciliation ends it interrupted and frees its unit.
  call(['dispatch'],{action:'inputs',session:'gone-root',event:'lost',result_ids:[]})
- call(['dispatch'],{action:'prepare',event:'lost',session:'gone-root',agent:'spec',dispatch:'gone-root:lost-call',caller:'gone-root',owner:'dead',background:false})
+ call(['dispatch'],{action:'prepare',event:'lost',session:'gone-root',agent:'spec',dispatch:'gone-root:lost-call',caller:'gone-root',owner:'dead'})
  await tools.dispatch_inputs.execute({work_unit_id:'probe',result_ids:[]},root)
  await fire('execute.before',{...root,id:'probe',tool:'subagent',input:{description:'probe',agent:'spec'}})
  assert.equal(call(['dispatch'],{action:'execution',dispatch:'gone-root:lost-call'}).settled,true)
@@ -197,8 +202,9 @@ try {
  // One that will never return although its caller lives is ended on the
  // user's decision; the unit can then be delegated again.
  await tools.dispatch_inputs.execute({work_unit_id:'stuck',result_ids:[]},root)
- call(['dispatch'],{action:'prepare',event:'stuck',session:'root',agent:'spec',dispatch:'root:stuck-call',caller:'root',owner:'dead',background:false})
+ call(['dispatch'],{action:'prepare',event:'stuck',session:'root',agent:'spec',dispatch:'root:stuck-call',caller:'root',owner:'dead'})
  call(['dispatch'],{action:'attach_child',dispatch:'root:stuck-call',child:'stuck-child',agent:'spec'})
+ sessions.set('stuck-child',{parentID:'root',title:'stuck',running:true})
  await assert.rejects(()=>fire('execute.before',{...root,id:'stuck-retry',tool:'subagent',input:{description:'stuck',agent:'spec'}}),/root:stuck-call/)
  const before=approvalCount
  await tools.dispatch_abandon.execute({dispatch:'root:stuck-call'},root)

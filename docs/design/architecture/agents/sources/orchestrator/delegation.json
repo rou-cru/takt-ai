@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/orchestrator/delegation.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -33,13 +33,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 103,
-          "end_line": 106
+          "line": 102,
+          "end_line": 105
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 89,
-          "end_line": 95
+          "line": 88,
+          "end_line": 94
         }
       ]
     },
@@ -54,8 +54,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 89,
-          "end_line": 95
+          "line": 88,
+          "end_line": 94
         }
       ]
     },
@@ -70,8 +70,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 88
+          "line": 85,
+          "end_line": 87
         }
       ]
     },
@@ -86,8 +86,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 88
+          "line": 85,
+          "end_line": 87
         }
       ]
     },
@@ -102,8 +102,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 103,
-          "end_line": 106
+          "line": 102,
+          "end_line": 105
         }
       ]
     },
@@ -118,8 +118,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 92,
-          "end_line": 95
+          "line": 91,
+          "end_line": 94
         }
       ]
     },
@@ -129,7 +129,7 @@
       "col": 2,
       "type": "backend",
       "label": "dispatch_inputs",
-      "sublabel": "consumed Engram IDs",
+      "sublabel": "consumed Takt memory IDs",
       "width": 160,
       "sources": [
         {
@@ -150,8 +150,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 88
+          "line": 85,
+          "end_line": 87
         },
         {
           "path": "takt/vfs/claims.go",
@@ -171,8 +171,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 86,
-          "end_line": 88
+          "line": 85,
+          "end_line": 87
         }
       ]
     },
@@ -187,8 +187,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 83,
-          "end_line": 85
+          "line": 82,
+          "end_line": 84
         }
       ]
     }

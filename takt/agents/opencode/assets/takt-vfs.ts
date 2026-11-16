@@ -86,15 +86,16 @@ type CycleClosing = { cycle: string; outcome: string; unapplied_findings: unknow
 const isCycleClosing = (value: unknown): value is CycleClosing =>
   isResponseObject(value) && isString(value.cycle) && isString(value.outcome) && Array.isArray(value.unapplied_findings)
 type Inspection = NonNullable<VFSResponse["inspections"]>[number]
-type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; background?: boolean; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
+type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
 // SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
 // a model this session has not seen complete work; the user may approve it.
 const SEAT_UNPROVEN = "seat/unproven-model"
-// modelName is a model reference as the core records it: provider/model.
+// modelName is the native model reference, including a selected variant.
 export function modelName(value: unknown): string | undefined {
   if (typeof value === "string" && value) return value
-  if (isResponseObject(value) && typeof value.providerID === "string" && typeof value.id === "string") return `${value.providerID}/${value.id}`
-  return undefined
+  if (!isResponseObject(value) || typeof value.providerID !== "string" || typeof value.id !== "string") return undefined
+  const variant = typeof value.variant === "string" && value.variant ? `#${value.variant}` : ""
+  return `${value.providerID}/${value.id}${variant}`
 }
 // withoutIdentity removes a substitute's PERSONA and SOUL texts from its
 // composed system prompt: it holds the seat without its identity or voice.
@@ -391,16 +392,9 @@ const EXCEPTION_BOUNDS = [
 const FAILING_VERDICT = "a current verification verdict failed"
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
 
-// str and obj keep the JSON Schema inputs readable; V2 takes plain JSON Schema
-// rather than the V1 zod-shaped tool.schema helper.
-// withText appends one text block to a tool result's content, in either of its shapes.
-function withText<C>(content: string | ReadonlyArray<C> | undefined, text: string): string | ReadonlyArray<C | { readonly type: "text"; readonly text: string }> {
-  if (content === undefined) return text
-  if (typeof content === "string") return `${content}\n\n${text}`
-  return [...content, { type: "text" as const, text }]
-}
 // entryRefs renders memory entry IDs the way agents cite them.
 const entryRefs = (ids: number[]) => ids.map(id => `#${id}`).join(", ")
+// str and obj declare the plugin tools' JSON Schema inputs.
 const str = (description?: string) => (description ? { type: "string", description } : { type: "string" })
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object", properties, required, additionalProperties: false })
@@ -531,10 +525,10 @@ export default Plugin.define({
     async function callState(d: Delegation): Promise<"gone" | "error" | "completed" | "open"> {
       try {
         const call = await nativeCall(d)
-        // A compaction drops older calls from the caller's context. A background
+        // A compaction drops older calls from the caller's context. An async
         // launch whose child is attached already returned, so the missing call is
         // not an open one: the child's idle or deletion is its termination.
-        if (call === undefined && d.background && d.child) return "completed"
+        if (call === undefined && d.child) return "completed"
         return call?.type === "tool" && (call.state.status === "error" || call.state.status === "completed") ? call.state.status : "open"
       } catch (error) {
         if (notFound(error)) return "gone"
@@ -587,8 +581,8 @@ export default Plugin.define({
     const watchChild = (d: Delegation, child: string) => {
       watching.add(d.dispatch)
       void ctx.session.wait({ sessionID:child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) }).then(async () => {
-        // A child idle before a foreground call ends is not that call's
-        // termination. Background launch completion plus host idle is terminal.
+        // Launch completion plus host idle is termination, not proof of
+        // delivery or verification.
         const state = await callState(d)
         if (state !== "open") await settle(d, state)
       }).catch(async error => {
@@ -603,22 +597,33 @@ export default Plugin.define({
       }).catch(error => console.error("Takt native delegation reconciliation",d.dispatch,error))
         .finally(() => watching.delete(d.dispatch))
     }
+    // recoverChild links a launched delegation whose attach failed: the host
+    // recorded the child on the exact completed native call.
+    async function recoverChild(d: Delegation): Promise<string | undefined> {
+      const call = await nativeCall(d)
+      const child = call?.type === "tool" && call.state.status === "completed" ? call.state.metadata?.sessionID : undefined
+      if (typeof child !== "string" || !child) return undefined
+      await adoptChild(child, d.agent, d)
+      return child
+    }
     // Every exact call is checked, including our own lost callbacks and
     // executions whose linked child disappeared. Lease expiry proves nothing.
     const reconcileDelegation = async (d: Delegation & { mine: boolean }) => {
       if (d.cycle) return
-      let backgroundLaunched = false
+      let launched = false
+      let child = d.child
       try {
         const state = await callState(d)
-        if (state === "gone" || state === "error" || (!d.background && state === "completed")) {
+        if (state === "gone" || state === "error") {
           await settle(d, state)
           return
         }
-        backgroundLaunched = state === "completed"
+        launched = state === "completed"
+        if (launched && !child) child = await recoverChild(d)
       } catch (error) { console.error("Takt native call reconciliation", d.dispatch, error) }
-      if (d.background && backgroundLaunched && d.child && await backgroundChildEnded(d, d.child)) return
-      if (watching.has(d.dispatch) || !d.child || !d.mine || (d.background && !backgroundLaunched)) return
-      watchChild(d, d.child)
+      if (launched && child && await backgroundChildEnded(d, child)) return
+      if (watching.has(d.dispatch) || !child || !d.mine || !launched) return
+      watchChild(d, child)
     }
     const reconcileStoredDelegations = async () => {
       await reconcileNativeInspections().catch(error => console.error("Takt native inspection reconciliation",error))
@@ -1237,13 +1242,13 @@ export default Plugin.define({
     })
 
     // admissionRequest is the `prepare` request admitting one subagent call as a delegation.
-    function admissionRequest(a: { delegation: string; root: string; unit: string; specialist: string; caller: string; input: Record<string, unknown>; model?: string; configured?: string }): Request {
+    function admissionRequest(a: { delegation: string; root: string; unit: string; specialist: string; caller: string; input: Record<string, unknown>; model?: string; previous?: string }): Request {
       const { input } = a
       return { action: "prepare", event: a.unit, dispatch: a.delegation, session: a.root,
-        agent: a.specialist, caller: a.caller, background: input.background === true, owner: INSTANCE,
+        agent: a.specialist, caller: a.caller, owner: INSTANCE,
         ...(typeof input.sessionID === "string" && input.sessionID ? { child: input.sessionID } : {}),
         ...(input.author_keys === undefined ? {} : { author_keys: input.author_keys }),
-        ...(a.model ? { model: a.model } : {}), ...(a.configured ? { configured_model: a.configured } : {}),
+        ...(a.model ? { model: a.model } : {}), ...(a.previous ? { previous_model: a.previous } : {}),
         ...(typeof input.seat_reason === "string" && input.seat_reason ? { seat_reason: input.seat_reason } : {}),
         ...(input.seat_substitute === true ? { substitute: true } : {}) }
     }
@@ -1251,6 +1256,15 @@ export default Plugin.define({
     const unsettledNotice = (held: Delegation[]) => {
       const named = held.map(d => `dispatch ${d.dispatch} (unit ${d.unit}, session ${d.child ?? d.caller}, attempt ${d.attempt})`).join(", ")
       return `; unsettled delegations: ${named}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept`
+    }
+
+    // effectiveModel is the model a native launch would run before any override,
+    // matching native create/follow-up semantics: the same agent retains its
+    // child's model; switching agents uses its configuration if present.
+    async function effectiveModel(input: Record<string, unknown>, specialist: string, caller: string, configured: string | undefined) {
+      if (typeof input.sessionID !== "string" || !input.sessionID) return configured ?? modelName((await ctx.session.get({ sessionID: caller })).model)
+      const existing = await ctx.session.get({ sessionID: input.sessionID })
+      return (existing.agent === specialist ? undefined : configured) ?? modelName(existing.model)
     }
 
     await ctx.tool.hook("execute.before", async (event) => {
@@ -1263,13 +1277,14 @@ export default Plugin.define({
       // host call identity tells a transport repetition apart from a retry.
       const unit = asString(input.description, "").trim()
       const specialist = asString(input.agent, "")
-      const configured = specialist ? modelName((await ctx.agent.get({ agentID: specialist })).data.model) : undefined
-      const model = modelName(input.model) ?? configured
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
       if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
       const delegation = `${event.sessionID}:${event.id}`
       try {
-        const request = admissionRequest({ delegation, root, unit, specialist, caller: event.sessionID, input, model, configured })
+        const configured = modelName((await ctx.agent.get({ agentID: specialist })).data.model)
+        const previous = await effectiveModel(input, specialist, event.sessionID, configured)
+        const model = modelName(input.model) ?? previous
+        const request = admissionRequest({ delegation, root, unit, specialist, caller: event.sessionID, input, model, previous })
         const prepare = async (): Promise<DispatchResponse> => {
           try { return await dispatchAction(request) }
           catch (error) {
@@ -1303,49 +1318,27 @@ export default Plugin.define({
       scheduleGC()
     })
 
-    // collectDelivery returns the memory entry IDs a completed producer delivered for
-    // its unit. Bounded to one retry: a producer that forgot deliver_result gets
-    // a single nudge, never an unbounded prompt loop.
-    async function collectDelivery(delegation: string, child: string | undefined): Promise<number[]> {
-      let d = await execution(delegation)
-      if (!d?.delivery?.length && child) {
-        await promptChild(child, `Call deliver_result with the IDs of the Takt memory entries you recorded for this delegation. If you recorded none, first record your result, or the blocker that stops you, with ${MEMORY_TOOLS.record}, then deliver its ID.`)
-        await ctx.session.wait({ sessionID: child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
-        d = await execution(delegation)
-      }
-      if (!d?.delivery?.length) {
-        const ask = child ? `delegate unit "${d?.unit}" again with sessionID ${child} to ask for it` : `no session was linked to it: delegate unit "${d?.unit}" again`
-        throw new Error(`the specialist ended without delivering its result; ${ask}`)
-      }
-      return d.delivery
-    }
-
-    /**
-     * Settles tracked delegations and advances GC after ordinary VFS tool calls.
-     * A completed result producer with no delivery gets one reminder if its child
-     * is known; the hook waits for that turn before rejecting a missing result.
-     * Delivery checks clear the child and result tracking and attempt to finish
-     * the delegation even on failure. Storage, session, and coordination errors
-     * propagate; a failed finish can replace a delivery or session error.
-     * GC children and untracked delegations are ignored.
-     */
+    // Launch completion is not child termination, delivery, or verification.
+    // Bind the native result to this exact attempt; lifecycle reconciliation
+    // observes the child's eventual idle/deletion using the existing owner.
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool === "subagent") {
         const delegation = `${event.sessionID}:${event.id}`
-        const d = await execution(delegation)
-        if (d === undefined || d.settled || d.cycle) { watching.delete(delegation); return }
-        // A background launch returns at once: the specialist is still running.
-        if (d.background && event.status === "completed") { watching.delete(delegation); return }
         try {
-          if (event.status === "completed" && RESULT_AGENTS.includes(d.agent ?? "")) {
-            const delivered = await collectDelivery(delegation, d.child)
-            // The orchestrator receives the delivered IDs with the result itself.
-            event.result = { ...event.result, content: withText(event.result.content, `Delivered results: ${entryRefs(delivered)}`) }
+          const d = await execution(delegation)
+          if (d === undefined || d.settled || d.cycle) return
+          if (event.status === "completed") {
+            const child = event.result.metadata?.sessionID
+            if (typeof child !== "string" || !child) throw new Error("native subagent result has no sessionID; launch remains unsettled")
+            await adoptChild(child, d.agent, d)
+          } else {
+            await endDelegation(delegation, d)
           }
-        } finally {
-          try { await endDelegation(delegation, d, event) }
-          finally { watching.delete(delegation) }
-        }
+        } catch (error) {
+          // execute.after cannot refuse a launch that already ran. Keep failed
+          // observations unsettled for the existing reconciliation to retry.
+          console.error("Takt native launch observation", delegation, error)
+        } finally { watching.delete(delegation) }
       } else if (event.tool.startsWith("vfs_")) {
         // Maintenance observation cannot replace a successful VFS result with
         // a context/query failure. Admission still enforces its core barrier.
@@ -1357,12 +1350,12 @@ export default Plugin.define({
       }
     })
 
-    // A background delegation ends when its child goes idle. There is no tool
+    // An async delegation ends when its child goes idle. There is no tool
     // result to amend: whatever the child said, a question or a missing delivery
     // included, reaches the orchestrator as the child's own notification.
-    async function settleBackground(child: string) {
+    async function onChildIdle(child: string) {
       const d = await executionFor(child)
-      if (!d?.background) return
+      if (!d || d.cycle) return
       await reconcileStoredDelegations()
     }
 
@@ -1377,11 +1370,10 @@ export default Plugin.define({
         caller: info.parentID, created_at: info.time?.created }))
     }
 
-    // endDelegation records d's termination; given the caller that observed it,
-    // a pending repair is asked of the user instead of failing that call.
-    async function endDelegation(delegation: string, d: Delegation, c?: Caller) {
+    // endDelegation records the exact attempt's observed termination.
+    async function endDelegation(delegation: string, d: Delegation) {
       const request = { action: "finish", event: d.unit, dispatch: delegation, attempt: d.attempt, session: d.root }
-      await (c ? governed(c, request) : dispatchAction(request))
+      await dispatchAction(request)
       scheduleGC()
     }
 
@@ -1522,8 +1514,10 @@ export default Plugin.define({
           } else if (event.type === "session.idle") {
             const session = event.data.sessionID
             void (async () => {
-              await settleBackground(session)
+              // The captured shell delta is imported before the child's finish
+              // can cancel its pending shell preparation.
               await releaseShellSession(session, true)
+              await onChildIdle(session)
               await startCycleWhenIdle(session)
               scheduleGC()
             })().catch(error => console.error("Takt session idle", error))
@@ -1628,6 +1622,8 @@ export default Plugin.define({
         editor.update("subagent", (tool) => {
           tool.input = { ...schema, properties: {
             ...toolInput(schema.properties),
+            model: { ...toolInput(toolInput(schema.properties).model), description:
+              'Set only for a model or variant the user explicitly requests, or to restore an unavailable seat under the restoration conditions in your Takt operations. Otherwise omit it. It must be a chat model; image and decision models cannot run subagents. Use "providerID/modelID" or "providerID/modelID#variant". Do not guess the ID: look it up with the models tool, filtering to your own provider first.' },
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
               description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
               seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),

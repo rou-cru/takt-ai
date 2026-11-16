@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/flows/repair-sequence.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "d22592247a623671a1f436bf96630b1e97409ad7",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -67,13 +67,19 @@
     },
     {
       "id": "memory",
-      "type": "database",
-      "label": "Memory",
-      "sublabel": "Engram",
+      "type": "backend",
+      "label": "Takt Memory",
+      "sublabel": "MCP service",
       "sources": [
         {
-          "path": "takt/memory/memory.go",
-          "line": 16
+          "path": "takt/memory/server.go",
+          "line": 321,
+          "end_line": 342
+        },
+        {
+          "path": "takt/memory/record.go",
+          "line": 127,
+          "end_line": 163
         }
       ]
     }
@@ -92,7 +98,7 @@
       "from": "verify",
       "to": "memory",
       "y": 188,
-      "label": "memory_record: failed findings",
+      "label": "takt_memory_record: failed findings",
       "variant": "dashed"
     },
     {
@@ -140,7 +146,7 @@
       "from": "fix",
       "to": "memory",
       "y": 356,
-      "label": "memory_record: resolution",
+      "label": "takt_memory_record: resolution",
       "variant": "dashed"
     },
     {
@@ -188,7 +194,7 @@
       "from": "verify",
       "to": "memory",
       "y": 524,
-      "label": "memory_record: report",
+      "label": "takt_memory_record: report",
       "variant": "dashed"
     },
     {

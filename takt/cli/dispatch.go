@@ -54,7 +54,6 @@ type coordinationRequest struct {
 	Requirements []int64 `json:"requirements"`
 	Origin       string  `json:"origin"`
 	Caller       string  `json:"caller,omitempty"`
-	Background   bool    `json:"background,omitempty"`
 	CreatedAt    int64   `json:"created_at,omitempty"`
 	// AuthorKeys distinguishes an absent list (no gates) from an empty one,
 	// which a verifier preparation refuses.
@@ -65,14 +64,14 @@ type coordinationRequest struct {
 	Owner   string              `json:"owner,omitempty"`
 	Stopped []laneStop          `json:"stopped,omitempty"`
 	Repair  *vfs.RepairApproval `json:"repair,omitempty"`
-	// Model is the provider/model a delegation runs; ConfiguredModel is the
-	// instance's own. SeatReason and Substitute declare a seat restoration
-	// (PR-CRW-13); UserConfirmed carries the user's approval of its model.
-	Model           string `json:"model,omitempty"`
-	ConfiguredModel string `json:"configured_model,omitempty"`
-	SeatReason      string `json:"seat_reason,omitempty"`
-	Substitute      bool   `json:"substitute,omitempty"`
-	UserConfirmed   bool   `json:"user_confirmed,omitempty"`
+	// Model is the provider/model a delegation runs; PreviousModel is the
+	// effective native model before an override. SeatReason and Substitute declare
+	// a seat restoration (PR-CRW-13); UserConfirmed carries the user's approval.
+	Model         string `json:"model,omitempty"`
+	PreviousModel string `json:"previous_model,omitempty"`
+	SeatReason    string `json:"seat_reason,omitempty"`
+	Substitute    bool   `json:"substitute,omitempty"`
+	UserConfirmed bool   `json:"user_confirmed,omitempty"`
 }
 
 // memoryAdmin connects to the admin path of the running memory service; it never

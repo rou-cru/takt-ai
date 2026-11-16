@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/orchestrator/session-resume.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
       "link_mode": "local-only"
     }
   },
@@ -36,7 +36,7 @@
       "col": 0,
       "type": "security",
       "label": "Id given and found?",
-      "sublabel": "anchors read",
+      "sublabel": "session listing",
       "width": 140,
       "sources": [
         {
@@ -68,7 +68,7 @@
       "col": 3,
       "type": "security",
       "label": "Closed or not?",
-      "sublabel": "closed anchor?",
+      "sublabel": "close covers last entry?",
       "width": 140,
       "sources": [
         {
@@ -83,8 +83,8 @@
       "lane": "cand",
       "col": 0,
       "type": "backend",
-      "label": "Search anchors",
-      "sublabel": "match, recency, workspace",
+      "label": "List sessions",
+      "sublabel": "takt_memory_sessions",
       "width": 140,
       "sources": [
         {
@@ -169,8 +169,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 46,
-          "end_line": 46
+          "line": 50,
+          "end_line": 50
         }
       ]
     }
@@ -278,6 +278,13 @@
       "items": [
         "Another workspace is searched when nothing in this one matches or the user points there",
         "No recorded session matches: say so and ask for a hint or start fresh"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Continuity",
+      "items": [
+        "Use takt_memory_continue_session only for a closed session; the declaration stays pending until the first new entry"
       ]
     }
   ]
