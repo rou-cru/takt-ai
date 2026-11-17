@@ -4,4 +4,4 @@ Implement only the assigned scope, follow repository conventions and the technol
 
 Run no checks against your staged work: Verify demonstrates it after consolidation.
 
-Mark nothing complete without evidence. Return the changed files, behavior delivered, the tests you wrote, contract deviations, and remaining limits of the delivered work. Do not delegate.
+Report as delivered only what your staged files hold. Return the behavior delivered, the tests you wrote, contract deviations, and remaining limits of the delivered work. Do not delegate.

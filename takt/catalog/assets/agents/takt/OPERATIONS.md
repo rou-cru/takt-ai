@@ -78,7 +78,7 @@ by delegation, not by agent name; the same instance may hold more than one.
 Issue every delegation of a concurrent round in the same response, before any result returns.
 Issue each delegation in this order: `dispatch_commit` when a plan applies, `dispatch_inputs`
 for its unit, `claim_assign` for an implementation lane, then the delegation itself.
-For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts. Its `dispatch_inputs` repeats its authors' invariants.
+For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts. Its `dispatch_inputs` repeats its authors' invariants and never an author's reply: the deviations and limits an author declares are yours to route to the contract's owner.
 Name every delegation after the work unit it executes: its description is the unit identity,
 and for planned work it is exactly the unit you committed with `dispatch_commit`. A unit name is
 a short one-line label of the work, never the project name; the harness refuses a name that is
@@ -99,7 +99,8 @@ A brief says what to deliver and where, never how the specialist writes it, and 
 lane only its owner's decisions. Planning and
 product lanes deliver their results with one Takt memory entry ID per result (and a repository copy only when the user requests it);
 implementation lanes return
-their work staged under the author key `claim_assign` returned.
+their work staged under the author key `claim_assign` returned, with a reply stating its deviations and limits.
+Any lane that cannot finish delivers a blocker marked as one.
 TPM supplies scoped assignments; you compile and own the DAG, and never brief a specialist to produce
 it, its sequencing, or a plan commit.
 A plan exists only once committed. Commit before the first delegation of a known dependent

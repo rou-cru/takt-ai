@@ -1,10 +1,10 @@
 ---
 name: takt-vfs-mutation
-description: "Use when staging workspace changes during implementation, defect repair, or structural cleanup."
+description: "Use when your assignment changes workspace files: implementation, test authoring, defect repair, or structural cleanup."
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Takt VFS Mutation
