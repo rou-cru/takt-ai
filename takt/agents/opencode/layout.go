@@ -55,10 +55,13 @@ func ComposePrompt(def catalog.AgentDefinition, instanceID string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// MemoryClause names installed skill paths without injecting their content.
+// MemoryClause states how consumed entries are read (CTX-11) and names the
+// installed memory skills without injecting their content.
 func MemoryClause(authorID string) string {
 	return "## Memory\n\n" +
-		"Before using memory, read `~/" + shared.ContractSkillPath +
+		"The memory entries an assignment consumes are its inputs: read each before deciding; " +
+		"they prevail over any restatement in the brief. " +
+		"Before recording or searching memory, read `~/" + shared.ContractSkillPath +
 		"`; before recording, also `~/" + shared.MemorySkillPath(authorID) +
 		"`. They are the only memory rules that apply to you.\n"
 }

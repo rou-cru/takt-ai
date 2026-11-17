@@ -6,7 +6,7 @@ settings, context files, and on-demand skill links; it must not contain prompt p
 
 OpenCode installs this tree once at `~/.config/opencode/takt/`. Its native JSON
 registers each instance with direct file references in this order:
-BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause naming the
+BASELINE → PERSONA → SOUL → OPERATIONS, followed by a memory clause stating that consumed entries are read as inputs and naming the
 Takt memory contract and, for recording, the agent's Takt memory skill. Only undeclared optional files are omitted.
 This order does not introduce an authority hierarchy. PERSONA and SOUL carry identity and voice only: every working procedure, contract, and judgment criterion a role needs lives in BASELINE, OPERATIONS, or skills, so a substitute composed without them can hold an unavailable seat (`PR-CRW-13`). Both judge instances share
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode

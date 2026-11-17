@@ -384,13 +384,19 @@ const SHELL_MARKER_PATTERN = new RegExp(`${SHELL_MARKER_PREFIX}([0-9a-f]{${SHELL
 const VFS_SHELL_ENFORCED: boolean = "__TAKT_VFS_SHELL_ENFORCED__" as unknown as boolean
 
 
-// RESULT_AGENTS are the catalog producers that carry the takt-result-handoff
-// skill: their delegation must call deliver_result before it ends.
+// RESULT_AGENTS are the catalog instances that carry the takt-result-handoff
+// skill. Those that stage no work deliver a memory artifact, so their
+// delegation must call deliver_result before it ends; a VFS author calls it
+// only to deliver a blocker.
 const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
 
 // VFS_AUTHORS are the catalog instances granted VFS writes; only their native
 // inspections reserve a read scope, so no other agent's read needs the core.
 const VFS_AUTHORS: string[] = "__TAKT_VFS_AUTHORS__" as unknown as string[]
+
+// deliversArtifact holds for an instance that delivers a memory artifact and
+// stages no work: its shell runs natively, and its delegation is reminded to deliver.
+const deliversArtifact = (agent?: string) => RESULT_AGENTS.includes(agent ?? "") && !VFS_AUTHORS.includes(agent ?? "")
 
 // EXCEPTION_BOUNDS are the limits a user exception may raise, by the names the
 // execution history records them under.
@@ -824,7 +830,7 @@ export default Plugin.define({
     // reserved before any await and released on failure, and create.before claims
     // it before its first await, so no check spans an await (STR-16).
     const admittedShell = new Map<string, AdmittedShell>()
-    // The orchestrator's and RESULT_AGENTS' native-permission admission, by call
+    // The orchestrator's and artifact producers' native-permission admission, by call
     // token, until create. Each reservation is bound to its tool call and expires
     // with it.
     const directShell = new Map<string, DirectShell>()
@@ -884,7 +890,7 @@ export default Plugin.define({
         const toolKey = toolKeyOf(event)
         const token = randomUUID().replaceAll("-", "").slice(0, SHELL_TOKEN_LENGTH)
         event.input = { ...input, command: markShell(command, token) }
-        if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
+        if (event.agent === ORCHESTRATOR_ID || deliversArtifact(event.agent)) {
           await admitDirect(event.agent, event.sessionID, command, toolKey, token)
           return
         }
@@ -961,7 +967,7 @@ export default Plugin.define({
         if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
-        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) return
+        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || deliversArtifact(event.agent)) return
         // OpenCode asks over the commands it parsed out of the call, not the call
         // itself, so the admission is found by the tool call the request names.
         // The decision is resolved again for every execution, so a persistent
@@ -2113,7 +2119,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "deliver_result",
-        description: "Deliver this delegation's completed result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ". Call this before your turn ends.",
+        description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ", either the completed artifact or the blocker that ends the unit. Call this before your turn ends.",
         input: obj({
           result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
           blocker: { type: "boolean", description: "true when these entries record a blocker instead of the assigned deliverable" },
@@ -2147,7 +2153,7 @@ export default Plugin.define({
         editor.update(name, (tool) => {
           const native = tool.execute
           tool.execute = async (value, c) => {
-            if (c.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(c.agent) || !VFS_AUTHORS.includes(c.agent)) return native(value,c)
+            if (!VFS_AUTHORS.includes(c.agent)) return native(value,c)
             const args = toolInput(value)
             const pathValue = nativeReadPath(args)
             // Reconciliation finds a reservation only by the host's own call id.
@@ -2197,7 +2203,7 @@ export default Plugin.define({
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
         if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed) })
-        if (delegation && RESULT_AGENTS.includes(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
+        if (delegation && !delegation.cycle && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]
