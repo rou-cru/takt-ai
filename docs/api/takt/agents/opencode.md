@@ -159,7 +159,7 @@ InstallSandboxDependency npm\-installs the sandbox adapter's one dependency next
 func MemoryClause(authorID string) string
 ```
 
-MemoryClause names installed skill paths without injecting their content.
+MemoryClause states how consumed entries are read \(CTX\-11\) and names the installed memory skills without injecting their content.
 
 <a name="ProviderNames"></a>
 ## func ProviderNames
