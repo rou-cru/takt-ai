@@ -222,7 +222,7 @@ LaneUnit is the work unit and catalog agent of a maintenance cycle's lane for ro
 func RegisterStateDirs(dirs ...string) (err error)
 ```
 
-RegisterStateDirs adds the absolute dirs the registry does not list yet. Concurrent registrations may repeat a line; StateDirs reads each path once. A dir holding a glob character is left out: no sandbox can name it literally, so it cannot be denied and would break every shell plan.
+RegisterStateDirs adds the absolute dirs the registry does not list yet. Concurrent registrations may repeat a line; StateDirs reads each path once. A dir holding a glob character is refused: no sandbox can deny it by literal path, so its workspace must not open and store state there.
 
 <a name="StateDir"></a>
 ## func StateDir
