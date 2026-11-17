@@ -45,19 +45,9 @@ const managedMarkerKey = managedPrefixKey + "/node_modules/@colbymchenry/codegra
 // managedPrefixKey is the root-relative slash path of the managed install.
 const managedPrefixKey = ".takt-ai/codegraph"
 
-var (
-	// lookPath finds binaries so tests can swap in a fake path.
-	lookPath = exec.LookPath
-	// execCommand runs binaries so tests can stub command execution.
-	execCommand = exec.CommandContext
-	// userHomeDir resolves the home directory; tests isolate the home guard.
-	userHomeDir = os.UserHomeDir
-)
-
 // runCommand executes one CodeGraph CLI command from the target workspace.
-// Tests replace it to verify startup ordering without launching CodeGraph.
-var runCommand = func(ctx context.Context, binary, workspace string, args ...string) ([]byte, error) {
-	cmd := execCommand(ctx, binary, args...)
+func runCommand(ctx context.Context, binary, workspace string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = workspace
 	return cmd.CombinedOutput()
 }
@@ -82,7 +72,7 @@ func ManagedBinaryPath(root string) string {
 // (2) ManagedBinaryPath(root) if it exists and reports >= CodegraphVersion. Returns absolute path.
 func Resolve(root string) (string, bool) {
 	candidates := []string{}
-	if onPath, err := lookPath("codegraph"); err == nil {
+	if onPath, err := exec.LookPath("codegraph"); err == nil {
 		candidates = append(candidates, onPath)
 	}
 	candidates = append(candidates, ManagedBinaryPath(root))
@@ -102,7 +92,7 @@ func Acquire(ctx context.Context, root string) (string, error) {
 	if err := os.MkdirAll(prefix, codegraphDirectoryMode); err != nil {
 		return "", fmt.Errorf("prepare codegraph install dir: %w", err)
 	}
-	output, err := execCommand(ctx, "npm", "install", "--prefix", prefix, "--no-fund", "--no-audit", "--no-package-lock", "--loglevel=error", npmPackage+"@"+CodegraphVersion).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "npm", "install", "--prefix", prefix, "--no-fund", "--no-audit", "--no-package-lock", "--loglevel=error", npmPackage+"@"+CodegraphVersion).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("install codegraph %s with npm: %w: %s", CodegraphVersion, err, strings.TrimSpace(string(output)))
 	}
@@ -123,7 +113,7 @@ func EnsureIndexed(ctx context.Context, binary, workspace string) error {
 	if strings.TrimSpace(workspace) == "" {
 		return fmt.Errorf("workspace directory is required")
 	}
-	home, err := userHomeDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
@@ -168,7 +158,7 @@ func sameDirectory(left, right string) (bool, error) {
 
 // VerifyVersion runs `<binary> --version` so broken installs fail fast with a clear error.
 func VerifyVersion(binary string) (string, error) {
-	out, err := execCommand(context.Background(), binary, "--version").Output()
+	out, err := exec.CommandContext(context.Background(), binary, "--version").Output()
 	if err != nil {
 		return "", fmt.Errorf("codegraph version command failed: %w", err)
 	}
