@@ -40,6 +40,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(h \*History\) AttachChild\(dispatch, child, agent string\) \(Execution, error\)](<#History.AttachChild>)
   - [func \(h \*History\) AttachMaintenance\(root, cycle, role, child, owner string\) error](<#History.AttachMaintenance>)
   - [func \(h \*History\) Close\(\) error](<#History.Close>)
+  - [func \(h \*History\) Deliver\(d Execution, ids \[\]int64, blocker bool\) error](<#History.Deliver>)
   - [func \(h \*History\) Entries\(\) \[\]Entry](<#History.Entries>)
   - [func \(h \*History\) ExecutionFact\(d Execution, kind Kind, child, phase string, ids \[\]int64\) error](<#History.ExecutionFact>)
   - [func \(h \*History\) Project\(\) Projection](<#History.Project>)
@@ -57,6 +58,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(p Projection\) LeaseLapsed\(owner string, now time.Time\) bool](<#Projection.LeaseLapsed>)
   - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
   - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
+  - [func \(p Projection\) ReturnedExecution\(child string\) \(Execution, bool\)](<#Projection.ReturnedExecution>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
 - [type QARound](<#QARound>)
 - [type Recovery](<#Recovery>)
@@ -498,6 +500,9 @@ type Entry struct {
     // Substitute marks a restored seat filled by a non-orchestrating Takt
     // substitute rather than by its own specialist.
     Substitute bool `json:"substitute,omitempty"`
+    // Blocker marks a delivery whose entries record a blocker instead of the
+    // assigned deliverable (PR-HAR-38).
+    Blocker bool `json:"blocker,omitempty"`
 }
 ```
 
@@ -536,12 +541,15 @@ type Execution struct {
     AdmittedAt int64   `json:"admitted_at"`
     Inputs     []int64 `json:"inputs"`
     Delivery   []int64 `json:"delivery,omitempty"`
-    Cycle      string  `json:"cycle,omitempty"`
-    Role       string  `json:"role,omitempty"`
-    Prompted   string  `json:"prompted,omitempty"`
-    Ready      bool    `json:"ready,omitempty"`
-    Terminated bool    `json:"terminated,omitempty"`
-    Settled    bool    `json:"settled,omitempty"`
+    // Blocker is set when the latest delivery records a blocker: only then may
+    // a later delegation continue this execution's session (PR-HAR-38).
+    Blocker    bool   `json:"blocker,omitempty"`
+    Cycle      string `json:"cycle,omitempty"`
+    Role       string `json:"role,omitempty"`
+    Prompted   string `json:"prompted,omitempty"`
+    Ready      bool   `json:"ready,omitempty"`
+    Terminated bool   `json:"terminated,omitempty"`
+    Settled    bool   `json:"settled,omitempty"`
     // Model is the provider/model the execution runs.
     Model string `json:"model,omitempty"`
     // Substitute marks a Takt substitute filling the instance's seat.
@@ -654,6 +662,15 @@ func (h *History) Close() error
 ```
 
 Close releases the store handle.
+
+<a name="History.Deliver"></a>
+### func \(\*History\) Deliver
+
+```go
+func (h *History) Deliver(d Execution, ids []int64, blocker bool) error
+```
+
+Deliver records the result IDs a running execution delivers and whether they record a blocker.
 
 <a name="History.Entries"></a>
 ### func \(\*History\) Entries
@@ -985,6 +1002,15 @@ func (p Projection) Orphaned(d Execution, now time.Time) bool
 ```
 
 Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it.
+
+<a name="Projection.ReturnedExecution"></a>
+### func \(Projection\) ReturnedExecution
+
+```go
+func (p Projection) ReturnedExecution(child string) (Execution, bool)
+```
+
+ReturnedExecution is the latest settled ordinary execution that ran in child: the delegation a continuation of that session would resume.
 
 <a name="Projection.Unit"></a>
 ### func \(Projection\) Unit
