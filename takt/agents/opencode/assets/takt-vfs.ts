@@ -290,8 +290,9 @@ const invariantsNotice = (unit: string, consumed: number[], undelivered: string[
   : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.`)
   + (undelivered.length ? ` ${undelivered.join(", ")} had delivered nothing when this unit was declared.` : "")
 // declaredInputs reports what a unit will consume, as dispatch_inputs recorded it.
+const fromUnit = (unit?: string) => unit ? ` (from ${unit})` : ""
 const declaredInputs = (unit: string, inputs: { id: number; title: string; unit?: string }[], undelivered: string[]) => {
-  const lines = inputs.map(i => `#${i.id} ${i.title}${i.unit ? ` (from ${i.unit})` : ""}`)
+  const lines = inputs.map(i => `#${i.id} ${i.title}${fromUnit(i.unit)}`)
   const absent = undelivered.length ? ` ${undelivered.join(", ")} delivered nothing yet.` : ""
   return lines.length ? `${unit} consumes: ${lines.join("; ")}.${absent}` : `${unit} consumes no recorded invariant yet.${absent}`
 }

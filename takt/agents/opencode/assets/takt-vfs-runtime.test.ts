@@ -475,7 +475,7 @@ describe("delegation lifecycle", () => {
   })
 
   test("a declaration may name producer units and reports what the unit will consume", async () => {
-    const vfs = await startVfs({ history: { executions: saved({ "root:prd": { root: "root", unit: "prd", delivery: [12], settled: true } }) } })
+    const vfs = await startVfs({ history: { executions: saved({ "root:prd": { root: "root", unit: "prd", delivery: [12], result: [12], settled: true } }) } })
     try {
       const result = await vfs.run("dispatch_inputs", { work_unit_id: "arch", result_ids: [7], units: ["prd", "art"] }, orchestrator)
       expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root", event: "arch", result_ids: [7], units: ["prd", "art"] }])

@@ -283,7 +283,7 @@ export default Plugin.define({
     })
 
     // The host's schema refusal says what is wrong, never where the contract is.
-    await ctx.tool.hook("execute.after", async (event) => {
+    await ctx.tool.hook("execute.after", (event) => {
       if (event.status !== "error" || !event.tool.startsWith(TOOL_PREFIX) || !event.error.message.startsWith(INVALID_ARGUMENTS)) return
       event.error = new ToolError({ message: `${event.error.message}\n\n${contractPointer(event.tool)}`, error: event.error.error, metadata: event.error.metadata })
     })

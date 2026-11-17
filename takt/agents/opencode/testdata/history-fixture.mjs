@@ -17,9 +17,9 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
   inputs(r) {
    const ids = [...(r.result_ids ?? [])], from = ids.map(() => undefined), absent = []
    for (const unit of r.units ?? []) {
-    const d = Object.values(executions).filter(e => e.root === r.session && e.unit === unit && !e.cycle && e.delivery?.length && !e.blocker).at(-1)
+    const d = Object.values(executions).findLast(e => e.root === r.session && e.unit === unit && !e.cycle && e.result?.length && !e.blocker)
     if (!d) { absent.push(unit); continue }
-    for (const id of d.delivery) { ids.push(id); from.push(unit) }
+    for (const id of d.result) { ids.push(id); from.push(unit) }
    }
    inputs.set(`${r.session}\0${r.event}`, ids); undelivered.set(`${r.session}\0${r.event}`, absent)
    return reply({ inputs: ids.map((id, i) => ({ id, title: `entry ${id}`, ...(from[i] ? { unit: from[i] } : {}) })), undelivered: absent })
@@ -63,7 +63,9 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
   deliver(r) {
    const d=activeChild(r.child,r.agent)
    if(!d || (r.dispatch && d.dispatch!==r.dispatch) || (r.attempt && d.attempt!==r.attempt))return denied("deliver_result belongs to a running delegation; nothing was credited")
-   d.delivery=[...new Set([...(d.delivery??[]),...r.result_ids])];return reply({result_ids:d.delivery})
+   d.delivery=[...new Set([...(d.delivery??[]),...r.result_ids])];d.blocker=!!r.blocker
+   if(!r.blocker)d.result=[...new Set([...(d.result??[]),...r.result_ids])]
+   return reply({result_ids:d.delivery})
   },
   finish(r) {
    const d=executions[r.dispatch]

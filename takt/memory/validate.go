@@ -15,6 +15,10 @@ type Rule struct {
 	WrittenBy string
 }
 
+// ErrMissingEntries marks a refusal of IDs that name no entry: only those IDs
+// need correcting; any other Current error leaves the IDs valid to retry.
+var ErrMissingEntries = errors.New("refused Takt memory entries")
+
 // Current carries each entry ID forward to the current version of its chain. heads is aligned
 // with ids; described holds each distinct head once, in first-seen order. Only an ID that does
 // not exist is refused.
@@ -36,13 +40,20 @@ func Current(ctx context.Context, a *Admin, ids []int64) (heads []int64, describ
 		}
 	}
 	if len(missing) > 0 {
-		return nil, res, errors.New("refused Takt memory entries: " + strings.Join(missing, "; "))
+		return nil, res, fmt.Errorf("%w: %s", ErrMissingEntries, strings.Join(missing, "; "))
 	}
 	if slices.Equal(distinct, ids) {
 		return heads, res, nil
 	}
-	described, err = a.Describe(ctx, DescribeInput{IDs: distinct})
-	return heads, described, err
+	if described, err = a.Describe(ctx, DescribeInput{IDs: distinct}); err != nil {
+		return nil, described, err
+	}
+	for _, d := range described.Entries {
+		if d.CurrentVersion != d.ID {
+			return nil, described, fmt.Errorf("refused Takt memory entry #%d: superseded during resolution; retry", d.ID)
+		}
+	}
+	return heads, described, nil
 }
 
 // Validate is the single validator of the harness: one describe call checks every ID

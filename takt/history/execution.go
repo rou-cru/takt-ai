@@ -46,6 +46,9 @@ type Execution struct {
 	// delivered nothing when they were declared.
 	Undelivered []string `json:"undelivered,omitempty"`
 	Delivery    []int64  `json:"delivery,omitempty"`
+	// Result is what its deliveries without a blocker mark delivered: what a
+	// consuming unit receives from it (PR-HAR-37).
+	Result []int64 `json:"-"`
 	// Blocker is set when the latest delivery records a blocker: only then may
 	// a later delegation continue this execution's session (PR-HAR-38).
 	Blocker    bool   `json:"blocker,omitempty"`
@@ -119,6 +122,9 @@ func (p *Projection) foldExecution(e Entry) {
 			if !slices.Contains(d.Delivery, id) {
 				d.Delivery = append(d.Delivery, id)
 			}
+			if !e.Blocker && !slices.Contains(d.Result, id) {
+				d.Result = append(d.Result, id)
+			}
 		}
 		d.Blocker = e.Blocker
 	case KindPrompt:
@@ -171,17 +177,17 @@ func (p Projection) ReturnedExecution(child string) (Execution, bool) {
 	return latest, found
 }
 
-// Delivered is what unit last delivered in root: the delivery of its latest
-// ordinary execution that delivered something other than a blocker.
+// Delivered is what unit last delivered in root: what its latest ordinary
+// execution not ending on a blocker delivered without a blocker mark.
 func (p Projection) Delivered(root, unit string) ([]int64, bool) {
 	var latest Execution
 	found := false
 	for _, d := range p.Executions {
-		if d.Root == root && d.Unit == unit && d.Cycle == "" && len(d.Delivery) > 0 && !d.Blocker && (!found || d.Seq > latest.Seq) {
+		if d.Root == root && d.Unit == unit && d.Cycle == "" && len(d.Result) > 0 && !d.Blocker && (!found || d.Seq > latest.Seq) {
 			latest, found = d, true
 		}
 	}
-	return slices.Clone(latest.Delivery), found
+	return slices.Clone(latest.Result), found
 }
 
 func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids []int64) error {

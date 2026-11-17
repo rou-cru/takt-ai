@@ -50,8 +50,11 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 	inputs := []declaredInput{}
 	if len(ids) > 0 {
 		heads, described, err := currentMemory(ctx, ids)
-		if err != nil {
+		if errors.Is(err, memory.ErrMissingEntries) {
 			return nil, fmt.Errorf("%w; call dispatch_inputs again without them", err)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w; retry dispatch_inputs with the same declaration", err)
 		}
 		for _, d := range described.Entries {
 			current = append(current, d.ID)
