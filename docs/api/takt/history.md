@@ -227,7 +227,7 @@ UnitKey names session's work unit unit in Projection.Units.
 func ValidateUnitName(name string) error
 ```
 
-ValidateUnitName is the one contract a unit name keeps, in a plan declaration and in the admission of work without a plan \(PR\-DAG\-REP\-8\): a single line of at most MaxUnitNameCells display cells with no control characters. The refusal names the rule and how to satisfy it.
+ValidateUnitName is the one contract a unit name keeps, in a plan declaration and in the admission of work without a plan \(PR\-DAG\-REP\-8\): a single line of at most MaxUnitNameCells display cells with no control characters or Unicode line and paragraph separators. The refusal names the rule and how to satisfy it.
 
 <a name="Activity"></a>
 ## type Activity
@@ -531,16 +531,19 @@ Execution is the current linkage of one exact host dispatch. A unit retry create
 
 ```go
 type Execution struct {
-    Dispatch   string  `json:"dispatch"`
-    Root       string  `json:"root"`
-    Unit       string  `json:"unit"`
-    Attempt    string  `json:"attempt"`
-    Agent      string  `json:"agent"`
-    Caller     string  `json:"caller"`
-    Child      string  `json:"child,omitempty"`
-    AdmittedAt int64   `json:"admitted_at"`
-    Inputs     []int64 `json:"inputs"`
-    Delivery   []int64 `json:"delivery,omitempty"`
+    Dispatch   string `json:"dispatch"`
+    Root       string `json:"root"`
+    Unit       string `json:"unit"`
+    Attempt    string `json:"attempt"`
+    Agent      string `json:"agent"`
+    Caller     string `json:"caller"`
+    Child      string `json:"child,omitempty"`
+    AdmittedAt int64  `json:"admitted_at"`
+    // Seq is the history position of the admitting entry: the order of
+    // executions, which AdmittedAt cannot give when two values tie.
+    Seq      int     `json:"-"`
+    Inputs   []int64 `json:"inputs"`
+    Delivery []int64 `json:"delivery,omitempty"`
     // Blocker is set when the latest delivery records a blocker: only then may
     // a later delegation continue this execution's session (PR-HAR-38).
     Blocker    bool   `json:"blocker,omitempty"`

@@ -149,7 +149,7 @@ CloseRecovery closes a declared recovery, recording whether its result was demon
 func Commit(h *history.History, journalRef, session, version string, units []PlanUnit, qaRound ...*history.QARound) error
 ```
 
-Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\).
+Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\). An invalid one is rejected with its reason recorded and covers nothing \(PR\-DAG\-MUT\-6\).
 
 <a name="Contest"></a>
 ## func Contest
