@@ -404,6 +404,77 @@ func StateDir(workspace string) string {
 	return filepath.Join(workspace, workspaceStateDir, vfsStateDir)
 }
 
+// stateDirsFile lists, one per line, every directory holding Takt state that
+// a harness opened on this host, so a sandbox can deny each by literal path.
+const stateDirsFile = "workspaces"
+
+// GlobalStateDir is Takt's per-user state directory, ~/.takt-ai.
+func GlobalStateDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, workspaceStateDir), nil
+}
+
+// RegisterStateDirs adds the absolute dirs the registry does not list yet.
+// Concurrent registrations may repeat a line; StateDirs reads each path once.
+func RegisterStateDirs(dirs ...string) (err error) {
+	known, err := StateDirs()
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for _, dir := range dirs {
+		if !filepath.IsAbs(dir) || strings.ContainsAny(dir, "\r\n") {
+			return fmt.Errorf("history: state directory %q is not an absolute single-line path", dir)
+		}
+		if !slices.Contains(known, dir) && !slices.Contains(missing, dir) {
+			missing = append(missing, dir)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	global, err := GlobalStateDir()
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(global, stateDirectoryMode); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(filepath.Join(global, stateDirsFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, stateFileMode)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+	_, err = file.WriteString(strings.Join(missing, "\n") + "\n")
+	return err
+}
+
+// StateDirs lists the registered state directories in registration order. An
+// absent registry lists none.
+func StateDirs() ([]string, error) {
+	global, err := GlobalStateDir()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(global, stateDirsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var dirs []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line != "" && !slices.Contains(dirs, line) {
+			dirs = append(dirs, line)
+		}
+	}
+	return dirs, nil
+}
+
 // ReadProjection reads the existing history without creating a store or schema.
 // An absent history is the empty projection; malformed existing history fails.
 func ReadProjection(stateDir string) (Projection, error) {

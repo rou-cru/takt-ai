@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -101,7 +102,7 @@ func TestShellMutationIsStagedAndDiskUntouched(t *testing.T) {
 	}
 	shellRun(t, plan, "0", writeProjected(t, "data.txt", "changed\n"))
 
-	result, err := f.CompleteShell(c, "shell-1", state)
+	result, err := f.CompleteShell(c, "shell-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,7 @@ func TestShellReeditRetainsCompletedCycleAttribution(t *testing.T) {
 		t.Fatal(err)
 	}
 	shellRun(t, plan, "0", writeProjected(t, "a.txt", "corrected"))
-	if _, err := g.f.CompleteShell(c, "ordinary-shell", g.state); err != nil {
+	if _, err := g.f.CompleteShell(c, "ordinary-shell"); err != nil {
 		t.Fatal(err)
 	}
 	if content, ok := g.disk("a.txt"); !ok || content != "new-a" {
@@ -175,7 +176,7 @@ func TestShellFailedCommandKeepsUnverifiedDelta(t *testing.T) {
 		t.Fatal(err)
 	}
 	shellRun(t, plan, "1", writeProjected(t, "notes.txt", "half"))
-	if _, err := f.CompleteShell(c, "shell-fail", state); err != nil {
+	if _, err := f.CompleteShell(c, "shell-fail"); err != nil {
 		t.Fatal(err)
 	}
 	claim, _ := claimOf(f, key)
@@ -196,7 +197,7 @@ func TestShellImportRefusesUnconfirmedDescendants(t *testing.T) {
 	}
 	// No confirmation record: a descendant may still be writing.
 	writeProjected(t, "data.txt", "x")(plan.Cwd)
-	if _, err := f.CompleteShell(c, "shell-escape", state); !errors.Is(err, vfs.ErrShellDescendants) {
+	if _, err := f.CompleteShell(c, "shell-escape"); !errors.Is(err, vfs.ErrShellDescendants) {
 		t.Fatalf("CompleteShell = %v; want ErrShellDescendants", err)
 	}
 	if len(f.InspectDelta(key).Files) != 0 {
@@ -212,10 +213,10 @@ func TestShellImportIsSingleUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	shellRun(t, plan, "0", writeProjected(t, "data.txt", "x"))
-	if _, err := f.CompleteShell(c, "shell-replay", state); err != nil {
+	if _, err := f.CompleteShell(c, "shell-replay"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.CompleteShell(c, "shell-replay", state); err == nil {
+	if _, err := f.CompleteShell(c, "shell-replay"); err == nil {
 		t.Fatal("CompleteShell replay = nil; want the consumed call rejected")
 	}
 }
@@ -230,7 +231,7 @@ func TestShellImportRefusesStagedWorkThatMoved(t *testing.T) {
 	}
 	write(t, f, c, "concurrent", "other.txt", "kept")
 	shellRun(t, plan, "0", writeProjected(t, "data.txt", "x"))
-	if _, err := f.CompleteShell(c, "shell-race", state); !errors.Is(err, vfs.ErrStaleRevision) {
+	if _, err := f.CompleteShell(c, "shell-race"); !errors.Is(err, vfs.ErrStaleRevision) {
 		t.Fatalf("CompleteShell after a concurrent write = %v; want ErrStaleRevision", err)
 	}
 	if got, ok := stagedContent(f, key, "other.txt"); !ok || got != "kept" {
@@ -244,7 +245,7 @@ func TestShellImportRefusesStagedWorkThatMoved(t *testing.T) {
 func TestShellImportBelongsToThePreparingDelegation(t *testing.T) {
 	f, _, state := newStore(t)
 	c, _ := delegate(t, f, state, testSession, "dev", "unit", "data.txt")
-	if _, err := f.CompleteShell(c, "never-prepared", state); !errors.Is(err, vfs.ErrIdentity) && !errors.Is(err, vfs.ErrNoAdmission) {
+	if _, err := f.CompleteShell(c, "never-prepared"); !errors.Is(err, vfs.ErrIdentity) && !errors.Is(err, vfs.ErrNoAdmission) {
 		t.Fatalf("CompleteShell without preparation = %v; want ErrIdentity", err)
 	}
 	plan, err := f.PrepareShell(c, "shell-own", "printf x > data.txt", state)
@@ -254,7 +255,7 @@ func TestShellImportBelongsToThePreparingDelegation(t *testing.T) {
 	shellRun(t, plan, "0", writeProjected(t, "data.txt", "x"))
 	other := c
 	other.HostSession = "another-host"
-	if _, err := f.CompleteShell(other, "shell-own", state); !errors.Is(err, vfs.ErrIdentity) && !errors.Is(err, vfs.ErrNoAdmission) {
+	if _, err := f.CompleteShell(other, "shell-own"); !errors.Is(err, vfs.ErrIdentity) && !errors.Is(err, vfs.ErrNoAdmission) {
 		t.Fatalf("CompleteShell from another host session = %v; want ErrIdentity", err)
 	}
 	if _, err := f.PrepareShell(c, "", "ls", state); !errors.Is(err, vfs.ErrIdentity) && !errors.Is(err, vfs.ErrNoAdmission) {
@@ -424,12 +425,160 @@ func TestShellPlansDenyHomeSecretsAndForeignProjections(t *testing.T) {
 	if !containsCanonicalPath(t, mutation.Private, filepath.Join(home, ".ssh")) {
 		t.Errorf("mutation may read home credentials; private = %v", mutation.Private)
 	}
-	foreign := filepath.Dir(filepath.Dir(mutation.Cwd))
-	if !containsCanonicalPath(t, inspection.Private, foreign) {
-		t.Errorf("inspection may read the later projection under %s; private = %v", foreign, inspection.Private)
+	if !coveredBy(t, inspection.Unreadable, mutation.Cwd) || coveredBy(t, inspection.Readable, mutation.Cwd) {
+		t.Errorf("inspection may read the later projection %s; unreadable = %v, readable = %v", mutation.Cwd, inspection.Unreadable, inspection.Readable)
 	}
 	if !containsCanonicalPath(t, inspection.Private, filepath.Join(home, ".ssh")) {
 		t.Errorf("inspection may read home credentials; private = %v", inspection.Private)
+	}
+}
+
+// coveredBy reports whether path is one of dirs or lies below one of them.
+func coveredBy(t *testing.T, dirs []string, path string) bool {
+	t.Helper()
+	path = canonical(t, path)
+	for _, dir := range dirs {
+		dir = canonical(t, dir)
+		if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestShellPlanKeepsItsOwnRootOutsideEveryDenial checks that a command can use
+// its own root: no read-and-write or write denial covers the projection, the
+// scratch or the confirmation, and every allowed plan names its write-denied
+// paths, which the plugin requires.
+func TestShellPlanKeepsItsOwnRootOutsideEveryDenial(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f, root, state := newStore(t)
+	c, _ := delegate(t, f, state, testSession, "dev", "unit", "data.txt")
+	for _, command := range []string{"printf x > data.txt", "ls"} {
+		plan, err := f.PrepareShell(c, "call-"+command, command, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(plan)
+		if len(plan.Protected) == 0 || !strings.Contains(string(raw), `"protected"`) {
+			t.Fatalf("%q plan = %s; want its write-denied paths named", command, raw)
+		}
+		own := []string{plan.Scratch, filepath.Dir(plan.Confirm)}
+		if plan.Cwd != canonical(t, root) {
+			own = append(own, plan.Cwd)
+			// The sandbox re-allows the scratch; each projected file is re-allowed
+			// by name, never through a directory bound back read-only over it.
+			for _, path := range plan.Writable {
+				if !slices.Contains(plan.Readable, path) {
+					t.Errorf("%q: projected %s unreadable to its own command; readable = %v", command, path, plan.Readable)
+				}
+			}
+		}
+		for _, path := range own {
+			if coveredBy(t, slices.Concat(plan.Private, plan.Protected), path) {
+				t.Errorf("%q: %s lies under a write denial; private = %v, protected = %v", command, path, plan.Private, plan.Protected)
+			}
+			for _, readable := range plan.Readable {
+				if strings.HasPrefix(path, readable+string(filepath.Separator)) {
+					t.Errorf("%q: readable %s would bind %s back read-only", command, readable, path)
+				}
+			}
+		}
+	}
+}
+
+// TestShellCapturesACommandNamingAClaimedPath checks that the claim, not the
+// command's verbs, decides capture, and that binary output is staged byte for byte.
+func TestShellCapturesACommandNamingAClaimedPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f, root, state := newStore(t)
+	c, key := delegate(t, f, state, testSession, "dev", "unit", "assets/x.png")
+	for i, command := range []string{
+		"rsvg-convert in.svg -o assets/x.png",
+		"magick in.svg --output=./assets/x.png",
+		"rsvg-convert in.svg -o " + filepath.Join(canonical(t, root), "assets", "x.png"),
+	} {
+		plan, err := f.PrepareShell(c, "name-"+strconv.Itoa(i), command, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Decision != vfs.ShellAllow || plan.Cwd == canonical(t, root) {
+			t.Fatalf("%q plan = %+v; want a captured projection", command, plan)
+		}
+	}
+	png := "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+	plan, err := f.PrepareShell(c, "png", "rsvg-convert in.svg -o assets/x.png", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellRun(t, plan, "0", writeProjected(t, "assets/x.png", png))
+	if _, err := f.CompleteShell(c, "png"); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := stagedContent(f, key, "assets/x.png"); !ok || got != png {
+		t.Fatalf("staged = %q, %v; want the PNG bytes unchanged", got, ok)
+	}
+}
+
+// TestShellScratchLastsUntilTheWorkEnds checks that an author's commands share
+// one scratch, kept between commands and removed once its work is discarded.
+func TestShellScratchLastsUntilTheWorkEnds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f, _, state := newStore(t)
+	c, key := delegate(t, f, state, testSession, "dev", "unit", "data.txt")
+	first, err := f.PrepareShell(c, "first", "ls", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(first.Scratch, "gen.js")
+	if err := os.WriteFile(kept, []byte("work"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	shellRun(t, first, "0", nil)
+	if _, err := f.CompleteShell(c, "first"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.PrepareShell(c, "second", "ls", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Scratch != first.Scratch {
+		t.Fatalf("scratch = %s then %s; want one per author", first.Scratch, second.Scratch)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Fatalf("work kept in the scratch is gone after a command: %v", err)
+	}
+	if err := f.DiscardAs(orchestrator(testSession), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(first.Scratch); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scratch after discard: %v; want it removed", err)
+	}
+}
+
+// TestShellPlansDenyEveryTaktStateDirectory checks that a specialist reads no
+// Takt state on the host, its other workspaces' included, while the managed
+// CodeGraph install stays readable.
+func TestShellPlansDenyEveryTaktStateDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	managed := filepath.Join(home, ".takt-ai", "codegraph")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, _, otherState := newStore(t)
+	f, _, state := newStore(t)
+	plan, err := f.PrepareShell(callerOf(testSession, "fix", "u"), "inspect", "cat x", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{filepath.Join(home, ".takt-ai"), otherState} {
+		if !containsCanonicalPath(t, plan.Private, dir) {
+			t.Errorf("inspection may read %s; private = %v", dir, plan.Private)
+		}
+	}
+	if !containsCanonicalPath(t, plan.Readable, managed) {
+		t.Errorf("managed CodeGraph unreadable; readable = %v", plan.Readable)
 	}
 }
 

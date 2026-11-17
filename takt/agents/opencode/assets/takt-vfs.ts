@@ -54,7 +54,7 @@ export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
   return value as T
 }
 
-type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; allowedDomains?: string[]; capture?: boolean; cwd?: string; confirm?: string }
+type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; unreadable?: string[]; readable?: string[]; allowedDomains?: string[]; capture?: boolean; cwd?: string; confirm?: string }
 // AdoptedGate is one gate the core adopted for the calling host session.
 type AdoptedGate = { key: string; author_key: string; scope: string[]; error?: string }
 type Repair = { kind: "manifest" | "cycle"; id: string; author: string; paths: string[]; state: string; preserve: boolean; reason: string }
@@ -136,13 +136,15 @@ export function parseVFSShell(value: unknown): VFSShellResponse | undefined {
       !isString(value.reason) || !isOptional(value.cwd, isString) || !isOptional(value.scratch, isString) ||
       !isOptional(value.confirm, isString) || !isOptional(value.capture, isBoolean) ||
       !isOptional(value.writable, isStringArray) || !isOptional(value.protected, isStringArray) || !isOptional(value.private, isStringArray) ||
+      !isOptional(value.unreadable, isStringArray) || !isOptional(value.readable, isStringArray) ||
       !isOptional(value.allowedDomains, isStringArray)) return undefined
-  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths, allowedDomains } = value
+  const { decision, reason, cwd, scratch, confirm, capture, writable, protected: protectedPaths, private: privatePaths, unreadable, readable, allowedDomains } = value
   return { decision, reason, ...(isString(cwd) ? { cwd } : {}),
     ...(isString(scratch) ? { scratch } : {}), ...(isString(confirm) ? { confirm } : {}),
     ...(isBoolean(capture) ? { capture } : {}),
     ...(isStringArray(writable) ? { writable } : {}),
     ...(isStringArray(protectedPaths) ? { protected: protectedPaths } : {}), ...(isStringArray(privatePaths) ? { private: privatePaths } : {}) ,
+    ...(isStringArray(unreadable) ? { unreadable } : {}), ...(isStringArray(readable) ? { readable } : {}),
     ...(isStringArray(allowedDomains) ? { allowedDomains } : {}) }
 }
 export function responseObject(value: unknown, command: string): Record<string, unknown> {
@@ -825,7 +827,7 @@ export default Plugin.define({
     // strips it and swaps the shell executable for a sandboxed one without
     // touching the command text; evaluate finds the call by its tool call id and
     // only applies the decision admission already took.
-    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; allowedDomains?: string[]; capture: boolean }
+    type ShellPlan = { decision: "allow" | "ask" | "deny"; reason: string; cwd: string; scratch: string; confirm: string; writable: string[]; protected: string[]; private: string[]; unreadable: string[]; readable: string[]; allowedDomains?: string[]; capture: boolean }
     // ready is false while the transport request is still running.
     // started claims the call for create.before; wrapped says the sandbox is armed.
     type AdmittedShell = {
@@ -870,8 +872,9 @@ export default Plugin.define({
     const shellPlanOf = (shell: VFSShellResponse | undefined, agent: string | undefined, sessionID: string): ShellPlan => {
       if (!shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
       if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${shell.reason}`))
-      if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
-      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private, ...(shell.allowedDomains ? { allowedDomains: shell.allowedDomains } : {}) }
+      if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private || !shell.unreadable) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
+      // readable is empty when nothing inside a denied path needs re-allowing.
+      return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private, unreadable: shell.unreadable, readable: shell.readable ?? [], ...(shell.allowedDomains ? { allowedDomains: shell.allowedDomains } : {}) }
     }
 
     // The first execute.before pins the tool call to the execution its session
@@ -943,7 +946,8 @@ export default Plugin.define({
           const { wrap, supervise } = await import(SANDBOX_ADAPTER)
           const run = supervise(await wrap(text, {
             writable: plan.writable, scratch: plan.scratch,
-            protectedPaths: plan.protected, privatePaths: plan.private, ...(plan.allowedDomains ? { allowedDomains: plan.allowedDomains } : {}), callID,
+            protectedPaths: plan.protected, privatePaths: plan.private, unreadablePaths: plan.unreadable, readablePaths: plan.readable,
+            ...(plan.allowedDomains ? { allowedDomains: plan.allowedDomains } : {}), callID,
           }), plan.confirm)
           // The command text stays as admitted: OpenCode parses it for its own
           // permission check after this hook. The sandbox lives in the shell
@@ -959,7 +963,6 @@ export default Plugin.define({
           await writeFile(wrapper, [
             "#!/bin/sh",
             `cd ${quote(plan.cwd)} || exit ${SHELL_NOT_ADMITTED}`,
-            `export TMPDIR=${quote(plan.scratch)}`,
             ...(plan.cwd === workspace ? [] : [`export HOME=${quote(plan.scratch)}`]),
             `exec /bin/sh -c ${quote(run)}`,
             "",
@@ -2015,10 +2018,10 @@ export default Plugin.define({
       const authorKey = (value: unknown) => typeof value === "string" ? { author_key: value } : {}
       editor.add({
         name: "vfs_write",
-        description: "Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated.",
+        description: "Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated. Content is UTF-8 text. Write a binary file (image, archive, font) with a shell command to its scope path instead, e.g. `cp \"$TMPDIR/x.png\" assets/x.png` or `rsvg-convert in.svg -o assets/x.png`; its bytes are staged unchanged.",
         input: obj({
           path: str(),
-          content: str(),
+          content: str("UTF-8 text; binary content is not representable here"),
           author_key: str("Assigned binding key; defaults to your own latest binding"),
         }, ["path", "content"]),
         async execute(input: unknown, c) {

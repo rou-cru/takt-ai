@@ -465,6 +465,7 @@ func (f *FS) consolidateLocked(agent AgentID) error {
 
 	delete(f.staged, agent)
 	f.releaseOwnershipLocked(agent)
+	f.dropAuthorRootLocked(agent)
 	return nil
 }
 

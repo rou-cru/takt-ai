@@ -88,7 +88,8 @@ const claim = (extra: Record<string, unknown>) =>
   ({ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", ...extra })
 const shellPlan = (extra: Record<string, unknown> = {}) => ({
   decision: "ask", reason: "review each run", cwd: WORKSPACE, scratch: "/private/tmp/scratch", confirm: "/private/tmp/confirm",
-  capture: false, writable: [`${WORKSPACE}/src`], protected: [`${WORKSPACE}/.git`], private: ["/private/secret"], ...extra,
+  capture: false, writable: [`${WORKSPACE}/src`], protected: [`${WORKSPACE}/.git`], private: ["/private/secret"],
+  unreadable: ["/private/tmp"], readable: ["/private/tmp/scratch"], ...extra,
 })
 const shellReply = (extra: Record<string, unknown> = {}): Reply => ({ out: JSON.stringify({ ok: true, shell: shellPlan(extra) }) })
 const json = (value: unknown): Reply => ({ out: JSON.stringify(value) })
@@ -2015,8 +2016,9 @@ describe("shell admission", () => {
   }))
 
   test("an unbound specialist is admitted as an inspector and runs through the sandbox wrapper", async () => {
+    const wrapped: Record<string, unknown>[] = []
     mock.module("./takt-sandbox.mjs", () => ({
-      wrap: (line: string) => Promise.resolve(`wrapped:${line}`),
+      wrap: (line: string, options: Record<string, unknown>) => { wrapped.push(options); return Promise.resolve(`wrapped:${line}`) },
       supervise: (wrapped: string, confirm: string) => `supervised(${wrapped}|${confirm})`,
     }))
     const vfs = await startVfs({ sessions: unitSessions, respond: (call) => (call.command === "shell-prepare" || call.command==="shell-continue") ? shellReply({ cwd: "/elsewhere" }) : undefined })
@@ -2029,8 +2031,10 @@ describe("shell admission", () => {
       expect(created.command).toBe(command)
       const wrapper = readFileSync(String(created.shell), "utf8")
       expect(wrapper).toContain(`cd '/elsewhere' || exit ${SHELL_NOT_ADMITTED}`)
-      expect(wrapper).toContain("export TMPDIR='/private/tmp/scratch'")
+      // The adapter sets TMPDIR inside the sandbox; the wrapper's would be overridden.
+      expect(wrapper).not.toContain("export TMPDIR")
       expect(wrapper).toContain("export HOME='/private/tmp/scratch'")
+      expect(wrapped).toEqual([expect.objectContaining({ scratch: "/private/tmp/scratch", unreadablePaths: ["/private/tmp"], readablePaths: ["/private/tmp/scratch"] })])
       expect(wrapper).toContain(wrapperCommand)
 
       const replay: HookEvent = { command: marked }

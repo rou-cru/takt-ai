@@ -145,7 +145,7 @@ func TestVFSShellIPC(t *testing.T) {
 	if len(plan.Writable) != 1 || plan.Writable[0] != filepath.Join(plan.Cwd, "data.txt") {
 		t.Fatalf("writable = %v; want only the projected scope path", plan.Writable)
 	}
-	if !strings.HasPrefix(plan.Scratch, filepath.Dir(fx.state)) || plan.Cwd == fx.root {
+	if strings.HasPrefix(plan.Scratch, fx.root) || strings.HasPrefix(plan.Cwd, fx.root) {
 		t.Fatalf("plan runs in the workspace itself: %+v", plan)
 	}
 	runSandboxed(t, plan, "changed\n")

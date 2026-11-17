@@ -181,6 +181,7 @@ func (f *FS) revokeLocked(key AgentID) error {
 	identity.Prelaunch, identity.HostSession = false, ""
 	f.bindings[key] = identity
 	f.releaseOwnershipLocked(key)
+	f.dropAuthorRootLocked(key)
 	return nil
 }
 

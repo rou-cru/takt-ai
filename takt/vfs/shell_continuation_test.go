@@ -141,7 +141,7 @@ func TestResumedChildRejectsPriorInvocationIdentity(t *testing.T) {
 	if _, err := f.ContinueShell(c, "old", "start"); err == nil {
 		t.Fatal("prior attempt shell started")
 	}
-	if _, err := f.CompleteShell(fresh, "old", state); err == nil {
+	if _, err := f.CompleteShell(fresh, "old"); err == nil {
 		t.Fatal("late native shell completion imported into a resumed attempt")
 	}
 	write(t, f, fresh, "current", "file.txt", "current")
@@ -163,7 +163,7 @@ func TestUnboundShellCompletionIsOwnerDecidedAndImportsNothing(t *testing.T) {
 		}
 	}
 	before := lastEntry(t, f)
-	if _, err = f.CompleteShell(c, "inspect", state); err != nil {
+	if _, err = f.CompleteShell(c, "inspect"); err != nil {
 		t.Fatal(err)
 	}
 	if after := lastEntry(t, f); after.Seq != before.Seq {
@@ -172,7 +172,7 @@ func TestUnboundShellCompletionIsOwnerDecidedAndImportsNothing(t *testing.T) {
 	if len(f.OwnershipClaims(testSession)) != 0 {
 		t.Fatal("inspection acquired ownership")
 	}
-	if _, err = f.CompleteShell(c, "inspect", state); err == nil {
+	if _, err = f.CompleteShell(c, "inspect"); err == nil {
 		t.Fatal("completion was reusable")
 	}
 }
