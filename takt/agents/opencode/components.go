@@ -283,11 +283,17 @@ func sandboxPluginsDir(rootDir string) string {
 	return filepath.Join(rootDir, filepath.FromSlash(ConfigDir()), "plugins")
 }
 
-// sandboxDependencyInstalled reports whether the pinned dependency is already
-// present, so a repeat install/sync never re-runs npm.
+// sandboxDependencyInstalled reports whether the pinned version is installed,
+// so a repeat install/sync skips npm and any other version is replaced.
 func sandboxDependencyInstalled(rootDir string) bool {
-	_, err := os.Stat(filepath.Join(sandboxPluginsDir(rootDir), "node_modules", "@anthropic-ai", "sandbox-runtime", "package.json"))
-	return err == nil
+	data, err := os.ReadFile(filepath.Join(sandboxPluginsDir(rootDir), "node_modules", "@anthropic-ai", "sandbox-runtime", "package.json"))
+	if err != nil {
+		return false
+	}
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	return json.Unmarshal(data, &pkg) == nil && pkg.Version == SandboxRuntimeVersion
 }
 
 // installSandboxDependencyCommand runs npm; tests replace it to avoid PATH and network.
@@ -311,7 +317,7 @@ func InstallSandboxDependency(ctx context.Context, rootDir string) error {
 		return fmt.Errorf("install @anthropic-ai/sandbox-runtime %s with npm: %w: %s", SandboxRuntimeVersion, err, strings.TrimSpace(string(output)))
 	}
 	if !sandboxDependencyInstalled(rootDir) {
-		return fmt.Errorf("@anthropic-ai/sandbox-runtime not usable after npm install at %s", dir)
+		return fmt.Errorf("@anthropic-ai/sandbox-runtime %s not usable after npm install at %s", SandboxRuntimeVersion, dir)
 	}
 	return nil
 }

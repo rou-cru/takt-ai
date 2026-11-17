@@ -34,15 +34,40 @@ func TestInstallSandboxDependency(t *testing.T) {
 		}
 	}
 
-	t.Run("already installed skips npm", func(t *testing.T) {
-		root := t.TempDir()
+	installed := func(t *testing.T, root, version string) {
+		t.Helper()
 		packagePath := filepath.Join(sandboxPluginsDir(root), "node_modules", "@anthropic-ai", "sandbox-runtime", "package.json")
 		if err := os.MkdirAll(filepath.Dir(packagePath), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(packagePath, []byte(`{"version":"0.0.76"}`), 0o600); err != nil {
+		if err := os.WriteFile(packagePath, []byte(`{"version":"`+version+`"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	t.Run("an older installed version is upgraded to the pinned one", func(t *testing.T) {
+		root := t.TempDir()
+		installed(t, root, "0.0.76")
+		previous := installSandboxDependencyCommand
+		installSandboxDependencyCommand = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+			if args[len(args)-1] != "@anthropic-ai/sandbox-runtime@"+SandboxRuntimeVersion {
+				return exec.CommandContext(ctx, "sh", "-c", "echo unexpected sandbox-runtime version >&2; exit 9")
+			}
+			installed(t, root, SandboxRuntimeVersion)
+			return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+		}
+		t.Cleanup(func() { installSandboxDependencyCommand = previous })
+		if err := InstallSandboxDependency(context.Background(), root); err != nil {
+			t.Fatal(err)
+		}
+		if !sandboxDependencyInstalled(root) {
+			t.Fatal("the older sandbox-runtime was left in place")
+		}
+	})
+
+	t.Run("the pinned version installed skips npm", func(t *testing.T) {
+		root := t.TempDir()
+		installed(t, root, SandboxRuntimeVersion)
 		called := false
 		previous := installSandboxDependencyCommand
 		installSandboxDependencyCommand = func(context.Context, string, ...string) *exec.Cmd {
