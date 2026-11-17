@@ -21,10 +21,11 @@ const MaxUnitNameCells = 24
 
 // ValidateUnitName is the one contract a unit name keeps, in a plan declaration
 // and in the admission of work without a plan (PR-DAG-REP-8): a single line of
-// at most MaxUnitNameCells display cells with no control characters. The
-// refusal names the rule and how to satisfy it.
+// at most MaxUnitNameCells display cells with no control characters or Unicode
+// line and paragraph separators. The refusal names the rule and how to satisfy it.
 func ValidateUnitName(name string) error {
-	if strings.IndexFunc(name, unicode.IsControl) >= 0 {
+	breaks := func(r rune) bool { return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp) }
+	if strings.IndexFunc(name, breaks) >= 0 {
 		return fmt.Errorf("unit name %q has a control character or line break; a unit name is one line of at most %d cells: rename it as a short label of the work", name, MaxUnitNameCells)
 	}
 	if cells := ansi.StringWidth(name); cells > MaxUnitNameCells {

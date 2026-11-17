@@ -215,6 +215,12 @@ func continuationNeedsBlocker(t *testing.T, bin string) {
 	}
 	fresh := continued("design", "")
 	s.must(fresh)
+	// A dispatch prepared without a session meets the same gate when the returned one attaches.
+	attach := func(child string) request {
+		return request{Action: "attach_child", Session: rootSession, Dispatch: "design-again", Child: child, Agent: "architect"}
+	}
+	requireNamed(t, s.rejected(attach("design-child")), "without a blocker", "delegate unit design again")
+	s.must(attach("design-new"))
 
 	returned("contracts", "contracts-child", true)
 	s.must(continued("contracts", "contracts-child"))

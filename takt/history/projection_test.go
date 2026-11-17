@@ -90,3 +90,31 @@ func TestAllowanceKey(t *testing.T) {
 		t.Errorf("AllowanceKey with an objective = %q, want %q", got, want)
 	}
 }
+
+// Two returns of one session admitted in the same millisecond are ordered by
+// history position: the later delivery decides whether the session continues.
+func TestReturnedExecutionIsTheLatestInHistoryOrder(t *testing.T) {
+	var entries []history.Entry
+	returned := func(dispatch string, blocker bool) {
+		for _, e := range []history.Entry{
+			{Kind: history.KindExecution, Dispatch: dispatch, Child: "child", CreatedAt: 7},
+			{Kind: history.KindDelivery, Dispatch: dispatch, Blocker: blocker},
+			{Kind: history.KindExecutionEnded, Dispatch: dispatch},
+		} {
+			e.Seq = len(entries)
+			entries = append(entries, e)
+		}
+	}
+	for _, c := range []struct{ first, second bool }{{true, false}, {false, true}} {
+		entries = nil
+		returned("d1", c.first)
+		returned("d2", c.second)
+		// Executions is a map: repeat so an order-dependent pick cannot pass by chance.
+		for range 50 {
+			d, ok := history.Project(entries).ReturnedExecution("child")
+			if !ok || d.Dispatch != "d2" || d.Blocker != c.second {
+				t.Fatalf("ReturnedExecution = %+v, %v; want d2 with blocker %v", d, ok, c.second)
+			}
+		}
+	}
+}

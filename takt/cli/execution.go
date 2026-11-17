@@ -138,8 +138,14 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 
 func attachExecutionChild(h *history.History, r coordinationRequest) (any, error) {
 	if r.Dispatch != "" {
-		if d, ok := h.Project().Executions[r.Dispatch]; !ok || (r.Attempt != "" && r.Attempt != d.Attempt) {
+		prepared, ok := h.Project().Executions[r.Dispatch]
+		if !ok || (r.Attempt != "" && r.Attempt != prepared.Attempt) {
 			return nil, errors.New("native callback no longer names its prepared attempt; resume the current delegation")
+		}
+		// A dispatch prepared without a child meets the continuation gate here.
+		r.Event = prepared.Unit
+		if err := refuseUnblockedContinuation(h.Project(), r); err != nil {
+			return nil, err
 		}
 		d, err := h.AttachChild(r.Dispatch, r.Child, r.Agent)
 		if err == nil {

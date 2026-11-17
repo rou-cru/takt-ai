@@ -30,16 +30,19 @@ const LeaseTTL = 90 * time.Second
 // Execution is the current linkage of one exact host dispatch. A unit retry
 // creates a new record; no callback may move its predecessor to that attempt.
 type Execution struct {
-	Dispatch   string  `json:"dispatch"`
-	Root       string  `json:"root"`
-	Unit       string  `json:"unit"`
-	Attempt    string  `json:"attempt"`
-	Agent      string  `json:"agent"`
-	Caller     string  `json:"caller"`
-	Child      string  `json:"child,omitempty"`
-	AdmittedAt int64   `json:"admitted_at"`
-	Inputs     []int64 `json:"inputs"`
-	Delivery   []int64 `json:"delivery,omitempty"`
+	Dispatch   string `json:"dispatch"`
+	Root       string `json:"root"`
+	Unit       string `json:"unit"`
+	Attempt    string `json:"attempt"`
+	Agent      string `json:"agent"`
+	Caller     string `json:"caller"`
+	Child      string `json:"child,omitempty"`
+	AdmittedAt int64  `json:"admitted_at"`
+	// Seq is the history position of the admitting entry: the order of
+	// executions, which AdmittedAt cannot give when two values tie.
+	Seq      int     `json:"-"`
+	Inputs   []int64 `json:"inputs"`
+	Delivery []int64 `json:"delivery,omitempty"`
 	// Blocker is set when the latest delivery records a blocker: only then may
 	// a later delegation continue this execution's session (PR-HAR-38).
 	Blocker    bool   `json:"blocker,omitempty"`
@@ -101,7 +104,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Seq: e.Seq, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
@@ -156,7 +159,7 @@ func (p Projection) ReturnedExecution(child string) (Execution, bool) {
 	var latest Execution
 	found := false
 	for _, d := range p.Executions {
-		if d.Settled && d.Cycle == "" && child != "" && d.Child == child && (!found || d.AdmittedAt > latest.AdmittedAt) {
+		if d.Settled && d.Cycle == "" && child != "" && d.Child == child && (!found || d.Seq > latest.Seq) {
 			latest, found = d, true
 		}
 	}

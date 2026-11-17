@@ -32,6 +32,8 @@ func TestValidateUnitName(t *testing.T) {
 		{"line break", "two\nlines", false},
 		{"escape sequence", "red\x1b[31m", false},
 		{"tab", "a\tb", false},
+		{"line separator", "a\u2028b", false},
+		{"paragraph separator", "a\u2029b", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
