@@ -63,6 +63,9 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	if err := refuseRecycledProductManager(r, described); err != nil {
 		return nil, err
 	}
+	if err := refuseUnblockedContinuation(h.Project(), r); err != nil {
+		return nil, err
+	}
 	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Previous: r.PreviousModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
 	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
@@ -135,8 +138,14 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 
 func attachExecutionChild(h *history.History, r coordinationRequest) (any, error) {
 	if r.Dispatch != "" {
-		if d, ok := h.Project().Executions[r.Dispatch]; !ok || (r.Attempt != "" && r.Attempt != d.Attempt) {
+		prepared, ok := h.Project().Executions[r.Dispatch]
+		if !ok || (r.Attempt != "" && r.Attempt != prepared.Attempt) {
 			return nil, errors.New("native callback no longer names its prepared attempt; resume the current delegation")
+		}
+		// A dispatch prepared without a child meets the continuation gate here.
+		r.Event = prepared.Unit
+		if err := refuseUnblockedContinuation(h.Project(), r); err != nil {
+			return nil, err
 		}
 		d, err := h.AttachChild(r.Dispatch, r.Child, r.Agent)
 		if err == nil {
@@ -228,12 +237,12 @@ const deliverRetry = "deliver_result"
 func deliverExecution(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
 	d, ok := h.Project().ExecutionForChild(r.Child, r.Agent)
 	if !ok || d.Cycle != "" || (r.Dispatch != "" && r.Dispatch != d.Dispatch) || (r.Attempt != "" && r.Attempt != d.Attempt) {
-		return nil, errors.New("deliver_result belongs to a running delegation; nothing credited; report the IDs in your reply so the orchestrator delegates the unit again with this sessionID")
+		return nil, errors.New("deliver_result belongs to a running delegation; nothing credited; report the IDs in your reply")
 	}
 	if err := protocol.ValidateDelivery(ctx, checkMemory, r.Child, r.ResultIDs); err != nil {
 		return nil, protocol.DeliveryRefusal(err, deliverRetry)
 	}
-	if err := h.ExecutionFact(d, history.KindDelivery, "", "", r.ResultIDs); err != nil {
+	if err := h.Deliver(d, r.ResultIDs, r.Blocker); err != nil {
 		return nil, err
 	}
 	return map[string]any{"result_ids": h.Project().Executions[d.Dispatch].Delivery}, nil
@@ -305,6 +314,17 @@ func refuseRecycledProductManager(r coordinationRequest, consumed memory.Describ
 		}
 	}
 	return nil
+}
+
+// refuseUnblockedContinuation refuses continuing a returned session unless its
+// delivery recorded a blocker: every other retry runs in a new session
+// (PR-ORQ-39, PR-HAR-38).
+func refuseUnblockedContinuation(p history.Projection, r coordinationRequest) error {
+	d, returned := p.ReturnedExecution(r.Child)
+	if !returned || d.Blocker {
+		return nil
+	}
+	return fmt.Errorf("launch refused: session %s returned unit %s without a blocker, so it is not continued; delegate unit %s again without sessionID to start a new session", r.Child, d.Unit, r.Event)
 }
 
 func isProductManager(agent string) bool {

@@ -351,6 +351,9 @@ type Entry struct {
 	// Substitute marks a restored seat filled by a non-orchestrating Takt
 	// substitute rather than by its own specialist.
 	Substitute bool `json:"substitute,omitempty"`
+	// Blocker marks a delivery whose entries record a blocker instead of the
+	// assigned deliverable (PR-HAR-38).
+	Blocker bool `json:"blocker,omitempty"`
 }
 
 // History is the append-only store. All access is serialized by the workspace

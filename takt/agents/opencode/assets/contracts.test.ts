@@ -10,12 +10,15 @@ describe("shared Go/TypeScript wire contracts", () => {
     expect(decodeSnapshot(contracts.dag_normal)).toMatchObject({ capture: "current", nodes: [{ id: "unit-1" }] })
     expect(decodeSnapshot(contracts.dag_unavailable)).toEqual({ capture: "unavailable" })
   })
-  test("DAG assurance sample keeps unmonitored flight and the recorded assurance", () => {
-    expect(decodeSnapshot(contracts.dag_assurance)).toMatchObject({
+  test("DAG states sample keeps the unmonitored flight, the layers and the counts", () => {
+    expect(decodeSnapshot(contracts.dag_states)).toMatchObject({
+      counts: { planned: 1, in_flight: 1, completed: 1 },
       nodes: [
-        { id: "unit-1", state: "in_flight", flight: "unmonitored" },
-        { id: "unit-2", state: "settled", outcome: "completed", assurance: { status: "failed", revision: 2, evidence: "journal/7" } },
+        { id: "unit-1", state: "in_flight", flight: "unmonitored", layer: 0 },
+        { id: "unit-2", state: "settled", outcome: "completed", layer: 0 },
+        { id: "unit-3", state: "planned", prerequisites: ["unit-2"], layer: 1 },
       ],
+      edges: [{ from: "unit-2", to: "unit-3" }],
     })
   })
   test("DAG activity sample keeps an unmonitored activity in flight", () => {

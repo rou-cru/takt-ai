@@ -13,6 +13,7 @@ metadata:
 
 - `observation` (`workspace`): a structural finding confirmed after trying to refute it (dead code, duplication, complexity), with the path or analysis output as evidence.
 - An `observation` that `corrects` a recorded fact the cleanup proved wrong.
+- A blocker that ends your unit, as its own `observation` naming what is missing and its evidence.
 
 ## When
 

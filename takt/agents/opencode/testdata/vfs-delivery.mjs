@@ -182,7 +182,8 @@ if (scenario === "retry") {
   assert.equal(finishes().length, 1)
 } else if (scenario === "continued_child") {
   await launch("continued", "first")
-  await deliver("continued", [1])
+  // Only a session that returned a blocker is continued.
+  await tools.deliver_result.execute({ result_ids: [1], blocker: true }, { sessionID: "continued", agent: "pm" })
   await idle("continued")
   idleSessions.delete("continued")
   await launch("continued", "second", "pm", {sessionID:"continued"})
@@ -210,6 +211,18 @@ if (scenario === "retry") {
   assert.deepEqual(finishes(), [], "verdict is not termination")
   await deliver("review", [55], "verify")
   await idle("review")
+} else if (scenario === "author_blocker") {
+  // An author's delivery is its staged work: nothing reminds it to deliver,
+  // and deliver_result is how it marks the blocker that ends its unit.
+  claims.push({ key: "author-1", root_session_id: "root", work_unit_id: "writer", agent_id: "dev", target_instance: "dev", pending: true, scope: ["a.go"] })
+  await launch("writer", "writer", "dev")
+  const context = {agent:"dev",sessionID:"writer",tools:{},system:[]}
+  for (const callback of sessionHooks.context) await callback(context)
+  assert.ok(!context.system.some(part => part.text.includes("deliver_result")), "an author is not reminded to deliver")
+  await tools.deliver_result.execute({ result_ids: [7], blocker: true }, { sessionID: "writer", agent: "dev" })
+  assert.deepEqual(owner.executions["root:writer"].delivery, [7])
+  assert.equal(dispatched().findLast(r => r.action === "deliver").blocker, true)
+  await idle("writer")
 } else {
   throw new Error(`unknown scenario ${scenario}`)
 }

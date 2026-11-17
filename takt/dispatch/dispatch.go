@@ -37,6 +37,10 @@ const CauseRepetition = "control/unit-in-flight"
 // CauseWithdrawn denies delegating a unit its plan withdrew.
 const CauseWithdrawn = "control/unit-withdrawn"
 
+// CauseUnitName denies admitting a new unit whose name breaks the unit-name
+// contract (PR-DAG-REP-8).
+const CauseUnitName = "control/unit-name"
+
 // CurrentAttempt is the attempt a lifecycle fact belongs to: the one session's
 // unit's latest admission opened.
 func CurrentAttempt(p history.Projection, session, event string) string {
@@ -93,6 +97,10 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	// its commitment, and a settled one is retried under its own identity, so
 	// neither adds to the uncovered count (PR-HAR-19, PR-DAG-MUT-10).
 	newUnit := !known
+	var nameErr error
+	if newUnit {
+		nameErr = history.ValidateUnitName(req.Event)
+	}
 	// Scope membership is declared, so an admission inside a recovery scope is an
 	// attempt of that recovery and records which one it belongs to.
 	objective, recovery := budgets.Scope(req.Event)
@@ -104,6 +112,9 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	qaCeiling := p.Recovery.MaxAttempts + budgets.Allowance[history.AllowanceKey(history.BoundQARounds, qaRound.Objective)]
 	var e error
 	switch {
+	case nameErr != nil:
+		entry.Kind, entry.Cause = history.KindDenied, CauseUnitName
+		e = fmt.Errorf("harness: %w", nameErr)
 	case projection.InFlight() >= ceiling:
 		entry.Kind, entry.Cause = history.KindDenied, history.BoundConcurrency
 		e = fmt.Errorf("harness: concurrent specialist ceiling of %d reached; admission denied (bound %s); delegate again once a delegation returns; a delegation that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch; or ask the user to raise the ceiling with dispatch_exception on %s", ceiling, history.BoundConcurrency, history.BoundConcurrency)

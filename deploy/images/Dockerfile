@@ -13,7 +13,7 @@
 # copied into later stages, so it must match the target architecture.
 # Release CI builds each architecture on a native runner.
 
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.4
 FROM golang:${GO_VERSION}-bookworm AS builder
 # Keep GO_VERSION in sync with the `go` directive in go.mod (CI builds with
 # go-version-file: go.mod). Dev tool pins live in development/quality/go.mod.
@@ -44,11 +44,14 @@ ENV LANG=C.UTF-8 \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python \
     PATH="/usr/local/go/bin:${PATH}"
 # Pinned by digest so image builds are reproducible; bump deliberately.
-COPY --from=ghcr.io/astral-sh/uv:0.12.20@sha256:100047e74f30778ab704942321a09750d6158739573ff58bf3924085cc6cd2d8 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 /uv /uvx /bin/
 COPY --from=builder /usr/local/go /usr/local/go
 COPY --from=builder /out/tools/ /usr/local/bin/
 RUN set -eux; \
     apt-get update; \
+    # The base image's tag floats, so packages it already ships (glibc) need an
+    # explicit upgrade to pick up security fixes published after its build.
+    apt-get upgrade -y --no-install-recommends; \
     apt-get install -y --no-install-recommends \
       bubblewrap ca-certificates curl fd-find git gnupg jq less openssh-client ripgrep socat tar tzdata unzip; \
     # Register the NodeSource apt repo via NodeSource's own documented
@@ -81,9 +84,11 @@ RUN set -eux; \
     uv tool install pytest==9.1.1 --with pytest-cov==7.1.0 --no-build; \
     uv tool install pdoc==16.0.0 --no-build; \
     # npm owns the globals so no PNPM_HOME perms to manage; pnpm stays for
-    # projects. typedoc generates docs from TSDoc comments.
+    # projects. typedoc generates docs from TSDoc comments. npm updates itself
+    # first: the copy bundled with Node lags behind its own dependency fixes.
+    npm install -g --no-fund --no-audit --ignore-scripts npm@12.2.2; \
     npm install -g --no-fund --no-audit --ignore-scripts \
-      pnpm@12.6.0 vitest@5.0.2 @vitest/coverage-v8@5.0.2 eslint@10.11.0 prettier@3.9.9 typedoc@0.28.20; \
+      pnpm@12.21.0 vitest@5.0.3 @vitest/coverage-v8@5.0.3 eslint@10.15.0 prettier@3.9.9 typedoc@0.28.20; \
     rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache; \
     ln -s "$(command -v fdfind)" /usr/local/bin/fd; \
     python --version; \

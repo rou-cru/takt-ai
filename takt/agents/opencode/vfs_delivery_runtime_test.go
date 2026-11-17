@@ -61,7 +61,7 @@ export const Plugin = { define: definition => definition }
 		}
 	}
 
-	for _, scenario := range []string{"retry", "async_delivery", "async_missing", "wait_error", "concurrent_delivery", "tpm", "dual_role", "repeated_callbacks", "continued_child"} {
+	for _, scenario := range []string{"retry", "async_delivery", "async_missing", "wait_error", "concurrent_delivery", "tpm", "dual_role", "repeated_callbacks", "continued_child", "author_blocker"} {
 		t.Run(scenario, func(t *testing.T) { run(t, scenario) })
 	}
 }

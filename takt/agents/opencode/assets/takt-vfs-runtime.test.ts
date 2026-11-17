@@ -127,7 +127,7 @@ async function startVfs(options: Options = {}) {
     created: [] as unknown[], interrupts: [] as string[], waits: [] as string[],
     prompts: [] as Array<{ sessionID: string; text: string }>, synthetics: [] as Array<{ sessionID: string; text: string }>,
   }
-  const nativeSubagent = { input: options.nativeInput ?? { type: "object", properties: { description: { type: "string" }, agent: { type: "string" }, model: { type: "string", description: "Native model description" } } } as unknown }
+  const nativeSubagent = { input: options.nativeInput ?? { type: "object", properties: { description: { type: "string" }, agent: { type: "string" }, sessionID: { type: "string", description: "Native session description" }, model: { type: "string", description: "Native model description" } } } as unknown }
   const nativeRead = { input: { type: "object", properties: { filePath: { type: "string" } } }, execute: async (value: unknown) => options.nativeRead ? options.nativeRead(value) : ({ content: "native read", original: value }) }
   const tools = new Map<string, { execute?: (...args: never[]) => unknown }>()
   tools.set("read", nativeRead)
@@ -601,6 +601,20 @@ describe("delegation lifecycle", () => {
     } finally { await vfs.stop() }
   })
 
+  test("the orchestrator reads that a delegation takes no follow-up and continues only after a blocker", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await admitProducer(vfs)
+      const native = "The subagent is working in the background (sessionID: child-r).\nTo send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
+      const event = { ...finished(), result: { content: [{ type: "text", text: native }], metadata: { sessionID: "child-r", status: "running" } } }
+      await vfs.fire(vfs.tool, "execute.after", event)
+      const text = (event.result.content as Array<{ text: string }>)[0].text
+      expect(text).not.toContain("To send it follow-ups")
+      expect(text).toContain("It takes no follow-up while it runs: wait for its return.")
+      expect(text).toContain("continue this session only after it delivers a blocker")
+    } finally { await vfs.stop() }
+  })
+
   test("repeated launch callbacks neither terminate nor credit another attempt", async () => {
     const vfs = await startVfs({ sessions: producerSessions })
     try {
@@ -608,7 +622,8 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", finished())
       await vfs.fire(vfs.tool, "execute.after", finished())
       expect(vfs.requests("dispatch", "finish")).toEqual([])
-      await vfs.run("deliver_result", { result_ids: [4] }, { sessionID: "child-r", agent: RESULT_AGENT })
+      await vfs.run("deliver_result", { result_ids: [4], blocker: true }, { sessionID: "child-r", agent: RESULT_AGENT })
+      expect(vfs.requests("dispatch", "deliver").at(-1)).toMatchObject({ result_ids: [4], blocker: true })
       await idleProducer(vfs)
       await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "next", input: { description: "unit-r", agent: RESULT_AGENT, sessionID: "child-r" } })
       await vfs.fire(vfs.tool, "execute.after", finished())
@@ -1069,7 +1084,7 @@ describe("maintenance cycle", () => {
       expect(vfs.actions("gc")).not.toContain("recover")
       expect(vfs.actions("gc")).not.toContain("abort")
       expect(vfs.log.prompts[0].sessionID).toBe("gcv")
-      expect(vfs.log.prompts[0].text).toContain("Maintenance cycle cycle-1; mandate complexity.")
+      expect(vfs.log.prompts[0].text).toContain("GC cycle cycle-1; mandate complexity.")
       expect(vfs.log.prompts[0].text).toContain("gc_delta")
     } finally { await vfs.stop() }
   })
@@ -1132,12 +1147,12 @@ describe("maintenance cycle", () => {
       await expect(vfs.run("gc_findings", {}, verifier)).rejects.toThrow("GC findings requires the attached collector session")
 
       const outside = { tool: "write", sessionID: "gcv", id: "t1", agent: "verify" }
-      await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This maintenance cycle does not use that tool")
+      await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This GC cycle does not use that tool")
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
       // No lane has a memory or web tool.
       for (const tool of ["webfetch", "websearch", "takt_memory_record", "takt_memory_search", "takt_memory_read", "takt_memory_sessions", "takt_memory_continue_session", "takt_memory_close_session"]) {
-        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This maintenance cycle does not use that tool")
+        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This GC cycle does not use that tool")
       }
       for (const tool of ["shell", "bash"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
 
@@ -1216,9 +1231,9 @@ describe("maintenance cycle", () => {
         await vfs.fire(vfs.session, "context", event)
         return event.system.map(({ text }) => text)
       }
-      expect((await notified())[0]).toContain("A cleanup cycle is running")
+      expect((await notified())[0]).toContain("A GC cycle is running")
       state = json(coordinator())
-      expect((await notified())[0]).toContain("The cleanup cycle concluded")
+      expect((await notified())[0]).toContain("The GC cycle concluded")
       expect(await notified()).toEqual([])
       state = { code: 1, err: "status unavailable" }
       expect(await notified()).toEqual([])
@@ -1322,7 +1337,7 @@ describe("interlocutor switch", () => {
   const aborted = { ...envelope, result: "Aborted", additional_context: "ended" }
   const HANDOFF_NOTICE = "The interface is back from dev."
   const ABORT_NOTICE = "The interface is back from dev, whose lent session was aborted."
-  const request = { target_agent: "dev", objective: "Ship it", requirements: [7] }
+  const request = { target_agent: "dev", objective: "Ship it", requirements: [7], client: "unknown" }
   const lent = { child: { metadata: { takt_switch: "root" } } }
   const NO_HOLDER = "harness: no interlocutor switch is active for this session; nothing to abort"
   const NOT_HOLDER = "harness: session other is not the current interlocutor holder; abort the holder session instead"
@@ -1423,7 +1438,7 @@ describe("interlocutor switch", () => {
     const vfs = await startVfs({ respond: core() })
     try {
       await vfs.run("dispatch_switch", request, orchestrator)
-      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read")
+      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read\nClient: unknown")
     } finally { await vfs.stop() }
   })
 

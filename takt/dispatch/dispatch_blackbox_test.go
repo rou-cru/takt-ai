@@ -2,6 +2,7 @@ package dispatch_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
@@ -485,4 +486,102 @@ func TestDeclareRecoveryRecordsTheRefusingCause(t *testing.T) {
 	if got == history.BoundRecoveryActions || got == history.BoundRecoveryAttempts {
 		t.Errorf("overlap: cause = %q, want one that names no budget", got)
 	}
+}
+
+// The unit-name contract (PR-DAG-REP-8) holds at every way a unit enters the
+// execution history: a commitment, a revision's additions and the admission of
+// work without a plan.
+// A baseline that forms a cycle is recorded with its reason and covers nothing.
+func TestCommitRecordsAnInvalidBaseline(t *testing.T) {
+	h := newHistory(t)
+	cycle := []dispatch.PlanUnit{{Unit: "a", Contract: "c", Prerequisites: []string{"b"}}, {Unit: "b", Contract: "c", Prerequisites: []string{"a"}}}
+	if err := dispatch.Commit(h, "", "s1", "v1", cycle); err == nil {
+		t.Fatal("Commit() of a cycle error = nil, want a refusal")
+	}
+	if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision || last.Reason == "" {
+		t.Errorf("last entry = %+v, want the invalid commitment and its reason recorded", last)
+	}
+	if _, known := h.Project().Unit("s1", "a"); known {
+		t.Error("the refused commitment left a unit planned")
+	}
+}
+
+// Settled work keeps its recorded prerequisites, so a planned unit cannot be
+// revised to depend on work that already depends on it; depending on settled
+// work that does not lead back is still allowed.
+func TestReviseRejectsACycleClosedThroughSettledWork(t *testing.T) {
+	h := newHistory(t)
+	units := []dispatch.PlanUnit{{Unit: "s", Contract: "c", Prerequisites: []string{"x"}}, {Unit: "x", Contract: "c"}}
+	if err := dispatch.Commit(h, "", "s1", "v1", units); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: "s", Session: "s1", Agent: "agent", Dispatch: "d1"}); err != nil {
+		t.Fatalf("Admit() error = %v", err)
+	}
+	if err := dispatch.Finish(h, "", "s", "s1"); err != nil {
+		t.Fatalf("Finish() error = %v", err)
+	}
+	back := dispatch.PlanUnit{Unit: "x", Contract: "c", Prerequisites: []string{"s"}}
+	if err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{back}, nil); err == nil {
+		t.Fatal("Revise() closing a cycle through settled work error = nil, want an invalid revision")
+	}
+	if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision {
+		t.Errorf("last entry = %+v, want the invalid revision recorded", last)
+	}
+	after := dispatch.PlanUnit{Unit: "y", Contract: "c", Prerequisites: []string{"s"}}
+	if err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{after}, nil); err != nil {
+		t.Fatalf("Revise() depending on settled work error = %v", err)
+	}
+	layers := map[string]int{}
+	for _, n := range history.BuildSnapshot(h.Entries()).Nodes {
+		layers[n.ID] = n.Layer
+	}
+	if layers["x"] != 0 || layers["s"] != 1 || layers["y"] != 2 {
+		t.Errorf("layers = %v, want x, s, y in order", layers)
+	}
+}
+
+func TestUnitNameContractHoldsAtEveryEntryPoint(t *testing.T) {
+	tooLong := strings.Repeat("x", history.MaxUnitNameCells+1)
+	t.Run("a commitment with a bad name covers nothing", func(t *testing.T) {
+		h := newHistory(t)
+		if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: tooLong, Contract: "c"}}); err == nil {
+			t.Fatal("Commit() with a name over the bound error = nil, want a refusal")
+		}
+		if _, known := h.Project().Unit("s1", tooLong); known {
+			t.Error("the refused commitment left the unit planned")
+		}
+		if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision || last.Reason == "" {
+			t.Errorf("last entry = %+v, want the invalid commitment and its reason recorded", last)
+		}
+		if version := h.Project().Budgets("s1").PlanVersion; version != "" {
+			t.Errorf("plan version = %q, want none invented by an invalid commitment", version)
+		}
+	})
+	t.Run("a revision adding a bad name is recorded invalid", func(t *testing.T) {
+		h := newHistory(t)
+		if err := dispatch.Commit(h, "", "s1", "v1", []dispatch.PlanUnit{{Unit: "a", Contract: "c"}}); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if err := dispatch.Revise(h, "", "s1", "v1", "v2", []dispatch.PlanUnit{{Unit: tooLong, Contract: "c"}}, nil); err == nil {
+			t.Fatal("Revise() adding a name over the bound error = nil, want an invalid revision")
+		}
+		if last := h.Entries()[len(h.Entries())-1]; last.Kind != history.KindInvalidRevision {
+			t.Errorf("last entry = %+v, want the invalid revision recorded", last)
+		}
+	})
+	t.Run("admission of unplanned work with a bad name is denied", func(t *testing.T) {
+		h := newHistory(t)
+		err := dispatch.Admit(h, loadPolicy(t), "", dispatch.AdmissionRequest{Event: tooLong, Session: "s1", Agent: "agent", Dispatch: "d1"})
+		if err == nil {
+			t.Fatal("Admit() with a name over the bound error = nil, want a denial")
+		}
+		last := h.Entries()[len(h.Entries())-1]
+		if last.Kind != history.KindDenied || last.Cause != dispatch.CauseUnitName {
+			t.Errorf("last entry = %+v, want a denial caused by %s", last, dispatch.CauseUnitName)
+		}
+		if _, known := h.Project().Unit("s1", tooLong); known {
+			t.Error("the denied admission left the unit in the projection")
+		}
+	})
 }

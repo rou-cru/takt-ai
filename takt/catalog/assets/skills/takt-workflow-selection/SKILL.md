@@ -27,8 +27,16 @@ reason and evidence, in view.
      Do not regenerate settled invariants. Once they are delivered, return to 1 with the
      updated evidence. Invariant planning stands on its own; when SDD follows it, its
      specifications, and its test plan when QA is planned, feed TPM, SDD's first node.
-     A general or ambiguous request requires final user stories among those invariants; a
-     trivial or narrowly technical request does not.
+     Whether user stories are among them depends on the expected result, never on the request's
+     size or wording alone:
+     - It states exactly what changes and with what (a surgical technical order) → no stories.
+     - The expected result leaves no question open (which cases, when, for whom, what happens
+       when it varies) → no stories.
+     - It leaves questions open and the user can answer → ask, then decide again with the
+       answers: they may close it, or show stories are needed and supply their content.
+     - It leaves questions open and the user cannot answer → stories.
+
+     Many requirements usually leave such questions open; a short, clear request can too.
    - No; existing invariants are sufficient → go to 3. An invariant is settled when a current
      Takt memory entry holds it, judged by title and relations, not body; it is missing when no such
      entry exists, and to refine when the objective changes what the entry holds. A specification is

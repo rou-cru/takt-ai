@@ -119,7 +119,7 @@ for(const[i,key]of authors.entries()){
  assert.equal(await readFile(resolve(workspace,`${i}.txt`),'utf8'),`valid work ${i}`)
 }
 const resultID=await recordResult('Independent verdict')
-await c.tools.deliver_result.execute({result_ids:[resultID]},{sessionID:'judge',agent:'verify'})
+await c.tools.deliver_result.execute({result_ids:[resultID],blocker:true},{sessionID:'judge',agent:'verify'})
 await done(c,review)
 // A delayed callback cannot finish the new attempt, and a duplicate hook cannot
 // cancel an admission that might already have crossed the native launch boundary.

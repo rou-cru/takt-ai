@@ -68,7 +68,7 @@ func TestGCCoordinateRejectsBadInvocations(t *testing.T) {
 		"missing request flags": {[]string{"--workspace", s.root}, "--workspace --state --request required"},
 		"unknown flag":          {[]string{"--nope"}, "flag provided but not defined"},
 		"malformed json":        {[]string{"--workspace", s.root, "--state", s.state, "--request", "{"}, "unexpected end of JSON"},
-		"ordinary action":       {[]string{"--workspace", s.root, "--state", s.state, "--request", `{"action":"admit"}`}, "not a maintenance-cycle action"},
+		"ordinary action":       {[]string{"--workspace", s.root, "--state", s.state, "--request", `{"action":"admit"}`}, "not a GC cycle action"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestDispatchRejectsBadInvocations(t *testing.T) {
 		"missing flags":  {[]string{"--workspace", s.root}, "--workspace --state --request required"},
 		"unknown flag":   {[]string{"--nope"}, "flag provided but not defined"},
 		"malformed json": {[]string{"--workspace", s.root, "--state", s.state, "--request", "{"}, "unexpected end of JSON"},
-		"unknown action": {[]string{"--workspace", s.root, "--state", s.state, "--request", `{"action":"bogus"}`}, "maintenance-cycle action"},
+		"unknown action": {[]string{"--workspace", s.root, "--state", s.state, "--request", `{"action":"bogus"}`}, "GC cycle action"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

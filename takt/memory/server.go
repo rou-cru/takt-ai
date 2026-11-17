@@ -54,6 +54,16 @@ type DescribeInput struct {
 	IDs []int64 `json:"ids"`
 }
 
+// ContinuationsInput names the root session whose continued sessions `continuations` lists.
+type ContinuationsInput struct {
+	Session string `json:"session"`
+}
+
+// ContinuationsOutput is the crew root sessions the named session continued, oldest first.
+type ContinuationsOutput struct {
+	Sessions []string `json:"sessions"`
+}
+
 // BackupInput is the destination of `backup`: an absolute path that does not exist yet.
 type BackupInput struct {
 	Path string `json:"path"`
@@ -409,6 +419,13 @@ func (s *service) newAdminServer() *mcp.Server {
 			res.Entries = []Described{}
 		}
 		return res, err
+	}))
+	mcp.AddTool(srv, text(AdminContinuations), adminTool(s, func(ctx context.Context, st *Store, in ContinuationsInput) (ContinuationsOutput, error) {
+		chain, err := st.Continuations(ctx, in.Session)
+		if chain == nil {
+			chain = []string{}
+		}
+		return ContinuationsOutput{Sessions: chain}, err
 	}))
 	mcp.AddTool(srv, text(AdminStatus), func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, StatusOutput, error) {
 		out, err := s.status(ctx)

@@ -45,7 +45,13 @@ Package opencode renders native OpenCode configuration from catalog references.
 <a name="SandboxRuntimeVersion"></a>SandboxRuntimeVersion is the @anthropic\-ai/sandbox\-runtime version pinned in takt/runtime/sandbox/package.json — the same dependency the adapter's probe test runs against.
 
 ```go
-const SandboxRuntimeVersion = "0.0.81"
+const SandboxRuntimeVersion = "0.0.83"
+```
+
+<a name="SandboxZodVersion"></a>SandboxZodVersion is the zod release that fixes GHSA\-mrhx\-c7xc\-m3w5 for sandbox\-runtime, pinned in takt/runtime/sandbox/pnpm\-workspace.yaml.
+
+```go
+const SandboxZodVersion = "4.6.6"
 ```
 
 ## Variables
@@ -153,7 +159,7 @@ InstallSandboxDependency npm\-installs the sandbox adapter's one dependency next
 func MemoryClause(authorID string) string
 ```
 
-MemoryClause names installed skill paths without injecting their content.
+MemoryClause states how consumed entries are read \(CTX\-11\) and names the installed memory skills without injecting their content.
 
 <a name="ProviderNames"></a>
 ## func ProviderNames

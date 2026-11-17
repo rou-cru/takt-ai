@@ -13,6 +13,7 @@ metadata:
 
 - `observation` (`workspace`): non-obvious facts the implementation revealed — a hidden constraint, a surprising behavior, a convention the code relies on — with the path or test as evidence.
 - An `observation` that `disputes` a recorded decision when the code you built contradicts it and you could not follow it.
+- A blocker that ends your unit, as its own `observation` naming what is missing and its evidence.
 
 ## When
 

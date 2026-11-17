@@ -23,13 +23,24 @@ delegate Verify again with that author key, and consolidate only when a
 verdict covers the staged revision. Build,
 lint and full suites run in Verify units; checks on the materialized workspace after consolidation remain the executable acceptance, not proof of an unconsolidated delta.
 
+A verdict judges invariants only. What the verifier reports beyond it (warnings, suggestions) is
+neither an order to stop nor noise; weigh each against the slice's delivery:
+
+- It prevents or directly degrades the functional slice → correct it before delivering.
+- It is debt that can spread but leaves the slice working → deliver first, then weigh what it
+  implies for the work that remains.
+- Its impact is unclear → estimate the risk of attending against not attending with what is
+  known, and decide for delivered value.
+
+Passing its invariants does not make code correct.
+
 ## Consolidation and commit
 
 Consolidating is not a Git commit: accept each vertical slice with one global Verify node after its
 writers finish. Commit a milestone once the slice's computational acceptance is recorded and its
-advisory review closes without a reproduction-backed defect. Non-blocking advisory findings remain
-recorded but neither delay the checkpoint nor require correction or reverification. Failed or
-unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
+advisory review closes without a reproduction-backed defect that must be corrected before
+delivery. Findings you weighed as leaving the slice working remain recorded and do not delay
+the checkpoint. Failed or unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
 message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if

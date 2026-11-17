@@ -213,7 +213,7 @@ await assert.rejects(() => delegate("execute.before", "u2", "call-3"), /ceiling/
 respond = () => undefined
 assert.equal(owner.executions["root:call-3"],undefined)
 
-// A delegation ends a running cleanup cycle only once it is admitted: a denied
+// A delegation ends a running GC cycle only once it is admitted: a denied
 // one leaves the cycle's lanes running, an admitted one stops them, and a lane
 // that cannot be proved stopped refuses admission without releasing resources.
 const runningCycle = { ...coordinator(), cycle: { plan: { session_id: "root", caller_session: "root", caller_agent: "takt", cycle_id: "yield-cycle", mandate_class: "dead-code", delta: [], closure: [], reachability: "codegraph" },
@@ -316,9 +316,9 @@ const contextFor = async (agent, status) => {
   return event.system.map(part => part.text)
 }
 assert.deepEqual(await contextFor("takt", {}), [])
-assert.match((await contextFor("takt", { cycle: { phase: "baseline" } }))[0], /^A cleanup cycle is running/)
-assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^A cleanup cycle is running/)
-assert.match((await contextFor("takt", {}))[0], /^The cleanup cycle concluded/)
+assert.match((await contextFor("takt", { cycle: { phase: "baseline" } }))[0], /^A GC cycle is running/)
+assert.match((await contextFor("takt", { cycle: { phase: "collect" } }))[0], /^A GC cycle is running/)
+assert.match((await contextFor("takt", {}))[0], /^The GC cycle concluded/)
 assert.deepEqual(await contextFor("takt", {}), [])
 assert.deepEqual(await contextFor("dev", { cycle: { phase: "baseline" } }), [])
 

@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -257,5 +258,49 @@ func TestDescribe(t *testing.T) {
 	if two.CurrentVersion != second.ID || len(two.Outgoing) != 1 || two.Outgoing[0].Entry != first.ID ||
 		two.Outgoing[0].Kind != memory.RelationSupersedes {
 		t.Fatalf("two = %+v", two)
+	}
+}
+
+// Continuations follow each root's continuity back through the chain, oldest
+// first: the pending declaration of a session with no entry yet, and the one
+// its first entry fixed.
+func TestContinuationsFollowTheChain(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	for _, root := range []string{"a", "b", "c"} {
+		bind(t, s, root, "takt", root)
+	}
+	chainOf := func(root string) []string {
+		t.Helper()
+		chain, err := s.Continuations(ctx, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return chain
+	}
+	if got := chainOf("a"); len(got) != 0 {
+		t.Fatalf("a session that continued nothing has a chain %v", got)
+	}
+	mustRecord(t, s, crew("a"), obs("a1"))
+	closeSession(t, s, crew("a"))
+	if _, err := s.ContinueSession(ctx, crew("b"), "crew:a"); err != nil {
+		t.Fatal(err)
+	}
+	if got := chainOf("b"); !slices.Equal(got, []string{"a"}) {
+		t.Fatalf("pending continuity of b = %v; want [a]", got)
+	}
+	mustRecord(t, s, crew("b"), obs("b1"))
+	closeSession(t, s, crew("b"))
+	if _, err := s.ContinueSession(ctx, crew("c"), "crew:b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := chainOf("c"); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("chain of c = %v; want [a b]", got)
+	}
+	if _, err := s.ContinueSession(ctx, crew("c"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := chainOf("c"); len(got) != 0 {
+		t.Fatalf("withdrawn continuity of c still chains %v", got)
 	}
 }

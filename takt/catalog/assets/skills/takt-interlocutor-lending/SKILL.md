@@ -27,7 +27,7 @@ it returns.
    `requirements` list the current entry IDs of the invariants the specialist consumes and of
    the settled decisions that bind it. When no useful entry exists, pass `requirements` empty
    rather than inventing one. `client`
-   carries what is known of the user. The specialist starts from `objective`, `requirements`
+   always carries what is known of the user, and states as unknown what is not. The specialist starts from `objective`, `requirements`
    and `client` alone.
 2. Only the user aborts a lent session: if they ask, tell them to run `/takt-abort`.
 

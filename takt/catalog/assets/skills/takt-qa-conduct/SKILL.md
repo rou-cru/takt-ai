@@ -4,7 +4,7 @@ description: "Use when assigned mutation, exploration or quality analysis of a d
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Quality assurance conduct
@@ -18,10 +18,11 @@ on the project the same way; only the specialty differs.
 | Input | Where it is |
 | --- | --- |
 | The test plan, the traceability matrix and any earlier report your assignment continues | The Takt memory entries consumed by your assignment, by ID |
+| What stands in for a test plan your assignment does not consume | Your brief, as your OPERATIONS states |
 | The deliverable | The files in the workspace, read with the native read, glob and grep tools and read-only git |
 | How the deliverable is built, run and tested | The test plan's environment and the repository's own instructions (AGENTS.md, task runner, CI) |
 
-Work from these entries as they are. A gap they leave unsettled is a blocker, never a
+Work from these inputs as they are. A gap they leave unsettled is a blocker, never a
 decision you take for their author.
 
 ## Where you work

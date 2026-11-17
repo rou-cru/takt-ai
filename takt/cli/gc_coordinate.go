@@ -50,7 +50,7 @@ func runGCCoordinate(args []string, stdout, stderr io.Writer) (err error) {
 		return e
 	}
 	if !gcCoordinateActions[req.Action] {
-		return fmt.Errorf("gc coordinate: %q is not a maintenance-cycle action", req.Action)
+		return fmt.Errorf("gc coordinate: %q is not a GC cycle action", req.Action)
 	}
 	fs, e := vfs.Open(*workspace, *state)
 	if e != nil {

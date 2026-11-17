@@ -7,14 +7,14 @@ metadata:
   version: "1.0"
 ---
 
-# Memory role: tpm — Final task breakdown
+# Memory role: tpm — Final work breakdown
 
 ## Records
 
-- Standard result: the complete final task list produced by the breakdown, in one dedicated
-  `workspace` entry. Include each task's scope, acceptance, consumed contracts, exact writable
+- Standard result: the complete final assignment list produced by the breakdown, in one dedicated
+  `workspace` entry. Include each assignment's scope, acceptance, consumed contracts, exact writable
   files, and justified dependencies.
-- When a traceability matrix exists: one column entry holding each row's owning task, titled
+- When a traceability matrix exists: one column entry holding each row's owning assignment, titled
   with the matrix's exact title followed by `: Owning node`. Its first version `supplements`
   the matrix; each later one is the complete column and `supersedes` the column's current
   version, whoever wrote it; the column is yours to revise, so this needs no approval.
@@ -23,15 +23,15 @@ metadata:
 
 ## Recognized documents
 
-- **WBS** (`references/wbs.md`) — the task breakdown itself: scope, acceptance, contracts,
-  files and dependencies per task.
+- **WBS** (`references/wbs.md`) — the work breakdown itself: scope, acceptance, contracts,
+  files and dependencies per assignment.
 
 ## When
 
-- When the task breakdown is accepted, before you return your result.
+- When the work breakdown is accepted, before you return your result.
 
 ## Never records
 
 - A checklist or the execution DAG: it belongs to Takt, not to Takt memory.
-- Task status, progress, or commentary about work outside this breakdown.
-- Your reasoning process. The final task list is the deliverable and is never optional.
+- Assignment status, progress, or commentary about work outside this breakdown.
+- Your reasoning process. The final assignment list is the deliverable and is never optional.

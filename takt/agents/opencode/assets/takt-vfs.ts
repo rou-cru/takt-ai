@@ -327,15 +327,27 @@ const gcRoleOf = (phase: string): "verifier" | "collector" | undefined => {
 
 // Notices the orchestrator receives around a maintenance cycle: conduct only.
 const MAINTENANCE_DUE =
-  "A cleanup cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
-const MAINTENANCE_DONE = "The cleanup cycle concluded. Delegation and normal work continue."
+  "A GC cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
+const MAINTENANCE_DONE = "The GC cycle concluded. Delegation and normal work continue."
 // closingNotice reports how a cycle ended and the findings it left unapplied, which only the cycle record reports.
 const closingNotice = (closing: CycleClosing) => {
   const findings = closing.unapplied_findings.length
     ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.`
     : "No finding was left unapplied."
-  return `Cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
+  return `GC cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
 }
+
+// The native subagent result invites follow-ups by sessionID; a Takt
+// delegation takes none, and a returned session continues only after it
+// delivered a blocker (PR-ORQ-39, PR-HAR-38).
+const NATIVE_SUBAGENT_FOLLOW_UP = "To send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
+const SUBAGENT_FOLLOW_UP = "It takes no follow-up while it runs: wait for its return. A retry is a new delegation without sessionID; continue this session only after it delivers a blocker, to give it the datum that unblocks it."
+const SUBAGENT_SESSION_DESCRIPTION = "Omit it: every delegation, a retry included, starts a new session. Set it only to continue a returned delegation that delivered a blocker, with the datum that unblocks it."
+type ToolContent = string | ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string }> | undefined
+const truthfulSubagentContent = (content: ToolContent): ToolContent =>
+  typeof content === "string"
+    ? content.replaceAll(NATIVE_SUBAGENT_FOLLOW_UP, SUBAGENT_FOLLOW_UP)
+    : content?.map(part => part.type === "text" ? { ...part, text: part.text.replaceAll(NATIVE_SUBAGENT_FOLLOW_UP, SUBAGENT_FOLLOW_UP) } : part)
 
 // SANDBOX_ADAPTER is the sibling module takt-ai deploys next to this plugin. It
 // wraps a command with @anthropic-ai/sandbox-runtime; without it no shell
@@ -372,13 +384,19 @@ const SHELL_MARKER_PATTERN = new RegExp(`${SHELL_MARKER_PREFIX}([0-9a-f]{${SHELL
 const VFS_SHELL_ENFORCED: boolean = "__TAKT_VFS_SHELL_ENFORCED__" as unknown as boolean
 
 
-// RESULT_AGENTS are the catalog producers that carry the takt-result-handoff
-// skill: their delegation must call deliver_result before it ends.
+// RESULT_AGENTS are the catalog instances that carry the takt-result-handoff
+// skill. Those that stage no work deliver a memory artifact, so their
+// delegation must call deliver_result before it ends; a VFS author calls it
+// only to deliver a blocker.
 const RESULT_AGENTS: string[] = "__TAKT_RESULT_AGENTS__" as unknown as string[]
 
 // VFS_AUTHORS are the catalog instances granted VFS writes; only their native
 // inspections reserve a read scope, so no other agent's read needs the core.
 const VFS_AUTHORS: string[] = "__TAKT_VFS_AUTHORS__" as unknown as string[]
+
+// deliversArtifact holds for an instance that delivers a memory artifact and
+// stages no work: its shell runs natively, and its delegation is reminded to deliver.
+const deliversArtifact = (agent?: string) => RESULT_AGENTS.includes(agent ?? "") && !VFS_AUTHORS.includes(agent ?? "")
 
 // EXCEPTION_BOUNDS are the limits a user exception may raise, by the names the
 // execution history records them under.
@@ -647,7 +665,7 @@ export default Plugin.define({
 
     async function delegatedUnit(sessionID: string): Promise<string> {
       const d = await executionFor(sessionID)
-      if (!d) throw new Error(`session ${sessionID} has no running delegation; return to the orchestrator to resume its exact sessionID`)
+      if (!d) throw new Error(`session ${sessionID} has no running delegation; report your result in your reply`)
       return d.unit
     }
 
@@ -812,7 +830,7 @@ export default Plugin.define({
     // reserved before any await and released on failure, and create.before claims
     // it before its first await, so no check spans an await (STR-16).
     const admittedShell = new Map<string, AdmittedShell>()
-    // The orchestrator's and RESULT_AGENTS' native-permission admission, by call
+    // The orchestrator's and artifact producers' native-permission admission, by call
     // token, until create. Each reservation is bound to its tool call and expires
     // with it.
     const directShell = new Map<string, DirectShell>()
@@ -858,7 +876,7 @@ export default Plugin.define({
       if (event.agent === ORCHESTRATOR_ID) return
       const d = await executionFor(event.sessionID, event.agent)
       if (!d) return
-      if (d.cycle && !(GC_LANE_TOOLS[d.role ?? ""] ?? []).includes(event.tool)) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This maintenance cycle does not use that tool"))
+      if (d.cycle && !(GC_LANE_TOOLS[d.role ?? ""] ?? []).includes(event.tool)) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This GC cycle does not use that tool"))
       invocations.set(toolKeyOf(event), { dispatch: d.dispatch, root: d.root, attempt: d.attempt, cycle: d.cycle })
     })
 
@@ -872,7 +890,7 @@ export default Plugin.define({
         const toolKey = toolKeyOf(event)
         const token = randomUUID().replaceAll("-", "").slice(0, SHELL_TOKEN_LENGTH)
         event.input = { ...input, command: markShell(command, token) }
-        if (event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) {
+        if (event.agent === ORCHESTRATOR_ID || deliversArtifact(event.agent)) {
           await admitDirect(event.agent, event.sessionID, command, toolKey, token)
           return
         }
@@ -949,7 +967,7 @@ export default Plugin.define({
         if (!SHELL_ACTIONS.has(event.action)) return
         // A configured denial is never weakened: the harness may only tighten what
         // the ruleset already resolved, and a denied command is never admitted.
-        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(event.agent ?? "")) return
+        if (event.effect === "deny" || event.agent === ORCHESTRATOR_ID || deliversArtifact(event.agent)) return
         // OpenCode asks over the commands it parsed out of the call, not the call
         // itself, so the admission is found by the tool call the request names.
         // The decision is resolved again for every execution, so a persistent
@@ -1186,7 +1204,7 @@ export default Plugin.define({
       }
       // A failed transport does not prove the host never ran this prompt.
       // Keep the reservation until scoped recovery interrupts the native lane.
-      await promptChild(child, `Maintenance cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
+      await promptChild(child, `GC cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
       watchIncompletePrompt(cycleID, cycle.phase, child)
       } catch(error) {
         // Recovery is scoped to the cycle this pump actually observed. A late
@@ -1323,6 +1341,7 @@ export default Plugin.define({
     // observes the child's eventual idle/deletion using the existing owner.
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.tool === "subagent") {
+        if (event.status === "completed") event.result = { ...event.result, content: truthfulSubagentContent(event.result.content) }
         const delegation = `${event.sessionID}:${event.id}`
         try {
           const d = await execution(delegation)
@@ -1622,6 +1641,7 @@ export default Plugin.define({
         editor.update("subagent", (tool) => {
           tool.input = { ...schema, properties: {
             ...toolInput(schema.properties),
+            ...("sessionID" in toolInput(schema.properties) ? { sessionID: { ...toolInput(toolInput(schema.properties).sessionID), description: SUBAGENT_SESSION_DESCRIPTION } } : {}),
             model: { ...toolInput(toolInput(schema.properties).model), description:
               'Set only for a model or variant the user explicitly requests, or to restore an unavailable seat under the restoration conditions in your Takt operations. Otherwise omit it. It must be a chat model; image and decision models cannot run subagents. Use "providerID/modelID" or "providerID/modelID#variant". Do not guess the ID: look it up with the models tool, filtering to your own provider first.' },
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
@@ -1694,7 +1714,7 @@ export default Plugin.define({
           version: str("Identifier of this baseline version"),
           base_version: str("The standing plan version this declaration revises; omit only for the first commitment"),
           plan: { type: "array", items: obj({
-            unit: str("Work unit identity"), contract: str("Frozen contract this unit is dispatched against"),
+            unit: str("Work unit name: a short one-line label of the work"), contract: str("Frozen contract this unit is dispatched against"),
             prerequisites: { type: "array", items: { type: "string" }, description: "Prerequisite work unit identities" },
           }, ["unit", "contract"]), description: "Every unit this baseline covers, or that a revision adds or replaces" },
           qa_round: obj({ objective: str("Stable acceptance objective; never rename it to reset strengthening"),
@@ -1861,21 +1881,21 @@ export default Plugin.define({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
           requirements: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the knowledge the incoming interlocutor needs: finalized documents and settled decisions; an empty list states that nothing useful exists" },
-          client: str("Client-facing context for the incoming interlocutor"),
-        }, ["target_agent", "objective", "requirements"]),
+          client: str("What is known of the user for the incoming interlocutor; state as unknown what is not"),
+        }, ["target_agent", "objective", "requirements", "client"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client?: string }>(value)
+          const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_switch belongs to the root orchestrator")
           // A switch that would be refused is returned to the agent before the user is asked.
           await dispatchAction({ action: "validate_switch", session, agent: args.target_agent, requirements: args.requirements })
-          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client ?? "" }, c)
+          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client }, c)
           const requirements = args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"
           const text = [
             "You are taking over as the active interlocutor for this workspace.",
             `Objective: ${args.objective}`,
             `Requirements: ${requirements}`,
-            args.client ? `Client: ${args.client}` : undefined,
+            `Client: ${args.client}`,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,
@@ -2099,12 +2119,13 @@ export default Plugin.define({
       })
       editor.add({
         name: "deliver_result",
-        description: "Deliver this delegation's completed result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ". Call this before your turn ends.",
+        description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ", either the completed artifact or the blocker that ends the unit. Call this before your turn ends.",
         input: obj({
           result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
+          blocker: { type: "boolean", description: "true when these entries record a blocker instead of the assigned deliverable" },
         }, ["result_ids"]),
         async execute(input: unknown, c) {
-          const args = toolInput<{ result_ids: number[] }>(input)
+          const args = toolInput<{ result_ids: number[]; blocker?: boolean }>(input)
           // Only the session a running delegation runs in delivers for it: an
           // earlier attempt's session of the same unit never credits this one.
           const call=c.id ? invocations.get(`${c.sessionID}:${c.id}`) : undefined
@@ -2119,7 +2140,7 @@ export default Plugin.define({
             }
             return { content: `Validated ${count} result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff` }
           }
-          await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids })
+          await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids, blocker: args.blocker === true })
           return { content: `Delivered ${count} result id(s)` }
         },
       })
@@ -2132,7 +2153,7 @@ export default Plugin.define({
         editor.update(name, (tool) => {
           const native = tool.execute
           tool.execute = async (value, c) => {
-            if (c.agent === ORCHESTRATOR_ID || RESULT_AGENTS.includes(c.agent) || !VFS_AUTHORS.includes(c.agent)) return native(value,c)
+            if (!VFS_AUTHORS.includes(c.agent)) return native(value,c)
             const args = toolInput(value)
             const pathValue = nativeReadPath(args)
             // Reconciliation finds a reservation only by the host's own call id.
@@ -2182,7 +2203,7 @@ export default Plugin.define({
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
         if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed) })
-        if (delegation && RESULT_AGENTS.includes(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
+        if (delegation && !delegation.cycle && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]

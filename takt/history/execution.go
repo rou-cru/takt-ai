@@ -30,22 +30,28 @@ const LeaseTTL = 90 * time.Second
 // Execution is the current linkage of one exact host dispatch. A unit retry
 // creates a new record; no callback may move its predecessor to that attempt.
 type Execution struct {
-	Dispatch   string  `json:"dispatch"`
-	Root       string  `json:"root"`
-	Unit       string  `json:"unit"`
-	Attempt    string  `json:"attempt"`
-	Agent      string  `json:"agent"`
-	Caller     string  `json:"caller"`
-	Child      string  `json:"child,omitempty"`
-	AdmittedAt int64   `json:"admitted_at"`
-	Inputs     []int64 `json:"inputs"`
-	Delivery   []int64 `json:"delivery,omitempty"`
-	Cycle      string  `json:"cycle,omitempty"`
-	Role       string  `json:"role,omitempty"`
-	Prompted   string  `json:"prompted,omitempty"`
-	Ready      bool    `json:"ready,omitempty"`
-	Terminated bool    `json:"terminated,omitempty"`
-	Settled    bool    `json:"settled,omitempty"`
+	Dispatch   string `json:"dispatch"`
+	Root       string `json:"root"`
+	Unit       string `json:"unit"`
+	Attempt    string `json:"attempt"`
+	Agent      string `json:"agent"`
+	Caller     string `json:"caller"`
+	Child      string `json:"child,omitempty"`
+	AdmittedAt int64  `json:"admitted_at"`
+	// Seq is the history position of the admitting entry: the order of
+	// executions, which AdmittedAt cannot give when two values tie.
+	Seq      int     `json:"-"`
+	Inputs   []int64 `json:"inputs"`
+	Delivery []int64 `json:"delivery,omitempty"`
+	// Blocker is set when the latest delivery records a blocker: only then may
+	// a later delegation continue this execution's session (PR-HAR-38).
+	Blocker    bool   `json:"blocker,omitempty"`
+	Cycle      string `json:"cycle,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Prompted   string `json:"prompted,omitempty"`
+	Ready      bool   `json:"ready,omitempty"`
+	Terminated bool   `json:"terminated,omitempty"`
+	Settled    bool   `json:"settled,omitempty"`
 	// Model is the provider/model the execution runs.
 	Model string `json:"model,omitempty"`
 	// Substitute marks a Takt substitute filling the instance's seat.
@@ -98,7 +104,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Seq: e.Seq, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
@@ -109,6 +115,7 @@ func (p *Projection) foldExecution(e Entry) {
 				d.Delivery = append(d.Delivery, id)
 			}
 		}
+		d.Blocker = e.Blocker
 	case KindPrompt:
 		d.Prompted = e.Phase
 	case KindLaneStopped:
@@ -145,12 +152,36 @@ func (p Projection) ExecutionForChild(child, agent string) (Execution, bool) {
 	}
 	return Execution{}, false
 }
+
+// ReturnedExecution is the latest settled ordinary execution that ran in
+// child: the delegation a continuation of that session would resume.
+func (p Projection) ReturnedExecution(child string) (Execution, bool) {
+	var latest Execution
+	found := false
+	for _, d := range p.Executions {
+		if d.Settled && d.Cycle == "" && child != "" && d.Child == child && (!found || d.Seq > latest.Seq) {
+			latest, found = d, true
+		}
+	}
+	return latest, found
+}
 func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids []int64) error {
+	return h.appendExecutionFact(d, Entry{Kind: kind, Child: child, Phase: phase, ResultIDs: ids})
+}
+
+// Deliver records the result IDs a running execution delivers and whether
+// they record a blocker.
+func (h *History) Deliver(d Execution, ids []int64, blocker bool) error {
+	return h.appendExecutionFact(d, Entry{Kind: KindDelivery, ResultIDs: ids, Blocker: blocker})
+}
+
+func (h *History) appendExecutionFact(d Execution, e Entry) error {
 	current, ok := h.Project().Executions[d.Dispatch]
 	if !ok || current.Root != d.Root || current.Unit != d.Unit || current.Attempt != d.Attempt || current.Settled {
 		return fmt.Errorf("dispatch: %s attempt %s no longer runs; resume the current delegation", d.Dispatch, d.Attempt)
 	}
-	return h.Append(Entry{Author: AuthorHarness, Kind: kind, SessionID: d.Root, WorkUnitID: d.Unit, AttemptID: d.Attempt, Dispatch: d.Dispatch, Child: child, Phase: phase, ResultIDs: ids, Cause: CauseNone})
+	e.Author, e.SessionID, e.WorkUnitID, e.AttemptID, e.Dispatch, e.Cause = AuthorHarness, d.Root, d.Unit, d.Attempt, d.Dispatch, CauseNone
+	return h.Append(e)
 }
 func (h *History) AttachChild(dispatch, child, agent string) (Execution, error) {
 	p := h.Project()

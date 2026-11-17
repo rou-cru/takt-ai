@@ -28,6 +28,7 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
   - [func \(a \*Admin\) Backup\(ctx context.Context, in BackupInput\) \(BackupOutput, error\)](<#Admin.Backup>)
   - [func \(a \*Admin\) Bind\(ctx context.Context, in BindArgs\) error](<#Admin.Bind>)
   - [func \(a \*Admin\) Close\(\) error](<#Admin.Close>)
+  - [func \(a \*Admin\) Continuations\(ctx context.Context, session string\) \(\[\]string, error\)](<#Admin.Continuations>)
   - [func \(a \*Admin\) Describe\(ctx context.Context, in DescribeInput\) \(DescribeResult, error\)](<#Admin.Describe>)
   - [func \(a \*Admin\) Init\(ctx context.Context\) \(StatusOutput, error\)](<#Admin.Init>)
   - [func \(a \*Admin\) Shutdown\(ctx context.Context\) error](<#Admin.Shutdown>)
@@ -36,6 +37,8 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
 - [type BackupOutput](<#BackupOutput>)
 - [type BindArgs](<#BindArgs>)
 - [type CloseInput](<#CloseInput>)
+- [type ContinuationsInput](<#ContinuationsInput>)
+- [type ContinuationsOutput](<#ContinuationsOutput>)
 - [type ContinueInput](<#ContinueInput>)
 - [type DescribeInput](<#DescribeInput>)
 - [type DescribeResult](<#DescribeResult>)
@@ -74,6 +77,7 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
   - [func \(s \*Store\) Bind\(ctx context.Context, a BindArgs\) error](<#Store.Bind>)
   - [func \(s \*Store\) Close\(\) error](<#Store.Close>)
   - [func \(s \*Store\) CloseSession\(ctx context.Context, id Identity, objective, state string\) \(RecordedClose, error\)](<#Store.CloseSession>)
+  - [func \(s \*Store\) Continuations\(ctx context.Context, root string\) \(\[\]string, error\)](<#Store.Continuations>)
   - [func \(s \*Store\) ContinueSession\(ctx context.Context, id Identity, previousID string\) \(string, error\)](<#Store.ContinueSession>)
   - [func \(s \*Store\) Coverage\(ctx context.Context\) \(covered, total int64, err error\)](<#Store.Coverage>)
   - [func \(s \*Store\) Describe\(ctx context.Context, ids \[\]int64\) \(DescribeResult, error\)](<#Store.Describe>)
@@ -215,6 +219,8 @@ const (
     AdminStatus   = "status"
     AdminInit     = "init"
     AdminBackup   = "backup"
+    // AdminContinuations lists the crew sessions a root session continued.
+    AdminContinuations = "continuations"
     // AdminShutdown asks the owner answering on the socket to stop; only the lock holder binds the
     // socket, so the request reaches the owner and never another process.
     AdminShutdown = "shutdown"
@@ -297,7 +303,7 @@ var Tools = []Tool{
         Description: "Record one Takt memory entry: something that happened or is true now, such as an idea explored, " +
             "a fact verified, a decision taken, or an artifact changed. Never record plans, next steps, pending work, " +
             "or predictions of your own unless the user directly ordered it. An artifact you were assigned to author (a " +
-            "test plan, a task breakdown, a design) is recorded whole: it is the artifact authored. Entries are never changed or deleted; a change in " +
+            "test plan, a work breakdown, a design) is recorded whole: it is the artifact authored. Entries are never changed or deleted; a change in " +
             "understanding is a new entry whose relates_to names the affected entry. A new entry sends content. An entry " +
             "that corrects or supersedes another is stored as the complete current artifact: send the complete content. " +
             "Returns `Recorded #<id>`. A request larger than the transport's request cap is refused, stating the cap.",
@@ -497,6 +503,15 @@ func (a *Admin) Close() error
 
 Close ends the connection.
 
+<a name="Admin.Continuations"></a>
+### func \(\*Admin\) Continuations
+
+```go
+func (a *Admin) Continuations(ctx context.Context, session string) ([]string, error)
+```
+
+Continuations lists the crew root sessions the named root session continued, oldest first.
+
 <a name="Admin.Describe"></a>
 ### func \(\*Admin\) Describe
 
@@ -585,6 +600,28 @@ type BindArgs struct {
 type CloseInput struct {
     Objective string `json:"objective" jsonschema:"What the user asked for in this session, in one or two sentences."`
     State     string `json:"state" jsonschema:"What is true now, in present tense: governing decisions, open disagreements, and what was delivered. Never restate, merge, or upgrade the entries, and never include next steps or future work."`
+}
+```
+
+<a name="ContinuationsInput"></a>
+## type ContinuationsInput
+
+ContinuationsInput names the root session whose continued sessions \`continuations\` lists.
+
+```go
+type ContinuationsInput struct {
+    Session string `json:"session"`
+}
+```
+
+<a name="ContinuationsOutput"></a>
+## type ContinuationsOutput
+
+ContinuationsOutput is the crew root sessions the named session continued, oldest first.
+
+```go
+type ContinuationsOutput struct {
+    Sessions []string `json:"sessions"`
 }
 ```
 
@@ -1072,6 +1109,15 @@ func (s *Store) CloseSession(ctx context.Context, id Identity, objective, state 
 ```
 
 CloseSession records the objective, the state, and the sequence range of the caller's session entries committed since its previous close, and clears the unconsumed grants of its bindings. A crew caller must be the root of its own binding; an external caller closes its own session. Nothing new to close is refused and records nothing.
+
+<a name="Store.Continuations"></a>
+### func \(\*Store\) Continuations
+
+```go
+func (s *Store) Continuations(ctx context.Context, root string) ([]string, error)
+```
+
+Continuations lists the crew root sessions that root continued, oldest first \(MEM\-OPS\-5\), following each session's continuity: the declaration fixed by its first entry, or, before it has one, the pending declaration. A target that is not a crew session ends the chain, since it has no execution history.
 
 <a name="Store.ContinueSession"></a>
 ### func \(\*Store\) ContinueSession

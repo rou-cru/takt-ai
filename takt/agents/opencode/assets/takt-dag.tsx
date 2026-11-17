@@ -21,14 +21,11 @@ const POLL_INTERVAL_MS = 2000
 
 type DagNodeState = "planned" | "in_flight" | "settled" | "withdrawn"
 type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain" | "unmonitored"
-// Acceptance of a delivery, recorded apart from the outcome (PR-DTUI-12).
-type DagAssuranceStatus = "verified" | "failed" | "blocked" | "impossible" | "unverified"
 type DagOutcome = "completed" | "failed" | "backtracked" | "interrupted"
 type DagActivityKind = "orchestrator" | "maintenance"
 type Capture = "current" | "empty" | "uncertain" | "unavailable"
 const DAG_STATES: readonly DagNodeState[] = ["planned", "in_flight", "settled", "withdrawn"]
 const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain", "unmonitored"]
-const DAG_ASSURANCE_STATUSES: readonly DagAssuranceStatus[] = ["verified", "failed", "blocked", "impossible", "unverified"]
 const DAG_OUTCOMES: readonly DagOutcome[] = ["completed", "failed", "backtracked", "interrupted"]
 const DAG_CAPTURES: readonly Capture[] = ["current", "empty", "uncertain", "unavailable"]
 const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "maintenance"]
@@ -36,13 +33,17 @@ const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "mainten
 type DagActivityFlight = Extract<DagFlight, "observed_running" | "unmonitored">
 const DAG_ACTIVITY_FLIGHTS: readonly DagActivityFlight[] = ["observed_running", "unmonitored"]
 
-interface DagAssurance {
-  readonly status: DagAssuranceStatus
-  readonly author: "harness" | "verification"
-  /** The evaluated revision; absent when none was evaluated. */
-  readonly revision?: number
-  readonly evidence?: string
+/** Units in each state the view tells apart, tallied by Takt (PR-DTUI-18). */
+interface DagCounts {
+  readonly planned: number
+  readonly in_flight: number
+  readonly completed: number
+  readonly failed: number
+  readonly backtracked: number
+  readonly interrupted: number
+  readonly withdrawn: number
 }
+const DAG_COUNT_KEYS: readonly (keyof DagCounts)[] = ["planned", "in_flight", "completed", "failed", "backtracked", "interrupted", "withdrawn"]
 
 interface DagNode {
   readonly id: string
@@ -55,10 +56,10 @@ interface DagNode {
   /** Present only while state === "settled". */
   readonly outcome?: DagOutcome
   readonly launched: boolean
-  /** Absent until a result was recorded; a settled delivery without it is not accepted. */
-  readonly assurance?: DagAssurance
   readonly contract?: string
   readonly prerequisites?: readonly string[]
+  /** Depth in the DAG, assigned by Takt: 0 without prerequisites (PR-DTUI-9). */
+  readonly layer: number
   /** Short label of the specialist admitted for the current attempt; absent until admitted. */
   readonly agent?: string
 }
@@ -96,11 +97,8 @@ const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString)
 
-const isAssurance = (value: unknown): value is DagAssurance =>
-  isRecord(value) && oneOf(value.status, DAG_ASSURANCE_STATUSES) &&
-  (value.author === "harness" || value.author === "verification") &&
-  isOptional(value.revision, isNonNegativeInteger) && isOptional(value.evidence, isString)
-
+const isCounts = (value: unknown): value is DagCounts =>
+  isRecord(value) && DAG_COUNT_KEYS.every((key) => isNonNegativeInteger(value[key]))
 
 export function decodeSnapshot(value: unknown): DagResponse {
   const invalid = (): never => { throw new Error("invalid DAG snapshot JSON") }
@@ -112,7 +110,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
       !isNonNegativeInteger(value.projection_revision) || !isNonNegativeInteger(value.history_position) ||
       !isString(value.session_id) || !oneOf(value.capture, DAG_CAPTURES) ||
       (value.plan_version !== undefined && !isString(value.plan_version)) ||
-      !Array.isArray(value.nodes) || !Array.isArray(value.edges) ||
+      !isCounts(value.counts) || !Array.isArray(value.nodes) || !Array.isArray(value.edges) ||
       !Array.isArray(value.activities)) return invalid()
   const nodes: DagNode[] = value.nodes.map((raw): DagNode => {
     if (!isRecord(raw) || !isString(raw.id) || raw.id.length === 0 || !oneOf(raw.state, DAG_STATES) ||
@@ -122,7 +120,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
         !isOptional(raw.flight, isOneOf(DAG_FLIGHTS)) ||
         !isOptional(raw.outcome, isOneOf(DAG_OUTCOMES)) ||
         typeof raw.launched !== "boolean" ||
-        !isOptional(raw.assurance, isAssurance) ||
+        !isNonNegativeInteger(raw.layer) ||
         !isOptional(raw.contract, isString) ||
         !isOptional(raw.prerequisites, isStringArray) ||
         !isOptional(raw.agent, isString) ||
@@ -132,12 +130,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
       ...(raw.session_id === undefined ? {} : { session_id: raw.session_id }),
       ...(raw.attempt_id === undefined ? {} : { attempt_id: raw.attempt_id }), state: raw.state,
       ...(raw.flight === undefined ? {} : { flight: raw.flight }),
-      ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }), launched: raw.launched,
-      ...(raw.assurance === undefined ? {} : { assurance: {
-        status: raw.assurance.status,
-        author: raw.assurance.author,
-        ...(raw.assurance.revision === undefined ? {} : { revision: raw.assurance.revision }),
-        ...(raw.assurance.evidence === undefined ? {} : { evidence: raw.assurance.evidence }) } }),
+      ...(raw.outcome === undefined ? {} : { outcome: raw.outcome }), launched: raw.launched, layer: raw.layer,
       ...(raw.contract === undefined ? {} : { contract: raw.contract }),
       ...(raw.prerequisites === undefined ? {} : { prerequisites: raw.prerequisites }),
       ...(raw.agent === undefined ? {} : { agent: raw.agent }) }
@@ -161,7 +154,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
   return { schema_version: 1, projection_revision: value.projection_revision,
     history_position: value.history_position, session_id: value.session_id,
     capture: value.capture, ...(value.plan_version === undefined ? {} : { plan_version: value.plan_version }),
-    nodes, edges, activities }
+    counts: value.counts, nodes, edges, activities }
 }
 
 interface DagSnapshot {
@@ -171,6 +164,7 @@ interface DagSnapshot {
   readonly session_id: string
   readonly capture: Capture
   readonly plan_version?: string
+  readonly counts: DagCounts
   readonly nodes: readonly DagNode[]
   readonly edges: readonly DagEdge[]
   /** Activities are not work units or edge endpoints. */
@@ -216,21 +210,22 @@ export function topologyError(snapshot: DagSnapshot): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Layout — deterministic layered depth (PRD_DAG_TUI.md §5):
-// depth(A) = 0 without prerequisites; depth(B) = max(depth(parent)) + 1.
+// Layout — deterministic layers (PRD_DAG_TUI.md §5), assigned by Takt:
+// layer 0 without prerequisites, otherwise one more than the deepest prerequisite.
 // Layers are columns, flowing left to right. When the columns overflow the
-// viewport width, the flow snakes: each band ends at the gap with the fewest
-// wires that fits, and the next band below flows the opposite way; the edges
-// between two bands run down a gutter at the side where the flow turns. The
-// graph never overflows the width: when its bands do not fit the height, the
-// bands close up and then identities are cut with an ellipsis, down to a floor
-// past which the view scrolls vertically. Edges that skip layers run along a
-// straight track shared by the origins that skip to the same targets, so every
-// edge is a chain of edges between adjacent columns. The edges of one gap share
-// a vertical bus lane only when they form a complete biclique, and lanes are
-// ordered to keep crossings few. Positions and routes depend on topology and
-// viewport only, so a state-only update never moves a node (the whole Layout
-// is reused).
+// viewport width, the flow snakes: the columns split into the fewest bands that
+// fit, balanced in width, and each band is spread to the common width so the
+// gutter sits beside its ends. The next band below flows the opposite way, and
+// the edges between two bands run down a gutter at the side where the flow
+// turns. Names are bounded by contract (PR-DAG-REP-8), so a box always shows its
+// whole name: the graph never overflows the width, and when its bands do not
+// fit the height they close up and the view scrolls vertically. Edges that skip
+// layers run along a straight track shared by the origins that skip to the same
+// targets, so every edge is a chain of edges between adjacent columns. The edges
+// of one gap share a vertical bus lane only when they form a complete biclique,
+// lanes are ordered to keep crossings few, and parallel lanes keep a blank
+// column between them. Positions and routes depend on topology and viewport
+// only, so a state-only update never moves a node (the whole Layout is reused).
 // ---------------------------------------------------------------------------
 
 type Point = readonly [x: number, y: number]
@@ -240,7 +235,7 @@ interface LayoutNode {
   readonly depth: number
   readonly x: number
   readonly y: number
-  /** Box width: its column's longest identity plus chrome. */
+  /** Box width: the longest name of the graph plus chrome. */
   readonly width: number
 }
 
@@ -267,8 +262,6 @@ interface Layout {
   readonly height: number
   /** Widest component's band count; 1 when nothing wraps. */
   readonly bands: number
-  /** Most identity cells a box shows; longer identities are cut with an ellipsis. */
-  readonly labelCap: number
   /** Node-id/kind set + edge set this layout was computed from; never lifecycle state. */
   readonly topologyKey: string
   readonly viewport: Viewport
@@ -289,12 +282,12 @@ const BAND_GAP = 2
 const COMPONENT_GAP = 2
 // Rows between bands once the graph closes up to fit the height.
 const COMPACT_BAND_GAP = 1
-// Fewest identity cells a box is cut to for the graph to fit the height; past
-// this the view scrolls vertically instead of cutting further.
-const MIN_LABEL_CELLS = 12
-// Cells of a gap besides its bus lanes: a stub and a margin before the lanes,
-// a margin and the arrowhead cell after them.
-const GAP_CHROME = 4
+// Columns between two parallel bus lanes: the lane, then a blank column, so two
+// rails never read as one.
+const LANE_PITCH = 2
+// Cells of a gap besides its bus lanes: a stub before the lanes, a margin and
+// the arrowhead cell after them.
+const GAP_CHROME = 3
 // Down/up passes of the crossing-reduction ordering.
 const ORDER_SWEEPS = 4
 const UNBOUNDED: Viewport = { width: Infinity, height: Infinity }
@@ -311,20 +304,9 @@ export function topologyKey(snapshot: DagSnapshot): string {
   return `${nodeIds.join(",")}|${edgeKeys.join(",")}`
 }
 
-function computeDepths(snapshot: DagSnapshot): Map<string, number> {
-  const parents = new Map<string, string[]>()
-  for (const e of snapshot.edges) parents.set(e.to, [...(parents.get(e.to) ?? []), e.from])
-  const depths = new Map<string, number>()
-  // Acyclic by topologyError, so the recursion terminates.
-  const depthOf = (id: string): number => {
-    const cached = depths.get(id)
-    if (cached !== undefined) return cached
-    const depth = Math.max(-1, ...(parents.get(id) ?? []).map(depthOf)) + 1
-    depths.set(id, depth)
-    return depth
-  }
-  for (const node of snapshot.nodes) depthOf(node.id)
-  return depths
+// Layers are Takt's: the view reads them and never recomputes them (PR-DTUI-9).
+function layersOf(snapshot: DagSnapshot): Map<string, number> {
+  return new Map(snapshot.nodes.map((n) => [n.id, n.layer]))
 }
 
 /**
@@ -431,9 +413,8 @@ interface Piece {
   readonly bands: number
 }
 
-/** How tightly a layout is drawn: identity cells per box, rows between bands. */
+/** How tightly a layout is drawn: rows between bands. */
 interface Sizing {
-  readonly cap: number
   readonly bandGap: number
 }
 
@@ -602,8 +583,8 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
 
   routeTracks(members, cols, slots, depthOf, top, trackSpans)
 
-  // Every box is as wide as the longest identity, so none is shorter for no reason.
-  const boxWidth = Math.max(...members.map((id) => Math.min(Bun.stringWidth(id), sizing.cap))) + NODE_CHROME
+  // Every box is as wide as the longest name, so none is shorter for no reason.
+  const boxWidth = Math.max(...members.map((id) => Bun.stringWidth(id))) + NODE_CHROME
   const colWidth = cols.map((col) => (col.some((id) => slot(id).node !== undefined) ? boxWidth : PASS_WIDTH))
   const depthOfSlot = (id: string) => slot(id).depth
   const stripRow = centre
@@ -615,7 +596,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     const gap = links.filter((l) => depthOfSlot(l.a) === c)
     const { lanes, count } = assignLanes(gap.map((l) => segOf(l, stripRow)), false)
     gap.forEach((l, i) => laneOf.set(l, lanes[i]))
-    return Math.max(1, count) + GAP_CHROME
+    return Math.max(1, count) * LANE_PITCH + GAP_CHROME
   })
 
   // Wrap: a column that would overflow the budget starts the next band.
@@ -651,10 +632,19 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     const rightLanes = gutterLanes(1)
     const leftLanes = gutterLanes(-1)
 
-    const leftMargin = leftLanes > 0 ? 2 + leftLanes : 0
+    // A gutter keeps a blank column between its outermost lane and the edge.
+    const leftMargin = leftLanes > 0 ? 3 + (leftLanes - 1) * LANE_PITCH + 1 : 0
     const bandWidth = bands.map((cs) => cs.reduce((sum, c, i) => sum + colWidth[c] + (i < cs.length - 1 ? gapWidth[c] : 0), 0))
-    const right = leftMargin + Math.max(...bandWidth)
-    const colX = columnX(bands, colWidth, gapWidth, leftMargin, right)
+    const widest = Math.max(...bandWidth)
+    const right = leftMargin + widest
+    // Every band is spread to the widest one's width, so the gutters sit beside the band ends.
+    const spread = [...gapWidth]
+    bands.forEach((cs, band) => {
+      const gaps = cs.length - 1
+      const extra = widest - bandWidth[band]
+      for (let i = 0; i < gaps; i++) spread[cs[i]] += Math.floor(extra / gaps) + (i < extra % gaps ? 1 : 0)
+    })
+    const colX = columnX(bands, colWidth, spread, leftMargin, right)
 
     const nodes: LayoutNode[] = members.map((id) => {
       const depth = depthOf(id)
@@ -680,13 +670,13 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
         let bus: number
         let end: number
         if (bandOf[ca] === bandOf[cb]) {
-          bus = start + dir * (2 + lane)
+          bus = start + dir * (2 + lane * LANE_PITCH)
           end = dir > 0 ? colX[cb] - 1 : colX[cb] + colWidth[cb]
         } else if (dir > 0) {
-          bus = right + 2 + lane
+          bus = right + 2 + lane * LANE_PITCH
           end = right
         } else {
-          bus = leftMargin - 3 - lane
+          bus = leftMargin - 3 - lane * LANE_PITCH
           end = leftMargin - 1
         }
         const [sy, ty] = [rowOf(from), rowOf(to)]
@@ -700,7 +690,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
       heads.push({ x: arrival[0], y: arrival[1], glyph: flow(depthOfSlot(chain.at(-1) as string)) > 0 ? "▶" : "◀" })
     }
 
-    return { nodes, paths, heads, width: right + (rightLanes > 0 ? 2 + rightLanes : 0), height, bands: bands.length }
+    return { nodes, paths, heads, width: right + (rightLanes > 0 ? 4 + (rightLanes - 1) * LANE_PITCH : 0), height, bands: bands.length }
   }
   // Narrow the budget by what the gutters spill over the width, until the band
   // fits or every band already holds a single column.
@@ -713,18 +703,44 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   }
 }
 
-// wrapBands groups the columns into bands no wider than budget. Each band is
-// cut, among the gaps it could end at, at the one with the fewest bus lanes
-// (the farthest on a tie), so the fewest wires turn down a gutter.
+// wrapBands groups the columns into the fewest bands no wider than budget,
+// then narrows the limit to the smallest one that still needs no more bands and
+// evens the bands out: they come out the same width, not one full and one nearly
+// empty.
 function wrapBands(colWidth: readonly number[], gapWidth: readonly number[], budget: number): number[][] {
-  const bands: number[][] = []
-  for (let start = 0; start < colWidth.length; ) {
-    let end = start
-    for (let used = colWidth[start]; end + 1 < colWidth.length && used + gapWidth[end] + colWidth[end + 1] <= budget; end++) used += gapWidth[end] + colWidth[end + 1]
-    let cut = end
-    if (end + 1 < colWidth.length) for (let c = end - 1; c >= start; c--) if (gapWidth[c] < gapWidth[cut]) cut = c
-    bands.push(Array.from({ length: cut - start + 1 }, (_, i) => start + i))
-    start = cut + 1
+  const fill = (limit: number): number[][] => {
+    const bands: number[][] = []
+    for (let start = 0; start < colWidth.length; ) {
+      let end = start
+      for (let used = colWidth[start]; end + 1 < colWidth.length && used + gapWidth[end] + colWidth[end + 1] <= limit; end++) used += gapWidth[end] + colWidth[end + 1]
+      bands.push(Array.from({ length: end - start + 1 }, (_, i) => start + i))
+      start = end + 1
+    }
+    return bands
+  }
+  const width = (cs: readonly number[]) => cs.reduce((sum, c, i) => sum + colWidth[c] + (i < cs.length - 1 ? gapWidth[c] : 0), 0)
+  const all = Array.from({ length: colWidth.length }, (_, i) => i)
+  if (width(all) <= budget) return [all]
+  const count = fill(budget).length
+  let [lo, hi] = [Math.min(Math.max(...colWidth), budget), budget]
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (fill(mid).length <= count) hi = mid
+    else lo = mid + 1
+  }
+  const bands = fill(lo)
+  // The greedy fill leaves the last band short: move a trailing column on while that narrows the wider of the two.
+  for (let moved = true; moved; ) {
+    moved = false
+    for (let j = 0; j + 1 < bands.length; j++) {
+      if (bands[j].length < 2) continue
+      const [kept, shifted] = [bands[j].slice(0, -1), [bands[j].at(-1) as number, ...bands[j + 1]]]
+      if (Math.max(width(kept), width(shifted)) < Math.max(width(bands[j]), width(bands[j + 1]))) {
+        bands[j] = kept
+        bands[j + 1] = shifted
+        moved = true
+      }
+    }
   }
   return bands
 }
@@ -751,7 +767,7 @@ type Drawn = Omit<Layout, "topologyKey" | "viewport">
 // buildLayout stacks the graph's connected components top to bottom, each
 // laid out in bands no wider than width and drawn as tightly as sizing says.
 function buildLayout(snapshot: DagSnapshot, width: number, sizing: Sizing): Drawn {
-  const depths = computeDepths(snapshot)
+  const depths = layersOf(snapshot)
   const depthOf = (id: string) => depths.get(id) ?? 0
   const nodes = new Map<string, LayoutNode>()
   const paths: Point[][] = []
@@ -768,14 +784,12 @@ function buildLayout(snapshot: DagSnapshot, width: number, sizing: Sizing): Draw
     maxWidth = Math.max(maxWidth, piece.width)
     bands = Math.max(bands, piece.bands)
   }
-  return { nodes, paths, heads, nodeHeight: NODE_ROWS, width: maxWidth, height: Math.max(0, y - COMPONENT_GAP), bands, labelCap: sizing.cap }
+  return { nodes, paths, heads, nodeHeight: NODE_ROWS, width: maxWidth, height: Math.max(0, y - COMPONENT_GAP), bands }
 }
 
 // computeLayout wraps into bands that fit the viewport width. While the bands
-// do not fit its height, it closes them up and then cuts identities one cell
-// at a time; down at MIN_LABEL_CELLS it keeps the shortest layout that fits
-// the width and the view scrolls vertically. A layout wider than the viewport
-// is never chosen while a narrower cut exists.
+// do not fit its height it closes them up; past that the view scrolls
+// vertically. Names are never cut.
 export function computeLayout(snapshot: DagSnapshot, previous?: Layout, viewport: Viewport = UNBOUNDED): Layout {
   const key = topologyKey(snapshot)
   if (previous?.topologyKey === key && previous.viewport.width === viewport.width && previous.viewport.height === viewport.height) return previous
@@ -783,20 +797,8 @@ export function computeLayout(snapshot: DagSnapshot, previous?: Layout, viewport
 }
 
 function fitLayout(snapshot: DagSnapshot, viewport: Viewport): Drawn {
-  const longest = Math.max(1, ...snapshot.nodes.map((n) => Bun.stringWidth(n.id)))
-  const sizings: Sizing[] = [{ cap: longest, bandGap: BAND_GAP }]
-  for (let cap = longest; cap >= 1; cap--) sizings.push({ cap, bandGap: COMPACT_BAND_GAP })
-  let shortest: Drawn | undefined
-  let layout: Drawn | undefined
-  for (const sizing of sizings) {
-    layout = buildLayout(snapshot, viewport.width, sizing)
-    if (layout.width > viewport.width) continue
-    if (layout.height <= viewport.height) return layout
-    if (shortest === undefined || layout.height < shortest.height) shortest = layout
-    if (sizing.bandGap === COMPACT_BAND_GAP && sizing.cap <= MIN_LABEL_CELLS) return shortest
-  }
-  // Not even a one-cell cut fits the width: the narrowest attempt is all there is.
-  return shortest ?? (layout as Drawn)
+  const natural = buildLayout(snapshot, viewport.width, { bandGap: BAND_GAP })
+  return natural.height <= viewport.height ? natural : buildLayout(snapshot, viewport.width, { bandGap: COMPACT_BAND_GAP })
 }
 
 const UP = 1
@@ -813,24 +815,43 @@ const LINE_GLYPHS: Record<number, string> = {
   [UP | DOWN | LEFT | RIGHT]: "┼",
 }
 
+// Glyph of a cell where one edge runs straight across another's vertical: the
+// vertical goes over, so it never reads as a junction (┼ is reserved for edges
+// that really meet).
+const CROSSING_GLYPH = "╫"
+
 /** Rasterizes every edge path into text rows; cells record their links. */
 export function edgeRows(layout: Layout): string[] {
-  const mask: number[][] = Array.from({ length: layout.height }, () => new Array<number>(layout.width).fill(0))
-  const link = ([ax, ay]: Point, [bx, by]: Point) => {
-    for (let y = Math.min(ay, by); y < Math.max(ay, by); y++) {
-      mask[y][ax] |= DOWN
-      mask[y + 1][ax] |= UP
-    }
-    for (let x = Math.min(ax, bx); x < Math.max(ax, bx); x++) {
-      mask[ay][x] |= RIGHT
-      mask[ay][x + 1] |= LEFT
-    }
-  }
+  const at = (x: number, y: number) => y * layout.width + x
+  const mask = new Array<number>(layout.height * layout.width).fill(0)
+  // How each edge passes a cell, so a crossing tells apart from a junction.
+  const passes = new Map<number, number[]>()
   for (const path of layout.paths) {
     if (path.length === 0) throw new Error("invalid DAG layout: empty edge path")
+    const own = new Map<number, number>()
+    const link = ([ax, ay]: Point, [bx, by]: Point) => {
+      for (let y = Math.min(ay, by); y < Math.max(ay, by); y++) {
+        own.set(at(ax, y), (own.get(at(ax, y)) ?? 0) | DOWN)
+        own.set(at(ax, y + 1), (own.get(at(ax, y + 1)) ?? 0) | UP)
+      }
+      for (let x = Math.min(ax, bx); x < Math.max(ax, bx); x++) {
+        own.set(at(x, ay), (own.get(at(x, ay)) ?? 0) | RIGHT)
+        own.set(at(x + 1, ay), (own.get(at(x + 1, ay)) ?? 0) | LEFT)
+      }
+    }
     for (let i = 1; i < path.length; i++) link(path[i - 1], path[i])
+    for (const [cell, m] of own) {
+      mask[cell] |= m
+      passes.set(cell, [...(passes.get(cell) ?? []), m])
+    }
   }
-  return mask.map((row) => row.map((m) => LINE_GLYPHS[m] ?? " ").join(""))
+  const glyphAt = (cell: number) => {
+    const through = passes.get(cell) ?? []
+    const straight = through.every((m) => m === (UP | DOWN) || m === (LEFT | RIGHT))
+    if (mask[cell] === (UP | DOWN | LEFT | RIGHT) && straight) return CROSSING_GLYPH
+    return LINE_GLYPHS[mask[cell]] ?? " "
+  }
+  return Array.from({ length: layout.height }, (_, y) => Array.from({ length: layout.width }, (_, x) => glyphAt(at(x, y))).join(""))
 }
 
 /** Where edges meet their boxes: the arrowhead beside the target, in the flow's direction. */
@@ -845,55 +866,52 @@ export function edgePorts(layout: Layout): Port[] {
 // settled distinction collapses into another.
 // ---------------------------------------------------------------------------
 
-// Only independent verification accepts a completed delivery (PR-DTUI-12).
-const isAccepted = (n: DagNode) => n.state === "settled" && (n.outcome ?? "completed") === "completed" && n.assurance?.author === "verification" && n.assurance.status === "verified"
-
-// A delivered unit shows its acceptance, not its delivery.
-function deliveredGlyph(node: DagNode): string {
-  if (isAccepted(node)) return "✓"
-  return node.assurance?.author === "verification" && node.assurance.status === "failed" ? "✗" : "◔"
-}
+// One glyph per state the view tells apart; the counts line and the legend
+// read the same table.
+const GLYPH = {
+  done: "✓", failed: "✗", backtracked: "↩", interrupted: "⊘", planned: "◌", withdrawn: "×",
+  admitted: "○", uncertain: "!", suspended: "⏸", stopping: "↯", unmonitored: "◐", running: "●",
+} as const
 
 export function glyphFor(node: DagNode): string {
   switch (node.state) {
     case "planned":
-      return "◌"
+      return GLYPH.planned
     case "withdrawn":
-      return "×"
+      return GLYPH.withdrawn
     case "settled":
       switch (node.outcome) {
         case "failed":
-          return "✗"
+          return GLYPH.failed
         case "backtracked":
-          return "↩"
+          return GLYPH.backtracked
         case "interrupted":
-          return "⊘"
+          return GLYPH.interrupted
         default:
-          return deliveredGlyph(node)
+          return GLYPH.done
       }
     case "in_flight":
       switch (node.flight) {
         case "pending_launch":
-          return "○"
+          return GLYPH.admitted
         case "uncertain":
-          return "!"
+          return GLYPH.uncertain
         case "suspended":
-          return "⏸"
+          return GLYPH.suspended
         case "cancellation_pending":
-          return "↯"
+          return GLYPH.stopping
         case "unmonitored":
-          return "◐"
+          return GLYPH.unmonitored
         default:
-          return "●"
+          return GLYPH.running
       }
   }
 }
 
-// A node reads as its state and identity; the kind is omitted while
-// "delegated" is the only kind, since it would tell nothing apart. The identity
-// is cut to cap cells when the layout had to shorten it to fit.
-export function nodeText(node: DagNode, cap = Infinity): string {
-  return `${glyphFor(node)} ${fit(node.id, cap)}`
+// A node reads as its state and its name; the kind is omitted while
+// "delegated" is the only kind, since it would tell nothing apart.
+export function nodeText(node: DagNode): string {
+  return `${glyphFor(node)} ${node.id}`
 }
 
 const activityLabel = (activity: DagActivity) => (activity.node_kind === "orchestrator" ? "direct activity" : "GC activity")
@@ -941,9 +959,9 @@ export function packActivities(activities: readonly DagActivity[], width: number
 
 // The glyph legend, shown on demand in the route view (`?`).
 const LEGEND_LINES = [
-  "✓ accepted   ◔ delivered, not accepted   ● running   ◌ planned   ○ admitted   ! uncertain",
-  "◐ unmonitored   ✗ failed or acceptance failed   ↩ backtracked   × withdrawn",
-  "⏸ suspended   ↯ stopping   ⊘ interrupted",
+  `${GLYPH.done} done   ${GLYPH.running} in flight   ${GLYPH.planned} planned   ${GLYPH.admitted} admitted   ${GLYPH.uncertain} uncertain`,
+  `${GLYPH.unmonitored} unmonitored   ${GLYPH.failed} failed   ${GLYPH.backtracked} backtracked   ${GLYPH.withdrawn} withdrawn`,
+  `${GLYPH.suspended} suspended   ${GLYPH.stopping} stopping   ${GLYPH.interrupted} interrupted`,
   "◆ direct activity   ◇ GC activity",
 ]
 
@@ -1025,7 +1043,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
                   height={layout().nodeHeight}
                   border
                 >
-                  <text>{nodeText(node, layout().labelCap)}</text>
+                  <text>{nodeText(node)}</text>
                 </box>
               )}
             </Show>
@@ -1065,24 +1083,25 @@ export function hasContent(snapshot: DagSnapshot): boolean {
   return snapshot.nodes.length > 0 || snapshot.activities.length > 0
 }
 
-// progressLine counts what a person tracks: units accepted and running.
-// Delivery never counts as accepted.
-export function progressLine(snapshot: DagSnapshot): string {
-  const accepted = snapshot.nodes.filter(isAccepted).length
-  const running = snapshot.nodes.filter((n) => n.state === "in_flight" && (n.flight ?? "observed_running") === "observed_running").length
-  const parts = [`${accepted}/${snapshot.nodes.length} accepted`]
-  if (running > 0) parts.push(`${running} running`)
-  return parts.join(" · ")
+// countsLine says where the delegation stands: every count is Takt's, and a
+// state with no unit is left out. The route words it; the sidebar spends
+// fewer columns on the same counts (sidebarDetail).
+export function countsLine(counts: DagCounts): string {
+  const parts: [number, string][] = [
+    [counts.completed, "done"], [counts.in_flight, "in flight"], [counts.planned, "planned"],
+    [counts.failed, "failed"], [counts.backtracked, "backtracked"], [counts.interrupted, "interrupted"],
+  ]
+  return parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(" · ")
 }
 
 // headerLine names the view, then whatever needs attention: a capture that is
-// not current, otherwise the progress counts. Projection and plan revisions
-// are internal and stay out.
+// not current, otherwise where the delegation stands. Projection and plan
+// revisions are internal and stay out.
 export function headerLine(snapshot: DagSnapshot | undefined, health: Health): string {
   const capture = snapshot && health === "confirmed" ? snapshot.capture : health
   if (capture !== "current") return `Takt DAG · ${capture}`
-  if (!snapshot || snapshot.nodes.length === 0) return "Takt DAG"
-  return `Takt DAG · ${progressLine(snapshot)}`
+  const line = snapshot ? countsLine(snapshot.counts) : ""
+  return line === "" ? "Takt DAG" : `Takt DAG · ${line}`
 }
 
 // The OpenCode v2 sidebar is 42 columns wide (SESSION_SIDEBAR_WIDTH) less its
@@ -1124,13 +1143,18 @@ export function fit(text: string, width: number): string {
 
 /**
  * What follows the sidebar's bold title: a capture that is not current,
- * otherwise completed over planned units (withdrawn ones are no longer work).
+ * otherwise Takt's counts as glyph and number, the same counts the route words.
  */
 export function sidebarDetail(snapshot: DagSnapshot | undefined, health: Health): string {
   const capture = snapshot && health === "confirmed" ? snapshot.capture : health
   if (capture !== "current") return capture
-  const units = snapshot?.nodes.filter((n) => n.state !== "withdrawn") ?? []
-  return units.length === 0 ? "" : `${units.filter(isAccepted).length}/${units.length}`
+  if (!snapshot) return ""
+  const { counts } = snapshot
+  const parts: [string, number][] = [
+    [GLYPH.done, counts.completed], [GLYPH.running, counts.in_flight], [GLYPH.planned, counts.planned],
+    [GLYPH.failed, counts.failed], [GLYPH.backtracked, counts.backtracked], [GLYPH.interrupted, counts.interrupted],
+  ]
+  return parts.filter(([, n]) => n > 0).map(([glyph, n]) => `${glyph}${n}`).join(" ")
 }
 
 /** One row of the frontier graph: a unit, or a layer too wide for its lanes. */
@@ -1143,10 +1167,7 @@ interface FrontierItem {
 
 function sidebarNode(node: DagNode): FrontierItem {
   const glyph = glyphFor(node)
-  let tone: SidebarTone | undefined
-  if (glyph === "✗") tone = "error"
-  else if (isAccepted(node)) tone = "muted"
-  return { id: node.id, glyph, label: node.id, ...(tone ? { tone } : {}) }
+  return { id: node.id, glyph, label: node.id, ...(glyph === GLYPH.failed ? { tone: "error" as const } : {}) }
 }
 
 function appendSidebarLayer(
@@ -1165,24 +1186,23 @@ function appendSidebarLayer(
   }
   for (const id of layer) itemOf.set(id, group)
   const members = layer.map((id) => sidebarNode(byId.get(id) as DagNode))
-  // A failure anywhere in the group shows; the group is muted only once all of it is done.
-  let tone: SidebarTone | undefined
-  if (members.some((m) => m.tone === "error")) tone = "error"
-  else if (members.every((m) => m.tone === "muted")) tone = "muted"
+  // A failure anywhere in the group shows.
+  const tone: SidebarTone | undefined = members.some((m) => m.tone === "error") ? "error" : undefined
   const glyphs = members.map((m) => m.glyph).join("")
   order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel`, ...(tone ? { tone } : {}) })
 }
 
-// sidebarGraph is every unit that is not withdrawn, with the edges between
-// them: a unit changes glyph as it progresses but never leaves the graph.
-// Within each connected component a layer wider than the lane budget becomes
-// one item; its units share a depth, so no edge joins them and the contracted
-// graph stays acyclic.
+// sidebarGraph is the frontier: every unit still in flight or planned, and
+// every unit that ended without completing, with the edges between them.
+// Completed units are the title's count and withdrawn ones are not work, so
+// neither is drawn. Within each connected component a layer wider than the
+// lane budget becomes one item; its units share a layer, so no edge joins them
+// and the contracted graph stays acyclic.
 function sidebarGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children: Map<string, string[]> } {
-  const nodes = snapshot.nodes.filter((n) => n.state !== "withdrawn")
+  const nodes = snapshot.nodes.filter((n) => n.state !== "withdrawn" && !(n.state === "settled" && n.outcome === "completed"))
   const ids = new Set(nodes.map((n) => n.id))
   const frontier: DagSnapshot = { ...snapshot, nodes, edges: snapshot.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) }
-  const depths = computeDepths(frontier)
+  const depths = layersOf(frontier)
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const itemOf = new Map<string, string>()
   const order: FrontierItem[] = []
@@ -1296,7 +1316,7 @@ function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, 
 }
 
 /**
- * The DAG for the sidebar's narrow column: the whole graph as lanes (a flat
+ * The DAG for the sidebar's narrow column: the frontier as lanes (a flat
  * list in dependency order when it needs more lanes than the budget), then
  * running activities. Every row fits SIDEBAR_COLUMNS and the total never
  * exceeds MAX_SIDEBAR_ROWS: the oldest rows fold into a leading "… N more".

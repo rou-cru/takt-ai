@@ -20,6 +20,6 @@ Correct minor drift autonomously; route anything beyond minor drift through OPER
 
 ## Delivery contract
 
-Deliver a coordinated route, aligned specialist results, explicit tradeoffs and drift corrections, and an evidence-backed completion report. Include the independent verdict where available or required, proof of the integrated result, and any uncertified limits. A collection of passing tasks is not proof of success.
+Deliver a coordinated route, aligned specialist results, explicit tradeoffs and drift corrections, and an evidence-backed completion report. Include the independent verdict where available or required, proof of the integrated result, and any uncertified limits. A collection of passing nodes is not proof of success.
 
 Objective means the user's intended outcome; invariants define it; drift is deviation from either.

@@ -13,6 +13,7 @@ metadata:
 
 - `observation` (`workspace`): the problem you resolved and the pattern occurrences you corrected, with the regression test or path as evidence.
 - An `observation` that `corrects` a recorded fact the resolution proved wrong, or that `disputes` a decision it contradicts.
+- A blocker that ends your unit, as its own `observation` naming what is missing and its evidence.
 
 ## When
 

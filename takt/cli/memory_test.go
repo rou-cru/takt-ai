@@ -57,6 +57,17 @@ func (s *session) record(host, title string, supersedes int64) int64 {
 	if supersedes != 0 {
 		args["relates_to"] = map[string]any{"id": supersedes, "relation": memory.RelationSupersedes}
 	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(s.crewCall(host, memory.ToolRecord, args), "Recorded #"), 10, 64)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return id
+}
+
+// crewCall calls a tool of the memory service's crew path as host, a session already bound, and returns its text.
+func (s *session) crewCall(host, tool string, args map[string]any) string {
+	s.t.Helper()
+	ctx := context.Background()
 	sock := filepath.Join(s.memoryDir, memory.SocketFile)
 	crew, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint: "http://memory" + memory.PathCrew, DisableStandaloneSSE: true,
@@ -68,15 +79,25 @@ func (s *session) record(host, title string, supersedes int64) int64 {
 		s.t.Fatal(err)
 	}
 	defer func() { _ = crew.Close() }()
-	res, err := crew.CallTool(ctx, &mcp.CallToolParams{Name: memory.ToolRecord, Arguments: args, Meta: mcp.Meta{memory.MetaHostSession: host}})
+	res, err := crew.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args, Meta: mcp.Meta{memory.MetaHostSession: host}})
 	if err != nil || res.IsError {
-		s.t.Fatalf("record %q as %s: %v %+v", title, host, err, res)
+		s.t.Fatalf("%s as %s: %v %+v", tool, host, err, res)
 	}
-	id, err := strconv.ParseInt(strings.TrimPrefix(res.Content[0].(*mcp.TextContent).Text, "Recorded #"), 10, 64)
+	return res.Content[0].(*mcp.TextContent).Text
+}
+
+// bindRoot binds host as the root crew session of its own conversation.
+func (s *session) bindRoot(host string) {
+	s.t.Helper()
+	ctx := context.Background()
+	admin, err := memory.DialAdmin(ctx, s.memoryDir)
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	return id
+	defer func() { _ = admin.Close() }()
+	if err := admin.Bind(ctx, memory.BindArgs{HostSession: host, Agent: "takt", ClaimedRoot: host, Workspace: "ws"}); err != nil {
+		s.t.Fatal(err)
+	}
 }
 
 // requireNamed fails unless the refusal's text contains every want.
@@ -169,6 +190,40 @@ func inputsAreCurrent(t *testing.T, bin string) {
 	s.must(request{Action: "inputs", Session: rootSession, Event: "other-docs", ResultIDs: []int64{story}})
 	other := request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "other-docs", Dispatch: "other-call", Caller: rootSession, Agent: "pm", Child: "pm-docs"}
 	s.must(other)
+}
+
+// continuationNeedsBlocker covers PR-HAR-38: a session whose delegation returned a
+// deliverable is never continued, and the refusal names a new delegation; one
+// whose delegation returned a blocker is continued to unblock it.
+func continuationNeedsBlocker(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	input := s.record("analyst-child", "declared input", 0)
+	returned := func(unit, child string, blocker bool) {
+		s.must(request{Action: "inputs", Session: rootSession, Event: unit, ResultIDs: []int64{input}})
+		s.must(request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: unit, Dispatch: unit + "-first", Caller: rootSession, Agent: "architect", Child: child})
+		s.must(request{Action: "deliver", Session: rootSession, Child: child, Agent: "architect", ResultIDs: []int64{s.record(child, unit+" result", 0)}, Blocker: blocker})
+		s.must(request{Action: "finish", Session: rootSession, Event: unit, Agent: "architect"})
+	}
+	continued := func(unit, child string) request {
+		return request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: unit, Dispatch: unit + "-again", Caller: rootSession, Agent: "architect", Child: child}
+	}
+
+	returned("design", "design-child", false)
+	requireNamed(t, s.rejected(continued("design", "design-child")), "without a blocker", "without sessionID")
+	if _, admitted := s.projection().Executions["design-again"]; admitted {
+		t.Fatal("a refused continuation admitted an execution")
+	}
+	fresh := continued("design", "")
+	s.must(fresh)
+	// A dispatch prepared without a session meets the same gate when the returned one attaches.
+	attach := func(child string) request {
+		return request{Action: "attach_child", Session: rootSession, Dispatch: "design-again", Child: child, Agent: "architect"}
+	}
+	requireNamed(t, s.rejected(attach("design-child")), "without a blocker", "delegate unit design again")
+	s.must(attach("design-new"))
+
+	returned("contracts", "contracts-child", true)
+	s.must(continued("contracts", "contracts-child"))
 }
 
 // failedSwitchBind: a switch whose lent session cannot be bound to the convening root fails

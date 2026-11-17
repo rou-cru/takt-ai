@@ -15,6 +15,7 @@ metadata:
   on — an edge case the specification settles, a contract constraint a test pins — with the
   test path and the specification or contract entry as evidence.
 - An `observation` that `disputes` a specification or contract entry when the two contradict.
+- A blocker that ends your unit, as its own `observation` naming what is missing and its evidence.
 
 ## When
 

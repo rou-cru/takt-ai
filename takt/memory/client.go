@@ -99,6 +99,12 @@ func (a *Admin) Describe(ctx context.Context, in DescribeInput) (DescribeResult,
 	return adminCall[DescribeResult](ctx, a, AdminDescribe, in)
 }
 
+// Continuations lists the crew root sessions the named root session continued, oldest first.
+func (a *Admin) Continuations(ctx context.Context, session string) ([]string, error) {
+	out, err := adminCall[ContinuationsOutput](ctx, a, AdminContinuations, ContinuationsInput{Session: session})
+	return out.Sessions, err
+}
+
 // Init creates the store when there is none.
 func (a *Admin) Init(ctx context.Context) (StatusOutput, error) {
 	return adminCall[StatusOutput](ctx, a, AdminInit, struct{}{})

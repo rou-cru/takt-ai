@@ -79,6 +79,12 @@ const CauseNoFailure = "control/no-terminal-failure"
 const CauseRepetition = "control/unit-in-flight"
 ```
 
+<a name="CauseUnitName"></a>CauseUnitName denies admitting a new unit whose name breaks the unit\-name contract \(PR\-DAG\-REP\-8\).
+
+```go
+const CauseUnitName = "control/unit-name"
+```
+
 <a name="CauseWithdrawn"></a>CauseWithdrawn denies delegating a unit its plan withdrew.
 
 ```go
@@ -143,7 +149,7 @@ CloseRecovery closes a declared recovery, recording whether its result was demon
 func Commit(h *history.History, journalRef, session, version string, units []PlanUnit, qaRound ...*history.QARound) error
 ```
 
-Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\).
+Commit records a plan commitment: the units it covers become planned, so a later admission of one of them is covered delegation \(PR\-DAG\-MUT\-1, PR\-HAR\-19\). An invalid one is rejected with its reason recorded and covers nothing \(PR\-DAG\-MUT\-6\).
 
 <a name="Contest"></a>
 ## func Contest

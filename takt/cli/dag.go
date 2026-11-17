@@ -16,6 +16,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -24,10 +25,17 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/history"
+	"github.com/rou-cru/takt-ai/takt/memory"
 )
+
+// continuityWait bounds the question to the memory service about which sessions the
+// shown one continued; the view polls, so a service that does not answer is unavailable
+// for this poll, never a wait that stacks up.
+const continuityWait = 5 * time.Second
 
 // usageDag lists valid dag commands so callers can recover after a mistake.
 const usageDag = "usage: takt-ai dag status --workspace <dir> --state <private-dir> [--session <root-session>] --format json"
@@ -50,7 +58,7 @@ func runDag(args []string, stdout, stderr io.Writer) error {
 	// The state directory is per workspace, so its history spans every session
 	// that ever worked there; --session narrows the projection to the one
 	// root session the caller is showing.
-	session := flags.String("session", "", "root session whose plan to project (default: every session in the history)")
+	session := flags.String("session", "", "root session whose plan to project, with the sessions it continued (default: every session in the history)")
 	format := flags.String("format", "json", "output format; only json is supported")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -90,15 +98,18 @@ func readSnapshot(workspace, state, session string) (snap history.Snapshot, err 
 	if err != nil {
 		return history.Snapshot{}, err
 	}
+	var scope []string
 	if session != "" {
-		entries = slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != session })
+		earlier, err := continuedSessions(session)
+		if err != nil {
+			return history.Snapshot{}, err
+		}
+		scope = append(earlier, session)
+		entries = slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return !slices.Contains(scope, e.SessionID) })
 	}
-	snap = history.BuildSnapshot(entries)
 	// A requested session that has recorded nothing yet still names itself,
 	// so the response always identifies the root it is scoped to (PR-DTUI-17).
-	if session != "" {
-		snap.SessionID = session
-	}
+	snap = history.BuildSnapshot(entries, scope...)
 	// The wire names each admitted agent by its catalog label, the form the
 	// sidebar shows; an instance the catalog does not know keeps its own name.
 	crew, err := catalog.LoadNativeContent()
@@ -111,4 +122,22 @@ func readSnapshot(workspace, state, session string) (snap history.Snapshot, err 
 		}
 	}
 	return snap, nil
+}
+
+// continuedSessions asks the owner of the continuity declarations, the memory
+// service, which crew root sessions session continued, oldest first
+// (PR-DAG-USE-1). The execution history keeps no copy of that link.
+func continuedSessions(session string) (_ []string, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), continuityWait)
+	defer cancel()
+	dir, err := memory.ResolveDir()
+	if err != nil {
+		return nil, err
+	}
+	admin, err := memory.DialAdmin(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, admin.Close()) }()
+	return admin.Continuations(ctx, session)
 }

@@ -25,4 +25,5 @@ section skeleton to use.
 One recognized type, or this generic skeleton, covers it → one document. Content spanning
 two or more distinct types — an architecture decision and its interface contract, say — is
 one document per type, each authored and recorded on its own. Never split one type's content
-into pieces to keep it short; it stays one complete document, whatever its length.
+into pieces to keep it short; it stays one complete document, holding only your role's decisions, never what a later
+lane produces from them.

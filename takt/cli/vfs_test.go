@@ -808,7 +808,7 @@ func scenarioVFSVerifyRefusesForgedCycleAttribution(t *testing.T, bin string) {
 	fx.read(rootA, "review", "verify", "r1", "a.go", "")
 	_, err := fx.mutate("verify", vfsReq("review", "verify", map[string]any{"call_id": "bad", "author_key": author, "pass": true,
 		"cycle_id": "cycle-7", "mandate_class": "dead-code"}))
-	refusedWith(t, "verify with forged cycle fields", err, "maintenance cycle")
+	refusedWith(t, "verify with forged cycle fields", err, "GC cycle")
 	if err = fx.verify(rootA, "review", "verify", "ok", author, true); err != nil {
 		t.Fatalf("verify without cycle fields: %v", err)
 	}

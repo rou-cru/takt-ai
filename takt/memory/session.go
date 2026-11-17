@@ -131,6 +131,48 @@ func (s *Store) ContinueSession(ctx context.Context, id Identity, previousID str
 	return previousID, nil
 }
 
+// Continuations lists the crew root sessions that root continued, oldest first (MEM-OPS-5), following
+// each session's continuity: the declaration fixed by its first entry, or, before it has one, the pending
+// declaration. A target that is not a crew session ends the chain, since it has no execution history.
+func (s *Store) Continuations(ctx context.Context, root string) ([]string, error) {
+	tx, err := s.reader.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	crewPrefix := sessionKey(PrincipalCrew, "")
+	seen := map[string]bool{root: true}
+	var chain []string
+	for current := root; ; {
+		target, err := continuityOf(ctx, tx, current)
+		if err != nil {
+			return nil, err
+		}
+		previous, crew := strings.CutPrefix(target, crewPrefix)
+		if !crew || seen[previous] {
+			return chain, nil
+		}
+		seen[previous] = true
+		chain = append([]string{previous}, chain...)
+		current = previous
+	}
+}
+
+// continuityOf is the session a crew root continues: the target its first entry fixed, else its pending
+// declaration, else none.
+func continuityOf(ctx context.Context, tx *sql.Tx, root string) (string, error) {
+	var target string
+	err := tx.QueryRowContext(ctx, `SELECT continuity_target FROM sessions WHERE id = ?`, sessionKey(PrincipalCrew, root)).Scan(&target)
+	if err == nil {
+		return target, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	pending, _, err := loadBinding(ctx, tx, root)
+	return pending.continuity, err
+}
+
 func checkContinuationTarget(ctx context.Context, tx *sql.Tx, id Identity, target string) error {
 	if id.Principal == PrincipalExternal && strings.HasPrefix(target, sessionKey(PrincipalCrew, "")) {
 		return refuse("session %q is a crew session and cannot be continued from this connection; name a closed external session, which the %s tool lists", target, ToolSessions)

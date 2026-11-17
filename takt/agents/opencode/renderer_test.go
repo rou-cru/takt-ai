@@ -97,14 +97,14 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 				t.Error("missing accessible takt-memory-contract")
 			}
 			producer := spec.Role == model.RolePlanningAuthor || spec.Role == model.RoleDirectInterlocutor
-			// Verification and quality-assurance instances deliver their report through the same handoff.
-			for skill, owner := range map[string]bool{
-				"takt-handoff":        producer,
-				"takt-result-handoff": producer || spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance,
-			} {
-				if slices.Contains(spec.Skills, skill) != owner {
-					t.Errorf("incorrect %s assignment", skill)
-				}
+			// Every delegated specialist delivers through the one handoff: an artifact, or the
+			// blocker that ends an execution unit (PR-HAR-38).
+			delivers := producer || spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance || spec.Role == model.RoleExecution
+			if slices.Contains(spec.Skills, "takt-result-handoff") != delivers {
+				t.Error("incorrect takt-result-handoff assignment")
+			}
+			if (effectOf(rules, "deliver_result", "*") == "allow") != delivers {
+				t.Error("deliver_result follows the handoff skill")
 			}
 			for skill, owner := range map[string]bool{
 				"takt-interlocutor-handoff":    spec.Role == model.RoleDirectInterlocutor,

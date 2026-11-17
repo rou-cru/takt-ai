@@ -34,13 +34,17 @@ type PlanUnit struct {
 
 // Commit records a plan commitment: the units it covers become planned, so a
 // later admission of one of them is covered delegation (PR-DAG-MUT-1,
-// PR-HAR-19).
+// PR-HAR-19). An invalid one is rejected with its reason recorded and covers
+// nothing (PR-DAG-MUT-6).
 func Commit(h *history.History, journalRef, session, version string, units []PlanUnit, qaRound ...*history.QARound) error {
 	if session == "" || version == "" || len(units) == 0 {
 		return errors.New("dispatch: a commitment records an identified baseline version and its work")
 	}
+	if e := checkUnitNames(units); e != nil {
+		return invalidRevision(h, journalRef, session, "", version, e.Error())
+	}
 	if e := validPlan(h.Project(), session, units); e != nil {
-		return e
+		return invalidRevision(h, journalRef, session, "", version, e.Error())
 	}
 	entries, err := qaRoundEntries(h.Project(), journalRef, session, version, units, qaRound)
 	if err != nil {
@@ -68,6 +72,18 @@ func Declare(h *history.History, journalRef, session, version, baseVersion strin
 		return fmt.Errorf("dispatch: plan version %s already stands; name it as the base version to revise it", standing)
 	}
 	return Revise(h, journalRef, session, baseVersion, version, units, withdrawals, qaRound...)
+}
+
+// checkUnitNames holds every newly declared unit to the name contract
+// (PR-DAG-REP-8). A revision checks only its additions, so a standing plan is
+// never blocked by names it already holds.
+func checkUnitNames(units []PlanUnit) error {
+	for _, u := range units {
+		if err := history.ValidateUnitName(u.Unit); err != nil {
+			return fmt.Errorf("dispatch: %w", err)
+		}
+	}
+	return nil
 }
 
 // validPlan rejects the declarations PR-DAG-MUT-6 calls invalid: duplicate or
@@ -117,7 +133,9 @@ func indexPendingUnits(units []PlanUnit) (map[string]int, error) {
 
 // linkPrerequisites rejects a prerequisite that names neither an in-plan nor
 // an already-executed unit of session, and otherwise counts it against pending
-// and records the in-plan reverse edge in dependents.
+// and records the in-plan reverse edge in dependents. An executed unit keeps
+// its recorded prerequisites, so the plan units they lead back to count as
+// prerequisites too: a cycle closed through executed work is still a cycle.
 func linkPrerequisites(p history.Projection, session string, units []PlanUnit, pending map[string]int) (map[string][]string, error) {
 	dependents := map[string][]string{}
 	for _, u := range units {
@@ -126,6 +144,10 @@ func linkPrerequisites(p history.Projection, session string, units []PlanUnit, p
 				if _, executed := p.Unit(session, need); !executed {
 					return nil, fmt.Errorf("dispatch: unknown prerequisite identity: %s", need)
 				}
+				for _, reached := range planUnitsBehind(p, session, need, pending, map[string]bool{}) {
+					pending[u.Unit]++
+					dependents[reached] = append(dependents[reached], u.Unit)
+				}
 				continue
 			}
 			pending[u.Unit]++
@@ -133,6 +155,25 @@ func linkPrerequisites(p history.Projection, session string, units []PlanUnit, p
 		}
 	}
 	return dependents, nil
+}
+
+// planUnitsBehind lists the plan units that executed unit's recorded
+// prerequisites lead to, directly or through other executed units.
+func planUnitsBehind(p history.Projection, session, executed string, inPlan map[string]int, seen map[string]bool) []string {
+	if seen[executed] {
+		return nil
+	}
+	seen[executed] = true
+	var reached []string
+	u, _ := p.Unit(session, executed)
+	for _, need := range u.Prerequisites {
+		if _, ok := inPlan[need]; ok {
+			reached = append(reached, need)
+			continue
+		}
+		reached = append(reached, planUnitsBehind(p, session, need, inPlan, seen)...)
+	}
+	return reached
 }
 
 // acyclic reports whether every unit settles once its prerequisites do
@@ -179,6 +220,9 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 				fmt.Sprintf("dispatch: %s is both added and withdrawn in one revision", u.Unit))
 		}
 	}
+	if e := checkUnitNames(adds); e != nil {
+		return invalidRevision(h, journalRef, session, baseVersion, newVersion, e.Error())
+	}
 	current := currentPlan(projection, session)
 	resulting := reviseUnits(current, adds, withdrawals)
 	if e := validPlan(projection, session, resulting); e != nil {
@@ -214,8 +258,8 @@ func Revise(h *history.History, journalRef, session, baseVersion, newVersion str
 	return h.AppendBatch(entries)
 }
 
-// invalidRevision records a rejected revision and its reason as a single
-// declaration, never a per-unit entry, so the last valid plan and its
+// invalidRevision records a rejected baseline or revision and its reason as a
+// single declaration, never a per-unit entry, so the last valid plan and its
 // tracked version are untouched by construction (PR-DAG-MUT-6).
 func invalidRevision(h *history.History, journalRef, session, baseVersion, newVersion, reason string) error {
 	entry := history.Entry{

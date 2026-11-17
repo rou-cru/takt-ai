@@ -12,9 +12,9 @@ metadata:
 Use this route after a second failure or a code–contract discrepancy in committed SDD
 work. A first localized failure within the unit's scope and acceptance retries in place.
 
-1. Freeze the affected task and its dependents; keep independent lanes running. For
+1. Freeze the affected node and its dependents; keep independent lanes running. For
    conflicting staged deltas, freeze both and preserve them for diagnosis.
-2. Send the task ID, evidence and contract segment to its owner: structure/interfaces
+2. Send the node's unit identity, evidence and contract segment to its owner: structure/interfaces
    → `architect`; behavior/acceptance → `spec`; experience/identity → `product-designer`.
    Use PM for scope analysis; reserve changes to user value or intent for the user.
    A discrepancy requires diagnosis, not an assumption that the contract is wrong.

@@ -89,14 +89,15 @@ func TestBuildSnapshotShapeAcrossARevision(t *testing.T) {
 		SessionID:          "root",
 		Capture:            history.CaptureCurrent,
 		PlanVersion:        "v2",
+		Counts:             history.Counts{Planned: 1, Completed: 1, Withdrawn: 1},
 		Nodes: []history.Node{
 			// A withdrawn unit keeps the contract/prerequisites its own
 			// history.KindPlanned entry recorded: Project never clears them on
 			// withdrawal, and history.Snapshot maps Project's history.Unit fields 1:1 rather
 			// than inventing a "withdrawal clears prerequisites" rule of
 			// its own.
-			{ID: "api", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Contract: "api contract", Prerequisites: []string{"storage"}},
-			{ID: "api-v2", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StatePlanned, Contract: "api contract v2", Prerequisites: []string{"storage"}},
+			{ID: "api", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StateWithdrawn, Contract: "api contract", Prerequisites: []string{"storage"}, Layer: 1},
+			{ID: "api-v2", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StatePlanned, Contract: "api contract v2", Prerequisites: []string{"storage"}, Layer: 1},
 			{ID: "storage", NodeKind: history.NodeKindDelegated, SessionID: "root", AttemptID: history.FirstAttempt, State: history.StateSettled, Outcome: history.OutcomeCompleted, Launched: true, Contract: "storage contract"},
 		},
 		Edges:      []history.Edge{{From: "storage", To: "api"}, {From: "storage", To: "api-v2"}},
@@ -371,7 +372,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 		observed(t, "base", history.KindAdmitted, ""),
 		observed(t, "base", history.KindLaunched, ""),
 		observed(t, "base", history.KindTerminated, history.OutcomeCompleted),
-		observed(t, "later", history.KindAdmitted, ""), // ordinary delegation follows settled base
+		observed(t, "later", history.KindAdmitted, ""), // uncovered delegation: no declared prerequisites
 		activityRecord("root", directID, history.NodeKindOrchestrator, true, ""),
 		activityRecord("root", directID, history.NodeKindOrchestrator, false, history.OutcomeCompleted),
 		activityRecord("root", cycleID, history.NodeKindMaintenance, true, ""),
@@ -416,8 +417,8 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if snapshot.Activities[0].State != history.StateSettled || snapshot.Activities[0].Outcome != history.OutcomeInterrupted || snapshot.Activities[1].Outcome != history.OutcomeCompleted {
 		t.Fatalf("activity lifecycle state lost: %+v", snapshot.Activities)
 	}
-	if !containsEdge(snapshot.Edges, history.Edge{From: "base", To: "dependent"}) || !containsEdge(snapshot.Edges, history.Edge{From: "base", To: "later"}) || len(snapshot.Edges) != 2 {
-		t.Fatalf("activity entries changed declared/inferred unit edges: %+v", snapshot.Edges)
+	if !containsEdge(snapshot.Edges, history.Edge{From: "base", To: "dependent"}) || len(snapshot.Edges) != 1 {
+		t.Fatalf("activity entries changed declared unit edges: %+v", snapshot.Edges)
 	}
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
@@ -428,11 +429,11 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	}
 }
 
-// TestBuildSnapshotShowsUncoveredWorkAsExecuted proves work delegated without
-// a committed plan is drawn as it ran: serial units chain, units admitted
-// together are siblings, a later unit joins the frontier it followed, and a
-// committed unit keeps exactly its declared prerequisites.
-func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
+// TestBuildSnapshotUncoveredWorkHasNoInventedEdges proves work delegated
+// without a committed plan is a node with no prerequisites, however it ran,
+// while a committed unit keeps exactly its declared prerequisites
+// (PR-DAG-REP-3).
+func TestBuildSnapshotUncoveredWorkHasNoInventedEdges(t *testing.T) {
 	run := func(unit string) []history.Entry {
 		return []history.Entry{observed(t, unit, history.KindAdmitted, ""), observed(t, unit, history.KindLaunched, "")}
 	}
@@ -451,24 +452,59 @@ func TestBuildSnapshotShowsUncoveredWorkAsExecuted(t *testing.T) {
 	entries = append(entries, run("spec")...)
 	entries = append(entries, done("spec")...)
 	entries = append(entries, planned("root", "tpm", "v1", "decompose", nil))
-	entries = append(entries, run("tpm")...)
+	entries = append(entries, planned("root", "qa", "v1", "verify", []string{"tpm"}))
 
+	snapshot := history.BuildSnapshot(entries)
 	got := map[string][]string{}
-	for _, n := range history.BuildSnapshot(entries).Nodes {
+	for _, n := range snapshot.Nodes {
 		got[n.ID] = n.Prerequisites
 	}
-	want := map[string][]string{
-		"pm":     nil,
-		"arch":   {"pm"},
-		"design": {"pm"},
-		"spec":   {"arch", "design"},
-		"tpm":    nil, // committed with no prerequisites: declared, not inferred
-	}
+	want := map[string][]string{"pm": nil, "arch": nil, "design": nil, "spec": nil, "tpm": nil, "qa": {"tpm"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("prerequisites %v; want %v", got, want)
 	}
+	if want := []history.Edge{{From: "tpm", To: "qa"}}; !reflect.DeepEqual(snapshot.Edges, want) {
+		t.Fatalf("edges %v; want only the declared %v", snapshot.Edges, want)
+	}
 	if empty := history.BuildSnapshot(nil); len(empty.Nodes) != 0 || empty.Capture != history.CaptureEmpty {
 		t.Fatalf("empty history drew %+v", empty)
+	}
+}
+
+// TestBuildSnapshotDerivesLayersAndCounts proves the snapshot, not the view,
+// owns the layer of every unit (one more than its deepest prerequisite) and
+// the count of units in each state, withdrawn ones apart (PR-DTUI-3, -9, -18).
+func TestBuildSnapshotDerivesLayersAndCounts(t *testing.T) {
+	end := func(unit string, outcome history.Outcome) []history.Entry {
+		return []history.Entry{observed(t, unit, history.KindAdmitted, ""), observed(t, unit, history.KindLaunched, ""), observed(t, unit, history.KindTerminated, outcome)}
+	}
+	entries := []history.Entry{
+		planned("root", "base", "v1", "c", nil),
+		planned("root", "left", "v1", "c", []string{"base"}),
+		planned("root", "right", "v1", "c", []string{"base"}),
+		planned("root", "join", "v1", "c", []string{"left", "right"}),
+		planned("root", "shortcut", "v1", "c", []string{"base", "join"}),
+		planned("root", "dropped", "v1", "c", nil),
+		withdrawn("root", "dropped"),
+	}
+	entries = append(entries, end("base", history.OutcomeCompleted)...)
+	entries = append(entries, end("left", history.OutcomeFailed)...)
+	entries = append(entries, end("right", history.OutcomeBacktracked)...)
+	entries = append(entries, observed(t, "join", history.KindAdmitted, ""))
+	entries = append(entries, end("lone", history.OutcomeInterrupted)...)
+
+	snapshot := history.BuildSnapshot(entries)
+	layers := map[string]int{}
+	for _, n := range snapshot.Nodes {
+		layers[n.ID] = n.Layer
+	}
+	wantLayers := map[string]int{"base": 0, "left": 1, "right": 1, "join": 2, "shortcut": 3, "dropped": 0, "lone": 0}
+	if !reflect.DeepEqual(layers, wantLayers) {
+		t.Fatalf("layers %v; want %v", layers, wantLayers)
+	}
+	wantCounts := history.Counts{Planned: 1, InFlight: 1, Completed: 1, Failed: 1, Backtracked: 1, Interrupted: 1, Withdrawn: 1}
+	if snapshot.Counts != wantCounts {
+		t.Fatalf("counts %+v; want %+v", snapshot.Counts, wantCounts)
 	}
 }
 
@@ -526,9 +562,9 @@ func TestBuildSnapshotCarriesTheAdmittedAgent(t *testing.T) {
 	}
 }
 
-// Uncovered work follows only what its own root session settled: another
-// root's units, even one of the same name, are never its inferred prerequisites.
-func TestInferredPrerequisitesStayInTheirRoot(t *testing.T) {
+// Uncovered work gains no edges, and another root's units, even one of the
+// same name, never enter a root's projection.
+func TestUncoveredWorkOfOneRootHasNoEdgesFromAnother(t *testing.T) {
 	in := func(session string, e history.Entry) history.Entry {
 		e.SessionID = session
 		return e
@@ -550,7 +586,7 @@ func TestInferredPrerequisitesStayInTheirRoot(t *testing.T) {
 	mine := slices.DeleteFunc(slices.Clone(entries), func(e history.Entry) bool { return e.SessionID != "root" })
 	for _, n := range history.BuildSnapshot(mine).Nodes {
 		if len(n.Prerequisites) != 0 {
-			t.Fatalf("root's %s inferred %v from another root", n.ID, n.Prerequisites)
+			t.Fatalf("root's %s has prerequisites %v from another root", n.ID, n.Prerequisites)
 		}
 	}
 }
@@ -574,5 +610,44 @@ func TestBuildSnapshotDrawsOnlyItsOwnRoot(t *testing.T) {
 	}
 	if n := s.Nodes[0]; n.ID != "impl" || n.SessionID != "root" || n.State != history.StateInFlight {
 		t.Fatalf("node = %+v; want root's impl, still in flight", n)
+	}
+}
+
+// TestBuildSnapshotFollowsContinuedSessions proves a root that continued an
+// earlier one draws that history before its own (PR-DAG-USE-1): the earlier
+// units stay as they ended, a name the new root reuses shows the new root's
+// unit, and a root outside the chain stays out.
+func TestBuildSnapshotFollowsContinuedSessions(t *testing.T) {
+	in := func(session string, e history.Entry) history.Entry {
+		e.SessionID = session
+		return e
+	}
+	entries := []history.Entry{
+		in("old", planned("old", "design", "v1", "design", nil)),
+		in("old", observed(t, "design", history.KindAdmitted, "")),
+		in("old", observed(t, "design", history.KindTerminated, history.OutcomeCompleted)),
+		in("old", planned("old", "build", "v1", "build", []string{"design"})),
+		in("other", observed(t, "stranger", history.KindAdmitted, "")),
+		in("new", observed(t, "build", history.KindAdmitted, "")),
+		in("new", observed(t, "extra", history.KindAdmitted, "")),
+	}
+	snapshot := history.BuildSnapshot(entries, "old", "new")
+	if snapshot.SessionID != "new" {
+		t.Fatalf("snapshot of %q; want the continuing root", snapshot.SessionID)
+	}
+	got := map[string]history.State{}
+	sessions := map[string]string{}
+	for _, n := range snapshot.Nodes {
+		got[n.ID], sessions[n.ID] = n.State, n.SessionID
+	}
+	want := map[string]history.State{"design": history.StateSettled, "build": history.StateInFlight, "extra": history.StateInFlight}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("nodes %v; want %v", got, want)
+	}
+	if sessions["design"] != "old" || sessions["build"] != "new" {
+		t.Fatalf("units drawn from %v; want design from old and build from new", sessions)
+	}
+	if snapshot.Counts != (history.Counts{InFlight: 2, Completed: 1}) {
+		t.Fatalf("counts %+v", snapshot.Counts)
 	}
 }

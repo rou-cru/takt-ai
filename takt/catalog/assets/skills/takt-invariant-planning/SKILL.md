@@ -22,8 +22,7 @@ classify it from the evidence at hand: **settled** (existing, approved, validate
 **to refine** (a lane consumes the existing entry and revises it), or **to generate** (a lane
 authors it). Ends when every needed invariant is classified; "probably settled" is not a class.
 The user's statement of intent is what pm formalizes, never a settled pm invariant; pm's
-requirements are settled only when an artifact of equivalent rigor holds them. A general or
-ambiguous request needs user stories; a story is settled only when final, with no question about
+requirements are settled only when an artifact of equivalent rigor holds them. A story is settled only when final, with no question about
 its expected result open. When a story is revised, every invariant derived from it is **to refine**.
 
 ## 2. Select
@@ -88,7 +87,7 @@ ranks, decide which stands (the one backed by the user's directive or verified f
 that contradict one another are the user's to settle: ask them, through the stories' pm when that
 lane runs with the user. Re-dispatch only the other lane with its original document, its first result, the standing document and the contradiction.
 Between qa and spec, spec stands for behavior. When neither is backed, the conflict stays disputed: how many lanes consume a document is not
-evidence, so ask the user or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
+evidence, so ask the user, or the architect for a technical conflict, or gather verified facts before deciding. You decide; the lane rewrites. Two failed alignments
 of one conflict: escalate. Ends when no contradiction remains open; planning is then complete. Return the delivered invariants to Takt to evaluate development
 against the updated evidence, not to regenerate them.
 

@@ -8,7 +8,7 @@
 
 ## 2. Authority and invariants
 
-**PR-DTUI-3.** The view consumes the history-derived topology, temporal states, and assurance of the execution history. It is not an execution authority. It MUST NOT infer execution, closure, or success from missing events, agent text, elapsed time, or OpenCode v2 UI state. Refresh age and transport latency are capture metadata only.
+**PR-DTUI-3.** The view consumes the history-derived topology and temporal states of the execution history. Every fact it shows, including layers and counts, is produced by Takt's snapshot; the view only decides what to draw and how. It is not an execution authority. It MUST NOT infer execution, closure, or success from missing events, agent text, elapsed time, or OpenCode v2 UI state. Refresh age and transport latency are capture metadata only.
 
 ## 3. Entry points
 
@@ -18,21 +18,20 @@
 
 **PR-DTUI-5.** The view MUST render nodes and directed prerequisite edges, including joins and branches. A list alone does not satisfy this contract.
 
-**PR-DTUI-6.** Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer. The route's rendering flows left to right, one column per layer; a layer that would overflow the width starts a new band below that flows the opposite way, and so on. The route never overflows sideways: when the bands do not fit the height, they close up and then identities are cut with an ellipsis down to a floor, past which the route scrolls vertically. Running activities wrap into rows within the width the same way. Each work-unit node is a single-line box holding its delegated-source glyph, state glyph, source label and identity. Direct orchestrator work and GC/maintenance use distinct activity glyphs in the separate activity track. The box width accounts for the full label and identity unless the route has to cut it to fit. No agent name, wave or width annotation is drawn on the route; the legend stays there.
+**PR-DTUI-6.** Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer. The route's rendering flows left to right, one column per layer; a layer that would overflow the width starts a new band below that flows the opposite way, and so on. The route never overflows sideways and scrolls vertically when the bands do not fit the height. Bands are balanced in width, and each band is spread to the common width so the edges that turn between bands run beside the band ends. Parallel edge tracks keep a blank column between them, a crossing is drawn differently from a junction, and no track runs against the edge of the viewport. Running activities wrap into rows within the width the same way. Each work-unit node is a single-line box holding its state glyph and its name. A name is never cut: its length is bounded by `PR-DAG-REP-8`, so every box is as wide as the longest permitted name. Direct orchestrator work and GC/maintenance use distinct activity glyphs in the separate activity track. No agent name, wave or width annotation is drawn on the route; the legend stays there.
 
 **PR-DTUI-7.** The sidebar has 37 usable columns, fixed by the host, and scrolls only vertically; its form is compact and no row ever wraps:
 
-- A bold `DAG` title followed by accepted over live units, or by the capture health when it is not current.
-- One muted row folding every accepted unit into the short labels of the agents that did the work, in dependency order; an agent's repeated work is counted (`dev×3`), not repeated.
-- The frontier (every unit neither accepted nor withdrawn) as a track graph read top-down: the state glyph is the node, each edge is a two-column track carried down to its dependent, and joins and branches are drawn as connector rows, and a unit that alone follows the unit on the row above, with no other track open, is marked `└─` and indented one level per link. Edges with verified contract satisfaction are omitted; termination alone does not satisfy a prerequisite. Active and planned units show their identity only, never their agent.
+- A bold `DAG` title followed by the snapshot's counts of units by state, or by the capture health when it is not current. The header of the route reads the same counts. Done units appear only in this count.
+- The frontier (every unit that is in flight or planned, and every unit that ended without completing) as a track graph read top-down: the state glyph is the node, each edge is a two-column track carried down to its dependent, and joins and branches are drawn as connector rows, and a unit that alone follows the unit on the row above, with no other track open, is marked `└─` and indented one level per link. Active and planned units show their name only, never their agent.
 - A layer wider than the track budget is one grouped row of its members' glyphs and count; a frontier that still needs more tracks is listed flat in dependency order.
-- Identities are cut with an ellipsis to the remaining width. Activities follow as one row each in their separate track, including after settlement; withdrawn units stay on the graph.
+- The sidebar is a quick reference: it shows that a plan exists and what is happening, not necessarily every unit. Activities follow as one row each in their separate track; withdrawn units stay out of the counts.
 
 ## 5. Graph semantics
 
 **PR-DTUI-8.** Edges point from a prerequisite to its dependent work unit. For every declared prerequisite A of unit B, the snapshot MUST contain an edge from A to B. A prerequisite edge describes the orchestrator's declared structure. It does not grant the harness authority to schedule or block B.
 
-**PR-DTUI-9.** The layout SHOULD use deterministic layers, drawn as columns or as rows. A unit without prerequisites has depth 0; any other unit has a depth one greater than its deepest prerequisite.
+**PR-DTUI-9.** The layout SHOULD use deterministic layers, drawn as columns or as rows. A unit without prerequisites has layer 0; any other unit has a layer one greater than its deepest prerequisite. The snapshot carries each unit's layer; the view does not recompute it.
 
 **PR-DTUI-10.** The layout MUST be stable when only node state changes. A topology revision MAY cause a new layout. The renderer MUST NOT reorder the graph on every lifecycle or telemetry update.
 
@@ -40,7 +39,7 @@
 
 ## 6. Node states
 
-**PR-DTUI-12.** The view renders the temporal states and the separate assurance recorded in the execution history. It MUST NOT collapse distinct in-flight conditions into a single running state or show unverified delivery as accepted work.
+**PR-DTUI-12.** The view shows the orchestrator's delegation: what has been delegated and finished, what is delegated and in flight, and what is planned to be delegated. It renders the temporal states recorded in the execution history and MUST NOT collapse distinct in-flight conditions into a single running state. Acceptance, verification and assurance are not part of the view or of its snapshot.
 
 ### 6.1 Work source
 
@@ -56,13 +55,13 @@
 
 ## 7. Observability required by the view
 
-**PR-DTUI-15.** The view consumes a complete snapshot of the topology, lifecycle, and evidence recorded in the execution history, not isolated OpenCode v2 events. Additional role, action-count, token, model, provider, cost, and VFS metadata remain content-free.
+**PR-DTUI-15.** The view consumes a complete snapshot of the topology and lifecycle recorded in the execution history, not isolated OpenCode v2 events. Additional role, action-count, token, model, provider, cost, and VFS metadata remain content-free.
 
 ## 8. Snapshot contract
 
 **PR-DTUI-16.** Takt MUST expose a read-only snapshot query that takes the workspace, the private state, the root session, and the output format, and changes nothing.
 
-**PR-DTUI-17.** The root-session parameter scopes the projection to one root session; a session that has recorded nothing yet is an empty DAG, never an earlier session's graph. The TUI passes the root of the session it is showing and drops the displayed graph when that session changes. A response scoped to another session is discarded, and the displayed revision resets with the session.
+**PR-DTUI-17.** The root-session parameter scopes the projection to one root session; a session that has recorded nothing yet is an empty DAG, never an earlier session's graph, unless it declared continuity with an earlier crew session (`PR-DAG-USE-1`): then the projection is the earlier history followed by its own. The continuity declaration is the memory service's; the execution history keeps no copy, and Takt asks the service for it. An earlier session whose history is not in this workspace's execution history adds nothing. The TUI passes the root of the session it is showing and drops the displayed graph when that session changes. A response scoped to another session is discarded, and the displayed revision resets with the session.
 
 **PR-DTUI-18.** The response MUST contain:
 
@@ -73,8 +72,9 @@
 | History position | Position in the execution history the projection reflects. |
 | Session | The root session the projection is scoped to. |
 | Capture | Capture state of the snapshot, current in the nominal case. |
-| Nodes | One record per work unit: identity, kind, temporal state, in-flight condition (`unmonitored` when capture of that execution was lost), session, attempt, launch status, prerequisites, assurance, and agent once the unit is admitted. Assurance identifies the evaluated revision, acceptance status, and evidence references. |
-| Edges | One record per dependency, with source and target unit identities. |
+| Nodes | One record per work unit: identity, kind, temporal state, in-flight condition (`unmonitored` when capture of that execution was lost), session, attempt, launch status, prerequisites, layer, and agent once the unit is admitted. |
+| Edges | One record per declared dependency, with source and target unit identities. Work without a committed plan has none. |
+| Counts | Units planned, in flight, completed, failed, backtracked, interrupted and withdrawn. Withdrawn units are counted apart from the rest. |
 | Activities | Always present, empty when no activities exist. Each record carries activity identity, kind, state, and the applicable in-flight condition, including `unmonitored`, or outcome. |
 
 **PR-DTUI-19.** The projection revision MUST be monotonic for a projection scope and advances with every history entry the projection reflects, so every render-visible projection field changes only with the revision. The view's own capture health, stale or unavailable, is local and applies regardless of revision. The TUI MUST replace its snapshot only when the received revision is newer than the displayed revision.

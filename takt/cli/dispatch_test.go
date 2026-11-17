@@ -58,6 +58,7 @@ type request struct {
 	Plan       []gc.PlanUnit    `json:"plan,omitempty"`
 	QARound    *history.QARound `json:"qa_round,omitempty"`
 	ResultIDs  []int64          `json:"result_ids,omitempty"`
+	Blocker    bool             `json:"blocker,omitempty"`
 	// Requirements carries a switch's entry IDs; an empty list is meaningful, so it is never omitted.
 	Requirements      []int64       `json:"requirements"`
 	Origin            string        `json:"origin,omitempty"`
@@ -460,6 +461,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"a delegation delivers only its own current entries", deliveryTable},
 		{"top-level delivery needs the calling session's own current entries", topLevelDelivery},
 		{"inputs must be current and the pm never consumes its own entry", inputsAreCurrent},
+		{"a returned session continues only after it delivered a blocker", continuationNeedsBlocker},
 		{"a switch that cannot bind its lent session records nothing", failedSwitchBind},
 		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
 	} {

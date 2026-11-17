@@ -15,6 +15,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
 - [func LaneUnit\(cycle, role string\) \(unit, agent string\)](<#LaneUnit>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
+- [func ValidateUnitName\(name string\) error](<#ValidateUnitName>)
 - [type Activity](<#Activity>)
 - [type ActivityNode](<#ActivityNode>)
 - [type Assurance](<#Assurance>)
@@ -24,6 +25,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(b Budgets\) QARoundFor\(unit string\) \(string, Strengthening\)](<#Budgets.QARoundFor>)
   - [func \(b Budgets\) Scope\(unit string\) \(string, Recovery\)](<#Budgets.Scope>)
   - [func \(b Budgets\) StrengtheningUsed\(objective string\) int](<#Budgets.StrengtheningUsed>)
+- [type Counts](<#Counts>)
 - [type Edge](<#Edge>)
 - [type Entry](<#Entry>)
   - [func ReadEntries\(stateDir string\) \(\_ \[\]Entry, err error\)](<#ReadEntries>)
@@ -38,6 +40,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(h \*History\) AttachChild\(dispatch, child, agent string\) \(Execution, error\)](<#History.AttachChild>)
   - [func \(h \*History\) AttachMaintenance\(root, cycle, role, child, owner string\) error](<#History.AttachMaintenance>)
   - [func \(h \*History\) Close\(\) error](<#History.Close>)
+  - [func \(h \*History\) Deliver\(d Execution, ids \[\]int64, blocker bool\) error](<#History.Deliver>)
   - [func \(h \*History\) Entries\(\) \[\]Entry](<#History.Entries>)
   - [func \(h \*History\) ExecutionFact\(d Execution, kind Kind, child, phase string, ids \[\]int64\) error](<#History.ExecutionFact>)
   - [func \(h \*History\) Project\(\) Projection](<#History.Project>)
@@ -55,13 +58,14 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func \(p Projection\) LeaseLapsed\(owner string, now time.Time\) bool](<#Projection.LeaseLapsed>)
   - [func \(p Projection\) NextAttempt\(root, unit string\) string](<#Projection.NextAttempt>)
   - [func \(p Projection\) Orphaned\(d Execution, now time.Time\) bool](<#Projection.Orphaned>)
+  - [func \(p Projection\) ReturnedExecution\(child string\) \(Execution, bool\)](<#Projection.ReturnedExecution>)
   - [func \(p Projection\) Unit\(session, unit string\) \(Unit, bool\)](<#Projection.Unit>)
 - [type QARound](<#QARound>)
 - [type Recovery](<#Recovery>)
   - [func \(r Recovery\) Unresolved\(\) bool](<#Recovery.Unresolved>)
 - [type ResultStatus](<#ResultStatus>)
 - [type Snapshot](<#Snapshot>)
-  - [func BuildSnapshot\(entries \[\]Entry\) Snapshot](<#BuildSnapshot>)
+  - [func BuildSnapshot\(entries \[\]Entry, continued ...string\) Snapshot](<#BuildSnapshot>)
 - [type State](<#State>)
   - [func \(s State\) MarshalJSON\(\) \(\[\]byte, error\)](<#State.MarshalJSON>)
 - [type Strengthening](<#Strengthening>)
@@ -168,6 +172,12 @@ const LeaseTTL = 90 * time.Second
 const MaxPageSize = 500
 ```
 
+<a name="MaxUnitNameCells"></a>MaxUnitNameCells bounds a unit name's display width \(PR\-DAG\-REP\-8\). The DAG view sizes every box to it, so a name is never cut to fit.
+
+```go
+const MaxUnitNameCells = 24
+```
+
 <a name="SnapshotSchemaVersion"></a>SnapshotSchemaVersion is the wire shape version every snapshot reports, so a future breaking change to the contract is visible to a caller instead of silently changing shape under it.
 
 ```go
@@ -209,6 +219,15 @@ func UnitKey(session, unit string) string
 ```
 
 UnitKey names session's work unit unit in Projection.Units.
+
+<a name="ValidateUnitName"></a>
+## func ValidateUnitName
+
+```go
+func ValidateUnitName(name string) error
+```
+
+ValidateUnitName is the one contract a unit name keeps, in a plan declaration and in the admission of work without a plan \(PR\-DAG\-REP\-8\): a single line of at most MaxUnitNameCells display cells with no control characters or Unicode line and paragraph separators. The refusal names the rule and how to satisfy it.
 
 <a name="Activity"></a>
 ## type Activity
@@ -350,6 +369,23 @@ func (b Budgets) StrengtheningUsed(objective string) int
 
 StrengtheningUsed counts started rounds, not attempts or plan revisions.
 
+<a name="Counts"></a>
+## type Counts
+
+Counts is the number of units in each state the view tells apart.
+
+```go
+type Counts struct {
+    Planned     int `json:"planned"`
+    InFlight    int `json:"in_flight"`
+    Completed   int `json:"completed"`
+    Failed      int `json:"failed"`
+    Backtracked int `json:"backtracked"`
+    Interrupted int `json:"interrupted"`
+    Withdrawn   int `json:"withdrawn"`
+}
+```
+
 <a name="Edge"></a>
 ## type Edge
 
@@ -464,6 +500,9 @@ type Entry struct {
     // Substitute marks a restored seat filled by a non-orchestrating Takt
     // substitute rather than by its own specialist.
     Substitute bool `json:"substitute,omitempty"`
+    // Blocker marks a delivery whose entries record a blocker instead of the
+    // assigned deliverable (PR-HAR-38).
+    Blocker bool `json:"blocker,omitempty"`
 }
 ```
 
@@ -492,22 +531,28 @@ Execution is the current linkage of one exact host dispatch. A unit retry create
 
 ```go
 type Execution struct {
-    Dispatch   string  `json:"dispatch"`
-    Root       string  `json:"root"`
-    Unit       string  `json:"unit"`
-    Attempt    string  `json:"attempt"`
-    Agent      string  `json:"agent"`
-    Caller     string  `json:"caller"`
-    Child      string  `json:"child,omitempty"`
-    AdmittedAt int64   `json:"admitted_at"`
-    Inputs     []int64 `json:"inputs"`
-    Delivery   []int64 `json:"delivery,omitempty"`
-    Cycle      string  `json:"cycle,omitempty"`
-    Role       string  `json:"role,omitempty"`
-    Prompted   string  `json:"prompted,omitempty"`
-    Ready      bool    `json:"ready,omitempty"`
-    Terminated bool    `json:"terminated,omitempty"`
-    Settled    bool    `json:"settled,omitempty"`
+    Dispatch   string `json:"dispatch"`
+    Root       string `json:"root"`
+    Unit       string `json:"unit"`
+    Attempt    string `json:"attempt"`
+    Agent      string `json:"agent"`
+    Caller     string `json:"caller"`
+    Child      string `json:"child,omitempty"`
+    AdmittedAt int64  `json:"admitted_at"`
+    // Seq is the history position of the admitting entry: the order of
+    // executions, which AdmittedAt cannot give when two values tie.
+    Seq      int     `json:"-"`
+    Inputs   []int64 `json:"inputs"`
+    Delivery []int64 `json:"delivery,omitempty"`
+    // Blocker is set when the latest delivery records a blocker: only then may
+    // a later delegation continue this execution's session (PR-HAR-38).
+    Blocker    bool   `json:"blocker,omitempty"`
+    Cycle      string `json:"cycle,omitempty"`
+    Role       string `json:"role,omitempty"`
+    Prompted   string `json:"prompted,omitempty"`
+    Ready      bool   `json:"ready,omitempty"`
+    Terminated bool   `json:"terminated,omitempty"`
+    Settled    bool   `json:"settled,omitempty"`
     // Model is the provider/model the execution runs.
     Model string `json:"model,omitempty"`
     // Substitute marks a Takt substitute filling the instance's seat.
@@ -620,6 +665,15 @@ func (h *History) Close() error
 ```
 
 Close releases the store handle.
+
+<a name="History.Deliver"></a>
+### func \(\*History\) Deliver
+
+```go
+func (h *History) Deliver(d Execution, ids []int64, blocker bool) error
+```
+
+Deliver records the result IDs a running execution delivers and whether they record a blocker.
 
 <a name="History.Entries"></a>
 ### func \(\*History\) Entries
@@ -788,14 +842,13 @@ type Node struct {
     State     State    `json:"state"`
     Flight    Flight   `json:"flight,omitempty"`
     // Outcome is set only once the unit is settled.
-    Outcome Outcome `json:"outcome,omitempty"`
-    // Assurance is the prevailing result of the current attempt, apart from
-    // Outcome: delivery is not acceptance (PR-DAG-TMP-9). Absent until a result
-    // is recorded; absence is never success.
-    Assurance     *Assurance `json:"assurance,omitempty"`
-    Launched      bool       `json:"launched"`
-    Contract      string     `json:"contract,omitempty"`
-    Prerequisites []string   `json:"prerequisites,omitempty"`
+    Outcome       Outcome  `json:"outcome,omitempty"`
+    Launched      bool     `json:"launched"`
+    Contract      string   `json:"contract,omitempty"`
+    Prerequisites []string `json:"prerequisites,omitempty"`
+    // Layer is the unit's depth: 0 without prerequisites, otherwise one more than
+    // its deepest prerequisite (PR-DTUI-9). The view never recomputes it.
+    Layer int `json:"layer"`
     // Agent identifies the specialist admitted for the current attempt; empty
     // until the unit is first admitted.
     Agent string `json:"agent,omitempty"`
@@ -953,6 +1006,15 @@ func (p Projection) Orphaned(d Execution, now time.Time) bool
 
 Orphaned reports whether d's owner has stopped renewing its lease by now, so another harness instance may reconcile it.
 
+<a name="Projection.ReturnedExecution"></a>
+### func \(Projection\) ReturnedExecution
+
+```go
+func (p Projection) ReturnedExecution(child string) (Execution, bool)
+```
+
+ReturnedExecution is the latest settled ordinary execution that ran in child: the delegation a continuation of that session would resume.
+
 <a name="Projection.Unit"></a>
 ### func \(Projection\) Unit
 
@@ -1066,10 +1128,13 @@ type Snapshot struct {
     PlanVersion string `json:"plan_version,omitempty"`
     // Stopped and Escalated mirror Budgets' own counters: distinguishable
     // from an enabling decision, never inferred from Nodes/Edges.
-    Stopped   int    `json:"stopped,omitempty"`
-    Escalated int    `json:"escalated,omitempty"`
-    Nodes     []Node `json:"nodes"`
-    Edges     []Edge `json:"edges"`
+    Stopped   int `json:"stopped,omitempty"`
+    Escalated int `json:"escalated,omitempty"`
+    // Counts tallies the units by what the view shows; withdrawn units are
+    // counted apart and are not work.
+    Counts Counts `json:"counts"`
+    Nodes  []Node `json:"nodes"`
+    Edges  []Edge `json:"edges"`
     // Activities are direct orchestrator and maintenance records. They are
     // rendered in a separate lane and never participate in graph edges.
     Activities []ActivityNode `json:"activities"`
@@ -1080,10 +1145,12 @@ type Snapshot struct {
 ### func BuildSnapshot
 
 ```go
-func BuildSnapshot(entries []Entry) Snapshot
+func BuildSnapshot(entries []Entry, continued ...string) Snapshot
 ```
 
-BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output without recomputing any state. Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
+BuildSnapshot derives the content\-free DAG snapshot from the recorded prefix, mapping Project's output; layers and counts are the only facts it derives, so every view reads them from here \(PR\-DTUI\-3\). Work delegated without a committed plan is a node with no edges: the projection records observed work, never invented prerequisites \(PR\-DAG\-REP\-3\). Because Project is a pure fold over entries \(PR\-DAG\-REP\-1\), entry count alone gives a deterministic, monotonic projection\_revision equal to history\_position. The plan belongs to one root session, named as the earliest\-appearing SessionID in Seq order, and only that session's units and activities are drawn: a unit name is unique within its root, so another root's units would collide. A caller that wants another root filters the entries to it first.
+
+A root that declared continuity with earlier roots \(PR\-DAG\-USE\-1\) passes them, oldest first, as continued: the snapshot is then scoped to that root and the sessions it continued, the earlier history preceding the new entries, and a unit name the root reuses shows the root's own unit, not the earlier one.
 
 <a name="State"></a>
 ## type State

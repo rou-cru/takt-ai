@@ -164,7 +164,7 @@ describe("plugin setup", () => {
         tool: "subagent", sessionID: "dispatch", id: "delegation-1", input: { agent: "dev", description: "unit-a" },
       })
       await invokeHook(toolHooks, "execute.after", 2, {
-        tool: "subagent", sessionID: "dispatch", id: "delegation-1", status: "completed",
+        tool: "subagent", sessionID: "dispatch", id: "delegation-1", status: "completed", result: {},
       })
       await execute("gc_request", {}, orchestrator)
       await new Promise((resolve) => setTimeout(resolve, 10))

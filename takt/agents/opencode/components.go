@@ -195,6 +195,7 @@ func OpenCodePluginPackageArtifact() Artifact {
 		Private      bool              `json:"private"`
 		Type         string            `json:"type"`
 		Dependencies map[string]string `json:"dependencies"`
+		Overrides    map[string]string `json:"overrides"`
 	}{
 		Private: true,
 		Type:    "module",
@@ -203,6 +204,9 @@ func OpenCodePluginPackageArtifact() Artifact {
 			"@opencode/client":              pluginDevDependency("@opencode/client"),
 			"@opencode/plugin":              pluginDevDependency("@opencode/plugin"),
 		},
+		// npm install here uses no lockfile, so the pin kept in
+		// takt/runtime/sandbox/pnpm-workspace.yaml must also travel in the manifest.
+		Overrides: map[string]string{"zod": SandboxZodVersion},
 	}
 	content, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -265,7 +269,11 @@ func TaktSandboxAdapterArtifact() Artifact {
 // SandboxRuntimeVersion is the @anthropic-ai/sandbox-runtime version pinned
 // in takt/runtime/sandbox/package.json — the same dependency the adapter's
 // probe test runs against.
-const SandboxRuntimeVersion = "0.0.81"
+const SandboxRuntimeVersion = "0.0.83"
+
+// SandboxZodVersion is the zod release that fixes GHSA-mrhx-c7xc-m3w5 for
+// sandbox-runtime, pinned in takt/runtime/sandbox/pnpm-workspace.yaml.
+const SandboxZodVersion = "4.6.6"
 
 // sandboxPluginsDir is the absolute directory the sandbox adapter and its
 // node_modules/ sibling deploy into, so a bare `from

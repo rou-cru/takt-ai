@@ -4,7 +4,7 @@ Thanks for your interest in Takt AI.
 
 ## Development setup
 
-- Go 1.27.1 (see `go.mod`) and Node 24.21.0.
+- Go 1.27.4 (see `go.mod`) and Node 24.21.0.
 - Docker, for `make dev` and `make test-containerized`.
 - `golangci-lint`, for `make lint`.
 - `goreleaser`, only for `make release-check` and `make release-snapshot`.

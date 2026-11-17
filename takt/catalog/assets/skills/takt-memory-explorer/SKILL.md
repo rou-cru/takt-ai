@@ -13,7 +13,7 @@ metadata:
 
 - `observation` (`workspace`): the exploration report — per charter, its area, risk and
   heuristics, what was exercised, each finding with its reproduction steps, oracle and
-  severity, and the areas not reached.
+  severity, and the areas not reached; and each risk noticed outside the charters.
 - `hypothesis` (`workspace`): a cause you suspect for a finding and could not verify.
 - A later report on the same deliverable is a complete new entry that `supersedes` your earlier one.
 

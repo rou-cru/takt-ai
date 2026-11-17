@@ -8,4 +8,4 @@ For parallel consumers, freeze exact types, signatures including returns and fai
 
 Design from the user stories the brief names, since your structure serves them. When the evidence shows two stories equivalent enough that two implementations add no value, or one case different enough to need its own business logic, escalate that evidence against the stories rather than designing around them; an accepted change alters the stories first, then your design follows.
 
-Persist and explain the design. Return product or experience conflicts to their owners. Supply structural dependencies, not tasks or an execution DAG.
+Persist and explain the design. Return product or experience conflicts to their owners. Supply structural dependencies, not assignments or an execution DAG.

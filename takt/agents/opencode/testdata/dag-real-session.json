@@ -20,7 +20,8 @@
         "Live audio scheduling evidence contract",
         "Audio trace time-origin clarification"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 20
     },
     {
       "id": "Aligned risk ledge repair",
@@ -34,7 +35,8 @@
       "prerequisites": [
         "Risk ledge placement reconciliation"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 11
     },
     {
       "id": "Audio Q2 runtime repair",
@@ -49,7 +51,8 @@
         "Rev36 acceptance blind review A",
         "Rev36 acceptance blind review B"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 17
     },
     {
       "id": "Audio acceptance test repair",
@@ -64,7 +67,8 @@
         "Preserved candidate blind review A",
         "Preserved candidate blind review B"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 6
     },
     {
       "id": "Audio trace time-origin clarification",
@@ -78,7 +82,8 @@
       "prerequisites": [
         "Live audio scheduling evidence contract"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 19
     },
     {
       "id": "Blind acceptance test placement",
@@ -92,7 +97,8 @@
       "prerequisites": [
         "Preserved overhaul task decomposition"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 1
     },
     {
       "id": "COMPLETE-REPORT",
@@ -106,7 +112,8 @@
         "MUTATION",
         "Q3-VISUAL",
         "Q3-AUDIO"
-      ]
+      ],
+      "layer": 24
     },
     {
       "id": "Corrected candidate review snapshot",
@@ -121,7 +128,8 @@
         "Startup and terrain correction",
         "Audio acceptance test repair"
       ],
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 7
     },
     {
       "id": "Corrected startup rejudgment A",
@@ -135,7 +143,8 @@
       "prerequisites": [
         "Corrected candidate review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 8
     },
     {
       "id": "Corrected startup rejudgment B",
@@ -149,7 +158,8 @@
       "prerequisites": [
         "Corrected candidate review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 8
     },
     {
       "id": "Evidence execution interface closure",
@@ -164,7 +174,8 @@
         "Rev36 acceptance blind review A",
         "Rev36 acceptance blind review B"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 17
     },
     {
       "id": "Geometry and landing repair",
@@ -178,7 +189,8 @@
       "prerequisites": [
         "V-REPAIRED"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 13
     },
     {
       "id": "I-ART",
@@ -193,7 +205,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 3
     },
     {
       "id": "I-AUDIO",
@@ -208,7 +221,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 3
     },
     {
       "id": "I-INTEGRATION",
@@ -223,7 +237,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 3
     },
     {
       "id": "I-SIM",
@@ -238,7 +253,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 3
     },
     {
       "id": "Independent evidence interface closure",
@@ -252,7 +268,8 @@
       "prerequisites": [
         "Blind acceptance test placement"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 2
     },
     {
       "id": "Integrated gate candidate snapshot",
@@ -267,7 +284,8 @@
         "Aligned risk ledge repair",
         "Audio acceptance test repair"
       ],
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 12
     },
     {
       "id": "Level metadata compatibility repair",
@@ -282,7 +300,8 @@
         "Corrected startup rejudgment A",
         "Corrected startup rejudgment B"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 9
     },
     {
       "id": "Live audio scheduling evidence contract",
@@ -296,7 +315,8 @@
       "prerequisites": [
         "Evidence execution interface closure"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 18
     },
     {
       "id": "Live audio trace implementation",
@@ -311,7 +331,8 @@
         "Live audio scheduling evidence contract",
         "Audio trace time-origin clarification"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 20
     },
     {
       "id": "MUTATION",
@@ -323,7 +344,8 @@
       "contract": "Q2 adequacy over must-not-fail rows after green original suite, against #14937/#14938/#14946; no product writes.",
       "prerequisites": [
         "V-VERIFY"
-      ]
+      ],
+      "layer": 23
     },
     {
       "id": "Offline scene parity ruling",
@@ -337,7 +359,8 @@
       "prerequisites": [
         "I-AUDIO"
       ],
-      "agent": "arch"
+      "agent": "arch",
+      "layer": 4
     },
     {
       "id": "Preserved candidate blind review A",
@@ -351,7 +374,8 @@
       "prerequisites": [
         "Preserved candidate review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 5
     },
     {
       "id": "Preserved candidate blind review B",
@@ -365,7 +389,8 @@
       "prerequisites": [
         "Preserved candidate review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 5
     },
     {
       "id": "Preserved candidate review snapshot",
@@ -384,7 +409,8 @@
         "Q2-ROUTE",
         "Q2-LAYOUT"
       ],
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 4
     },
     {
       "id": "Preserved overhaul QA planning",
@@ -395,7 +421,8 @@
       "outcome": "completed",
       "launched": true,
       "contract": "Generate missing QA policy, plan, traceability matrix and environment requirements against the approved product contracts and judge findings declared as consumed inputs; no implementation or DAG authorship.",
-      "agent": "qa"
+      "agent": "qa",
+      "layer": 0
     },
     {
       "id": "Preserved overhaul task decomposition",
@@ -406,7 +433,8 @@
       "outcome": "completed",
       "launched": true,
       "contract": "TPM scoped vertical WBS and full matrix ownership mapping against specification #14912/#14913, architecture #14910/#14911, QA #14935/#14937/#14938/#14939, identity #14940. No DAG sequencing or plan commitment.",
-      "agent": "tpm"
+      "agent": "tpm",
+      "layer": 0
     },
     {
       "id": "Preserved revision identity audit",
@@ -417,7 +445,8 @@
       "outcome": "completed",
       "launched": true,
       "contract": "Read-only confirmation of current four staged author revisions, workspace physical bases and historical 23-file candidate identity; environment fact required by QA #14939. No builds or certification.",
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 0
     },
     {
       "id": "Preserved task evidence correction",
@@ -431,7 +460,8 @@
       "prerequisites": [
         "Preserved overhaul task decomposition"
       ],
-      "agent": "tpm"
+      "agent": "tpm",
+      "layer": 1
     },
     {
       "id": "Q2-AUDIO-EVIDENCE",
@@ -446,7 +476,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 3
     },
     {
       "id": "Q2-LAYOUT",
@@ -461,7 +492,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 3
     },
     {
       "id": "Q2-ROUTE",
@@ -476,7 +508,8 @@
         "Preserved overhaul task decomposition",
         "Independent evidence interface closure"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 3
     },
     {
       "id": "Q3-AUDIO",
@@ -488,7 +521,8 @@
       "contract": "Independent audio evidence exploration per #14937 charter; report unavailable listening explicitly, never invent perception or named human reviewer.",
       "prerequisites": [
         "V-VERIFY"
-      ]
+      ],
+      "layer": 23
     },
     {
       "id": "Q3-VISUAL",
@@ -500,7 +534,8 @@
       "contract": "Independent visual exploration from valid candidate evidence pack per #14937 charter; retain human-gated limits, never impersonate human reviewer.",
       "prerequisites": [
         "V-VERIFY"
-      ]
+      ],
+      "layer": 23
     },
     {
       "id": "Rev36 acceptance blind review A",
@@ -514,7 +549,8 @@
       "prerequisites": [
         "Rev36 acceptance review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 16
     },
     {
       "id": "Rev36 acceptance blind review B",
@@ -528,7 +564,8 @@
       "prerequisites": [
         "Rev36 acceptance review snapshot"
       ],
-      "agent": "judge"
+      "agent": "judge",
+      "layer": 16
     },
     {
       "id": "Rev36 acceptance review snapshot",
@@ -542,7 +579,8 @@
       "prerequisites": [
         "V-GEOMETRY"
       ],
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 15
     },
     {
       "id": "Risk ledge placement reconciliation",
@@ -556,7 +594,8 @@
       "prerequisites": [
         "Level metadata compatibility repair"
       ],
-      "agent": "design"
+      "agent": "design",
+      "layer": 10
     },
     {
       "id": "Room music single-source repair",
@@ -570,7 +609,8 @@
       "prerequisites": [
         "V-GEOMETRY"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 15
     },
     {
       "id": "Route Q2 report repair",
@@ -585,7 +625,8 @@
         "Rev36 acceptance blind review A",
         "Rev36 acceptance blind review B"
       ],
-      "agent": "test"
+      "agent": "test",
+      "layer": 17
     },
     {
       "id": "Startup and terrain correction",
@@ -600,7 +641,8 @@
         "Preserved candidate blind review A",
         "Preserved candidate blind review B"
       ],
-      "agent": "fix"
+      "agent": "fix",
+      "layer": 6
     },
     {
       "id": "Tooling allowance accounting",
@@ -614,7 +656,8 @@
       "prerequisites": [
         "V-TOOLING"
       ],
-      "agent": "analyst"
+      "agent": "analyst",
+      "layer": 22
     },
     {
       "id": "V-GEOMETRY",
@@ -628,7 +671,8 @@
       "prerequisites": [
         "Geometry and landing repair"
       ],
-      "agent": "verify"
+      "agent": "verify",
+      "layer": 14
     },
     {
       "id": "V-PREFLIGHT",
@@ -647,7 +691,8 @@
         "Q2-ROUTE",
         "Q2-LAYOUT"
       ],
-      "agent": "verify"
+      "agent": "verify",
+      "layer": 4
     },
     {
       "id": "V-REPAIRED",
@@ -662,7 +707,8 @@
         "Aligned risk ledge repair",
         "Audio acceptance test repair"
       ],
-      "agent": "verify"
+      "agent": "verify",
+      "layer": 12
     },
     {
       "id": "V-STAGED",
@@ -680,7 +726,8 @@
         "Q2-ROUTE",
         "Q2-LAYOUT",
         "Q2-AUDIO-EVIDENCE"
-      ]
+      ],
+      "layer": 4
     },
     {
       "id": "V-TOOLING",
@@ -697,7 +744,8 @@
         "Audio Q2 runtime repair",
         "Route Q2 report repair"
       ],
-      "agent": "verify"
+      "agent": "verify",
+      "layer": 21
     },
     {
       "id": "V-VERIFY",
@@ -709,7 +757,8 @@
       "contract": "Materialized acceptance on exact consolidated candidate only after current V-TOOLING pass; required QA matrix evidence and no automatic human approval. Counts toward #14983 three-Verify allowance.",
       "prerequisites": [
         "V-TOOLING"
-      ]
+      ],
+      "layer": 22
     }
   ],
   "edges": [
@@ -1065,5 +1114,14 @@
       "state": "settled",
       "outcome": "failed"
     }
-  ]
+  ],
+  "counts": {
+    "planned": 5,
+    "in_flight": 0,
+    "completed": 42,
+    "failed": 0,
+    "backtracked": 1,
+    "interrupted": 0,
+    "withdrawn": 1
+  }
 }

@@ -139,7 +139,7 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | :--- | :--- |
 | **PM** | The specialty that defines product intent, value, scope, priorities, user stories, and business documents. |
 | **product designer** | The specialty that defines coherent, accessible, feasible user and developer experiences. |
-| **architect** | The specialty that defines buildable architecture, boundaries, data flow, and interface contracts, and reviews cross-artifact coherence. |
+| **architect** | The specialty that defines buildable architecture, boundaries, data flow, and interface contracts, and judges technical contradictions between artifacts on request. |
 | **analyst** | The specialty that reduces uncertainty through codebase research, evidence, and compared alternatives, including isolating unresolved causes. |
 | **spec** | The specialty that translates intent into observable behavior and acceptance scenarios. |
 | **TPM** | The specialty that decomposes requirements into scoped, traceable work with justified dependencies. |

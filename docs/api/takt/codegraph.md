@@ -28,7 +28,7 @@ Package codegraph keeps the codebase\-exploration MCP wiring in one place so eve
 <a name="CodegraphVersion"></a>CodegraphVersion is the minimum codegraph release Takt configures and the one it installs.
 
 ```go
-const CodegraphVersion = "1.6.1"
+const CodegraphVersion = "1.6.2"
 ```
 
 <a name="Acquire"></a>
