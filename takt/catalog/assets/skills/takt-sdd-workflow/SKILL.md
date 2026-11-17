@@ -1,6 +1,6 @@
 ---
 name: takt-sdd-workflow
-description: "Several implementation units must deliver user stories as integrated vertical slices from formal specifications: compiling and running the dependency DAG through frozen contracts, with up to {{policy.concurrent_specialists}} concurrent specialists in one shared workspace."
+description: "Several implementation units must deliver integrated vertical slices, one per user story or per specified functional result, from formal specifications: compiling and running the dependency DAG through frozen contracts, with up to {{policy.concurrent_specialists}} concurrent specialists in one shared workspace."
 license: AGPL-3.0
 metadata:
   author: takt
@@ -56,7 +56,7 @@ These terms appear inside rules. They carry exactly these meanings and no others
 | **Information edge** | The consumer needs to *know* a signature, type, schema, or error shape that the other node produces. |
 | **Implementation edge** | The consumer needs the other node's file content written to disk, or shares mutable state with it. |
 | **Critical path** | The longest remaining downstream chain from a node to the terminal node, measured in nodes. |
-| **Vertical slice** | Everything one user story, or one split of it, needs across the layers, ending in a functional result its independent test demonstrates. |
+| **Vertical slice** | Everything one user story, or one split of it, needs across the layers, ending in a functional result its independent test demonstrates. When the invariants carry no user stories, each functional result the specifications name takes the story's place, here and wherever this guide says story. |
 | **Objective** | One layer's part of a slice's functionality. |
 | **Sub-objective** | A contract-aligned split of a voluminous objective. |
 

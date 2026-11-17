@@ -38,9 +38,9 @@ Passing its invariants does not make code correct.
 
 Consolidating is not a Git commit: accept each vertical slice with one global Verify node after its
 writers finish. Commit a milestone once the slice's computational acceptance is recorded and its
-advisory review closes without a reproduction-backed defect. Findings you weighed as leaving
-the slice working remain recorded and do not delay the checkpoint. Failed or
-unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
+advisory review closes without a reproduction-backed defect that must be corrected before
+delivery. Findings you weighed as leaving the slice working remain recorded and do not delay
+the checkpoint. Failed or unverified acceptance criteria still block the checkpoint. Load takt-git-commit before writing the
 message. An incomplete consolidation identifies
 its manifest, author, files and state. Invoke the original normal operation as the
 orchestrator; it requests approval to restore that exact snapshot, or, if
