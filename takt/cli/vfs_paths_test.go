@@ -87,7 +87,7 @@ func TestVFSOperationRequestValidation(t *testing.T) {
 		"unknown flag":      {[]string{"op", "--nope"}, valid, "flag provided but not defined"},
 		"malformed json":    {[]string{"op", "--workspace", s.root, "--state", s.state}, "{", "invalid request"},
 		"no caller block":   {[]string{"op", "--workspace", s.root, "--state", s.state}, `{"ipc_version":` + strconv.Itoa(vfsIPCVersion) + `,"session_id":"s1"}`, "caller_session and caller_agent are required"},
-		"claim with cycle":  {[]string{"claims", "--workspace", s.root, "--state", s.state}, "{" + caller + `,"cycle_id":"c"}`, "cannot declare a maintenance cycle"},
+		"claim with cycle":  {[]string{"claims", "--workspace", s.root, "--state", s.state}, "{" + caller + `,"cycle_id":"c"}`, "cannot declare a GC cycle"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

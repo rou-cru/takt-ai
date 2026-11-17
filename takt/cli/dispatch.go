@@ -258,7 +258,7 @@ func yieldGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 		return e
 	}
 	if e := abortGCCycle(h, fs, workspace, c, "yielded: ordinary dispatch resumed", r.Repair); e != nil {
-		return fmt.Errorf("dispatch: maintenance cycle %s could not be unwound, so its changes may still be live; admission waits until it is; retry the same subagent call, which unwinds it again; if the same failure repeats, ask the user to run: takt-ai gc coordinate --workspace %s --state %s --request '{\"action\":\"abort\",\"event\":\"%s\",\"evidence\":\"user unwind\"}': %w", cycle, workspace, fs.StateDirectory(), cycle, e)
+		return fmt.Errorf("dispatch: GC cycle %s could not be unwound, so its changes may still be live; admission waits until it is; retry the same subagent call, which unwinds it again; if the same failure repeats, ask the user to run: takt-ai gc coordinate --workspace %s --state %s --request '{\"action\":\"abort\",\"event\":\"%s\",\"evidence\":\"user unwind\"}': %w", cycle, workspace, fs.StateDirectory(), cycle, e)
 	}
 	return nil
 }
@@ -300,7 +300,7 @@ func runDispatch(args []string, stdout, stderr io.Writer) (err error) {
 		return e
 	}
 	if !ordinaryDispatchActions[req.Action] {
-		return fmt.Errorf("dispatch: %q is a maintenance-cycle action; use `takt-ai gc coordinate`", req.Action)
+		return fmt.Errorf("dispatch: %q is a GC cycle action; use `takt-ai gc coordinate`", req.Action)
 	}
 	fs, e := vfs.Open(*workspace, *state)
 	if e != nil {

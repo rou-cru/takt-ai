@@ -164,7 +164,7 @@ func (f *FS) CancelPreparedDelegation(root, unit, attempt string) (err error) {
 // maintenance collector is judged only by its own cycle's verifier.
 func (f *FS) validateDelegatedAuthorLocked(judge Identity, key AgentID) error {
 	if f.bindings[key].CycleID != "" {
-		return fmt.Errorf("%w: author_key %s is maintenance work, judged only within its cycle", ErrIdentity, key)
+		return fmt.Errorf("%w: author_key %s is GC cycle work, judged only within its cycle", ErrIdentity, key)
 	}
 	return f.validateVerifierAuthorLocked(judge, key)
 }

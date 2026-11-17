@@ -22,8 +22,7 @@ classify it from the evidence at hand: **settled** (existing, approved, validate
 **to refine** (a lane consumes the existing entry and revises it), or **to generate** (a lane
 authors it). Ends when every needed invariant is classified; "probably settled" is not a class.
 The user's statement of intent is what pm formalizes, never a settled pm invariant; pm's
-requirements are settled only when an artifact of equivalent rigor holds them. A general or
-ambiguous request needs user stories; a story is settled only when final, with no question about
+requirements are settled only when an artifact of equivalent rigor holds them. A story is settled only when final, with no question about
 its expected result open. When a story is revised, every invariant derived from it is **to refine**.
 
 ## 2. Select

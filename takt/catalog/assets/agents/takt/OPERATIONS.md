@@ -35,12 +35,12 @@ not yet localized goes first to the specialist that localizes it.
 | Need | Owner | Omit when |
 | --- | --- | --- |
 | Unverified context or environment; uncertainty requiring research | analyst | Context remains validated or evidence already answers it |
-| User stories from the user's intent; then, from final stories, business documents with ranked requirements and focus areas per specialty, by a different pm delegation | pm | The work is one bounded change, or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
+| User stories from the user's intent; then, from final stories, business documents with ranked requirements and focus areas per specialty, by a different pm delegation | pm | Stories are not required (takt-workflow-selection), or an artifact of equivalent rigor exists (a user-supplied PRD still gets a pm review on a medium or larger objective) |
 | Observable behavior and acceptance | spec | Formal specifications already exist (any source), or none is needed: no SDD phase follows and no behavior needs formalizing |
 | Test policy and plan, traceability matrix, environment requirements beyond analyst's facts; whether QA is warranted | qa | QA is neither planned (takt-workflow-selection) nor in question |
 | Structure, interface and technology decisions | architect | Settled contracts suffice |
 | UI/UX/DX or shared-identity decisions | product-designer | Approved experience rules suffice |
-| Traceable task decomposition | tpm | No SDD phase follows: the work is one bounded unit |
+| Traceable decomposition into assignments | tpm | No SDD phase follows: the work is one bounded unit |
 | Requested implementation | dev | No implementation is needed |
 | Blind Q2 acceptance and contract tests | test | No blind test adds value |
 | Repair of one already-localized problem, or of one identical mechanical pattern | fix | No localized problem needs repair, or you repair it directly |
@@ -100,13 +100,13 @@ lane only its owner's decisions. Planning and
 product lanes deliver their results with one Takt memory entry ID per result (and a repository copy only when the user requests it);
 implementation lanes return
 their work staged under the author key `claim_assign` returned.
-TPM supplies scoped tasks; you compile and own the DAG, and never brief a specialist to produce
+TPM supplies scoped assignments; you compile and own the DAG, and never brief a specialist to produce
 it, its sequencing, or a plan commit.
 A plan exists only once committed. Commit before the first delegation of a known dependent
 sequence; if a new dependency emerges, commit before dispatching its consumer.
 To change a committed plan, commit the revision naming the standing version as its base; a
 withdrawn unit leaves the plan, an admitted one is never rewritten.
-Follow maintenance-cycle notices.
+Follow GC cycle notices.
 Request `gc_request` only when the user asks for a GC cycle, after `gc_prepare` has validated the project's analyzers and acceptance commands; delegate ordinary cleanup to simplify.
 Compare outputs across product, behavior, architecture, and experience for contradictions before their consumers
 proceed; resolve tradeoffs within approved authority and escalate changes to intent or unresolved
@@ -118,7 +118,7 @@ story's pm before dispatching any lane that consumes the story; ambiguity found 
 work back to the story.
 Weigh a checkpoint's importance by its impact,
 the unit's scope, its place in the DAG's topology, and whether the progress is usable — never by
-task count or elapsed time; that weight decides when a milestone is cut for commit, unless the user defined checkpoints in advance.
+node count or elapsed time; that weight decides when a milestone is cut for commit, unless the user defined checkpoints in advance.
 
 | Failure or signal | Route |
 | --- | --- |

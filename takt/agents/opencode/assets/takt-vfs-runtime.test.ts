@@ -1084,7 +1084,7 @@ describe("maintenance cycle", () => {
       expect(vfs.actions("gc")).not.toContain("recover")
       expect(vfs.actions("gc")).not.toContain("abort")
       expect(vfs.log.prompts[0].sessionID).toBe("gcv")
-      expect(vfs.log.prompts[0].text).toContain("Maintenance cycle cycle-1; mandate complexity.")
+      expect(vfs.log.prompts[0].text).toContain("GC cycle cycle-1; mandate complexity.")
       expect(vfs.log.prompts[0].text).toContain("gc_delta")
     } finally { await vfs.stop() }
   })
@@ -1147,12 +1147,12 @@ describe("maintenance cycle", () => {
       await expect(vfs.run("gc_findings", {}, verifier)).rejects.toThrow("GC findings requires the attached collector session")
 
       const outside = { tool: "write", sessionID: "gcv", id: "t1", agent: "verify" }
-      await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This maintenance cycle does not use that tool")
+      await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This GC cycle does not use that tool")
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
       await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
       // No lane has a memory or web tool.
       for (const tool of ["webfetch", "websearch", "takt_memory_record", "takt_memory_search", "takt_memory_read", "takt_memory_sessions", "takt_memory_continue_session", "takt_memory_close_session"]) {
-        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This maintenance cycle does not use that tool")
+        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This GC cycle does not use that tool")
       }
       for (const tool of ["shell", "bash"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
 
@@ -1231,9 +1231,9 @@ describe("maintenance cycle", () => {
         await vfs.fire(vfs.session, "context", event)
         return event.system.map(({ text }) => text)
       }
-      expect((await notified())[0]).toContain("A cleanup cycle is running")
+      expect((await notified())[0]).toContain("A GC cycle is running")
       state = json(coordinator())
-      expect((await notified())[0]).toContain("The cleanup cycle concluded")
+      expect((await notified())[0]).toContain("The GC cycle concluded")
       expect(await notified()).toEqual([])
       state = { code: 1, err: "status unavailable" }
       expect(await notified()).toEqual([])
@@ -1337,7 +1337,7 @@ describe("interlocutor switch", () => {
   const aborted = { ...envelope, result: "Aborted", additional_context: "ended" }
   const HANDOFF_NOTICE = "The interface is back from dev."
   const ABORT_NOTICE = "The interface is back from dev, whose lent session was aborted."
-  const request = { target_agent: "dev", objective: "Ship it", requirements: [7] }
+  const request = { target_agent: "dev", objective: "Ship it", requirements: [7], client: "unknown" }
   const lent = { child: { metadata: { takt_switch: "root" } } }
   const NO_HOLDER = "harness: no interlocutor switch is active for this session; nothing to abort"
   const NOT_HOLDER = "harness: session other is not the current interlocutor holder; abort the holder session instead"
@@ -1438,7 +1438,7 @@ describe("interlocutor switch", () => {
     const vfs = await startVfs({ respond: core() })
     try {
       await vfs.run("dispatch_switch", request, orchestrator)
-      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read")
+      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read\nClient: unknown")
     } finally { await vfs.stop() }
   })
 

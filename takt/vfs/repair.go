@@ -162,7 +162,7 @@ func (f *FS) cycleRepairLocked(cycle, state string) (*Repair, interruptedEvidenc
 	return &Repair{Kind: "cycle", ID: cycle, Author: snap.Agent, Paths: paths, State: StateHash(struct {
 		Evidence interruptedEvidence
 		State    string
-	}{e, state}), Preserve: true, Reason: "maintenance rollback diverged; approve keeping current files and closing this exact cycle as interrupted, retaining snapshots and deltas without acceptance"}, e, nil
+	}{e, state}), Preserve: true, Reason: "GC cycle rollback diverged; approve keeping current files and closing this exact cycle as interrupted, retaining snapshots and deltas without acceptance"}, e, nil
 }
 
 // CycleRepair describes only the divergent cycle encountered by normal abort.

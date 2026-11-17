@@ -46,18 +46,19 @@ These terms appear inside rules. They carry exactly these meanings and no others
 
 | Term | Definition |
 |---|---|
-| **Node** | One task with one contract and one owner. |
+| **Node** | One assignment with one contract and one owner. |
 | **Edge** | A directed dependency `A → B`: B may not start until A completes. |
 | **Wave** | The set of nodes at equal topological depth from the root. A wave is a *result* of computing the order — never a planned phase, never a synchronization point. |
 | **Width of a wave** | Node count in that wave. |
 | **Depth** | Number of waves from root to terminal node, inclusive. |
-| **In-flight** | A dispatched task whose result has not yet been received. |
-| **READY** | Dependencies delivered (consolidated to disk for nodes that read workspace files; author's delivery complete in VFS for verifier nodes) + contract valid + `writable_set` disjoint from every in-flight task. |
+| **In-flight** | A dispatched node whose result has not yet been received. |
+| **READY** | Dependencies delivered (consolidated to disk for nodes that read workspace files; author's delivery complete in VFS for verifier nodes) + contract valid + `writable_set` disjoint from every in-flight node + its slice may start (§8). |
 | **Information edge** | The consumer needs to *know* a signature, type, schema, or error shape that the other node produces. |
 | **Implementation edge** | The consumer needs the other node's file content written to disk, or shares mutable state with it. |
 | **Critical path** | The longest remaining downstream chain from a node to the terminal node, measured in nodes. |
 | **Vertical slice** | Everything one user story, or one split of it, needs across the layers, ending in a functional result its independent test demonstrates. |
-| **Sub-objective** | The fragment of one layer a slice needs; one node, delegated to one agent. |
+| **Objective** | One layer's part of a slice's functionality. |
+| **Sub-objective** | A contract-aligned split of a voluminous objective. |
 
 ---
 
@@ -69,7 +70,7 @@ revised mid-execution is not itself drift; only a changed objective or a blocked
 
 Direct execution never skips the DAG's collision discipline: a directly executed change
 still declares and respects `writable_set` like any node would. A unit may read any file it
-does not own, provided no in-flight task writes it — this section constrains judgment and
+does not own, provided no in-flight node writes it — this section constrains judgment and
 writes, not shared access to settled output.
 
 **Plan for safe concurrency.** Governed staging does not replace disjoint scopes and frozen
@@ -79,16 +80,16 @@ contracts. Resolve shared access before dispatch rather than relying on reverts 
 
 ## 2. Protocol Rules
 
-1. **Shared Workspace (No Worktrees):** All tasks execute in the root workspace. Isolation
+1. **Shared Workspace (No Worktrees):** All nodes execute in the root workspace. Isolation
    comes from disjoint file ownership and frozen interface contracts, never from Git
    branches.
 2. **Concurrency Ceiling (Max {{policy.concurrent_specialists}}):** At most {{policy.concurrent_specialists}} specialists run at once, whatever their lane:
-   appliers, verifiers and planning lanes share the same slots. Excess READY tasks queue.
+   appliers, verifiers and planning lanes share the same slots. Excess READY nodes queue.
    There is no minimum width or occupancy. Do not lower the ceiling out of caution or leave
    ready independent work waiting when capacity is available; do not invent work to fill slots.
-3. **Exclusive Writable Ownership:** Every task declares an explicit `writable_set`. Two
-   in-flight tasks never have overlapping writable paths.
-4. **Frozen Contracts Before Dispatch:** A task may run in parallel only if every type,
+3. **Exclusive Writable Ownership:** Every node declares an explicit `writable_set`. Two
+   in-flight nodes never have overlapping writable paths.
+4. **Frozen Contracts Before Dispatch:** A node may run in parallel only if every type,
    signature, schema, and public interface it consumes is frozen in its contract.
 5. **One Integration Gate per Slice:** Appliers run no checks against staged work and never
    invoke global test runners, full workspace builds, or whole-repo linters, as this causes
@@ -99,7 +100,7 @@ contracts. Resolve shared access before dispatch rather than relying on reverts 
    milestone commit is a separate decision and follows only after an acceptance passes.
 6. **Zero Silent Drops:** A first failure that OPERATIONS routes to retry in place retries once;
    a second failure or a flagged contract defect loads `takt-sdd-recovery` and follows it; any other
-   failure follows its OPERATIONS route. Never drop or skip a task silently.
+   failure follows its OPERATIONS route. Never drop or skip a node silently.
 
 ---
 
@@ -140,16 +141,16 @@ declared and its failure behavior stated — not "a function that computes the o
 
 Behavior and interface contracts come from the relevant owners (`spec`,
 `architect`, and `product-designer` for experience rules). TPM assembles traceable
-task scopes from them; Takt validates and places them into its execution DAG. Every task
+assignment scopes from them; Takt validates and places them into its execution DAG. Every node
 contract must declare (TPM's WBS names them Writable files, Consumed contracts, Allowed reads and Acceptance):
 
-- **`writable_set`**: Exact files the task may modify, existing or to be created.
-- **`consumed_interfaces`**: The entry IDs of the frozen interface contracts the task needs,
+- **`writable_set`**: Exact files the node may modify, existing or to be created.
+- **`consumed_interfaces`**: The entry IDs of the frozen interface contracts the node needs,
   declared with `dispatch_inputs`, never restated.
-- **`allowed_reads`**: Files the task may read. Must exclude every path written by a
-  concurrently in-flight task.
+- **`allowed_reads`**: Files the node may read. Must exclude every path written by a
+  concurrently in-flight node.
 - **`acceptance_check`**: A deterministic, bounded command that the Verify unit runs on the
-  materialized workspace to prove task completion (e.g., targeting a specific unit test
+  materialized workspace to prove node completion (e.g., targeting a specific unit test
   file/function); never a global suite, whole-workspace test command or full build (Rule 5).
 
 Example of a complete contract:
@@ -172,7 +173,7 @@ grant — it is never assumed from silence.
 
 ### 3.5 The Orchestrator's Two Jobs Here
 
-1. **Validate completeness and execution bounds**: reject incomplete task contracts or contracts
+1. **Validate completeness and execution bounds**: reject incomplete node contracts or contracts
    specifying broad/unscoped acceptance commands back to their author.
 2. **Remove avoidable waits.** Ask the contract owner to settle an interface when that
    enables independent work.
@@ -187,8 +188,8 @@ when it is by layer, makes the DAG serial by construction; no serialization matr
 - **Cut into vertical slices, one per user story.** A story needing more than one slice gets
   more than one, each ending in something functional; a story is never forced into one
   overloaded slice, and no slice is called complete while its result does not work.
-- **Cut each slice into sub-objectives, one layer fragment per agent.** A large slice gains
-  agents, never larger sub-objectives. Disjoint fragments run concurrently; a strong
+- **Cut each slice into objectives and assign them by volume.** Small ones go together to one
+  agent; a voluminous one splits into sub-objectives across agents. Disjoint assignments run concurrently; a strong
   dependency between them stays an edge (§6).
 - **Never cut a layer across stories.** "All the types", "the whole API layer", "all the
   storage" delivers nothing until every layer is done; cut it into each story's fragment.
@@ -207,7 +208,7 @@ serializing otherwise independent work.
    prescribed diamond, depth or width.
 2. **Every edge is justified against a named node, never against "what came before".** In
    the moment waves are treated as phases, implicit barriers appear and cost whole lanes for
-   nothing. A test task depends on the one node whose files it reads, not on the wave; a blind
+   nothing. A test node depends on the one node whose files it reads, not on the wave; a blind
    test-author node consumes only frozen contracts and the traceability matrix, never in-flight
    implementation, so it shares the wave of the code it tests. The integration tail depends
    on all implementation nodes it validates.
@@ -245,9 +246,9 @@ condition from the closed list below.** An edge that cannot name one does not ex
 
 | Condition | Rationale |
 |---|---|
-| The contract fully declares every interface Task A consumes | Zero runtime reads from another task's output. |
-| Tasks A and B read the same immutable file | Read-only access never conflicts. |
-| Tasks A and B share a directory or domain tag without file overlap | Domain similarity is not a conflict. |
+| The contract fully declares every interface Node A consumes | Zero runtime reads from another node's output. |
+| Nodes A and B read the same immutable file | Read-only access never conflicts. |
+| Nodes A and B share a directory or domain tag without file overlap | Domain similarity is not a conflict. |
 
 ### Serialize — closed list of admissible reasons
 
@@ -264,8 +265,8 @@ No reason outside this list justifies an edge.
 
 ### Dispatch Logic
 
-1. Collect all READY tasks.
-2. Dispatch all READY tasks that fit the available slots under the {{policy.concurrent_specialists}}-specialist ceiling; queue the rest.
+1. Collect all READY nodes.
+2. Dispatch all READY nodes that fit the available slots under the {{policy.concurrent_specialists}}-specialist ceiling; queue the rest.
 3. When `ready_count > available_slots`, prioritize by **critical path** — longest
    remaining downstream chain first.
 
@@ -301,7 +302,7 @@ The following is an available route, not a procession required of every change:
    conflicts to the owners before consuming them; escalate changes to intent or authority.
 2. **Validation:** Takt runs the dependency and decomposition self-check before `dispatch_commit`, without manufacturing work just to
    fill concurrency slots.
-3. **Compilation:** TPM is the first node: it turns the specifications into vertical tasks
+3. **Compilation:** TPM is the first node: it cuts the specifications into slices and their assignments
    with their hard dependencies. Takt compiles the DAG from its WBS, commits it with
    `dispatch_commit` (each node a unit with its contract and prerequisites), and assigns each node's contract; no specialist silently changes another's
    judgment.
@@ -312,8 +313,11 @@ The following is an available route, not a procession required of every change:
 5. **Integration and acceptance:** preserve one tail fan-in per slice. When a phase calls for a gate,
    it assesses the phase's staged deltas together before consolidation: one verifier node, preassigned
    to all its author keys, and Takt consolidates a passing author's work with
-   `vfs_consolidate`. The integration node reads for loose ends, subtle misalignments and code
-   left dead; it runs no checks. Executable acceptance runs in a Verify unit on the
+   `vfs_consolidate`. When work was split across agents, plan an integration node
+   after them so the parts fit as one: calls connected, contract boundaries honored, nothing
+   duplicated or left dead, and whatever that connection still needs added. You choose who runs
+   it by what the split left at risk — a dev to connect, a fix for one localized mismatch, a
+   verify to judge drift, or yourself when the direct-work tests hold. It runs no checks. Executable acceptance runs in a Verify unit on the
    materialized workspace after writers finish; with QA planned, that acceptance and the
    tail after it follow `takt-qa-workflow` from its Accept state.
    Check the integrated outcome, not merely completed nodes.
@@ -325,15 +329,16 @@ The following is an available route, not a procession required of every change:
    generality). A change alters the story first, the invariants derived from it realign, and
    then you commit the plan revision.
 
-Deliver one story's slice before starting another's, unless each story is simple, its work
-mechanical, their scopes disjoint and repairing both at once unlikely; then their slices may run
-together. A user instruction on story concurrency prevails.
+Deliver one story's slice before starting another's: a working fragment the user can try
+outranks more work in flight. Their slices run together only when each story is simple, its work
+mechanical, their scopes disjoint and repairing both at once unlikely. A user instruction on
+story concurrency prevails.
 
 ---
 
 ## 9. DAG Presentation
 
 When presenting DAG state, render clean ASCII only: top-to-bottom flow, boxed
-`[Task ID: 2-5 word label]` nodes, horizontal wave bands, and per-wave width plus a short
+`[Node: 2-5 word label]` nodes, horizontal wave bands, and per-wave width plus a short
 edge justification beside the diagram. Never substitute raw tables, JSON, or exhaustive
 text dumps for the diagram.

@@ -37,5 +37,5 @@ Pick what fits; none are mandatory, and more than one is normal.
 
 ## Never records
 
-- Task breakdowns, migration plans, or work still to do.
+- Work breakdowns, migration plans, or work still to do.
 - Designs that were not approved, as decisions.

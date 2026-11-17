@@ -46,7 +46,7 @@ func (f *FS) guardMaintenanceLocked(command, attempt, action, path string, key A
 		}
 	}
 	if command == "bind" && state.Cycle != nil && attempt == "" {
-		return errors.New("gc: barrier holds new bindings; retry vfs_bind after maintenance ends")
+		return errors.New("gc: barrier holds new bindings; retry vfs_bind after the GC cycle ends")
 	}
 	b, ok := f.bindings[key]
 	if !ok || b.CycleID == "" {
@@ -57,7 +57,7 @@ func (f *FS) guardMaintenanceLocked(command, attempt, action, path string, key A
 	}
 	switch command {
 	case "verify", "consolidate":
-		return errors.New("gc: maintenance changes use gc_verdict, gc_acceptance or gc_no_change, not ordinary VFS closure")
+		return errors.New("gc: GC cycle changes use gc_verdict, gc_acceptance or gc_no_change, not ordinary VFS closure")
 	case "op", "shell-prepare":
 		if action == "read" {
 			return nil

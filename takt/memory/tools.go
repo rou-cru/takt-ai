@@ -49,7 +49,7 @@ var Tools = []Tool{
 		Description: "Record one Takt memory entry: something that happened or is true now, such as an idea explored, " +
 			"a fact verified, a decision taken, or an artifact changed. Never record plans, next steps, pending work, " +
 			"or predictions of your own unless the user directly ordered it. An artifact you were assigned to author (a " +
-			"test plan, a task breakdown, a design) is recorded whole: it is the artifact authored. Entries are never changed or deleted; a change in " +
+			"test plan, a work breakdown, a design) is recorded whole: it is the artifact authored. Entries are never changed or deleted; a change in " +
 			"understanding is a new entry whose relates_to names the affected entry. A new entry sends content. An entry " +
 			"that corrects or supersedes another is stored as the complete current artifact: send the complete content. " +
 			"Returns `Recorded #<id>`. A request larger than the transport's request cap is refused, stating the cap.",

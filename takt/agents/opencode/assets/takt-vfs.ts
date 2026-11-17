@@ -327,14 +327,14 @@ const gcRoleOf = (phase: string): "verifier" | "collector" | undefined => {
 
 // Notices the orchestrator receives around a maintenance cycle: conduct only.
 const MAINTENANCE_DUE =
-  "A cleanup cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
-const MAINTENANCE_DONE = "The cleanup cycle concluded. Delegation and normal work continue."
+  "A GC cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
+const MAINTENANCE_DONE = "The GC cycle concluded. Delegation and normal work continue."
 // closingNotice reports how a cycle ended and the findings it left unapplied, which only the cycle record reports.
 const closingNotice = (closing: CycleClosing) => {
   const findings = closing.unapplied_findings.length
     ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.`
     : "No finding was left unapplied."
-  return `Cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
+  return `GC cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
 }
 
 // The native subagent result invites follow-ups by sessionID; a Takt
@@ -870,7 +870,7 @@ export default Plugin.define({
       if (event.agent === ORCHESTRATOR_ID) return
       const d = await executionFor(event.sessionID, event.agent)
       if (!d) return
-      if (d.cycle && !(GC_LANE_TOOLS[d.role ?? ""] ?? []).includes(event.tool)) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This maintenance cycle does not use that tool"))
+      if (d.cycle && !(GC_LANE_TOOLS[d.role ?? ""] ?? []).includes(event.tool)) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This GC cycle does not use that tool"))
       invocations.set(toolKeyOf(event), { dispatch: d.dispatch, root: d.root, attempt: d.attempt, cycle: d.cycle })
     })
 
@@ -1198,7 +1198,7 @@ export default Plugin.define({
       }
       // A failed transport does not prove the host never ran this prompt.
       // Keep the reservation until scoped recovery interrupts the native lane.
-      await promptChild(child, `Maintenance cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
+      await promptChild(child, `GC cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
       watchIncompletePrompt(cycleID, cycle.phase, child)
       } catch(error) {
         // Recovery is scoped to the cycle this pump actually observed. A late
@@ -1875,21 +1875,21 @@ export default Plugin.define({
           target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
           objective: str("Objective for the incoming interlocutor's session"),
           requirements: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the knowledge the incoming interlocutor needs: finalized documents and settled decisions; an empty list states that nothing useful exists" },
-          client: str("Client-facing context for the incoming interlocutor"),
-        }, ["target_agent", "objective", "requirements"]),
+          client: str("What is known of the user for the incoming interlocutor; state as unknown what is not"),
+        }, ["target_agent", "objective", "requirements", "client"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client?: string }>(value)
+          const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client: string }>(value)
           const session = await rootSession(c.sessionID)
           if (c.sessionID !== session) throw new Error("dispatch_switch belongs to the root orchestrator")
           // A switch that would be refused is returned to the agent before the user is asked.
           await dispatchAction({ action: "validate_switch", session, agent: args.target_agent, requirements: args.requirements })
-          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client ?? "" }, c)
+          await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client }, c)
           const requirements = args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"
           const text = [
             "You are taking over as the active interlocutor for this workspace.",
             `Objective: ${args.objective}`,
             `Requirements: ${requirements}`,
-            args.client ? `Client: ${args.client}` : undefined,
+            `Client: ${args.client}`,
           ].filter(Boolean).join("\n")
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,

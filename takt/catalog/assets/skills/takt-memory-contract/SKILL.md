@@ -15,7 +15,7 @@ descriptions. Where any other Takt memory guidance disagrees with this contract,
 ## 1. What a Takt memory is
 
 Besides what `takt_memory_record` describes, record the deliverable your specialty was
-assigned to produce. A specialist whose work is a plan, task breakdown, proposal, or design records
+assigned to produce. A specialist whose work is a plan, work breakdown, proposal, or design records
 that deliverable. Do not add plans, predictions, or recommendations outside your assignment.
 A direct user order to remember something is recorded as that order ("The user asked to
 keep X").
