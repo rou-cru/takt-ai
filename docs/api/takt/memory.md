@@ -295,6 +295,12 @@ var (
 )
 ```
 
+<a name="ErrMissingEntries"></a>ErrMissingEntries marks a refusal of IDs that name no entry: only those IDs need correcting; any other Current error leaves the IDs valid to retry.
+
+```go
+var ErrMissingEntries = errors.New("refused Takt memory entries")
+```
+
 <a name="Tools"></a>Tools are the six tools of /crew and /external, with the same texts for every caller.
 
 ```go
