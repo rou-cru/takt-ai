@@ -33,18 +33,19 @@ func TestStateDirsRegistryListsEachDirectoryOnce(t *testing.T) {
 		t.Fatalf("StateDirs before any registration = %v, %v; want none", dirs, err)
 	}
 	a, b := filepath.Join(home, "a", ".takt-ai"), filepath.Join(home, "b", ".takt-ai")
-	glob := filepath.Join(home, "c [old]", ".takt-ai")
-	for _, dirs := range [][]string{{a, b}, {b, a}, {a, glob}} {
+	for _, dirs := range [][]string{{a, b}, {b, a}} {
 		if err := history.RegisterStateDirs(dirs...); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if dirs, err := history.StateDirs(); err != nil || !slices.Equal(dirs, []string{a, b}) {
-		t.Fatalf("StateDirs = %v, %v; want %v once each and no glob path", dirs, err, []string{a, b})
-	}
-	for _, bad := range []string{"relative/.takt-ai", filepath.Join(home, "x\ny")} {
-		if err := history.RegisterStateDirs(bad); err == nil {
+	// A glob character makes a dir undeniable by literal path: registering it
+	// fails closed, and nothing of the call is recorded.
+	for _, bad := range []string{"relative/.takt-ai", filepath.Join(home, "x\ny"), filepath.Join(home, "c [old]", ".takt-ai")} {
+		if err := history.RegisterStateDirs(filepath.Join(home, "d", ".takt-ai"), bad); err == nil {
 			t.Errorf("RegisterStateDirs(%q) = nil; want a refusal", bad)
 		}
+	}
+	if dirs, err := history.StateDirs(); err != nil || !slices.Equal(dirs, []string{a, b}) {
+		t.Fatalf("StateDirs = %v, %v; want %v once each and nothing refused", dirs, err, []string{a, b})
 	}
 }
