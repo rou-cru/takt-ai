@@ -42,6 +42,7 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
 - [type ContinueInput](<#ContinueInput>)
 - [type DescribeInput](<#DescribeInput>)
 - [type DescribeResult](<#DescribeResult>)
+  - [func Current\(ctx context.Context, a \*Admin, ids \[\]int64\) \(heads \[\]int64, described DescribeResult, err error\)](<#Current>)
   - [func Validate\(ctx context.Context, a \*Admin, ids \[\]int64, rule Rule\) \(DescribeResult, error\)](<#Validate>)
 - [type Described](<#Described>)
 - [type DescribedRelation](<#DescribedRelation>)
@@ -657,6 +658,15 @@ type DescribeResult struct {
     Entries []Described `json:"entries"`
 }
 ```
+
+<a name="Current"></a>
+### func Current
+
+```go
+func Current(ctx context.Context, a *Admin, ids []int64) (heads []int64, described DescribeResult, err error)
+```
+
+Current carries each entry ID forward to the current version of its chain. heads is aligned with ids; described holds each distinct head once, in first\-seen order. Only an ID that does not exist is refused.
 
 <a name="Validate"></a>
 ### func Validate
