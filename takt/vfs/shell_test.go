@@ -506,6 +506,14 @@ func TestShellCapturesACommandNamingAClaimedPath(t *testing.T) {
 			t.Fatalf("%q plan = %+v; want a captured projection", command, plan)
 		}
 	}
+	// Naming a claimed path does not make an outside path a write target.
+	read, err := f.PrepareShell(c, "read", "diff /tmp/expected.txt assets/x.png", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Decision != vfs.ShellAllow || slices.Contains(read.Writable, "/") {
+		t.Fatalf("reading an outside path beside a claimed one = %+v; want it allowed with no outside write", read)
+	}
 	png := "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 	plan, err := f.PrepareShell(c, "png", "rsvg-convert in.svg -o assets/x.png", state)
 	if err != nil {
@@ -553,6 +561,18 @@ func TestShellScratchLastsUntilTheWorkEnds(t *testing.T) {
 	}
 	if _, err := os.Stat(first.Scratch); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("scratch after discard: %v; want it removed", err)
+	}
+	// An unbound command has no work to outlast: its scratch ends with the call.
+	unbound, err := f.PrepareShell(orchestrator(testSession), "unbound", "ls", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellRun(t, unbound, "0", nil)
+	if _, err := f.CompleteShell(orchestrator(testSession), "unbound"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(unbound.Scratch); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unbound scratch after its call: %v; want it removed", err)
 	}
 }
 

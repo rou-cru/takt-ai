@@ -244,9 +244,10 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	}
 	// A command naming a path the binding owns is captured however it writes
 	// it (`-o`, `--output=`, a tool's own default): the claim decides, not a
-	// guess over the command's verbs.
-	mutates = mutates || f.namesScope(command, scope)
-	decision, reason := f.classify(key, command, mutates, len(scope) > 0)
+	// guess over the command's verbs. Only the verbs decide whether it writes
+	// outside the workspace.
+	captured := mutates || f.namesScope(command, scope)
+	decision, reason := f.classify(key, command, mutates, captured, len(scope) > 0)
 	if decision == ShellDeny {
 		return ShellPlan{Decision: decision, Reason: reason}, nil
 	}
@@ -255,13 +256,19 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 		return ShellPlan{}, err
 	}
 	call := callRoot(base, key, callID)
+	// A bound author keeps its $TMPDIR until its work ends; an unbound
+	// command's lasts only as long as the call.
+	scratch := filepath.Join(call, "scratch")
+	if key != "" {
+		scratch = filepath.Join(authorRoot(base, key), "scratch")
+	}
 	private, readable, err := taktStatePaths()
 	if err != nil {
 		return ShellPlan{}, err
 	}
 	plan := ShellPlan{
 		Decision: decision, Reason: reason,
-		Scratch: filepath.Join(authorRoot(base, key), "scratch"), Confirm: filepath.Join(call, "confirm"),
+		Scratch: scratch, Confirm: filepath.Join(call, "confirm"),
 		Private:        append(append([]string{stateDir}, homeSensitivePaths(userHome())...), private...),
 		Unreadable:     []string{base},
 		Readable:       readable,
@@ -273,7 +280,7 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 			return ShellPlan{}, err
 		}
 	}
-	if mutates && decision == ShellAllow {
+	if captured && decision == ShellAllow {
 		return f.projectLocked(key, call, scope, plan)
 	}
 	// Inspection reads the workspace in place and can write only to its scratch,
@@ -480,7 +487,7 @@ var (
 )
 
 // classify resolves the command to allowed, approval-gated or denied.
-func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string, string) {
+func (f *FS) classify(key AgentID, command string, mutates, captured, scoped bool) (string, string) {
 	words := shellWords(command)
 	if decision, reason := GitShellDecision(f.bindings[key].Role, command); decision != ShellAllow {
 		return decision, reason
@@ -488,10 +495,10 @@ func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string
 	if reason, outside := outsideWorkspace(words, mutates, f.rootDir); outside {
 		return ShellAsk, reason + ", which the VFS cannot capture: " + command
 	}
-	if mutates && !scoped {
+	if captured && !scoped {
 		return ShellDeny, fmt.Sprintf("%v: %s", ErrShellUncapturable, command)
 	}
-	if mutates {
+	if captured {
 		return ShellAllow, "workspace mutation captured as a staged VFS delta: " + command
 	}
 	return ShellAllow, "inspection: " + command

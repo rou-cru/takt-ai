@@ -33,13 +33,14 @@ func TestStateDirsRegistryListsEachDirectoryOnce(t *testing.T) {
 		t.Fatalf("StateDirs before any registration = %v, %v; want none", dirs, err)
 	}
 	a, b := filepath.Join(home, "a", ".takt-ai"), filepath.Join(home, "b", ".takt-ai")
-	for _, dirs := range [][]string{{a, b}, {b, a}, {a}} {
+	glob := filepath.Join(home, "c [old]", ".takt-ai")
+	for _, dirs := range [][]string{{a, b}, {b, a}, {a, glob}} {
 		if err := history.RegisterStateDirs(dirs...); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if dirs, err := history.StateDirs(); err != nil || !slices.Equal(dirs, []string{a, b}) {
-		t.Fatalf("StateDirs = %v, %v; want %v once each", dirs, err, []string{a, b})
+		t.Fatalf("StateDirs = %v, %v; want %v once each and no glob path", dirs, err, []string{a, b})
 	}
 	for _, bad := range []string{"relative/.takt-ai", filepath.Join(home, "x\ny")} {
 		if err := history.RegisterStateDirs(bad); err == nil {

@@ -419,6 +419,8 @@ func GlobalStateDir() (string, error) {
 
 // RegisterStateDirs adds the absolute dirs the registry does not list yet.
 // Concurrent registrations may repeat a line; StateDirs reads each path once.
+// A dir holding a glob character is left out: no sandbox can name it
+// literally, so it cannot be denied and would break every shell plan.
 func RegisterStateDirs(dirs ...string) (err error) {
 	known, err := StateDirs()
 	if err != nil {
@@ -429,7 +431,7 @@ func RegisterStateDirs(dirs ...string) (err error) {
 		if !filepath.IsAbs(dir) || strings.ContainsAny(dir, "\r\n") {
 			return fmt.Errorf("history: state directory %q is not an absolute single-line path", dir)
 		}
-		if !slices.Contains(known, dir) && !slices.Contains(missing, dir) {
+		if !strings.ContainsAny(dir, "*?[]") && !slices.Contains(known, dir) && !slices.Contains(missing, dir) {
 			missing = append(missing, dir)
 		}
 	}
