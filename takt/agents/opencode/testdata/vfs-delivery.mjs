@@ -182,7 +182,8 @@ if (scenario === "retry") {
   assert.equal(finishes().length, 1)
 } else if (scenario === "continued_child") {
   await launch("continued", "first")
-  await deliver("continued", [1])
+  // Only a session that returned a blocker is continued.
+  await tools.deliver_result.execute({ result_ids: [1], blocker: true }, { sessionID: "continued", agent: "pm" })
   await idle("continued")
   idleSessions.delete("continued")
   await launch("continued", "second", "pm", {sessionID:"continued"})
