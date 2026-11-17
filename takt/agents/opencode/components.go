@@ -296,9 +296,6 @@ func sandboxDependencyInstalled(rootDir string) bool {
 	return json.Unmarshal(data, &pkg) == nil && pkg.Version == SandboxRuntimeVersion
 }
 
-// installSandboxDependencyCommand runs npm; tests replace it to avoid PATH and network.
-var installSandboxDependencyCommand = exec.CommandContext
-
 // InstallSandboxDependency npm-installs the sandbox adapter's one dependency
 // next to its deployed location. The adapter remains an optional component:
 // absence of npm degrades shell capture but does not block other setup work.
@@ -310,7 +307,7 @@ func InstallSandboxDependency(ctx context.Context, rootDir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("prepare sandbox plugin dir: %w", err)
 	}
-	output, err := installSandboxDependencyCommand(ctx, "npm", "install", "--prefix", dir,
+	output, err := exec.CommandContext(ctx, "npm", "install", "--prefix", dir,
 		"--no-fund", "--no-audit", "--no-package-lock", "--no-save", "--loglevel=error",
 		"@anthropic-ai/sandbox-runtime@"+SandboxRuntimeVersion).CombinedOutput()
 	if err != nil {
