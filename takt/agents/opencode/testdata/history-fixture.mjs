@@ -2,6 +2,7 @@
 // Production behavior is additionally exercised against the real CLI in ssot.
 export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simplify"]) {
  const inputs = new Map(Object.entries(initial.inputs ?? {}))
+ const undelivered = new Map()
  const executions = structuredClone(initial.executions ?? {})
  const holders = { ...initial.holders }
  // Direct orchestrator activities, keyed by activity_id, with their capturing instance.
@@ -14,7 +15,14 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
  const dropHolder = r => { delete holders[r.child] }
  const handlers = {
   inputs(r) {
-   inputs.set(`${r.session}\0${r.event}`, [...(r.result_ids ?? [])]);return reply({ result_ids: r.result_ids ?? [] })
+   const ids = [...(r.result_ids ?? [])], from = ids.map(() => undefined), absent = []
+   for (const unit of r.units ?? []) {
+    const d = Object.values(executions).filter(e => e.root === r.session && e.unit === unit && !e.cycle && e.delivery?.length && !e.blocker).at(-1)
+    if (!d) { absent.push(unit); continue }
+    for (const id of d.delivery) { ids.push(id); from.push(unit) }
+   }
+   inputs.set(`${r.session}\0${r.event}`, ids); undelivered.set(`${r.session}\0${r.event}`, absent)
+   return reply({ inputs: ids.map((id, i) => ({ id, title: `entry ${id}`, ...(from[i] ? { unit: from[i] } : {}) })), undelivered: absent })
   },
   lease(r) { leases.add(r.owner); return reply(null) },
   executions(r) {
@@ -35,7 +43,7 @@ export function historyFixture(initial = {}, stageAgents = ["dev", "fix", "simpl
    if (executions[r.dispatch]) return reply({execution:executions[r.dispatch],launchable:false})
    if (Object.values(executions).some(d=>!d.settled && d.root===r.session && d.unit===r.event)) return denied("unit already in flight")
    const attempt=String(1+Object.values(executions).filter(d=>d.root===r.session && d.unit===r.event).length)
-   const d={dispatch:r.dispatch,root:r.session,unit:r.event,attempt,agent:r.agent,caller:r.caller,admitted_at:Date.now(),inputs:[...ids],...(r.child?{child:r.child}:{}),...(r.owner?{owner:r.owner}:{})}
+   const d={dispatch:r.dispatch,root:r.session,unit:r.event,attempt,agent:r.agent,caller:r.caller,admitted_at:Date.now(),inputs:[...ids],...(undelivered.get(`${r.session}\0${r.event}`)?.length?{undelivered:undelivered.get(`${r.session}\0${r.event}`)}:{}),...(r.child?{child:r.child}:{}),...(r.owner?{owner:r.owner}:{})}
    executions[r.dispatch]=d;
    for(const author of r.author_keys??[])claims.push({key:`gate-${r.dispatch}-${author}`,root_session_id:r.session,work_unit_id:r.event,agent_id:r.agent,target_instance:r.agent,pending:true,scope:[],author_key:author})
    return reply({...d,launchable:true})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -12,6 +13,36 @@ import (
 type Rule struct {
 	// WrittenBy is the exact host session that must have written every entry.
 	WrittenBy string
+}
+
+// Current carries each entry ID forward to the current version of its chain. heads is aligned
+// with ids; described holds each distinct head once, in first-seen order. Only an ID that does
+// not exist is refused.
+func Current(ctx context.Context, a *Admin, ids []int64) (heads []int64, described DescribeResult, err error) {
+	res, err := a.Describe(ctx, DescribeInput{IDs: append([]int64{}, ids...)})
+	if err != nil {
+		return nil, res, err
+	}
+	var missing []string
+	var distinct []int64
+	for _, d := range res.Entries {
+		if !d.Exists {
+			missing = append(missing, fmt.Sprintf("#%d does not exist", d.ID))
+			continue
+		}
+		heads = append(heads, d.CurrentVersion)
+		if !slices.Contains(distinct, d.CurrentVersion) {
+			distinct = append(distinct, d.CurrentVersion)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, res, errors.New("refused Takt memory entries: " + strings.Join(missing, "; "))
+	}
+	if slices.Equal(distinct, ids) {
+		return heads, res, nil
+	}
+	described, err = a.Describe(ctx, DescribeInput{IDs: distinct})
+	return heads, described, err
 }
 
 // Validate is the single validator of the harness: one describe call checks every ID

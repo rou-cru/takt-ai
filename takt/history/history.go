@@ -341,9 +341,13 @@ type Entry struct {
 	CreatedAt int64   `json:"created_at,omitempty"`
 	ResultIDs []int64 `json:"result_ids,omitempty"`
 	None      bool    `json:"none,omitempty"`
-	CycleID   string  `json:"cycle_id,omitempty"`
-	Role      string  `json:"role,omitempty"`
-	Phase     string  `json:"phase,omitempty"`
+	// Undelivered names the producer units an inputs declaration named that had
+	// delivered nothing; what the others delivered is in ResultIDs, at its
+	// current version.
+	Undelivered []string `json:"undelivered,omitempty"`
+	CycleID     string   `json:"cycle_id,omitempty"`
+	Role        string   `json:"role,omitempty"`
+	Phase       string   `json:"phase,omitempty"`
 	// Owner is the harness instance an execution or lease belongs to.
 	Owner string `json:"owner,omitempty"`
 	// Model is the provider/model an execution runs, or a restored seat's.

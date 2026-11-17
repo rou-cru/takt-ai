@@ -86,7 +86,7 @@ type CycleClosing = { cycle: string; outcome: string; unapplied_findings: unknow
 const isCycleClosing = (value: unknown): value is CycleClosing =>
   isResponseObject(value) && isString(value.cycle) && isString(value.outcome) && Array.isArray(value.unapplied_findings)
 type Inspection = NonNullable<VFSResponse["inspections"]>[number]
-type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; child?: string; admitted_at: number; inputs: number[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
+type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; child?: string; admitted_at: number; inputs: number[]; undelivered?: string[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
 // SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
 // a model this session has not seen complete work; the user may approve it.
 const SEAT_UNPROVEN = "seat/unproven-model"
@@ -283,9 +283,16 @@ function allowsExplicitly(rules: unknown, toolName: string): boolean {
   return decision === "allow"
 }
 // invariantsNotice tells a delegated unit which recorded invariants it consumes.
-const invariantsNotice = (unit: string, consumed: number[]) => consumed.length > 0
+const invariantsNotice = (unit: string, consumed: number[], undelivered: string[] = []) => (consumed.length > 0
   ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
-  : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.`
+  : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.`)
+  + (undelivered.length ? ` ${undelivered.join(", ")} had delivered nothing when this unit was declared.` : "")
+// declaredInputs reports what a unit will consume, as dispatch_inputs recorded it.
+const declaredInputs = (unit: string, inputs: { id: number; title: string; unit?: string }[], undelivered: string[]) => {
+  const lines = inputs.map(i => `#${i.id} ${i.title}${i.unit ? ` (from ${i.unit})` : ""}`)
+  const absent = undelivered.length ? ` ${undelivered.join(", ")} delivered nothing yet.` : ""
+  return lines.length ? `${unit} consumes: ${lines.join("; ")}.${absent}` : `${unit} consumes no recorded invariant yet.${absent}`
+}
 // gateLine reports one adopted gate of a verifier's assignment.
 const gateLine = (gate: AdoptedGate) => {
   const refusal = gate.error ? ` (gate not adopted: ${gate.error}; report it as unverified)` : ""
@@ -941,8 +948,9 @@ export default Plugin.define({
           // The command text stays as admitted: OpenCode parses it for its own
           // permission check after this hook. The sandbox lives in the shell
           // executable instead, which ignores the arguments it is handed and runs
-          // the supervised command against its projection. A command that
-          // mutates gets the sandbox scratch as home and temporary directory;
+          // the supervised command against its projection. Every command gets the
+          // scratch as its temporary directory, set by the adapter inside the
+          // sandbox; a command that mutates also gets it as home, while
           // inspection runs in the workspace and keeps the real home.
           const quote = (s: string) => `'${s.replaceAll("'", QUOTED_QUOTE)}'`
           const dir = await mkdtemp(join(tmpdir(), "takt-shell-"))
@@ -1296,7 +1304,7 @@ export default Plugin.define({
       const unit = asString(input.description, "").trim()
       const specialist = asString(input.agent, "")
       if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
-      if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing"), unit)
+      if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing; set agent to the specialist and call subagent again"), unit)
       const delegation = `${event.sessionID}:${event.id}`
       try {
         const configured = modelName((await ctx.agent.get({ agentID: specialist })).data.model)
@@ -1733,21 +1741,24 @@ export default Plugin.define({
 
       editor.add({
         name: "dispatch_inputs",
-        description: "Before delegating a unit, declare the Takt memory entry IDs of the invariants it consumes; an empty list declares that none exists yet. The specialist receives them with its delegation; redeclaring replaces the declaration.",
+        description: "Before delegating a unit, declare the invariants it consumes: the work units of this session whose delivered results it consumes, and any other Takt memory entry by ID; both empty declares that none exists yet. Each is carried to its current version, and the specialist receives them with its delegation; redeclaring replaces the declaration.",
         input: obj({
           work_unit_id: str("The unit the delegation will be named after"),
-          result_ids: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the invariants this unit consumes; empty when none has been recorded yet" },
+          result_ids: { type: "array", items: { type: "integer" }, description: "Takt memory entry IDs this unit consumes that no unit of this session delivered, such as a document the user supplied; empty when there are none" },
+          units: { type: "array", items: str(), description: "Work units of this session whose delivered results this unit consumes" },
         }, ["work_unit_id", "result_ids"]),
         async execute(value: unknown, c) {
-          const args = toolInput<{ work_unit_id: string; result_ids?: number[] }>(value)
+          const args = toolInput<{ work_unit_id: string; result_ids?: number[]; units?: string[] }>(value)
           const session = await rootSession(c.sessionID)
           orchestratorOnly(c, "dispatch_inputs")
           if (c.sessionID !== session) throw new Error("dispatch_inputs belongs to the root orchestrator")
           const unit = asString(args.work_unit_id, "").trim()
           const ids = Array.isArray(args.result_ids) ? args.result_ids : []
+          const units = Array.isArray(args.units) ? args.units.map(u => asString(u, "").trim()).filter(Boolean) : []
           if (!unit) throw new Error("Name the unit the delegation will be named after")
-          await governed(c, { action: "inputs", session, event: unit, result_ids: ids })
-          return { content: ids.length > 0 ? `Declared ${ids.length} consumed invariant(s) for ${unit}` : `Declared that ${unit} consumes no recorded invariant yet` }
+          const declared = toolInput<{ inputs: { id: number; title: string; unit?: string }[]; undelivered?: string[] }>(
+            await governed(c, { action: "inputs", session, event: unit, result_ids: ids, units }))
+          return { content: declaredInputs(unit, declared.inputs, declared.undelivered ?? []) }
         },
       })
 
@@ -2119,7 +2130,7 @@ export default Plugin.define({
       })
       editor.add({
         name: "deliver_result",
-        description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ", either the completed artifact or the blocker that ends the unit. Call this before your turn ends.",
+        description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ", either the completed artifact or the blocker that ends the unit.",
         input: obj({
           result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
           blocker: { type: "boolean", description: "true when these entries record a blocker instead of the assigned deliverable" },
@@ -2202,7 +2213,7 @@ export default Plugin.define({
         const root = await rootSession(event.sessionID)
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
-        if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed) })
+        if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed, delegation?.undelivered) })
         if (delegation && !delegation.cycle && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }

@@ -469,7 +469,16 @@ describe("delegation lifecycle", () => {
       await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, { sessionID: "child-r", agent: RESULT_AGENT })).rejects.toThrow("dispatch_inputs belongs to the orchestrator")
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7, 8] }, orchestrator)
-      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",result_ids: [] }, { action: "inputs", session: "root",event:"unit-a",result_ids: [7, 8] }])
+      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",result_ids: [], units: [] }, { action: "inputs", session: "root",event:"unit-a",result_ids: [7, 8], units: [] }])
+    } finally { await vfs.stop() }
+  })
+
+  test("a declaration may name producer units and reports what the unit will consume", async () => {
+    const vfs = await startVfs({ history: { executions: saved({ "root:prd": { root: "root", unit: "prd", delivery: [12], settled: true } }) } })
+    try {
+      const result = await vfs.run("dispatch_inputs", { work_unit_id: "arch", result_ids: [7], units: ["prd", "art"] }, orchestrator)
+      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root", event: "arch", result_ids: [7], units: ["prd", "art"] }])
+      expect(JSON.stringify(result)).toContain("arch consumes: #7 entry 7; #12 entry 12 (from prd). art delivered nothing yet.")
     } finally { await vfs.stop() }
   })
 
@@ -549,6 +558,17 @@ describe("delegation lifecycle", () => {
       const system = await admitProducer(none)
       expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief.")
     } finally { await none.stop() }
+  })
+
+  test("the specialist learns which declared producer units had delivered nothing", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [], units: ["prd"] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      const context = { tools: Object.fromEntries(VFS_TOOL_NAMES.map((name) => [name, {}])), sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
+      await vfs.fire(vfs.session, "context", context)
+      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief. prd had delivered nothing when this unit was declared.")
+    } finally { await vfs.stop() }
   })
 
   test("a declaration survives a plugin restart", async () => {

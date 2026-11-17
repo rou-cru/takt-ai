@@ -1,8 +1,10 @@
 // Takt memory — managed by takt-ai; edits are overwritten on sync.
 // Before each crew memory call this plugin vets the call, asks the user where required, and tells the
-// memory service who is calling. It registers no tools; the model reaches the service as MCP tools.
+// memory service who is calling. After a call the host rejected for its arguments, it tells the caller
+// where the tool's contract is. It registers no tools; the model reaches the service as MCP tools.
 import { randomUUID } from "node:crypto"
 import { Plugin } from "@opencode/plugin"
+import { Error as ToolError } from "@opencode/plugin/promise/tool"
 import { OpenCode } from "@opencode/client"
 import { Service } from "@opencode/client/service"
 
@@ -26,6 +28,15 @@ const USER_ORDER_ACTION = "memory_user_order"
 const PERMISSION_CREATE_TIMEOUT_MS = 60_000
 
 const CODE_FENCE = "```"
+
+// How OpenCode opens its refusal of a call whose arguments fail the tool's input schema.
+const INVALID_ARGUMENTS = "Invalid arguments for tool"
+// The skill holding the memory rules beyond the tools' own descriptions.
+const CONTRACT_SKILL = "takt-memory-contract"
+// contractPointer names where a memory tool's contract is, so a retry reads it instead of guessing.
+const contractPointer = (tool: string) =>
+  `Do not guess the arguments. Read this tool's contract before retrying: in a separate execute call run \`return search({ query: "${tool}" })\` ` +
+  `and pass exactly the input its signature lists; the ${CONTRACT_SKILL} skill states which values your entry takes.`
 
 // Traceability matrix titles are fixed by the memory skills of qa, tpm and verify (PR-QA-9).
 const MATRIX_NAME = "Traceability Matrix"
@@ -269,6 +280,12 @@ export default Plugin.define({
       const grants = event.tool === RECORD_TOOL ? await vetRecord(event) : []
       const root = await claimedRoot(event.sessionID)
       await admin(BIND, key => ({ host_session: event.sessionID, agent: event.agent, claimed_root: root, workspace: key, ...(grants.length ? { grants } : {}) }))
+    })
+
+    // The host's schema refusal says what is wrong, never where the contract is.
+    await ctx.tool.hook("execute.after", async (event) => {
+      if (event.status !== "error" || !event.tool.startsWith(TOOL_PREFIX) || !event.error.message.startsWith(INVALID_ARGUMENTS)) return
+      event.error = new ToolError({ message: `${event.error.message}\n\n${contractPointer(event.tool)}`, error: event.error.error, metadata: event.error.metadata })
     })
 
     // Exiting OpenCode is not a session end: a resumed session (--continue) must keep recording.

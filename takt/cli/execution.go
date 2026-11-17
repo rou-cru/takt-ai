@@ -17,17 +17,49 @@ import (
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
+// declaredInput is one entry a unit consumes, at its current version; Unit names
+// the producer unit it came from, empty for an entry named by ID.
+type declaredInput struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Unit  string `json:"unit,omitempty"`
+}
+
+// declareInputs records what a unit consumes: the entries named by ID and what
+// each named producer unit delivered, every one at its current version. A
+// producer that has delivered nothing is recorded as such, never refused.
 func declareInputs(ctx context.Context, h *history.History, r coordinationRequest) (any, error) {
 	if strings.TrimSpace(r.Event) == "" {
 		return nil, errors.New("dispatch_inputs: name the unit the delegation will be named after")
 	}
-	if len(r.ResultIDs) > 0 {
-		if _, err := checkMemory(ctx, r.ResultIDs, memory.Rule{}); err != nil {
-			return nil, fmt.Errorf("%w; call dispatch_inputs again with current IDs", err)
+	p := h.Project()
+	ids := slices.Clone(r.ResultIDs)
+	from := make([]string, len(ids))
+	var undelivered []string
+	for _, unit := range r.Units {
+		delivered, ok := p.Delivered(r.Session, unit)
+		if !ok {
+			undelivered = append(undelivered, unit)
+			continue
+		}
+		for _, id := range delivered {
+			ids, from = append(ids, id), append(from, unit)
 		}
 	}
-	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: r.ResultIDs, None: len(r.ResultIDs) == 0, Cause: history.CauseNone})
-	return map[string]any{"result_ids": r.ResultIDs}, err
+	var current []int64
+	inputs := []declaredInput{}
+	if len(ids) > 0 {
+		heads, described, err := currentMemory(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("%w; call dispatch_inputs again without them", err)
+		}
+		for _, d := range described.Entries {
+			current = append(current, d.ID)
+			inputs = append(inputs, declaredInput{ID: d.ID, Title: d.Title, Unit: from[slices.Index(heads, d.ID)]})
+		}
+	}
+	err := h.Append(history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindInputs, SessionID: r.Session, WorkUnitID: r.Event, ResultIDs: current, Undelivered: undelivered, None: len(current) == 0 && len(undelivered) == 0, Cause: history.CauseNone})
+	return map[string]any{"inputs": inputs, "undelivered": undelivered}, err
 }
 
 // prepareExecution is one locked decision and effect. Inputs/claims/authors are
