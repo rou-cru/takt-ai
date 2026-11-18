@@ -40,9 +40,15 @@ type Execution struct {
 	AdmittedAt int64  `json:"admitted_at"`
 	// Seq is the history position of the admitting entry: the order of
 	// executions, which AdmittedAt cannot give when two values tie.
-	Seq      int     `json:"-"`
-	Inputs   []int64 `json:"inputs"`
-	Delivery []int64 `json:"delivery,omitempty"`
+	Seq    int     `json:"-"`
+	Inputs []int64 `json:"inputs"`
+	// Undelivered names the producer units its inputs declared that had
+	// delivered nothing when they were declared.
+	Undelivered []string `json:"undelivered,omitempty"`
+	Delivery    []int64  `json:"delivery,omitempty"`
+	// Result is what its deliveries without a blocker mark delivered: what a
+	// consuming unit receives from it (PR-HAR-37).
+	Result []int64 `json:"-"`
 	// Blocker is set when the latest delivery records a blocker: only then may
 	// a later delegation continue this execution's session (PR-HAR-38).
 	Blocker    bool   `json:"blocker,omitempty"`
@@ -79,8 +85,8 @@ func (e Entry) validateExecution() error {
 		return nil
 	}
 	if e.Kind == KindInputs {
-		if e.Author != AuthorOrchestrator || e.WorkUnitID == "" || (len(e.ResultIDs) > 0) == e.None {
-			return errors.New("history: declare either consumed result_ids or none: true, exactly one")
+		if e.Author != AuthorOrchestrator || e.WorkUnitID == "" || (len(e.ResultIDs) > 0 || len(e.Undelivered) > 0) == e.None {
+			return errors.New("history: declare either consumed result_ids or units, or none: true, exactly one")
 		}
 		return nil
 	}
@@ -95,7 +101,9 @@ func (p *Projection) foldExecution(e Entry) {
 		return
 	}
 	if e.Kind == KindInputs {
-		p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)] = slices.Clone(e.ResultIDs)
+		key := UnitKey(e.SessionID, e.WorkUnitID)
+		p.Inputs[key] = slices.Clone(e.ResultIDs)
+		p.Undelivered[key] = slices.Clone(e.Undelivered)
 		return
 	}
 	d := p.Executions[e.Dispatch]
@@ -104,7 +112,7 @@ func (p *Projection) foldExecution(e Entry) {
 		if d.Dispatch != "" {
 			return
 		}
-		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Seq: e.Seq, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
+		d = Execution{Dispatch: e.Dispatch, Root: e.SessionID, Unit: e.WorkUnitID, Attempt: e.AttemptID, Agent: e.Agent, Caller: e.Caller, Child: e.Child, AdmittedAt: e.CreatedAt, Seq: e.Seq, Inputs: append([]int64{}, p.Inputs[UnitKey(e.SessionID, e.WorkUnitID)]...), Undelivered: slices.Clone(p.Undelivered[UnitKey(e.SessionID, e.WorkUnitID)]), Cycle: e.CycleID, Role: e.Role, Owner: e.Owner, Model: e.Model, Substitute: e.Substitute}
 	case KindPrepared:
 		d.Ready = true
 	case KindChild:
@@ -113,6 +121,9 @@ func (p *Projection) foldExecution(e Entry) {
 		for _, id := range e.ResultIDs {
 			if !slices.Contains(d.Delivery, id) {
 				d.Delivery = append(d.Delivery, id)
+			}
+			if !e.Blocker && !slices.Contains(d.Result, id) {
+				d.Result = append(d.Result, id)
 			}
 		}
 		d.Blocker = e.Blocker
@@ -165,6 +176,20 @@ func (p Projection) ReturnedExecution(child string) (Execution, bool) {
 	}
 	return latest, found
 }
+
+// Delivered is what unit last delivered in root: what its latest ordinary
+// execution not ending on a blocker delivered without a blocker mark.
+func (p Projection) Delivered(root, unit string) ([]int64, bool) {
+	var latest Execution
+	found := false
+	for _, d := range p.Executions {
+		if d.Root == root && d.Unit == unit && d.Cycle == "" && len(d.Result) > 0 && !d.Blocker && (!found || d.Seq > latest.Seq) {
+			latest, found = d, true
+		}
+	}
+	return slices.Clone(latest.Result), found
+}
+
 func (h *History) ExecutionFact(d Execution, kind Kind, child, phase string, ids []int64) error {
 	return h.appendExecutionFact(d, Entry{Kind: kind, Child: child, Phase: phase, ResultIDs: ids})
 }

@@ -2,6 +2,8 @@ package memory_test
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -67,5 +69,45 @@ func TestValidateRules(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want it to contain %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCurrentCarriesEachIDToItsHead(t *testing.T) {
+	dir := shortDir(t)
+	initStore(t, dir)
+	r := start(t, dir)
+	own := recordAs(t, r, "child", "draft", nil)
+	sibling := recordAs(t, r, "sibling", "other", nil)
+	revised := recordAs(t, r, "child", "final", &memory.RelatesTo{ID: own, Relation: "supersedes"})
+	admin, err := memory.DialAdmin(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+
+	for _, tc := range []struct {
+		name             string
+		ids, heads, uniq []int64
+	}{
+		{"current entries stay", []int64{revised, sibling}, []int64{revised, sibling}, []int64{revised, sibling}},
+		{"superseded reaches its head", []int64{own}, []int64{revised}, []int64{revised}},
+		{"one head is described once", []int64{own, revised, sibling}, []int64{revised, revised, sibling}, []int64{revised, sibling}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			heads, described, err := memory.Current(context.Background(), admin, tc.ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []int64
+			for _, d := range described.Entries {
+				got = append(got, d.ID)
+			}
+			if !slices.Equal(heads, tc.heads) || !slices.Equal(got, tc.uniq) {
+				t.Fatalf("Current(%v) = heads %v, described %v; want %v, %v", tc.ids, heads, got, tc.heads, tc.uniq)
+			}
+		})
+	}
+	if _, _, err := memory.Current(context.Background(), admin, []int64{sibling, 999}); !errors.Is(err, memory.ErrMissingEntries) || !strings.Contains(err.Error(), "#999 does not exist") {
+		t.Fatalf("Current with an unknown ID = %v; want ErrMissingEntries naming #999", err)
 	}
 }

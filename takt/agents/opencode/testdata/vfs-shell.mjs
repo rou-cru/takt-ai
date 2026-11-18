@@ -99,7 +99,8 @@ const wrapperOf = (input) => readFileSync(input.shell, "utf8")
 const capturing = {
   decision: "allow", reason: "workspace mutation captured as a staged VFS delta: printf staged > data.txt",
   cwd: "/projection", scratch: "/private/shell/scratch", confirm: "/private/shell/confirm",
-  writable: ["/projection/data.txt"], protected: [], private: ["/private", "/workspace"], capture: true,
+  writable: ["/projection/data.txt"], protected: ["/workspace"], private: ["/private", "/workspace"],
+  unreadable: ["/shells"], readable: ["/projection/data.txt"], capture: true,
 }
 
 // 1. A workspace mutation is admitted before the shell exists, runs through a
@@ -125,6 +126,9 @@ assert.equal((await evaluate("printf staged > data.txt")).effect, "allow", "a ca
 // Every path the wrapper received came from the coordinator, none from the model.
 assert.deepEqual(globalThis.__taktWrap.at(-1).options.writable, ["/projection/data.txt"])
 assert.deepEqual(globalThis.__taktWrap.at(-1).options.privatePaths, ["/private", "/workspace"])
+assert.deepEqual(globalThis.__taktWrap.at(-1).options.unreadablePaths, ["/shells"])
+assert.deepEqual(globalThis.__taktWrap.at(-1).options.readablePaths, ["/projection/data.txt"])
+assert.doesNotMatch(script, /export TMPDIR/, "the adapter sets TMPDIR inside the sandbox")
 assert.equal(globalThis.__taktWrap.at(-1).options.callID, prepared.request.call_id)
 await finish()
 const imported = messages.at(-1)
@@ -135,7 +139,7 @@ assert.equal(existsSync(wrapped.shell), false, "the sandboxed shell is removed o
 
 // 2. Read-only inspection runs without approval and without a projection.
 plan = { decision: "allow", reason: "inspection: grep -rn todo .", cwd: "/workspace", scratch: "/private/shell/scratch",
-  confirm: "/private/shell/confirm", writable: ["/private/shell/scratch"], protected: ["/workspace"], private: ["/private"], capture: true }
+  confirm: "/private/shell/confirm", writable: ["/private/shell/scratch"], protected: ["/workspace"], private: ["/private"], unreadable: ["/shells"], capture: true }
 await before("grep -rn todo .")
 const inspected = await create("grep -rn todo .")
 assert.match(wrapperOf(inspected), /cd '\/workspace'/)
@@ -154,7 +158,7 @@ assert.equal(refused.shell, "/bin/sh")
 //    gated again: no approval may broaden a later command.
 plan = { decision: "ask", reason: "privilege escalation, which the VFS cannot capture: sudo rm /etc/hosts",
   cwd: "/workspace", scratch: "/private/shell/scratch", confirm: "/private/shell/confirm",
-  writable: ["/"], protected: ["/workspace"], private: ["/private"], capture: true }
+  writable: ["/"], protected: ["/workspace"], private: ["/private"], unreadable: ["/shells"], capture: true }
 for (const attempt of [1, 2]) {
   await before("sudo rm /etc/hosts")
   await create("sudo rm /etc/hosts")

@@ -470,7 +470,7 @@ func runVFSMutate(fs *vfs.FS, command, state string, req request, caller vfs.Cal
 	case "shell-complete":
 		// Success reports the resulting revision and delta hash even when the
 		// command exited unsuccessfully.
-		result, err := fs.CompleteShell(caller, req.CallID, state)
+		result, err := fs.CompleteShell(caller, req.CallID)
 		return response{OK: true, Revision: &result.Revision, DeltaHash: result.DeltaHash}, err
 	}
 	return nil, fmt.Errorf("vfs: unsupported command %q", command)

@@ -22,7 +22,7 @@ Never expand permissions, file scope, or authority. Do not invent evidence, bypa
 
 ## Coherent delivery
 
-Keep separately authored results compatible as one product. Carry forward decisions, contracts, evidence locations, assumptions, uncertainty, and consequences so the investigation need not be repeated. Agreement supports confidence but is not independent corroboration by itself. For a clash, identify its cause, involve relevant owners, and expose the tradeoff rather than silently rewriting their judgment. Once resolved, align to the decision without relitigating it.
+Keep separately authored results compatible as one product. Carry forward decisions, contracts, evidence locations, assumptions, uncertainty, and consequences by reference to their owner, so the investigation need not be repeated. Agreement supports confidence but is not independent corroboration by itself. For a clash, identify its cause, involve relevant owners, and expose the tradeoff rather than silently rewriting their judgment. Once resolved, align to the decision without relitigating it.
 
 Verify against the user's invariants in the currency of the assignment: check documents for actionable contracts and observable acceptance; demonstrate executable work with pertinent checks. Report what passed, failed, and could not be checked: a requirement is verified, failed, or unverified; a finding ranks critical, warning, or suggestion; a confirmed finding is a failed requirement with evidence. Use an independent verifier when available or required; without one, report self-checks and the missing assurance, never a self-issued gate verdict.
 

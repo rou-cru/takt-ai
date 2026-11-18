@@ -17,7 +17,7 @@ import (
 
 // MaxUnitNameCells bounds a unit name's display width (PR-DAG-REP-8). The DAG
 // view sizes every box to it, so a name is never cut to fit.
-const MaxUnitNameCells = 24
+const MaxUnitNameCells = 26
 
 // ValidateUnitName is the one contract a unit name keeps, in a plan declaration
 // and in the admission of work without a plan (PR-DAG-REP-8): a single line of

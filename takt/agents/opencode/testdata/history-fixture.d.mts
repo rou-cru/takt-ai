@@ -1,7 +1,7 @@
 // Types for the scripted owner used by transport fixtures.
 export type FixtureExecution = {
  dispatch:string;root:string;unit:string;attempt:string;agent:string;caller:string;
- child?:string;inputs:number[];delivery?:number[];admitted_at:number;
+ child?:string;inputs:number[];delivery?:number[];result?:number[];blocker?:boolean;admitted_at:number;
  background?:boolean;settled?:boolean;cycle?:string;role?:string;prompted?:string;launched?:boolean;owner?:string;
 }
 export type FixtureActivity = {

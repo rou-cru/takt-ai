@@ -96,6 +96,52 @@ test('shell transformation is capturable as a VFS-staged transaction', async () 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+// The layout the coordinator prepares: every command's root sits in one base
+// denied for reading only, so the command's own root stays readable and
+// writable, another command's root does not, private state stays unreadable,
+// and TMPDIR inside the sandbox is the command's own scratch.
+test('own root is usable inside a read-denied base, and binary output is captured unchanged', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'takt-roots-')));
+  try {
+    const base = join(root, 'shells');
+    const own = join(base, 'own');
+    const scratch = join(own, 'scratch');
+    const projection = join(own, 'calls', 'one', 'projection');
+    const foreign = join(base, 'other');
+    const workspace = join(root, 'workspace');
+    const storage = join(root, 'storage');
+    for (const p of [scratch, projection, foreign, workspace, storage]) await mkdir(p, { recursive: true });
+    const owned = join(projection, 'x.png');
+    await writeFile(owned, '');
+    await writeFile(join(foreign, 'staged.txt'), 'foreign');
+    await writeFile(join(storage, 'history.sqlite'), 'state');
+    let seq = 0;
+    async function run(command) {
+      const wrapped = await wrap(command, { writable: [owned], scratch, protectedPaths: [workspace],
+        privatePaths: [storage], unreadablePaths: [base], readablePaths: [owned], callID: `roots-${++seq}` });
+      return spawnSync('/bin/sh', ['-c', wrapped], { cwd: projection, encoding: 'utf8', timeout: 15000,
+        env: { PATH: process.env.PATH, HOME: scratch } });
+    }
+    const tmp = await run('printf %s "$TMPDIR" && printf kept > "$TMPDIR/gen.js"');
+    assert.equal(tmp.status, 0, tmp.stderr);
+    assert.equal(tmp.stdout, scratch);
+    assert.equal(await readFile(join(scratch, 'gen.js'), 'utf8'), 'kept');
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff]);
+    await writeFile(join(scratch, 'x.png'), png);
+    const copy = await run(`cp "$TMPDIR/x.png" x.png && cat x.png > /dev/null`);
+    assert.equal(copy.status, 0, copy.stderr);
+    assert.deepEqual(await readFile(owned), png);
+    for (const command of [`cat ${quote(join(foreign, 'staged.txt'))}`, `cat ${quote(join(storage, 'history.sqlite'))}`]) {
+      const denied = await run(command);
+      assert.notEqual(denied.status, 0, `readable: ${command}`);
+      assert.ok(!denied.stdout.includes('foreign') && !denied.stdout.includes('state'), `leaked: ${command}`);
+    }
+    // Linux masks the base and binds the own root back into it, so a listing
+    // may succeed; it never shows another command's root.
+    assert.ok(!(await run(`ls ${quote(base)}`)).stdout.includes('other'), 'another root is listed');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 // The supervised command is what the plugin actually runs: the sandbox confines
 // its writes to the declared projection, the supervisor ends every descendant
 // before the delta is read, and the status record is what authorizes the import.
