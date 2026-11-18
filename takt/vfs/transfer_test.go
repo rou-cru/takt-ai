@@ -196,7 +196,7 @@ func TestReservationConflictsRefuseTheWholeRequest(t *testing.T) {
 	if content, ok := stagedContent(f, reading, "tests.go"); !ok || content != "reader staged" {
 		t.Fatalf("reader staging = %q, %v; want it intact", content, ok)
 	}
-	if _, err := f.CompleteShell(reader, "graph", state); err != nil {
+	if _, err := f.CompleteShell(reader, "graph"); err != nil {
 		t.Fatal(err)
 	}
 	key, err = f.AssignScope(ident("dev", "blocked", "dev"), []string{"src/new.go", "free.go"})

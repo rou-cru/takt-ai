@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	setuputil "github.com/rou-cru/takt-ai/takt/setup/testutil"
@@ -49,7 +50,7 @@ marker="$3/` + strings.TrimPrefix(codegraph.ManagedMarkerKey(), codegraph.Manage
 echo '{}' > "$marker"
 printf '#!/bin/sh\necho ` + codegraph.CodegraphVersion + `\n' > "$bin/codegraph"
 /bin/chmod +x "$bin/codegraph"
-echo '{}' > "$3/node_modules/@anthropic-ai/sandbox-runtime/package.json"
+echo '{"version":"` + opencode.SandboxRuntimeVersion + `"}' > "$3/node_modules/@anthropic-ai/sandbox-runtime/package.json"
 `
 
 // npmFails is an npm that cannot install.
