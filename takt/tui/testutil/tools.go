@@ -50,10 +50,11 @@ esac
 }
 
 // fakeNpmScript stands in for `npm install --prefix <dir>`: it leaves the sandbox runtime package
-// where InstallSandboxDependency looks for it, without the network.
+// where InstallSandboxDependency looks for it, at the version its last argument names, without the network.
 const fakeNpmScript = `#!/bin/sh
+for spec; do :; done
 dir="$3/node_modules/@anthropic-ai/sandbox-runtime"
-mkdir -p "$dir" && echo '{}' > "$dir/package.json"
+mkdir -p "$dir" && printf '{"version":"%s"}\n' "${spec##*@}" > "$dir/package.json"
 `
 
 // RunWithFakeTools runs m with compatible fake opencode, codegraph and npm first on PATH, so tests

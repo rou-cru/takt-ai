@@ -81,7 +81,7 @@ describe("plugin setup", () => {
           if (command === "claims") return JSON.stringify({ ok: true, claims: [{ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/held.ts"] }] })
           if (argv[1] === "dispatch" && request.action === "switch") return JSON.stringify({ ok: true })
           if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false })
-          if (command === "shell-prepare" || command === "shell-continue") return JSON.stringify({ ok: true, shell: { decision: "ask", reason: "review each run", cwd: "/workspace", scratch: "/private/tmp", confirm: "/private/tmp/confirm", capture: false, writable: ["/workspace/src"], protected: ["/workspace/.git"], private: ["/private/secret"] } })
+          if (command === "shell-prepare" || command === "shell-continue") return JSON.stringify({ ok: true, shell: { decision: "ask", reason: "review each run", cwd: "/workspace", scratch: "/private/tmp", confirm: "/private/tmp/confirm", capture: false, writable: ["/workspace/src"], protected: ["/workspace/.git"], private: ["/private/secret"], unreadable: ["/private"], readable: ["/private/tmp"] } })
           if (command === "edit-guard") return JSON.stringify({ok:false,error:"src/held.ts is held by work unit unit-a"})
           if (command === "bind") return JSON.stringify({ ok: true, key: request.agent_id === "verify" ? "verifier-1" : "author-1", attempt_id: "attempt-1", invariants_version: "invariants-1", revision: 0, delta_hash: "delta-0" })
           return JSON.stringify({ ok: true, key: "claim-1", revision: 2, delta_hash: "delta-2", content: "staged content" })
@@ -329,8 +329,8 @@ describe("responseObject", () => {
 
 describe("parseVFSShell", () => {
   test("accepts a well-formed shell decision with every optional field", () => {
-    const raw = { decision: "ask", reason: "confirm", cwd: "/work", scratch: "/tmp/x", confirm: "run it?", capture: true, writable: ["a"], protected: ["b"], private: ["c"] }
-    expect(parseVFSShell(raw)).toEqual({ decision: "ask", reason: "confirm", cwd: "/work", scratch: "/tmp/x", confirm: "run it?", capture: true, writable: ["a"], protected: ["b"], private: ["c"] })
+    const raw = { decision: "ask" as const, reason: "confirm", cwd: "/work", scratch: "/tmp/x", confirm: "run it?", capture: true, writable: ["a"], protected: ["b"], private: ["c"], unreadable: ["d"], readable: ["e"] }
+    expect(parseVFSShell(raw)).toEqual(raw)
   })
   test("accepts the minimal required shape", () => {
     expect(parseVFSShell({ decision: "deny", reason: "no" })).toEqual({ decision: "deny", reason: "no" })
@@ -340,6 +340,7 @@ describe("parseVFSShell", () => {
     expect(parseVFSShell({ decision: "allow" })).toBeUndefined()
     expect(parseVFSShell({ decision: "allow", reason: "x", capture: "yes" })).toBeUndefined()
     expect(parseVFSShell({ decision: "allow", reason: "x", writable: ["a", 1] })).toBeUndefined()
+    expect(parseVFSShell({ decision: "allow", reason: "x", readable: "e" })).toBeUndefined()
     expect(parseVFSShell("not an object")).toBeUndefined()
   })
 })

@@ -42,7 +42,7 @@ Package vfs implements the Virtual File System, the transactional execution laye
   - [func \(f \*FS\) CancelPreparedDelegation\(root, unit, attempt string\) \(err error\)](<#FS.CancelPreparedDelegation>)
   - [func \(f \*FS\) Close\(\) error](<#FS.Close>)
   - [func \(f \*FS\) CompleteCycle\(cycleID string\) \(err error\)](<#FS.CompleteCycle>)
-  - [func \(f \*FS\) CompleteShell\(c Caller, callID, stateDir string\) \(result OperationResult, err error\)](<#FS.CompleteShell>)
+  - [func \(f \*FS\) CompleteShell\(c Caller, callID string\) \(result OperationResult, err error\)](<#FS.CompleteShell>)
   - [func \(f \*FS\) ConsolidateAs\(c Caller, author AgentID, checkpoint string, accepted \*StagedState\) \(seq int, err error\)](<#FS.ConsolidateAs>)
   - [func \(f \*FS\) ConsolidateCheckpoint\(key AgentID, checkpoint string, expected uint64, acceptFailing bool\) \(err error\)](<#FS.ConsolidateCheckpoint>)
   - [func \(f \*FS\) ContinueShell\(c Caller, callID, phase string\) \(plan ShellPlan, err error\)](<#FS.ContinueShell>)
@@ -584,7 +584,7 @@ CompleteCycle releases cycleID's discard state after it closed without regressin
 ### func \(\*FS\) CompleteShell
 
 ```go
-func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationResult, err error)
+func (f *FS) CompleteShell(c Caller, callID string) (result OperationResult, err error)
 ```
 
 CompleteShell consumes a host completion of the command prepared under callID. Only the core's recorded plan decides whether it imports a captured delta or just releases an inspection. A capture is admitted as one VFS transaction into the binding recorded at preparation, which c must still hold: the captured projection becomes staged content through the same path the file tools use. Staged work that changed since preparation is refused, never overwritten. A failing command keeps its delta, retained and unverified \(PR\-VFS\-CSL\-5\).
@@ -1283,6 +1283,12 @@ type ShellPlan struct {
     Writable  []string `json:"writable,omitempty"`
     Protected []string `json:"protected,omitempty"`
     Private   []string `json:"private,omitempty"`
+    // Unreadable is denied for reading only: the base holding every command's
+    // sandbox root. Readable re-allows reading inside a denied path: the
+    // projection's files and the managed CodeGraph install; the sandbox
+    // re-allows the scratch itself.
+    Unreadable []string `json:"unreadable,omitempty"`
+    Readable   []string `json:"readable,omitempty"`
     // AllowedDomains is the user's network allowlist for the sandbox; absent
     // leaves the network unrestricted.
     AllowedDomains []string `json:"allowedDomains,omitempty"`

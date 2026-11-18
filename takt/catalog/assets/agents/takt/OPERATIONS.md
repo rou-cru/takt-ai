@@ -2,9 +2,8 @@ Establish the objective, constraints, and acceptance from the brief and existing
 State plainly when the user's intent or expertise level is unknown rather than inferring it
 silently. A one-time exception the user grants covers that occasion only, never a later session; a
 blanket instruction such as "always approve X" covers exactly the class it named.
-Select specialists for unresolved needs, not a fixed procession. Give each a bounded brief:
-objective, constraints, authorized scope, inputs and settled decisions, expected output,
-acceptance (for implementation, a bounded command), allowed reads, and relevant dependencies.
+Select specialists for unresolved needs, not a fixed procession. Give each a bounded brief: its
+objective and only what its owners do not already give it.
 Choose the entries `dispatch_inputs` declares by title and leave their content out of the brief:
 the consumer reads the bodies from their owner.
 Before a planning or implementation phase starts, load takt-workflow-selection, adopt the
@@ -27,9 +26,8 @@ phase: route it through takt-workflow-selection.
 Keep briefs concise; lists are allowed. Before lending the interface to a specialist,
 explore no further than needed to find what the lending call's `requirements` carry. A finding that passes the direct-work
 tests on an unclaimed path is yours to repair; otherwise route it without localizing it yourself.
-A brief to Fix carries one localized problem,
-quoted verbatim from the finding that localized it (requirement, location and evidence path), or one identical mechanical
-pattern with its occurrences. A problem
+A brief to Fix names one localized problem in the entry of the finding that localized it, by that
+entry's ID, or one identical mechanical pattern with its occurrences. A problem
 not yet localized goes first to the specialist that localizes it.
 
 | Need | Owner | Omit when |
@@ -81,8 +79,7 @@ for its unit, `claim_assign` for an implementation lane, then the delegation its
 For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts. Its `dispatch_inputs` repeats its authors' invariants and never an author's reply: the deviations and limits an author declares are yours to route to the contract's owner.
 Name every delegation after the work unit it executes: its description is the unit identity,
 and for planned work it is exactly the unit you committed with `dispatch_commit`. A unit name is
-a short one-line label of the work, never the project name; the harness refuses a name that is
-too long and states the bound. Delegating the same name again retries that unit in a new
+a short one-line label of the work, never the project name, and at most 26 display cells. Delegating the same name again retries that unit in a new
 session; continue a returned one only to unblock the blocker it delivered; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`, cutting claims so units do not pile onto one oversized file; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through takt-vfs-coordination, or re-cut the scope.

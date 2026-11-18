@@ -168,14 +168,18 @@ func topLevelDelivery(t *testing.T, bin string) {
 	requireNamed(t, s.rejected(validate(final+99)), idRef(final+99)+" does not exist")
 }
 
-// inputsAreCurrent covers PR-HAR-37 and the pm rule: a superseded input is refused naming its current
-// version, and the pm session that wrote a consumed entry cannot be resumed to consume it.
+// inputsAreCurrent covers PR-HAR-37 and the pm rule: a superseded input is carried to its current
+// version, a missing one is refused, and the pm session that wrote a consumed entry cannot be
+// resumed to consume it.
 func inputsAreCurrent(t *testing.T, bin string) {
 	s := newSession(t, bin)
 	draft := s.record("writer", "draft", 0)
 	final := s.record("writer", "final", draft)
-	requireNamed(t, s.rejected(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{draft}}), "current version is "+idRef(final))
-	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{final}})
+	s.must(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{draft, final}})
+	if got := s.projection().Inputs[history.UnitKey(rootSession, "brief")]; !slices.Equal(got, []int64{final}) {
+		t.Fatalf("superseded input recorded as %v, want its current version %v", got, final)
+	}
+	requireNamed(t, s.rejected(request{Action: "inputs", Session: rootSession, Event: "brief", ResultIDs: []int64{final + 99}}), idRef(final+99)+" does not exist")
 
 	story := s.record("pm-stories", "user story", 0)
 	s.must(request{Action: "inputs", Session: rootSession, Event: "business-docs", ResultIDs: []int64{story}})
@@ -190,6 +194,46 @@ func inputsAreCurrent(t *testing.T, bin string) {
 	s.must(request{Action: "inputs", Session: rootSession, Event: "other-docs", ResultIDs: []int64{story}})
 	other := request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "other-docs", Dispatch: "other-call", Caller: rootSession, Agent: "pm", Child: "pm-docs"}
 	s.must(other)
+}
+
+// producerUnitInputs covers PR-HAR-37 for producer units: a consumer declared by unit receives what
+// that unit last delivered without a blocker, at its current version, and a unit that has delivered
+// nothing is recorded as such rather than refused.
+func producerUnitInputs(t *testing.T, bin string) {
+	s := newSession(t, bin)
+	user := s.record("orchestrator", "user brief", 0)
+	produce := func(unit, child string, blocker bool) int64 {
+		s.must(request{Action: "inputs", Session: rootSession, Event: unit, ResultIDs: []int64{user}})
+		s.must(request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: unit, Dispatch: child + "-call", Caller: rootSession, Agent: "architect", Child: child})
+		id := s.record(child, unit+" result", 0)
+		s.must(request{Action: "deliver", Session: rootSession, Child: child, Agent: "architect", ResultIDs: []int64{id}, Blocker: blocker})
+		s.must(request{Action: "finish", Session: rootSession, Event: unit, Agent: "architect"})
+		return id
+	}
+	prd := produce("prd", "prd-child", false)
+	revised := s.record("prd-reviser", "prd revised", prd)
+	produce("visuals", "visuals-child", true)
+
+	var declared struct {
+		Inputs []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+			Unit  string `json:"unit"`
+		} `json:"inputs"`
+		Undelivered []string `json:"undelivered"`
+	}
+	s.must(request{Action: "inputs", Session: rootSession, Event: "architecture", ResultIDs: []int64{user}, Units: []string{"prd", "visuals", "levels"}}).decode(t, &declared)
+	if len(declared.Inputs) != 2 || declared.Inputs[0].ID != user || declared.Inputs[1].ID != revised || declared.Inputs[1].Unit != "prd" || declared.Inputs[1].Title != "prd revised" {
+		t.Fatalf("declared inputs = %+v, want the user brief and the prd's current version from unit prd", declared.Inputs)
+	}
+	if !slices.Equal(declared.Undelivered, []string{"visuals", "levels"}) {
+		t.Fatalf("undelivered = %v, want the blocked and the absent producer", declared.Undelivered)
+	}
+	var admitted history.Execution
+	s.must(request{Action: "prepare", Owner: testOwnerInstance, Session: rootSession, Event: "architecture", Dispatch: "arch-call", Caller: rootSession, Agent: "architect"}).decode(t, &admitted)
+	if !slices.Equal(admitted.Inputs, []int64{user, revised}) || !slices.Equal(admitted.Undelivered, []string{"visuals", "levels"}) {
+		t.Fatalf("admitted inputs %v undelivered %v", admitted.Inputs, admitted.Undelivered)
+	}
 }
 
 // continuationNeedsBlocker covers PR-HAR-38: a session whose delegation returned a

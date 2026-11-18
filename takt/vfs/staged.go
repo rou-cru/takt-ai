@@ -57,4 +57,5 @@ func (f *FS) rollbackLocked(key AgentID) {
 		d.revision++
 	}
 	f.releaseOwnershipLocked(key)
+	f.dropAuthorRootLocked(key)
 }

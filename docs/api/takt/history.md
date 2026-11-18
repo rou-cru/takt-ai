@@ -12,8 +12,11 @@ Package history keeps the execution history: the append\-only, totally ordered r
 
 - [Constants](<#constants>)
 - [func AllowanceKey\(bound, objective string\) string](<#AllowanceKey>)
+- [func GlobalStateDir\(\) \(string, error\)](<#GlobalStateDir>)
 - [func LaneUnit\(cycle, role string\) \(unit, agent string\)](<#LaneUnit>)
+- [func RegisterStateDirs\(dirs ...string\) \(err error\)](<#RegisterStateDirs>)
 - [func StateDir\(workspace string\) string](<#StateDir>)
+- [func StateDirs\(\) \(\[\]string, error\)](<#StateDirs>)
 - [func UnitKey\(session, unit string\) string](<#UnitKey>)
 - [func ValidateUnitName\(name string\) error](<#ValidateUnitName>)
 - [type Activity](<#Activity>)
@@ -52,6 +55,7 @@ Package history keeps the execution history: the append\-only, totally ordered r
   - [func Project\(entries \[\]Entry\) Projection](<#Project>)
   - [func ReadProjection\(stateDir string\) \(Projection, error\)](<#ReadProjection>)
   - [func \(p Projection\) Budgets\(session string\) Budgets](<#Projection.Budgets>)
+  - [func \(p Projection\) Delivered\(root, unit string\) \(\[\]int64, bool\)](<#Projection.Delivered>)
   - [func \(p Projection\) ExecutionForChild\(child, agent string\) \(Execution, bool\)](<#Projection.ExecutionForChild>)
   - [func \(p Projection\) HeldRoot\(session string\) \(root string, ok bool\)](<#Projection.HeldRoot>)
   - [func \(p Projection\) InFlight\(\) int](<#Projection.InFlight>)
@@ -175,7 +179,7 @@ const MaxPageSize = 500
 <a name="MaxUnitNameCells"></a>MaxUnitNameCells bounds a unit name's display width \(PR\-DAG\-REP\-8\). The DAG view sizes every box to it, so a name is never cut to fit.
 
 ```go
-const MaxUnitNameCells = 24
+const MaxUnitNameCells = 26
 ```
 
 <a name="SnapshotSchemaVersion"></a>SnapshotSchemaVersion is the wire shape version every snapshot reports, so a future breaking change to the contract is visible to a caller instead of silently changing shape under it.
@@ -193,6 +197,15 @@ func AllowanceKey(bound, objective string) string
 
 AllowanceKey names the scope an exception's allowance applies to: a bound, narrowed by objective where the exception is objective\-scoped, so an exception never authorizes unrelated work \(PR\-HAR\-22\).
 
+<a name="GlobalStateDir"></a>
+## func GlobalStateDir
+
+```go
+func GlobalStateDir() (string, error)
+```
+
+GlobalStateDir is Takt's per\-user state directory, \~/.takt\-ai.
+
 <a name="LaneUnit"></a>
 ## func LaneUnit
 
@@ -202,6 +215,15 @@ func LaneUnit(cycle, role string) (unit, agent string)
 
 LaneUnit is the work unit and catalog agent of a maintenance cycle's lane for role: the collector runs as the cycle itself, the verifier as its own unit.
 
+<a name="RegisterStateDirs"></a>
+## func RegisterStateDirs
+
+```go
+func RegisterStateDirs(dirs ...string) (err error)
+```
+
+RegisterStateDirs adds the absolute dirs the registry does not list yet. Concurrent registrations may repeat a line; StateDirs reads each path once. A dir holding a glob character is refused: no sandbox can deny it by literal path, so its workspace must not open and store state there.
+
 <a name="StateDir"></a>
 ## func StateDir
 
@@ -210,6 +232,15 @@ func StateDir(workspace string) string
 ```
 
 StateDir is the private state directory of a workspace, shared by the VFS store and the execution history.
+
+<a name="StateDirs"></a>
+## func StateDirs
+
+```go
+func StateDirs() ([]string, error)
+```
+
+StateDirs lists the registered state directories in registration order. An absent registry lists none.
 
 <a name="UnitKey"></a>
 ## func UnitKey
@@ -490,9 +521,13 @@ type Entry struct {
     CreatedAt int64   `json:"created_at,omitempty"`
     ResultIDs []int64 `json:"result_ids,omitempty"`
     None      bool    `json:"none,omitempty"`
-    CycleID   string  `json:"cycle_id,omitempty"`
-    Role      string  `json:"role,omitempty"`
-    Phase     string  `json:"phase,omitempty"`
+    // Undelivered names the producer units an inputs declaration named that had
+    // delivered nothing; what the others delivered is in ResultIDs, at its
+    // current version.
+    Undelivered []string `json:"undelivered,omitempty"`
+    CycleID     string   `json:"cycle_id,omitempty"`
+    Role        string   `json:"role,omitempty"`
+    Phase       string   `json:"phase,omitempty"`
     // Owner is the harness instance an execution or lease belongs to.
     Owner string `json:"owner,omitempty"`
     // Model is the provider/model an execution runs, or a restored seat's.
@@ -541,9 +576,15 @@ type Execution struct {
     AdmittedAt int64  `json:"admitted_at"`
     // Seq is the history position of the admitting entry: the order of
     // executions, which AdmittedAt cannot give when two values tie.
-    Seq      int     `json:"-"`
-    Inputs   []int64 `json:"inputs"`
-    Delivery []int64 `json:"delivery,omitempty"`
+    Seq    int     `json:"-"`
+    Inputs []int64 `json:"inputs"`
+    // Undelivered names the producer units its inputs declared that had
+    // delivered nothing when they were declared.
+    Undelivered []string `json:"undelivered,omitempty"`
+    Delivery    []int64  `json:"delivery,omitempty"`
+    // Result is what its deliveries without a blocker mark delivered: what a
+    // consuming unit receives from it (PR-HAR-37).
+    Result []int64 `json:"-"`
     // Blocker is set when the latest delivery records a blocker: only then may
     // a later delegation continue this execution's session (PR-HAR-38).
     Blocker    bool   `json:"blocker,omitempty"`
@@ -909,8 +950,11 @@ Projection is the derived execution DAG state. It is never edited in place: it i
 
 ```go
 type Projection struct {
-    Inputs     map[string][]int64   `json:"inputs"`
-    Executions map[string]Execution `json:"executions"`
+    Inputs map[string][]int64 `json:"inputs"`
+    // Undelivered is keyed like Inputs: the declared producer units that had
+    // delivered nothing.
+    Undelivered map[string][]string  `json:"undelivered,omitempty"`
+    Executions  map[string]Execution `json:"executions"`
     // Leases maps each harness instance to its last renewal, in Unix ms.
     Leases map[string]int64 `json:"leases"`
     // Units is keyed by UnitKey: a unit name belongs to the root session that
@@ -951,6 +995,15 @@ func (p Projection) Budgets(session string) Budgets
 ```
 
 Budgets returns a session's consumption; a session with nothing recorded has consumed nothing.
+
+<a name="Projection.Delivered"></a>
+### func \(Projection\) Delivered
+
+```go
+func (p Projection) Delivered(root, unit string) ([]int64, bool)
+```
+
+Delivered is what unit last delivered in root: what its latest ordinary execution not ending on a blocker delivered without a blocker mark.
 
 <a name="Projection.ExecutionForChild"></a>
 ### func \(Projection\) ExecutionForChild

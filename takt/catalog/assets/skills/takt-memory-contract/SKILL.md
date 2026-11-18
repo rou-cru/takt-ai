@@ -26,7 +26,7 @@ in. Genuinely distinct artifacts each get their own self-contained entry.
 
 The Takt memory write must succeed before the result is delivered. A repository copy exists only
 when the user asks for one, and carries the content already recorded. Present the entry's ID
-through the assigned handoff operation, not through a phrase in your final answer.
+through the assigned handoff operation.
 
 ## 2. Natures
 

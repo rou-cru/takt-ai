@@ -28,7 +28,7 @@ metadata:
 
 ## When
 
-- When the work breakdown is accepted, before you return your result.
+- When the work breakdown is complete, before you return your result.
 
 ## Never records
 
