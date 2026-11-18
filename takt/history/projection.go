@@ -328,8 +328,11 @@ type Budgets struct {
 // Projection is the derived execution DAG state. It is never edited in place:
 // it is recomputed from the record.
 type Projection struct {
-	Inputs     map[string][]int64   `json:"inputs"`
-	Executions map[string]Execution `json:"executions"`
+	Inputs map[string][]int64 `json:"inputs"`
+	// Undelivered is keyed like Inputs: the declared producer units that had
+	// delivered nothing.
+	Undelivered map[string][]string  `json:"undelivered,omitempty"`
+	Executions  map[string]Execution `json:"executions"`
 	// Leases maps each harness instance to its last renewal, in Unix ms.
 	Leases map[string]int64 `json:"leases"`
 	// Units is keyed by UnitKey: a unit name belongs to the root session that
@@ -397,7 +400,7 @@ func Project(entries []Entry) Projection {
 }
 
 func newProjection() Projection {
-	return Projection{Inputs: map[string][]int64{}, Executions: map[string]Execution{}, Leases: map[string]int64{}, Units: map[string]Unit{}, Activities: map[string]Activity{}, Sessions: map[string]*Budgets{}}
+	return Projection{Inputs: map[string][]int64{}, Undelivered: map[string][]string{}, Executions: map[string]Execution{}, Leases: map[string]int64{}, Units: map[string]Unit{}, Activities: map[string]Activity{}, Sessions: map[string]*Budgets{}}
 }
 
 // fold applies one recorded entry. Project is the fold of every entry in

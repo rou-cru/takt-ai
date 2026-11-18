@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path';
 
 // QUOTED_QUOTE closes a single-quoted shell word, emits a literal quote and reopens it.
 const QUOTED_QUOTE = String.raw`'\''`;
+const quote = s => `'${s.replaceAll("'", QUOTED_QUOTE)}'`;
 
 // SHELL_ESCAPED_DESCENDANTS is the status a supervised command exits with when a
 // descendant outlived it: nothing confirms the projection is settled, so the
@@ -45,28 +46,31 @@ function restrictNetwork(allowedDomains) {
   return restart;
 }
 
-export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], allowedDomains, callID }) {
+export async function wrap(command, { writable, scratch, protectedPaths = [], privatePaths = [], unreadablePaths = [], readablePaths = [], allowedDomains, callID }) {
   if (!['darwin', 'linux'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch)) {
     throw new Error('Takt sandbox: unsupported target; no direct-shell fallback');
   }
   const deps = await SandboxManager.checkDependenciesAsync();
   if (deps.errors.length) throw new Error(`Takt sandbox dependencies: ${deps.errors.join(', ')}`);
   if (!callID || !scratch || !writable?.length || !(protectedPaths.length || privatePaths.length) ||
-      [...writable, scratch, ...protectedPaths, ...privatePaths].some(p => !isAbsolute(p) || /[*?[\]]/.test(p))) {
+      [...writable, scratch, ...protectedPaths, ...privatePaths, ...unreadablePaths, ...readablePaths].some(p => !isAbsolute(p) || /[*?[\]]/.test(p))) {
     throw new Error('Takt sandbox: explicit absolute literal paths and call ID required');
   }
   // SRT grants shared temp/log directories by default. They are NOT private
   // scratch and must be carved out explicitly. Device stdio is retained.
   if (allowedDomains !== undefined) await restrictNetwork(allowedDomains);
   const denyDefaults = getDefaultWritePaths().filter(p => !p.startsWith('/dev/'));
-  return SandboxManager.wrapWithSandbox(command, '/bin/sh', {
+  // SRT points TMPDIR at its own default, which is denied above; the export
+  // runs inside the sandbox, after SRT's environment, so the scratch wins.
+  return SandboxManager.wrapWithSandbox(`export TMPDIR=${quote(scratch)}; ${command}`, '/bin/sh', {
     filesystem: {
       allowWrite: [...writable, scratch],
       denyWrite: [...protectedPaths, ...privatePaths, ...denyDefaults],
-      denyRead: privatePaths,
-      // The call's own scratch may sit inside a denied directory, such as the
-      // one holding every call's sandbox root; it stays readable to its command.
-      allowRead: [scratch],
+      // Unreadable paths are denied for reading only, so a write grant inside
+      // them, such as the call's own sandbox root, still holds: a write denial
+      // there would win over it.
+      denyRead: [...privatePaths, ...unreadablePaths],
+      allowRead: [scratch, ...readablePaths],
     },
     // Network is restricted only when the user configured an allowlist: absent
     // means unrestricted, and [] would block every domain.

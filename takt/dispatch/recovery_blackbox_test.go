@@ -20,6 +20,10 @@ var recoveryUnits = []string{"a", "b"}
 
 func openRecoveryFS(t *testing.T) *vfs.FS {
 	t.Helper()
+	// The VFS registers its state under the user's home and keeps sandbox
+	// roots in the user cache; a host test reaches neither.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	f, err := vfs.Open(t.TempDir(), filepath.Join(t.TempDir(), "state"))
 	if err != nil {
 		t.Fatalf("vfs.Open() error = %v", err)

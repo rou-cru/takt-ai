@@ -49,6 +49,8 @@ type coordinationRequest struct {
 	AdditionalContext string           `json:"additional_context"`
 	ExtraArtifacts    []string         `json:"extra_artifacts"`
 	ResultIDs         []int64          `json:"result_ids"`
+	// Units are the producer units an inputs declaration consumes.
+	Units []string `json:"units,omitempty"`
 	// Blocker marks a delivery whose entries record a blocker (PR-HAR-38).
 	Blocker bool `json:"blocker,omitempty"`
 	// Requirements are the entry IDs a switch declares for the lent session;
@@ -94,6 +96,16 @@ func checkMemory(ctx context.Context, ids []int64, rule memory.Rule) (_ memory.D
 	}
 	defer func() { err = errors.Join(err, admin.Close()) }()
 	return memory.Validate(ctx, admin, ids, rule)
+}
+
+// currentMemory carries entry IDs forward to their current versions over the harness's admin connection.
+func currentMemory(ctx context.Context, ids []int64) (_ []int64, _ memory.DescribeResult, err error) {
+	admin, err := memoryAdmin(ctx)
+	if err != nil {
+		return nil, memory.DescribeResult{}, err
+	}
+	defer func() { err = errors.Join(err, admin.Close()) }()
+	return memory.Current(ctx, admin, ids)
 }
 
 // journalRef is the Action Journal position an execution-history entry is

@@ -42,6 +42,7 @@ Package memory is Takt's own memory store: a SQLite database owned by the memory
 - [type ContinueInput](<#ContinueInput>)
 - [type DescribeInput](<#DescribeInput>)
 - [type DescribeResult](<#DescribeResult>)
+  - [func Current\(ctx context.Context, a \*Admin, ids \[\]int64\) \(heads \[\]int64, described DescribeResult, err error\)](<#Current>)
   - [func Validate\(ctx context.Context, a \*Admin, ids \[\]int64, rule Rule\) \(DescribeResult, error\)](<#Validate>)
 - [type Described](<#Described>)
 - [type DescribedRelation](<#DescribedRelation>)
@@ -292,6 +293,12 @@ var (
     // ErrBusy reports a write that could not take the write lock in time; it had no effect and can be retried.
     ErrBusy = errors.New("the Takt memory store is busy; retry the call")
 )
+```
+
+<a name="ErrMissingEntries"></a>ErrMissingEntries marks a refusal of IDs that name no entry: only those IDs need correcting; any other Current error leaves the IDs valid to retry.
+
+```go
+var ErrMissingEntries = errors.New("refused Takt memory entries")
 ```
 
 <a name="Tools"></a>Tools are the six tools of /crew and /external, with the same texts for every caller.
@@ -657,6 +664,15 @@ type DescribeResult struct {
     Entries []Described `json:"entries"`
 }
 ```
+
+<a name="Current"></a>
+### func Current
+
+```go
+func Current(ctx context.Context, a *Admin, ids []int64) (heads []int64, described DescribeResult, err error)
+```
+
+Current carries each entry ID forward to the current version of its chain. heads is aligned with ids; described holds each distinct head once, in first\-seen order. Only an ID that does not exist is refused.
 
 <a name="Validate"></a>
 ### func Validate

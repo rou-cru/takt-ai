@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Error as ToolError } from "@opencode/plugin/promise/tool"
 
 // The plugin is rendered the way the deployment renders it (test-render.ts), so the hook runs against a
 // fake /admin on a real Unix socket of this test's own.
@@ -17,6 +18,7 @@ afterAll(() => { rmSync(dir, { recursive: true, force: true }) })
 type Described = { id: number; exists: boolean; title?: string; outgoing?: Array<{ entry: number; kind: string }> }
 type AdminCall = { tool: string; args: Record<string, unknown> }
 type HookEvent = { tool: string; sessionID: string; agent: string; messageID: string; id: string; input: unknown }
+type AfterEvent = HookEvent & ({ status: "completed"; result: unknown } | { status: "error"; error: ToolError })
 
 // fakeAdmin answers /admin as the service does: it requires the headers the Streamable HTTP transport requires.
 function fakeAdmin(entries: Described[]) {
@@ -68,15 +70,17 @@ async function startMemory(options: Options = {}) {
     return { stdout: `${JSON.stringify({ workspace: KEY, socket: SOCKET })}\n`, stderr: "", exited: Promise.resolve(0) }
   }) as typeof originalSpawn
   let hook: (event: HookEvent) => Promise<void> = async () => {}
+  let after: (event: AfterEvent) => Promise<void> = async () => {}
   const hookNames: string[] = []
   const cleanup = await memoryPlugin.setup({
     location: { directory: WORKSPACE },
     session: { async get({ sessionID }: { sessionID: string }) { return { id: sessionID, ...options.sessions?.[sessionID] } } },
-    tool: { async hook(name: string, callback: typeof hook) { hookNames.push(name); hook = callback; return { dispose() {} } } },
+    tool: { async hook(name: string, callback: typeof hook) { hookNames.push(name); if (name === "execute.after") after = callback as never; else hook = callback; return { dispose() {} } } },
     event: { subscribe() { return { [Symbol.asyncIterator]() { return { next: () => new Promise<never>(() => {}) } } } } },
   } as never)
   return {
     spawns, cwds, created, hookNames, hook: (event: HookEvent) => hook(event),
+    after: async (event: AfterEvent) => { await after(event); return event },
     calls: () => admin?.calls ?? [],
     run: (tool: string, input: unknown, agent = "dev", sessionID = "root") =>
       hook({ tool: `takt_memory_${tool}`, sessionID, agent, messageID: "message", id: "tool-call", input }),
@@ -95,7 +99,7 @@ describe("binding", () => {
       await memory.run("search", { query: "x", scope: "workspace" }, "dev", "child")
       await memory.run("read", { id: 1 }, "dev", "child")
       await memory.run("record", record(), "takt", "top")
-      expect(memory.hookNames).toEqual(["execute.before"])
+      expect(memory.hookNames).toEqual(["execute.before", "execute.after"])
       expect(memory.calls()).toEqual([
         { tool: "bind", args: { host_session: "child", agent: "dev", claimed_root: "top", workspace: KEY } },
         { tool: "bind", args: { host_session: "child", agent: "dev", claimed_root: "top", workspace: KEY } },
@@ -259,5 +263,35 @@ describe("traceability matrix", () => {
   test("a dispute and an unrelated record stay open to any author", async () => {
     await accepted("dev", record({ title: "the matrix is wrong", relates_to: { id: 2, relation: "disputes" } }))
     await accepted("dev", record({ relates_to: { id: 9, relation: "supplements" } }))
+  })
+})
+
+describe("rejected arguments", () => {
+  const INVALID = 'Invalid arguments for tool "takt_memory_record":\n- nature: Missing key\n\nUpdate the arguments and call the tool again.'
+  const failed = (tool: string, message: string): AfterEvent =>
+    ({ tool, sessionID: "root", agent: "architect", messageID: "m", id: "i", input: {}, status: "error", error: new ToolError({ message, metadata: { kept: true } }) })
+  const messageOf = (event: AfterEvent) => event.status === "error" ? event.error.message : ""
+
+  test("a memory call the host rejected for its arguments learns where the contract is", async () => {
+    const memory = await startMemory()
+    try {
+      const event = await memory.after(failed("takt_memory_record", INVALID))
+      expect(messageOf(event)).toStartWith(INVALID)
+      expect(messageOf(event)).toContain('return search({ query: "takt_memory_record" })')
+      expect(messageOf(event)).toContain("takt-memory-contract")
+      expect(event.status === "error" && event.error).toBeInstanceOf(ToolError)
+      expect(event).toMatchObject({ error: { metadata: { kept: true } } })
+    } finally { memory.stop() }
+  })
+
+  test("any other outcome is left as it was", async () => {
+    const memory = await startMemory()
+    try {
+      const refusal = "a decision requires evidence; state what it rests on"
+      expect(messageOf(await memory.after(failed("takt_memory_record", refusal)))).toBe(refusal)
+      expect(messageOf(await memory.after(failed("shell", INVALID)))).toBe(INVALID)
+      const completed: AfterEvent = { tool: "takt_memory_record", sessionID: "root", agent: "architect", messageID: "m", id: "i", input: {}, status: "completed", result: { content: [] } }
+      expect(await memory.after(completed)).toEqual({ ...completed })
+    } finally { memory.stop() }
   })
 })

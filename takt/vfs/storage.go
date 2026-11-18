@@ -30,6 +30,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/internal/flock"
+	"github.com/rou-cru/takt-ai/takt/obs"
 	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
 	_ "modernc.org/sqlite"
 )
@@ -103,6 +104,11 @@ func Open(rootDir, stateDir string) (_ *FS, err error) {
 		return nil, err
 	}
 	f.stateDir = stateDir
+	// Every sandbox on this host denies this store and the workspace's event
+	// store, not only the sandboxes of this workspace.
+	if err = history.RegisterStateDirs(stateDir, filepath.Join(f.rootDir, obs.StateDirName)); err != nil {
+		return nil, err
+	}
 	if err = f.openStateDB(stateDir); err != nil {
 		return nil, err
 	}

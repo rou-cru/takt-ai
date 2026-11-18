@@ -274,8 +274,7 @@ No reason outside this list justifies an edge.
 
 ## 7. Specialist Routing
 
-Route by the need table in your OPERATIONS; this skill adds no second one. Every handoff
-carries decisions, contracts, evidence, assumptions, and limits. When interfaces prevent
+Route by the need table in your OPERATIONS; this skill adds no second one. When interfaces prevent
 concurrency, return to Architect; behavioral gaps go to Spec and experience gaps to
 Designer. TPM revises decomposition when needed; Takt revises the graph. An owner that
 cannot run has its seat restored per OPERATIONS.

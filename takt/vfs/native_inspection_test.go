@@ -157,7 +157,7 @@ func TestCodeGraphShellInspectionBlocksConcurrentClaims(t *testing.T) {
 	if _, err := f.AssignScope(ident("dev", "new", "dev"), []string{"src/new.go"}); err == nil {
 		t.Fatal("CodeGraph workspace reservation did not defer claim")
 	}
-	if _, err := f.CompleteShell(author, "graph", "state"); err != nil {
+	if _, err := f.CompleteShell(author, "graph"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.AssignScope(ident("dev", "new2", "dev"), []string{"src/new.go"}); err != nil {

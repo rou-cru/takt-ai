@@ -25,6 +25,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/rou-cru/takt-ai/takt/codegraph"
+	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
 )
@@ -93,6 +95,12 @@ type ShellPlan struct {
 	Writable  []string `json:"writable,omitempty"`
 	Protected []string `json:"protected,omitempty"`
 	Private   []string `json:"private,omitempty"`
+	// Unreadable is denied for reading only: the base holding every command's
+	// sandbox root. Readable re-allows reading inside a denied path: the
+	// projection's files and the managed CodeGraph install; the sandbox
+	// re-allows the scratch itself.
+	Unreadable []string `json:"unreadable,omitempty"`
+	Readable   []string `json:"readable,omitempty"`
 	// AllowedDomains is the user's network allowlist for the sandbox; absent
 	// leaves the network unrestricted.
 	AllowedDomains []string `json:"allowedDomains,omitempty"`
@@ -101,20 +109,44 @@ type ShellPlan struct {
 	Capture bool `json:"capture"`
 }
 
-// shellRoot is the private sandbox root for one command: a sibling of the state
-// directory, derived from it and the call id so the import recomputes the path
-// instead of trusting one from its caller. It sits beside the state rather than
-// inside it, because a path denied to the sandbox must never be an ancestor of
-// the projection.
-func shellRoot(stateDir, callID string) string {
-	digest := hashOf([]byte(stateDir+"\x00"+callID), true)
-	return filepath.Join(shellRoots(stateDir), digest[:shellRootHashLen])
+// shellBase is the one directory holding every sandbox root of this store, so
+// a single read denial covers roots created after a plan is prepared. It lies
+// outside the workspace and Takt's state: a path denied to the sandbox must
+// never be an ancestor of a command's own root, or the denial wins over the
+// grant. Every path below it is derived here, never accepted from a caller.
+func (f *FS) shellBase() (string, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, "takt-ai", "shells", shortHash(f.stateDir)), nil
 }
 
-// shellRoots is the one directory beside stateDir holding every sandbox root,
-// so a single read denial covers roots created after a plan is prepared.
-func shellRoots(stateDir string) string {
-	return filepath.Join(filepath.Dir(stateDir), "shells")
+// authorRoot is key's sandbox root. Its scratch is the $TMPDIR every command
+// of key shares, so work kept there survives between commands until key's
+// claims are released. Commands without a binding share one root.
+func authorRoot(base string, key AgentID) string {
+	if key == "" {
+		return filepath.Join(base, "unbound")
+	}
+	return filepath.Join(base, shortHash(string(key)))
+}
+
+// callRoot holds one command's projection and its supervisor's confirmation.
+func callRoot(base string, key AgentID, callID string) string {
+	return filepath.Join(authorRoot(base, key), "calls", shortHash(callID))
+}
+
+func shortHash(s string) string { return hashOf([]byte(s), true)[:shellRootHashLen] }
+
+// dropAuthorRootLocked deletes key's sandbox root once its work ends
+// (released, discarded or consolidated). A root left behind holds only
+// disposable files and authorizes nothing, so a failed removal never fails
+// the operation that ended the work.
+func (f *FS) dropAuthorRootLocked(key AgentID) {
+	if base, err := f.shellBase(); err == nil {
+		_ = os.RemoveAll(authorRoot(base, key))
+	}
 }
 
 // shellCall is what a prepared command was planned against: the binding it
@@ -210,28 +242,46 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	if len(scope) == 0 {
 		mutates = mutatesWorkspace(unquoted(command))
 	}
-	decision, reason := f.classify(key, command, mutates, len(scope) > 0)
-	root := shellRoot(stateDir, callID)
-	if key == "" {
-		// An unbound caller can stage nothing, so its sandbox needs no per-call
-		// identity: one reused scratch leaves nothing behind to clean up.
-		root = shellRoot(stateDir, "")
-	}
-	plan := ShellPlan{
-		Decision: decision, Reason: reason,
-		Scratch: filepath.Join(root, "scratch"), Confirm: filepath.Join(root, "confirm"),
-		Private:        append([]string{stateDir}, homeSensitivePaths(userHome())...),
-		AllowedDomains: allowedDomains(),
-		Capture:        decision != ShellDeny && key != "",
-	}
+	// A command naming a path the binding owns is captured however it writes
+	// it (`-o`, `--output=`, a tool's own default): the claim decides, not a
+	// guess over the command's verbs. Only the verbs decide whether it writes
+	// outside the workspace.
+	captured := mutates || f.namesScope(command, scope)
+	decision, reason := f.classify(key, command, mutates, captured, len(scope) > 0)
 	if decision == ShellDeny {
 		return ShellPlan{Decision: decision, Reason: reason}, nil
 	}
-	if err := os.MkdirAll(plan.Scratch, shellDirMode); err != nil {
+	base, err := f.shellBase()
+	if err != nil {
 		return ShellPlan{}, err
 	}
-	if mutates && decision == ShellAllow {
-		return f.projectLocked(key, root, scope, plan)
+	call := callRoot(base, key, callID)
+	// A bound author keeps its $TMPDIR until its work ends; an unbound
+	// command's lasts only as long as the call.
+	scratch := filepath.Join(call, "scratch")
+	if key != "" {
+		scratch = filepath.Join(authorRoot(base, key), "scratch")
+	}
+	private, readable, err := taktStatePaths()
+	if err != nil {
+		return ShellPlan{}, err
+	}
+	plan := ShellPlan{
+		Decision: decision, Reason: reason,
+		Scratch: scratch, Confirm: filepath.Join(call, "confirm"),
+		Private:        append(append([]string{stateDir}, homeSensitivePaths(userHome())...), private...),
+		Unreadable:     []string{base},
+		Readable:       readable,
+		AllowedDomains: allowedDomains(),
+		Capture:        key != "",
+	}
+	for _, dir := range []string{plan.Scratch, call} {
+		if err := os.MkdirAll(dir, shellDirMode); err != nil {
+			return ShellPlan{}, err
+		}
+	}
+	if captured && decision == ShellAllow {
+		return f.projectLocked(key, call, scope, plan)
 	}
 	// Inspection reads the workspace in place and can write only to its scratch,
 	// so no projection is needed. An approved command adds everything outside
@@ -244,15 +294,15 @@ func (f *FS) prepareShellLocked(key AgentID, callID, command, stateDir string) (
 	// The workspace event store records every session's activity; it is the
 	// orchestrator's to read, never a specialist's inspection. Its directory
 	// is denied whole, so SQLite journal files created later are denied too.
-	// Other calls' projections hold copies of their authors' staged files, so
-	// every sandbox root is denied; the sandbox re-allows this call's scratch.
 	// The sandbox cannot deny a path that does not exist yet, so the store's
 	// directory is created, private, before it is denied.
 	events := filepath.Join(f.rootDir, obs.StateDirName)
 	if err := os.MkdirAll(events, obs.PrivateTelemetryDirectoryMode); err != nil {
 		return ShellPlan{}, err
 	}
-	plan.Private = append(plan.Private, events, shellRoots(stateDir))
+	if !slices.Contains(plan.Private, events) {
+		plan.Private = append(plan.Private, events)
+	}
 	if decision == ShellAsk {
 		plan.Writable = []string{everythingWritable}
 	}
@@ -275,8 +325,8 @@ func allowedDomains() []string {
 // into the private projection the command will mutate. The physical workspace is
 // denied for both reading and writing, so the projection is the only view the
 // command has of its scope.
-func (f *FS) projectLocked(key AgentID, root string, scope []string, plan ShellPlan) (ShellPlan, error) {
-	projection := filepath.Join(root, "projection")
+func (f *FS) projectLocked(key AgentID, call string, scope []string, plan ShellPlan) (ShellPlan, error) {
+	projection := filepath.Join(call, "projection")
 	for _, rel := range scope {
 		target := filepath.Join(projection, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(target), shellDirMode); err != nil {
@@ -292,8 +342,11 @@ func (f *FS) projectLocked(key AgentID, root string, scope []string, plan ShellP
 			return ShellPlan{}, err
 		}
 		plan.Writable = append(plan.Writable, target)
+		// Readable file by file: on Linux a re-allowed directory is bound back
+		// read-only over the write grants below it.
+		plan.Readable = append(plan.Readable, target)
 	}
-	plan.Cwd, plan.Private = projection, append(plan.Private, f.rootDir)
+	plan.Cwd, plan.Private, plan.Protected = projection, append(plan.Private, f.rootDir), []string{f.rootDir}
 	return plan, nil
 }
 
@@ -305,7 +358,7 @@ func (f *FS) projectLocked(key AgentID, root string, scope []string, plan ShellP
 // the file tools use. Staged work that changed since preparation is refused,
 // never overwritten. A failing command keeps its delta, retained and
 // unverified (PR-VFS-CSL-5).
-func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationResult, err error) {
+func (f *FS) CompleteShell(c Caller, callID string) (result OperationResult, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err = f.readyLocked(); err != nil {
@@ -322,24 +375,22 @@ func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationR
 	if c != recorded.Caller {
 		return result, fmt.Errorf("%w: shell %s belongs to an earlier execution; issue the command again as a new tool call", ErrIdentity, callID)
 	}
-	if recorded.Inspection != nil {
-		delete(f.shellCalls, shellCallKey(c.SessionID, callID))
-		result.Revision, result.DeltaHash = f.revisionOf(recorded.Key), f.deltaHashLocked(recorded.Key)
-		f.finishLocked(&err)
+	base, err := f.shellBase()
+	if err != nil {
 		return result, err
 	}
-	if !recorded.Plan.Capture {
+	call := callRoot(base, recorded.Key, callID)
+	if recorded.Inspection != nil || !recorded.Plan.Capture {
 		delete(f.shellCalls, shellCallKey(c.SessionID, callID))
 		result.Revision, result.DeltaHash = f.revisionOf(recorded.Key), f.deltaHashLocked(recorded.Key)
 		f.finishLocked(&err)
-		return result, err
+		return result, errors.Join(err, os.RemoveAll(call))
 	}
 	if !c.holds(f.bindings[recorded.Key]) {
 		return result, errNoHeldBinding
 	}
 	key, expected := recorded.Key, recorded.Revision
-	root := shellRoot(stateDir, callID)
-	status, err := os.ReadFile(filepath.Join(root, "confirm"))
+	status, err := os.ReadFile(filepath.Join(call, "confirm"))
 	if err != nil {
 		return result, fmt.Errorf("%w: %v", ErrShellDescendants, err)
 	}
@@ -359,7 +410,7 @@ func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationR
 		return result, err
 	}
 	before := f.deltaHashLocked(key)
-	if err = f.captureLocked(key, filepath.Join(root, "projection")); err != nil {
+	if err = f.captureLocked(key, filepath.Join(call, "projection")); err != nil {
 		return result, err
 	}
 	// One entry per command: the input revision and delta hash, the resulting
@@ -369,7 +420,7 @@ func (f *FS) CompleteShell(c Caller, callID, stateDir string) (result OperationR
 		Outcome: "status " + strings.TrimSpace(string(status)) + " from revision " + strconv.FormatUint(expected, 10),
 	})
 	result.Revision, result.DeltaHash = f.revisionOf(key), f.deltaHashLocked(key)
-	return result, os.RemoveAll(root)
+	return result, os.RemoveAll(call)
 }
 
 // captureLocked stages every scope path whose projection copy diverged from the
@@ -436,7 +487,7 @@ var (
 )
 
 // classify resolves the command to allowed, approval-gated or denied.
-func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string, string) {
+func (f *FS) classify(key AgentID, command string, mutates, captured, scoped bool) (string, string) {
 	words := shellWords(command)
 	if decision, reason := GitShellDecision(f.bindings[key].Role, command); decision != ShellAllow {
 		return decision, reason
@@ -444,10 +495,10 @@ func (f *FS) classify(key AgentID, command string, mutates, scoped bool) (string
 	if reason, outside := outsideWorkspace(words, mutates, f.rootDir); outside {
 		return ShellAsk, reason + ", which the VFS cannot capture: " + command
 	}
-	if mutates && !scoped {
+	if captured && !scoped {
 		return ShellDeny, fmt.Sprintf("%v: %s", ErrShellUncapturable, command)
 	}
-	if mutates {
+	if captured {
 		return ShellAllow, "workspace mutation captured as a staged VFS delta: " + command
 	}
 	return ShellAllow, "inspection: " + command
@@ -458,6 +509,52 @@ func mutatesWorkspace(command string) bool {
 	words := shellWords(command)
 	return capturableRedirect(command) || containsAny(words, mutatingWords) ||
 		(containsAny(words, inPlaceWords) && containsAny(words, inPlaceFlags))
+}
+
+// namesScope reports whether a word of command names one of scope's paths:
+// relative, under "./", absolute in the workspace, after a redirection or as
+// an `--option=` value.
+func (f *FS) namesScope(command string, scope []string) bool {
+	for _, word := range shellWords(command) {
+		if i := strings.LastIndexAny(word, "<>="); i >= 0 {
+			word = word[i+1:]
+		}
+		word = strings.TrimPrefix(strings.TrimPrefix(word, f.rootDir+string(filepath.Separator)), "./")
+		if slices.Contains(scope, filepath.ToSlash(word)) {
+			return true
+		}
+	}
+	return false
+}
+
+// taktStatePaths returns every existing Takt state directory on this host,
+// which no specialist reads: the per-user one and each registered
+// workspace's. The managed CodeGraph install inside the per-user one stays
+// readable, since a specialist runs it. The sandbox denies only existing
+// literal paths on every platform.
+func taktStatePaths() (private, readable []string, err error) {
+	global, err := history.GlobalStateDir()
+	if err != nil {
+		return nil, nil, err
+	}
+	dirs, err := history.StateDirs()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, dir := range append([]string{global}, dirs...) {
+		if pathExists(dir) {
+			private = append(private, dir)
+		}
+	}
+	if managed := codegraph.ManagedPrefix(filepath.Dir(global)); pathExists(managed) {
+		readable = append(readable, managed)
+	}
+	return private, readable, nil
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // unquoted drops single- and double-quoted spans, quotes included; a
@@ -926,5 +1023,12 @@ func (f *FS) ReleaseShell(c Caller, callID string) (err error) {
 	}
 	delete(f.shellCalls, index)
 	f.finishLocked(&err)
-	return err
+	if err != nil {
+		return err
+	}
+	base, err := f.shellBase()
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(callRoot(base, call.Key, callID))
 }

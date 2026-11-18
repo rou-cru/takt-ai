@@ -88,7 +88,8 @@ const claim = (extra: Record<string, unknown>) =>
   ({ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", ...extra })
 const shellPlan = (extra: Record<string, unknown> = {}) => ({
   decision: "ask", reason: "review each run", cwd: WORKSPACE, scratch: "/private/tmp/scratch", confirm: "/private/tmp/confirm",
-  capture: false, writable: [`${WORKSPACE}/src`], protected: [`${WORKSPACE}/.git`], private: ["/private/secret"], ...extra,
+  capture: false, writable: [`${WORKSPACE}/src`], protected: [`${WORKSPACE}/.git`], private: ["/private/secret"],
+  unreadable: ["/private/tmp"], readable: ["/private/tmp/scratch"], ...extra,
 })
 const shellReply = (extra: Record<string, unknown> = {}): Reply => ({ out: JSON.stringify({ ok: true, shell: shellPlan(extra) }) })
 const json = (value: unknown): Reply => ({ out: JSON.stringify(value) })
@@ -469,7 +470,16 @@ describe("delegation lifecycle", () => {
       await expect(vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, { sessionID: "child-r", agent: RESULT_AGENT })).rejects.toThrow("dispatch_inputs belongs to the orchestrator")
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [] }, orchestrator)
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-a", result_ids: [7, 8] }, orchestrator)
-      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",result_ids: [] }, { action: "inputs", session: "root",event:"unit-a",result_ids: [7, 8] }])
+      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root",event:"unit-a",result_ids: [], units: [] }, { action: "inputs", session: "root",event:"unit-a",result_ids: [7, 8], units: [] }])
+    } finally { await vfs.stop() }
+  })
+
+  test("a declaration may name producer units and reports what the unit will consume", async () => {
+    const vfs = await startVfs({ history: { executions: saved({ "root:prd": { root: "root", unit: "prd", delivery: [12], result: [12], settled: true } }) } })
+    try {
+      const result = await vfs.run("dispatch_inputs", { work_unit_id: "arch", result_ids: [7], units: ["prd", "art"] }, orchestrator)
+      expect(vfs.requests("dispatch", "inputs")).toEqual([{ action: "inputs", session: "root", event: "arch", result_ids: [7], units: ["prd", "art"] }])
+      expect(JSON.stringify(result)).toContain("arch consumes: #7 entry 7; #12 entry 12 (from prd). art delivered nothing yet.")
     } finally { await vfs.stop() }
   })
 
@@ -549,6 +559,17 @@ describe("delegation lifecycle", () => {
       const system = await admitProducer(none)
       expect(system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief.")
     } finally { await none.stop() }
+  })
+
+  test("the specialist learns which declared producer units had delivered nothing", async () => {
+    const vfs = await startVfs({ sessions: producerSessions })
+    try {
+      await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [], units: ["prd"] }, orchestrator)
+      await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })
+      const context = { tools: Object.fromEntries(VFS_TOOL_NAMES.map((name) => [name, {}])), sessionID: "child-r", agent: RESULT_AGENT, system: [] as Array<{ text: string }> }
+      await vfs.fire(vfs.session, "context", context)
+      expect(context.system.map((entry) => entry.text)).toContain("Work unit unit-r consumes no recorded invariant yet; author it from the brief. prd had delivered nothing when this unit was declared.")
+    } finally { await vfs.stop() }
   })
 
   test("a declaration survives a plugin restart", async () => {
@@ -1995,8 +2016,9 @@ describe("shell admission", () => {
   }))
 
   test("an unbound specialist is admitted as an inspector and runs through the sandbox wrapper", async () => {
+    const wrapped: Record<string, unknown>[] = []
     mock.module("./takt-sandbox.mjs", () => ({
-      wrap: (line: string) => Promise.resolve(`wrapped:${line}`),
+      wrap: (line: string, options: Record<string, unknown>) => { wrapped.push(options); return Promise.resolve(`wrapped:${line}`) },
       supervise: (wrapped: string, confirm: string) => `supervised(${wrapped}|${confirm})`,
     }))
     const vfs = await startVfs({ sessions: unitSessions, respond: (call) => (call.command === "shell-prepare" || call.command==="shell-continue") ? shellReply({ cwd: "/elsewhere" }) : undefined })
@@ -2009,8 +2031,10 @@ describe("shell admission", () => {
       expect(created.command).toBe(command)
       const wrapper = readFileSync(String(created.shell), "utf8")
       expect(wrapper).toContain(`cd '/elsewhere' || exit ${SHELL_NOT_ADMITTED}`)
-      expect(wrapper).toContain("export TMPDIR='/private/tmp/scratch'")
+      // The adapter sets TMPDIR inside the sandbox; the wrapper's would be overridden.
+      expect(wrapper).not.toContain("export TMPDIR")
       expect(wrapper).toContain("export HOME='/private/tmp/scratch'")
+      expect(wrapped).toEqual([expect.objectContaining({ scratch: "/private/tmp/scratch", unreadablePaths: ["/private/tmp"], readablePaths: ["/private/tmp/scratch"] })])
       expect(wrapper).toContain(wrapperCommand)
 
       const replay: HookEvent = { command: marked }
