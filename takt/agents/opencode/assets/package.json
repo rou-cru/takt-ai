@@ -11,16 +11,16 @@
     "@opencode/client": "2.3.0",
     "@opencode/plugin": "2.3.0",
     "@opencode/theme": "2.3.0",
-    "@opentui/core": "0.8.3",
-    "@opentui/solid": "0.8.3",
+    "@opentui/core": "0.8.4",
+    "@opentui/solid": "0.8.4",
     "@types/bun": "1.4.4",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "effect": "4.1.2",
-    "eslint": "10.14.0",
+    "effect": "4.1.4",
+    "eslint": "10.15.0",
     "globals": "17.14.0",
     "solid-js": "1.9.12",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "8.72.1"
+    "typescript-eslint": "8.72.2"
   },
   "packageManager": "pnpm@11.28.8"
 }
