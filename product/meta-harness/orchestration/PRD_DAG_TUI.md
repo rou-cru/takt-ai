@@ -18,7 +18,7 @@
 
 **PR-DTUI-5.** The view MUST render nodes and directed prerequisite edges, including joins and branches. A list alone does not satisfy this contract.
 
-**PR-DTUI-6.** Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer. The route's rendering flows left to right, one column per layer; a layer that would overflow the width starts a new band below that flows the opposite way, and so on. The route never overflows sideways and scrolls vertically when the bands do not fit the height. Bands are balanced in width, and each band is spread to the common width so the edges that turn between bands run beside the band ends. Parallel edge tracks keep a blank column between them, a crossing is drawn differently from a junction, and no track runs against the edge of the viewport. Running activities wrap into rows within the width the same way. Each work-unit node is a single-line box holding its state glyph and its name. A name is never cut: its length is bounded by `PR-DAG-REP-8`, so every box is as wide as the longest permitted name. Direct orchestrator work and GC/maintenance use distinct activity glyphs in the separate activity track. No agent name, wave or width annotation is drawn on the route; the legend stays there.
+**PR-DTUI-6.** Graphs with no prerequisite path between them are drawn as separate blocks, never interleaved by layer. The route's rendering flows left to right, one column per layer; a layer that would overflow the width starts a new band below that flows the opposite way, and so on. The route never overflows sideways and scrolls vertically when the bands do not fit the height. Bands are balanced in width. Every edge follows the flow: within a band it advances in the band's direction, and between bands it only descends. Each edge leaves and enters a box through whichever of its four sides faces where the edge comes from or goes to: an edge turning into the next band leaves the bottom of a box with nothing below it in its column and enters the top of a box with nothing above it in its column. Edges that share a prerequisite or a dependent travel as one trunk from a point near the shared box, and a shared trunk never suggests an edge that does not exist. No edge runs through a box or along its border: an edge touches a box only at the side it leaves or enters through, and elsewhere keeps a blank cell from every box. Parallel edge tracks keep a blank column between them, a crossing is drawn differently from a junction, and no track runs against the edge of the viewport. Withdrawn units are not drawn. Each node, work unit or activity, is a single-line box with two cells: its state glyph, then its name with one blank cell on each side; nothing else is written in it. A box is as wide as its own name; a unit's name is bounded by `PR-DAG-REP-8`, so it is never cut. Activities run in their separate track, wrapped into rows within the width. No agent name, wave or width annotation is drawn on the route; the legend stays there.
 
 **PR-DTUI-7.** The sidebar has 37 usable columns, fixed by the host, and scrolls only vertically; its form is compact and no row ever wraps:
 
@@ -33,9 +33,9 @@
 
 **PR-DTUI-9.** The layout SHOULD use deterministic layers, drawn as columns or as rows. A unit without prerequisites has layer 0; any other unit has a layer one greater than its deepest prerequisite. The snapshot carries each unit's layer; the view does not recompute it.
 
-**PR-DTUI-10.** The layout MUST be stable when only node state changes. A topology revision MAY cause a new layout. The renderer MUST NOT reorder the graph on every lifecycle or telemetry update.
+**PR-DTUI-10.** The layout MUST be stable when only node state changes, except a withdrawal, which removes the unit and its edges (`PR-DTUI-6`). A topology revision MAY cause a new layout. The renderer MUST NOT reorder the graph on every lifecycle or telemetry update.
 
-**PR-DTUI-11.** An activity kind change may resize the separate activity track; it MUST NOT alter work-unit layout or order nodes by lifecycle state.
+**PR-DTUI-11.** A change in activities may resize the separate activity track; it MUST NOT alter work-unit layout or order nodes by lifecycle state.
 
 ## 6. Node states
 
@@ -51,7 +51,7 @@
 | Activity | orchestrator | Direct work performed by the orchestrator itself. |
 | Activity | maintenance | Harness-run GC/maintenance that was not delegated as ordinary work. |
 
-**PR-DTUI-14.** This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Session, plan/revision, and GC-cycle records never become work units. An activity is shown only under its activity identity (for GC, the cycle identity), in the separate activity track with activity-specific glyphs and no prerequisite edges.
+**PR-DTUI-14.** This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Session, plan/revision, and GC-cycle records never become work units. An activity is shown only under its activity identity (for GC, the cycle identity) as its name, with the state glyph every node uses, in the separate activity track and with no prerequisite edges.
 
 ## 7. Observability required by the view
 

@@ -19,7 +19,7 @@ stays with its owner unless the user explicitly orders direct work; that order p
 not wider permissions, claims or budgets. Run build, lint or full suites only when asked.
 Direct checks are not independent verification; report the missing assurance.
 Record each distinct piece of direct work (one concern) that changes files or runs commands with
-`dispatch_activity_start` under an identifier you keep, and close it with
+`dispatch_activity_start` under a name kept to the unit-name rule below, and close it with
 `dispatch_activity_finish` before delegating or answering; reading needs no record.
 Direct work that grows into a whole implementation unit rather than a single small edit is a
 phase: route it through takt-workflow-selection.
@@ -79,7 +79,8 @@ for its unit, `claim_assign` for an implementation lane, then the delegation its
 For a staged verifier, declare `author_keys` in that delegation; its gates are ready when the verifier starts. Its `dispatch_inputs` repeats its authors' invariants and never an author's reply: the deviations and limits an author declares are yours to route to the contract's owner.
 Name every delegation after the work unit it executes: its description is the unit identity,
 and for planned work it is exactly the unit you committed with `dispatch_commit`. A unit name is
-a short one-line label of the work, never the project name, and at most 26 display cells. Delegating the same name again retries that unit in a new
+a short one-line label of the work in words separated by spaces, never joined by hyphens or
+underscores, never the project name, and at most 26 display cells. Delegating the same name again retries that unit in a new
 session; continue a returned one only to unblock the blocker it delivered; new work gets a new name.
 Before delegating an implementation lane, reserve its exact file set for that unit with
 `claim_assign`, cutting claims so units do not pile onto one oversized file; if the scope collides with an existing claim, inspect `claim_list` and never widen scope: queue the unit until in-flight work consolidates or releases, treat unconsolidated staged work through takt-vfs-coordination, or re-cut the scope.
