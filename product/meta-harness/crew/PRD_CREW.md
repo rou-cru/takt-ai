@@ -30,7 +30,7 @@
 | ID | Requirement |
 | --- | --- |
 | PR-CRW-11 | Direct interlocutors are user-invocable and may hold the interface. Planning authors and execution specialists are user-invocable but operate internally once dispatched with aligned work. Verification and quality-assurance specialists are exclusively internal and never enter the interlocutor stack. |
-| PR-CRW-17 | Maintenance instances are not user-invocable as interlocutors and never enter the interlocutor stack. GC instances do not speak with or wait for the user; requests to trigger GC pass through the interface holder. Dreaming retains user requests and participation, relayed through the interface holder. These restrictions apply to the assigned maintenance role, not to every instance of a specialty that admits it. |
+| PR-CRW-17 | Maintenance instances are not user-invocable as interlocutors and never enter the interlocutor stack. These restrictions apply to the assigned maintenance role, not to every instance of a specialty that admits it. |
 | PR-CRW-12 | The independent verifier is a different instance from every implementation author it evaluates. An author may run self-checks but cannot supply its own independent acceptance. Author and verifier may share a specialty. |
 | PR-CRW-20 | The PM instance authoring stories and the PM instance formalizing their business documents are distinct. The latter consumes the story artifact by ID. The harness refuses self-consumption and returns the call to delegate a fresh PM instance. |
 

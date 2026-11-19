@@ -285,7 +285,6 @@
       "title": "Not drawn",
       "items": [
         "investigate to closed when the collector reports no change",
-        "A plugin restart reconciles stored delegations, preserves another live owner's lanes, and aborts specified incomplete closure phases after lane termination; interrupted evidence is distinct from acceptance",
         "Acceptance aborts the cycle when the checked preparation changed"
       ]
     },

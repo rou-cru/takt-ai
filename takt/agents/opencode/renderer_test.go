@@ -395,7 +395,7 @@ func TestRenderConfigProjectsExplicitVFSGrants(t *testing.T) {
 		if effectOf(rules, "shell", "takt-ai vfs*") != "deny" {
 			t.Errorf("%s shell rules = %v, want takt-ai vfs* denied", id, rules)
 		}
-		for _, tool := range []string{"dispatch_commit", "dispatch_restore", "dispatch_declare_recovery", "gc_prepare"} {
+		for _, tool := range []string{"dispatch_commit", "dispatch_restore", "dispatch_declare_recovery"} {
 			if got := effectOf(rules, tool, "*"); got != "deny" {
 				t.Errorf("%s %s = %q, want deny", id, tool, got)
 			}
@@ -640,11 +640,6 @@ func TestRenderConfigCarriesOnlyDesignedSkillsAndTools(t *testing.T) {
 	for _, skill := range []string{"takt-interlocutor-handoff", "takt-memory-dev", "takt-memory-pm", "takt-vfs-mutation"} {
 		if got := effectOf(rules, "skill", skill); got != "deny" {
 			t.Errorf("skill %s = %q for the orchestrator, want deny", skill, got)
-		}
-	}
-	for _, tool := range []string{"gc_findings", "gc_verdict", "gc_no_change"} {
-		if got := effectOf(rules, tool, "*"); got != "deny" {
-			t.Errorf("GC cycle tool %s = %q for the orchestrator, want deny", tool, got)
 		}
 	}
 	if effectOf(rules, "skill", "someone-elses-skill") == "deny" {

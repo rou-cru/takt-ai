@@ -57,22 +57,13 @@ export function toolInput<T extends ToolInput = ToolInput>(value: unknown): T {
 type VFSShellResponse = { decision: "allow" | "ask" | "deny"; reason: string; writable?: string[]; scratch?: string; protected?: string[]; private?: string[]; unreadable?: string[]; readable?: string[]; allowedDomains?: string[]; capture?: boolean; cwd?: string; confirm?: string }
 // AdoptedGate is one gate the core adopted for the calling host session.
 type AdoptedGate = { key: string; author_key: string; scope: string[]; error?: string }
-type Repair = { kind: "manifest" | "cycle"; id: string; author: string; paths: string[]; state: string; preserve: boolean; reason: string }
+type Repair = { kind: "manifest"; id: string; author: string; paths: string[]; state: string; preserve: boolean; reason: string }
 type VFSResponse = {
  repair?: Repair
-  stop_cycle?: { cycle:string; lanes:Array<{dispatch:string;attempt:string;child:string}> }
   ok: boolean; key?: string; content?: string; revision?: number; delta_hash?: string
   error?: string; attempt_id?: string; invariants_version?: string
   inspections?: Array<{call_id:string;session_id:string;caller_session:string;caller_agent:string;tool_call_id?:string}>
   shell?: VFSShellResponse; claims?: OwnershipClaim[]; outdated_paths?: string[]; gates?: AdoptedGate[]
-}
-type GCPlan = Record<string, unknown> & { session_id: string; cycle_id: string; mandate_class: string; delta: unknown[]; closure: string[]; reachability: string }
-type GCCycle = Record<string, unknown> & { phase: string; plan: GCPlan; scope: string[]; sessions: Record<string, string>; report: unknown; started: string; author_key?: string }
-type StagedView = { revision: number; delta_hash: string; files: Record<string, string | null> }
-type CoordinatorResponse = Record<string, unknown> & {
-  version: number; units: number; mutations: number; cursor: number; deferrals: number
-  next_mandate: number; requested: boolean; cycle?: GCCycle
-  history?: GCCycle[]
 }
 // The IR-22 envelope: exactly these four fields.
 type MemoryIDs = number[]
@@ -81,12 +72,8 @@ type HandoffEnvelope = { result: string; additional_context: string; extra_artif
 // declared document's check and the ended session beside it, never inside.
 type InterlocutorReturn = { envelope: HandoffEnvelope; child?: string; root?: string; notice: string }
 type NotHeld = { aborted: false }
-// CycleClosing is the core's notice of a maintenance cycle that ended (PR-MNT-5).
-type CycleClosing = { cycle: string; outcome: string; unapplied_findings: unknown[] }
-const isCycleClosing = (value: unknown): value is CycleClosing =>
-  isResponseObject(value) && isString(value.cycle) && isString(value.outcome) && Array.isArray(value.unapplied_findings)
 type Inspection = NonNullable<VFSResponse["inspections"]>[number]
-type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; child?: string; admitted_at: number; inputs: number[]; undelivered?: string[]; delivery?: number[]; cycle?: string; role?: string; prompted?: string; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
+type Delegation = { dispatch: string; unit: string; root: string; attempt: string; agent: string; caller: string; child?: string; admitted_at: number; inputs: number[]; undelivered?: string[]; delivery?: number[]; terminated?: boolean; settled?: boolean; owner?: string; model?: string; substitute?: boolean; identity?: string[] }
 // SEAT_UNPROVEN marks the core's refusal of an autonomous seat reassignment to
 // a model this session has not seen complete work; the user may approve it.
 const SEAT_UNPROVEN = "seat/unproven-model"
@@ -102,12 +89,9 @@ export function modelName(value: unknown): string | undefined {
 export function withoutIdentity<Part extends { type: string; text: string }>(system: Part[], identity: string[]): Part[] {
   return system.map(part => ({ ...part, text: identity.reduce((text, block) => text.split(block).join(""), part.text) }))
 }
-type DispatchResponse = GCPlan | GCCycle | StagedView | CoordinatorResponse | InterlocutorReturn | NotHeld | Record<string, unknown> | null
+type DispatchResponse = InterlocutorReturn | NotHeld | Record<string, unknown> | null
 const delegationOf = (value: unknown): Delegation | undefined =>
   value && isResponseObject(value) && typeof value.dispatch === "string" && typeof value.attempt === "string" && typeof value.root === "string" && typeof value.unit === "string" && typeof value.agent === "string" ? value as Delegation : undefined
-export function isCoordinatorResponse(value: DispatchResponse): value is CoordinatorResponse {
-  return value !== null && "version" in value && "units" in value
-}
 export function isMemoryIDs(value: unknown): value is MemoryIDs {
   return Array.isArray(value) && value.every(item => typeof item === "number")
 }
@@ -164,12 +148,8 @@ export function parseGate(item: unknown): AdoptedGate[] {
   return [{ key: item.key, author_key: item.author_key, scope: item.scope, ...(isString(item.error) ? { error: item.error } : {}) }]
 }
 function parseRepair(value: unknown): Repair | undefined {
- if (!isResponseObject(value) || !["manifest", "cycle"].includes(String(value.kind)) || !isString(value.id) || !isString(value.author) || !isStringArray(value.paths) || !isString(value.state) || !isBoolean(value.preserve) || !isString(value.reason)) return undefined
+ if (!isResponseObject(value) || value.kind !== "manifest" || !isString(value.id) || !isString(value.author) || !isStringArray(value.paths) || !isString(value.state) || !isBoolean(value.preserve) || !isString(value.reason)) return undefined
  return value as Repair
-}
-function parseStopCycle(value: unknown): VFSResponse["stop_cycle"] | undefined {
-  if (!isResponseObject(value) || !isString(value.cycle) || !Array.isArray(value.lanes)) return undefined
-  return value.lanes.every(lane => isResponseObject(lane) && isString(lane.dispatch) && isString(lane.attempt) && isString(lane.child)) ? value as VFSResponse["stop_cycle"] : undefined
 }
 function parseInspections(value: unknown): VFSResponse["inspections"] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -179,12 +159,10 @@ function parseInspections(value: unknown): VFSResponse["inspections"] | undefine
 export function vfsResponse(parsed: Record<string, unknown>, ok: boolean): VFSResponse {
   const shell = parseVFSShell(parsed.shell)
   const repair = parseRepair(parsed.repair)
-  const stopCycle = parseStopCycle(parsed.stop_cycle)
   const inspections = parseInspections(parsed.inspections)
   return {
     ok,
     ...(repair ? { repair } : {}),
-    ...(stopCycle ? { stop_cycle: stopCycle } : {}),
     ...(typeof parsed.key === "string" ? { key: parsed.key } : {}),
     ...(typeof parsed.content === "string" ? { content: parsed.content } : {}),
     ...(inspections ? { inspections } : {}),
@@ -207,46 +185,14 @@ export class VFSRefusal extends Error {
     this.response = response
   }
 }
-export function isGCPlan(value: Record<string, unknown>): value is GCPlan {
-  return typeof value.session_id === "string" && typeof value.cycle_id === "string" && typeof value.mandate_class === "string" &&
-    Array.isArray(value.delta) && Array.isArray(value.closure) && value.closure.every((path): path is string => typeof path === "string") && typeof value.reachability === "string"
-}
-export function isGCCycle(value: Record<string, unknown>): value is GCCycle {
-  return typeof value.phase === "string" && isResponseObject(value.plan) && isGCPlan(value.plan) &&
-    Array.isArray(value.scope) && value.scope.every((path): path is string => typeof path === "string") &&
-    isResponseObject(value.sessions) && Object.values(value.sessions).every((session): session is string => typeof session === "string") &&
-    Object.hasOwn(value, "report") && typeof value.started === "string" &&
-    (value.author_key === undefined || typeof value.author_key === "string")
-}
-export function isStagedView(value: Record<string, unknown>): value is StagedView {
-  return typeof value.revision === "number" && typeof value.delta_hash === "string" && isResponseObject(value.files) &&
-    Object.values(value.files).every(file => file === null || typeof file === "string")
-}
-export function isCoordinator(value: Record<string, unknown>): value is CoordinatorResponse {
-  return typeof value.version === "number" && typeof value.units === "number" && typeof value.mutations === "number" &&
-    typeof value.cursor === "number" && typeof value.deferrals === "number" && typeof value.next_mandate === "number" &&
-    typeof value.requested === "boolean" &&
-    (value.cycle === undefined || isResponseObject(value.cycle) && isGCCycle(value.cycle)) &&
-    (value.history === undefined || Array.isArray(value.history) && value.history.every(item => isResponseObject(item) && isGCCycle(item)))
-}
-// gcCoordinateResponse returns result when it is the shape `gc coordinate` answers action with.
-export function gcCoordinateResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
-  switch (action) {
-    case "prepare": return isGCPlan(result) ? result : undefined
-    case "findings": case "investigate": case "authorize": return isGCCycle(result) ? result : undefined
-    case "collected": case "delta": return isStagedView(result) ? result : undefined
-    default: return isCoordinator(result) ? result : undefined
-  }
-}
 const DISPATCH_ANSWERS = new Set(["prepare", "execution", "executions", "attach_child", "resolve", "inputs", "deliver", "interlocutor"])
 // dispatchResponse returns result when it is the shape `dispatch` answers action with; null acknowledges a switch or result validation.
 function dispatchResponse(result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
   if (DISPATCH_ANSWERS.has(String(action))) return result
   if (action === "switch" || action === "validate_results") return Object.keys(result).length === 0 || result.ok === true ? null : undefined
-  return isCoordinator(result) ? result : undefined
+  return result.ok === true ? result : undefined
 }
 function verbResponse(verb: string[], result: Record<string, unknown>, action: unknown): DispatchResponse | undefined {
-  if (verb[0] === "gc" && verb[1] === "coordinate") return gcCoordinateResponse(result, action)
   if (verb[0] === "dispatch") return dispatchResponse(result, action)
   return undefined
 }
@@ -254,7 +200,6 @@ export function parseCoordinationResponse(value: unknown, verb: string[], action
   if (value === null) return null
   const result = responseObject(value, verb.join(" "))
   if (isInterlocutorReturn(result)) return result
-  if (verb[0] === "gc" && action === "prompt" && typeof result.allowed === "boolean") return result
   if (action === "session_deleted" && result.aborted === false) return { aborted: false }
   const shaped = verbResponse(verb, result, action)
   if (shaped !== undefined) return shaped
@@ -320,31 +265,6 @@ const authorNotice = (unit: string, scope: string[], allowed: string[], unbound:
 // orchestratorOnly refuses a claim operation from any agent but the orchestrator.
 export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
   if (c.agent !== ORCHESTRATOR_ID) throw new Error(`${operation} belongs to the orchestrator`)
-}
-
-// GC_INSTRUCTIONS is the prompt each cycle phase gives its lane.
-const GC_INSTRUCTIONS: Record<string, string> = {
-  baseline: "Execute gc_baseline to record the acceptance baseline before any mutation. Then stop.",
-  investigate: "Use gc_findings. Investigate each finding and record evidence with gc_investigate. Absence of refutation is not authorization. Public contracts, framework entries, new symbols and semantic documentation are protected. If only proposals/no changes, call gc_no_change. Otherwise call gc_authorize; change only its authorized files through vfs_write/vfs_delete and call gc_collected. Never consolidate yourself.",
-  verify: "Use gc_delta to inspect the exact staged delta. Independently verify it preserves behavior and stays within the declared mandate/scope. Call gc_verdict with your explicit evidence. Do not author changes or verify your own work.",
-  acceptance: "Call gc_acceptance to execute the same prepared checks on the materialized workspace. Then stop.",
-}
-// gcRoleOf is the lane role a cycle phase prompts, if any.
-const gcRoleOf = (phase: string): "verifier" | "collector" | undefined => {
-  if (phase === "baseline" || phase === "verify" || phase === "acceptance") return "verifier"
-  return phase === "investigate" ? "collector" : undefined
-}
-
-// Notices the orchestrator receives around a maintenance cycle: conduct only.
-const MAINTENANCE_DUE =
-  "A GC cycle is running while you are idle. It ends the moment you delegate, so delegate whenever the work calls for it; changes it already consolidated were not requested by the user and are not a regression."
-const MAINTENANCE_DONE = "The GC cycle concluded. Delegation and normal work continue."
-// closingNotice reports how a cycle ended and the findings it left unapplied, which only the cycle record reports.
-const closingNotice = (closing: CycleClosing) => {
-  const findings = closing.unapplied_findings.length
-    ? `Findings not applied, reported only here: ${JSON.stringify(closing.unapplied_findings)}; mention them when you next report to the user, and act on one only when the user asks.`
-    : "No finding was left unapplied."
-  return `GC cycle ${closing.cycle} ended: ${closing.outcome}. ${findings}`
 }
 
 // The native subagent result invites follow-ups by sessionID; a Takt
@@ -433,42 +353,8 @@ const obj = (properties: Record<string, unknown>, required: string[]) =>
 // typed unknown because they pass through a Record<string, unknown>).
 export const asString = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback)
 
-// once runs work until it succeeds a single time. Concurrent callers share the
-// run in flight, and a failed run is attempted again by the next caller.
-function once(work: () => Promise<void>): () => Promise<void> {
-  let done = false
-  let running: Promise<void> | undefined
-  return async () => {
-    if (done) return
-    running ??= work().then(() => { done = true }).finally(() => { running = undefined })
-    return running
-  }
-}
-
-// SENSITIVE_READ_GLOBS are the secret-bearing paths no agent reads, injected
-// from the same list the global read rules deny.
-const SENSITIVE_READ_GLOBS: string[] = "__TAKT_SENSITIVE_READ_GLOBS__" as unknown as string[]
-
-// GC_LANE_TOOLS are the tools each GC lane keeps besides its gc_* tools: both
-// read the workspace natively to investigate or judge, and the verifier keeps
-// the shell an ordinary verification uses; neither lane has a memory or web tool,
-// and only the collector stages its authorized change.
-const GC_LANE_TOOLS: Record<string, string[]> = {
-  collector: ["gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change", "read", "glob", "grep", "vfs_read", "vfs_write", "vfs_delete"],
-  verifier: ["gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance", "read", "glob", "grep", "shell", "bash"],
-}
-
 // Prefixed names of the memory tools this plugin names, rendered from the Go constants that define them.
 const MEMORY_TOOLS: { record: string; read: string } = "__TAKT_MEMORY_TOOLS__" as unknown as never
-
-// gcSessionPermissions is the ruleset a GC child session is created with: only
-// its lane's tools survive. A tool whose last matching rule is a blanket deny
-// is removed from the session's tool snapshot entirely.
-const gcSessionPermissions = (role: string) => [
-  { action: "*", resource: "*", effect: "deny" as const },
-  ...GC_LANE_TOOLS[role].map(action => ({ action, resource: "*", effect: "allow" as const })),
-  ...SENSITIVE_READ_GLOBS.map(glob => ({ action: "read", resource: `**/${glob}`, effect: "deny" as const })),
-]
 
 export default Plugin.define({
   id: "takt.vfs",
@@ -477,9 +363,7 @@ export default Plugin.define({
     const abort = new AbortController()
     let hostWaits = new AbortController()
     const home = homedir()
-    let codegraphReady = !(await sameDirectory(workspace, home))
-    let codegraphProblem = `CodeGraph is unavailable because ${workspace} is the home directory; open a specific project directory first.`
-    if (!codegraphReady) {
+    if (await sameDirectory(workspace, home)) {
       console.warn(`Takt: CodeGraph was not initialized because OpenCode is open in the home directory (${home}). Open a specific project to enable CodeGraph tools.`)
     } else {
       // MCP tools are catalogued during OpenCode startup. Prepare the index
@@ -490,8 +374,6 @@ export default Plugin.define({
         const [out, err, code] = await ipcOutput(codegraph, "CodeGraph preparation")
         if (code !== 0) throw new Error(err.trim() || out.trim() || `exit ${code}`)
       } catch (error) {
-        codegraphReady = false
-        codegraphProblem = `CodeGraph preparation failed in ${workspace}: ${error instanceof Error ? error.message : error}; repair its index prerequisites and restart the host; protection hooks remain active.`
         console.error("Takt CodeGraph preparation unavailable; protection hooks remain active", error)
       }
     }
@@ -505,7 +387,7 @@ export default Plugin.define({
 
     // Exact host invocation correlation only. Every owner checks these IDs
     // against its live state; this map cannot grant or extend an execution.
-    const invocations = new Map<string,Pick<Delegation,"dispatch"|"root"|"attempt"|"cycle">>()
+    const invocations = new Map<string,Pick<Delegation,"dispatch"|"root"|"attempt">>()
     const execution = async (dispatch: string) => delegationOf(await dispatchAction({ action: "execution", dispatch }))
     const executionFor = async (child: string, agent?: string) => delegationOf(await dispatchAction({ action: "resolve", child, agent }))
     // unsettledExecutions lists the unsettled executions, each marked mine when
@@ -569,7 +451,6 @@ export default Plugin.define({
       if (state !== "gone") return endDelegation(d.dispatch, d)
       if (d.child) await stopChild(d.child).catch(error => console.error("Takt callerless child stop", d.dispatch, error))
       await dispatchAction({ action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit })
-      scheduleGC()
     }
     const reconcileNativeInspection = async (call: Inspection) => {
       try {
@@ -637,7 +518,6 @@ export default Plugin.define({
     // Every exact call is checked, including our own lost callbacks and
     // executions whose linked child disappeared. Lease expiry proves nothing.
     const reconcileDelegation = async (d: Delegation & { mine: boolean }) => {
-      if (d.cycle) return
       let launched = false
       let child = d.child
       try {
@@ -879,16 +759,14 @@ export default Plugin.define({
     }
 
     // The first execute.before pins the tool call to the execution its session
-    // runs, before any other hook (the shell's included) acts for that call,
-    // and keeps a maintenance lane to the tools its role uses.
+    // runs, before any other hook (the shell's included) acts for that call.
     const toolStartedAt = new Map<string, number>()
     await ctx.tool.hook("execute.before", async (event) => {
       toolStartedAt.set(toolKeyOf(event), Date.now())
       if (event.agent === ORCHESTRATOR_ID) return
       const d = await executionFor(event.sessionID, event.agent)
       if (!d) return
-      if (d.cycle && !(GC_LANE_TOOLS[d.role ?? ""] ?? []).includes(event.tool)) throw refused("gc_lane_tool", event.agent ?? "", event.sessionID, new Error("This GC cycle does not use that tool"))
-      invocations.set(toolKeyOf(event), { dispatch: d.dispatch, root: d.root, attempt: d.attempt, cycle: d.cycle })
+      invocations.set(toolKeyOf(event), { dispatch: d.dispatch, root: d.root, attempt: d.attempt })
     })
 
     if (VFS_SHELL_ENFORCED) {
@@ -1039,34 +917,18 @@ export default Plugin.define({
       }
     }
 
-    // GC policy and lifecycle live in Go. This queue only transports host events
-    // and API-created child identities; no event handler waits for model work.
-    let gcQueue: Promise<void> = Promise.resolve()
-    // closings are the notices of cycles that ended, held until the orchestrator's next context carries them.
-    const closings: CycleClosing[] = []
-    // GC lane authority and prompt dispositions live in history/core.
-    // phases and trigger bookkeeping, `dispatch` for ordinary crew admission
-    // and lifecycle. Neither is the model's to choose; each call site below
-    // names the one its action belongs to.
     async function spawnCoordination(verb: string[], request: Record<string, unknown>): Promise<DispatchResponse> {
       const proc = Bun.spawn([TAKT_AI, ...verb, "--workspace", workspace,
         "--state", stateDir(), "--request", JSON.stringify(request)], {
         detached:true, stdin: "ignore", stdout: "pipe", stderr: "pipe", cwd: workspace,
       })
-      const [out, err, code] = await ipcOutput(proc, verb.join(" "), verb[0] === "gc" && ["prepare", "request", "tick", "baseline", "acceptance", "verdict"].includes(String(request.action)) ? 0 : 60_000)
+      const [out, err, code] = await ipcOutput(proc, verb.join(" "), 60_000)
       if (code !== 0) throw new Error(`${verb.join(" ")} ${asString(request.action, "unknown")}: ${err || out}`)
       const parsed: unknown = JSON.parse(out)
       if (isResponseObject(parsed) && parsed.ok === false) throw new VFSRefusal(asString(parsed.error, "coordination refused"), vfsResponse(parsed, false))
-      const result = parseCoordinationResponse(parsed, verb, request.action)
-      if (isResponseObject(result) && "closing" in result && isCycleClosing(result.closing)) closings.push(result.closing)
-      return result
+      return parseCoordinationResponse(parsed, verb, request.action)
     }
-    const coordinate = (request: Record<string, unknown>): Promise<DispatchResponse> => {
-      return spawnCoordination(["gc", "coordinate"], request)
-    }
-    // dispatchAction admits and drives ordinary crew work: the same execution
-    // history and admission protocol `gc coordinate` uses to gate its own
-    // cycle, reached under its own name rather than under GC's.
+    // dispatchAction admits and drives ordinary crew work through the execution history.
     // A declaration, so the hooks registered earlier in setup can reach it.
     async function dispatchAction(request: Record<string, unknown>): Promise<DispatchResponse> {
       const action = asString(request.action, "unknown")
@@ -1093,7 +955,7 @@ export default Plugin.define({
       }
       return result
     }
-    // stopChild interrupts a GC child and reports whether it still exists, so a
+    // stopChild interrupts a child and reports whether it still exists, so a
     // session removed behind the plugin's back is not mistaken for a live turn.
     async function stopChild(id: string): Promise<boolean> {
       const signal = AbortSignal.any([abort.signal, hostWaits.signal, AbortSignal.timeout(60_000)])
@@ -1108,22 +970,8 @@ export default Plugin.define({
       await ctx.session.wait({ sessionID: id }, { signal })
       return true
     }
-    // stopLanes interrupts a cycle's lane sessions together; one that fails
-    // does not keep the others running.
-    async function stopLanes(cycleID: string): Promise<Array<{ dispatch: string; attempt: string; child: string }>> {
-      const lanes = (await unsettledExecutions()).filter(d => d.cycle === cycleID)
-      const results = await Promise.allSettled(lanes.map(async d => {
-        if (!d.child) throw new Error(`GC lane ${d.dispatch} has no host session to prove terminated; no resources released`)
-        if (!d.terminated) await stopChild(d.child)
-        return { dispatch:d.dispatch, attempt:d.attempt, child:d.child }
-      }))
-      const failed = results.flatMap(r => r.status === "rejected" ? [r.reason] : [])
-      if (failed.length) throw new AggregateError(failed, `GC lane interruption failed; no admission or resource release; retry the same call, which stops the lanes again: ${failed.map(String).join("; ")}`)
-      return results.flatMap(r => r.status === "fulfilled" ? [r.value] : [])
-    }
-    // createChildSession and promptChild are the generic child-session trio:
-    // GC's own pump and the interlocutor switch (below) both spin up a lane
-    // session and seed it the same way, so neither owns this pair.
+    // createChildSession and promptChild spin up and seed the interlocutor
+    // switch's lent session.
     async function createChildSession(opts: Parameters<typeof ctx.session.create>[0]): Promise<string> {
       const created = await ctx.session.create(opts)
       return created.id
@@ -1137,127 +985,6 @@ export default Plugin.define({
     async function returnInterface(root: string, ret: InterlocutorReturn): Promise<void> {
       await ctx.session.synthetic({ sessionID: root, text: ret.notice })
     }
-    const restoreGCCycle = once(async () => { await reconcileStoredDelegations() })
-    function scheduleGC() {
-      // setTimeout releases tool/event hooks before the SDK is asked to prompt.
-      setTimeout(() => {
-        gcQueue = gcQueue.then(pumpGC).catch(error => {
-          console.error("Takt GC", error)
-        })
-      }, 0)
-    }
-    // Whether a cycle is due is only asked when the root orchestrator goes idle:
-    // never mid-turn, never from a delegated specialist's or a lane's own idle.
-    async function startCycleWhenIdle(sessionID: string) {
-      try {
-        if ((await executionFor(sessionID))?.cycle || await rootSession(sessionID) !== sessionID) return
-        await restoreGCCycle()
-        await coordinate({ action: "tick", session: sessionID })
-        scheduleGC()
-      } catch (error) {
-        console.error("Takt GC", error)
-      }
-    }
-    // gcLane returns the session of the cycle's lane for role, creating and
-    // attaching it when absent. It returns undefined once a concurrent pump's
-    // lane or a changed cycle superseded the one created here, which is stopped.
-    async function gcLane(cycle: GCCycle, role: "verifier" | "collector"): Promise<string | undefined> {
-      const cycleID = cycle.plan.cycle_id
-      const existing = cycle.sessions?.[role]
-      if (existing) return existing
-      // V2 sessions have no settable parent, so a GC lane is its own session,
-      // marked and permission-bounded at creation. The cycle's ordinary root
-      // stays in cycle.plan.session_id; the lane names it as its root.
-      const child = await createChildSession({
-        title: `Takt GC ${cycleID} ${role}`,
-        agent: role === "collector" ? "simplify" : "verify",
-        metadata: { takt_gc: cycleID },
-        permissions: gcSessionPermissions(role),
-      })
-      try { await coordinate({ action: "attach", event:cycleID, role, child, owner: INSTANCE }) }
-      catch {
-        // A concurrent pump may have attached its child, or the cycle may
-        // have changed while the host created ours. Only the owner's current
-        // link can decide whether this native session should be retained.
-        const current = await coordinate({action:"status"})
-        if (!isCoordinatorResponse(current) || current.cycle?.plan.cycle_id!==cycleID || current.cycle.sessions?.[role]!==child) {
-          await stopChild(child)
-          scheduleGC()
-          return undefined
-        }
-      }
-      return child
-    }
-    // pumpGC prompts the lane the in-flight cycle's phase needs, once per phase.
-    async function pumpGC() {
-      await restoreGCCycle()
-      const state = await coordinate({ action: "status" })
-      const cycle = isCoordinatorResponse(state) ? state.cycle : undefined
-      if (!cycle?.plan) return
-      const cycleID=cycle.plan.cycle_id
-      if (["aborting", "blocked", "consolidating"].includes(cycle.phase)) {
-        const stopped = await stopLanes(cycleID)
-        await coordinate({ action:"abort", event:cycleID, stopped, evidence:"incomplete cycle closure" })
-        return
-      }
-      // Another live instance drives this cycle's lanes until its lease lapses.
-      if ((await unsettledExecutions()).some(d => d.cycle === cycleID && !d.mine)) return
-      try {
-      const role = gcRoleOf(cycle.phase)
-      if (!role) return
-      const child = await gcLane(cycle, role)
-      if (!child) return
-      // A deleted lane is an incomplete cycle, never an invitation to resend.
-      await ctx.session.get({ sessionID:child })
-      const permit = await coordinate({ action: "prompt", event:cycleID, child, phase: cycle.phase, owner: INSTANCE })
-      if (!permit || !isResponseObject(permit) || responseObject(permit,"gc prompt").allowed !== true) {
-        watchIncompletePrompt(cycleID, cycle.phase, child)
-        return
-      }
-      // A failed transport does not prove the host never ran this prompt.
-      // Keep the reservation until scoped recovery interrupts the native lane.
-      await promptChild(child, `GC cycle ${cycle.plan.cycle_id}; mandate ${cycle.plan.mandate_class}. ${GC_INSTRUCTIONS[cycle.phase]}`)
-      watchIncompletePrompt(cycleID, cycle.phase, child)
-      } catch(error) {
-        // Recovery is scoped to the cycle this pump actually observed. A late
-        // failure must never stop or abort a different, newly admitted cycle.
-        const current = await coordinate({action:"status"})
-        if(isCoordinatorResponse(current) && current.cycle?.plan.cycle_id===cycleID) {
-          const stopped = await stopLanes(cycleID)
-          await coordinate({action:"abort",event:cycleID,stopped,evidence:error instanceof Error?error.message:"unknown error"})
-        }
-        throw error
-      }
-    }
-    const incompletePrompts = new Set<string>()
-    function watchIncompletePrompt(cycle: string, phase: string, child: string) {
-      const key = `${cycle}:${phase}:${child}`
-      if (incompletePrompts.has(key)) return
-      incompletePrompts.add(key)
-      const finishIncomplete = async () => {
-        const state = await coordinate({ action:"status" })
-        if (!isCoordinatorResponse(state) || state.cycle?.plan.cycle_id !== cycle || state.cycle.phase !== phase) return
-        const stopped = await stopLanes(cycle)
-        await coordinate({ action:"abort", event:cycle, stopped, evidence:`lane ended without completing reserved phase ${phase}; prompt is never resent` })
-      }
-      void ctx.session.wait({ sessionID:child }, { signal:AbortSignal.any([abort.signal,hostWaits.signal]) })
-        .then(finishIncomplete, error => {
-          if (notFound(error)) return finishIncomplete()
-          throw error
-        }).catch(error => console.error("Takt incomplete GC prompt", error)).finally(() => incompletePrompts.delete(key))
-    }
-
-    // gcTool runs one maintenance action for the lane attached to its role.
-    async function gcTool(action: string, c: { sessionID: string; agent: string }, fields: Record<string, unknown> = {}) {
-      const role = ["baseline", "delta", "verdict", "acceptance"].includes(action) ? "verifier" : "collector"
-      const expected = role === "verifier" ? "verify" : "simplify"
-      if (c.agent !== expected) throw new Error(`GC ${action} requires the attached ${role} session`)
-      try {
-        const result = await coordinate({ ...fields, action, session: c.sessionID })
-        return { content: JSON.stringify(result) }
-      } finally { scheduleGC() }
-    }
-
     await ctx.tool.hook("execute.after", async (event) => {
       const key = `${event.sessionID}:${event.id}`
       const started = toolStartedAt.get(key)
@@ -1298,7 +1025,7 @@ export default Plugin.define({
     }
 
     await ctx.tool.hook("execute.before", async (event) => {
-      if (event.tool !== "subagent" || invocations.get(toolKeyOf(event))?.cycle) return
+      if (event.tool !== "subagent") return
       await reconcileStoredDelegations()
       const root = await rootSession(event.sessionID)
       const input = isResponseObject(event.input) ? event.input : {}
@@ -1324,11 +1051,7 @@ export default Plugin.define({
               request.user_confirmed = true
               return prepare()
             }
-            const stop = error instanceof VFSRefusal ? error.response.stop_cycle : undefined
-            if (!stop) throw error
-            // Only an otherwise admissible operation asks to yield these lanes.
-            request.stopped = await stopLanes(stop.cycle)
-            return dispatchAction(request)
+            throw error
           }
         }
         const prepared = await repairOperation(prepare, approval => dispatchAction({ ...request, repair:approval }), event)
@@ -1336,7 +1059,7 @@ export default Plugin.define({
         if (responseObject(prepared,"dispatch prepare").launchable !== true) throw new Error(`dispatch ${delegation} was already prepared; do not repeat its native launch; wait for its session, or retry the unit with a new subagent call after it settles`)
       } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error))
-        const held = (await unsettledExecutions().catch(() => [])).filter(d => !d.cycle)
+        const held = await unsettledExecutions().catch(() => [])
         if (held.length) cause.message += unsettledNotice(held)
         throw refused(cause.message.includes("claim_assign") ? "missing_claim" : "admission_denied", specialist, root, cause, unit)
       }
@@ -1345,7 +1068,6 @@ export default Plugin.define({
       watching.add(delegation)
       // Native subagent execution follows this hook. All subsequent observations
       // carry this exact dispatch, including callbacks that arrive after retry.
-      scheduleGC()
     })
 
     // Launch completion is not child termination, delivery, or verification.
@@ -1357,7 +1079,7 @@ export default Plugin.define({
         const delegation = `${event.sessionID}:${event.id}`
         try {
           const d = await execution(delegation)
-          if (d === undefined || d.settled || d.cycle) return
+          if (d === undefined || d.settled) return
           if (event.status === "completed") {
             const child = event.result.metadata?.sessionID
             if (typeof child !== "string" || !child) throw new Error("native subagent result has no sessionID; launch remains unsettled")
@@ -1370,14 +1092,6 @@ export default Plugin.define({
           // observations unsettled for the existing reconciliation to retry.
           console.error("Takt native launch observation", delegation, error)
         } finally { watching.delete(delegation) }
-      } else if (event.tool.startsWith("vfs_")) {
-        // Maintenance observation cannot replace a successful VFS result with
-        // a context/query failure. Admission still enforces its core barrier.
-        void (async () => {
-          if ((await executionFor(event.sessionID))?.cycle) return
-          await restoreGCCycle()
-          scheduleGC()
-        })().catch(error => console.error("Takt post-result maintenance context unavailable",error))
       }
     })
 
@@ -1386,7 +1100,7 @@ export default Plugin.define({
     // included, reaches the orchestrator as the child's own notification.
     async function onChildIdle(child: string) {
       const d = await executionFor(child)
-      if (!d || d.cycle) return
+      if (!d) return
       await reconcileStoredDelegations()
     }
 
@@ -1405,7 +1119,6 @@ export default Plugin.define({
     async function endDelegation(delegation: string, d: Delegation) {
       const request = { action: "finish", event: d.unit, dispatch: delegation, attempt: d.attempt, session: d.root }
       await dispatchAction(request)
-      scheduleGC()
     }
 
     // A native edit never lands on a path a VFS claim holds: that path belongs
@@ -1421,9 +1134,8 @@ export default Plugin.define({
       }
     })
 
-    // Before delegation, surface prior-root ownership alongside maintenance
-    // notices. Neither context read introduces a startup gate.
-    let maintenanceAnnounced = false
+    // Before delegation, surface prior-root ownership. The context read
+    // introduces no startup gate.
     await ctx.session.hook("context", async (event) => {
       if (event.agent !== ORCHESTRATOR_ID) return
       const root = await rootSession(event.sessionID).catch(error => { console.error("Takt root context unavailable", error); return event.sessionID })
@@ -1431,17 +1143,6 @@ export default Plugin.define({
       if (claims !== undefined) {
         const prior = claims.filter(claim => claim.root_session_id !== root)
         if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key refuses any overlap and discards nothing; to continue staged work, pass its author_key with the exact retained scope.` })
-      }
-      // A failed status read must never break the orchestrator's own request.
-      const state = await coordinate({ action: "status" }).catch(() => undefined)
-      if (state === undefined) return
-      const active = isCoordinatorResponse(state) && state.cycle != null
-      if (active) {
-        maintenanceAnnounced = true
-        event.system.push({ type: "text", text: MAINTENANCE_DUE })
-      } else if (maintenanceAnnounced || closings.length) {
-        maintenanceAnnounced = false
-        event.system.push({ type: "text", text: [MAINTENANCE_DONE, ...closings.splice(0).map(closingNotice)].join(" ") })
       }
     })
 
@@ -1549,8 +1250,6 @@ export default Plugin.define({
               // can cancel its pending shell preparation.
               await releaseShellSession(session, true)
               await onChildIdle(session)
-              await startCycleWhenIdle(session)
-              scheduleGC()
             })().catch(error => console.error("Takt session idle", error))
           } else if (event.type === "session.deleted") {
             endApprovals("session deleted", event.data.sessionID)
@@ -1623,11 +1322,7 @@ export default Plugin.define({
     async function onSessionDeleted(sessionID: string) {
       await releaseShellSession(sessionID, false).catch(error => console.error("Takt shell release", error))
       const ended = await executionFor(sessionID)
-      if (ended && !ended.cycle) await reconcileStoredDelegations()
-      if (ended?.cycle) {
-        const stopped = await stopLanes(ended.cycle)
-        await coordinate({ action:"abort", event:ended.cycle, stopped, evidence:"native lane session deleted" })
-      }
+      if (ended) await reconcileStoredDelegations()
       // The core decides from its history whether the session held a root.
       await dispatchAction({ action: "session_deleted", child: sessionID })
         .then(reply => {
@@ -1663,46 +1358,6 @@ export default Plugin.define({
           } }
         })
       }
-      const gc = (name: string, description: string, action: string, input = obj({}, [])) =>
-        editor.add({ name, description, input, execute: (value: unknown, c) => {
-          if (!codegraphReady) throw new Error(codegraphProblem)
-          return gcTool(action, c, toolInput(value))
-        } })
-
-      gc("gc_baseline", "Verifier: run and record prepared acceptance baseline before mutation.", "baseline")
-      gc("gc_findings", "Collector: read persisted findings and cycle declaration.", "findings")
-      gc("gc_investigate", "Collector: record refuted, confirmed or proposal with explicit investigation evidence.", "investigate",
-        obj({ finding: str(), outcome: str(), evidence: str() }, ["finding", "outcome", "evidence"]))
-      gc("gc_authorize", "Collector: request a bounded VFS scope after investigation.", "authorize")
-      gc("gc_collected", "Collector: submit the staged delta for independent verification.", "collected")
-      gc("gc_delta", "Verifier: read the exact staged candidate delta.", "delta")
-      gc("gc_verdict", "Verifier: deliver your independent verdict; an approval consolidates the delta.", "verdict",
-        obj({ pass: { type: "boolean" }, evidence: str() }, ["pass", "evidence"]))
-      gc("gc_acceptance", "Verifier: run prepared materialized acceptance; regression discards the entire cycle.", "acceptance")
-      gc("gc_no_change", "Collector: explicitly close without changes, including proposals/refutations, without inventing acceptance.", "no-change")
-
-      editor.add({
-        name: "gc_prepare",
-        description: "Ordinary preparation: validate reviewed project GC analyzer dependencies and acceptance commands. Never installs during GC.",
-        input: obj({}, []),
-        async execute(_args, c) {
-          if (c.sessionID !== await rootSession(c.sessionID)) throw new Error("GC preparation belongs to the root ordinary workflow")
-          return { content: JSON.stringify(await governed(c, { action: "prepare", session: c.sessionID }, coordinate)) }
-        },
-      })
-      editor.add({
-        name: "gc_request",
-        description: "Request a GC cycle on the user's behalf.",
-        input: obj({}, []),
-        async execute(_args, c) {
-          if (c.sessionID !== await rootSession(c.sessionID)) throw new Error("GC requests belong to the root interlocutor")
-          await restoreGCCycle()
-          const result = await governed(c, { action: "request", session: c.sessionID }, coordinate)
-          scheduleGC()
-          return { content: JSON.stringify(result) }
-        },
-      })
-
       // dispatch is (name, description, action, input) for the ordinary crew
       // dispatch tools below: each is the orchestrator's own declaration, never
       // a specialist's, so every one requires the calling session to be the
@@ -1865,7 +1520,7 @@ export default Plugin.define({
           orchestratorOnly(c, "dispatch_abandon")
           if (c.sessionID !== await rootSession(c.sessionID)) throw new Error("dispatch_abandon belongs to the root orchestrator")
           const d = await execution(asString(args.dispatch, ""))
-          if (!d || d.cycle) throw new Error(`dispatch ${args.dispatch} names no ordinary delegation; use a dispatch exactly as a refusal reported it`)
+          if (!d) throw new Error(`dispatch ${args.dispatch} names no ordinary delegation; use a dispatch exactly as a refusal reported it`)
           if (d.settled) return { content: `Dispatch ${d.dispatch} already returned` }
           const request = { action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit }
           await confirmWithUser("dispatch_abandon", d.dispatch, { unit: d.unit, agent: d.agent, root: d.root, session: d.child ?? d.caller }, c)
@@ -1873,7 +1528,6 @@ export default Plugin.define({
           const unstopped = d.child ? await stopChild(d.child).then(() => "", error => `; its session ${d.child} could not be confirmed stopped: ${error instanceof Error ? error.message : error}`) : ""
           await governed(c, request)
           watching.delete(d.dispatch)
-          scheduleGC()
           return { content: `Abandoned unit ${d.unit} (dispatch ${d.dispatch}); its staged work is kept${unstopped}` }
         },
       })
@@ -2218,7 +1872,7 @@ export default Plugin.define({
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
         if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed, delegation?.undelivered) })
-        if (delegation && !delegation.cycle && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
+        if (delegation && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]

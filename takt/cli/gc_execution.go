@@ -11,7 +11,7 @@ import (
 
 func attachGCLane(h *history.History, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	if c.Cycle == nil || (r.Event != "" && r.Event != c.Cycle.Plan.CycleID) || r.Child == "" || (r.Role != "collector" && r.Role != "verifier") {
-		return nil, errors.New("gc: no active cycle or valid child role; retry gc_request from the root orchestrator")
+		return nil, errors.New("gc: no active cycle or valid child role")
 	}
 	if r.Owner == "" {
 		return nil, errors.New("gc: a lane names the harness instance that attaches it; run takt-ai setup sync to re-deploy the plugin")

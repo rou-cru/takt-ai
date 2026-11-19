@@ -8,7 +8,6 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
@@ -69,7 +68,6 @@ func TestOpenCodeContracts(t *testing.T) {
 		sameJSON(t, section, got, fixture[section])
 	}
 	check("inspect_page_limit", vfs.MaxJournalPageSize)
-	check("coordinator", gc.Coordinator{Version: 1, Units: 3, Mutations: 1, Cursor: 2, NextMandate: 1, Cycle: &gc.Cycle{Plan: gc.Plan{Request: gc.Request{SessionID: "root-session", CycleID: "cycle-1", Mandate: gc.MandateComplexity}, Delta: []gc.Change{{Path: "src/a.go", Introduced: true}}, Closure: []string{"src/a.go", "src/b.go"}, Reachability: gc.ReachCodegraph}, Phase: "collect", Scope: []string{"src/a.go"}, Sessions: map[string]string{"collector": "session-collector", "verifier": "session-verifier"}}})
 	check("dispatch_null", any(nil))
 	check("dag_normal", history.BuildSnapshot([]history.Entry{
 		{Seq: 0, Author: history.AuthorOrchestrator, Kind: history.KindPlanned, SessionID: "root-session", WorkUnitID: "unit-1", AttemptID: "1", NodeKind: history.NodeKindDelegated, Cause: history.CauseNone, PlanVersion: "plan-1", Contract: "Implement feature"},
@@ -108,6 +106,9 @@ func TestOpenCodeDispatchContracts(t *testing.T) {
 		root  = "root-session"
 		child = "child-session"
 	)
+	// An action with nothing to report beyond its success answers the acknowledgement.
+	ack := s.must(request{Action: "tick", Session: root})
+	sameJSON(t, "dispatch_ack", []byte(ack.stdout), fixture["dispatch_ack"])
 	// A handoff returns the interface with the entries the lent session delivered.
 	s.record("child-session", "recorded before the switch", 0)
 	s.must(request{Action: "switch", Session: root, Child: "child-session", Agent: "pm", Requirements: []int64{}})

@@ -338,7 +338,7 @@ type Projection struct {
 	// Units is keyed by UnitKey: a unit name belongs to the root session that
 	// declared or admitted it, and another root may reuse it.
 	Units map[string]Unit `json:"units"`
-	// Activities contains direct orchestrator and maintenance activity, outside
+	// Activities contains direct orchestrator activity, outside
 	// the work-unit map and its dispatch budgets.
 	Activities map[string]Activity `json:"activities"`
 	// Sessions holds each session's consumed budgets; the session-scoped bounds

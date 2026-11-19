@@ -447,11 +447,11 @@ type Entry struct {
     SessionID  string `json:"session_id"`
     WorkUnitID string `json:"work_unit_id,omitempty"`
     AttemptID  string `json:"attempt_id,omitempty"`
-    // ActivityID is the real stable identity of a direct or maintenance activity;
+    // ActivityID is the real stable identity of a direct activity;
     // it is never copied into WorkUnitID.
     ActivityID string `json:"activity_id,omitempty"`
     // NodeKind classifies a work unit or activity. Work-unit entries may be
-    // delegated only; direct and maintenance values belong to activity records.
+    // delegated only; the orchestrator value belongs to activity records.
     NodeKind NodeKind `json:"node_kind,omitempty"`
     // Dispatch identifies the host delegation an admission came from, so a
     // transport repetition of that delegation is told apart from a deliberate
@@ -854,10 +854,6 @@ const (
     // the work-unit lifecycle and without a WorkUnitID.
     KindActivityStarted  Kind = "activity_started"
     KindActivityFinished Kind = "activity_finished"
-    // KindMaintenanceStarted/Finished record harness-owned maintenance activity
-    // such as a GC cycle, separate from delegated work units.
-    KindMaintenanceStarted  Kind = "maintenance_started"
-    KindMaintenanceFinished Kind = "maintenance_finished"
     // KindResult records a typed result (PR-OBS-RES-1) for one evaluated
     // revision of a work unit's attempt. It is assurance, never lifecycle: it
     // changes no temporal state and rewrites no earlier fact (PR-DAG-TMP-9).
@@ -875,8 +871,8 @@ Node is one work unit's content\-free projection. Temporal fields and declared p
 ```go
 type Node struct {
     ID  string `json:"id"`
-    // Work-unit nodes are delegated only; direct and maintenance records live in
-    // the separate Activities array.
+    // Work-unit nodes are delegated only; direct records live in the separate
+    // Activities array.
     NodeKind  NodeKind `json:"node_kind"`
     SessionID string   `json:"session_id,omitempty"`
     AttemptID string   `json:"attempt_id,omitempty"`
@@ -910,12 +906,10 @@ type NodeKind string
 ```go
 const (
     // NodeKindDelegated is work actually delegated through the ordinary dispatch
-    // path. GC work belongs here only when it was genuinely delegated.
+    // path.
     NodeKindDelegated NodeKind = "delegated"
     // NodeKindOrchestrator is non-unit activity performed directly by the orchestrator.
     NodeKindOrchestrator NodeKind = "orchestrator"
-    // NodeKindMaintenance is non-unit GC or other harness-owned maintenance activity.
-    NodeKindMaintenance NodeKind = "maintenance"
 )
 ```
 
@@ -960,7 +954,7 @@ type Projection struct {
     // Units is keyed by UnitKey: a unit name belongs to the root session that
     // declared or admitted it, and another root may reuse it.
     Units map[string]Unit `json:"units"`
-    // Activities contains direct orchestrator and maintenance activity, outside
+    // Activities contains direct orchestrator activity, outside
     // the work-unit map and its dispatch budgets.
     Activities map[string]Activity `json:"activities"`
     // Sessions holds each session's consumed budgets; the session-scoped bounds
@@ -1188,7 +1182,7 @@ type Snapshot struct {
     Counts Counts `json:"counts"`
     Nodes  []Node `json:"nodes"`
     Edges  []Edge `json:"edges"`
-    // Activities are direct orchestrator and maintenance records. They are
+    // Activities are direct orchestrator records. They are
     // rendered in a separate lane and never participate in graph edges.
     Activities []ActivityNode `json:"activities"`
 }

@@ -36,30 +36,30 @@ const causeIncomplete = "declaration/recovery-incomplete"
 // request is the JSON envelope `dispatch` reads; only the fields these
 // scenarios send.
 type request struct {
-	Action     string           `json:"action"`
-	Event      string           `json:"event,omitempty"`
-	ActivityID string           `json:"activity_id,omitempty"`
-	NodeKind   history.NodeKind `json:"node_kind,omitempty"`
-	Dispatch   string           `json:"dispatch,omitempty"`
-	Session    string           `json:"session"`
-	Agent      string           `json:"agent,omitempty"`
-	Child      string           `json:"child,omitempty"`
-	Outcome    string           `json:"outcome,omitempty"`
-	Evidence   string           `json:"evidence,omitempty"`
-	Pass       bool             `json:"pass,omitempty"`
-	Objective  string           `json:"objective,omitempty"`
-	Result     string           `json:"result,omitempty"`
-	Scope      []string         `json:"scope,omitempty"`
-	Actions    int              `json:"actions,omitempty"`
-	Attempts   int              `json:"attempts,omitempty"`
-	Bound      string           `json:"bound,omitempty"`
-	Allowance  int              `json:"allowance,omitempty"`
-	Version    string           `json:"version,omitempty"`
-	Plan       []gc.PlanUnit    `json:"plan,omitempty"`
-	QARound    *history.QARound `json:"qa_round,omitempty"`
-	ResultIDs  []int64          `json:"result_ids,omitempty"`
-	Units      []string         `json:"units,omitempty"`
-	Blocker    bool             `json:"blocker,omitempty"`
+	Action     string              `json:"action"`
+	Event      string              `json:"event,omitempty"`
+	ActivityID string              `json:"activity_id,omitempty"`
+	NodeKind   history.NodeKind    `json:"node_kind,omitempty"`
+	Dispatch   string              `json:"dispatch,omitempty"`
+	Session    string              `json:"session"`
+	Agent      string              `json:"agent,omitempty"`
+	Child      string              `json:"child,omitempty"`
+	Outcome    string              `json:"outcome,omitempty"`
+	Evidence   string              `json:"evidence,omitempty"`
+	Pass       bool                `json:"pass,omitempty"`
+	Objective  string              `json:"objective,omitempty"`
+	Result     string              `json:"result,omitempty"`
+	Scope      []string            `json:"scope,omitempty"`
+	Actions    int                 `json:"actions,omitempty"`
+	Attempts   int                 `json:"attempts,omitempty"`
+	Bound      string              `json:"bound,omitempty"`
+	Allowance  int                 `json:"allowance,omitempty"`
+	Version    string              `json:"version,omitempty"`
+	Plan       []protocol.PlanUnit `json:"plan,omitempty"`
+	QARound    *history.QARound    `json:"qa_round,omitempty"`
+	ResultIDs  []int64             `json:"result_ids,omitempty"`
+	Units      []string            `json:"units,omitempty"`
+	Blocker    bool                `json:"blocker,omitempty"`
 	// Requirements carries a switch's entry IDs; an empty list is meaningful, so it is never omitted.
 	Requirements      []int64       `json:"requirements"`
 	Origin            string        `json:"origin,omitempty"`
@@ -103,9 +103,9 @@ func declaration(unit, objective string, scope []string, actions, attempts int) 
 
 // commit is a plan commitment covering the named units.
 func commit(version string, units ...string) request {
-	plan := make([]gc.PlanUnit, len(units))
+	plan := make([]protocol.PlanUnit, len(units))
 	for i, unit := range units {
-		plan[i] = gc.PlanUnit{Unit: unit, Contract: "deliver " + unit}
+		plan[i] = protocol.PlanUnit{Unit: unit, Contract: "deliver " + unit}
 	}
 	return request{Action: "commit", Session: rootSession, Version: version, Plan: plan}
 }
@@ -133,7 +133,6 @@ const (
 // transition is the part of a lifecycle answer that reports the slots held and
 // the states a unit moved between.
 type transition struct {
-	Units    int    `json:"units"`
 	InFlight int    `json:"in_flight"`
 	From     string `json:"from_state"`
 	To       string `json:"to_state"`
@@ -436,7 +435,6 @@ func TestDispatchCommand(t *testing.T) {
 		{"admission is recorded once and replays its disposition", admissionReplay},
 		{"the ceiling denies admission until a termination releases a slot", admissionCeiling},
 		{"an exception on the ceiling raises it by its allowance", ceilingException},
-		{"admission recovers from an orphaned barrier hold", orphanedBarrierHold},
 		{"launches collapse and an uncertain one is reconciled before repeating", launchAndReconciliation},
 		{"a delegation a later attempt replaced is never marked uncertain or reconciled", staleDispatchIgnored},
 		{"unmonitored execution keeps its slot and is reconciled", unmonitoredExecution},
@@ -465,7 +463,7 @@ func TestDispatchCommand(t *testing.T) {
 		{"a producer unit's delivery reaches its declared consumers", producerUnitInputs},
 		{"a returned session continues only after it delivered a blocker", continuationNeedsBlocker},
 		{"a switch that cannot bind its lent session records nothing", failedSwitchBind},
-		{"a delegation ends a maintenance cycle only once it is admitted", admissionYieldsCycle},
+		{"a maintenance cycle never touches an admission", admissionIgnoresCycle},
 	} {
 		t.Run(tc.name, func(t *testing.T) { tc.run(t, bin) })
 	}
@@ -501,11 +499,11 @@ func admissionReplay(t *testing.T, bin string) {
 	admit := call("admit", "dispatch-1")
 	var got transition
 	s.must(admit).decode(t, &got)
-	if got.Units != 1 || got.InFlight != 1 || got.From != "" || got.To != wireInFlight {
+	if got.InFlight != 1 || got.From != "" || got.To != wireInFlight {
 		t.Fatalf("first admission reported %+v", got)
 	}
 	s.must(admit).decode(t, &got)
-	if got.Units != 1 || got.InFlight != 1 || got.To != wireInFlight {
+	if got.InFlight != 1 || got.To != wireInFlight {
 		t.Fatalf("replayed admission reported %+v", got)
 	}
 	if n := s.count(history.KindAdmitted); n != 1 {
@@ -526,7 +524,7 @@ func admissionReplay(t *testing.T, bin string) {
 		t.Fatalf("termination not settled: %+v", u)
 	}
 	s.must(call("finish", "dispatch-1")).decode(t, &got)
-	if got.Units != 2 || s.count(history.KindTerminated) != 2 {
+	if s.count(history.KindTerminated) != 2 {
 		t.Fatalf("a replayed termination counted again: %+v, %d terminations", got, s.count(history.KindTerminated))
 	}
 }
@@ -585,105 +583,6 @@ func ceilingException(t *testing.T, bin string) {
 	s.deniedAs(call("admit", units[p.Concurrency.Specialists+1]), history.BoundConcurrency)
 	if n := s.projection().InFlight(); n != p.Concurrency.Specialists+1 {
 		t.Fatalf("in flight %d; want the ceiling raised by exactly the allowance", n)
-	}
-}
-
-// orphanedBarrierHold reproduces a real deadlock: a session leaves the
-// workspace mid-resolution (an in-flight unit never finished, or a VFS delta
-// staged and never verified/consolidated, which is what an interrupted session
-// leaves behind with no liveness signal anywhere in the harness), then a second
-// session insists on delegating new work the way an orchestrator does.
-// Admission must recover within MaxDeferrals+1 attempts, never hang forever.
-func orphanedBarrierHold(t *testing.T, bin string) {
-	p, err := gc.LoadTriggerPolicy()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		name           string
-		orphanInFlight bool
-		orphanDelta    bool
-	}{
-		{"orphaned in-flight unit", true, false},
-		{"orphaned pending delta", false, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := newSession(t, bin)
-			if tc.orphanInFlight {
-				orphan := call("admit", "orphan-1")
-				orphan.Session = "session-1"
-				s.must(orphan)
-				// admit/finish are history-only: on their own they leave
-				// Mutations==0, and Decide forces Skip regardless of
-				// UserRequested when Mutations==0 (ReasonNoDelta). A resolved
-				// ordinary mutation, unrelated to the orphan, is needed so the
-				// barrier is actually exercised for ActiveUnits alone.
-				fs, err := vfs.Open(s.root, s.state)
-				if err != nil {
-					t.Fatal(err)
-				}
-				id := vfs.Identity{SessionID: "session-1", WorkUnitID: "keepalive", AgentID: "dev", Specialist: "dev"}
-				author, err := fs.Bind(id, []string{"keepalive.txt"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				applied, err := fs.Apply(vfs.Operation{Key: author, CallID: "write", Action: vfs.OpCreate, Path: "keepalive.txt", Content: []byte("ok\n")})
-				if err != nil {
-					t.Fatal(err)
-				}
-				id.AgentID, id.Specialist = "verify", "verify"
-				verifier, err := fs.AssignVerifier(id, author)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := fs.Verify(verifier, author, "verify", applied.Revision, applied.DeltaHash, true, ""); err != nil {
-					t.Fatal(err)
-				}
-				if err := fs.ConsolidateCheckpoint(author, "keepalive", applied.Revision, false); err != nil {
-					t.Fatal(err)
-				}
-				if err := fs.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if tc.orphanDelta {
-				fs, err := vfs.Open(s.root, s.state)
-				if err != nil {
-					t.Fatal(err)
-				}
-				id := vfs.Identity{SessionID: "session-1", WorkUnitID: "orphan-delta", AgentID: "dev", Specialist: "dev"}
-				author, err := fs.Bind(id, []string{"a.go"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err = fs.Apply(vfs.Operation{Key: author, CallID: "write", Action: vfs.OpCreate, Path: "a.go", Content: []byte("package main\n")}); err != nil {
-					t.Fatal(err)
-				}
-				if err := fs.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// Makes a cycle due right away, without waiting out the cadence budget.
-			if res := s.invoke("gc", "coordinate", request{Action: "request", Session: "session-1"}); res.code != 0 {
-				t.Fatalf("request a cycle: %s", res.stderr)
-			}
-			// Session 2, the orchestrator, repeatedly tries to delegate brand-new
-			// work: the "blocked from the first delegation attempt" of the incident.
-			next := call("admit", "new-unit")
-			next.Session = "session-2"
-			var last result
-			for range p.Cadence.MaxDeferrals + 1 {
-				if last = s.dispatch(next); last.code == 0 {
-					break
-				}
-			}
-			if last.code != 0 {
-				t.Fatalf("admission still blocked after %d attempts: %s", p.Cadence.MaxDeferrals+1, last.stderr)
-			}
-			if u, _ := s.projection().Unit("session-2", "new-unit"); u.State != history.StateInFlight {
-				t.Fatalf("admission did not actually proceed: %+v", u)
-			}
-		})
 	}
 }
 
@@ -1540,35 +1439,28 @@ func handoffOptionalCopy(t *testing.T, bin string) {
 	}
 }
 
-func admissionYieldsCycle(t *testing.T, bin string) {
+// admissionIgnoresCycle: dispatch never reads, ends or reports a maintenance
+// cycle, even one recorded in flight for the same root session.
+func admissionIgnoresCycle(t *testing.T, bin string) {
 	s := newSession(t, bin)
-	p := policy(t)
-	for i := range p.Concurrency.Specialists {
-		s.must(call("admit", fmt.Sprintf("busy-%d", i)))
-	}
 	c := s.coordinator()
 	c.Cycle = &gc.Cycle{Plan: gc.Plan{Request: gc.Request{CycleID: "cycle-1", SessionID: rootSession, Mandate: gc.MandateDeadCode}}, Phase: "collect"}
 	if err := saveCoordinator(s.t, s.root, s.state, c); err != nil {
 		t.Fatal(err)
 	}
-	// A denied delegation leaves the cycle running.
-	s.deniedAs(call("admit", "late"), history.BoundConcurrency)
-	if c := s.coordinator(); c.Cycle == nil || c.Cycle.Phase != "collect" {
-		t.Fatalf("a denied delegation ended the cycle: %+v", c.Cycle)
+	res := s.must(call("admit", "work"))
+	var answer map[string]any
+	res.decode(t, &answer)
+	for _, field := range []string{"version", "cycle", "history", "closing"} {
+		if _, found := answer[field]; found {
+			t.Fatalf("admission answer carries maintenance field %q: %s", field, res.stdout)
+		}
 	}
-	if _, ended := s.projection().Activities["cycle-1"]; ended {
-		t.Fatal("a denied delegation settled the cycle's activity")
+	if c := s.coordinator(); c.Cycle == nil || c.Cycle.Phase != "collect" || len(c.History) != 0 {
+		t.Fatalf("an admission touched the cycle: %+v", c)
 	}
-	// An admitted one ends it, discarding the cycle and settling its activity as
-	// interrupted (PR-MNT-3).
-	s.must(call("finish", "busy-0"))
-	s.must(commit("v1", "late"))
-	s.must(call("admit", "late"))
-	if c := s.coordinator(); c.Cycle != nil || len(c.History) != 1 || c.History[0].Plan.CycleID != "cycle-1" {
-		t.Fatalf("admitted delegation did not end the cycle: %+v", c)
-	}
-	if a := s.projection().Activities["cycle-1"]; a.State != history.StateSettled || a.Outcome != history.OutcomeInterrupted {
-		t.Fatalf("the cycle's activity was not settled as interrupted: %+v", a)
+	if _, found := s.projection().Activities["cycle-1"]; found {
+		t.Fatal("the cycle was recorded in the session's history")
 	}
 }
 

@@ -32,9 +32,9 @@ the memory clause is the only static Takt memory context.
 | --- | --- |
 | orchestrator | native edit outside claimed paths; assigns, discards and consolidates staged work; reads the journal and execution history |
 | planning_author, direct_interlocutor | native edit outside claimed paths, writing a repository copy only when the user asks |
-| execution | staged, never native; shell only under a bound identity; simplify also collects inside a GC cycle's authorized scope when attached |
+| execution | staged, never native; shell only under a bound identity |
 | quality_assurance | none; native edit denied |
-| verification | none; reads staged work when assigned a gate, including GC deltas; shell and network run natively with native edit denied |
+| verification | none; reads staged work when assigned a gate; shell and network run natively with native edit denied |
 
 Each instance's VFS grant is the `vfs_capabilities` list in its `agent.yaml`
 (capability names from `takt/model/vfs_capability.go`); the role does not grant VFS access.

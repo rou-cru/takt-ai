@@ -108,17 +108,17 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	if slices.ContainsFunc(agent.Permissions, func(r rule) bool { return r.Action == "read" }) {
 		t.Errorf("orchestrator overrides inherited read protections")
 	}
-	// Crew dispatch, GC coordination and Git are the orchestrator's only
-	// shell overrides: dispatch and GC ask the user, and Git carries the
-	// canonical classification. Every other shell protection stays.
+	// Crew dispatch, GC and Git are the orchestrator's only shell overrides:
+	// dispatch asks the user, GC is denied, and Git carries the canonical
+	// classification. Every other shell protection stays.
 	for _, r := range agent.Permissions {
 		if r.Action == "shell" && r.Resource != "*takt-ai dispatch*" && r.Resource != "*takt-ai gc*" && !strings.HasPrefix(r.Resource, "git ") {
 			t.Errorf("orchestrator overrides inherited shell protection %q", r.Resource)
 		}
 	}
-	for _, resource := range []string{"*takt-ai dispatch*", "*takt-ai gc*"} {
-		if got := effectOf(agent.Permissions, "shell", resource); got != "ask" {
-			t.Errorf("orchestrator shell %s = %q, want ask", resource, got)
+	for resource, want := range map[string]string{"*takt-ai dispatch*": "ask", "*takt-ai gc*": "deny"} {
+		if got := effectOf(agent.Permissions, "shell", resource); got != want {
+			t.Errorf("orchestrator shell %s = %q, want %s", resource, got, want)
 		}
 	}
 	for _, tc := range []struct{ action, resource, want string }{

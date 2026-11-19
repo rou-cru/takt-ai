@@ -168,54 +168,6 @@ func TestCoordinatorAttachRequiresActiveCycle(t *testing.T) {
 	}
 }
 
-func TestCoordinatorAdmit(t *testing.T) {
-	h, err := history.Open(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatalf("history.Open() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Fatalf("h.Close() error = %v", err)
-		}
-	})
-
-	c := &gc.Coordinator{Version: 1, Cursor: -1}
-	if err := c.Admit(h, "", "unit-1", "session-1", "agent", "d1"); err != nil {
-		t.Fatalf("Admit() error = %v", err)
-	}
-	if c.Units != 1 {
-		t.Errorf("Admit() Units = %d, want 1", c.Units)
-	}
-
-	entries := h.Entries()
-	last := entries[len(entries)-1]
-	if last.Kind != history.KindAdmitted {
-		t.Errorf("Admit() last entry = %+v, want KindAdmitted", last)
-	}
-}
-
-// A cycle in flight never refuses an admission: the dispatching caller ends the
-// cycle, the coordinator does not hold the orchestrator.
-func TestCoordinatorAdmitIgnoresCycleInFlight(t *testing.T) {
-	h, err := history.Open(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatalf("history.Open() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Fatalf("h.Close() error = %v", err)
-		}
-	})
-
-	c := &gc.Coordinator{Version: 1, Cursor: -1, Cycle: &gc.Cycle{}}
-	if err := c.Admit(h, "", "unit-1", "session-1", "some-other-agent", "d1"); err != nil {
-		t.Fatalf("Admit() while a cycle is in flight error = %v, want none", err)
-	}
-	if c.Units != 1 {
-		t.Errorf("Admit() Units = %d, want 1", c.Units)
-	}
-}
-
 func TestCoordinatorBindStartsPaceOverForAnotherSession(t *testing.T) {
 	c := &gc.Coordinator{Version: 1, Cursor: 100, Units: 4, Mutations: 18, Session: "old"}
 	c.Bind("")

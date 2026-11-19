@@ -9,7 +9,6 @@ globalThis.createPermission = async (r) => ({ id: r.id, effect: "allow" })
 // so identity threading can be checked by position, not just by presence.
 const order = []
 const calls = []
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 const idleEvents = []
 let wakeEvents
 const sessionIdle = (sessionID) => { idleEvents.push({ id: `idle-${sessionID}`, created: 1, type: "session.idle", data: { sessionID } }); const wake = wakeEvents; wakeEvents = undefined; wake?.() }
@@ -20,10 +19,9 @@ function requestOf(call) {
 }
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
-  if (call.verb === "gc" && call.sub === "coordinate") return coordinator()
   if (call.verb !== "dispatch") return { ok: true }
   const action = requestOf(call).action
-  return action === "switch" || action === "validate_results" ? null : coordinator()
+  return action === "switch" || action === "validate_results" ? null : { ok: true }
 }
 globalThis.Bun = {
   spawn(argv, options) {
@@ -75,7 +73,7 @@ await plugin.setup({
       return { id }
     },
     prompt: async ({ sessionID }) => { order.push(`prompt:${sessionID}`); prompted.push(sessionID);await onPrompt(sessionID) },
-    wait: async ({sessionID}) => {if(sessionID==="winner-gc")await new Promise(()=>{})},
+    wait: async () => {},
     interrupt: async ({ sessionID }) => { order.push(`interrupt:${sessionID}`); interrupted.push(sessionID) },
     synthetic: async (message) => { synthetic.push(message) },
   },
@@ -116,13 +114,11 @@ assert.equal(prompted.includes(failedChild), false, "a never-registered switch c
 assert.equal(interrupted.includes(failedChild), true)
 respond = () => undefined
 
-// 2. rootSession() resolves a switch-created session (no parentID) through
-// its persisted history link: only the root orchestrator going idle asks
-// whether maintenance is due, so the switch-created child's idle never does.
+// 2. A switch-created session (no parentID) resolves its root through its
+// persisted history link. No session going idle reaches GC.
 sessions.set("switch-root-child", { metadata: { takt_switch: "not-authority" } })
 owner.holders["switch-root-child"]="root"
-const gcCoordinateCalls = () => calls.filter(c => c.verb === "gc" && c.sub === "coordinate")
-const ticks = () => gcCoordinateCalls().filter(c => requestOf(c).action === "tick")
+const idledAt = calls.length
 sessionIdle("switch-root-child")
 sessionIdle("root")
 // until polls cond every 10ms, at most tries times, without a loop of awaits.
@@ -131,9 +127,9 @@ const until = async (cond, tries) => {
   await new Promise(resolve => setTimeout(resolve, 10))
   return until(cond, tries - 1)
 }
-await until(() => ticks().length > 0, 100)
-assert.equal(ticks().length, 1, "exactly the root session's idle must reach gc coordinate")
-assert.equal(requestOf(ticks()[0]).session, "root", "rootSession() did not resolve the switch-created session's root")
+await until(() => calls.length > idledAt, 100)
+await new Promise(resolve => setTimeout(resolve, 20))
+assert.equal(calls.some(c => c.verb === "gc"), false, "a session going idle reached GC")
 
 // 3. A dispatch_handoff from that same switch-created child reaches the
 // resolved root, not the child's own raw session id.
@@ -150,26 +146,3 @@ assert.equal(handoff.child, "switch-root-child")
 assert.equal(synthetic.at(-1).sessionID, "root")
 respond = () => undefined
 
-// Two plugin instances may create native lanes before either can attach. The
-// losing child is stopped, not promoted through a previous status response.
-await until(()=>interrupted.includes("switch-root-child"),100)
-let winner=false
-sessions.set("winner-gc",{})
-const cycle=(id,child)=>({...coordinator(),cycle:{plan:{session_id:"root",cycle_id:id,mandate_class:"dead-code",delta:[],closure:[],reachability:"codegraph"},phase:"baseline",scope:[],sessions:child?{verifier:child}:{},report:{},started:"2026-01-01T00:00:00Z"}})
-respond=call=>{
- if(call.verb!=="gc")return undefined
- const r=requestOf(call)
- if(r.action==="status")return {stdout:JSON.stringify(cycle("race",winner?"winner-gc":undefined)),stderr:"",code:0}
- if(r.action==="attach"){winner=true;return {stdout:"",stderr:"gc: child already attached; resume the existing session",code:1}}
- if(r.action==="prompt")return {stdout:JSON.stringify({allowed:true}),stderr:"",code:0}
-}
-const createdBefore=nextChild, interruptedBefore=interrupted.length,promptedBefore=prompted.length, gcBefore=calls.length
-await tools.gc_request.execute({},root)
-await until(()=>prompted.length>promptedBefore,100)
-assert.equal(nextChild,createdBefore+1)
-assert.deepEqual(interrupted.slice(interruptedBefore),[`child-${nextChild}`])
-assert.deepEqual(prompted.slice(promptedBefore),["winner-gc"])
-assert.equal(calls.slice(gcBefore).some(c=>c.verb==="gc"&&requestOf(c).action==="abort"),false)
-const attach=calls.slice(gcBefore).find(c=>c.verb==="gc"&&requestOf(c).action==="attach")
-assert.equal(requestOf(attach).event,"race")
-respond=()=>undefined

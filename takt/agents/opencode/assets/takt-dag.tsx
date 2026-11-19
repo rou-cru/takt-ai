@@ -22,13 +22,13 @@ const POLL_INTERVAL_MS = 2000
 type DagNodeState = "planned" | "in_flight" | "settled" | "withdrawn"
 type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain" | "unmonitored"
 type DagOutcome = "completed" | "failed" | "backtracked" | "interrupted"
-type DagActivityKind = "orchestrator" | "maintenance"
+type DagActivityKind = "orchestrator"
 type Capture = "current" | "empty" | "uncertain" | "unavailable"
 const DAG_STATES: readonly DagNodeState[] = ["planned", "in_flight", "settled", "withdrawn"]
 const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain", "unmonitored"]
 const DAG_OUTCOMES: readonly DagOutcome[] = ["completed", "failed", "backtracked", "interrupted"]
 const DAG_CAPTURES: readonly Capture[] = ["current", "empty", "uncertain", "unavailable"]
-const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "maintenance"]
+const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator"]
 // An activity is running, or running with its capture lost; never failed or hung (PR-OBS-BUS-5).
 type DagActivityFlight = Extract<DagFlight, "observed_running" | "unmonitored">
 const DAG_ACTIVITY_FLIGHTS: readonly DagActivityFlight[] = ["observed_running", "unmonitored"]
@@ -45,7 +45,7 @@ interface DagCounts {
 }
 const DAG_COUNT_KEYS: readonly (keyof DagCounts)[] = ["planned", "in_flight", "completed", "failed", "backtracked", "interrupted", "withdrawn"]
 
-interface DagNode {
+export interface DagNode {
   readonly id: string
   readonly node_kind: "delegated"
   readonly session_id?: string
@@ -64,7 +64,7 @@ interface DagNode {
   readonly agent?: string
 }
 
-interface DagActivity {
+export interface DagActivity {
   readonly activity_id: string
   readonly node_kind: DagActivityKind
   readonly state: "in_flight" | "settled"
@@ -157,7 +157,7 @@ export function decodeSnapshot(value: unknown): DagResponse {
     counts: value.counts, nodes, edges, activities }
 }
 
-interface DagSnapshot {
+export interface DagSnapshot {
   readonly schema_version: number
   readonly projection_revision: number
   readonly history_position: number
@@ -214,18 +214,23 @@ export function topologyError(snapshot: DagSnapshot): string | undefined {
 // layer 0 without prerequisites, otherwise one more than the deepest prerequisite.
 // Layers are columns, flowing left to right. When the columns overflow the
 // viewport width, the flow snakes: the columns split into the fewest bands that
-// fit, balanced in width, and each band is spread to the common width so the
-// gutter sits beside its ends. The next band below flows the opposite way, and
-// the edges between two bands run down a gutter at the side where the flow
-// turns. Names are bounded by contract (PR-DAG-REP-8), so a box always shows its
-// whole name: the graph never overflows the width, and when its bands do not
-// fit the height they close up and the view scrolls vertically. Edges that skip
-// layers run along a straight track shared by the origins that skip to the same
-// targets, so every edge is a chain of edges between adjacent columns. The edges
-// of one gap share a vertical bus lane only when they form a complete biclique,
-// lanes are ordered to keep crossings few, and parallel lanes keep a blank
-// column between them. Positions and routes depend on topology and viewport
-// only, so a state-only update never moves a node (the whole Layout is reused).
+// fit, balanced in width, and each band below flows the opposite way. Every
+// edge follows that flow (PR-DTUI-6): within a band it advances to the next
+// column; turning into the next band it only descends, leaving through the
+// bottom of a slot nothing lies below in its column and entering through the
+// top of one nothing lies above, and otherwise running down the gutter beside
+// the band ends. Edges that skip layers run along a straight track shared by
+// the origins that skip to the same targets, so every edge is a chain of links
+// between adjacent columns. An edge touches a box only at the side it leaves
+// or enters through and elsewhere keeps a blank cell from every box. A box is
+// as wide as its name and sits against the side its edges enter from; unit names are bounded by contract (PR-DAG-REP-8),
+// so the graph never overflows the width, and when its bands do not fit the
+// height they close up and the view scrolls vertically. The links of one gap or
+// gutter share a lane only when they form a complete biclique, so a shared
+// trunk never draws an edge that does not exist; lanes are ordered to keep
+// crossings few, and parallel lanes keep a blank column between them. Positions
+// and routes depend on topology and viewport only, so a state-only update never
+// moves a node (the whole Layout is reused).
 // ---------------------------------------------------------------------------
 
 type Point = readonly [x: number, y: number]
@@ -235,7 +240,7 @@ interface LayoutNode {
   readonly depth: number
   readonly x: number
   readonly y: number
-  /** Box width: the longest name of the graph plus chrome. */
+  /** Box width: its name plus chrome. */
   readonly width: number
 }
 
@@ -256,8 +261,6 @@ interface Layout {
   readonly paths: readonly (readonly Point[])[]
   /** Arrowhead cells, one per edge. */
   readonly heads: readonly Port[]
-  /** Node box height on screen. */
-  readonly nodeHeight: number
   readonly width: number
   readonly height: number
   /** Widest component's band count; 1 when nothing wraps. */
@@ -267,11 +270,11 @@ interface Layout {
   readonly viewport: Viewport
 }
 
-// A node is a bordered box holding one line, `<state glyph> <id>`. NODE_ROWS
-// is that line plus the two border rows; NODE_CHROME is the glyph, its space
-// and the two border columns around the identity.
+// A node is a bordered box of two cells on one line, `│<glyph>│ <name> │`.
+// NODE_ROWS is that line plus its two border rows; NODE_CHROME is every column
+// but the name's: three borders, the glyph and one blank on each side of the name.
 const NODE_ROWS = 3
-const NODE_CHROME = 4
+const NODE_CHROME = 6
 // Rows of a pass-through slot, and its minimum width in cells.
 const PASS_ROWS = 1
 const PASS_WIDTH = 3
@@ -298,110 +301,188 @@ export function ordinal(a: string, b: string): number {
   return 0
 }
 
-export function topologyKey(snapshot: DagSnapshot): string {
-  const nodeIds = snapshot.nodes.map((n) => `${n.id}:${n.node_kind}`).sort(ordinal)
-  const edgeKeys = snapshot.edges.map((e) => `${e.from}->${e.to}`).sort(ordinal)
+/** Units and the prerequisite edges between them. */
+interface Topology {
+  readonly nodes: readonly DagNode[]
+  readonly edges: readonly DagEdge[]
+}
+
+export function topologyKey(topology: Topology): string {
+  const nodeIds = topology.nodes.map((n) => `${n.id}:${n.node_kind}`).sort(ordinal)
+  const edgeKeys = topology.edges.map((e) => `${e.from}->${e.to}`).sort(ordinal)
   return `${nodeIds.join(",")}|${edgeKeys.join(",")}`
 }
 
-// Layers are Takt's: the view reads them and never recomputes them (PR-DTUI-9).
-function layersOf(snapshot: DagSnapshot): Map<string, number> {
-  return new Map(snapshot.nodes.map((n) => [n.id, n.layer]))
+/** A unit a view draws: any but a withdrawn one. */
+export type DrawnNode = DagNode & { readonly state: Exclude<DagNodeState, "withdrawn"> }
+
+/** The units a view draws and the edges between them. */
+interface DrawnGraph extends Topology {
+  readonly nodes: readonly DrawnNode[]
+}
+
+const isDrawn = (node: DagNode): node is DrawnNode => node.state !== "withdrawn"
+
+// graphOf is nodes with the edges that join two of them.
+function graphOf(nodes: readonly DrawnNode[], edges: readonly DagEdge[]): DrawnGraph {
+  const ids = new Set(nodes.map((n) => n.id))
+  return { nodes, edges: edges.filter((e) => ids.has(e.from) && ids.has(e.to)) }
+}
+
+// drawnGraph is the work a view draws: a withdrawn unit was never work, so it
+// leaves the graph with its edges (PR-DTUI-6).
+export function drawnGraph(snapshot: DagSnapshot): DrawnGraph {
+  return graphOf(snapshot.nodes.filter(isDrawn), snapshot.edges)
+}
+
+/** Width of the box holding name. */
+export const boxWidth = (name: string) => Bun.stringWidth(name) + NODE_CHROME
+
+/** The rows of the box holding glyph and name. */
+export function boxLines(glyph: string, name: string): readonly [string, string, string] {
+  const rule = "─".repeat(Bun.stringWidth(name) + 2)
+  return [`┌─┬${rule}┐`, `│${glyph}│ ${name} │`, `└─┴${rule}┘`]
 }
 
 /**
- * Node ids grouped by connectivity (edges read undirected): disconnected
+ * The graph split by connectivity (edges read undirected): disconnected
  * graphs are separate components and are drawn apart. Ordered by smallest id,
- * members by id, so the result is deterministic.
+ * members by id, so the result is deterministic. Layers are Takt's: the view
+ * reads them and never recomputes them (PR-DTUI-9).
  */
-function connectedComponents(snapshot: DagSnapshot): string[][] {
+function connectedComponents(graph: DrawnGraph): DrawnGraph[] {
   const neighbours = new Map<string, string[]>()
-  for (const e of snapshot.edges) {
+  for (const e of graph.edges) {
     neighbours.set(e.from, [...(neighbours.get(e.from) ?? []), e.to])
     neighbours.set(e.to, [...(neighbours.get(e.to) ?? []), e.from])
   }
+  const byId = (a: DrawnNode, b: DrawnNode) => ordinal(a.id, b.id)
   const seen = new Set<string>()
-  const components: string[][] = []
-  for (const id of snapshot.nodes.map((n) => n.id).sort(ordinal)) {
+  const components: DrawnGraph[] = []
+  for (const { id } of graph.nodes.toSorted(byId)) {
     if (seen.has(id)) continue
-    const members: string[] = []
+    const members = new Set([id])
     const pending = [id]
     seen.add(id)
     for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-      members.push(next)
-      for (const n of neighbours.get(next) ?? []) if (!seen.has(n)) { seen.add(n); pending.push(n) }
+      for (const n of neighbours.get(next) ?? []) if (!seen.has(n)) { seen.add(n); members.add(n); pending.push(n) }
     }
-    components.push(members.toSorted(ordinal))
+    components.push(graphOf(graph.nodes.filter((n) => members.has(n.id)).toSorted(byId), graph.edges))
   }
-  return components.sort((a, b) => ordinal(a[0], b[0]))
+  return components
 }
 
-/** A node box or a pass-through of a layer-skipping edge, placed in one column. */
-interface Slot {
-  readonly id: string
-  readonly depth: number
-  readonly node?: string
-  readonly height: number
+interface SlotBase {
+  /** Column within its component: its layer less the component's first. */
+  readonly column: number
+  /** Links arriving from the previous column and leaving to the next one. */
+  readonly inbound: Link[]
+  readonly outbound: Link[]
+  /** Position in its column, while the columns are ordered. */
+  order: number
+  /** First row, once rows are placed. */
+  top: number
 }
 
-/** An edge between slots of adjacent columns. */
+/** A node's box. */
+interface BoxSlot extends SlotBase {
+  readonly kind: "box"
+  readonly name: string
+  readonly layer: number
+  /** The boxes joined to this one by an edge, whatever the edge passes through. */
+  readonly prerequisites: BoxSlot[]
+  readonly dependents: BoxSlot[]
+}
+
+/** Where a layer-skipping track crosses a column. */
+interface PassSlot extends SlotBase {
+  readonly kind: "pass"
+}
+
+type Slot = BoxSlot | PassSlot
+
+/** A link between slots of adjacent columns. */
 interface Link {
-  readonly a: string
-  readonly b: string
+  readonly from: Slot
+  readonly to: Slot
 }
 
-interface LaneSeg {
-  readonly a: string
-  readonly b: string
+/** Layer-skipping edges of the origins that skip to the same targets: one straight track through the columns between. */
+interface Track {
+  readonly origins: BoxSlot[]
+  readonly targets: readonly BoxSlot[]
+  readonly passes: PassSlot[]
+}
+
+const slotRows = (slot: Slot) => (slot.kind === "box" ? NODE_ROWS : PASS_ROWS)
+const slotWidth = (slot: Slot) => (slot.kind === "box" ? boxWidth(slot.name) : PASS_WIDTH)
+// centreRow is the row a slot's edges run along: the middle of its box, or its track.
+const centreRow = (slot: Slot) => slot.top + (slotRows(slot) - 1) / 2
+
+/** A link's run along a lane, from where it joins the lane to where it leaves it. */
+interface Run {
+  readonly link: Link
   readonly from: number
   readonly to: number
 }
 
 interface LaneGroup {
+  readonly targets: readonly Slot[]
+  readonly runs: Run[]
   lo: number
   hi: number
-  readonly members: number[]
+  lane: number
 }
 
-// assignLanes gives every edge of one gap or gutter the vertical bus it runs
-// along. Sources with the same target set share a lane: a fork reads as one
-// trunk and a complete biclique as one bar, and since every source on a lane
-// reaches every target on it, a shared lane never draws an edge that does not
-// exist. Lanes are ordered so as few horizontals as possible cross a lane they
-// do not belong to; groups share a lane only when a free row separates them.
-// In a gap sources sit before the lanes and targets after them; in a gutter
-// both sit before them.
-function assignLanes(segs: readonly LaneSeg[], gutter: boolean): { lanes: number[]; count: number } {
-  const targets = new Map<string, string[]>()
-  for (const s of segs) targets.set(s.a, [...(targets.get(s.a) ?? []), s.b])
-  const byKey = new Map<string, LaneGroup>()
-  segs.forEach((s, index) => {
-    const key = (targets.get(s.a) as string[]).toSorted(ordinal).join("|")
-    const group = byKey.get(key) ?? { lo: Math.min(s.from, s.to), hi: Math.max(s.from, s.to), members: [] }
-    group.lo = Math.min(group.lo, s.from, s.to)
-    group.hi = Math.max(group.hi, s.from, s.to)
-    group.members.push(index)
-    byKey.set(key, group)
-  })
-  const ends = (g: LaneGroup, side: "a" | "b") => new Map(g.members.map((i) => [segs[i][side], side === "a" ? segs[i].from : segs[i].to]))
-  // Horizontals of `far` that cross the lane of `near` when `near` lies closer to the sources.
+interface Lanes {
+  readonly lanes: ReadonlyMap<Link, number>
+  readonly count: number
+}
+
+// assignLanes gives every link of one gap or gutter the lane it runs along.
+// Sources with the same target set share a lane: a fork reads as one trunk and
+// a complete biclique as one bar, and since every source on a lane reaches
+// every target on it, a shared lane never draws an edge that does not exist.
+// Lanes are ordered so as few runs as possible cross a lane they do not belong
+// to; groups share a lane only when a free row separates them. In a gap sources
+// sit before the lanes and targets after them; in a gutter both sit before them.
+function assignLanes(runs: readonly Run[], gutter: boolean): Lanes {
+  const groups: LaneGroup[] = []
+  for (const run of runs) {
+    const targets = runs.filter((r) => r.link.from === run.link.from).map((r) => r.link.to)
+    const same = groups.find((g) => g.targets.length === targets.length && targets.every((t) => g.targets.includes(t)))
+    const group = same ?? { targets, runs: [], lo: Infinity, hi: -Infinity, lane: 0 }
+    if (!same) groups.push(group)
+    group.runs.push(run)
+    group.lo = Math.min(group.lo, run.from, run.to)
+    group.hi = Math.max(group.hi, run.from, run.to)
+  }
+  const inside = (g: LaneGroup, row: number) => g.lo <= row && row <= g.hi
+  const sourceRows = (g: LaneGroup) => new Map(g.runs.map((r) => [r.link.from, r.from])).values()
+  const targetRows = (g: LaneGroup) => new Map(g.runs.map((r) => [r.link.to, r.to]))
+  // Runs of `far` that cross the lane of `near` when `near` lies closer to the sources.
   const crossings = (near: LaneGroup, far: LaneGroup) => {
-    const inside = (g: LaneGroup, row: number) => g.lo <= row && row <= g.hi
-    const shared = (g: LaneGroup, node: string) => g.members.some((i) => segs[i].b === node)
-    let count = [...ends(far, "a").values()].filter((row) => inside(near, row)).length
-    for (const [node, row] of ends(gutter ? far : near, "b")) if (inside(gutter ? near : far, row) && !shared(gutter ? near : far, node)) count++
+    const [ends, lane] = gutter ? [far, near] : [near, far]
+    let count = [...sourceRows(far)].filter((row) => inside(near, row)).length
+    for (const [target, row] of targetRows(ends)) if (inside(lane, row) && !lane.targets.includes(target)) count++
     return count
   }
-  const groups = [...byKey.values()].sort((x, y) => crossings(x, y) - crossings(y, x) || x.lo - y.lo || x.hi - y.hi)
-  const lanes = new Array<number>(segs.length).fill(0)
-  const laneOf = new Map<LaneGroup, number>()
+  groups.sort((x, y) => crossings(x, y) - crossings(y, x) || x.lo - y.lo || x.hi - y.hi)
   groups.forEach((group, i) => {
     const touching = groups.slice(0, i).filter((g) => g.lo <= group.hi + 1 && group.lo <= g.hi + 1)
-    const lane = Math.max(-1, ...touching.map((g) => laneOf.get(g) as number)) + 1
-    laneOf.set(group, lane)
-    for (const index of group.members) lanes[index] = lane
+    group.lane = Math.max(-1, ...touching.map((g) => g.lane)) + 1
   })
-  return { lanes, count: Math.max(0, ...laneOf.values()) + (groups.length > 0 ? 1 : 0) }
+  return {
+    lanes: new Map(groups.flatMap((g) => g.runs.map((r) => [r.link, g.lane] as const))),
+    count: groups.length === 0 ? 0 : Math.max(...groups.map((g) => g.lane)) + 1,
+  }
+}
+
+/** The lane lanes gave link: every link routed along lanes has one. */
+function laneIn(lanes: Lanes, link: Link): number {
+  const lane = lanes.lanes.get(link)
+  if (lane === undefined) throw new Error("invalid DAG layout: a link has no lane")
+  return lane
 }
 
 interface Piece {
@@ -418,16 +499,77 @@ interface Sizing {
   readonly bandGap: number
 }
 
-interface TrackSpan {
-  readonly origins: string[]
-  readonly targets: Set<string>
-  readonly first: number
-  readonly last: number
+/** One connected component as columns of slots. */
+interface SlotGraph {
+  readonly columns: Slot[][]
+  readonly boxes: readonly BoxSlot[]
+  readonly links: readonly Link[]
+  /** Every edge as the links it runs through, box to box. */
+  readonly traces: readonly (readonly Link[])[]
+  readonly tracks: readonly Track[]
 }
 
-// centreOf is the row at the middle of a slot's box.
-const centreOf = (top: ReadonlyMap<string, number>, slots: ReadonlyMap<string, Slot>, id: string) =>
-  (top.get(id) as number) + ((slots.get(id) as Slot).height - 1) / 2
+// slotGraph turns one component's nodes and edges into slots. Origins whose
+// layer-skipping edges reach the same targets share one track: one
+// pass-through per skipped column, so they run as one trunk instead of one
+// slot per edge and column. A link joins two slots once, however many edges
+// run through it.
+function slotGraph({ nodes, edges }: DrawnGraph): SlotGraph {
+  const first = Math.min(...nodes.map((n) => n.layer))
+  const boxes = nodes.map((n): BoxSlot => ({
+    kind: "box", name: n.id, layer: n.layer, column: n.layer - first,
+    inbound: [], outbound: [], prerequisites: [], dependents: [], order: 0, top: 0,
+  })).sort((a, b) => ordinal(a.name, b.name))
+  const byName = new Map(boxes.map((b) => [b.name, b]))
+  const box = (name: string): BoxSlot => {
+    const found = byName.get(name)
+    if (!found) throw new Error(`invalid DAG layout: edge names unknown node ${name}`)
+    return found
+  }
+  for (const e of edges) {
+    const [from, to] = [box(e.from), box(e.to)]
+    from.dependents.push(to)
+    to.prerequisites.push(from)
+  }
+
+  const tracks = new Map<string, Track>()
+  for (const origin of boxes.toSorted((a, b) => a.column - b.column || ordinal(a.name, b.name))) {
+    const targets = origin.dependents.filter((d) => d.column > origin.column + 1).sort((a, b) => ordinal(a.name, b.name))
+    if (targets.length === 0) continue
+    const key = targets.map((t) => t.name).join("\n")
+    const track = tracks.get(key) ?? { origins: [], targets, passes: [] }
+    track.origins.push(origin)
+    tracks.set(key, track)
+  }
+  // The first origin is the leftmost: the track crosses every column between it and its farthest target.
+  for (const track of tracks.values()) {
+    const last = Math.max(...track.targets.map((t) => t.column))
+    for (let column = track.origins[0].column + 1; column < last; column++) {
+      track.passes.push({ kind: "pass", column, inbound: [], outbound: [], order: 0, top: 0 })
+    }
+  }
+
+  const links: Link[] = []
+  const link = (from: Slot, to: Slot): Link => {
+    const known = from.outbound.find((l) => l.to === to)
+    if (known) return known
+    const made = { from, to }
+    from.outbound.push(made)
+    to.inbound.push(made)
+    links.push(made)
+    return made
+  }
+  const chain = (slots: readonly Slot[]) => slots.slice(1).map((to, i) => link(slots[i], to))
+  const traces = [
+    ...boxes.flatMap((from) => from.dependents.filter((to) => to.column === from.column + 1).map((to) => chain([from, to]))),
+    ...[...tracks.values()].flatMap((track) => track.origins.flatMap((origin) => track.targets.map((target) =>
+      chain([origin, ...track.passes.filter((p) => p.column > origin.column && p.column < target.column), target])))),
+  ]
+
+  const columns: Slot[][] = Array.from({ length: Math.max(...boxes.map((b) => b.column)) + 1 }, () => [])
+  for (const slot of [...boxes, ...[...tracks.values()].flatMap((t) => t.passes)]) columns[slot.column].push(slot)
+  return { columns, boxes, links, traces, tracks: [...tracks.values()] }
+}
 
 // nearestFree is the row closest to home that free accepts, trying the row below before the one above.
 function nearestFree(home: number, free: (row: number) => boolean): number {
@@ -438,202 +580,145 @@ function nearestFree(home: number, free: (row: number) => boolean): number {
   }
 }
 
-// Origins whose layer-skipping edges reach the same targets share one track:
-// one pass-through per skipped column, so they run as one trunk instead of
-// one slot per edge and column.
-function skipTracks(members: readonly string[], edges: readonly DagEdge[], depthOf: (id: string) => number) {
-  const skips = (id: string) => edges.filter((e) => e.from === id && depthOf(e.to) > depthOf(id) + 1).map((e) => e.to)
-  const trackOf = new Map<string, string>()
-  const trackSpans = new Map<string, TrackSpan>()
-  for (const id of members.toSorted((x, y) => depthOf(x) - depthOf(y) || ordinal(x, y))) {
-    const targets = skips(id).toSorted(ordinal)
-    if (targets.length === 0) continue
-    const key = JSON.stringify(targets)
-    const span = trackSpans.get(key) ?? { origins: [], targets: new Set(targets), first: depthOf(id), last: Math.max(...targets.map(depthOf)) }
-    span.origins.push(id)
-    trackSpans.set(key, span)
-    trackOf.set(id, key)
-  }
-  return { trackOf, trackSpans }
-}
-
-// Order each column by the mean position of its neighbours, sweeping both
-// ways, so edges cross as little as the layering allows.
-function orderColumns(cols: string[][], parents: ReadonlyMap<string, string[]>, children: ReadonlyMap<string, string[]>): void {
-  const lastDepth = cols.length - 1
-  const index = new Map<string, number>()
-  const reindex = (c: number) => cols[c].forEach((id, i) => index.set(id, i))
-  cols.forEach((_, c) => reindex(c))
-  const reorder = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
-    const mean = (id: string) => {
-      const around = neighbours.get(id) ?? []
-      return around.length === 0 ? (index.get(id) as number) : around.reduce((sum, n) => sum + (index.get(n) as number), 0) / around.length
+// orderColumns orders each column by the mean position of its neighbours,
+// sweeping both ways, so edges cross as little as the layering allows.
+function orderColumns(columns: Slot[][]): void {
+  const reindex = (column: readonly Slot[]) => column.forEach((slot, i) => { slot.order = i })
+  columns.forEach(reindex)
+  const reorder = (column: Slot[], neighbours: (slot: Slot) => readonly Slot[]) => {
+    const mean = (slot: Slot) => {
+      const around = neighbours(slot)
+      return around.length === 0 ? slot.order : around.reduce((sum, n) => sum + n.order, 0) / around.length
     }
-    const keyed = cols[c].map((id) => [id, mean(id)] as const)
-    keyed.sort((x, y) => x[1] - y[1] || (index.get(x[0]) as number) - (index.get(y[0]) as number))
-    cols[c] = keyed.map(([id]) => id)
-    reindex(c)
+    const keyed = column.map((slot) => ({ slot, key: mean(slot) }))
+    keyed.sort((x, y) => x.key - y.key || x.slot.order - y.slot.order)
+    keyed.forEach(({ slot }, i) => { column[i] = slot })
+    reindex(column)
   }
   for (let sweep = 0; sweep < ORDER_SWEEPS; sweep++) {
-    for (let c = 1; c <= lastDepth; c++) reorder(c, parents)
-    for (let c = lastDepth - 1; c >= 0; c--) reorder(c, children)
+    for (const column of columns.slice(1)) reorder(column, (slot) => slot.inbound.map((l) => l.from))
+    for (const column of columns.slice(0, -1).toReversed()) reorder(column, (slot) => slot.outbound.map((l) => l.to))
   }
 }
 
-// Rows: each box sits on the mean row of the boxes it links to, pushed down
-// just enough to clear the box above it.
-function placeRows(cols: readonly string[][], slots: ReadonlyMap<string, Slot>, edges: readonly DagEdge[]): Map<string, number> {
-  const slot = (id: string) => slots.get(id) as Slot
-  const lastDepth = cols.length - 1
-  const nodeLinks = (key: (e: DagEdge) => string, other: (e: DagEdge) => string) => {
-    const linked = new Map<string, string[]>()
-    for (const e of edges) linked.set(`n:${key(e)}`, [...(linked.get(`n:${key(e)}`) ?? []), `n:${other(e)}`])
-    return linked
-  }
-  const nodeParents = nodeLinks((e) => e.to, (e) => e.from)
-  const nodeChildren = nodeLinks((e) => e.from, (e) => e.to)
-  const top = new Map<string, number>()
-  const centre = (id: string) => centreOf(top, slots, id)
-  const place = (c: number, neighbours: ReadonlyMap<string, string[]>) => {
+// placeRows sets each box on the mean row of the boxes its edges join, pushed
+// down just enough to clear the box above it.
+function placeRows(columns: readonly Slot[][]): void {
+  const place = (column: readonly Slot[], around: (box: BoxSlot) => readonly BoxSlot[]) => {
     let floor = 0
-    for (const id of cols[c].filter((id) => slot(id).node !== undefined)) {
-      const height = slot(id).height
-      const around = (neighbours.get(id) ?? []).filter((n) => top.has(n))
-      const want = around.length === 0 ? (top.get(id) ?? floor) : Math.round(around.reduce((sum, n) => sum + centre(n), 0) / around.length - (height - 1) / 2)
-      const row = Math.max(want, floor)
-      top.set(id, row)
-      floor = row + height + SLOT_GAP
+    for (const slot of column) {
+      if (slot.kind !== "box") continue
+      const near = around(slot)
+      const want = near.length === 0 ? slot.top : Math.round(near.reduce((sum, n) => sum + centreRow(n), 0) / near.length - (NODE_ROWS - 1) / 2)
+      slot.top = Math.max(want, floor)
+      floor = slot.top + NODE_ROWS + SLOT_GAP
     }
   }
-  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
-  for (let c = lastDepth - 1; c >= 0; c--) place(c, nodeChildren)
-  for (let c = 0; c <= lastDepth; c++) place(c, nodeParents)
-  return top
+  for (const column of columns) place(column, (box) => box.prerequisites)
+  for (const column of columns.slice(0, -1).toReversed()) place(column, (box) => box.dependents)
+  for (const column of columns) place(column, (box) => box.prerequisites)
 }
 
-// Tracks: each shared track runs along one row through every column it
-// skips, so its edges bend only where they leave and where they arrive. The
-// row clears every box it passes, every other track from its first origin's
-// column to its farthest target's, and the edge rows of the other boxes at
-// both ends; the first origin's row is tried first, then the nearest rows.
-function routeTracks(members: readonly string[], cols: readonly string[][], slots: ReadonlyMap<string, Slot>, depthOf: (id: string) => number, top: Map<string, number>, trackSpans: ReadonlyMap<string, TrackSpan>): void {
-  const centre = (id: string) => centreOf(top, slots, id)
-  const boxRows = cols.map(() => new Set<number>())
-  const edgeRow = cols.map(() => new Map<number, string>())
-  for (const id of members) {
-    const row = top.get(`n:${id}`) as number
-    for (let r = row; r < row + NODE_ROWS; r++) boxRows[depthOf(id)].add(r)
-    edgeRow[depthOf(id)].set(centre(`n:${id}`), id)
-  }
-  const trackRows = cols.map(() => new Set<number>())
-  const spans = [...trackSpans].sort(([kx, x], [ky, y]) => x.last - x.first - (y.last - y.first) || ordinal(kx, ky))
-  for (const [key, { origins, targets, first, last }] of spans) {
-    const free = (r: number) => {
+// placeTracks runs each track along one row through every column it skips, so
+// its edges bend only where they leave and where they arrive. The row keeps a
+// blank row from every box it passes, so a track never runs along a border; it
+// clears every other track from its first origin's column to its farthest
+// target's, and the edge rows of the other boxes at both ends. The first
+// origin's row is tried first, then the nearest rows. Shorter tracks go first.
+function placeTracks(columns: readonly Slot[][], tracks: readonly Track[]): void {
+  const span = (track: Track) => ({ first: track.origins[0].column, last: Math.max(...track.targets.map((t) => t.column)) })
+  const length = (track: Track) => span(track).last - span(track).first
+  const key = (track: Track) => track.targets.map((t) => t.name).join("\n")
+  const taken = columns.map(() => new Set<number>())
+  for (const track of tracks.toSorted((x, y) => length(x) - length(y) || ordinal(key(x), key(y)))) {
+    const { first, last } = span(track)
+    const free = (row: number) => {
       for (let c = first; c <= last; c++) {
-        if (trackRows[c].has(r)) return false
-        const owner = edgeRow[c].get(r)
-        if (c === first || c === last) { if (owner !== undefined && !origins.includes(owner) && !targets.has(owner)) return false }
-        else if (boxRows[c].has(r)) return false
+        if (taken[c].has(row)) return false
+        const boxes = columns[c].filter((s): s is BoxSlot => s.kind === "box")
+        if (c === first || c === last) {
+          const owner = boxes.find((b) => centreRow(b) === row)
+          if (owner && !track.origins.includes(owner) && !track.targets.includes(owner)) return false
+        } else if (boxes.some((b) => b.top - SLOT_GAP <= row && row < b.top + NODE_ROWS + SLOT_GAP)) return false
       }
       return true
     }
-    const row = nearestFree(centre(`n:${origins[0]}`), free)
-    for (let c = first; c <= last; c++) trackRows[c].add(row)
-    for (let c = first + 1; c < last; c++) top.set(`p:${key}:${c}`, row)
+    const row = nearestFree(centreRow(track.origins[0]), free)
+    for (let c = first; c <= last; c++) taken[c].add(row)
+    for (const pass of track.passes) pass.top = row
   }
 }
 
+type Across = "left" | "right"
+/** The side a link leaves its slot through, and the side it enters the next one through. */
+type Exit = Across | "bottom"
+type Entry = Across | "top"
+/** The arrowhead beside the side an edge enters a box through. */
+const HEAD: Record<Entry, string> = { left: "▶", right: "◀", top: "▼" }
+
 // layoutComponent lays one connected component out as columns, wrapped into
 // bands that, gutters included, fit width whenever one column per band does.
-function layoutComponent(snapshot: DagSnapshot, members: readonly string[], depthOf: (id: string) => number, width: number, sizing: Sizing): Piece {
-  const inside = new Set(members)
-  const edges = snapshot.edges.filter((e) => inside.has(e.from))
-  const slots = new Map<string, Slot>()
-  const slot = (id: string) => slots.get(id) as Slot
-  for (const id of members) slots.set(`n:${id}`, { id: `n:${id}`, depth: depthOf(id), node: id, height: NODE_ROWS })
-  const { trackOf, trackSpans } = skipTracks(members, edges, depthOf)
-  const chains = edges.map((e) => {
-    const chain = [`n:${e.from}`]
-    for (let depth = depthOf(e.from) + 1; depth < depthOf(e.to); depth++) {
-      const id = `p:${trackOf.get(e.from)}:${depth}`
-      slots.set(id, { id, depth, height: PASS_ROWS })
-      chain.push(id)
-    }
-    return [...chain, `n:${e.to}`]
-  })
-  const linkKeys = new Set<string>()
-  const links: Link[] = chains
-    .flatMap((chain) => chain.slice(1).map((b, i) => ({ a: chain[i], b })))
-    .filter((l) => !linkKeys.has(`${l.a}|${l.b}`) && linkKeys.add(`${l.a}|${l.b}`))
-  const parents = new Map<string, string[]>()
-  const children = new Map<string, string[]>()
-  for (const l of links) {
-    parents.set(l.b, [...(parents.get(l.b) ?? []), l.a])
-    children.set(l.a, [...(children.get(l.a) ?? []), l.b])
-  }
+function layoutComponent(component: DrawnGraph, width: number, sizing: Sizing): Piece {
+  const { columns, boxes, links, traces, tracks } = slotGraph(component)
+  orderColumns(columns)
+  placeRows(columns)
+  placeTracks(columns, tracks)
 
-  const lastDepth = Math.max(...[...slots.values()].map((s) => s.depth))
-  const cols: string[][] = Array.from({ length: lastDepth + 1 }, () => [])
-  for (const id of [...slots.keys()].sort(ordinal)) cols[slot(id).depth].push(id)
-
-  orderColumns(cols, parents, children)
-
-  const top = placeRows(cols, slots, edges)
-  const centre = (id: string) => centreOf(top, slots, id)
-
-  routeTracks(members, cols, slots, depthOf, top, trackSpans)
-
-  // Every box is as wide as the longest name, so none is shorter for no reason.
-  const boxWidth = Math.max(...members.map((id) => Bun.stringWidth(id))) + NODE_CHROME
-  const colWidth = cols.map((col) => (col.some((id) => slot(id).node !== undefined) ? boxWidth : PASS_WIDTH))
-  const depthOfSlot = (id: string) => slot(id).depth
-  const stripRow = centre
-  const segOf = (l: Link, row: (id: string) => number): LaneSeg => ({ a: l.a, b: l.b, from: row(l.a), to: row(l.b) })
-
+  const colWidth = columns.map((column) => Math.max(PASS_WIDTH, ...column.map(slotWidth)))
   // Lanes of every gap between adjacent columns, as if the flow never wrapped.
-  const laneOf = new Map<Link, number>()
-  const gapWidth = Array.from({ length: lastDepth }, (_, c) => {
-    const gap = links.filter((l) => depthOfSlot(l.a) === c)
-    const { lanes, count } = assignLanes(gap.map((l) => segOf(l, stripRow)), false)
-    gap.forEach((l, i) => laneOf.set(l, lanes[i]))
-    return Math.max(1, count) * LANE_PITCH + GAP_CHROME
-  })
+  const gapRuns = (c: number) => links.filter((l) => l.from.column === c).map((link) => ({ link, from: centreRow(link.from), to: centreRow(link.to) }))
+  const gaps = columns.slice(1).map((_, c) => assignLanes(gapRuns(c), false))
+  const gapWidth = gaps.map((gap) => Math.max(1, gap.count) * LANE_PITCH + GAP_CHROME)
 
   // Wrap: a column that would overflow the budget starts the next band.
   const route = (budget: number): Piece => {
-    // Gutter lanes are this attempt's own; gap lanes are shared by every attempt.
-    const laneAt = new Map(laneOf)
     const bands = wrapBands(colWidth, gapWidth, budget)
-    const bandOf = new Array<number>(lastDepth + 1)
+    const bandOf: number[] = []
     bands.forEach((cs, band) => cs.forEach((c) => { bandOf[c] = band }))
+    const band = (slot: Slot) => bandOf[slot.column]
     // Even bands flow right, odd ones left.
-    const flow = (c: number) => (bandOf[c] % 2 === 0 ? 1 : -1)
+    const flow = (slot: Slot) => (band(slot) % 2 === 0 ? 1 : -1)
+    const across = (direction: number): Across => (direction > 0 ? "right" : "left")
+    const turns = (link: Link) => band(link.from) !== band(link.to)
 
+    // The sides each link uses, chosen by where it goes: toward the next column
+    // within a band. Turning into the next band, it enters the top of a box
+    // nothing lies above in its column, otherwise the side toward the band end,
+    // where the flow turns; it leaves the bottom of a box nothing lies below
+    // only when it drops straight into such a top, otherwise the side toward
+    // the band end. A pass-through has no box: its track only runs across.
+    const lowest = (slot: Slot) => slot.kind === "box" && columns[slot.column].every((o) => o === slot || o.top < slot.top)
+    const topmost = (slot: Slot) => slot.kind === "box" && columns[slot.column].every((o) => o === slot || o.top > slot.top)
+    const entryOf = (link: Link): Entry => (turns(link) && topmost(link.to) ? "top" : across(-flow(link.to)))
+    const exitOf = (link: Link): Exit => (entryOf(link) === "top" && lowest(link.from) ? "bottom" : across(flow(link.from)))
+    const turning = links.filter(turns)
+
+    // Below a band, a corridor row carries every link entering the top of the
+    // next band as one trunk into its arrowhead, with a blank row above it and
+    // the arrowhead row below it.
+    const corridorUsed = bands.map((_, b) => turning.some((l) => band(l.from) === b && entryOf(l) === "top"))
     const shift: number[] = []
+    const corridor: number[] = []
     let bottom = 0
-    bands.forEach((cs, band) => {
-      const ids = cs.flatMap((c) => cols[c])
-      const lo = Math.min(...ids.map((id) => top.get(id) as number))
-      const hi = Math.max(...ids.map((id) => (top.get(id) as number) + slot(id).height))
-      shift[band] = bottom - lo
-      bottom += hi - lo + sizing.bandGap
+    bands.forEach((cs, b) => {
+      const slots = cs.flatMap((c) => columns[c])
+      const lo = Math.min(...slots.map((s) => s.top))
+      const hi = Math.max(...slots.map((s) => s.top + slotRows(s)))
+      shift[b] = bottom - lo
+      corridor[b] = bottom + hi - lo + 1
+      bottom += hi - lo + (corridorUsed[b] ? Math.max(sizing.bandGap, 3) : sizing.bandGap)
     })
     const height = bottom - sizing.bandGap
-    const rowOf = (id: string) => stripRow(id) + shift[bandOf[depthOfSlot(id)]]
+    const rowOf = (slot: Slot) => centreRow(slot) + shift[band(slot)]
+    // The row a turning link reaches its entry along: the corridor for a top, beside the slot for a side.
+    const intoRow = (link: Link) => (entryOf(link) === "top" ? corridor[band(link.from)] : rowOf(link.to))
 
-    // The edges between two bands run down a gutter at the side where the flow turns.
-    const wraps = links.filter((l) => bandOf[depthOfSlot(l.a)] !== bandOf[depthOfSlot(l.b)])
-    const gutterLanes = (side: number) => {
-      const turning = wraps.filter((l) => flow(depthOfSlot(l.a)) === side)
-      const { lanes, count } = assignLanes(turning.map((l) => segOf(l, rowOf)), true)
-      turning.forEach((l, i) => laneAt.set(l, lanes[i]))
-      return count
-    }
-    const rightLanes = gutterLanes(1)
-    const leftLanes = gutterLanes(-1)
+    const gutter = (side: number) =>
+      assignLanes(turning.filter((l) => flow(l.from) === side && exitOf(l) !== "bottom").map((link) => ({ link, from: rowOf(link.from), to: intoRow(link) })), true)
+    const [rightGutter, leftGutter] = [gutter(1), gutter(-1)]
 
     // A gutter keeps a blank column between its outermost lane and the edge.
-    const leftMargin = leftLanes > 0 ? 3 + (leftLanes - 1) * LANE_PITCH + 1 : 0
+    const leftMargin = leftGutter.count > 0 ? 3 + (leftGutter.count - 1) * LANE_PITCH + 1 : 0
     const bandWidth = bands.map((cs) => cs.reduce((sum, c, i) => sum + colWidth[c] + (i < cs.length - 1 ? gapWidth[c] : 0), 0))
     const widest = Math.max(...bandWidth)
     const right = leftMargin + widest
@@ -646,51 +731,57 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
     })
     const colX = columnX(bands, colWidth, spread, leftMargin, right)
 
-    const nodes: LayoutNode[] = members.map((id) => {
-      const depth = depthOf(id)
-      return { id, depth, x: colX[depth], y: (top.get(`n:${id}`) as number) + shift[bandOf[depth]], width: colWidth[depth] }
-    })
-
-    const linkOf = new Map(links.map((l) => [`${l.a}|${l.b}`, l]))
-    const paths: Point[][] = []
-    const heads: Port[] = []
-    for (const chain of chains) {
-      const points: Point[] = []
-      const push = (x: number, y: number) => {
-        const last = points.at(-1)
-        if (last?.[0] !== x || last[1] !== y) points.push([x, y])
+    // A box sits against the side its edges enter from; a pass-through spans its column.
+    const widthOf = (slot: Slot) => (slot.kind === "box" ? slotWidth(slot) : colWidth[slot.column])
+    const leftOf = (slot: Slot) => (flow(slot) > 0 ? colX[slot.column] : colX[slot.column] + colWidth[slot.column] - widthOf(slot))
+    // The cell beside a side of a slot where a link attaches: beside a box, or on a pass-through's own track.
+    const portCell = (slot: Slot, side: Exit | Entry): Point => {
+      const [x, w, y, top] = [leftOf(slot), widthOf(slot), rowOf(slot), slot.top + shift[band(slot)]]
+      switch (side) {
+        case "left":
+          return [x - 1, y]
+        case "right":
+          return [x + w, y]
+        case "top":
+          return [x + Math.floor(w / 2), slot.kind === "box" ? top - 1 : y]
+        case "bottom":
+          return [x + Math.floor(w / 2), slot.kind === "box" ? top + NODE_ROWS : y]
       }
-      let arrival: Point = [0, 0]
-      chain.slice(1).forEach((to, i) => {
-        const from = chain[i]
-        const [ca, cb] = [depthOfSlot(from), depthOfSlot(to)]
-        const dir = flow(ca)
-        const lane = laneAt.get(linkOf.get(`${from}|${to}`) as Link) ?? 0
-        const start = dir > 0 ? colX[ca] + colWidth[ca] : colX[ca] - 1
-        let bus: number
-        let end: number
-        if (bandOf[ca] === bandOf[cb]) {
-          bus = start + dir * (2 + lane * LANE_PITCH)
-          end = dir > 0 ? colX[cb] - 1 : colX[cb] + colWidth[cb]
-        } else if (dir > 0) {
-          bus = right + 2 + lane * LANE_PITCH
-          end = right
-        } else {
-          bus = leftMargin - 3 - lane * LANE_PITCH
-          end = leftMargin - 1
-        }
-        const [sy, ty] = [rowOf(from), rowOf(to)]
-        push(start, sy)
-        push(bus, sy)
-        push(bus, ty)
-        push(end, ty)
-        arrival = [end, ty]
-      })
-      paths.push(points)
-      heads.push({ x: arrival[0], y: arrival[1], glyph: flow(depthOfSlot(chain.at(-1) as string)) > 0 ? "▶" : "◀" })
+    }
+    // The lane a link runs along: in the gap after its column, or in the gutter beside the band end.
+    const laneX = (link: Link) => {
+      const c = link.from.column
+      if (!turns(link)) {
+        const edge = flow(link.from) > 0 ? colX[c] + colWidth[c] : colX[c] - 1
+        return edge + flow(link.from) * (2 + laneIn(gaps[c], link) * LANE_PITCH)
+      }
+      return flow(link.from) > 0 ? right + 2 + laneIn(rightGutter, link) * LANE_PITCH : leftMargin - 3 - laneIn(leftGutter, link) * LANE_PITCH
+    }
+    // The cells of a link from its exit to its entry: from a bottom straight
+    // along the corridor into a top, otherwise along its lane.
+    const leg = (link: Link): Point[] => {
+      const [a, b] = [portCell(link.from, exitOf(link)), portCell(link.to, entryOf(link))]
+      const into: Point = [b[0], turns(link) ? intoRow(link) : b[1]]
+      if (exitOf(link) === "bottom") return [a, [a[0], into[1]], into, b]
+      const lane = laneX(link)
+      return [a, [lane, a[1]], [lane, into[1]], into, b]
+    }
+    const path = (trace: readonly Link[]) =>
+      trace.flatMap(leg).filter((p, i, all) => i === 0 || p[0] !== all[i - 1][0] || p[1] !== all[i - 1][1])
+    const head = (trace: readonly Link[]): Port => {
+      const last = trace[trace.length - 1]
+      const [x, y] = portCell(last.to, entryOf(last))
+      return { x, y, glyph: HEAD[entryOf(last)] }
     }
 
-    return { nodes, paths, heads, width: right + (rightLanes > 0 ? 4 + (rightLanes - 1) * LANE_PITCH : 0), height, bands: bands.length }
+    return {
+      nodes: boxes.map((box) => ({ id: box.name, depth: box.layer, x: leftOf(box), y: box.top + shift[band(box)], width: widthOf(box) })),
+      paths: traces.map(path),
+      heads: traces.map(head),
+      width: right + (rightGutter.count > 0 ? 4 + (rightGutter.count - 1) * LANE_PITCH : 0),
+      height,
+      bands: bands.length,
+    }
   }
   // Narrow the budget by what the gutters spill over the width, until the band
   // fits or every band already holds a single column.
@@ -698,7 +789,7 @@ function layoutComponent(snapshot: DagSnapshot, members: readonly string[], dept
   for (;;) {
     const piece = route(budget)
     const over = piece.width - width
-    if (over <= 0 || piece.bands === lastDepth + 1) return piece
+    if (over <= 0 || piece.bands === columns.length) return piece
     budget -= over
   }
 }
@@ -734,7 +825,7 @@ function wrapBands(colWidth: readonly number[], gapWidth: readonly number[], bud
     moved = false
     for (let j = 0; j + 1 < bands.length; j++) {
       if (bands[j].length < 2) continue
-      const [kept, shifted] = [bands[j].slice(0, -1), [bands[j].at(-1) as number, ...bands[j + 1]]]
+      const [kept, shifted] = [bands[j].slice(0, -1), [...bands[j].slice(-1), ...bands[j + 1]]]
       if (Math.max(width(kept), width(shifted)) < Math.max(width(bands[j]), width(bands[j + 1]))) {
         bands[j] = kept
         bands[j + 1] = shifted
@@ -752,10 +843,16 @@ function columnX(bands: readonly number[][], colWidth: readonly number[], gapWid
   bands.forEach((cs, band) => {
     if (band % 2 === 0) {
       let x = leftMargin
-      for (const c of cs) { colX[c] = x; x += colWidth[c] + (gapWidth[c] ?? 0) }
+      cs.forEach((c, i) => {
+        colX[c] = x
+        if (i < cs.length - 1) x += colWidth[c] + gapWidth[c]
+      })
     } else {
       let edge = right
-      for (const c of cs) { colX[c] = edge - colWidth[c]; edge = colX[c] - (gapWidth[c] ?? 0) }
+      cs.forEach((c, i) => {
+        colX[c] = edge - colWidth[c]
+        if (i < cs.length - 1) edge = colX[c] - gapWidth[c]
+      })
     }
   })
   return colX
@@ -766,17 +863,15 @@ type Drawn = Omit<Layout, "topologyKey" | "viewport">
 
 // buildLayout stacks the graph's connected components top to bottom, each
 // laid out in bands no wider than width and drawn as tightly as sizing says.
-function buildLayout(snapshot: DagSnapshot, width: number, sizing: Sizing): Drawn {
-  const depths = layersOf(snapshot)
-  const depthOf = (id: string) => depths.get(id) ?? 0
+function buildLayout(graph: DrawnGraph, width: number, sizing: Sizing): Drawn {
   const nodes = new Map<string, LayoutNode>()
   const paths: Point[][] = []
   const heads: Port[] = []
   let y = 0
   let maxWidth = 0
   let bands = 1
-  for (const members of connectedComponents(snapshot)) {
-    const piece = layoutComponent(snapshot, members, depthOf, width, sizing)
+  for (const component of connectedComponents(graph)) {
+    const piece = layoutComponent(component, width, sizing)
     for (const node of piece.nodes) nodes.set(node.id, { ...node, y: node.y + y })
     for (const path of piece.paths) paths.push(path.map(([px, py]): Point => [px, py + y]))
     for (const head of piece.heads) heads.push({ ...head, y: head.y + y })
@@ -784,21 +879,29 @@ function buildLayout(snapshot: DagSnapshot, width: number, sizing: Sizing): Draw
     maxWidth = Math.max(maxWidth, piece.width)
     bands = Math.max(bands, piece.bands)
   }
-  return { nodes, paths, heads, nodeHeight: NODE_ROWS, width: maxWidth, height: Math.max(0, y - COMPONENT_GAP), bands }
+  return { nodes, paths, heads, width: maxWidth, height: Math.max(0, y - COMPONENT_GAP), bands }
 }
 
 // computeLayout wraps into bands that fit the viewport width. While the bands
 // do not fit its height it closes them up; past that the view scrolls
 // vertically. Names are never cut.
 export function computeLayout(snapshot: DagSnapshot, previous?: Layout, viewport: Viewport = UNBOUNDED): Layout {
-  const key = topologyKey(snapshot)
+  const drawn = drawnGraph(snapshot)
+  const key = topologyKey(drawn)
   if (previous?.topologyKey === key && previous.viewport.width === viewport.width && previous.viewport.height === viewport.height) return previous
-  return { ...fitLayout(snapshot, viewport), topologyKey: key, viewport }
+  return { ...fitLayout(drawn, viewport), topologyKey: key, viewport }
 }
 
-function fitLayout(snapshot: DagSnapshot, viewport: Viewport): Drawn {
-  const natural = buildLayout(snapshot, viewport.width, { bandGap: BAND_GAP })
-  return natural.height <= viewport.height ? natural : buildLayout(snapshot, viewport.width, { bandGap: COMPACT_BAND_GAP })
+/** Where the layout placed a drawn unit: it places every one. */
+function placeOf(layout: Layout, id: string): LayoutNode {
+  const at = layout.nodes.get(id)
+  if (!at) throw new Error(`invalid DAG layout: unit ${id} has no place`)
+  return at
+}
+
+function fitLayout(graph: DrawnGraph, viewport: Viewport): Drawn {
+  const natural = buildLayout(graph, viewport.width, { bandGap: BAND_GAP })
+  return natural.height <= viewport.height ? natural : buildLayout(graph, viewport.width, { bandGap: COMPACT_BAND_GAP })
 }
 
 const UP = 1
@@ -807,6 +910,7 @@ const LEFT = 4
 const RIGHT = 8
 
 const LINE_GLYPHS: Record<number, string> = {
+  0: " ",
   [UP]: "│", [DOWN]: "│", [UP | DOWN]: "│",
   [LEFT]: "─", [RIGHT]: "─", [LEFT | RIGHT]: "─",
   [DOWN | RIGHT]: "┌", [DOWN | LEFT]: "┐", [UP | RIGHT]: "└", [UP | LEFT]: "┘",
@@ -849,7 +953,7 @@ export function edgeRows(layout: Layout): string[] {
     const through = passes.get(cell) ?? []
     const straight = through.every((m) => m === (UP | DOWN) || m === (LEFT | RIGHT))
     if (mask[cell] === (UP | DOWN | LEFT | RIGHT) && straight) return CROSSING_GLYPH
-    return LINE_GLYPHS[mask[cell]] ?? " "
+    return LINE_GLYPHS[mask[cell]]
   }
   return Array.from({ length: layout.height }, (_, y) => Array.from({ length: layout.width }, (_, x) => glyphAt(at(x, y))).join(""))
 }
@@ -869,27 +973,29 @@ export function edgePorts(layout: Layout): Port[] {
 // One glyph per state the view tells apart; the counts line and the legend
 // read the same table.
 const GLYPH = {
-  done: "✓", failed: "✗", backtracked: "↩", interrupted: "⊘", planned: "◌", withdrawn: "×",
+  done: "✓", failed: "✗", backtracked: "↩", interrupted: "⊘", planned: "◌",
   admitted: "○", uncertain: "!", suspended: "⏸", stopping: "↯", unmonitored: "◐", running: "●",
 } as const
 
-export function glyphFor(node: DagNode): string {
+function settledGlyph(outcome: DagOutcome | undefined): string {
+  switch (outcome) {
+    case "failed":
+      return GLYPH.failed
+    case "backtracked":
+      return GLYPH.backtracked
+    case "interrupted":
+      return GLYPH.interrupted
+    default:
+      return GLYPH.done
+  }
+}
+
+export function glyphFor(node: DrawnNode): string {
   switch (node.state) {
     case "planned":
       return GLYPH.planned
-    case "withdrawn":
-      return GLYPH.withdrawn
     case "settled":
-      switch (node.outcome) {
-        case "failed":
-          return GLYPH.failed
-        case "backtracked":
-          return GLYPH.backtracked
-        case "interrupted":
-          return GLYPH.interrupted
-        default:
-          return GLYPH.done
-      }
+      return settledGlyph(node.outcome)
     case "in_flight":
       switch (node.flight) {
         case "pending_launch":
@@ -908,26 +1014,11 @@ export function glyphFor(node: DagNode): string {
   }
 }
 
-// A node reads as its state and its name; the kind is omitted while
-// "delegated" is the only kind, since it would tell nothing apart.
-export function nodeText(node: DagNode): string {
-  return `${glyphFor(node)} ${node.id}`
-}
-
-const activityLabel = (activity: DagActivity) => (activity.node_kind === "orchestrator" ? "direct activity" : "GC activity")
-
-// Lost capture reads as the unmonitored unit does: its glyph, in flight, no agent blamed.
-const activityUnmonitored = (activity: DagActivity) => activity.state === "in_flight" && activity.flight === "unmonitored"
-
-export function activityText(activity: DagActivity): string {
-  const label = activityLabel(activity)
-  if (activityUnmonitored(activity)) return `◐ ${label} ${activity.activity_id} · unmonitored`
-  if (activity.state === "in_flight") return `◆ ${label} ${activity.activity_id} · running`
-  return `◇ ${label} ${activity.activity_id} · ${activity.outcome ?? "settled"}`
-}
-
-export function activityBoxWidth(activity: DagActivity): number {
-  return Bun.stringWidth(activityText(activity)) + 2
+// An activity is a node: the state glyph every node uses, its identity as its
+// name. Lost capture reads as the unmonitored unit does, in flight and not failed.
+export function activityGlyph(activity: DagActivity): string {
+  if (activity.state === "settled") return settledGlyph(activity.outcome)
+  return activity.flight === "unmonitored" ? GLYPH.unmonitored : GLYPH.running
 }
 
 /** Where an activity box sits in the lane below the graph. */
@@ -935,34 +1026,35 @@ interface ActivitySlot {
   readonly left: number
   readonly row: number
   readonly width: number
+  /** The activity's name, cut to fit the box. */
+  readonly name: string
 }
 
 /**
  * Places the activity boxes left to right, one cell apart, starting a new row
- * where the next box would pass width; a box wider than width is cut to it.
+ * where the next box would pass width. A box wider than width is cut to it.
  */
 export function packActivities(activities: readonly DagActivity[], width: number): ActivitySlot[] {
   const slots: ActivitySlot[] = []
   let left = 0
   let row = 0
   for (const activity of activities) {
-    const boxWidth = Math.min(activityBoxWidth(activity), width)
-    if (left > 0 && left + boxWidth > width) {
+    const cells = Math.min(boxWidth(activity.activity_id), width)
+    if (left > 0 && left + cells > width) {
       row++
       left = 0
     }
-    slots.push({ left, row, width: boxWidth })
-    left += boxWidth + 1
+    slots.push({ left, row, width: cells, name: fit(activity.activity_id, cells - NODE_CHROME) })
+    left += cells + 1
   }
   return slots
 }
 
-// The glyph legend, shown on demand in the route view (`?`).
+// The glyph legend, shown on demand in the route view (`?`): the states a drawn node can be in.
 const LEGEND_LINES = [
   `${GLYPH.done} done   ${GLYPH.running} in flight   ${GLYPH.planned} planned   ${GLYPH.admitted} admitted   ${GLYPH.uncertain} uncertain`,
-  `${GLYPH.unmonitored} unmonitored   ${GLYPH.failed} failed   ${GLYPH.backtracked} backtracked   ${GLYPH.withdrawn} withdrawn`,
+  `${GLYPH.unmonitored} unmonitored   ${GLYPH.failed} failed   ${GLYPH.backtracked} backtracked`,
   `${GLYPH.suspended} suspended   ${GLYPH.stopping} stopping   ${GLYPH.interrupted} interrupted`,
-  "◆ direct activity   ◇ GC activity",
 ]
 
 // ---------------------------------------------------------------------------
@@ -975,6 +1067,19 @@ const ROUTE_SIDE_COLUMNS = 2
 const ROUTE_CHROME_ROWS = 12
 // Rows of one activity lane row: a spacer, then the bordered box.
 const ACTIVITY_ROW_ROWS = 4
+
+/** A node box with its top-left corner at left, top. */
+function NodeBox(props: { readonly left: number; readonly top: number; readonly glyph: string; readonly name: string }) {
+  return (
+    <For each={boxLines(props.glyph, props.name)}>
+      {(line, row) => (
+        <text position="absolute" left={props.left} top={props.top + row()}>
+          {line}
+        </text>
+      )}
+    </For>
+  )
+}
 
 /** Display health: the snapshot's own capture, or the view's failure state. */
 type Health = "waiting" | "confirmed" | "stale" | "unavailable" | "invalid"
@@ -1002,10 +1107,14 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
   const activityHeight = createMemo(() => activitySlots().reduce((rows, slot) => Math.max(rows, slot.row + 1), 0) * ACTIVITY_ROW_ROWS)
   const viewport = (): Viewport => {
     const size = terminal?.()
-    return size ? { width: routeWidth(), height: size.height - ROUTE_CHROME_ROWS - activityHeight() } : UNBOUNDED
+    // The activity lane never enters the fit: a change in activities must not
+    // move a unit (PR-DTUI-11); the lane scrolls below the graph instead.
+    return size ? { width: routeWidth(), height: size.height - ROUTE_CHROME_ROWS } : UNBOUNDED
   }
   const layout = createMemo(() => (previous = computeLayout(props.snapshot, previous, viewport())))
-  const hasNodes = createMemo(() => props.snapshot.nodes.length > 0)
+  // Each drawn node with the place the layout gave it.
+  const placed = createMemo(() => drawnGraph(props.snapshot).nodes.map((node) => ({ node, at: placeOf(layout(), node.id) })))
+  const hasNodes = createMemo(() => layout().nodes.size > 0)
   const rows = createMemo(() => (hasNodes() ? edgeRows(layout()) : []))
   const ports = createMemo(() => edgePorts(layout()))
   const workHeight = createMemo(() => (hasNodes() ? layout().height : 0))
@@ -1031,23 +1140,8 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
             </text>
           )}
         </For>
-        <For each={props.snapshot.nodes}>
-          {(node) => (
-            <Show when={layout().nodes.get(node.id)}>
-              {(pos: Accessor<LayoutNode>) => (
-                <box
-                  position="absolute"
-                  left={pos().x}
-                  top={pos().y}
-                  width={pos().width}
-                  height={layout().nodeHeight}
-                  border
-                >
-                  <text>{nodeText(node)}</text>
-                </box>
-              )}
-            </Show>
-          )}
+        <For each={placed()}>
+          {({ node, at }) => <NodeBox left={at.x} top={at.y} glyph={glyphFor(node)} name={node.id} />}
         </For>
         <For each={ports()}>
           {(port) => (
@@ -1060,16 +1154,12 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
           {(activity, index) => {
             const slot = () => activitySlots()[index()]
             return (
-              <box
-                position="absolute"
+              <NodeBox
                 left={slot().left}
                 top={workHeight() + 1 + slot().row * ACTIVITY_ROW_ROWS}
-                width={slot().width}
-                height={3}
-                border
-              >
-                <text>{fit(activityText(activity), slot().width - 2)}</text>
-              </box>
+                glyph={activityGlyph(activity)}
+                name={slot().name}
+              />
             )
           }}
         </For>
@@ -1080,7 +1170,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
 
 /** Work units or activities: an activity-only snapshot still has a lane to draw. */
 export function hasContent(snapshot: DagSnapshot): boolean {
-  return snapshot.nodes.length > 0 || snapshot.activities.length > 0
+  return drawnGraph(snapshot).nodes.length > 0 || snapshot.activities.length > 0
 }
 
 // countsLine says where the delegation stands: every count is Takt's, and a
@@ -1159,37 +1249,25 @@ export function sidebarDetail(snapshot: DagSnapshot | undefined, health: Health)
 
 /** One row of the frontier graph: a unit, or a layer too wide for its lanes. */
 interface FrontierItem {
-  readonly id: string
+  readonly members: readonly DrawnNode[]
   readonly glyph: string
   readonly label: string
   readonly tone?: SidebarTone
+  /** The items its members' edges lead to, in row order. */
+  readonly children: FrontierItem[]
 }
 
-function sidebarNode(node: DagNode): FrontierItem {
-  const glyph = glyphFor(node)
-  return { id: node.id, glyph, label: node.id, ...(glyph === GLYPH.failed ? { tone: "error" as const } : {}) }
-}
+// A failure anywhere in an item shows.
+const toneOf = (glyphs: readonly string[]) => (glyphs.includes(GLYPH.failed) ? { tone: "error" as const } : {})
 
-function appendSidebarLayer(
-  layer: readonly string[],
-  group: string,
-  byId: ReadonlyMap<string, DagNode>,
-  itemOf: Map<string, string>,
-  order: FrontierItem[],
-): void {
+// layerItems is one item per unit of a layer, or one grouped item when the
+// layer is wider than the lane budget.
+function layerItems(layer: readonly DrawnNode[]): FrontierItem[] {
+  const glyphs = layer.map(glyphFor)
   if (layer.length <= MAX_SIDEBAR_LANES) {
-    for (const id of layer) {
-      itemOf.set(id, id)
-      order.push(sidebarNode(byId.get(id) as DagNode))
-    }
-    return
+    return layer.map((node, i) => ({ members: [node], glyph: glyphs[i], label: node.id, ...toneOf([glyphs[i]]), children: [] }))
   }
-  for (const id of layer) itemOf.set(id, group)
-  const members = layer.map((id) => sidebarNode(byId.get(id) as DagNode))
-  // A failure anywhere in the group shows.
-  const tone: SidebarTone | undefined = members.some((m) => m.tone === "error") ? "error" : undefined
-  const glyphs = members.map((m) => m.glyph).join("")
-  order.push({ id: group, glyph: GROUP_GLYPH, label: `${glyphs} ${layer.length} parallel`, ...(tone ? { tone } : {}) })
+  return [{ members: layer, glyph: GROUP_GLYPH, label: `${glyphs.join("")} ${layer.length} parallel`, ...toneOf(glyphs), children: [] }]
 }
 
 // sidebarGraph is the frontier: every unit still in flight or planned, and
@@ -1198,37 +1276,21 @@ function appendSidebarLayer(
 // neither is drawn. Within each connected component a layer wider than the
 // lane budget becomes one item; its units share a layer, so no edge joins them
 // and the contracted graph stays acyclic.
-function sidebarGraph(snapshot: DagSnapshot): { order: FrontierItem[]; children: Map<string, string[]> } {
-  const nodes = snapshot.nodes.filter((n) => n.state !== "withdrawn" && !(n.state === "settled" && n.outcome === "completed"))
-  const ids = new Set(nodes.map((n) => n.id))
-  const frontier: DagSnapshot = { ...snapshot, nodes, edges: snapshot.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) }
-  const depths = layersOf(frontier)
-  const byId = new Map(nodes.map((n) => [n.id, n]))
-  const itemOf = new Map<string, string>()
-  const order: FrontierItem[] = []
-  connectedComponents(frontier).forEach((members, component) => {
-    const layers = new Map<number, string[]>()
-    for (const id of members) layers.set(depths.get(id) ?? 0, [...(layers.get(depths.get(id) ?? 0) ?? []), id])
-    for (const depth of [...layers.keys()].sort((a, b) => a - b)) {
-      appendSidebarLayer((layers.get(depth) ?? []).toSorted(ordinal), `${component}:${depth}`, byId, itemOf, order)
-    }
-  })
-  const position = new Map(order.map((item, index) => [item.id, index]))
-  const children = new Map<string, string[]>()
-  for (const e of frontier.edges) {
-    const from = itemOf.get(e.from) as string
-    const to = itemOf.get(e.to) as string
-    const known = children.get(from) ?? []
-    if (!known.includes(to)) children.set(from, [...known, to])
-  }
-  for (const list of children.values()) list.sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0))
-  return { order, children }
+function sidebarGraph(snapshot: DagSnapshot): FrontierItem[] {
+  const drawn = drawnGraph(snapshot)
+  const frontier = graphOf(drawn.nodes.filter((n) => !(n.state === "settled" && n.outcome === "completed")), drawn.edges)
+  const order = connectedComponents(frontier).flatMap(({ nodes }) =>
+    [...new Set(nodes.map((n) => n.layer))].sort((a, b) => a - b).flatMap((layer) => layerItems(nodes.filter((n) => n.layer === layer))))
+  const joins = (from: FrontierItem, to: FrontierItem) =>
+    frontier.edges.some((e) => from.members.some((m) => m.id === e.from) && to.members.some((m) => m.id === e.to))
+  for (const item of order) item.children.push(...order.filter((other) => joins(item, other)))
+  return order
 }
 
 // connectorRow draws, between two unit rows, lanes joining the unit's lane
 // `at`: merging into it from above, or forking from it below. Lanes passing
 // by stay vertical; a joining line crossing one draws ┼.
-function connectorRow(lanes: readonly (string | undefined)[], at: number, others: readonly number[], kind: "merge" | "fork"): SidebarRow {
+function connectorRow(lanes: readonly (FrontierItem | undefined)[], at: number, others: readonly number[], kind: "merge" | "fork"): SidebarRow {
   const count = Math.max(lanes.length, at + 1, ...others.map((o) => o + 1))
   const mask = new Array<number>(count * 2 - 1).fill(0)
   lanes.forEach((target, lane) => {
@@ -1243,7 +1305,7 @@ function connectorRow(lanes: readonly (string | undefined)[], at: number, others
       if (cell < high) mask[cell] |= RIGHT
     }
   }
-  return { text: mask.map((m) => LINE_GLYPHS[m] ?? " ").join("").trimEnd() }
+  return { text: mask.map((m) => LINE_GLYPHS[m]).join("").trimEnd() }
 }
 
 // isChainLink reports a unit that alone follows the unit on the row above,
@@ -1253,22 +1315,22 @@ function isChainLink(
   previous: FrontierItem | undefined,
   incoming: readonly number[],
   at: number,
-  lanes: readonly (string | undefined)[],
-  children: ReadonlyMap<string, readonly string[]>,
+  lanes: readonly (FrontierItem | undefined)[],
 ): boolean {
   return (
     incoming.length === 1 &&
     previous !== undefined &&
-    (children.get(previous.id) ?? []).join() === item.id &&
-    (children.get(item.id) ?? []).length <= 1 &&
+    previous.children.length === 1 &&
+    previous.children[0] === item &&
+    item.children.length <= 1 &&
     lanes.every((target, lane) => lane === at || target === undefined)
   )
 }
 
 // unitRow draws a unit's row: its glyph in lane `at` among the open lanes, or,
 // for the chain-th link of a chain, the indented chain marker; then its label.
-function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undefined)[], chain: number): SidebarRow {
-  const laneGlyph = (target: string | undefined, lane: number) => {
+function unitRow(item: FrontierItem, at: number, lanes: readonly (FrontierItem | undefined)[], chain: number): SidebarRow {
+  const laneGlyph = (target: FrontierItem | undefined, lane: number) => {
     if (lane === at) return item.glyph
     return target === undefined ? " " : "│"
   }
@@ -1284,24 +1346,24 @@ function unitRow(item: FrontierItem, at: number, lanes: readonly (string | undef
 // is marked `└─` and indented one level per link, up to MAX_CHAIN_INDENT;
 // a unit that forks stays in its lane so its fork row lines up under it.
 // Undefined when the walk needs more lanes than the budget.
-function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, readonly string[]>): SidebarRow[] | undefined {
-  const lanes: (string | undefined)[] = []
+function laneRows(order: readonly FrontierItem[]): SidebarRow[] | undefined {
+  const lanes: (FrontierItem | undefined)[] = []
   const rows: SidebarRow[] = []
   const free = () => (lanes.includes(undefined) ? lanes.indexOf(undefined) : lanes.length)
   let previous: FrontierItem | undefined
   let chain = 0
   for (const item of order) {
-    const incoming = lanes.flatMap((target, lane) => (target === item.id ? [lane] : []))
+    const incoming = lanes.flatMap((target, lane) => (target === item ? [lane] : []))
     const at = incoming[0] ?? free()
     if (incoming.length > 1) {
       rows.push(connectorRow(lanes, at, incoming.slice(1), "merge"))
       for (const lane of incoming.slice(1)) lanes[lane] = undefined
     }
-    chain = isChainLink(item, previous, incoming, at, lanes, children) ? chain + 1 : 0
+    chain = isChainLink(item, previous, incoming, at, lanes) ? chain + 1 : 0
     previous = item
-    lanes[at] = item.id
+    lanes[at] = item
     rows.push(unitRow(item, at, lanes, chain))
-    const [first, ...rest] = children.get(item.id) ?? []
+    const [first, ...rest] = item.children
     lanes[at] = first
     const forks = rest.map((child) => {
       const lane = free()
@@ -1322,13 +1384,13 @@ function laneRows(order: readonly FrontierItem[], children: ReadonlyMap<string, 
  * exceeds MAX_SIDEBAR_ROWS: the oldest rows fold into a leading "… N more".
  */
 export function sidebarRows(snapshot: DagSnapshot): SidebarRow[] {
-  const { order, children } = sidebarGraph(snapshot)
+  const order = sidebarGraph(snapshot)
   const graph =
-    laneRows(order, children) ??
+    laneRows(order) ??
     order.map((item) => ({ text: fit(`${item.glyph} ${item.label}`, SIDEBAR_COLUMNS), ...(item.tone ? { tone: item.tone } : {}) }))
   const activities = snapshot.activities
     .filter((a) => a.state === "in_flight")
-    .map((a) => ({ text: fit(`${activityUnmonitored(a) ? "◐" : "◆"} ${activityLabel(a)}`, SIDEBAR_COLUMNS) }))
+    .map((a) => ({ text: fit(`${activityGlyph(a)} ${a.activity_id}`, SIDEBAR_COLUMNS) }))
   const rows = [...graph, ...activities]
   if (rows.length <= MAX_SIDEBAR_ROWS) return rows
   const hidden = rows.length - (MAX_SIDEBAR_ROWS - 1)
@@ -1371,9 +1433,7 @@ export function SidebarGraph(props: {
 // AbortReturn is the part of the core's abort reply this plugin relays.
 type AbortReturn = { child: string; root: string; notice: string }
 function isAbortReturn(value: unknown): value is AbortReturn {
-  if (typeof value !== "object" || value === null) return false
-  const reply = value as Record<string, unknown>
-  return typeof reply.child === "string" && typeof reply.root === "string" && typeof reply.notice === "string"
+  return isRecord(value) && isString(value.child) && isString(value.root) && isString(value.notice)
 }
 
 function stateDir(workspace: string): string {

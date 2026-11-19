@@ -87,7 +87,7 @@ type TriggerKind string
 const (
 	// TriggerCadence marks a cycle made due by the pace of work.
 	TriggerCadence TriggerKind = "cadence"
-	// TriggerUser marks a cycle requested through the interface holder (PR-MNT-8).
+	// TriggerUser marks a cycle the user requested.
 	TriggerUser TriggerKind = "user"
 )
 
@@ -117,13 +117,13 @@ const (
 )
 
 // TriggerInput carries the pace counters and state the decision depends on.
-// The user request is data here, not a channel: the interface holder sets it (PR-MNT-8).
+// The user request is data here, not a channel.
 type TriggerInput struct {
 	// UnitsDispatched counts work units dispatched since the last cycle.
 	UnitsDispatched int
 	// Mutations counts workspace mutations since the last cycle.
 	Mutations int
-	// UserRequested is set by the interface holder when the user asks for a cycle.
+	// UserRequested is set when the user asks for a cycle.
 	UserRequested bool
 	// CycleInFlight is set while a previous cycle has not completed, since cycles must not overlap.
 	CycleInFlight bool

@@ -159,11 +159,11 @@ func TestDispatchRejectsBadInvocations(t *testing.T) {
 	}
 }
 
-// TestDispatchActivityActionsOnlyAcceptOrchestratorNodes verifies the harness-owned node kind cannot be claimed by a caller.
+// TestDispatchActivityActionsOnlyAcceptOrchestratorNodes verifies an activity names only the orchestrator node kind.
 func TestDispatchActivityActionsOnlyAcceptOrchestratorNodes(t *testing.T) {
 	s := newSession(t, buildTaktAI(t))
 	for _, action := range []string{"activity_start", "activity_finish"} {
-		res := s.dispatch(request{Action: action, Session: rootSession, ActivityID: "a1", NodeKind: history.NodeKindMaintenance})
+		res := s.dispatch(request{Action: action, Session: rootSession, ActivityID: "a1", NodeKind: history.NodeKindDelegated})
 		requireRefusal(t, res, "only accepts node_kind orchestrator")
 	}
 }

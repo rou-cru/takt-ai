@@ -38,21 +38,9 @@ func revised(session, base, version, classification string) history.Entry {
 }
 
 func activityRecord(session, id string, kind history.NodeKind, start bool, outcome history.Outcome) history.Entry {
-	e := history.Entry{SessionID: session, ActivityID: id, NodeKind: kind, Cause: history.CauseNone, Outcome: outcome}
-	if kind == history.NodeKindOrchestrator {
-		e.Author = history.AuthorOrchestrator
-		if start {
-			e.Kind = history.KindActivityStarted
-		} else {
-			e.Kind = history.KindActivityFinished
-		}
-	} else {
-		e.Author = history.AuthorHarness
-		if start {
-			e.Kind = history.KindMaintenanceStarted
-		} else {
-			e.Kind = history.KindMaintenanceFinished
-		}
+	e := history.Entry{Author: history.AuthorOrchestrator, Kind: history.KindActivityFinished, SessionID: session, ActivityID: id, NodeKind: kind, Cause: history.CauseNone, Outcome: outcome}
+	if start {
+		e.Kind = history.KindActivityStarted
 	}
 	return e
 }
@@ -315,12 +303,10 @@ func TestBuildSnapshotNodeKindsPreserveIdentityAndPrerequisites(t *testing.T) {
 
 func TestWorkUnitEntriesRejectActivityNodeKinds(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	for _, kind := range []history.NodeKind{history.NodeKindOrchestrator, history.NodeKindMaintenance} {
-		e := planned("root", string(kind), "v1", "not a work-unit activity", nil)
-		e.NodeKind = kind
-		if err := h.Append(e); err == nil {
-			t.Fatalf("work-unit entry accepted activity kind %q", kind)
-		}
+	e := planned("root", "orchestrator", "v1", "not a work-unit activity", nil)
+	e.NodeKind = history.NodeKindOrchestrator
+	if err := h.Append(e); err == nil {
+		t.Fatal("work-unit entry accepted the orchestrator activity kind")
 	}
 }
 
@@ -364,7 +350,7 @@ func TestUnmonitoredActivityStaysInFlightAndSerializes(t *testing.T) {
 
 func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	h := open(t, filepath.Join(t.TempDir(), "state"))
-	cycleID := "a13f86e2b7c94e6d"
+	otherID := "a13f86e2b7c94e6d"
 	directID := "orchestrator-activity-7fca2e"
 	entries := []history.Entry{
 		planned("root", "base", "v1", "base", nil),
@@ -375,8 +361,8 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 		observed(t, "later", history.KindAdmitted, ""), // uncovered delegation: no declared prerequisites
 		activityRecord("root", directID, history.NodeKindOrchestrator, true, ""),
 		activityRecord("root", directID, history.NodeKindOrchestrator, false, history.OutcomeCompleted),
-		activityRecord("root", cycleID, history.NodeKindMaintenance, true, ""),
-		activityRecord("root", cycleID, history.NodeKindMaintenance, false, history.OutcomeInterrupted),
+		activityRecord("root", otherID, history.NodeKindOrchestrator, true, ""),
+		activityRecord("root", otherID, history.NodeKindOrchestrator, false, history.OutcomeInterrupted),
 	}
 	for _, e := range entries {
 		if err := h.Append(e); err != nil {
@@ -390,11 +376,11 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if _, found := p.Units[history.UnitKey("root", directID)]; found {
 		t.Fatalf("direct activity was folded into work units: %v", p.Units)
 	}
-	if _, found := p.Units[history.UnitKey("root", cycleID)]; found {
-		t.Fatalf("GC CycleID was folded into work units: %v", p.Units)
+	if _, found := p.Units[history.UnitKey("root", otherID)]; found {
+		t.Fatalf("activity was folded into work units: %v", p.Units)
 	}
-	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != history.NodeKindOrchestrator || p.Activities[cycleID].NodeKind != history.NodeKindMaintenance {
-		t.Fatalf("activities %+v; want direct and maintenance activities", p.Activities)
+	if len(p.Activities) != 2 || p.Activities[directID].NodeKind != history.NodeKindOrchestrator || p.Activities[otherID].NodeKind != history.NodeKindOrchestrator {
+		t.Fatalf("activities %+v; want two direct activities", p.Activities)
 	}
 	for _, e := range h.Entries() {
 		if e.ActivityID != "" && (e.WorkUnitID != "" || e.AttemptID != "") {
@@ -411,7 +397,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 			t.Fatalf("delegated unit %q got kind %q", node.ID, node.NodeKind)
 		}
 	}
-	if len(snapshot.Activities) != 2 || snapshot.Activities[0].ActivityID != cycleID || snapshot.Activities[1].ActivityID != directID {
+	if len(snapshot.Activities) != 2 || snapshot.Activities[0].ActivityID != otherID || snapshot.Activities[1].ActivityID != directID {
 		t.Fatalf("snapshot activities %+v; activity IDs must be retained and sorted", snapshot.Activities)
 	}
 	if snapshot.Activities[0].State != history.StateSettled || snapshot.Activities[0].Outcome != history.OutcomeInterrupted || snapshot.Activities[1].Outcome != history.OutcomeCompleted {
@@ -424,7 +410,7 @@ func TestSnapshotProjectsActivitiesSeparateFromWorkUnits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), `"work_unit_id"`) || !strings.Contains(string(raw), `"activity_id":"`+cycleID+`"`) {
+	if strings.Contains(string(raw), `"work_unit_id"`) || !strings.Contains(string(raw), `"activity_id":"`+otherID+`"`) {
 		t.Fatalf("snapshot did not preserve a distinct activity identity: %s", raw)
 	}
 }

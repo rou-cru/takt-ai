@@ -8,7 +8,7 @@
 | IR-2 | Technical execution specialists that receive structured and aligned work operate internally within the crew and report to the orchestrator, without opening unnecessary direct conversations with the user (reference example: code implementer). |
 | IR-3 | Exclusively internal support agents are not directly invocable by the user and do not act as their direct interlocutors. Classification responds to the nature of the assigned task. |
 | IR-4 | The orchestrator coordinates the crew without obstructing direct communication when the specialist's role requires user contact. |
-| IR-6 | Takt becomes visible to the user only for an escalation under `IR-18`, a transition the user takes part in, or a maintenance notice relayed through the interface holder. |
+| IR-6 | Takt becomes visible to the user only for an escalation under `IR-18` or a transition the user takes part in. |
 | IR-9 | The interface holder carries every escalation to the user; internal agents escalate through it. |
 | IR-10 | Every escalation to the user includes context, implications, and analyzed alternatives. |
 | IR-11 | The decision made by the user after an escalation bindingly governs work continuity. |

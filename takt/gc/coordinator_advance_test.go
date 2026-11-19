@@ -44,12 +44,22 @@ func sessionDelta() []vfs.JournalEntry {
 	return entries
 }
 
+// admitUnit records an ordinary admission of unit in the advance session.
+func admitUnit(t *testing.T, h *history.History, unit, delegation string) {
+	t.Helper()
+	p, err := dispatch.LoadAdmissionPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Event: unit, Session: advanceSession, Agent: "dev", Dispatch: delegation}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAdvanceIdleLeavesCountersAlone(t *testing.T) {
 	h, fs := advanceEnv(t)
 	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
-	if err := c.Admit(h, "", "unit", advanceSession, "dev", "dispatch"); err != nil {
-		t.Fatal(err)
-	}
+	admitUnit(t, h, "unit", "dispatch")
 	if err := dispatch.Finish(h, "", "unit", advanceSession); err != nil {
 		t.Fatal(err)
 	}
@@ -116,9 +126,7 @@ func TestAdvanceLeavesARunningCycleAlone(t *testing.T) {
 func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 	h, fs := advanceEnv(t)
 	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
-	if err := c.Admit(h, "", "unit-1", advanceSession, "dev", "d1"); err != nil {
-		t.Fatal(err)
-	}
+	admitUnit(t, h, "unit-1", "d1")
 	c.Mutations = dueMutations
 
 	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, nil)

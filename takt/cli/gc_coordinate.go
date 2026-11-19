@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"time"
 
-	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/obs"
@@ -98,56 +96,12 @@ func coordinatePrepare(ctx context.Context, workspace, state string, c *gc.Coord
 	return gc.Prepare(ctx, workspace, state, r.Session)
 }
 
-// cycleClosing is the closing notice of a cycle: its outcome and the findings it left unapplied.
-// The cycle record is the only report of those findings (PR-MNT-5).
-type cycleClosing struct {
-	Cycle     string       `json:"cycle"`
-	Outcome   string       `json:"outcome"`
-	Unapplied []gc.Finding `json:"unapplied_findings"`
-}
-
-// closingOf is the closing notice of the cycle that was open before an action and is closed after it;
-// nil when that action closed none.
-func closingOf(open *gc.Cycle, c *gc.Coordinator) *cycleClosing {
-	if open == nil || c.Cycle != nil || len(c.History) == 0 {
-		return nil
-	}
-	closed := c.History[len(c.History)-1]
-	unapplied := []gc.Finding{}
-	for _, f := range closed.Report.Findings {
-		if closed.Reason != closeApplied || !slices.Contains(closed.Scope, f.Path) {
-			unapplied = append(unapplied, f)
-		}
-	}
-	return &cycleClosing{Cycle: closed.Plan.CycleID, Outcome: closed.Reason, Unapplied: unapplied}
-}
-
-// closedCoordinator is the coordinator state beside the notice of the cycle the action closed.
-type closedCoordinator struct {
-	*gc.Coordinator
-	Closing *cycleClosing `json:"closing,omitempty"`
-}
-
 func coordinateGC(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
-	open := c.Cycle
-	result, err := coordinateGCAction(ctx, fs, h, workspace, state, c, r)
-	if result == c {
-		if closing := closingOf(open, c); closing != nil {
-			return closedCoordinator{c, closing}, err
-		}
-	}
-	return result, err
-}
-
-func coordinateGCAction(ctx context.Context, fs *vfs.FS, h *history.History, workspace, state string, c *gc.Coordinator, r coordinationRequest) (any, error) {
 	if r.Action == "status" {
 		c.ObserveExecutions(h)
 		return c, nil
 	}
-	entries, err := observeCoordination(fs, h, c, r.Session)
-	if err != nil {
-		return nil, err
-	}
+	entries := observeCycle(fs, h, c, r.Session)
 	switch r.Action {
 	case "prepare":
 		return coordinatePrepare(ctx, workspace, state, c, r)
@@ -336,7 +290,7 @@ func coordinateAcceptance(ctx context.Context, h *history.History, fs *vfs.FS, w
 		return c, abortGCCycle(h, fs, workspace, c, "acceptance regression or missing evidence", nil)
 	}
 	cycleRecord(workspace, c.Cycle, closeApplied)
-	if e = settleGCCycleActivity(h, fs, c.Cycle, history.OutcomeCompleted); e != nil {
+	if e = settleGCCycleLanes(h, fs, c.Cycle); e != nil {
 		return nil, e
 	}
 	// Closure is durably recorded before releasing retained rollback state.
@@ -362,7 +316,7 @@ func coordinateNoChange(h *history.History, fs *vfs.FS, workspace string, c *gc.
 		reason = "proposals-or-refuted"
 	}
 	cycleRecord(workspace, c.Cycle, reason)
-	if e := settleGCCycleActivity(h, fs, c.Cycle, history.OutcomeCompleted); e != nil {
+	if e := settleGCCycleLanes(h, fs, c.Cycle); e != nil {
 		return nil, e
 	}
 	closed := c.Cycle
@@ -378,11 +332,6 @@ func coordinateAdvance(ctx context.Context, fs *vfs.FS, h *history.History, work
 	d, b, e := c.Advance(ctx, fs, h, entries, r.Session, nil)
 	if e != nil {
 		return nil, e
-	}
-	if c.Cycle != nil {
-		if e = startGCCycleActivity(h, c.Cycle); e != nil {
-			return nil, e
-		}
 	}
 	if rec, ok := d.ControlRecord(harnessAgent); ok {
 		rec.Correlations = obs.CorrelationIDs{SessionID: r.Session}
@@ -546,7 +495,7 @@ func abortGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 	if e := fs.DropCycleStaging(cycle); e != nil {
 		return e
 	}
-	if e := settleGCCycleActivity(h, fs, c.Cycle, history.OutcomeInterrupted); e != nil {
+	if e := settleGCCycleLanes(h, fs, c.Cycle); e != nil {
 		return e
 	}
 	closed := c.Cycle
@@ -560,13 +509,8 @@ func abortGCCycle(h *history.History, fs *vfs.FS, workspace string, c *gc.Coordi
 	return nil
 }
 
-// settleGCCycleActivity closes the cycle's activity and releases what its lanes
-// prepared. The idempotent start first covers a cycle persisted before its
-// activity was ever recorded.
-func settleGCCycleActivity(h *history.History, fs *vfs.FS, c *gc.Cycle, outcome history.Outcome) error {
-	if err := startGCCycleActivity(h, c); err != nil {
-		return err
-	}
+// settleGCCycleLanes ends the cycle's lanes and releases what they prepared.
+func settleGCCycleLanes(h *history.History, fs *vfs.FS, c *gc.Cycle) error {
 	for _, d := range h.Project().Executions {
 		if !d.Settled && d.Cycle == c.Plan.CycleID {
 			if err := fs.CancelPreparedDelegation(d.Root, d.Unit, d.Attempt); err != nil {
@@ -577,17 +521,19 @@ func settleGCCycleActivity(h *history.History, fs *vfs.FS, c *gc.Cycle, outcome 
 			}
 		}
 	}
-	return protocol.FinishActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance, outcome)
+	return nil
 }
 
-func startGCCycleActivity(h *history.History, c *gc.Cycle) error {
-	// History can commit interruption before the coordinator's close is saved.
-	// Resume only that exact closure; never reopen or relabel a finished activity.
-	prior, exists := h.Project().Activities[c.Plan.CycleID]
-	if exists && prior.SessionID == c.Plan.SessionID && prior.NodeKind == history.NodeKindMaintenance &&
-		prior.State == history.StateSettled && prior.Outcome == history.OutcomeInterrupted &&
-		(c.Phase == "aborting" || c.Phase == "blocked") {
-		return nil
+// observeCycle reads the journal and the execution history the coordinator's
+// counters and lanes derive from. While a cycle is held, its lanes call with
+// their own sessions but act for the root the cycle covers.
+func observeCycle(fs *vfs.FS, h *history.History, c *gc.Coordinator, session string) []vfs.JournalEntry {
+	if c.Cycle != nil {
+		session = c.Cycle.Plan.SessionID
 	}
-	return protocol.StartActivity(h, c.Plan.SessionID, c.Plan.CycleID, history.NodeKindMaintenance, "")
+	c.Bind(session)
+	entries := journalEntries(fs, "")
+	c.Observe(entries)
+	c.ObserveExecutions(h)
+	return entries
 }

@@ -97,7 +97,4 @@ func TestGCAdmissionWaitsForExactLaneTermination(t *testing.T) {
 	if c, err := gcCall(s, map[string]any{"action": "abort", "event": "cycle"}); err != nil || c.Cycle != nil {
 		t.Fatalf("restart could not complete recorded interruption: %+v %v", c, err)
 	}
-	if activity := s.projection().Activities["cycle"]; activity.Outcome != history.OutcomeInterrupted {
-		t.Fatal("resumed closure changed the recorded outcome")
-	}
 }

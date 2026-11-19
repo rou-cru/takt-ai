@@ -195,9 +195,6 @@ func (f *FS) BindAs(c Caller, scope []string, invariants InvariantSet) (result B
 		return result, err
 	}
 	attempt := c.AttemptID
-	if err = f.guardMaintenanceLocked("bind", attempt, "", "", ""); err != nil {
-		return result, err
-	}
 	identity := Identity{SessionID: c.SessionID, WorkUnitID: c.WorkUnitID, AttemptID: attempt, AgentID: c.Agent,
 		Specialist: string(c.Agent), Invariants: invariants, HostSession: c.HostSession}
 	key, err := f.bindHeldLocked(c, identity, scope)
@@ -321,7 +318,7 @@ func (f *FS) Operate(c Caller, op CallerOperation) (result OperationResult, err 
 	if err != nil {
 		return result, err
 	}
-	if err = f.guardMaintenanceLocked("op", "", string(op.Action), op.Path, key); err != nil {
+	if err = f.guardMaintenanceLocked("op", string(op.Action), op.Path, key); err != nil {
 		return result, err
 	}
 	revision, hash := f.revisionOf(view), f.deltaHashLocked(view)
@@ -376,7 +373,7 @@ func (f *FS) VerifyAs(c Caller, callID string, author AgentID, pass bool, findin
 	if gate == "" {
 		return errNotYourGate(author, judged)
 	}
-	if err = f.guardMaintenanceLocked("verify", "", "", "", gate); err != nil {
+	if err = f.guardMaintenanceLocked("verify", "", "", gate); err != nil {
 		return err
 	}
 	return f.verifyJudgedLocked(gate, author, callID, pass, finding)
@@ -400,7 +397,7 @@ func (f *FS) orchestratorKeyLocked(c Caller, author AgentID, capability model.VF
 	if c.HostSession != c.SessionID {
 		return errOrchestratorOnly
 	}
-	if err := f.guardMaintenanceLocked("consolidate", "", "", "", author); err != nil {
+	if err := f.guardMaintenanceLocked("consolidate", "", "", author); err != nil {
 		return err
 	}
 	if c.Agent != OrchestratorInstance {
