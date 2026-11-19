@@ -6,14 +6,13 @@
 import "github.com/rou-cru/takt-ai/takt/dispatch"
 ```
 
-Package dispatch is the generic admission and lifecycle protocol for any unit of work an orchestrator dispatches, backed by the execution history projection. It owns no process state: every fact it decides is read from and appended to the \*history.History it is given. A caller with its own reason to pause admission \(a maintenance barrier, a drain\) passes it as held; this package need not know why.
+Package dispatch is the generic admission and lifecycle protocol for any unit of work an orchestrator dispatches, backed by the execution history projection. It owns no process state: every fact it decides is read from and appended to the \*history.History it is given.
 
 ## Index
 
 - [Constants](<#constants>)
 - [func Abort\(h \*history.History, journalRef, root, childSession, reason, origin string\) error](<#Abort>)
 - [func Account\(h \*history.History, entries \[\]vfs.JournalEntry\) error](<#Account>)
-- [func Admissible\(h \*history.History, p AdmissionPolicy, req AdmissionRequest\) error](<#Admissible>)
 - [func Admit\(h \*history.History, p AdmissionPolicy, journalRef string, req AdmissionRequest\) error](<#Admit>)
 - [func CloseRecovery\(h \*history.History, journalRef, event, session, objective, evidence string, demonstrated bool\) error](<#CloseRecovery>)
 - [func Commit\(h \*history.History, journalRef, session, version string, units \[\]PlanUnit, qaRound ...\*history.QARound\) error](<#Commit>)
@@ -114,15 +113,6 @@ func Account(h *history.History, entries []vfs.JournalEntry) error
 ```
 
 Account attributes recorded bus actions to the recovery scope that declared them and forces backtracking at exhaustion of either budget \(PR\-OBS\-PRG\-2, PR\-HAR\-6\).
-
-<a name="Admissible"></a>
-## func Admissible
-
-```go
-func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) error
-```
-
-Admissible reports the refusal Admit would record for req, without recording anything: a caller that must undo other work before admitting \(a maintenance cycle in flight\) does so only for an admission that will go through.
 
 <a name="Admit"></a>
 ## func Admit
@@ -329,7 +319,7 @@ SeatEntry is the execution\-history record of an admitted restoration.
 func StartActivity(h *history.History, session, activityID string, nodeKind history.NodeKind, owner string) error
 ```
 
-StartActivity records non\-work\-unit orchestrator or maintenance activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance. Another instance that starts the activity again takes over its capture.
+StartActivity records non\-work\-unit orchestrator activity. Activity identity stays in ActivityID, never in WorkUnitID; delegated work continues to use Admit and the ordinary unit lifecycle. owner is the harness instance that captures it, so another instance can tell once that capture is lost; empty when the activity has no capturing instance. Another instance that starts the activity again takes over its capture.
 
 <a name="SubstituteIdentity"></a>
 ## func SubstituteIdentity

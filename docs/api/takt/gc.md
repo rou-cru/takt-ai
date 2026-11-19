@@ -20,7 +20,6 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
 - [func SaveRefutations\(state, cycleID string, refs \[\]Refutation\) error](<#SaveRefutations>)
 - [type AcceptanceResult](<#AcceptanceResult>)
   - [func ParseAcceptanceResult\(value string\) \(AcceptanceResult, error\)](<#ParseAcceptanceResult>)
-- [type AdmissionPolicy](<#AdmissionPolicy>)
 - [type Analyzer](<#Analyzer>)
 - [type BarrierInput](<#BarrierInput>)
 - [type BarrierVerdict](<#BarrierVerdict>)
@@ -39,7 +38,6 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
   - [func \(c \*Codegraph\) Dependents\(ctx context.Context, path string\) \(\[\]string, error\)](<#Codegraph.Dependents>)
 - [type Coordinator](<#Coordinator>)
   - [func LoadCoordinator\(fs \*vfs.FS\) \(\*Coordinator, error\)](<#LoadCoordinator>)
-  - [func \(c \*Coordinator\) Admit\(h \*history.History, journalRef, event, session, agent, delegation string\) error](<#Coordinator.Admit>)
   - [func \(c \*Coordinator\) Advance\(ctx context.Context, fs \*vfs.FS, h \*history.History, entries \[\]vfs.JournalEntry, session string, reach Reach\) \(Decision, BarrierVerdict, error\)](<#Coordinator.Advance>)
   - [func \(c \*Coordinator\) Bind\(session string\)](<#Coordinator.Bind>)
   - [func \(c \*Coordinator\) Close\(reason string\)](<#Coordinator.Close>)
@@ -67,13 +65,11 @@ Package gc computes and coordinates the workspace GC cycle: it decides when a cy
 - [type Outcome](<#Outcome>)
 - [type Plan](<#Plan>)
   - [func Declare\(ctx context.Context, entries \[\]vfs.JournalEntry, req Request, reach Reach\) \(Plan, error\)](<#Declare>)
-- [type PlanUnit](<#PlanUnit>)
 - [type Preparation](<#Preparation>)
   - [func LoadPreparation\(workspace, state string\) \(Preparation, error\)](<#LoadPreparation>)
   - [func Prepare\(ctx context.Context, workspace, state, session string\) \(Preparation, error\)](<#Prepare>)
 - [type ProjectConfig](<#ProjectConfig>)
 - [type Reach](<#Reach>)
-- [type RecoveryDeclaration](<#RecoveryDeclaration>)
 - [type Refutation](<#Refutation>)
   - [func LoadRefutations\(state, cycleID string\) \(\[\]Refutation, error\)](<#LoadRefutations>)
   - [func Refute\(plan Plan, report Report, existing \[\]Refutation, r Refutation\) \(\[\]Refutation, error\)](<#Refute>)
@@ -171,12 +167,6 @@ const (
 
 ```go
 const AcceptancePolicyRef = "gc.acceptance"
-```
-
-<a name="AdmissionPolicyRef"></a>AdmissionPolicyRef names the admission rule on every record; aliased from package dispatch.
-
-```go
-const AdmissionPolicyRef = dispatch.AdmissionPolicyRef
 ```
 
 <a name="BarrierPolicyRef"></a>BarrierPolicyRef names the barrier rule on every record.
@@ -302,15 +292,6 @@ func ParseAcceptanceResult(value string) (AcceptanceResult, error)
 ```
 
 ParseAcceptanceResult rejects anything outside the closed set, so a typo never reads as a passing cycle.
-
-<a name="AdmissionPolicy"></a>
-## type AdmissionPolicy
-
-AdmissionPolicy holds the dispatch ceiling and session budgets; GC reads it to admit work, never to change it.
-
-```go
-type AdmissionPolicy = dispatch.AdmissionPolicy
-```
 
 <a name="Analyzer"></a>
 ## type Analyzer
@@ -526,7 +507,7 @@ Dependents returns the files reachable outward from path's symbols, sorted and d
 <a name="Coordinator"></a>
 ## type Coordinator
 
-Coordinator is private workspace state, all access serialized by vfs.Open. In\-flight ordinary\-dispatch state is read from the history projection via package dispatch \(PR\-DAG\-AUT\-1\); Units and Mutations are GC's own pace counters for deciding when to trigger the next cycle \(PR\-MNT\-9/11\).
+Coordinator is private workspace state, all access serialized by vfs.Open. In\-flight ordinary\-dispatch state is read from the history projection; Units and Mutations are GC's own pace counters for deciding when to trigger the next cycle.
 
 ```go
 type Coordinator struct {
@@ -562,15 +543,6 @@ func LoadCoordinator(fs *vfs.FS) (*Coordinator, error)
 ```
 
 LoadCoordinator reads the core state under its workspace lock. Pace counts, lane sessions, the cycle's keys and its authorized scope are projections of history and the core bindings, never persisted mirrors.
-
-<a name="Coordinator.Admit"></a>
-### func \(\*Coordinator\) Admit
-
-```go
-func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error
-```
-
-Admit composes ordinary dispatch admission with the session pace counters. Maintenance never holds an admission: the caller ends a cycle in flight first. Concurrency, plan coverage and recovery budgets belong to package dispatch, not GC.
 
 <a name="Coordinator.Advance"></a>
 ### func \(\*Coordinator\) Advance
@@ -615,7 +587,7 @@ Demote records that m lost autonomous mutation \(PR\-MNT\-32\).
 func (c *Coordinator) Held() bool
 ```
 
-Held reports whether a maintenance cycle is in flight. It never gates ordinary dispatch: an admitted delegation ends the cycle instead.
+Held reports whether a maintenance cycle is in flight.
 
 <a name="Coordinator.Observe"></a>
 ### func \(\*Coordinator\) Observe
@@ -960,15 +932,6 @@ func Declare(ctx context.Context, entries []vfs.JournalEntry, req Request, reach
 
 Declare builds the cycle declaration.
 
-<a name="PlanUnit"></a>
-## type PlanUnit
-
-PlanUnit is one unit of a plan commitment; aliased from package dispatch.
-
-```go
-type PlanUnit = dispatch.PlanUnit
-```
-
 <a name="Preparation"></a>
 ## type Preparation
 
@@ -1027,15 +990,6 @@ Reach answers what lies outward from a file: it returns the files reachable from
 
 ```go
 type Reach func(ctx context.Context, path string) ([]string, error)
-```
-
-<a name="RecoveryDeclaration"></a>
-## type RecoveryDeclaration
-
-RecoveryDeclaration declares bounded recovery before uncertain work begins \(PR\-ORQ\-13\); GC records it verbatim from the declarer.
-
-```go
-type RecoveryDeclaration = dispatch.RecoveryDeclaration
 ```
 
 <a name="Refutation"></a>
@@ -1167,7 +1121,7 @@ type SymbolSnapshot struct {
 <a name="TriggerInput"></a>
 ## type TriggerInput
 
-TriggerInput carries the pace counters and state the decision depends on. The user request is data here, not a channel: the interface holder sets it \(PR\-MNT\-8\).
+TriggerInput carries the pace counters and state the decision depends on. The user request is data here, not a channel.
 
 ```go
 type TriggerInput struct {
@@ -1175,7 +1129,7 @@ type TriggerInput struct {
     UnitsDispatched int
     // Mutations counts workspace mutations since the last cycle.
     Mutations int
-    // UserRequested is set by the interface holder when the user asks for a cycle.
+    // UserRequested is set when the user asks for a cycle.
     UserRequested bool
     // CycleInFlight is set while a previous cycle has not completed, since cycles must not overlap.
     CycleInFlight bool
@@ -1199,7 +1153,7 @@ type TriggerKind string
 const (
     // TriggerCadence marks a cycle made due by the pace of work.
     TriggerCadence TriggerKind = "cadence"
-    // TriggerUser marks a cycle requested through the interface holder (PR-MNT-8).
+    // TriggerUser marks a cycle the user requested.
     TriggerUser TriggerKind = "user"
 )
 ```
