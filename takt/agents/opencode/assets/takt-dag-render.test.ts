@@ -82,10 +82,10 @@ describe("ordinal", () => {
 
 describe("activityError", () => {
   test("accepts distinct, non-empty activity identities", () => {
-    expect(activityError([activity({ activity_id: "a" }), activity({ activity_id: "b", node_kind: "maintenance", state: "settled" })])).toBeUndefined()
+    expect(activityError([activity({ activity_id: "a" }), activity({ activity_id: "b", state: "settled" })])).toBeUndefined()
   })
   test("rejects a duplicate activity identity", () => {
-    expect(activityError([activity({ activity_id: "a" }), activity({ activity_id: "a", node_kind: "maintenance", state: "settled" })])).toBe("duplicate or empty activity identity")
+    expect(activityError([activity({ activity_id: "a" }), activity({ activity_id: "a", state: "settled" })])).toBe("duplicate or empty activity identity")
   })
   test("rejects an empty activity identity", () => {
     expect(activityError([activity({ activity_id: "" })])).toBe("duplicate or empty activity identity")
@@ -454,7 +454,7 @@ describe("node presentation", () => {
 describe("activity presentation", () => {
   test("an activity shows the state glyph every node uses", () => {
     expect(activityGlyph(activity({ activity_id: "a1" }))).toBe(glyph({ state: "in_flight" }))
-    expect(activityGlyph(activity({ activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" }))).toBe(glyph({ state: "settled", outcome: "completed" }))
+    expect(activityGlyph(activity({ activity_id: "a2", state: "settled", outcome: "completed" }))).toBe(glyph({ state: "settled", outcome: "completed" }))
     expect(activityGlyph(activity({ activity_id: "a3", state: "settled", outcome: "failed" }))).toBe(glyph({ state: "settled", outcome: "failed" }))
   })
   test("lost capture shows the unmonitored glyph, in flight and not failed", () => {
@@ -586,7 +586,7 @@ describe("sidebar rows", () => {
       node({ id: "solo", state: "in_flight" }), node({ id: "gone", state: "withdrawn" }),
     ], edges: [{ from: "pm", to: "spec" }], activities: [
       activity({ activity_id: "a1" }),
-      activity({ activity_id: "a2", node_kind: "maintenance", state: "settled", outcome: "completed" }),
+      activity({ activity_id: "a2", state: "settled", outcome: "completed" }),
     ] }
     expect(sidebarRows(snapshot)).toEqual([
       { text: "✗ pm", tone: "error" },

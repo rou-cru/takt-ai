@@ -162,7 +162,7 @@
       "id": "plugin",
       "type": "frontend",
       "label": "VFS plugin",
-      "sublabel": "vfs_*, gc_* tools, permission hooks",
+      "sublabel": "vfs_*, dispatch_* tools, permission hooks",
       "pos": [
         560,
         40
@@ -174,16 +174,15 @@
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 218
+          "line": 920
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 1173,
-          "end_line": 1182
+          "line": 1127
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 657
+          "line": 1334
         }
       ]
     },
@@ -236,7 +235,7 @@
         },
         {
           "path": "takt/agents/opencode/assets/takt-vfs.ts",
-          "line": 287
+          "line": 373
         }
       ]
     },
@@ -310,12 +309,6 @@
       "toSide": "top"
     },
     {
-      "id": "gc-dispatch",
-      "from": "gc",
-      "to": "dispatch",
-      "label": "coordinates"
-    },
-    {
       "id": "gc-history",
       "from": "gc",
       "to": "history",
@@ -352,12 +345,6 @@
       "from": "plugin",
       "to": "vfs",
       "label": "vfs subcommands"
-    },
-    {
-      "id": "plugin-gc",
-      "from": "plugin",
-      "to": "gc",
-      "label": "gc coordinate"
     },
     {
       "id": "plugin-codegraph",

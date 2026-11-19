@@ -81,10 +81,10 @@ func (f *FS) AdmittedAttempt(session, unit string) (string, error) {
 }
 
 // GuardMaintenance applies the maintenance guard the locked commands apply.
-func (f *FS) GuardMaintenance(command, attempt, action, path string, key AgentID) error {
+func (f *FS) GuardMaintenance(command, action, path string, key AgentID) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	return f.guardMaintenanceLocked(command, attempt, action, path, key)
+	return f.guardMaintenanceLocked(command, action, path, key)
 }
 
 // SetFailpoint installs fault injection at the store's durable flush

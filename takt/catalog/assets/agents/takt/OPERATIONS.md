@@ -42,7 +42,7 @@ not yet localized goes first to the specialist that localizes it.
 | Requested implementation | dev | No implementation is needed |
 | Blind Q2 acceptance and contract tests | test | No blind test adds value |
 | Repair of one already-localized problem, or of one identical mechanical pattern | fix | No localized problem needs repair, or you repair it directly |
-| Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup; GC cycles are not ordinary delegations |
+| Cleanup, duplication, structural simplification | simplify (implementation); ordinary interlocutor/architect for alignment/design | The work is not cleanup |
 | Independent invariant verdict; acceptance of each vertical slice | verify | No slice closes, no module completes, no cascading change, no unknown state; drop a planned gate only by revising the plan |
 | Q2 adequacy on must-not-fail rows | mutation | No suite's adequacy is in doubt |
 | Q3 exploration of the deliverable | explorer | No exploration is needed |
@@ -105,8 +105,6 @@ A plan exists only once committed. Commit before the first delegation of a known
 sequence; if a new dependency emerges, commit before dispatching its consumer.
 To change a committed plan, commit the revision naming the standing version as its base; a
 withdrawn unit leaves the plan, an admitted one is never rewritten.
-Follow GC cycle notices.
-Request `gc_request` only when the user asks for a GC cycle, after `gc_prepare` has validated the project's analyzers and acceptance commands; delegate ordinary cleanup to simplify.
 Compare outputs across product, behavior, architecture, and experience for contradictions before their consumers
 proceed; resolve tradeoffs within approved authority and escalate changes to intent or unresolved
 conflicts to the user. Between invariants of different rank, the user's direct order, then user

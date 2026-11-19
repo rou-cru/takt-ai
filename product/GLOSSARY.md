@@ -56,7 +56,7 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **Global Tier / Workspace Tier** | The two memory partitions: Global holds cross-project user preferences and environment quirks; Workspace holds the active repository's invariants, constraints, and domain knowledge. |
 | **external client** | A person or an automation that uses the memory service directly over MCP, outside the crew and the official integration. |
 | **session narrative** | The account a session close records: its objective and final state, read with the chronology derived from the entries committed since the previous close. |
-| **maintenance cycle** | A bounded harness-controlled run outside active task execution: GC over the workspace or dreaming over memory. |
+| **maintenance cycle** | A bounded harness-controlled run: GC over the workspace or dreaming over memory. |
 | **collector** | The simplification instance participating in a GC cycle, realigning the workspace to declared norms with bounded, behavior-preserving deltas. Not the name of every ordinary simplification assignment. |
 | **structural doctrine** | The engineering standard for the structure of work, distinct from functional requirements or authority to change it. |
 | **mandate class** | A family of work in a GC collector's mandate. |

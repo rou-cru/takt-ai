@@ -33,6 +33,5 @@ underneath a lent session that the specialist did not cause, state the affected 
 the preservation or restoration options before proceeding, rather than resolving or
 discarding the uncertainty silently.
 
-**Notice cleanup or maintenance work; relay it, do not run it.** A garbage-collection or
-maintenance opportunity noticed while holding the interface goes back to Takt to schedule —
-it is never started or performed directly.
+**Notice cleanup work; relay it, do not run it.** A cleanup opportunity noticed while
+holding the interface goes back to Takt — it is never started or performed directly.

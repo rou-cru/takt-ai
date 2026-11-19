@@ -1,5 +1,5 @@
 version: 1
-# GC cycle cadence (PR-MNT-6, PR-OBS-BUS-4). Cadence is proportional to pace:
+# GC cycle cadence (PR-OBS-BUS-4). Cadence is proportional to pace:
 # a cycle is due once units dispatched and workspace mutations since the last
 # cycle add up to one full budget. Error rate is deliberately not a parameter.
 cadence:

@@ -16,9 +16,7 @@
 // Package dispatch is the generic admission and lifecycle protocol for any
 // unit of work an orchestrator dispatches, backed by the execution history
 // projection. It owns no process state: every fact it decides is read from and
-// appended to the *history.History it is given. A caller with its own reason to
-// pause admission (a maintenance barrier, a drain) passes it as held; this
-// package need not know why.
+// appended to the *history.History it is given.
 package dispatch
 
 import (
@@ -70,17 +68,6 @@ func Admit(h *history.History, p AdmissionPolicy, journalRef string, req Admissi
 	entry, e := decide(h.Project(), p, req)
 	entry.JournalRef = journalRef
 	return errors.Join(h.Append(entry), e)
-}
-
-// Admissible reports the refusal Admit would record for req, without recording
-// anything: a caller that must undo other work before admitting (a maintenance
-// cycle in flight) does so only for an admission that will go through.
-func Admissible(h *history.History, p AdmissionPolicy, req AdmissionRequest) error {
-	if req.Event == "" || req.Session == "" {
-		return errors.New("dispatch: identity required")
-	}
-	_, e := decide(h.Project(), p, req)
-	return e
 }
 
 // decide is the admission decision over one projection: the entry to record

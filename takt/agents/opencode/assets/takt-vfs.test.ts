@@ -6,17 +6,11 @@ import vfsPlugin from "./takt-vfs"
 import {historyFixture} from "../testdata/history-fixture.mjs"
 import {
   asString,
-  gcCoordinateResponse,
   isBoolean,
-  isCoordinator,
-  isCoordinatorResponse,
-  isGCCycle,
-  isGCPlan,
   isHandoffEnvelope,
   isInterlocutorReturn,
   isOptional,
   isResponseObject,
-  isStagedView,
   isString,
   isStringArray,
   isToolInput,
@@ -67,7 +61,7 @@ describe("plugin setup", () => {
     runtime.Bun.spawn = ((argv: string[]) => {
       let request: Record<string, unknown> = {}
       const command = argv[2]
-      if (argv[1] === "dispatch" || argv[1] === "gc") request = JSON.parse(argv[argv[1] === "gc" ? 8 : 7])
+      if (argv[1] === "dispatch") request = JSON.parse(argv[7])
       return {
         stdin: { write(value: string) { request = JSON.parse(value) }, end() {} },
         get stdout() {
@@ -80,7 +74,7 @@ describe("plugin setup", () => {
           }
           if (command === "claims") return JSON.stringify({ ok: true, claims: [{ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", active: true, scope: ["src/held.ts"] }] })
           if (argv[1] === "dispatch" && request.action === "switch") return JSON.stringify({ ok: true })
-          if (argv[1] === "dispatch" || argv[1] === "gc") return JSON.stringify({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false })
+          if (argv[1] === "dispatch") return JSON.stringify({ ok: true })
           if (command === "shell-prepare" || command === "shell-continue") return JSON.stringify({ ok: true, shell: { decision: "ask", reason: "review each run", cwd: "/workspace", scratch: "/private/tmp", confirm: "/private/tmp/confirm", capture: false, writable: ["/workspace/src"], protected: ["/workspace/.git"], private: ["/private/secret"], unreadable: ["/private"], readable: ["/private/tmp"] } })
           if (command === "edit-guard") return JSON.stringify({ok:false,error:"src/held.ts is held by work unit unit-a"})
           if (command === "bind") return JSON.stringify({ ok: true, key: request.agent_id === "verify" ? "verifier-1" : "author-1", attempt_id: "attempt-1", invariants_version: "invariants-1", revision: 0, delta_hash: "delta-0" })
@@ -141,8 +135,6 @@ describe("plugin setup", () => {
         if (typeof callback !== "function") throw new Error(`missing ${name} hook ${index}`)
         await (callback as (value: Record<string, unknown>) => Promise<void>)(event)
       }
-      await expect(execute("gc_baseline", {})).rejects.toThrow("GC baseline requires the attached verifier session")
-      await expect(execute("gc_prepare", {})).rejects.toThrow("GC preparation belongs to the root ordinary workflow")
       await expect(execute("dispatch_commit", { version: "v1", plan: [] })).rejects.toThrow("dispatch_commit belongs to the root orchestrator")
       await expect(execute("vfs_discard", { author_key: "claim-1" })).rejects.toThrow("vfs_discard belongs to the orchestrator")
       await expect(execute("vfs_consolidate", { author_key: "claim-1", checkpoint: "checkpoint" })).rejects.toThrow("vfs_consolidate belongs to the orchestrator")
@@ -166,9 +158,10 @@ describe("plugin setup", () => {
       await invokeHook(toolHooks, "execute.after", 2, {
         tool: "subagent", sessionID: "dispatch", id: "delegation-1", status: "completed", result: {},
       })
-      await execute("gc_request", {}, orchestrator)
+      // GC is no part of the session: no tool, hook or idle reaches it.
       await new Promise((resolve) => setTimeout(resolve, 10))
-      expect(requests.some(({ command }) => command === "coordinate")).toBe(true)
+      expect([...tools.keys()].filter(name => name.startsWith("gc_"))).toEqual([])
+      expect(requests.some(({ command }) => command === "coordinate")).toBe(false)
       await execute("vfs_bind", { scope: ["src/a.go"] })
       await execute("vfs_write", { path: "src/a.go", content: "hello" })
       expect((await execute("vfs_read", { path: "src/a.go" })).content).toBe("staged content")
@@ -375,47 +368,6 @@ describe("vfsResponse", () => {
   })
 })
 
-describe("gc coordination shapes", () => {
-  const plan = { session_id: "s", cycle_id: "c", mandate_class: "complexity", delta: [], closure: ["a.go"], reachability: "codegraph" }
-  const cycle = { phase: "collect", plan, scope: ["a.go"], sessions: { collector: "s1" }, report: null, started: "2024-01-01T00:00:00Z" }
-  const stagedView = { revision: 1, delta_hash: "h", files: { "a.go": "content", "b.go": null } }
-  const coordinator = { version: 1, units: 1, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 1, requested: false }
-
-  test("isGCPlan / isGCCycle / isStagedView / isCoordinator accept well-formed shapes", () => {
-    expect(isGCPlan(plan)).toBe(true)
-    expect(isGCCycle(cycle)).toBe(true)
-    expect(isStagedView(stagedView)).toBe(true)
-    expect(isCoordinator(coordinator)).toBe(true)
-    expect(isCoordinator({ ...coordinator, cycle })).toBe(true)
-    expect(isCoordinator({ ...coordinator, history: [cycle] })).toBe(true)
-  })
-
-  test("isGCPlan / isGCCycle / isStagedView / isCoordinator reject malformed shapes", () => {
-    expect(isGCPlan({ ...plan, closure: ["a.go", 1] })).toBe(false)
-    expect(isGCCycle({ ...cycle, plan: { ...plan, session_id: 1 } })).toBe(false)
-    expect(isStagedView({ ...stagedView, files: { "a.go": 1 } })).toBe(false)
-    expect(isCoordinator({ ...coordinator, version: "1" })).toBe(false)
-    expect(isCoordinator({ ...coordinator, cycle: { phase: "collect" } })).toBe(false)
-  })
-
-  test("gcCoordinateResponse dispatches by action", () => {
-    expect(gcCoordinateResponse(plan, "prepare")).toEqual(plan)
-    expect(gcCoordinateResponse({ notAPlan: true }, "prepare")).toBeUndefined()
-    expect(gcCoordinateResponse(cycle, "findings")).toEqual(cycle)
-    expect(gcCoordinateResponse(cycle, "investigate")).toEqual(cycle)
-    expect(gcCoordinateResponse(cycle, "authorize")).toEqual(cycle)
-    expect(gcCoordinateResponse(stagedView, "collected")).toEqual(stagedView)
-    expect(gcCoordinateResponse(stagedView, "delta")).toEqual(stagedView)
-    expect(gcCoordinateResponse(coordinator, "attach")).toEqual(coordinator)
-    expect(gcCoordinateResponse({ not: "a coordinator" }, "attach")).toBeUndefined()
-  })
-
-  test("gcCoordinateResponse matches the real coordinator wire contract", () => {
-    expect(isCoordinatorResponse(contracts.coordinator)).toBe(true)
-    expect(gcCoordinateResponse(contracts.coordinator, "attach")).toEqual(contracts.coordinator)
-  })
-})
-
 describe("isInterlocutorReturn", () => {
   test("matches the real handoff and abort wire contracts", () => {
     expect(isInterlocutorReturn(contracts.handoff)).toBe(true)
@@ -440,21 +392,17 @@ describe("interlocutor return notice", () => {
 
 describe("parseCoordinationResponse", () => {
   test("passes a null response through", () => {
-    expect(parseCoordinationResponse(null, ["gc", "coordinate"], "prepare")).toBeNull()
+    expect(parseCoordinationResponse(null, ["dispatch"], "execution")).toBeNull()
   })
   test("recognizes an interlocutor return regardless of verb", () => {
     expect(parseCoordinationResponse(contracts.handoff, ["dispatch"], "handoff")).toEqual(contracts.handoff)
-  })
-  test("routes gc coordinate through gcCoordinateResponse", () => {
-    const cycle = { phase: "collect", plan: { session_id: "s", cycle_id: "c", mandate_class: "complexity", delta: [], closure: [], reachability: "codegraph" }, scope: [], sessions: {}, report: null, started: "2024-01-01T00:00:00Z" }
-    expect(parseCoordinationResponse(cycle, ["gc", "coordinate"], "findings")).toEqual(cycle)
   })
   test("treats an empty or ok dispatch switch/validate_results response as an acknowledgement", () => {
     expect(parseCoordinationResponse({}, ["dispatch"], "switch")).toBeNull()
     expect(parseCoordinationResponse({ ok: true }, ["dispatch"], "validate_results")).toBeNull()
   })
-  test("accepts a coordinator response for a non-acknowledgement dispatch action", () => {
-    expect(parseCoordinationResponse(contracts.coordinator, ["dispatch"], "handoff")).toEqual(contracts.coordinator)
+  test("accepts the acknowledgement for a dispatch action with nothing to report", () => {
+    expect(parseCoordinationResponse(contracts.dispatch_ack, ["dispatch"], "commit")).toEqual(contracts.dispatch_ack)
   })
   test("rejects a response matching no known shape", () => {
     expect(() => parseCoordinationResponse({ garbage: true }, ["dispatch"], "handoff")).toThrow("dispatch handoff returned an unexpected response shape")

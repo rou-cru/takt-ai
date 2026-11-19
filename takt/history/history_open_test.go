@@ -130,10 +130,7 @@ func TestAppendValidatesActivityRecords(t *testing.T) {
 	}{
 		"orchestrator start":                    {activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, ""), ""},
 		"orchestrator finish":                   {activityEntry(history.KindActivityFinished, history.NodeKindOrchestrator, history.OutcomeCompleted), ""},
-		"maintenance start":                     {activityEntry(history.KindMaintenanceStarted, history.NodeKindMaintenance, ""), ""},
-		"maintenance interrupt":                 {activityEntry(history.KindMaintenanceFinished, history.NodeKindMaintenance, history.OutcomeInterrupted), ""},
 		"orchestrator unmonitored":              {activityEntry(history.KindUnmonitored, history.NodeKindOrchestrator, ""), ""},
-		"maintenance unmonitored":               {activityEntry(history.KindUnmonitored, history.NodeKindMaintenance, ""), "work entries require"},
 		"unmonitored activity without a source": {activityEntry(history.KindUnmonitored, "", ""), "work entries require"},
 		"missing activity id": {func() history.Entry {
 			e := activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, "")
@@ -145,7 +142,7 @@ func TestAppendValidatesActivityRecords(t *testing.T) {
 			e.WorkUnitID = "u"
 			return e
 		}(), "require activity_id"},
-		"wrong node kind":        {activityEntry(history.KindActivityStarted, history.NodeKindMaintenance, ""), "requires node kind"},
+		"wrong node kind":        {activityEntry(history.KindActivityStarted, history.NodeKindDelegated, ""), "requires node kind"},
 		"finish without outcome": {activityEntry(history.KindActivityFinished, history.NodeKindOrchestrator, ""), "only terminal"},
 		"finish backtracked":     {activityEntry(history.KindActivityFinished, history.NodeKindOrchestrator, history.OutcomeBacktracked), "invalid outcome"},
 		"start with outcome":     {activityEntry(history.KindActivityStarted, history.NodeKindOrchestrator, history.OutcomeCompleted), "only terminal"},

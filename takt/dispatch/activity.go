@@ -22,7 +22,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/history"
 )
 
-// StartActivity records non-work-unit orchestrator or maintenance activity.
+// StartActivity records non-work-unit orchestrator activity.
 // Activity identity stays in ActivityID, never in WorkUnitID; delegated work
 // continues to use Admit and the ordinary unit lifecycle. owner is the harness
 // instance that captures it, so another instance can tell once that capture is
@@ -105,10 +105,6 @@ func activityRecordKind(nodeKind history.NodeKind, start bool) (history.Kind, er
 		return history.KindActivityStarted, nil
 	case nodeKind == history.NodeKindOrchestrator:
 		return history.KindActivityFinished, nil
-	case nodeKind == history.NodeKindMaintenance && start:
-		return history.KindMaintenanceStarted, nil
-	case nodeKind == history.NodeKindMaintenance:
-		return history.KindMaintenanceFinished, nil
 	default:
 		return "", fmt.Errorf("dispatch: node kind %q is not a non-work-unit activity", nodeKind)
 	}

@@ -29,5 +29,4 @@ await plugin.setup({
 
 assert.equal(spawns.some(({ argv }) => argv[1] === "codegraph"), false, "home startup must not initialize CodeGraph")
 assert.ok(tools.vfs_read, "the VFS plugin should remain available")
-assert.ok(tools.gc_findings, "GC tools stay registered but report their unavailable prerequisite")
-assert.throws(() => tools.gc_findings.execute({}, { sessionID: "root", agent: "takt" }), /CodeGraph is unavailable.*home directory/)
+assert.deepEqual(Object.keys(tools).filter(name => name.startsWith("gc_")), [], "GC is no part of the session")

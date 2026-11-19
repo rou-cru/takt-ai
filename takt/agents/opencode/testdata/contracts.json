@@ -1,7 +1,7 @@
 {
   "inspect_page_limit": 500,
   "vfs_bind": {"ok":true,"key":"bind-opaque","attempt_id":"1","invariants_version":"inv1:abc"},
-  "coordinator": {"dispatch_after":0,"version":1,"units":3,"mutations":1,"cursor":2,"deferrals":0,"next_mandate":1,"requested":false,"cycle":{"plan":{"session_id":"root-session","cycle_id":"cycle-1","mandate_class":"complexity","delta":[{"path":"src/a.go","introduced":true}],"closure":["src/a.go","src/b.go"],"reachability":"codegraph"},"phase":"collect","scope":["src/a.go"],"sessions":{"collector":"session-collector","verifier":"session-verifier"},"report":{"findings":null,"coverage":null},"started":"0001-01-01T00:00:00Z"}},
+  "dispatch_ack": {"ok":true},
   "handoff": {"envelope":{"result":"Standard","additional_context":"Implemented the requested change.","extra_artifacts":["result.md"],"memory":[2,3]},"child":"child-session","notice":"The interface is back from pm. Envelope:\n{\n  \"result\": \"Standard\",\n  \"additional_context\": \"Implemented the requested change.\",\n  \"extra_artifacts\": [\n    \"result.md\"\n  ],\n  \"memory\": [\n    2,\n    3\n  ]\n}"},
   "abort": {"envelope":{"result":"Aborted","additional_context":"User cancelled the task.","extra_artifacts":[],"memory":[]},"child":"child-session","root":"root-session","notice":"The interface is back from pm, whose lent session was aborted. Envelope:\n{\n  \"result\": \"Aborted\",\n  \"additional_context\": \"User cancelled the task.\",\n  \"extra_artifacts\": [],\n  \"memory\": []\n}"},
   "dispatch_null": null,

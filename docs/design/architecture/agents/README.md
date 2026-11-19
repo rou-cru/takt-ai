@@ -42,7 +42,6 @@ Not drawn as diagrams:
 | When to request the blind judge pair | Only when the user asks, work advanced past deviations of unknown origin, the real state is unknown beyond a quick validation, a DAG ends with two or more phases that each reached the ceiling, or a large refactor of unknown impact has invariants to contrast. |
 | Whether a phase is verified | A gate is planned only for a completed module, a change whose deviation would cascade into later work, or an unknown state; one gate covers several authors and everything else consolidates on delivery. A planned gate needs a committed plan. One global Verify accepts each vertical slice after its writers finish; failed or unverified criteria block, while recorded non-blocking advisory findings do not. A milestone commit is a separate decision after acceptance. |
 | Contesting a recorded failure | `dispatch_contest`, at most the per-session contest budget; takt delegates the Verify of that unit's author key. |
-| GC cycles | Requested only when the user asks, after `gc_prepare` validated analyzers and acceptance commands; ordinary cleanup goes to simplify. |
 
 ## Processes
 
@@ -80,7 +79,6 @@ Role classes come from `agent.yaml`.
 | Takt lends an interface | Records a switch; denies a role that is ineligible or a second holder | Deterministic | `takt/dispatch/interlocutor.go` |
 | Agent writes memory | Resolves the service-owned attribution binding, validates the entry and its relation, and commits it transactionally | Deterministic | `takt/memory/bind.go`, `takt/memory/record.go` |
 | Anyone runs Git | Git mutation is guarded by role | Permission rule from the renderer | `takt/agents/opencode/renderer.go` |
-| Orchestrator goes idle | GC coordinator decides whether a cycle is due | Deterministic | `takt/cli/gc_coordinate.go` |
 | Any tool or dispatch event | Event envelope validated and appended to the event store | Deterministic | `takt/cli/obs.go` |
 
 ## Conduct the prose asks for, with no harness act in the model

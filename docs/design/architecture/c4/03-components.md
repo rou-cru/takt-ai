@@ -55,8 +55,8 @@ Scope: the harness packages inside the `takt-ai` binary, plus the VFS plugin tha
 | history | Append-only execution history, stored in SQLite in the private state directory. | `takt/history/history.go` |
 | memory | Serves attributed entries, relations, retrieval and session lifecycle through MCP; only its service process opens the memory store. | `takt/memory/server.go`, `takt/memory/store.go` |
 | gc | Computes and coordinates the workspace GC cycle. | `takt/gc/trigger.go` |
-| gc analysis | Preparation (`gc_prepare`), the manual verbs (`takt-ai gc plan`, `findings`, `refute`, `acceptance`), the dead-code and complexity analyzers, and the CodeGraph dependents closure. | `takt/gc/preparation.go`, `takt/gc/analyzers.go`, `takt/gc/deadcode.go`, `takt/gc/codegraph.go`, `takt/cli/gc.go` |
-| VFS plugin | Tool surface inside OpenCode: the `vfs_*` and `gc_*` tools, permission hooks, GC lane tool sets and orchestrator-only guards. Spawns `takt-ai vfs` and `takt-ai gc coordinate`, and runs `takt-ai codegraph ensure-index` at load. | `takt/agents/opencode/assets/takt-vfs.ts` |
+| gc analysis | Preparation, the manual verbs (`takt-ai gc plan`, `findings`, `refute`, `acceptance`), the dead-code and complexity analyzers, and the CodeGraph dependents closure. | `takt/gc/preparation.go`, `takt/gc/analyzers.go`, `takt/gc/deadcode.go`, `takt/gc/codegraph.go`, `takt/cli/gc.go` |
+| VFS plugin | Tool surface inside OpenCode: the `vfs_*` and `dispatch_*` tools, permission hooks and orchestrator-only guards. Spawns `takt-ai vfs` and `takt-ai dispatch`, and runs `takt-ai codegraph ensure-index` at load. | `takt/agents/opencode/assets/takt-vfs.ts` |
 | CodeGraph | External code index, kept fresh by the plugin and queried by the GC closure. | `takt/cli/codegraph.go` |
 | obs | One local event stream and control record, no network or memory coupling. | `takt/obs/obs.go` |
 | session | Composition root of one crew execution session. | `takt/session/session.go` |
@@ -69,7 +69,7 @@ Taken from the current packages' imports.
 | :--- | :--- |
 | dispatch | catalog, history, memory, model, vfs |
 | vfs | catalog, history, internal/flock, memory, model, obs |
-| gc | dispatch, history, internal/filemerge, obs, vfs |
+| gc | history, internal/filemerge, obs, vfs |
 | memory | internal/flock, memory/embed |
 | session | obs, vfs |
 | history | none |

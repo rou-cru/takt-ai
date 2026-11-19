@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -58,42 +57,5 @@ export const Plugin = { define: definition => definition }
 	cmd.Dir = dir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rendered VFS plugin switch identity regression: %v\n%s", err, output)
-	}
-}
-
-// GC's collector and verifier lanes grant their gc_* tools and no memory or
-// web tool; a static check on the rendered source needs no Node process.
-func TestTaktVFSPluginGCLaneToolsGrantNoMemoryOrWebAccess(t *testing.T) {
-	source := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
-	block := regexp.MustCompile(`(?s)const GC_LANE_TOOLS: Record<string, string\[\]> = \{(.*?)\n\}`).FindStringSubmatch(source)
-	if block == nil {
-		t.Fatal("GC_LANE_TOOLS object not found in rendered plugin")
-	}
-	for _, role := range []string{"collector", "verifier"} {
-		line := regexp.MustCompile(role + `:\s*\[([^\]]*)\]`).FindString(block[1])
-		if line == "" {
-			t.Fatalf("GC_LANE_TOOLS.%s not found", role)
-		}
-		laneTools := regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(line, -1)
-		granted := map[string]bool{}
-		for _, match := range laneTools {
-			granted[match[1]] = true
-		}
-		for _, tool := range []string{"gc_baseline", "gc_delta", "gc_verdict", "gc_acceptance"} {
-			if granted[tool] != (role == "verifier") {
-				t.Errorf("%s grant for %s does not match its lane", role, tool)
-			}
-		}
-		for _, tool := range []string{"gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_no_change"} {
-			if granted[tool] != (role == "collector") {
-				t.Errorf("%s grant for %s does not match its lane", role, tool)
-			}
-		}
-		// A GC lane has no memory tool and no web tool.
-		for _, tool := range []string{"memory", "webfetch", "websearch"} {
-			if strings.Contains(line, tool) {
-				t.Errorf("GC_LANE_TOOLS.%s grants a %s tool: %s", role, tool, line)
-			}
-		}
 	}
 }

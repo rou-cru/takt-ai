@@ -43,15 +43,14 @@
 
 ### 6.1 Work source
 
-**PR-DTUI-13.** Every work-unit node has the delegated kind; direct orchestrator and non-delegated GC/maintenance execution are activity records, never work-unit nodes.
+**PR-DTUI-13.** Every work-unit node has the delegated kind; direct orchestrator execution is an activity record, never a work-unit node.
 
 | Record | Kind | Meaning |
 |---|---|---|
-| Work-unit node | delegated | Ordinary work delegated through dispatch, including simplification outside GC. |
+| Work-unit node | delegated | Ordinary work delegated through dispatch, including simplification. |
 | Activity | orchestrator | Direct work performed by the orchestrator itself. |
-| Activity | maintenance | Harness-run GC/maintenance that was not delegated as ordinary work. |
 
-**PR-DTUI-14.** This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Session, plan/revision, and GC-cycle records never become work units. An activity is shown only under its activity identity (for GC, the cycle identity) as its name, with the state glyph every node uses, in the separate activity track and with no prerequisite edges.
+**PR-DTUI-14.** This classification is independent of temporal state and does not affect authority, scheduling, declared prerequisites or layout depth. Session and plan/revision records never become work units. An activity is shown only under its activity identity as its name, with the state glyph every node uses, in the separate activity track and with no prerequisite edges.
 
 ## 7. Observability required by the view
 

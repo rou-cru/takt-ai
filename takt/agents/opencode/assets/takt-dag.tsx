@@ -22,13 +22,13 @@ const POLL_INTERVAL_MS = 2000
 type DagNodeState = "planned" | "in_flight" | "settled" | "withdrawn"
 type DagFlight = "pending_launch" | "observed_running" | "suspended" | "cancellation_pending" | "uncertain" | "unmonitored"
 type DagOutcome = "completed" | "failed" | "backtracked" | "interrupted"
-type DagActivityKind = "orchestrator" | "maintenance"
+type DagActivityKind = "orchestrator"
 type Capture = "current" | "empty" | "uncertain" | "unavailable"
 const DAG_STATES: readonly DagNodeState[] = ["planned", "in_flight", "settled", "withdrawn"]
 const DAG_FLIGHTS: readonly DagFlight[] = ["pending_launch", "observed_running", "suspended", "cancellation_pending", "uncertain", "unmonitored"]
 const DAG_OUTCOMES: readonly DagOutcome[] = ["completed", "failed", "backtracked", "interrupted"]
 const DAG_CAPTURES: readonly Capture[] = ["current", "empty", "uncertain", "unavailable"]
-const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator", "maintenance"]
+const DAG_ACTIVITY_KINDS: readonly DagActivityKind[] = ["orchestrator"]
 // An activity is running, or running with its capture lost; never failed or hung (PR-OBS-BUS-5).
 type DagActivityFlight = Extract<DagFlight, "observed_running" | "unmonitored">
 const DAG_ACTIVITY_FLIGHTS: readonly DagActivityFlight[] = ["observed_running", "unmonitored"]

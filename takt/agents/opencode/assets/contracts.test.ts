@@ -29,7 +29,7 @@ describe("shared Go/TypeScript wire contracts", () => {
   })
   test("non-DAG contract discriminants and required fields stay present", () => {
     expect(contracts.vfs_bind).toMatchObject({ ok: true, key: expect.any(String), attempt_id: expect.any(String), invariants_version: expect.any(String) })
-    expect(contracts.coordinator).toMatchObject({ version: expect.any(Number), cycle: { phase: "collect", sessions: { collector: expect.any(String), verifier: expect.any(String) }, plan: { cycle_id: expect.any(String), mandate_class: expect.any(String) } } })
+    expect(contracts.dispatch_ack).toEqual({ ok: true })
     expect(contracts.handoff).toMatchObject({ envelope: { result: "Standard", additional_context: expect.any(String), extra_artifacts: expect.any(Array), memory: expect.any(Array) } })
     expect(contracts.abort).toMatchObject({ envelope: { result: "Aborted", additional_context: expect.any(String), extra_artifacts: [], memory: [] }, child: expect.any(String) })
     expect(Object.keys(contracts.handoff.envelope).sort()).toEqual(["additional_context", "extra_artifacts", "memory", "result"])

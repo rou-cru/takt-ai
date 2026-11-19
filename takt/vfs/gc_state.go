@@ -27,11 +27,9 @@ func (f *FS) SetMaintenance(raw json.RawMessage) (err error) {
 	return err
 }
 
-// guardMaintenanceLocked applies the maintenance barrier and the active
-// cycle's lane rules to one command acting through key. attempt is the bind's
-// history-issued attempt: a unit already admitted keeps binding during the
-// barrier, since the cycle waits for exactly those units (PR-MNT-3).
-func (f *FS) guardMaintenanceLocked(command, attempt, action, path string, key AgentID) error {
+// guardMaintenanceLocked applies the active cycle's lane rules to one command
+// acting through key.
+func (f *FS) guardMaintenanceLocked(command, action, path string, key AgentID) error {
 	var state struct {
 		Cycle *struct {
 			Plan struct {
@@ -45,15 +43,12 @@ func (f *FS) guardMaintenanceLocked(command, attempt, action, path string, key A
 			return err
 		}
 	}
-	if command == "bind" && state.Cycle != nil && attempt == "" {
-		return errors.New("gc: barrier holds new bindings; retry vfs_bind after the GC cycle ends")
-	}
 	b, ok := f.bindings[key]
 	if !ok || b.CycleID == "" {
 		return nil
 	}
 	if state.Cycle == nil || state.Cycle.Plan.CycleID != b.CycleID {
-		return errors.New("gc: cycle no longer active; return to the orchestrator")
+		return errors.New("gc: cycle no longer active")
 	}
 	switch command {
 	case "verify", "consolidate":

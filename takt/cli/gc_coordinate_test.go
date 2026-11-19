@@ -2,7 +2,6 @@ package main_test
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -96,8 +95,8 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			}
 			cycleID := c.Cycle.Plan.CycleID
 			started := s.projection()
-			if activity, ok := started.Activities[cycleID]; !ok || activity.NodeKind != history.NodeKindMaintenance || activity.State != history.StateInFlight {
-				t.Fatalf("GC cycle activity did not start with its real CycleID %q: %+v", cycleID, started.Activities)
+			if _, recorded := started.Activities[cycleID]; recorded {
+				t.Fatalf("GC cycle %q was recorded as an activity of the session", cycleID)
 			}
 			if _, unit := started.Units[history.UnitKey("root", cycleID)]; unit {
 				t.Fatalf("GC CycleID %q was fabricated as a work unit", cycleID)
@@ -126,10 +125,6 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				c = invoke(map[string]any{"action": "no-change", "session": "collect-child"})
 				if c.Cycle != nil || len(c.History) != 1 {
 					t.Fatalf("no-change did not close cycle: %+v", c)
-				}
-				activity := s.projection().Activities[cycleID]
-				if activity.State != history.StateSettled || activity.Outcome != history.OutcomeCompleted {
-					t.Fatalf("no-change did not settle maintenance activity: %+v", activity)
 				}
 				return
 			}
@@ -207,25 +202,13 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 				c = invoke(map[string]any{"action": "recover", "event": cycleID, "stopped": stops, "evidence": "process restarted"})
 			case "diverge":
 				write("a.go", "external user content\n")
-				c, e = call(map[string]any{"action": "recover", "event": cycleID, "stopped": stops, "evidence": "restart"})
-				if e == nil || c.Cycle == nil || c.Cycle.Phase != "blocked" {
-					t.Fatalf("divergence failed open: %+v %v", c, e)
-				}
-				// A delegation never runs over a cycle whose delta could not be
-				// discarded: the admission waits, and nothing is admitted.
-				res := s.dispatch(request{Action: "admit", Event: "after-divergence", Session: "root", Agent: "dev"})
-				if res.code != 0 {
-					t.Fatalf("admission of a delegation was refused (exit %d): %s", res.code, res.stderr)
-				}
+				out, e := coordinate(s, map[string]any{"action": "recover", "event": cycleID, "stopped": stops, "evidence": "restart"})
 				var refusal struct {
 					OK     bool        `json:"ok"`
 					Repair *vfs.Repair `json:"repair"`
 				}
-				if err := json.Unmarshal([]byte(res.stdout), &refusal); err != nil || refusal.OK || refusal.Repair == nil || refusal.Repair.ID != cycleID {
-					t.Fatalf("missing cycle continuation: %s %v", res.stdout, err)
-				}
-				if _, admitted := s.projection().Units[history.UnitKey("root", "after-divergence")]; admitted {
-					t.Fatal("delegation admitted while the cycle's delta is live")
+				if err := json.Unmarshal([]byte(out), &refusal); e == nil || err != nil || refusal.OK || refusal.Repair == nil || refusal.Repair.ID != cycleID {
+					t.Fatalf("divergence failed open: %s %v", out, e)
 				}
 				if held, e := loadCoordinator(t, root, state); e != nil || held.Cycle == nil || held.Cycle.Phase != "blocked" {
 					t.Fatalf("blocked cycle lost: %+v %v", held, e)
@@ -277,94 +260,10 @@ printf '[{"Funcs":[{"Name":"fixture.dead","Position":{"File":"a.go","Line":2}}]}
 			if outcome == "pass" && !strings.Contains(c.History[0].Reason, "applied") {
 				t.Fatal(c.History[0].Reason)
 			}
-			activity := s.projection().Activities[cycleID]
-			if outcome == "diverge" {
-				if activity.State != history.StateSettled || activity.Outcome != history.OutcomeInterrupted {
-					t.Fatalf("preserved cycle was not interrupted: %+v", activity)
-				}
-			} else {
-				wantOutcome := history.OutcomeInterrupted
-				if outcome == "pass" {
-					wantOutcome = history.OutcomeCompleted
-				}
-				if activity.State != history.StateSettled || activity.Outcome != wantOutcome {
-					t.Fatalf("GC activity not settled at cycle end: %+v; want %q", activity, wantOutcome)
-				}
-			}
 			for _, entry := range s.entries() {
-				if entry.ActivityID == cycleID && (entry.WorkUnitID != "" || entry.AttemptID != "") {
-					t.Fatalf("GC cycle ID leaked into work-unit identity: %+v", entry)
+				if entry.ActivityID == cycleID {
+					t.Fatalf("GC cycle was recorded as an activity of the session: %+v", entry)
 				}
-			}
-		})
-	}
-}
-
-// closingNotice decodes the closing notice a cycle's final answer carries.
-type closingNotice struct {
-	Closing *struct {
-		Cycle     string       `json:"cycle"`
-		Outcome   string       `json:"outcome"`
-		Unapplied []gc.Finding `json:"unapplied_findings"`
-	} `json:"closing"`
-}
-
-// closeOpenCycle opens a cycle holding two findings, answers action from its collector, and returns
-// what the closing answer reports.
-func closeOpenCycle(t *testing.T, bin, action string) closingNotice {
-	t.Helper()
-	const collector = "collector-session"
-	s := newSession(t, bin)
-	c := s.coordinator()
-	c.Cycle = &gc.Cycle{
-		Plan:     gc.Plan{Request: gc.Request{CycleID: "cycle-9", SessionID: rootSession, Mandate: gc.MandateDeadCode}},
-		Phase:    "investigate",
-		Sessions: map[string]string{"collector": collector},
-		Report:   gc.Report{Findings: []gc.Finding{{ID: "f1", Path: "a.go", Status: gc.StatusDead}, {ID: "f2", Path: "b.go", Status: gc.StatusPending}}},
-	}
-	if err := saveCoordinator(t, s.root, s.state, c); err != nil {
-		t.Fatal(err)
-	}
-	// The collector lane's execution is what makes its session the cycle's participant.
-	h, err := history.Open(s.state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lane := history.Entry{Author: history.AuthorHarness, Kind: history.KindLane, SessionID: rootSession, WorkUnitID: "cycle-9", AttemptID: "1", Dispatch: "lane-call", Agent: "simplify", Child: collector, CycleID: "cycle-9", Role: "collector", Cause: history.CauseNone}
-	err = h.Append(lane)
-	if action == "abort" {
-		// An abort waits for its lanes' observed termination.
-		err = errors.Join(err, h.ExecutionFact(h.Project().Executions["lane-call"], history.KindLaneStopped, "", "", nil))
-	}
-	if err := errors.Join(err, h.Close()); err != nil {
-		t.Fatal(err)
-	}
-	res := s.invoke("gc", "coordinate", request{Action: action, Session: collector, Event: "cycle-9", Evidence: "user unwind"})
-	if res.code != 0 {
-		t.Fatalf("gc coordinate %s exited %d: %s", action, res.code, res.stderr)
-	}
-	var notice closingNotice
-	if err := json.Unmarshal([]byte(res.stdout), &notice); err != nil {
-		t.Fatalf("answer %q: %v", res.stdout, err)
-	}
-	return notice
-}
-
-// TestCycleCloseCarriesUnappliedFindings covers PR-MNT-5: the closing answer to the orchestrator
-// reports the findings the cycle left unapplied, whether it closed without a change or was aborted.
-func TestCycleCloseCarriesUnappliedFindings(t *testing.T) {
-	bin := buildTaktAI(t)
-	for _, tc := range []struct{ action, outcome string }{
-		{"no-change", "proposals-or-refuted"},
-		{"abort", "aborted: user unwind"},
-	} {
-		t.Run(tc.action, func(t *testing.T) {
-			notice := closeOpenCycle(t, bin, tc.action)
-			if notice.Closing == nil || notice.Closing.Cycle != "cycle-9" || notice.Closing.Outcome != tc.outcome {
-				t.Fatalf("closing notice = %+v, want cycle-9 closed as %q", notice.Closing, tc.outcome)
-			}
-			if got := notice.Closing.Unapplied; len(got) != 2 || got[0].ID != "f1" || got[1].ID != "f2" {
-				t.Fatalf("unapplied findings = %+v, want f1 and f2", got)
 			}
 		})
 	}
