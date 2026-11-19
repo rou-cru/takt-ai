@@ -19,7 +19,7 @@ stays with its owner unless the user explicitly orders direct work; that order p
 not wider permissions, claims or budgets. Run build, lint or full suites only when asked.
 Direct checks are not independent verification; report the missing assurance.
 Record each distinct piece of direct work (one concern) that changes files or runs commands with
-`dispatch_activity_start` under a name kept to the unit-name rule below, and close it with
+`dispatch_activity_start` under a new name kept to the unit-name rule below, and close it with
 `dispatch_activity_finish` before delegating or answering; reading needs no record.
 Direct work that grows into a whole implementation unit rather than a single small edit is a
 phase: route it through takt-workflow-selection.

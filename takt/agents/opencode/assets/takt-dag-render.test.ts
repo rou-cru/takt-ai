@@ -197,6 +197,35 @@ describe("graph layout", () => {
     }
   })
 
+  test("a change in activities never moves a unit on the route", async () => {
+    // The route's chrome: side columns and rows outside the graph; one activity row's rows.
+    const sideColumns = 2
+    const chromeRows = 12
+    const activityRowRows = 4
+    const width = 120
+    const fitted = (height: number) => computeLayoutOf(real, undefined, { width: width - sideColumns, height }).height
+    const natural = fitted(Infinity)
+    // The recorded session closes up its bands when short of rows, so the
+    // fit is what an activity row could change.
+    expect(fitted(natural - 1)).toBeLessThan(natural)
+    // Tall enough for the natural layout plus one activity row, not two.
+    const height = natural + chromeRows + activityRowRows
+    const frameWith = async (ids: readonly string[]) => {
+      const snapshot = { ...real, activities: ids.map((id) => activity({ activity_id: id })) }
+      const setup = await testRender(() => GraphViewOf({ snapshot, mode: "route" }), { width, height })
+      try {
+        await setup.renderOnce()
+        return setup.captureCharFrame().split("\n").slice(0, natural)
+      } finally {
+        setup.renderer.destroy()
+      }
+    }
+    const one = await frameWith(["probe"])
+    // Long enough to wrap the lane into a second row at this width.
+    const many = await frameWith(Array.from({ length: 12 }, (_, i) => `probe activity ${i}`))
+    expect(many).toEqual(one)
+  })
+
   test("every box is as wide as its own name plus its chrome", () => {
     const named = { ...base, nodes: ["a", "a much longer name"].map((id) => node({ id })), edges: [{ from: "a", to: "a much longer name" }] }
     for (const placed of computeLayout(named).nodes.values()) expect(placed.width).toBe(placed.id.length + 6)
@@ -439,6 +468,12 @@ describe("activity presentation", () => {
     const narrow = packActivities(lane, 20)
     expect(narrow.some((slot) => slot.row > 0)).toBe(true)
     expect(narrow.every((slot) => slot.left + slot.width <= 20)).toBe(true)
+  })
+  test("packActivities cuts a box wider than the lane to its width", () => {
+    const [slot] = packActivities([activity({ activity_id: "a direct activity with a long name" })], 20)
+    expect(slot.width).toBe(20)
+    expect(slot.name).toEndWith("…")
+    expect(boxWidth(slot.name)).toBe(20)
   })
 })
 

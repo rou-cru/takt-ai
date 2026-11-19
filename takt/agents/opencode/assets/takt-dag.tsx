@@ -1026,23 +1026,25 @@ interface ActivitySlot {
   readonly left: number
   readonly row: number
   readonly width: number
+  /** The activity's name, cut to fit the box. */
+  readonly name: string
 }
 
 /**
  * Places the activity boxes left to right, one cell apart, starting a new row
- * where the next box would pass width.
+ * where the next box would pass width. A box wider than width is cut to it.
  */
 export function packActivities(activities: readonly DagActivity[], width: number): ActivitySlot[] {
   const slots: ActivitySlot[] = []
   let left = 0
   let row = 0
   for (const activity of activities) {
-    const cells = boxWidth(activity.activity_id)
+    const cells = Math.min(boxWidth(activity.activity_id), width)
     if (left > 0 && left + cells > width) {
       row++
       left = 0
     }
-    slots.push({ left, row, width: cells })
+    slots.push({ left, row, width: cells, name: fit(activity.activity_id, cells - NODE_CHROME) })
     left += cells + 1
   }
   return slots
@@ -1105,7 +1107,9 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
   const activityHeight = createMemo(() => activitySlots().reduce((rows, slot) => Math.max(rows, slot.row + 1), 0) * ACTIVITY_ROW_ROWS)
   const viewport = (): Viewport => {
     const size = terminal?.()
-    return size ? { width: routeWidth(), height: size.height - ROUTE_CHROME_ROWS - activityHeight() } : UNBOUNDED
+    // The activity lane never enters the fit: a change in activities must not
+    // move a unit (PR-DTUI-11); the lane scrolls below the graph instead.
+    return size ? { width: routeWidth(), height: size.height - ROUTE_CHROME_ROWS } : UNBOUNDED
   }
   const layout = createMemo(() => (previous = computeLayout(props.snapshot, previous, viewport())))
   // Each drawn node with the place the layout gave it.
@@ -1154,7 +1158,7 @@ export function GraphView(props: { readonly snapshot: DagSnapshot; readonly mode
                 left={slot().left}
                 top={workHeight() + 1 + slot().row * ACTIVITY_ROW_ROWS}
                 glyph={activityGlyph(activity)}
-                name={activity.activity_id}
+                name={slot().name}
               />
             )
           }}
