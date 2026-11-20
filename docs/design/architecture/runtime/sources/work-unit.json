@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -21,7 +21,7 @@
     { "id": "suspended", "type": "waiting", "label": "Suspended", "sublabel": "in flight, held", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
     { "id": "cancelling", "type": "waiting", "label": "Cancellation pending", "sublabel": "in flight, not yet effective", "sources": [{ "path": "takt/history/projection.go", "line": 35, "end_line": 60 }] },
     { "id": "unmonitored", "type": "waiting", "label": "Capture unmonitored", "sublabel": "in flight, reservation held", "sources": [{ "path": "takt/history/projection.go", "line": 47, "end_line": 49 }] },
-    { "id": "withdrawn", "type": "neutral", "label": "Withdrawn", "sublabel": "revoked while planned", "sources": [{ "path": "takt/history/projection.go", "line": 477, "end_line": 478 }] }
+    { "id": "withdrawn", "type": "neutral", "label": "Withdrawn", "sublabel": "revoked while planned", "sources": [{ "path": "takt/history/projection.go", "line": 484, "end_line": 485 }] }
   ],
   "transitions": [
     { "from": "planned", "to": "pending", "label": "admitted", "variant": "emphasis" },

@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -73,8 +73,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 26,
-          "end_line": 26
+          "line": 25,
+          "end_line": 27
         }
       ]
     },
@@ -121,8 +121,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 42,
-          "end_line": 42
+          "line": 41,
+          "end_line": 41
         }
       ]
     },
@@ -240,17 +240,18 @@
       "title": "Lending",
       "items": [
         "dispatch_switch names the specialist and objective; the harness asks the user to accept them before the switch takes effect, and a refusal means reevaluate without lending",
-        "requirements carry finalized document paths and useful Takt memory IDs, never their content; explicitly empty when none exists",
+        "requirements carry the current entry IDs of the invariants the specialist consumes and of the settled decisions that bind it, never their content; explicitly empty when none exists",
         "Only the user cuts a lent session short, with /takt-abort"
       ]
     },
     {
       "dot": "rose",
-      "title": "Anomalous returns",
+      "title": "Reading the return",
       "items": [
         "Result attributes cause and never grades the specialist",
+        "What happened comes from the execution history; what stays in effect comes from memory and the artifacts, queried by topic; a gap is declared and investigated, and the user is consulted when continuity stays indeterminable",
         "Reconcile transition and artifact evidence; route bounded diagnosis or correction when objective, authority and continuity are established, else consult the user",
-        "A malformed or incomplete envelope leaves the session unsettled"
+        "An envelope outside its contract is verified firsthand: artifacts, paths, memory entries and context; it leaves the session unsettled until then"
       ]
     }
   ]

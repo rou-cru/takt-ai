@@ -15,7 +15,7 @@ func (f *FS) PrepareMaintenance(author, verifier Identity, scope []string) (auth
 		return "", "", err
 	}
 	if author.AttemptID == "" || verifier.AttemptID == "" {
-		return "", "", fmt.Errorf("%w: a GC lane has no attempt in the execution history; attach both lanes, then call gc_authorize again", ErrIdentity)
+		return "", "", fmt.Errorf("%w: a GC lane has no attempt in the execution history; attach both lanes, then authorize again", ErrIdentity)
 	}
 	bindings, staged, owners := maps.Clone(f.bindings), maps.Clone(f.staged), maps.Clone(f.owners)
 	authorKey, err = f.bindLocked(author, scope)

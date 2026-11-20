@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -31,7 +31,7 @@
       "sources": [
         {
           "path": "takt/cli/main.go",
-          "line": 218
+          "line": 226
         }
       ]
     },
@@ -43,7 +43,7 @@
       "sources": [
         {
           "path": "takt/lifecycle/lifecycle.go",
-          "line": 218
+          "line": 219
         }
       ]
     },
@@ -55,7 +55,7 @@
       "sources": [
         {
           "path": "takt/setup/operations.go",
-          "line": 89
+          "line": 90
         }
       ]
     },

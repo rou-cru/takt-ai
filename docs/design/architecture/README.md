@@ -1,6 +1,6 @@
 # Architecture documentation
 
-Derived view of Takt AI using the C4 model. Diagrams are standalone HTML produced with archify; each topic pairs short notes with its diagrams. The normative source stays in `product/`; where this view and a PRD disagree, the PRD wins (see `product/INDEX.md`).
+Derived view of Takt AI using the C4 model. Diagrams are standalone HTML produced with archify; each topic pairs short notes with its diagrams. The normative source stays in `product/`; where this view and a PRD disagree, the PRD wins (see `product/INDEX.md`). The engineering design of the closed-loop control systems, ahead of implementation, is in [control](../control/README.md).
 
 ## Two systems
 
@@ -41,8 +41,9 @@ Each topic folder keeps its notes at the top, its standalone diagrams in `diagra
 | Guardrails and VFS | `meta-harness/harness/PRD_HARNESS.md`, `meta-harness/harness/PRD_VFS.md` | components, runtime, agents |
 | Observability | `meta-harness/observability/PRD_OBSERVABILITY.md` | components, runtime, agents |
 | Maintenance | `meta-harness/maintenance/PRD_GC.md`, `meta-harness/maintenance/PRD_DREAMING.md` | components, runtime, agents |
+| Quality and testing | `meta-harness/quality/PRD_QA.md` | agents |
 
-Paths are relative to `product/`. The SMC documents (`prd-smc.md`, `meta-harness/prd-smc-dis.md`, `meta-harness/SMC_CONCEPT.md`) sit outside `INDEX.md` and are not mapped here.
+Paths are relative to `product/`.
 
 ## Conventions
 

@@ -16,7 +16,9 @@
 | PR-MSV-40 | The crew, through the official integration, and external clients use the same MCP interface over the same memory. An external client needs neither the crew nor OpenCode. |
 | PR-MSV-41 | Clients depend only on the MCP interface, never on the service's files or process. |
 | PR-MSV-42 | The service assigns the attribution and session of every entry an external client records; the client plays, for its own sessions, the role `ARCH_MEMORY.md` assigns to the base of the interlocutor stack. An external client MUST NOT record into, continue, or close a crew session. |
-| PR-MSV-43 | The service accepts connections only from the local user's processes and exposes no listener reachable from other hosts. |
+| PR-MSV-43 | The service has two deployment forms over the same MCP interface. Packaged with the installation, it accepts connections only from the local user's processes and exposes no listener reachable from other hosts. Deployed apart, it is a process on its own host, reachable over the network, and authenticates every connection before any entry is read or recorded; attribution follows `PR-MSV-42`. |
+| PR-MSV-44 | A team has one memory: every crew instance, the harness, and every external client of the team use the same service and the same store, however many run at once and wherever they run. The crew and the harness are clients like any other (`PR-MSV-40`). |
+| PR-MSV-45 | Deployed apart, the service runs, scales, and restarts independently of any crew, and an installation connects to its address. An installation starts, stops, backs up, or retires only a service it owns. |
 
 ### 1.3 Availability, Durability, and Diagnostics
 

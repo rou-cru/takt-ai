@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -27,8 +27,8 @@
       "sources": [
         {
           "path": "takt/gc/coordinator.go",
-          "line": 185,
-          "end_line": 200
+          "line": 169,
+          "end_line": 181
         },
         {
           "path": "takt/gc/trigger.go",
@@ -63,8 +63,8 @@
         },
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 90,
-          "end_line": 95
+          "line": 92,
+          "end_line": 97
         }
       ]
     },
@@ -76,8 +76,8 @@
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 155,
-          "end_line": 175
+          "line": 154,
+          "end_line": 174
         }
       ]
     },
@@ -103,7 +103,7 @@
         {
           "path": "takt/vfs/gc_state.go",
           "line": 30,
-          "end_line": 76
+          "end_line": 72
         }
       ]
     },
@@ -115,8 +115,8 @@
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 249,
-          "end_line": 277
+          "line": 248,
+          "end_line": 275
         }
       ]
     },
@@ -128,8 +128,8 @@
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 329,
-          "end_line": 351
+          "line": 265,
+          "end_line": 273
         }
       ]
     },
@@ -141,8 +141,8 @@
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 468,
-          "end_line": 520
+          "line": 462,
+          "end_line": 510
         }
       ]
     },
@@ -154,8 +154,8 @@
       "sources": [
         {
           "path": "takt/cli/gc_coordinate.go",
-          "line": 278,
-          "end_line": 307
+          "line": 277,
+          "end_line": 305
         }
       ]
     },
@@ -168,7 +168,7 @@
         {
           "path": "takt/cli/gc_coordinate.go",
           "line": 483,
-          "end_line": 497
+          "end_line": 493
         }
       ]
     },
@@ -180,8 +180,8 @@
       "sources": [
         {
           "path": "takt/gc/coordinator.go",
-          "line": 296,
-          "end_line": 309
+          "line": 261,
+          "end_line": 272
         }
       ]
     }
@@ -269,7 +269,8 @@
       "title": "Trigger",
       "items": [
         "A cycle is due at units/8 + mutations/40 >= 1, or on user request",
-        "Skipped when a cycle is in flight or no mutations occurred"
+        "Skipped when a cycle is in flight or no mutations occurred",
+        "The corpus launches a cycle from a control decision over the workspace estimate (`PR-MNT-34`); the activity cadence is the code's trigger"
       ]
     },
     {
@@ -277,7 +278,8 @@
       "title": "Hold",
       "items": [
         "The barrier holds while units are in flight or ordinary deltas are pending",
-        "Each hold counts as a deferral; three deferrals abort the decision"
+        "Each hold counts as a deferral; three deferrals abort the decision",
+        "The corpus holds a decision while a crew session is active (`PR-MNT-36`); the barrier is the code's hold"
       ]
     },
     {

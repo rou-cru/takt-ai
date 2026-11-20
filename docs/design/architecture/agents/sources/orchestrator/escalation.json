@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -27,8 +27,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 21,
-          "end_line": 26
+          "line": 24,
+          "end_line": 24
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 124,
+          "end_line": 125
         }
       ]
     },
@@ -40,8 +45,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 22,
-          "end_line": 22
+          "line": 25,
+          "end_line": 25
         }
       ]
     },
@@ -53,8 +58,18 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 26,
+          "end_line": 26
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
           "line": 23,
-          "end_line": 23
+          "end_line": 25
+        },
+        {
+          "path": "product/meta-harness/harness/PRD_VFS.md",
+          "line": 27,
+          "end_line": 27
         }
       ]
     },
@@ -66,8 +81,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 23,
-          "end_line": 23
+          "line": 26,
+          "end_line": 26
         }
       ]
     },
@@ -79,34 +94,21 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 24,
-          "end_line": 24
-        }
-      ]
-    },
-    {
-      "id": "report",
-      "type": "active",
-      "label": "Report",
-      "sublabel": "evidence and alternatives",
-      "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 26,
-          "end_line": 26
+          "line": 27,
+          "end_line": 27
         }
       ]
     },
     {
       "id": "await",
       "type": "waiting",
-      "label": "Awaiting direction",
-      "sublabel": "only for that decision",
+      "label": "Consult the user",
+      "sublabel": "that decision only",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 26,
-          "end_line": 32
+          "line": 29,
+          "end_line": 31
         }
       ]
     },
@@ -118,8 +120,31 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
-          "line": 25,
-          "end_line": 26
+          "line": 28,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "type": "decision",
+      "label": "Limit",
+      "sublabel": "reroute or closing",
+      "sources": [
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 69,
+          "end_line": 69
+        },
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 41,
+          "end_line": 41
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 33,
+          "end_line": 35
         }
       ]
     }
@@ -156,13 +181,20 @@
     },
     {
       "from": "diagnose",
-      "to": "report",
-      "label": "value, authorization, irreversible effect or no continuation"
+      "to": "await",
+      "label": "value, authorization, irreversible effect, no route"
     },
     {
-      "from": "report",
+      "from": "preserve",
+      "to": "bound",
+      "label": "limit reached",
+      "variant": "security"
+    },
+    {
+      "from": "bound",
       "to": "await",
-      "variant": "emphasis"
+      "label": "user policy",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -182,15 +214,17 @@
       "items": [
         "Technical uncertainty goes to its competent specialist, or to direct investigation when the user's instruction covers it, keeping existing authority, ownership and budgets",
         "The user decides value, required authorization, irreversible effects, or no justifiable continuation; direction is awaited only on that decision",
-        "An exhausted recovery offers the blind review pair before any allowance"
+        "At a reached bound the harness stops further consumption; a deterministic policy picks an autonomous reroute within authorized work or a closing report with the unmet criteria; only a finite, scoped user exception permits recovery beyond it",
+        "An exhausted recovery is a condition for requesting the blind review pair (takt-verification-consolidation)"
       ]
     },
     {
       "dot": "rose",
       "title": "Claims",
       "items": [
-        "An active claim needs the exact agent and paths named to the user; confirmed only after an explicit yes",
-        "A claim holding staged work is never released"
+        "A claim with no staged work releases without asking the user; while its unit is in flight the release is refused and names dispatch_abandon",
+        "Ownership frees only once effective termination is recorded",
+        "A claim holding staged work leaves by consolidation, reassignment or discard"
       ]
     }
   ]

@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -58,7 +58,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
           "line": 20,
-          "end_line": 55
+          "end_line": 63
         }
       ]
     },
@@ -70,8 +70,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 25,
+          "end_line": 50
         }
       ]
     },
@@ -83,8 +83,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 43,
-          "end_line": 55
+          "line": 51,
+          "end_line": 63
         }
       ]
     },
@@ -98,6 +98,11 @@
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 108,
           "end_line": 115
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 29,
+          "end_line": 29
         }
       ]
     },
@@ -109,13 +114,18 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 28,
-          "end_line": 32
+          "line": 39,
+          "end_line": 44
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 128,
-          "end_line": 130
+          "line": 116,
+          "end_line": 118
+        },
+        {
+          "path": "product/meta-harness/orchestration/PRD_ORCHESTRATION.md",
+          "line": 21,
+          "end_line": 21
         }
       ]
     },
@@ -127,8 +137,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-memory-orchestrator/SKILL.md",
-          "line": 23,
-          "end_line": 31
+          "line": 22,
+          "end_line": 26
         }
       ]
     }
@@ -200,13 +210,19 @@
     {
       "from": "milestone",
       "to": "reporting",
-      "label": "recorded",
+      "label": "delivered",
       "variant": "emphasis"
     },
     {
       "from": "selecting",
       "to": "reporting",
       "label": "nothing to develop",
+      "variant": "dashed"
+    },
+    {
+      "from": "milestone",
+      "to": "selecting",
+      "label": "next slice",
       "variant": "dashed"
     }
   ],
@@ -216,8 +232,9 @@
       "title": "Loop",
       "items": [
         "The selection tree runs before every planning or implementation phase",
-        "Planning runs when required invariants are missing, partial or need refinement.",
-        "Invariant planning returns to the tree once its invariants are delivered"
+        "Planning runs when required invariants are missing, partial or need refinement",
+        "Invariant planning returns to the tree once its invariants are delivered",
+        "Each accepted slice is evaluated and the next work selected: back to the tree, or reported when nothing remains"
       ]
     },
     {
@@ -225,7 +242,7 @@
       "title": "Acceptance and milestone",
       "items": [
         "One global Verify accepts each vertical slice after its writers finish; failed or unverified criteria block",
-        "Non-blocking advisory findings stay recorded and do not delay the checkpoint",
+        "Verifier findings beyond the verdict are weighed against the slice's delivery: those that degrade it are corrected first; the rest stay recorded and do not delay the checkpoint",
         "A milestone commit is a separate decision, taken once acceptance is recorded and advisory review closes without a reproduction-backed defect"
       ]
     },
@@ -233,15 +250,14 @@
       "dot": "violet",
       "title": "Waiting",
       "items": [
-        "The user decides value, authorizations, irreversible effects and lending; technical uncertainty goes first to a competent specialist or bounded diagnosis",
-        "Resuming earlier work and compaction are covered in their own views"
+        "The user decides value, authorizations, irreversible effects and lending; technical uncertainty goes first to a competent specialist or bounded diagnosis"
       ]
     },
     {
       "dot": "rose",
       "title": "Not drawn",
       "items": [
-        "Direct work, recovery and delivery handling are separate views"
+        "Direct work, resuming earlier work, recovery and delivery handling are separate views"
       ]
     }
   ]

@@ -312,12 +312,10 @@ The following is an available route, not a procession required of every change:
 5. **Integration and acceptance:** preserve one tail fan-in per slice. When a phase calls for a gate,
    it assesses the phase's staged deltas together before consolidation: one verifier node, preassigned
    to all its author keys, and Takt consolidates a passing author's work with
-   `vfs_consolidate`. When work was split across agents, plan an integration node
-   after them so the parts fit as one: calls connected, contract boundaries honored, nothing
-   duplicated or left dead, and whatever that connection still needs added. You choose who runs
-   it by what the split left at risk — a dev to connect, a fix for one localized mismatch, a
-   verify to judge drift, or yourself when the direct-work tests hold. It runs no checks. Executable acceptance runs in a Verify unit on the
-   materialized workspace after writers finish; with QA planned, that acceptance and the
+   `vfs_consolidate`. Executable acceptance runs in a Verify unit on the
+   materialized workspace after writers finish, and its consistency check covers how the parts
+   fit as one: calls connected, contract boundaries honored, nothing duplicated or left dead.
+   With QA planned, that acceptance and the
    tail after it follow `takt-qa-workflow` from its Accept state.
    Check the integrated outcome, not merely completed nodes.
 6. **Slice control point:** once a slice is accepted, evaluate what happened and where the

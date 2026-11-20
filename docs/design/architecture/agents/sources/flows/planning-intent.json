@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,8 +25,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 17,
-          "end_line": 21
+          "line": 25,
+          "end_line": 26
         }
       ]
     },
@@ -39,7 +39,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
           "line": 25,
-          "end_line": 32
+          "end_line": 31
         }
       ]
     },
@@ -50,9 +50,9 @@
       "sublabel": "dispatch",
       "sources": [
         {
-          "path": "takt/dispatch/dispatch.go",
-          "line": 138,
-          "end_line": 169
+          "path": "takt/dispatch/interlocutor.go",
+          "line": 66,
+          "end_line": 109
         }
       ]
     },
@@ -65,7 +65,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-handoff/SKILL.md",
           "line": 20,
-          "end_line": 23
+          "end_line": 31
         }
       ]
     },
@@ -77,12 +77,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -200,6 +200,7 @@
       "title": "Lend",
       "items": [
         "dispatch_switch names the specialist and objective; the harness asks the user to accept before the switch takes effect, and a refusal means no lend",
+        "The specialist opens with a brief interaction that shows it understood the objective and proposes one starting point from its specialty, then yields the turn",
         "Drafts are hypotheses; the accepted version supersedes them with the approval as evidence"
       ]
     },

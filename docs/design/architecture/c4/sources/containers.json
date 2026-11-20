@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -95,7 +95,7 @@
       "sources": [
         {
           "path": "deploy/images/Dockerfile",
-          "line": 162
+          "line": 165
         }
       ]
     },
@@ -135,11 +135,13 @@
       "sources": [
         {
           "path": "takt/agents/opencode/assets/takt-memory.ts",
-          "line": 36
+          "line": 72,
+          "end_line": 73
         },
         {
           "path": "takt/agents/opencode/assets/takt-dag.tsx",
-          "line": 949
+          "line": 1443,
+          "end_line": 1444
         }
       ]
     },
@@ -159,12 +161,13 @@
       "sources": [
         {
           "path": "takt/history/history.go",
-          "line": 31
+          "line": 33,
+          "end_line": 35
         },
         {
           "path": "takt/obs/store.go",
-          "line": 39,
-          "end_line": 42
+          "line": 40,
+          "end_line": 44
         }
       ]
     },
@@ -184,7 +187,8 @@
       "sources": [
         {
           "path": "takt/codegraph/acquire.go",
-          "line": 67
+          "line": 66,
+          "end_line": 69
         }
       ]
     },
@@ -204,8 +208,8 @@
       "sources": [
         {
           "path": "takt/memory/serve.go",
-          "line": 74,
-          "end_line": 94
+          "line": 73,
+          "end_line": 98
         },
         {
           "path": "takt/memory/server.go",
@@ -230,8 +234,8 @@
       "sources": [
         {
           "path": "takt/memory/store.go",
-          "line": 175,
-          "end_line": 197
+          "line": 172,
+          "end_line": 195
         }
       ]
     },
@@ -251,8 +255,8 @@
       "sources": [
         {
           "path": "takt/memory/adapter.go",
-          "line": 21,
-          "end_line": 53
+          "line": 22,
+          "end_line": 70
         }
       ]
     }

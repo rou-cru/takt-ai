@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -79,7 +79,7 @@
         {
           "path": "takt/vfs/verdict.go",
           "line": 67,
-          "end_line": 126
+          "end_line": 125
         }
       ]
     },
@@ -105,12 +105,12 @@
         {
           "path": "takt/vfs/bindings.go",
           "line": 214,
-          "end_line": 305
+          "end_line": 303
         },
         {
           "path": "takt/vfs/verdict.go",
           "line": 143,
-          "end_line": 168
+          "end_line": 167
         }
       ]
     },
@@ -123,7 +123,7 @@
         {
           "path": "takt/vfs/verdict.go",
           "line": 67,
-          "end_line": 126
+          "end_line": 125
         }
       ]
     },
@@ -159,7 +159,7 @@
         {
           "path": "takt/vfs/staged.go",
           "line": 49,
-          "end_line": 60
+          "end_line": 61
         }
       ]
     },
@@ -171,8 +171,8 @@
       "sources": [
         {
           "path": "takt/vfs/cycle.go",
-          "line": 132,
-          "end_line": 154
+          "line": 123,
+          "end_line": 145
         }
       ]
     },
@@ -185,7 +185,7 @@
         {
           "path": "takt/vfs/vfs.go",
           "line": 443,
-          "end_line": 469
+          "end_line": 470
         }
       ]
     }

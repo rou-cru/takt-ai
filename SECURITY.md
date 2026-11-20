@@ -122,7 +122,7 @@ practice, and they are also there for you:
   and SLSA provenance attestations.
 - **Signatures and provenance.** Cosign signatures and build provenance
   attestations, as described in "Verifying releases".
-- **Scanning in CI.** Every pull request and every push to `main` or `trunk`
+- **Scanning in CI.** Every pull request and every push to `main`
   runs Semgrep (static analysis), TruffleHog (verified secrets), Syft and Grype
   (SBOM and vulnerabilities, failing on high or critical issues with a fix) and
   Checkov (infrastructure as code). Semgrep and Grype results are reported in

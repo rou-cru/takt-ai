@@ -221,7 +221,7 @@ func coordinateAuthorization(fs *vfs.FS, h *history.History, c *gc.Coordinator, 
 	verifier := cycleIdentity(h, c.Cycle, gc.VerifierSpecialistID)
 	c.Cycle.AuthorKey, c.Cycle.VerifierKey, e = fs.PrepareMaintenance(collector, verifier, scope)
 	if e != nil {
-		return nil, fmt.Errorf("gc authorization preparation refused: %w; no partial lane reservation was retained; retry gc_authorize", e)
+		return nil, fmt.Errorf("gc authorization preparation refused: %w; no partial lane reservation was retained; retry the authorize action", e)
 	}
 	c.Cycle.Scope, c.Cycle.Phase = scope, "collect"
 	return c.Cycle, nil

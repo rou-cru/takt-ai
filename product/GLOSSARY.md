@@ -13,7 +13,7 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **target** | The concrete destination of an operation within the OpenCode v2 installation. |
 | **scope** | The OpenCode v2 target together with the set of managed assets applicable to it. |
 | **workspace** | The project tree the crew works on: everything under the project root of the active session, independent of whether it is a Git repository. |
-| **memory service** | The independent service process that owns the memory store and serves the memory functions over MCP to the official integration and to external clients. |
+| **memory service** | The independent service process that owns the memory store and serves the memory functions over MCP to the official integration and to external clients. It is packaged with the installation or deployed apart and reached over the network. |
 
 ## 2. What Is Installed
 
@@ -62,6 +62,15 @@ Shared vocabulary for the Takt product corpus. Terms defined here carry their de
 | **mandate class** | A family of work in a GC collector's mandate. |
 | **workspace analyzer** | The static analysis layer over the code the crew builds, from which the collector's findings originate. Distinct from the detectors of the control bus, which observe crew execution rather than the code it produces. |
 | **masked dead code** | Code whose only callers are tests: the test establishes no use, it hides the code's death from analysis. |
+| **crew capability** | The ability of the crew, with the harness, to carry out the work the user requests at sustained performance. |
+| **workspace entropy** | Structural degradation of the workspace relative to its size — concentrated complexity, duplication, dead or unintegrated code, documentation noise, drift from declared norms — that degrades crew capability. |
+| **disturbance** | A workspace change the estimate observes without attribution to crew work, such as an edit made outside Takt. |
+| **base sensor** | The content-derived workspace sensor that is always available, independent of Git, the VFS, and optional tools. |
+| **workspace estimate** | The persisted, uncertainty-bearing estimate of workspace entropy and crew capability on which GC control decisions rest. |
+| **execution route** | The work the execution DAG records as settled, in flight, and planned, along which entropy exposure is weighted. |
+| **change scan** | The frequent comparison of workspace file metadata and changed content against the last recorded manifest. |
+| **full verification** | The complete content hash of the workspace that bounds what the change scan can miss. |
+| **preflight** | The change scan and start of full verification that open a session, concurrent with its first exchange. |
 | **dreaming** | The long-term memory consolidation lifecycle: Periodic Simple Mode, Deep Dream, and macro consolidation. Distinct from workspace GC. |
 | **Periodic Simple Mode** | The lossless background dreaming cycle that runs without the user. |
 | **Deep Dream** | The dreaming cycle run with the user present. |

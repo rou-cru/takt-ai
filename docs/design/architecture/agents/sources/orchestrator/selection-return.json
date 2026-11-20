@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -37,8 +37,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 62,
-          "end_line": 67
+          "line": 70,
+          "end_line": 75
         }
       ]
     },
@@ -53,8 +53,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 62,
-          "end_line": 67
+          "line": 70,
+          "end_line": 75
         }
       ]
     },
@@ -69,8 +69,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 69,
-          "end_line": 76
+          "line": 77,
+          "end_line": 77
         }
       ]
     },
@@ -85,8 +85,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 70,
-          "end_line": 72
+          "line": 78,
+          "end_line": 80
         }
       ]
     },
@@ -101,8 +101,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 73,
-          "end_line": 75
+          "line": 81,
+          "end_line": 83
         }
       ]
     },
@@ -117,8 +117,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 62,
-          "end_line": 67
+          "line": 70,
+          "end_line": 75
         }
       ]
     },
@@ -133,8 +133,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 70,
-          "end_line": 72
+          "line": 78,
+          "end_line": 80
         }
       ]
     },
@@ -149,8 +149,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 73,
-          "end_line": 75
+          "line": 81,
+          "end_line": 83
         }
       ]
     },
@@ -166,7 +166,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection-exceptions/SKILL.md",
           "line": 16,
-          "end_line": 18
+          "end_line": 20
         }
       ]
     },
@@ -240,7 +240,7 @@
     {
       "from": "o3",
       "to": "o4",
-      "label": "no justifiable route or user's choice"
+      "label": "no route, or the user's decision"
     }
   ],
   "cards": [
@@ -264,7 +264,7 @@
       "dot": "rose",
       "title": "Instruction conflict",
       "items": [
-        "A bounded route the user requested that misfits is explained to the user; takt does not relax the constraint on its own"
+        "A bounded route the user requested that misfits is explained to the user; direction is obtained before relaxing the constraint, changing scope or adopting an orchestrated route"
       ]
     }
   ]

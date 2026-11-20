@@ -42,8 +42,9 @@ import (
 const cancelledExitStatus = 130
 
 // usage is the public help: the commands a person runs, grouped. Commands
-// Takt's OpenCode plugins call (memory, vfs, obs, gc, dispatch, dag,
-// codegraph, setup image) are internal and documented with their callers.
+// Takt's OpenCode plugins call (vfs, obs, gc, dispatch, dag, codegraph,
+// memory serve, memory mcp --crew, setup image) are internal and documented
+// with their callers.
 const usage = `Takt AI — meta harness for agent teams, on top of OpenCode v2.
 
 Usage:
@@ -60,6 +61,8 @@ Commands:
       --json                     machine-readable output
   setup default-request          print the recommended setup request
   restore [--root DIR]           put back the files Takt replaced
+  memory start [--init]          start Takt Memory and confirm readiness
+  memory mcp [--workspace DIR]   expose the memory MCP tools over stdio
   doctor                         check tools, configuration and capabilities
   version                        print the version
   help                           show this help`

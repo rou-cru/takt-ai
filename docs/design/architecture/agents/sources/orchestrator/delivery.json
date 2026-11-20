@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -39,9 +39,9 @@
       "sublabel": "author_keys declared",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 128,
-          "end_line": 130
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 14,
+          "end_line": 24
         },
         {
           "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
@@ -96,9 +96,14 @@
       "sublabel": "staged work untouched",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 121,
-          "end_line": 126
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 20,
+          "end_line": 24
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-vfs-coordination/SKILL.md",
+          "line": 27,
+          "end_line": 29
         }
       ]
     },
@@ -132,12 +137,30 @@
       "id": "escalated",
       "type": "waiting",
       "label": "Escalated",
-      "sublabel": "limit reached or base changed",
+      "sublabel": "recovery required or base changed",
       "sources": [
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 123,
-          "end_line": 126
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 44,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "type": "decision",
+      "label": "Bound reached",
+      "sublabel": "reroute or closing report",
+      "sources": [
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 69,
+          "end_line": 69
+        },
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 67,
+          "end_line": 67
         }
       ]
     }
@@ -175,7 +198,7 @@
     {
       "from": "failed",
       "to": "spotfix",
-      "label": "not a discard"
+      "label": "correct the staged work"
     },
     {
       "from": "spotfix",
@@ -190,12 +213,6 @@
       "variant": "dashed"
     },
     {
-      "from": "failed",
-      "to": "escalated",
-      "label": "limit reached",
-      "variant": "security"
-    },
-    {
       "from": "consolidating",
       "to": "escalated",
       "label": "recovery required",
@@ -206,6 +223,12 @@
       "to": "consolidating",
       "label": "no planned gate",
       "variant": "dashed"
+    },
+    {
+      "from": "failed",
+      "to": "bound",
+      "label": "limit reached",
+      "variant": "security"
     }
   ],
   "cards": [
@@ -213,7 +236,7 @@
       "dot": "cyan",
       "title": "Verification is planned",
       "items": [
-        "A gate is planned only for a completed module, a change whose deviation would cascade into later work (such as a frozen contract or interface it feeds), or an unknown state",
+        "takt-verification-consolidation plans a gate only for a completed module, a change whose deviation would cascade into later work (such as a frozen contract or interface it feeds), or an unknown state",
         "One gate covers several authors; any other delivery goes straight to consolidation"
       ]
     },
@@ -223,14 +246,22 @@
       "items": [
         "Consolidating is not a Git commit; one global Verify node accepts each vertical slice after its writers finish",
         "A milestone is committed once its computational acceptance is recorded and advisory review closes without a reproduction-backed defect, after loading takt-git-commit",
-        "Non-blocking advisory findings remain recorded; they neither delay the checkpoint nor require correction or reverification, while failed or unverified criteria block"
+        "Findings beyond a verdict are weighed against the slice's delivery (takt-verification-consolidation): those that prevent or degrade the working slice are corrected first; those that leave it working stay recorded and do not delay the checkpoint; failed or unverified criteria block"
       ]
     },
     {
       "dot": "rose",
       "title": "Judges",
       "items": [
-        "The blind pair is requested only on the conditions in the operations prose; takt delegates the verify of a contested unit"
+        "The blind pair is requested only on the conditions in takt-verification-consolidation; a contest is recorded with dispatch_contest, bounded per session, and the orchestrator delegates the Verify of the contested unit"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Bound",
+      "items": [
+        "At a reached bound the harness stops further consumption; a deterministic policy picks an autonomous reroute within remaining authorized work or a closing report with the unmet criteria",
+        "The user joins only by explicit policy; a new route keeps the exhausted scope's consumption"
       ]
     }
   ]

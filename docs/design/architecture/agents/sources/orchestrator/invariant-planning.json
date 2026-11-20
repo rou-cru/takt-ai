@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -27,7 +27,12 @@
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
           "line": 17,
-          "end_line": 27
+          "end_line": 26
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 30,
+          "end_line": 39
         }
       ]
     },
@@ -39,8 +44,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 29,
-          "end_line": 40
+          "line": 28,
+          "end_line": 47
         }
       ]
     },
@@ -52,8 +57,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 50,
-          "end_line": 75
+          "line": 49,
+          "end_line": 74
         }
       ]
     },
@@ -65,8 +70,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 77,
-          "end_line": 81
+          "line": 76,
+          "end_line": 80
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
+          "line": 100,
+          "end_line": 106
         }
       ]
     },
@@ -78,8 +88,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 83,
-          "end_line": 93
+          "line": 82,
+          "end_line": 92
         }
       ]
     },
@@ -91,8 +101,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 29,
-          "end_line": 40
+          "line": 35,
+          "end_line": 39
         }
       ]
     },
@@ -104,8 +114,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 95,
-          "end_line": 99
+          "line": 94,
+          "end_line": 98
         }
       ]
     },
@@ -117,8 +127,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 85,
-          "end_line": 92
+          "line": 84,
+          "end_line": 91
         }
       ]
     },
@@ -130,8 +140,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-invariant-planning/SKILL.md",
-          "line": 83,
-          "end_line": 93
+          "line": 91,
+          "end_line": 92
         }
       ]
     }
@@ -208,7 +218,7 @@
       "items": [
         "Each invariant is settled, to refine, or to generate; probably settled is not a class",
         "User stories are settled only when final, with no question about their expected result open; revising a story makes every invariant derived from it to refine",
-        "A general or ambiguous request needs user stories; a trivial or narrowly technical one does not"
+        "Stories depend on the expected result, never on the request's size or wording alone: a closed result needs none, open questions the user can answer are asked first, open questions the user cannot answer need stories"
       ]
     },
     {
@@ -218,7 +228,8 @@
         "pm roots the plan: user stories first, then a different pm delegation formalizes the business documents from those final stories",
         "analyst runs on a concrete question derived from an invariant in hand; designer and architect are independent unless one constrains the other",
         "qa is conditional: only when planned, it follows spec and architect when present, consuming the specification, frozen contracts and pm's PRD; the plan then ends spec to qa",
-        "More than one lane known: dispatch_commit before the first dispatch"
+        "More than one lane known: dispatch_commit before the first dispatch",
+        "Planning follows the participation mode: a lane the user takes part in needs the user's approval before its consumers start; a delegated lane is autonomous"
       ]
     },
     {
@@ -227,7 +238,7 @@
       "items": [
         "Ranks are fixed: the user's directive, then user stories, then business documents, then what derives from them; the higher document stands and only the other lane is re-dispatched",
         "Between equal ranks, decide on the user's directive or verified facts; contradictory user stories are the user's to settle, through their pm when that lane runs with the user",
-        "Between qa and spec, spec stands for behavior; an unbacked conflict stays disputed and two failed alignments escalate"
+        "Between qa and spec, spec stands for behavior; a conflict nothing backs stays disputed: ask the user, the architect for a technical conflict, or gather verified facts; two failed alignments escalate"
       ]
     },
     {

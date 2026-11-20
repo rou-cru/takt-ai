@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 123,
+          "line": 122,
           "end_line": 124
         }
       ]
@@ -65,7 +65,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
           "line": 12,
-          "end_line": 17
+          "end_line": 20
         }
       ]
     },
@@ -73,7 +73,7 @@
       "id": "frozen",
       "type": "waiting",
       "label": "Subtree frozen",
-      "sublabel": "task BLOCKED, lanes run on",
+      "sublabel": "node and dependents; lanes run on",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
@@ -125,17 +125,61 @@
       "id": "user",
       "type": "waiting",
       "label": "Awaiting direction",
-      "sublabel": "value or authorization",
+      "sublabel": "value, authorization or policy",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 24,
-          "end_line": 26
+          "line": 28,
+          "end_line": 31
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "type": "decision",
+      "label": "Bound reached",
+      "sublabel": "policy chooses",
+      "sources": [
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 69,
+          "end_line": 69
         },
         {
-          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
-          "line": 29,
-          "end_line": 31
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 41,
+          "end_line": 41
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-failure-handling/SKILL.md",
+          "line": 33,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "reroute",
+      "type": "active",
+      "label": "Reroute",
+      "sublabel": "authorized work",
+      "sources": [
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 69,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "type": "neutral",
+      "label": "Closing report",
+      "sublabel": "unmet criteria",
+      "sources": [
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 69,
+          "end_line": 69
         }
       ]
     }
@@ -179,12 +223,12 @@
     {
       "from": "frozen",
       "to": "owner",
-      "label": "task, evidence, segment"
+      "label": "unit identity, evidence, contract entry ID"
     },
     {
       "from": "owner",
       "to": "delta",
-      "label": "owner delta; TPM revises tasks"
+      "label": "owner correction; revised decomposition"
     },
     {
       "from": "delta",
@@ -199,16 +243,39 @@
       "variant": "dashed"
     },
     {
-      "from": "frozen",
-      "to": "user",
-      "label": "limit reached",
-      "variant": "security"
-    },
-    {
       "from": "reassess",
       "to": "user",
       "label": "value, authorization or no continuation",
       "variant": "security"
+    },
+    {
+      "from": "frozen",
+      "to": "bound",
+      "label": "limit reached",
+      "variant": "security"
+    },
+    {
+      "from": "bound",
+      "to": "reroute",
+      "label": "policy: reroute",
+      "variant": "emphasis"
+    },
+    {
+      "from": "bound",
+      "to": "closing",
+      "label": "policy: report"
+    },
+    {
+      "from": "bound",
+      "to": "user",
+      "label": "explicit user policy",
+      "variant": "dashed"
+    },
+    {
+      "from": "reroute",
+      "to": "resumed",
+      "label": "exhausted scope stays closed",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -218,14 +285,14 @@
       "items": [
         "Structural or interface: architect. Behavior or acceptance: spec. Experience or identity: product-designer. Scope analysis: pm",
         "A discrepancy requires diagnosis, not an assumption that the contract is wrong; technical uncertainty is resolved within authority",
-        "Conflicting deltas from two in-flight tasks: freeze both, keep both staged, and escalate to the owner of the contract they share"
+        "Conflicting staged deltas: both stay frozen and staged for diagnosis; the owner of the contract they share receives the unit identity and evidence"
       ]
     },
     {
       "dot": "amber",
       "title": "Declared recovery",
       "items": [
-        "A binary result, scope, recoverable point, action budget and attempt budget; budget expiry escalates (see the escalation view)",
+        "A binary result, acceptance entity, scope, action budget and attempt budget; budget expiry follows the bound rule (see the escalation view)",
         "After consolidation, repair forward"
       ]
     },
@@ -233,8 +300,10 @@
       "dot": "rose",
       "title": "Limits and decisions",
       "items": [
-        "The user decides value, required authorization, irreversible effects, or no justifiable continuation; exhausted scope needs a user-approved finite allowance",
-        "A second failing verdict for the same author key counts as one failed recovery; consecutive failed recoveries of one objective reach the limit",
+        "The user decides value, required authorization, irreversible effects, or no justifiable continuation",
+        "At a reached bound the harness stops further consumption; a deterministic policy picks an autonomous reroute within authorized work or a closing report with the unmet criteria; the user joins only by explicit policy",
+        "Recovery beyond a reached bound takes a finite, scoped user exception; a plan revision or contract delta does not reset consumption",
+        "Two consecutive failed recoveries of one acceptance entity close autonomous recovery for it; a second failing verdict for the same author key counts as one",
         "After two nonconverging contract deltas, reassess the decomposition instead of issuing a third"
       ]
     }

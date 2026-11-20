@@ -6,8 +6,8 @@
     "output": "docs/design/architecture/agents/diagrams/crew/workflow-selection.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "url": "https://github.com/rou-cru/takt-ai.git",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -42,7 +42,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
           "line": 20,
-          "end_line": 55
+          "end_line": 24
         }
       ]
     },
@@ -57,8 +57,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 25,
+          "end_line": 39
         }
       ]
     },
@@ -73,8 +73,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 51,
+          "end_line": 63
         }
       ]
     },
@@ -89,8 +89,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 21
         }
       ]
     },
@@ -105,8 +104,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 22
         }
       ]
     },
@@ -121,8 +119,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 26,
+          "end_line": 29
         }
       ]
     },
@@ -137,8 +135,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 52,
+          "end_line": 54
         }
       ]
     },
@@ -153,8 +151,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 55,
+          "end_line": 56
         }
       ]
     },
@@ -169,8 +167,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 20,
-          "end_line": 55
+          "line": 59,
+          "end_line": 63
         }
       ]
     },
@@ -185,8 +183,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
-          "line": 49,
-          "end_line": 53
+          "line": 57,
+          "end_line": 58
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-workflow-selection/SKILL.md",
+          "line": 43,
+          "end_line": 50
         }
       ]
     }
@@ -273,7 +276,8 @@
         "Selection runs before each planning or implementation phase",
         "The route test is bounded units versus an integrated implementation, not one lane versus several",
         "QA is planned only when acceptance needs the QA workflow; its tail follows either development branch or a focused assessment",
-        "Only the chosen route's skill is loaded; a route is never re-adopted under identical evidence"
+        "Only the chosen route's skill is loaded; a route is never re-adopted under identical evidence",
+        "Bounded is never chosen by elimination, convenience or cost, and SDD and bounded never govern the same implementation"
       ]
     },
     {
@@ -282,6 +286,7 @@
       "items": [
         "After invariant-planning, selection returns to the first question",
         "Without QA planned, a no-development assessment delegates to the relevant quality specialist with its scope and criteria",
+        "A phase-only direct-work order does not extend to other phases; a focused review alone does not activate QA",
         "Exceptions are owned by takt-workflow-selection-exceptions"
       ]
     }

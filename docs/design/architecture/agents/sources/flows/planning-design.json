@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
-          "line": 13
+          "line": 16
         }
       ]
     },
@@ -73,7 +73,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -85,12 +85,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -126,7 +126,7 @@
       "from": "takt",
       "to": "architect",
       "y": 244,
-      "label": "delegate: brief, intent IDs",
+      "label": "delegate: brief",
       "variant": "emphasis"
     },
     {
@@ -134,7 +134,7 @@
       "from": "takt",
       "to": "designer",
       "y": 272,
-      "label": "delegate: brief, intent IDs",
+      "label": "delegate: brief",
       "variant": "emphasis"
     },
     {
@@ -216,15 +216,16 @@
       "title": "Concurrency",
       "items": [
         "The three delegations are issued in the same response, so they form one real round",
-        "Architect and designer are independent unless one constrains the other"
+        "Lanes share a round only where none consumes another's result; architect and designer are independent unless one's decisions constrain the other"
       ]
     },
     {
       "dot": "amber",
       "title": "Conditions",
       "items": [
-        "The analyst runs only when there is a concrete question",
-        "A lane with user-owned decisions waits for approval before its consumers start"
+        "The analyst runs on a concrete question derived from an invariant already in hand, never first by default",
+        "A lane with user-owned decisions waits for approval before its consumers start",
+        "On return takt compares the documents; on a contradiction the higher-ranked one stands and the other lane rewrites"
       ]
     }
   ]

@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -49,7 +49,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-interlocutor-lending/SKILL.md",
-          "line": 21
+          "line": 25,
+          "end_line": 26
         }
       ]
     },
@@ -69,7 +70,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -89,7 +90,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-analyst/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -109,7 +110,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -129,7 +130,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -149,7 +150,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-pm/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -169,7 +170,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-architect/agent.yaml",
-          "line": 13
+          "line": 16
         }
       ]
     },
@@ -189,7 +190,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-product-designer/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -209,7 +210,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -229,7 +230,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -249,7 +250,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-simplify/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -269,7 +270,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -289,7 +290,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
-          "line": 13
+          "line": 17
         }
       ]
     },
@@ -556,7 +557,7 @@
       "id": "dev-vfs",
       "from": "dev",
       "to": "vfs",
-      "label": "bind, write",
+      "label": "bind, write, read, delete",
       "variant": "security"
     },
     {
@@ -575,20 +576,21 @@
       "id": "verify-vfs",
       "from": "verify",
       "to": "vfs",
-      "label": "read, verify",
+      "label": "bind, read, verify, inspect",
       "variant": "security"
     },
     {
       "id": "judge-vfs",
       "from": "judge",
       "to": "vfs",
-      "variant": "security"
+      "variant": "security",
+      "label": "bind, read, verify"
     },
     {
       "id": "takt-vfs",
       "from": "takt",
       "to": "vfs",
-      "label": "claim, consolidate, discard",
+      "label": "claim, consolidate, discard, inspect",
       "variant": "security",
       "fromSide": "bottom",
       "toSide": "bottom",
@@ -632,7 +634,7 @@
       "id": "test-vfs",
       "from": "test",
       "to": "vfs",
-      "label": "read, run",
+      "label": "bind, write, read, delete",
       "variant": "security"
     }
   ],
@@ -642,7 +644,7 @@
       "title": "Reading guide",
       "items": [
         "Each arrow from takt is a delegation; dashed arrows to pm, architect and product-designer also cover a lend, where a dispatch switch hands them the user's session; the judge node runs as two blind instances, judge-a and judge-b",
-        "VFS capabilities per agent come from agent.yaml; planning and interlocutor agents have none, but keep the native edit allow to deliver documents the user asks for"
+        "VFS capabilities per agent come from agent.yaml: takt, execution and verification agents hold them, analyst holds inspect, and the other planning, interlocutor and quality_assurance agents hold none; planning and interlocutor agents write a repository copy through native edit only when the user asks"
       ]
     },
     {
@@ -660,6 +662,8 @@
       "items": [
         "planning_author covers analyst, spec, tpm and qa; execution covers dev, fix, simplify and test",
         "quality_assurance covers mutation, explorer and quality; verification covers verify and blind judge instances",
+        "Direct interlocutors may hold the interface; planning and execution agents operate internally once dispatched; verification and quality_assurance agents never enter the interlocutor stack",
+        "takt-simplify is also the GC collector: the harness attaches it to a GC cycle as a maintenance instance (not drawn)",
         "The role declared by each agent.yaml fixes the seat; a replacement keeps the same seat and specialty"
       ]
     }

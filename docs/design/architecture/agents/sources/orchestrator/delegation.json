@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -19,6 +19,10 @@
     {
       "id": "actions",
       "label": "Actions"
+    },
+    {
+      "id": "bound",
+      "label": "At the limit"
     }
   ],
   "nodes": [
@@ -28,13 +32,13 @@
       "col": 0,
       "type": "security",
       "label": "Plan applies?",
-      "sublabel": "several rounds, floor, critical",
+      "sublabel": "dependent sequence, new consumer",
       "width": 160,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 102,
-          "end_line": 105
+          "end_line": 107
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
@@ -102,8 +106,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 102,
-          "end_line": 105
+          "line": 104,
+          "end_line": 107
         }
       ]
     },
@@ -113,7 +117,7 @@
       "col": 1,
       "type": "backend",
       "label": "Route via selection",
-      "sublabel": "not bounded work any more",
+      "sublabel": "the tree picks the route",
       "width": 160,
       "sources": [
         {
@@ -135,7 +139,12 @@
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 7,
-          "end_line": 9
+          "end_line": 8
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 77,
+          "end_line": 79
         }
       ]
     },
@@ -187,8 +196,34 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 82,
+          "line": 80,
           "end_line": 84
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "bound",
+      "col": 1,
+      "type": "backend",
+      "label": "Stop delegation",
+      "sublabel": "report the actual result",
+      "width": 160,
+      "sources": [
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 88,
+          "end_line": 94
+        },
+        {
+          "path": "product/meta-harness/orchestration/PRD_ORCHESTRATION.md",
+          "line": 52,
+          "end_line": 52
+        },
+        {
+          "path": "product/meta-harness/harness/PRD_HARNESS.md",
+          "line": 39,
+          "end_line": 39
         }
       ]
     }
@@ -217,7 +252,7 @@
     {
       "from": "p2",
       "to": "route",
-      "label": "no",
+      "label": "not bounded units",
       "variant": "dashed"
     },
     {
@@ -257,6 +292,18 @@
       "to": "claim",
       "label": "retry",
       "variant": "dashed"
+    },
+    {
+      "from": "p2",
+      "to": "commit",
+      "label": "plan covers the work",
+      "variant": "dashed"
+    },
+    {
+      "from": "p2",
+      "to": "stop",
+      "label": "no coverage",
+      "variant": "security"
     }
   ],
   "cards": [
@@ -272,9 +319,17 @@
       "dot": "amber",
       "title": "Identity",
       "items": [
-        "The delegation name is the unit identity; the same name again retries it, new work gets a new name",
+        "The delegation name is the unit identity; the same name again retries it in a new session, new work gets a new name; a returned session continues only to unblock the blocker it delivered",
         "claim_assign without author_key never takes a path another root's claim holds: continue that work with its author_key, or release or discard it first",
         "With the author_key, claim_assign continues the existing staged work and may extend its exact scope"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Unplanned limit",
+      "items": [
+        "At the cumulative limit a covering plan is committed, or delegation stops with the actual result",
+        "A committed plan enables only the work it covers and leaves the consumed units counted"
       ]
     }
   ]

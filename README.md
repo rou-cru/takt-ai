@@ -4,7 +4,7 @@
   [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=rou-cru_takt-ai&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rou-cru_takt-ai)
   [![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue.svg)](https://deepwiki.com/rou-cru/takt-ai)
   [![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/rou-cru/takt-ai?utm_source=oss&utm_medium=github&utm_campaign=rou-cru%2Ftakt-ai&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
-  [![Go](https://img.shields.io/badge/Go-1.27.1+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+  [![Go](https://img.shields.io/badge/Go-1.27.4+-00ADD8?logo=go&logoColor=white)](https://go.dev)
   [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
   [![GitHub Release](https://img.shields.io/github/v/release/rou-cru/takt-ai)](https://github.com/rou-cru/takt-ai/releases)
 </div>
@@ -15,11 +15,9 @@ Takt AI is a meta-harness for AI coding assistants.
 
 It's not a standalone agent, an LLM, or a simple collection of prompt plugins. It operates a level deeper as an integration layer that sits between your local workspace and your AI tooling. It orchestrates the context, boundaries, and persistent state that raw coding assistants usually lack.
 
-## Supported Agents
+## Runtime
 
-Takt AI integrates directly with coding agents:
-
-- **OpenCode**
+Takt AI runs on OpenCode v2, its only runtime.
 
 ## Status
 
@@ -30,8 +28,9 @@ Pre-v1. Releases are stable, but features planned for v1 are still being added a
 | Platform | Support |
 | --- | --- |
 | macOS ARM64 | Supported |
-| Linux | Supported |
-| macOS Intel | Expected to work, not validated |
+| Linux ARM64 (Ubuntu Server is the reference) | Supported |
+| AMD64, including macOS Intel | Expected to work, not validated |
+| Other Linux distributions | Expected to work, not validated |
 | WSL | Expected to work through Linux compatibility, not validated |
 | Windows | Not supported |
 
@@ -47,6 +46,9 @@ curl -fsSL https://raw.githubusercontent.com/rou-cru/takt-ai/main/install.sh | b
 
 ```sh
 brew tap rou-cru/homebrew-takt-ai
+# Homebrew 7+ loads an unofficial cask only after you trust it
+brew trust --tap rou-cru/homebrew-takt-ai
+brew trust --cask rou-cru/takt-ai/takt-ai
 brew install --cask rou-cru/takt-ai/takt-ai
 ```
 

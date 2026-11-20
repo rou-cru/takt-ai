@@ -13,7 +13,7 @@ A model of the crew as processes that exchange messages, assuming the happy path
 | Repair after a failing verdict (takt-fix) | [repair-sequence.html](diagrams/flows/repair-sequence.html) | Sequence |
 | Blind review by judge-a and judge-b | [judge-sequence.html](diagrams/flows/judge-sequence.html) | Sequence |
 
-Role classes appear as containers; each agent is its own node or participant. takt-simplify's cleanup and GC role is shown in the GC cycle view in [runtime](../runtime/README.md) and in the topology, not in a separate sequence.
+Role classes appear as containers; each agent is its own node or participant. takt-simplify's GC collector role (class maintenance) is shown in the GC cycle view in [runtime](../runtime/README.md), not in a separate sequence.
 
 ## Orchestrator decision trees and state machines
 
@@ -26,8 +26,8 @@ Everything takt decides is conduct from `OPERATIONS.md` and its skills. These vi
 | Route misfit and return to the tree | [selection-return.html](diagrams/orchestrator/selection-return.html) | takt-workflow-selection, exceptions |
 | Invariant-planning states | [invariant-planning.html](diagrams/orchestrator/invariant-planning.html) | takt-invariant-planning |
 | SDD workflow lifecycle | [sdd-lifecycle.html](diagrams/orchestrator/sdd-lifecycle.html) | takt-sdd-workflow |
-| Failure and recovery | [sdd-recovery.html](diagrams/orchestrator/sdd-recovery.html) | takt-sdd-recovery, OPERATIONS |
-| Escalation conduct | [escalation.html](diagrams/orchestrator/escalation.html) | OPERATIONS |
+| Failure and recovery | [sdd-recovery.html](diagrams/orchestrator/sdd-recovery.html) | takt-sdd-recovery, takt-failure-handling, OPERATIONS |
+| Escalation conduct | [escalation.html](diagrams/orchestrator/escalation.html) | takt-failure-handling |
 | Preparing a delegation | [delegation.html](diagrams/orchestrator/delegation.html) | OPERATIONS |
 | Handling a staged delivery | [delivery.html](diagrams/orchestrator/delivery.html) | OPERATIONS, takt-vfs-coordination |
 | Acting directly | [direct-work.html](diagrams/orchestrator/direct-work.html) | OPERATIONS |
@@ -39,30 +39,32 @@ Not drawn as diagrams:
 | Decision | Rule |
 | :--- | :--- |
 | Which specialist for which need | Unverified context: analyst. Intent and scope: pm. Behavior and acceptance: spec. Structure and technology: architect. Experience or identity: product-designer. Task decomposition: tpm. Implementation: dev. Defect repair: fix. Cleanup: simplify. Independent verdict: verify, never omitted from a planned verification. Test policy, plan and matrix: qa, when QA is planned. Blind Q2 tests, mutation, exploration and non-functional analysis: test, mutation, explorer and quality, where takt-qa-workflow reaches them. Each is omitted when settled artifacts already cover the need. |
-| When to request the blind judge pair | Only when the user asks, work advanced past deviations of unknown origin, the real state is unknown beyond a quick validation, a DAG ends with two or more phases that each reached the ceiling, or a large refactor of unknown impact has invariants to contrast. |
+| When to request the blind judge pair | Exceptional: concrete evidence of damage of unknown extent or of unresolved divergence, never concurrency width (PR-CRW-15). takt-verification-consolidation triggers: the user asks, work advanced past deviations of unknown origin, the real state is unknown beyond a quick validation, an objective's recovery was exhausted, a DAG ends with two or more phases that each reached the ceiling, or a large refactor of unknown impact has invariants to contrast. The harness selects the reviewers; both reports close one round, and correction and repeated review consume the slice budget. |
 | Whether a phase is verified | A gate is planned only for a completed module, a change whose deviation would cascade into later work, or an unknown state; one gate covers several authors and everything else consolidates on delivery. A planned gate needs a committed plan. One global Verify accepts each vertical slice after its writers finish; failed or unverified criteria block, while recorded non-blocking advisory findings do not. A milestone commit is a separate decision after acceptance. |
+| Restoring an instance that cannot run | The seat is kept: reassign the instance's model with a seat reason (user present: the user approves; autonomous: a model that completed work in the session); only when no reassignment works, delegate it with `seat_substitute`. Seat, model and reason go in the completion report (PR-CRW-13). |
 | Contesting a recorded failure | `dispatch_contest`, at most the per-session contest budget; takt delegates the Verify of that unit's author key. |
 
 ## Processes
 
-Role classes come from `agent.yaml`.
+Role classes come from `agent.yaml`; the harness attaches maintenance to a GC cycle (PR-CRW-16).
 
 | Class | Agents | VFS capabilities | Receives | Produces |
 | :--- | :--- | :--- | :--- | :--- |
-| orchestrator | takt | claim_list, claim_assign, claim_release, discard, consolidate | Objective from the user | Briefs, plan, DAG, final report |
-| planning_author | analyst, spec, tpm, qa | none | Brief and consumed invariants | One Takt memory entry per artifact, returned as IDs |
+| orchestrator | takt | claim_list, claim_assign, claim_release, discard, consolidate, inspect | Objective from the user | Briefs, plan, DAG, final report |
+| planning_author | analyst, spec, tpm, qa | analyst: inspect; spec, tpm, qa: none | Brief and consumed invariants | One Takt memory entry per artifact, returned as IDs |
 | direct_interlocutor | pm, architect, product-designer | none | Brief, or a lent session with requirements | Decisions with user approval, returned as IDs |
 | execution | dev, fix, simplify, test | bind, write, read, delete | Brief, writable set, acceptance | Staged work and an author key |
-| verification | verify, judge-a, judge-b | read, verify (gates arrive bound; no bind tool) | Brief, author keys | A verdict per author key, plus a report |
+| verification | verify, judge-a, judge-b | verify: bind, read, verify, inspect; judge-a, judge-b: bind, read, verify | Brief, author keys | A verdict per author key, plus a report |
 | quality_assurance | mutation, explorer, quality | none | Brief, test plan and matrix by ID | A report recorded in Takt memory and delivered by ID |
+| maintenance | simplify as GC collector, attached by the harness to a cycle | bind, write, read, delete (the simplify declaration) | Mandate class and region the harness selects | A behavior-preserving staged delta; findings beyond the mandate reported, never applied |
 
 ## Messages
 
 - Delegation: one-paragraph brief (objective, authorized scope, expected output, acceptance). Invariants never travel in the brief; they are declared by Takt memory ID.
 - Lend: Takt calls `dispatch_switch` with requirements, client and objective; the harness asks the user to accept the specialist before the switch takes effect, and a refusal means no lend. The specialist hands back one of Standard, EarlyHandoff, TechFault or Outraged (or the lend is aborted).
-- Delivery: planning and interlocutor results are Takt memory IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Takt memory and delivered by ID with `deliver_result`. A later report is a new entry related to the earlier one by its content: `supersedes` for a complete new version, `corrects` for a correction, and `supplements` only for a distinct additive artifact.
+- Delivery: planning and interlocutor results are Takt memory IDs; execution results are staged work plus an author key; verification results are verdicts bound to author keys plus a report recorded in Takt memory and delivered by ID with `deliver_result`. A later report is a new entry related to the earlier one by its content: `supersedes` and `corrects` each carry the complete current artifact, readable alone, and `supplements` is only for a distinct additive artifact.
 - Two-part delivery: a specialist's delivery ends in VFS; takt releases each one where the plan sends it (phase verification, consolidation or a correction) before delegating more.
-- Ownership: only Takt owns claims, the DAG, delegation, consolidation and Git.
+- Ownership: only Takt owns claims, the DAG, delegation and consolidation; mutating Git belongs to Takt (PR-HAR-3).
 
 ## Harness touchpoints
 
