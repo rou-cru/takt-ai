@@ -1,4 +1,4 @@
-package gc
+package gc_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
@@ -18,6 +19,8 @@ const (
 	dueMutations = 40
 	// advanceSession is the session whose delta the cycle plan declares.
 	advanceSession = "s-advance"
+	// cycleIDHexLen is the hex length of a protocol cycle identifier.
+	cycleIDHexLen = 32
 )
 
 // advanceEnv opens the history and virtual filesystem Advance reads.
@@ -58,7 +61,7 @@ func admitUnit(t *testing.T, h *history.History, unit, delegation string) {
 
 func TestAdvanceIdleLeavesCountersAlone(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
 	admitUnit(t, h, "unit", "dispatch")
 	if err := dispatch.Finish(h, "", "unit", advanceSession); err != nil {
 		t.Fatal(err)
@@ -67,23 +70,23 @@ func TestAdvanceIdleLeavesCountersAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Outcome != OutcomeIdle || b.Held() || b.Proceed || c.Cycle != nil || c.Units != 1 {
+	if d.Outcome != gc.OutcomeIdle || b.Held() || b.Proceed || c.Cycle != nil || c.Units != 1 {
 		t.Errorf("Advance() = %+v %+v cycle=%v units=%d; want an untouched idle coordinator", d, b, c.Cycle, c.Units)
 	}
 }
 
 func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 	h, fs := advanceEnv(t)
-	p, err := LoadTriggerPolicy()
+	p, err := gc.LoadTriggerPolicy()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]struct {
-		coordinator *Coordinator
-		want        Outcome
+		coordinator *gc.Coordinator
+		want        gc.Outcome
 	}{
-		"user request with no delta is skipped": {&Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Requested: true, Units: 5}, OutcomeSkip},
-		"starved cycle is aborted":              {&Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals}, OutcomeAbort},
+		"user request with no delta is skipped": {&gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Requested: true, Units: 5}, gc.OutcomeSkip},
+		"starved cycle is aborted":              {&gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: p.Cadence.MaxDeferrals}, gc.OutcomeAbort},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -109,13 +112,13 @@ func TestAdvanceSkipAndAbortResetPace(t *testing.T) {
 
 func TestAdvanceLeavesARunningCycleAlone(t *testing.T) {
 	h, fs := advanceEnv(t)
-	running := &Cycle{Phase: "collect"}
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Cycle: running}
+	running := &gc.Cycle{Phase: "collect"}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Cycle: running}
 	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Outcome != OutcomeSkip || d.Reason != ReasonInFlight || b.Held() {
+	if d.Outcome != gc.OutcomeSkip || d.Reason != gc.ReasonInFlight || b.Held() {
 		t.Errorf("Advance() = %+v %+v, want a skip because a cycle is in flight", d, b)
 	}
 	if c.Cycle != running || c.Mutations != dueMutations {
@@ -125,7 +128,8 @@ func TestAdvanceLeavesARunningCycleAlone(t *testing.T) {
 
 func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession}
+	admitUnit(t, h, "unit-2", "d2")
 	admitUnit(t, h, "unit-1", "d1")
 	c.Mutations = dueMutations
 
@@ -133,11 +137,11 @@ func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Outcome != OutcomeRun || b.Proceed || b.Reason != ReasonActiveUnits {
+	if d.Outcome != gc.OutcomeRun || b.Proceed || b.Reason != gc.ReasonActiveUnits {
 		t.Fatalf("Advance() = %+v %+v, want a due cycle held by the active unit", d, b)
 	}
-	if !slices.Equal(b.ActiveUnitIDs, []string{"unit-1"}) {
-		t.Errorf("ActiveUnitIDs = %v, want the blocking unit named", b.ActiveUnitIDs)
+	if !slices.Equal(b.ActiveUnitIDs, []string{"unit-1", "unit-2"}) {
+		t.Errorf("ActiveUnitIDs = %v, want the blocking units named in order", b.ActiveUnitIDs)
 	}
 	if c.Cycle != nil || c.Deferrals != 1 || c.Held() {
 		t.Errorf("coordinator = %+v, want one deferral and no cycle", c)
@@ -146,24 +150,24 @@ func TestAdvanceDefersWhileUnitsAreInFlight(t *testing.T) {
 
 func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 2, NextMandate: 2}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 2, NextMandate: 2}
 	reach := func(_ context.Context, path string) ([]string, error) { return []string{"dep-of-" + path}, nil }
 
 	d, b, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, reach)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Outcome != OutcomeRun || !b.Proceed {
+	if d.Outcome != gc.OutcomeRun || !b.Proceed {
 		t.Fatalf("Advance() = %+v %+v, want the cycle to proceed", d, b)
 	}
 	if c.Cycle == nil || c.Cycle.Phase != "baseline" || c.Deferrals != 0 {
 		t.Fatalf("coordinator = %+v, want a baseline cycle", c)
 	}
 	plan := c.Cycle.Plan
-	if plan.Mandate != MandateDuplication || plan.SessionID != advanceSession || len(plan.CycleID) != 2*cycleIDBytes {
+	if plan.Mandate != gc.MandateDuplication || plan.SessionID != advanceSession || len(plan.CycleID) != cycleIDHexLen {
 		t.Errorf("plan = %+v, want the rotation's third mandate and a random hex cycle id", plan)
 	}
-	if plan.Reachability != ReachCodegraph || !slices.Equal(plan.Closure, []string{"a.go", "dep-of-a.go"}) {
+	if plan.Reachability != gc.ReachCodegraph || !slices.Equal(plan.Closure, []string{"a.go", "dep-of-a.go"}) {
 		t.Errorf("plan closure = %v (%s), want the delta plus its dependents", plan.Closure, plan.Reachability)
 	}
 	if c.Cursor != -1 {
@@ -176,19 +180,19 @@ func TestAdvanceStartsCycleWithDeclaredPlan(t *testing.T) {
 
 func TestAdvanceFallsBackToJournalOnlyWhenGraphFails(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations}
 	broken := func(context.Context, string) ([]string, error) { return nil, errors.New("index stale") }
 	if _, _, err := c.Advance(context.Background(), fs, h, sessionDelta(), advanceSession, broken); err != nil {
 		t.Fatal(err)
 	}
-	if c.Cycle == nil || c.Cycle.Plan.Reachability != ReachJournalOnly || !strings.Contains(c.Cycle.Plan.Gap, "index stale") {
+	if c.Cycle == nil || c.Cycle.Plan.Reachability != gc.ReachJournalOnly || !strings.Contains(c.Cycle.Plan.Gap, "index stale") {
 		t.Fatalf("plan = %+v, want the recorded journal-only gap", c.Cycle)
 	}
 }
 
 func TestAdvanceCountsDeclarationFailureTowardAbort(t *testing.T) {
 	h, fs := advanceEnv(t)
-	c := &Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 1}
+	c := &gc.Coordinator{Version: 1, Cursor: -1, Since: -1, Session: advanceSession, Mutations: dueMutations, Deferrals: 1}
 	// An empty session id makes the declaration invalid.
 	_, _, err := c.Advance(context.Background(), fs, h, sessionDelta(), "", nil)
 	if err == nil {
@@ -196,21 +200,6 @@ func TestAdvanceCountsDeclarationFailureTowardAbort(t *testing.T) {
 	}
 	if c.Cycle != nil || c.Deferrals < 1 {
 		t.Errorf("coordinator = %+v, want no cycle and the failure counted as a deferral", c)
-	}
-}
-
-func TestUnfinishedUnitIDsAreSorted(t *testing.T) {
-	proj := history.Projection{Units: map[string]history.Unit{
-		history.UnitKey("s", "b"):     {WorkUnitID: "b", State: history.StateInFlight},
-		history.UnitKey("s", "a"):     {WorkUnitID: "a", State: history.StatePlanned},
-		history.UnitKey("other", "a"): {WorkUnitID: "a", State: history.StateInFlight},
-		history.UnitKey("s", "c"):     {WorkUnitID: "c", State: history.State("done")},
-	}}
-	if got := unfinishedUnitIDs(proj); !slices.Equal(got, []string{"a", "b"}) {
-		t.Errorf("unfinishedUnitIDs() = %v, want [a b]", got)
-	}
-	if got := unfinishedUnitIDs(history.Projection{}); len(got) != 0 {
-		t.Errorf("unfinishedUnitIDs(empty) = %v", got)
 	}
 }
 
@@ -224,7 +213,7 @@ func TestLoadCoordinatorRejectsBadCoreState(t *testing.T) {
 				}
 				t.Fatal(err)
 			}
-			if _, err := LoadCoordinator(fs); err == nil {
+			if _, err := gc.LoadCoordinator(fs); err == nil {
 				t.Fatal("corrupt core state accepted")
 			}
 		})
