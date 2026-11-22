@@ -39,7 +39,7 @@
 | ID | Requirement |
 | --- | --- |
 | PR-REL-13 | The integration-test image MUST be reusable for automated end-to-end testing in addition to manual release validation. |
-| PR-REL-14 | A public release image derived from the development/test image is published with each release alongside the binary and MUST be ready to use as it ships: OpenCode v2 and Takt AI preconfigured with the base setup and the toolchains of the project's selected languages (Python, TypeScript, Go), so anyone can clone a repository and the first request to the crew finds what common work in them requires. It does not replace the first-use test image. |
+| PR-REL-14 | A public release image derived from the development/test image MUST be ready to use as it ships: OpenCode v2 and Takt AI preconfigured with the base setup and the toolchains of the project's selected languages (Python, TypeScript, Go), so anyone can clone a repository and the first request to the crew finds what common work in them requires. It does not replace the first-use test image. |
 | PR-REL-17 | A benchmark environment exists to run the benchmarks and carries the extended setup they require, apart from the first-use test image and the public release image. |
 
 ### 1.6 Crew Convergence Validation
