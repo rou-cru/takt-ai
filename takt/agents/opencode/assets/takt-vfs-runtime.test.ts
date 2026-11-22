@@ -64,8 +64,10 @@ type Options = {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-const until = async (ready: () => boolean, attempts = SETTLE_ATTEMPTS): Promise<void> => {
-  if (ready() || attempts === 0) return
+// until reports whether ready held before the attempts ran out.
+const until = async (ready: () => boolean, attempts = SETTLE_ATTEMPTS): Promise<boolean> => {
+  if (ready()) return true
+  if (attempts === 0) return false
   await sleep(SETTLE_STEP_MS)
   return until(ready, attempts - 1)
 }
@@ -910,7 +912,11 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", { tool: "vfs_write", sessionID: "dispatch", id: "t1", agent: "dev" })
       vfs.publish({ id: "evt-leaf", created: 1, type: "session.idle", data: { sessionID: "dispatch" } } as OpenCodeEvent)
       vfs.publish({ id: "evt-root", created: 2, type: "session.idle", data: { sessionID: "root" } } as OpenCodeEvent)
-      await until(() => vfs.requests("dispatch", "executions").length > 0)
+      // Each idle handler's last IPC: the root resolves to no execution and
+      // stops; the leaf resolves its unit, reconciles it and finishes it.
+      const resolved = (child: string) => vfs.requests("dispatch", "resolve").some((r) => r.child === child)
+      expect(await until(() => resolved("root"))).toBe(true)
+      expect(await until(() => resolved("dispatch") && vfs.requests("dispatch", "finish").length > 0)).toBe(true)
       await sleep(SETTLE_STEP_MS)
       expect(vfs.calls.filter(call => call.kind === "gc")).toEqual([])
     } finally { await vfs.stop() }

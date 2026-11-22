@@ -121,13 +121,17 @@ owner.holders["switch-root-child"]="root"
 const idledAt = calls.length
 sessionIdle("switch-root-child")
 sessionIdle("root")
-// until polls cond every 10ms, at most tries times, without a loop of awaits.
+// until polls cond every 10ms, at most tries times, without a loop of awaits,
+// and reports whether cond held.
 const until = async (cond, tries) => {
-  if (cond() || tries === 0) return
+  if (cond()) return true
+  if (tries === 0) return false
   await new Promise(resolve => setTimeout(resolve, 10))
   return until(cond, tries - 1)
 }
-await until(() => calls.length > idledAt, 100)
+// Each idle handler ends on resolving its session to no execution.
+const resolved = (child) => calls.slice(idledAt).some(c => c.verb === "dispatch" && requestOf(c).action === "resolve" && requestOf(c).child === child)
+assert.ok(await until(() => resolved("switch-root-child") && resolved("root"), 100), "an idle handler did not finish")
 await new Promise(resolve => setTimeout(resolve, 20))
 assert.equal(calls.some(c => c.verb === "gc"), false, "a session going idle reached GC")
 
