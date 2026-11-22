@@ -15,6 +15,7 @@ import {
   type DrawnNode,
   edgePorts,
   edgeRows,
+  fit,
   GraphView as GraphViewOf,
   glyphFor,
   hasContent,
@@ -128,6 +129,13 @@ describe("topologyKey", () => {
     const withEdge = layered({ ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [{ from: "a", to: "b" }] })
     const withoutEdge = layered({ ...base, nodes: [node({ id: "a" }), node({ id: "b" })], edges: [] })
     expect(topologyKey(withEdge)).not.toBe(topologyKey(withoutEdge))
+  })
+  test("changes when a unit moves to another layer, not when only its state does", () => {
+    const deep = { ...base, nodes: [{ ...node({ id: "a" }), layer: 0 }, { ...node({ id: "b" }), layer: 2 }], edges: [{ from: "a", to: "b" }] }
+    const shallow = { ...deep, nodes: [{ ...node({ id: "a" }), layer: 0 }, { ...node({ id: "b" }), layer: 1 }] }
+    const running = { ...deep, nodes: [{ ...node({ id: "a" }), layer: 0 }, { ...node({ id: "b", state: "in_flight" }), layer: 2 }] }
+    expect(topologyKey(deep)).not.toBe(topologyKey(shallow))
+    expect(topologyKey(deep)).toBe(topologyKey(running))
   })
 })
 
@@ -474,6 +482,10 @@ describe("activity presentation", () => {
     expect(slot.width).toBe(20)
     expect(slot.name).toEndWith("…")
     expect(boxWidth(slot.name)).toBe(20)
+  })
+  test("fit never returns more cells than it is given", () => {
+    for (const width of [0, 1, 2, 5]) expect(Bun.stringWidth(fit("a direct activity", width))).toBeLessThanOrEqual(width)
+    expect(fit("a direct activity", 0)).toBe("")
   })
 })
 

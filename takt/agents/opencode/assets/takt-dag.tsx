@@ -265,7 +265,7 @@ interface Layout {
   readonly height: number
   /** Widest component's band count; 1 when nothing wraps. */
   readonly bands: number
-  /** Node-id/kind set + edge set this layout was computed from; never lifecycle state. */
+  /** Node id/kind/layer set + edge set this layout was computed from; never lifecycle state. */
   readonly topologyKey: string
   readonly viewport: Viewport
 }
@@ -308,7 +308,7 @@ interface Topology {
 }
 
 export function topologyKey(topology: Topology): string {
-  const nodeIds = topology.nodes.map((n) => `${n.id}:${n.node_kind}`).sort(ordinal)
+  const nodeIds = topology.nodes.map((n) => `${n.id}:${n.node_kind}:${n.layer}`).sort(ordinal)
   const edgeKeys = topology.edges.map((e) => `${e.from}->${e.to}`).sort(ordinal)
   return `${nodeIds.join(",")}|${edgeKeys.join(",")}`
 }
@@ -1223,6 +1223,7 @@ export interface SidebarRow {
 /** Cuts text to width terminal cells, marking the cut with an ellipsis. */
 export function fit(text: string, width: number): string {
   if (Bun.stringWidth(text) <= width) return text
+  if (width < 1) return ""
   let kept = ""
   for (const char of text) {
     if (Bun.stringWidth(kept + char) > width - 1) break
