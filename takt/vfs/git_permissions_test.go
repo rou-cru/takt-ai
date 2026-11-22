@@ -126,16 +126,18 @@ func TestNativeRulesProjectTheDecision(t *testing.T) {
 }
 
 // PR-VFS-GIT-5: the orchestrator's native rules ask only for publishing,
-// rewriting or discarding git, a hard reset included; every other Git
-// command is conduct.
+// rewriting or discarding git, an amended commit and a hard reset included;
+// every other Git command, a plain local commit included, is conduct.
 func TestOrchestratorNativeRulesGateOnlyPublishRewriteDiscard(t *testing.T) {
 	rules := vfs.GitPermissionRules(model.RoleOrchestrator)
 	want := map[string]string{
 		"git add .": vfs.ShellAllow, "git reset HEAD~1": vfs.ShellAllow, "git status": vfs.ShellAllow,
-		"git commit": vfs.ShellAsk, "git push --force origin trunk": vfs.ShellAsk,
-		"git reset --hard HEAD": vfs.ShellAsk, "git reset HEAD --hard": vfs.ShellAsk,
+		"git commit": vfs.ShellAllow, "git commit -m wip": vfs.ShellAllow, "git commit --amend": vfs.ShellAsk,
+		"git commit -m x --amend": vfs.ShellAsk, "git -C . commit --amend --no-edit": vfs.ShellAsk,
+		"git push --force origin trunk": vfs.ShellAsk,
+		"git reset --hard HEAD":         vfs.ShellAsk, "git reset HEAD --hard": vfs.ShellAsk,
 		// A leading option must not hide the gated subcommand from the patterns.
-		"git -C . push": vfs.ShellAsk, "git --no-pager commit -m x": vfs.ShellAsk,
+		"git -C . push": vfs.ShellAsk, "git --no-pager commit -m x": vfs.ShellAllow, "git -C . rebase -i": vfs.ShellAsk,
 		"git -C . reset --hard": vfs.ShellAsk, "git -C . status": vfs.ShellAllow,
 	}
 	for command, effect := range want {

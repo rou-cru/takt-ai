@@ -54,7 +54,9 @@ func permissionsConfig() []permissionRule {
 		// mutations, privilege escalation, absolute paths elsewhere). PR-HAR-15's
 		// "deny rather than execute unstaged" runs per command instead of by
 		// blanket static glob.
-		{"shell", "git commit *", "ask"},
+		// A plain local commit needs no confirmation (PR-VFS-GIT-5); amending
+		// one rewrites history.
+		{"shell", "git commit *--amend*", "ask"},
 		{"shell", "git push", "ask"},
 		{"shell", "git push *", "ask"},
 		{"shell", "git push --force *", "ask"},
