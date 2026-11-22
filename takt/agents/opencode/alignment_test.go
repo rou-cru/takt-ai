@@ -77,7 +77,7 @@ func pluginTools(t *testing.T) []string {
 			tools = append(tools, m[1])
 		}
 	}
-	for _, want := range []string{"gc_request", "dispatch_commit", "vfs_bind", "deliver_result", memoryToolName(memory.ToolRecord), "gc_verdict"} {
+	for _, want := range []string{"dispatch_commit", "vfs_bind", "deliver_result", memoryToolName(memory.ToolRecord)} {
 		if !slices.Contains(tools, want) {
 			t.Fatalf("tool registration pattern no longer matches the plugins: %s missing from %v", want, tools)
 		}
@@ -92,19 +92,6 @@ func TestEveryPluginToolHasExplicitRuleForEveryAgent(t *testing.T) {
 			if effectOf(r.config.Agents[spec.ID].Permissions, tool, "*") == "" {
 				t.Errorf("%s has no explicit rule for plugin tool %s", spec.ID, tool)
 			}
-		}
-	}
-}
-
-func TestOnlyTheOrchestratorRequestsMaintenance(t *testing.T) {
-	r := renderCatalog(t)
-	for _, spec := range r.specs {
-		got := effectOf(r.config.Agents[spec.ID].Permissions, "gc_request", "*")
-		if spec.Role == model.RoleOrchestrator && got != "allow" {
-			t.Errorf("orchestrator gc_request = %q, want allow", got)
-		}
-		if spec.Role != model.RoleOrchestrator && got != "deny" {
-			t.Errorf("%s gc_request = %q, want deny", spec.ID, got)
 		}
 	}
 }
@@ -126,6 +113,11 @@ func TestNoEditAllowReopensASecret(t *testing.T) {
 
 var toolMention = regexp.MustCompile(`\b([a-z]+_[a-z_]+)\b`)
 
+// retiredTools are the GC tools the plugin no longer carries; prose naming one
+// sends its readers to a tool that does not exist.
+var retiredTools = []string{"gc_acceptance", "gc_authorize", "gc_baseline", "gc_collected", "gc_delta", "gc_findings",
+	"gc_investigate", "gc_no_change", "gc_prepare", "gc_request", "gc_verdict"}
+
 // TestProseNamesOnlyToolsItsReadersMayCall fails when a text tells its readers
 // to use a plugin tool that any agent carrying that text is denied.
 func TestProseNamesOnlyToolsItsReadersMayCall(t *testing.T) {
@@ -139,6 +131,9 @@ func TestProseNamesOnlyToolsItsReadersMayCall(t *testing.T) {
 		}
 		for _, m := range toolMention.FindAllStringSubmatch(string(text), -1) {
 			tool := m[1]
+			if slices.Contains(retiredTools, tool) {
+				t.Errorf("%s names retired tool %s", p, tool)
+			}
 			if !slices.Contains(tools, tool) {
 				continue
 			}

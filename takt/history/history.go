@@ -70,12 +70,10 @@ type NodeKind string
 
 const (
 	// NodeKindDelegated is work actually delegated through the ordinary dispatch
-	// path. GC work belongs here only when it was genuinely delegated.
+	// path.
 	NodeKindDelegated NodeKind = "delegated"
 	// NodeKindOrchestrator is non-unit activity performed directly by the orchestrator.
 	NodeKindOrchestrator NodeKind = "orchestrator"
-	// NodeKindMaintenance is non-unit GC or other harness-owned maintenance activity.
-	NodeKindMaintenance NodeKind = "maintenance"
 )
 
 // Kind is the recorded act. Kinds carry no authority: they describe lifecycle
@@ -164,10 +162,6 @@ const (
 	// the work-unit lifecycle and without a WorkUnitID.
 	KindActivityStarted  Kind = "activity_started"
 	KindActivityFinished Kind = "activity_finished"
-	// KindMaintenanceStarted/Finished record harness-owned maintenance activity
-	// such as a GC cycle, separate from delegated work units.
-	KindMaintenanceStarted  Kind = "maintenance_started"
-	KindMaintenanceFinished Kind = "maintenance_finished"
 	// KindResult records a typed result (PR-OBS-RES-1) for one evaluated
 	// revision of a work unit's attempt. It is assurance, never lifecycle: it
 	// changes no temporal state and rewrites no earlier fact (PR-DAG-TMP-9).
@@ -225,8 +219,6 @@ var authorOf = map[Kind]Author{
 	KindActionsUncertain:     AuthorHarness,
 	KindRestored:             AuthorHarness,
 	KindInterlocutorAborted:  AuthorHarness,
-	KindMaintenanceStarted:   AuthorHarness,
-	KindMaintenanceFinished:  AuthorHarness,
 }
 
 // AuthorOf returns the semantic author a kind must carry.
@@ -267,11 +259,11 @@ type Entry struct {
 	SessionID  string `json:"session_id"`
 	WorkUnitID string `json:"work_unit_id,omitempty"`
 	AttemptID  string `json:"attempt_id,omitempty"`
-	// ActivityID is the real stable identity of a direct or maintenance activity;
+	// ActivityID is the real stable identity of a direct activity;
 	// it is never copied into WorkUnitID.
 	ActivityID string `json:"activity_id,omitempty"`
 	// NodeKind classifies a work unit or activity. Work-unit entries may be
-	// delegated only; direct and maintenance values belong to activity records.
+	// delegated only; the orchestrator value belongs to activity records.
 	NodeKind NodeKind `json:"node_kind,omitempty"`
 	// Dispatch identifies the host delegation an admission came from, so a
 	// transport repetition of that delegation is told apart from a deliberate
@@ -668,7 +660,7 @@ func (e Entry) validateIdentity() (bool, error) {
 
 func (e Entry) validateNodeKind(isActivity bool) error {
 	switch e.NodeKind {
-	case "", NodeKindDelegated, NodeKindOrchestrator, NodeKindMaintenance:
+	case "", NodeKindDelegated, NodeKindOrchestrator:
 	default:
 		return fmt.Errorf("history: unknown node kind %q", e.NodeKind)
 	}
@@ -753,8 +745,6 @@ func activityKindOf(e Entry) (NodeKind, bool) {
 	switch e.Kind {
 	case KindActivityStarted, KindActivityFinished:
 		return NodeKindOrchestrator, true
-	case KindMaintenanceStarted, KindMaintenanceFinished:
-		return NodeKindMaintenance, true
 	case KindUnmonitored:
 		return NodeKindOrchestrator, e.ActivityID != "" && e.NodeKind == NodeKindOrchestrator
 	default:
@@ -763,9 +753,9 @@ func activityKindOf(e Entry) (NodeKind, bool) {
 }
 
 func isActivityStarted(k Kind) bool {
-	return k == KindActivityStarted || k == KindMaintenanceStarted
+	return k == KindActivityStarted
 }
 
 func isActivityFinished(k Kind) bool {
-	return k == KindActivityFinished || k == KindMaintenanceFinished
+	return k == KindActivityFinished
 }

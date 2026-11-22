@@ -67,7 +67,6 @@ for (const reverse of [false, true]) {
         return { stdout: "", stderr: "", exited: Promise.resolve(0) }
       }
       if(argv[1]==="dispatch") {const r=JSON.parse(argv[argv.indexOf("--request")+1]);const a=owner.answer("dispatch",r.action,r);return {stdout:a?.out??"null",stderr:a?.err??"",exited:Promise.resolve(a?.code??0)}}
-      if(argv[1]==="gc")return {stdout:JSON.stringify({version:1,units:0,mutations:0,cursor:0,deferrals:0,next_mandate:0,requested:false}),stderr:"",exited:Promise.resolve(0)}
       if(argv[1]==="obs")return {stdin:{write(){},end(){}},stdout:"{}",stderr:"",exited:Promise.resolve(0)}
       assert.equal(argv[1], "vfs")
       assert.equal(options.stdin, "pipe")

@@ -32,7 +32,6 @@ const WORKSPACE = "/workspace"
 const SHELL_NOT_ADMITTED = 122
 const SETTLE_ATTEMPTS = 100
 const SETTLE_STEP_MS = 2
-const QUIET_MS = 25
 // DRAIN_MS lets work a disposal triggers finish before the scripted takt-ai goes.
 const DRAIN_MS = 10
 const VFS_TOOL_NAMES = ["vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "vfs_discard", "vfs_verify", "vfs_consolidate"]
@@ -65,25 +64,22 @@ type Options = {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-const until = async (ready: () => boolean, attempts = SETTLE_ATTEMPTS): Promise<void> => {
-  if (ready() || attempts === 0) return
+// until reports whether ready held before the attempts ran out.
+const until = async (ready: () => boolean, attempts = SETTLE_ATTEMPTS): Promise<boolean> => {
+  if (ready()) return true
+  if (attempts === 0) return false
   await sleep(SETTLE_STEP_MS)
   return until(ready, attempts - 1)
 }
 
 const saved = (records:Record<string,Partial<FixtureExecution>>) => Object.fromEntries(Object.entries(records).map(([dispatch,d])=>[dispatch,{dispatch,attempt:"1",agent:RESULT_AGENT,caller:dispatch.split(":")[0],inputs:[],admitted_at:0,...d}]))
-const activeDispatches = (vfs:Awaited<ReturnType<typeof startVfs>>) => Object.values(vfs.history.executions).filter((d)=>!d.settled&&!d.cycle).map((d)=>d.dispatch).sort()
+const activeDispatches = (vfs:Awaited<ReturnType<typeof startVfs>>) => Object.values(vfs.history.executions).filter((d)=>!d.settled).map((d)=>d.dispatch).sort()
 const orchestrator: Ctx = { sessionID: "root", agent: ORCHESTRATOR }
 // A lent session is created unable to continue or close a memory session.
 const dev: Ctx = { sessionID: "dispatch", agent: "dev" }
 const author: Ctx = { sessionID: "dispatch", agent: VFS_AUTHOR }
 const unitSessions = { dispatch: { parentID: "root", title: "unit-a" } }
 
-const gcPlan = { session_id: "root", cycle_id: "cycle-1", mandate_class: "complexity", delta: [], closure: ["a.go"], reachability: "codegraph" }
-const gcCycle = (phase: string, sessions: Record<string, string>, extra: Record<string, unknown> = {}) =>
-  ({ phase, plan: gcPlan, scope: ["a.go"], sessions, report: null, started: "2026-01-01T00:00:00Z", ...extra })
-const coordinator = (cycle?: unknown, extra: Record<string, unknown> = {}) =>
-  ({ version: 1, units: 0, mutations: 0, cursor: 0, deferrals: 0, next_mandate: 0, requested: false, ...(cycle ? { cycle } : {}), ...extra })
 const claim = (extra: Record<string, unknown>) =>
   ({ key: "claim-1", root_session_id: "root", work_unit_id: "unit-a", agent_id: "dev", target_instance: "dev", ...extra })
 const shellPlan = (extra: Record<string, unknown> = {}) => ({
@@ -97,9 +93,8 @@ const json = (value: unknown): Reply => ({ out: JSON.stringify(value) })
 function defaultReply({ kind, command }: Call, claims: unknown[]): Reply {
   if (kind === "codegraph") return { out: "" }
   if (kind === "obs") return { out: "{}" }
-  if (kind === "gc" && command === "prompt") return json({allowed:true})
   if (kind === "dispatch" && command.startsWith("validate_")) return json(null)
-  if (kind === "dispatch" || kind === "gc") return json(coordinator())
+  if (kind === "dispatch") return json({ ok: true })
   if (command === "claims") return json({ ok: true, claims })
   if (command === "bind") return json({ ok: true, key: "author-1", attempt_id: "attempt-1", invariants_version: "inv-1", revision: 0, delta_hash: "d0" })
   if (command === "shell-prepare" || command === "shell-continue") return shellReply()
@@ -161,27 +156,17 @@ async function startVfs(options: Options = {}) {
   console.error = (...args: unknown[]) => { errors.push(args) }
   runtime.Bun.spawn = ((argv: string[], spawnOptions: Record<string, unknown> = {}) => {
     const kind = argv[1]
-    let request: Record<string, unknown> = kind === "dispatch" ? JSON.parse(argv[7]) : kind === "gc" ? JSON.parse(argv[8]) : {}
+    let request: Record<string, unknown> = kind === "dispatch" ? JSON.parse(argv[7]) : {}
     let settled: Reply | undefined
     const settle = () => {
       if (!settled) {
-        const call = { kind, command: kind === "dispatch" || kind === "gc" ? String(request.action) : argv[2], request, argv, options: spawnOptions }
+        const call = { kind, command: kind === "dispatch" ? String(request.action) : argv[2], request, argv, options: spawnOptions }
         calls.push(call)
         let custom=options.respond?.(call)
         if (!custom && kind==="vfs" && call.command==="assign" && !history.inputs.has(`${request.session_id}\0${request.work_unit_id}`))custom={code:1,err:"inputs absent; call dispatch_inputs before claim_assign"}
         if (!custom && kind==="vfs" && call.command==="edit-guard") {
           const held=claims.find(c=>(c.pending||c.active) && (request.resources as string[]).some(path=>(c.scope??[]).includes(path.replace(`${WORKSPACE}/`,"").replace(/^\.\//,""))))
           if(held)custom={code:1,err:`edit refused: ${(held.scope as string[])[0]} is held by work unit ${held.work_unit_id} (agent ${held.agent_id}); wait for its consolidation or use vfs_discard`}
-        }
-        let current: {cycle?:{sessions:Record<string,string>;plan:{session_id:string;cycle_id:string}}}|null = null
-        try { if (kind === "gc" && custom?.code !== 1) current = JSON.parse(custom?.out || "null") } catch { /* A scripted failure has no cycle payload. */ }
-        if (kind === "gc" && current?.cycle?.sessions) {
-          for (const [role,child] of Object.entries(current.cycle.sessions)) {
-            history.executions[`gc:${role}`] ??= {dispatch:`gc:${role}`,root:current.cycle.plan.session_id,unit:current.cycle.plan.cycle_id+(role==="verifier"?"/verify":""),attempt:"1",agent:role==="verifier"?"verify":"simplify",child:String(child),role,cycle:current.cycle.plan.cycle_id,inputs:[],caller:current.cycle.plan.session_id,admitted_at:0}
-          }
-        }
-        if (kind==="gc" && call.command==="prompt") {
-          const d=history.activeChild(request.child);if (d?.prompted===request.phase) settled=json({allowed:false});else {if(d)d.prompted=String(request.phase);settled=json({allowed:true})}
         }
         // Successful scripts still apply owner-side effects; failures do not.
         const owned = custom?.code === 1 ? undefined : history.answer(kind,call.command,request,claims)
@@ -306,8 +291,6 @@ describe("setup guards", () => {
     try {
       expect(String(vfs.warnings[0][0])).toContain(`open in the home directory (${homedir()})`)
       expect(vfs.actions("codegraph")).toEqual([])
-      expect(() => vfs.run("gc_findings", {})).toThrow("CodeGraph is unavailable")
-      await vfs.run("gc_request", {}, orchestrator) // Core owns GC prerequisites; ordinary coordination remains available.
     } finally { await vfs.stop() }
   })
 
@@ -695,7 +678,7 @@ describe("delegation lifecycle", () => {
       await until(() => vfs.requests("dispatch", "finish").length > 0)
       expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", attempt:"1", session: "root" }])
       expect(vfs.log.prompts).toEqual([])
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -717,7 +700,7 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", { ...finished(), id: "call-r2", result: { content: "Working", metadata: { sessionID: "child-r2" } } })
       await idleProducer(vfs, "child-r2")
       expect(vfs.log.prompts).toEqual([])
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -748,7 +731,7 @@ describe("delegation lifecycle", () => {
       vfs.publish({ id: "evt-gone", created: 2, type: "session.deleted", data: { sessionID: "child-r" } } as OpenCodeEvent)
       await until(() => vfs.requests("dispatch", "finish").length > 0)
       expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", attempt:"1", session: "root" }])
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -877,7 +860,7 @@ describe("delegation lifecycle", () => {
       await vfs.fire(vfs.tool, "execute.after", finished())
       await idleProducer(vfs)
       expect(Object.keys(recorded as object)).toEqual(["root:call-r"])
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -893,7 +876,7 @@ describe("delegation lifecycle", () => {
       vfs.publish({ id: "evt-gone", created: 1, type: "session.deleted", data: { sessionID: "child-r" } } as OpenCodeEvent)
       await until(() => vfs.requests("dispatch", "finish").length > 0)
       expect(vfs.requests("dispatch", "finish")).toEqual([{ action: "finish", event: "unit-r", dispatch: "root:call-r", attempt:"1", session: "root" }])
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
@@ -919,18 +902,23 @@ describe("delegation lifecycle", () => {
     try {
       await vfs.run("dispatch_inputs", { work_unit_id: "unit-r", result_ids: [] }, orchestrator)
       await expect(vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: "call-r", input: { description: "unit-r", agent: RESULT_AGENT } })).rejects.toThrow("unit already settled")
-      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled && !d.cycle)).toEqual([])
+      expect(Object.values(vfs.history.executions).filter((d)=>!d.settled)).toEqual([])
     } finally { await vfs.stop() }
   })
 
-  test("only the root orchestrator going idle asks whether maintenance is due", async () => {
+  test("no session going idle reaches GC", async () => {
     const vfs = await startVfs({ sessions: unitSessions })
     try {
       await vfs.fire(vfs.tool, "execute.after", { tool: "vfs_write", sessionID: "dispatch", id: "t1", agent: "dev" })
       vfs.publish({ id: "evt-leaf", created: 1, type: "session.idle", data: { sessionID: "dispatch" } } as OpenCodeEvent)
       vfs.publish({ id: "evt-root", created: 2, type: "session.idle", data: { sessionID: "root" } } as OpenCodeEvent)
-      await until(() => vfs.requests("gc", "tick").length > 0)
-      expect(vfs.requests("gc", "tick")).toEqual([{ action: "tick", session: "root" }])
+      // Each idle handler's last IPC: the root resolves to no execution and
+      // stops; the leaf resolves its unit, reconciles it and finishes it.
+      const resolved = (child: string) => vfs.requests("dispatch", "resolve").some((r) => r.child === child)
+      expect(await until(() => resolved("root"))).toBe(true)
+      expect(await until(() => resolved("dispatch") && vfs.requests("dispatch", "finish").length > 0)).toBe(true)
+      await sleep(SETTLE_STEP_MS)
+      expect(vfs.calls.filter(call => call.kind === "gc")).toEqual([])
     } finally { await vfs.stop() }
   })
 })
@@ -1067,198 +1055,6 @@ describe("lost capture retry", () => {
       expect(new Set(vfs.requests("dispatch", "unmonitored").map(r => r.dispatch))).toEqual(new Set(["a:1"]))
       for (const action of ["finish", "abandon"]) expect(vfs.requests("dispatch", action)).toEqual([])
     } finally { await vfs.stop(); globalThis.setInterval = original }
-  })
-})
-
-describe("maintenance cycle", () => {
-  test("a failed prompt from an earlier cycle cannot interrupt a replacement cycle", async () => {
-    let statusCalls=0
-    const vfs=await startVfs({promptError:"late prompt failure",respond:call=>{
-      if(call.kind==="gc" && call.command==="status") {
-        const old=statusCalls++===0
-        return json(coordinator(gcCycle("baseline",{verifier:old?"old":"new"},{plan:{...gcPlan,cycle_id:old?"previous":"replacement"}})))
-      }
-      return undefined
-    }})
-    try {
-      await vfs.run("gc_request",{},orchestrator)
-      await until(()=>vfs.errors.some(([label])=>label==="Takt GC"))
-      expect(vfs.log.interrupts).toEqual([])
-      expect(vfs.actions("gc")).not.toContain("abort")
-      expect(vfs.actions("gc")).not.toContain("unprompt")
-      expect(vfs.requests("gc","prompt")[0]).toMatchObject({event:"previous"})
-    }finally{await vfs.stop()}
-  })
-
-  test("a restart retains a live cycle and delegates native reconciliation to the host", async () => {
-    const vfs = await startVfs({
-      history: { executions: saved({ "old:1": { unit: "u-old", root: "root" } }) },
-      wait: async () => new Promise<void>(() => {}),
-      respond: (call) => call.kind === "gc" && call.command === "status" ? json(coordinator(gcCycle("verify", { verifier: "gcv" }))) : undefined,
-    })
-    try {
-      await vfs.run("gc_request", {}, orchestrator)
-      await until(() => vfs.log.prompts.length > 0)
-      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
-      expect(activeDispatches(vfs)).toEqual(["old:1"])
-      expect(vfs.log.interrupts).toEqual([])
-      expect(vfs.actions("gc")).not.toContain("recover")
-      expect(vfs.actions("gc")).not.toContain("abort")
-      expect(vfs.log.prompts[0].sessionID).toBe("gcv")
-      expect(vfs.log.prompts[0].text).toContain("GC cycle cycle-1; mandate complexity.")
-      expect(vfs.log.prompts[0].text).toContain("gc_delta")
-    } finally { await vfs.stop() }
-  })
-
-  test("concurrent startup hooks cannot declare an unobserved execution terminated", async () => {
-    const vfs=await startVfs({history:{executions:saved({"old:1":{root:"root",unit:"u-old"}})}})
-    try {
-      await Promise.all(["call-1","call-2"].map(id=>expect(vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",id,input:{description:id,agent:RESULT_AGENT}})).rejects.toThrow("dispatch_inputs")))
-      expect(activeDispatches(vfs)).toEqual(["old:1"])
-      expect(vfs.requests("dispatch","reconcile")).toEqual([])
-      expect(vfs.requests("dispatch","finish")).toEqual([])
-    } finally {await vfs.stop()}
-  })
-
-  test("a native reconciliation failure keeps its dispatch without blocking unrelated work, and is retried", async () => {
-    let failing=true
-    const vfs=await startVfs({nativeCalls:{"old:1":"completed"},history:{executions:saved({"old:1":{root:"root",unit:"u-old",child:"old-child"}})},wait:async()=>{if(failing)throw new Error("host unavailable")}})
-    const launch=async(id:string)=>{await vfs.run("dispatch_inputs",{work_unit_id:id,result_ids:[]},orchestrator);await vfs.fire(vfs.tool,"execute.before",{tool:"subagent",sessionID:"root",id,input:{description:id,agent:RESULT_AGENT}})}
-    try {
-      await launch("new-1")
-      await until(()=>vfs.errors.length>0)
-      expect(activeDispatches(vfs)).toEqual(["old:1","root:new-1"])
-      failing=false
-      await launch("new-2")
-      await until(()=>!!vfs.history.executions["old:1"].settled)
-      expect(vfs.log.waits.filter(id=>id==="old-child")).toHaveLength(2)
-      expect(activeDispatches(vfs)).toEqual(["root:new-1","root:new-2"])
-    }finally{await vfs.stop()}
-  })
-
-  test("a delegation this process admitted is never reconciled as dead by a later hook", async () => {
-    const vfs = await startVfs()
-    try {
-      for (const unit of ["unit-1", "unit-2"]) {
-        await vfs.run("dispatch_inputs", { work_unit_id: unit, result_ids: [] }, orchestrator)
-        await vfs.fire(vfs.tool, "execute.before", { tool: "subagent", sessionID: "root", id: `call-${unit}`, input: { description: unit, agent: RESULT_AGENT } })
-      }
-      expect(vfs.requests("dispatch", "prepare")).toHaveLength(2)
-      expect(vfs.requests("dispatch", "uncertain")).toEqual([])
-      expect(vfs.requests("dispatch", "reconcile")).toEqual([])
-      expect(activeDispatches(vfs)).toHaveLength(2)
-    } finally { await vfs.stop() }
-  })
-
-  test("the attached verifier session reaches only its own gc tools, once per phase", async () => {
-    const verifier: Ctx = { sessionID: "gcv", agent: "verify" }
-    const vfs = await startVfs({
-      respond: (call) => {
-        if (call.kind !== "gc") return undefined
-        if (call.command === "status") return json(coordinator(gcCycle("verify", { verifier: "gcv" })))
-        if (call.command === "delta") return json({ revision: 1, delta_hash: "h1", files: { "a.go": "package a" } })
-        return undefined
-      },
-    })
-    try {
-      await vfs.run("gc_request", {}, orchestrator)
-      await until(() => vfs.log.prompts.length > 0)
-      expect(JSON.parse((await vfs.run("gc_delta", {}, verifier)).content)).toEqual({ revision: 1, delta_hash: "h1", files: { "a.go": "package a" } })
-      await expect(vfs.run("gc_delta", {}, { sessionID: "gcv", agent: "simplify" })).rejects.toThrow("GC delta requires the attached verifier session")
-      await expect(vfs.run("gc_findings", {}, verifier)).rejects.toThrow("GC findings requires the attached collector session")
-
-      const outside = { tool: "write", sessionID: "gcv", id: "t1", agent: "verify" }
-      await expect(vfs.fire(vfs.tool, "execute.before", outside)).rejects.toThrow("This GC cycle does not use that tool")
-      await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "read" })
-      await vfs.fire(vfs.tool, "execute.before", { ...outside, tool: "gc_verdict" })
-      // No lane has a memory or web tool.
-      for (const tool of ["webfetch", "websearch", "takt_memory_record", "takt_memory_search", "takt_memory_read", "takt_memory_sessions", "takt_memory_continue_session", "takt_memory_close_session"]) {
-        await expect(vfs.fire(vfs.tool, "execute.before", { ...outside, tool })).rejects.toThrow("This GC cycle does not use that tool")
-      }
-      for (const tool of ["shell", "bash"]) await vfs.fire(vfs.tool, "execute.before", { ...outside, tool })
-
-      vfs.publish({ id: "evt-idle", created: 1, type: "session.idle", data: { sessionID: "gcv" } } as OpenCodeEvent)
-      await sleep(QUIET_MS)
-      expect(vfs.log.prompts).toHaveLength(1)
-      expect(vfs.requests("gc", "tick")).toEqual([])
-    } finally { await vfs.stop() }
-  })
-
-  test("an authorized collector stages as its lane, under the cycle's root session", async () => {
-    const collector: Ctx = { sessionID: "gcc", agent: "simplify" }
-    const vfs = await startVfs({
-      // The lane names the cycle's root in the metadata it was created with.
-      sessions: { gcc: { metadata: { takt_gc: "cycle-1", takt_root: "root" } } },
-      respond: (call) => {
-        if (call.kind !== "gc") return undefined
-        if (call.command === "status") return json(coordinator(gcCycle("investigate", { collector: "gcc" })))
-        if (call.command === "authorize") return json(gcCycle("investigate", { collector: "gcc" }, { author_key: "author-gc" }))
-        return undefined
-      },
-    })
-    try {
-      await vfs.run("gc_request", {}, orchestrator)
-      await until(() => vfs.log.prompts.length > 0)
-      expect(vfs.log.prompts[0].text).toContain("gc_findings")
-
-      await vfs.run("gc_authorize", {}, collector)
-      await vfs.run("vfs_write", { path: "a.go", content: "package a" }, collector)
-      const [op] = vfs.requests("vfs", "op")
-      expect(op).toMatchObject({ session_id: "root", caller_session: "gcc", caller_agent: "simplify", action: "create" })
-      expect(op).not.toHaveProperty("author_key")
-      expect(vfs.writes).not.toContain(BINDINGS_KEY)
-    } finally { await vfs.stop() }
-  })
-
-  test("a pump that fails aborts the cycle and stops its lane", async () => {
-    const vfs = await startVfs({
-      promptError: "prompt refused",
-      respond: (call) => call.kind === "gc" && call.command === "status" ? json(coordinator(gcCycle("verify", { verifier: "gcv" }))) : undefined,
-    })
-    try {
-      await vfs.run("gc_request", {}, orchestrator)
-      await until(() => vfs.actions("gc").includes("abort"))
-      expect(vfs.requests("gc", "abort")[0]).toMatchObject({ action: "abort", evidence: "prompt refused" })
-      expect(vfs.log.interrupts.filter((id) => id === "gcv")).toEqual(["gcv"])
-      expect(vfs.errors.some(([label]) => label === "Takt GC")).toBe(true)
-    } finally { await vfs.stop() }
-  })
-
-  test("the closing notice of a cycle carries the findings it left unapplied", async () => {
-    const finding = { path: "a.go", kind: "unused" }
-    const closing = { cycle: "cycle-1", outcome: "abort", unapplied_findings: [finding] }
-    let state: Reply = json({ ...coordinator(), closing })
-    const vfs = await startVfs({ respond: (call) => call.kind === "gc" && call.command === "status" ? state : undefined })
-    try {
-      const notified = async () => {
-        const event = { agent: ORCHESTRATOR, system: [] as Array<{ type: string; text: string }> }
-        await vfs.fire(vfs.session, "context", event)
-        return event.system.map(({ text }) => text)
-      }
-      const [notice] = await notified()
-      expect(notice).toContain("cycle-1")
-      expect(notice).toContain(JSON.stringify([finding]))
-      state = json(coordinator())
-      expect(await notified()).toEqual([])
-    } finally { await vfs.stop() }
-  })
-
-  test("the orchestrator is told when maintenance starts and when it concludes, and only then", async () => {
-    let state: Reply = json(coordinator(gcCycle("baseline", {})))
-    const vfs = await startVfs({ respond: (call) => call.kind === "gc" && call.command === "status" ? state : undefined })
-    try {
-      const notified = async () => {
-        const event = { agent: ORCHESTRATOR, system: [] as Array<{ type: string; text: string }> }
-        await vfs.fire(vfs.session, "context", event)
-        return event.system.map(({ text }) => text)
-      }
-      expect((await notified())[0]).toContain("A GC cycle is running")
-      state = json(coordinator())
-      expect((await notified())[0]).toContain("The GC cycle concluded")
-      expect(await notified()).toEqual([])
-      state = { code: 1, err: "status unavailable" }
-      expect(await notified()).toEqual([])
-    } finally { await vfs.stop() }
   })
 })
 
@@ -2450,14 +2246,6 @@ describe("permission responses are outside telemetry's critical path",()=>{
       await vfs.fire(vfs.tool,"execute.before",{tool:"question",sessionID:"root",agent:ORCHESTRATOR,id:"question",input:{}})
       await vfs.fire(vfs.tool,"execute.after",{tool:"question",sessionID:"root",agent:ORCHESTRATOR,id:"question",status:"completed"})
       expect(vfs.requests("dispatch","resolve")).toHaveLength(before)
-    }finally{await vfs.stop()}
-  })
-  test("post-result context failures diagnose without rejecting an already successful VFS result",async()=>{
-    const vfs=await startVfs({respond:call=>call.kind==="dispatch"&&call.command==="resolve"?{code:1,err:"queries unavailable"}:undefined})
-    try {
-      await vfs.fire(vfs.tool,"execute.after",{tool:"vfs_write",sessionID:"root",agent:ORCHESTRATOR,id:"write",status:"completed"})
-      await until(()=>vfs.errors.some(e=>e[0]==="Takt post-result maintenance context unavailable"))
-      expect(vfs.errors.some(e=>e[0]==="Takt post-result maintenance context unavailable")).toBe(true)
     }finally{await vfs.stop()}
   })
 })

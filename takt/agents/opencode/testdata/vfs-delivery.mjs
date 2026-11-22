@@ -7,7 +7,6 @@ const claims = []
 // Same mocking style as vfs-dispatch.mjs: only Bun.spawn is a double, the
 // rendered artifact runs for real.
 const calls = []
-const coordinator = () => ({ version: 1, units: 0, mutations: 0, cursor: -1, deferrals: 0, next_mandate: 0, requested: false })
 let respond = (_call) => undefined
 globalThis.Bun = {
   spawn(argv, options) {
@@ -33,15 +32,14 @@ globalThis.Bun = {
 }
 // defaultAnswer is what takt-ai prints on success when no scenario overrides it.
 function defaultAnswer(call) {
-  if (call.argv[1] === "gc" && call.argv[2] === "coordinate") return coordinator()
   if (call.argv[1] === "dispatch") {
     const action = requestOf(call).action
-    return action === "validate_results" || action === "switch" ? null : coordinator()
+    return action === "validate_results" || action === "switch" ? null : { ok: true }
   }
   if (call.argv[2] === "bind") return { ok: true, key: "k1", attempt_id: "1" }
   return { ok: true }
 }
-// requestOf is the coordination request a dispatch or gc call carried.
+// requestOf is the coordination request a dispatch call carried.
 function requestOf(call) {
   const idx = call.argv.indexOf("--request")
   return JSON.parse(call.argv[idx + 1])

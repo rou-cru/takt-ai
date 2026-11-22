@@ -16,8 +16,8 @@ const withDB=f=>{const d=new DatabaseSync(db,{timeout:10000});try{return f(d)}fi
 const readState=()=>withDB(d=>JSON.parse(d.prepare('SELECT CAST(data AS TEXT) AS data FROM state WHERE id=1').get().data))
 const writeState=s=>withDB(d=>d.prepare('UPDATE state SET data=? WHERE id=1').run(JSON.stringify(s)))
 const events=[],hooks={},contexts=[],tools={},sessions=new Map([['root',{}],['other-root',{}]]),messages=new Map()
-let wake,finished=false,interruptFails=false,beforeApproval=async()=>{},approvalCount=0,promptCount=0
-const interrupted=[],idleSessions=new Set(),idleWaiters=new Map()
+let wake,finished=false,beforeApproval=async()=>{},approvalCount=0
+const idleSessions=new Set(),idleWaiters=new Map()
 const markIdle=child=>{idleSessions.add(child);idleWaiters.get(child)?.();idleWaiters.delete(child)}
 const waitForIdle=async({sessionID})=>{if(sessions.get(sessionID)?.running&&!idleSessions.has(sessionID))await new Promise(resolve=>idleWaiters.set(sessionID,resolve))}
 async function* stream(){
@@ -41,7 +41,7 @@ globalThis.Bun={spawn(argv,opts){
  return {stdin:p.stdin,stdout:Readable.toWeb(p.stdout),stderr:Readable.toWeb(p.stderr),kill:signal=>p.kill(signal),exited:new Promise((r,j)=>{p.on('error',j);p.on('close',r)})}
 }}
 const cleanup=await plugin.setup({location:{directory:workspace},
- session:{get:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},interrupt:async({sessionID})=>{if(interruptFails){throw new Error('host interruption failed')}interrupted.push(sessionID);markIdle(sessionID)},wait:waitForIdle,prompt:async()=>{promptCount++},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
+ session:{get:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return sessions.get(sessionID)},context:async({sessionID})=>{if(!sessions.has(sessionID)){throw sessionNotFound()}return messages.get(sessionID)??[]},hook:async(name,cb)=>{if(name==='context'){contexts.push(cb)}return {dispose(){}}},interrupt:async({sessionID})=>{markIdle(sessionID)},wait:waitForIdle,prompt:async()=>{},synthetic:async()=>{},create:async()=>{sessions.set('lent',{});return {id:'lent'}}},
  agent:{get:async()=>({data:{permissions:[{action:'*',resource:'*',effect:'allow'}]}})},
  tool:{hook:async(name,cb)=>{hooks[name]??=[];hooks[name].push(cb);return {dispose(){}}},transform:async cb=>{await cb({list:()=>[],get:()=>undefined,update(){},add:d=>tools[d.name]=d,namespace(){},remove(){}});return {dispose(){}}}},permission:{hook:async()=>({dispose(){}})},shell:{hook:async()=>({dispose(){}})},event:{subscribe:()=>({[Symbol.asyncIterator]:stream})}})
 const root={sessionID:'root',agent:'takt',id:'root-tool',messageID:'root-message'},other={...root,sessionID:'other-root'}
@@ -88,44 +88,10 @@ try {
  assert.ok(Object.keys(readState().Interrupted).some(id=>id.startsWith('manifest/')))
  await assert.rejects(tools.vfs_consolidate.execute({author_key:key},root),/physical base changed/)
  assert.ok(readState().Deltas[key].Files['a.txt'])
- // A divergent cycle is yielded only after host termination. Its approval
- // preserves current files, retains evidence, and closes it as interrupted.
- let s=readState();s.Bindings[key].CycleID='audit-cycle'
- s.Cycles={'audit-cycle':{Agent:key,Items:{'a.txt':{Path:'a.txt',Before:base('base'),After:base('candidate')}},Dirs:[]}}
- s.Maintenance={version:1,units:0,mutations:0,cursor:-1,since:-1,deferrals:0,next_mandate:0,requested:false,session:'root',cycle:{phase:'acceptance',plan:{session_id:'root',cycle_id:'audit-cycle',mandate_class:'complexity',delta:[],closure:['a.txt'],reachability:'codegraph'},scope:['a.txt'],sessions:{},report:null,started:new Date().toISOString()}}
- writeState(s)
- call(['gc','coordinate'],{action:'attach',event:'audit-cycle',role:'verifier',child:'lane',owner:'test-owner'})
- sessions.set('lane',{})
  await tools.dispatch_inputs.execute({work_unit_id:'next',result_ids:[]},root)
  const admission={...root,id:'next-call',tool:'subagent',input:{description:'next',agent:'spec'}}
- interruptFails=true
- await assert.rejects(()=>fire('execute.before',admission),/interruption failed/)
- assert.equal(readState().Maintenance.cycle.plan.cycle_id,'audit-cycle')
- assert.equal(call(['dispatch'],{action:'executions'}).executions['root:next-call'],undefined)
- const incompleteClosure=readState()
- interruptFails=false
  await fire('execute.before',admission)
- assert.ok(interrupted.includes('lane'));s=readState()
- assert.equal(s.Maintenance.cycle,undefined)
- assert.ok(s.Interrupted['cycle/audit-cycle'])
- assert.equal(s.Maintenance.history.at(-1).reason.includes('interrupted'),true)
- assert.equal(Object.values(s.Bindings).some(b=>b.CycleID==='audit-cycle'),false)
- assert.equal(await readFile(resolve(workspace,'a.txt'),'utf8'),'external')
  assert.equal(call(['dispatch'],{action:'execution',dispatch:'root:next-call'}).ready,true)
- // A crash after the archive committed but before staging/coordinator closure
- // must finish the same interruption without a new approval or acceptance.
- const approved=approvalCount
- s.Maintenance=incompleteClosure.Maintenance
- s.Bindings=incompleteClosure.Bindings
- s.Deltas=incompleteClosure.Deltas
- writeState(s)
- await tools.gc_request.execute({},other)
- for(let i=0;i<200 && readState().Maintenance.cycle;i++)await sleep(10)
- s=readState()
- assert.equal(s.Maintenance.cycle,undefined)
- assert.equal(Object.values(s.Bindings).some(b=>b.CycleID==='audit-cycle'),false)
- assert.ok(s.Interrupted['cycle/audit-cycle'])
- assert.equal(approvalCount,approved,'durable interrupted closure requested approval again')
  // Native orphan correlation checks the exact call even after its child vanished.
  await fire('execute.after',{...admission,status:'error',result:{content:'cancelled'}})
  await tools.dispatch_inputs.execute({work_unit_id:'orphan',result_ids:[]},root)
@@ -145,30 +111,17 @@ try {
  await assert.rejects(()=>fire('execute.before',{...root,id:'missing-inputs',tool:'subagent',input:{description:'missing-inputs',agent:'spec'}}),/inputs absent/)
  assert.equal(call(['dispatch'],{action:'executions'}).executions['root:no-execution'],undefined)
 
- // Restart sees a durable prompt reservation with no submitted turn, or a lane
- // the host deleted. Neither permits a resend or an indefinite reservation.
- for(const scenario of ['lost-prompt','deleted-lane']) {
-  const cycle=`audit-${scenario}`,child=`lane-${scenario}`
-  s=readState();s.Maintenance={version:1,units:0,mutations:0,cursor:-1,since:-1,deferrals:0,next_mandate:0,requested:false,session:'root',cycle:{phase:'baseline',plan:{session_id:'root',cycle_id:cycle,mandate_class:'complexity',delta:[],closure:[],reachability:'codegraph'},scope:[],sessions:{},report:null,started:new Date().toISOString()}}
-  writeState(s)
-  call(['gc','coordinate'],{action:'attach',event:cycle,role:'verifier',child,owner:'dead-owner'})
-  call(['gc','coordinate'],{action:'prompt',event:cycle,child,phase:'baseline',owner:'dead-owner'})
-  if(scenario==='lost-prompt')sessions.set(child,{})
-  const before=promptCount
-  await tools.gc_request.execute({},root)
-  // Poll through the CLI: it holds the workspace lock, so this read never
-  // contends with the plugin's background abort the way a raw read would.
-  const cycleOpen=()=>call(['gc','coordinate'],{action:'status'}).cycle
-  for(let i=0;i<200 && cycleOpen();i++)await sleep(10)
-  assert.equal(cycleOpen(),undefined,`${scenario} never closed`)
-  assert.equal(promptCount,before,'uncertain prompt was resent')
-  const lane=call(['dispatch'],{action:'execution',dispatch:`${cycle}/verifier`})
-  assert.equal(lane.terminated,true);assert.equal(lane.settled,true)
- }
  // Telemetry failure does not block repair or weaken VFS. Every decision still
  // uses the separate authoritative store and history.
- await rm(resolve(workspace,'.takt-ai/events.db'),{force:true})
- await mkdir(resolve(workspace,'.takt-ai/events.db'))
+ // An ingest still in flight may recreate the store between the two calls.
+ const store=resolve(workspace,'.takt-ai/events.db')
+ for(let i=0;;i++){
+  await rm(store,{recursive:true,force:true})
+  try{await mkdir(store);break}catch(e){
+   if(e.code!=='EEXIST'||i>=100)throw e
+   await sleep(10)
+  }
+ }
  sessions.set('telemetry-child',{parentID:'root',title:'after-orphan',time:{created:Date.now()}})
  await context('telemetry-child','dev')
  const writer={sessionID:'telemetry-child',agent:'dev'}

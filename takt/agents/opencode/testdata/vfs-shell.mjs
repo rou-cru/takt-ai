@@ -11,7 +11,7 @@ let plan
 globalThis.Bun = {
   spawn(argv) {
     const command = argv[2]
-    if(argv[1]==="dispatch") {const r=JSON.parse(argv[argv.indexOf("--request")+1]);const a=owner.answer("dispatch",r.action,r);return {stdout:a?.out??JSON.stringify({version:1,units:0,mutations:0,cursor:0,deferrals:0,next_mandate:0,requested:false}),stderr:a?.err??"",exited:Promise.resolve(a?.code??0)}}
+    if(argv[1]==="dispatch") {const r=JSON.parse(argv[argv.indexOf("--request")+1]);const a=owner.answer("dispatch",r.action,r);return {stdout:a?.out??JSON.stringify({ok:true}),stderr:a?.err??"",exited:Promise.resolve(a?.code??0)}}
     const body = { bind: { ok: true, key: "author-key", attempt_id: "1", invariants_version: "inv1:test" },
       "shell-prepare": { ok: true, shell: plan },
       "shell-continue": {ok:true,shell:plan},

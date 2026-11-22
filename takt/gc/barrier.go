@@ -97,8 +97,5 @@ func (v BarrierVerdict) ControlRecord(agent string) (obs.ControlRecord, bool) {
 	if len(v.PendingDeltaIdentities) > 0 {
 		cond += fmt.Sprintf(" blocking_deltas=%v", v.PendingDeltaIdentities)
 	}
-	// PR-MNT-3: a stalled barrier halts subsequent task dispatch and must
-	// reach a human, not merely be watched (PRD_GC's documented Failure
-	// Behavior).
 	return obs.ControlRecord{ActionClass: obs.ActionEscalate, TriggeringCondition: cond, PolicyRef: BarrierPolicyRef, ActingAgent: agent}, true
 }

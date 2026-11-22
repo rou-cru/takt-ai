@@ -10,7 +10,6 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
-	"github.com/rou-cru/takt-ai/takt/gc"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -68,7 +67,7 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 // prepareExecution is one locked decision and effect. Inputs/claims/authors are
 // read now, not accepted from a plugin preflight. Native execution is outside
 // this command's lifetime and therefore outside the workspace lock.
-func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, workspace string, c *gc.Coordinator, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
+func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
 	if prior, ok := h.Project().Executions[r.Dispatch]; ok {
 		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent {
 			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
@@ -128,7 +127,7 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, works
 	admit := func() (string, error) {
 		req := r
 		req.Action = "admit"
-		if _, err := coordinateRoutine(fs, h, workspace, c, entries, req); err != nil {
+		if _, err := coordinateRoutine(fs, h, entries, req); err != nil {
 			return "", err
 		}
 		u, _ = h.Project().Unit(r.Session, r.Event)
@@ -257,7 +256,7 @@ func observeExecutionRunning(h *history.History, d history.Execution) error {
 }
 
 func resolveExecution(h *history.History, child, agent string) (any, error) {
-	if d, ok := h.Project().ExecutionForChild(child, agent); ok {
+	if d, ok := h.Project().ExecutionForChild(child, agent); ok && d.Cycle == "" {
 		return d, nil
 	}
 	if root, held := h.Project().HeldRoot(child); held {
@@ -311,6 +310,11 @@ func listExecutions(h *history.History, now time.Time) map[string]any {
 			caller = u.SessionID
 		}
 		p.Executions[u.Dispatch] = history.Execution{Dispatch: u.Dispatch, Root: u.SessionID, Unit: u.WorkUnitID, Attempt: u.AttemptID, Agent: u.Agent, Caller: caller}
+	}
+	for dispatch, d := range p.Executions {
+		if d.Cycle != "" {
+			delete(p.Executions, dispatch)
+		}
 	}
 	orphaned := []string{}
 	for dispatch, d := range p.Executions {

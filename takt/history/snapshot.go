@@ -73,8 +73,8 @@ func (f Flight) MarshalJSON() ([]byte, error) {
 // classification.
 type Node struct {
 	ID string `json:"id"`
-	// Work-unit nodes are delegated only; direct and maintenance records live in
-	// the separate Activities array.
+	// Work-unit nodes are delegated only; direct records live in the separate
+	// Activities array.
 	NodeKind  NodeKind `json:"node_kind"`
 	SessionID string   `json:"session_id,omitempty"`
 	AttemptID string   `json:"attempt_id,omitempty"`
@@ -133,7 +133,7 @@ type Snapshot struct {
 	Counts Counts `json:"counts"`
 	Nodes  []Node `json:"nodes"`
 	Edges  []Edge `json:"edges"`
-	// Activities are direct orchestrator and maintenance records. They are
+	// Activities are direct orchestrator records. They are
 	// rendered in a separate lane and never participate in graph edges.
 	Activities []ActivityNode `json:"activities"`
 }

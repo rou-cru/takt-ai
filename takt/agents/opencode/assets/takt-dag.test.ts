@@ -34,13 +34,13 @@ describe("DAG snapshot wire contract", () => {
         { id: "done", node_kind: "delegated", state: "settled", outcome: "completed", launched: false, layer: 0 }],
       edges: [{ from: "active", to: "done" }],
       activities: [{ activity_id: "work-1", node_kind: "orchestrator", state: "in_flight", flight: "observed_running" },
-        { activity_id: "maintenance-1", node_kind: "maintenance", state: "settled", outcome: "interrupted" }],
+        { activity_id: "work-2", node_kind: "orchestrator", state: "settled", outcome: "interrupted" }],
     })
     expect(decoded).toMatchObject({
       capture: "empty", plan_version: "plan-2",
       nodes: [{ id: "active", flight: "observed_running", prerequisites: ["first"], agent: "arch" }, { id: "done", outcome: "completed" }],
       edges: [{ from: "active", to: "done" }],
-      activities: [{ activity_id: "work-1", flight: "observed_running" }, { activity_id: "maintenance-1", outcome: "interrupted" }],
+      activities: [{ activity_id: "work-1", flight: "observed_running" }, { activity_id: "work-2", outcome: "interrupted" }],
     })
   })
 

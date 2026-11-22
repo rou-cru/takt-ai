@@ -69,4 +69,4 @@ Initialize a new store explicitly with `takt-ai memory start --init`. Later star
 
 ## Internal commands
 
-`memory serve`, `memory mcp --crew`, `vfs`, `obs`, `gc`, `dispatch`, `dag`, `codegraph` and `setup image` are called by Takt's OpenCode plugins and by image builds. They are not part of the user interface and may change without notice.
+`memory serve`, `memory mcp --crew`, `vfs`, `obs`, `dispatch`, `dag`, `codegraph` and `setup image` are called by Takt's OpenCode plugins and by image builds; `gc` is the maintenance engine, which no plugin calls. They are not part of the user interface and may change without notice.

@@ -199,7 +199,7 @@ func (f *FS) PrepareShell(c Caller, callID, command, stateDir string, hostCallID
 	if err != nil {
 		return ShellPlan{}, err
 	}
-	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", key); err != nil {
+	if err = f.guardMaintenanceLocked("shell-prepare", "", "", key); err != nil {
 		return ShellPlan{}, err
 	}
 	codegraphQuery := slices.ContainsFunc(shellWords(command), func(word string) bool { return filepath.Base(word) == "codegraph" })
@@ -975,7 +975,7 @@ func (f *FS) ContinueShell(c Caller, callID, phase string) (plan ShellPlan, err 
 	} else if key, e := f.heldAuthorLocked(c, ""); e == nil && key != "" {
 		return plan, errShellMoved
 	}
-	if err = f.guardMaintenanceLocked("shell-prepare", "", "", "", call.Key); err != nil {
+	if err = f.guardMaintenanceLocked("shell-prepare", "", "", call.Key); err != nil {
 		return plan, err
 	}
 	if call.Plan.Cwd == f.rootDir && isVFSAuthor(c.Agent) {

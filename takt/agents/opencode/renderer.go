@@ -177,11 +177,6 @@ var vfsToolNames = []string{"vfs_bind", "vfs_write", "vfs_read", "vfs_delete", "
 // lane registers the tools separately.
 var claimToolNames = []string{"claim_list", "claim_assign", "claim_release"}
 
-// gcCycleToolNames are the maintenance-cycle tools. Ordinary agent entries
-// never expose them; harness-created GC child sessions override these denies
-// with session permissions, and coordinator admission stays authoritative.
-var gcCycleToolNames = []string{"gc_baseline", "gc_findings", "gc_investigate", "gc_authorize", "gc_collected", "gc_delta", "gc_verdict", "gc_acceptance", "gc_no_change"}
-
 // vfsInspectTool reads the recorded journal and execution history; it holds no
 // claim and moves nothing.
 const vfsInspectTool = "vfs_inspect"
@@ -191,9 +186,9 @@ const vfsInspectTool = "vfs_inspect"
 const vfsConsolidateTool = "vfs_consolidate"
 
 // orchestratorToolNames are the orchestrator's own declarations to the
-// harness (plan, consumed inputs, direct activity, recovery, abandonment, exceptions, contests, GC
-// preparation and requests); no other agent is offered them.
-var orchestratorToolNames = []string{"dispatch_commit", "dispatch_inputs", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_abandon", "dispatch_exception", "dispatch_contest", "gc_prepare", "gc_request"}
+// harness (plan, consumed inputs, direct activity, recovery, abandonment, exceptions,
+// contests); no other agent is offered them.
+var orchestratorToolNames = []string{"dispatch_commit", "dispatch_inputs", "dispatch_activity_start", "dispatch_activity_finish", "dispatch_declare_recovery", "dispatch_close_recovery", "dispatch_restore", "dispatch_abandon", "dispatch_exception", "dispatch_contest"}
 
 // vfsMutationSkill carries the conduct of agents that stage their own work.
 const vfsMutationSkill = "takt-vfs-mutation"
@@ -233,10 +228,10 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		for _, name := range orchestratorToolNames {
 			rules = append(rules, permissionRule{name, allResources, "allow"})
 		}
-		// The orchestrator can run crew dispatch and GC coordination itself, but
-		// the shell path skips the plugin's own consent (dispatch_abandon, repair
-		// approval), so the user approves every such command.
-		rules = append(rules, permissionRule{"shell", "*takt-ai dispatch*", "ask"}, permissionRule{"shell", "*takt-ai gc*", "ask"})
+		// The orchestrator can run crew dispatch itself, but the shell path skips
+		// the plugin's own consent (dispatch_abandon, repair approval), so the
+		// user approves every such command. GC is no part of the session.
+		rules = append(rules, permissionRule{"shell", "*takt-ai dispatch*", "ask"}, permissionRule{"shell", "*takt-ai gc*", "deny"})
 		// Git asks the user for the actions PR-VFS-GIT-5 gates; every other
 		// Git command is the coordinator's conduct.
 		rules = append(rules, gitRules(spec.Role)...)
@@ -278,17 +273,10 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, lifecycleEffect})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
-	// Ordinary sessions never expose GC tools. Harness-created GC sessions
-	// override these denies with session permissions; coordinator admission is
-	// still the authority for every phase.
-	for _, name := range gcCycleToolNames {
-		rules = append(rules, permissionRule{name, allResources, "deny"})
-	}
 	// VFS access is an explicit per-instance grant, not a role-derived default.
 	rules = append(rules, vfsPermissionRules(spec.VFSCapabilities)...)
 	// The mutation skill rule comes after skillRules so it decides alone: only
-	// an execution instance that stages its own work reads it; a maintenance
-	// collector receives its conduct from the cycle itself.
+	// an execution instance that stages its own work reads it.
 	skillEffect := "deny"
 	if spec.Role == model.RoleExecution && slices.Contains(spec.VFSCapabilities, model.VFSCapabilityWrite) {
 		skillEffect = "allow"

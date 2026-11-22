@@ -10,25 +10,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
-
-// PlanUnit is one unit of a plan commitment; aliased from package dispatch.
-type PlanUnit = dispatch.PlanUnit
-
-// RecoveryDeclaration declares bounded recovery before uncertain work begins
-// (PR-ORQ-13); GC records it verbatim from the declarer.
-type RecoveryDeclaration = dispatch.RecoveryDeclaration
-
-// AdmissionPolicy holds the dispatch ceiling and session budgets; GC reads it
-// to admit work, never to change it.
-type AdmissionPolicy = dispatch.AdmissionPolicy
-
-// AdmissionPolicyRef names the admission rule on every record; aliased from
-// package dispatch.
-const AdmissionPolicyRef = dispatch.AdmissionPolicyRef
 
 // Cycle persists the declaration independently of mutations, including no-op cycles.
 type Cycle struct {
@@ -47,9 +31,9 @@ type Cycle struct {
 }
 
 // Coordinator is private workspace state, all access serialized by vfs.Open.
-// In-flight ordinary-dispatch state is read from the history projection via
-// package dispatch (PR-DAG-AUT-1); Units and Mutations are GC's own pace
-// counters for deciding when to trigger the next cycle (PR-MNT-9/11).
+// In-flight ordinary-dispatch state is read from the history projection; Units
+// and Mutations are GC's own pace counters for deciding when to trigger the
+// next cycle.
 type Coordinator struct {
 	// Since is the history position after which admissions count toward the
 	// next cycle.
@@ -196,27 +180,8 @@ func (c *Coordinator) Observe(entries []vfs.JournalEntry) {
 	}
 }
 
-// Held reports whether a maintenance cycle is in flight. It never gates
-// ordinary dispatch: an admitted delegation ends the cycle instead.
+// Held reports whether a maintenance cycle is in flight.
 func (c *Coordinator) Held() bool { return c.Cycle != nil }
-
-// Admit composes ordinary dispatch admission with the session pace counters.
-// Maintenance never holds an admission: the caller ends a cycle in flight
-// first. Concurrency, plan coverage and recovery budgets belong to package
-// dispatch, not GC.
-func (c *Coordinator) Admit(h *history.History, journalRef, event, session, agent, delegation string) error {
-	c.Bind(session)
-	p, e := dispatch.LoadAdmissionPolicy()
-	if e != nil {
-		return e
-	}
-	req := dispatch.AdmissionRequest{Event: event, Session: session, Agent: agent, Dispatch: delegation}
-	if e := dispatch.Admit(h, p, journalRef, req); e != nil {
-		return e
-	}
-	c.ObserveExecutions(h)
-	return nil
-}
 
 var mandateRotation = []MandateClass{MandateDeadCode, MandateComplexity, MandateDuplication, MandateDocumentation, MandateAnalyzerIntegrity}
 
@@ -257,7 +222,7 @@ func (c *Coordinator) Advance(ctx context.Context, fs *vfs.FS, h *history.Histor
 	if _, e = rand.Read(id); e != nil {
 		// The barrier cleared but the cycle still didn't start: a
 		// deterministic failure here must still count toward the abort valve
-		// instead of resetting to 0 every tick (PR-MNT-6).
+		// instead of resetting to 0 every tick.
 		c.Deferrals++
 		return d, b, e
 	}
