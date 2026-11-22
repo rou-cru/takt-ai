@@ -89,7 +89,7 @@
       "id": "metrics",
       "type": "backend",
       "label": "Content metrics",
-      "sublabel": "S0 to S5",
+      "sublabel": "B0 to B2, S1 to S5",
       "stage": 2,
       "row": 3
     },

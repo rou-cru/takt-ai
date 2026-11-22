@@ -6,12 +6,12 @@ Every sensor in the GC loop. Content sensors observe the terrain; attribution se
 
 The only sensor the loop can always count on (`PR-OBS-EST-2`). It depends on workspace content alone.
 
-**Manifest.** One record per source file: path, size, modification time, content hash, verification state, and a mark for files with a crew-attributed change (set `T`, see [estimation.md](estimation.md#entropy)). The previous session's manifest is the starting reference of the next one.
+**Manifest.** One record per workspace file (every file not ignored by the workspace, the VCS directory excluded): path, size, non-blank line count, modification time, content hash, verification state, and a mark for files with a crew-attributed change (set `T`, see [estimation.md](estimation.md#entropy)). The previous session's manifest is the starting reference of the next one.
 
 | Part | Role | Acquisition | Measured cost | Error |
 | :--- | :--- | :--- | :--- | :--- |
-| Change scan (IMU) | Fast, frequent | Stat every source file; hash only files whose size or modification time changed | 25 ms here; 2.4 s at 248 k files | Drift: a same-size edit within the clock resolution, or a tool that preserves modification time, goes unseen |
-| Full verification (GPS) | Slow, exact | Hash every source file | 31 ms here; 24 s at 248 k files, 4.3 GB (one thread) | None in content; only age since last pass |
+| Change scan (IMU) | Fast, frequent | Stat every manifest file; hash only files whose size or modification time changed | 25 ms here; 2.4 s at 248 k files | Drift: a same-size edit within the clock resolution, or a tool that preserves modification time, goes unseen |
+| Full verification (GPS) | Slow, exact | Hash the complete content of every manifest file | 31 ms here; 24 s at 248 k files, 4.3 GB (one thread) | None in content; only age since last pass |
 
 A file stat-scanned but not hashed since its last verification is **unverified**. Unverified files are the drift; the next verification pass bounds it. Each session runs one full verification pass.
 
@@ -29,13 +29,22 @@ Files on the execution route (see [estimation.md](estimation.md#exposure)) are v
 
 [Preflight timeline](diagrams/preflight.html)
 
+**Base entropy.** While it hashes, the base sensor also reads each source file once and derives the measurements below from its text alone, with no parser or optional tool (`PR-OBS-EST-2`). They are the floor every estimate stands on; the tool metrics of the next section replace them where present.
+
+| ID | Metric | Per-file value | Method | When |
+| :--- | :--- | :--- | :--- | :--- |
+| B0 | Size | `s_f`: non-blank lines | Line count | Each changed file |
+| B1 | Complexity concentration | Excess mass `x⁰_f = Σ_b max(0, ι_b − τ_ι)·ℓ_b` and total mass `c⁰_f = Σ_b ι_b·ℓ_b`, over the indentation blocks `b` of the file, `ι_b` its mean logical indentation depth and `ℓ_b` its non-blank lines | Indentation moments: deeper nesting tracks branching, and indentation statistics correlate linearly and by rank with McCabe complexity across languages (Hindle, Godfrey and Holt, ICPC 2008) | Each changed file |
+| B2 | Duplication | `d⁰_f`: lines covered by a window of `k` whitespace-normalized lines whose hash recurs elsewhere in the workspace | Line-window hashing (Ducasse, Rieger and Demeyer, ICSM 1999), fingerprints selected by winnowing (Schleimer, Wilkerson and Aiken, SIGMOD 2003); sees exact and layout-only clones | Each changed file, against the workspace fingerprint index |
+
+Dead code, documentation gaps, and norm conformance have no content-only measurement reliable enough to estimate on: without their source, a file enters `B` for that metric (`PR-OBS-EST-3`). Where S1 or S2 is present it replaces B1 or B2 for that file. Each pass that has both values for a file records their residual; its running variance `ω_b²` is the uncertainty a file measured only by the base sensor adds to `U` (see [estimation.md](estimation.md#entropy)).
+
 ## Content metrics
 
-Computed on content, only for files whose hash changed. Generated files and test trees are excluded. A language without an analyzer is a recorded coverage gap and counts as unverified.
+Computed on content of source files, for files whose hash changed and, for workspace-wide results (B2, S2, S3 confirmation), for every file whose contribution the new result changes, whether or not its own hash changed. Generated files and test trees are excluded. A language without an analyzer is a recorded coverage gap for that analyzer's metrics.
 
 | ID | Metric | Per-file value | Source | Measured | When |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| S0 | Size | `s_f`: source lines | Complexity analyzer | Exact | Each changed file |
 | S1 | Complexity concentration | Excess mass `x_f = Σ_g max(0, CC_g − τ)·√SLOC_g` and total mass `c_f = Σ_g CC_g·√SLOC_g`, over the functions `g` of the file | lizard: per-function cyclomatic complexity and lines, multi-language (`.tsx` needs its own language flag) | 0.1 s per file, deterministic | Each changed file |
 | S2 | Duplication | `d_f`: duplicated lines | jscpd | 4–10 s per repository, deterministic, no incremental mode; sees token clones only | Session close |
 | S3 | Dead code | `z_f`: dead lines (see fusion below) | Screen: code graph. Confirmation: deadcode (Go), knip (TypeScript), vulture (Python) | Screen continuous; confirmation 3–6 s | Screen on each change; confirmation at session close |
@@ -48,7 +57,7 @@ Computed on content, only for files whose hash changed. Generated files and test
 
 `z_f = Σ_{confirmed} SLOC + π · Σ_{screened, unconfirmed} SLOC`
 
-where `π` is the screen's precision at the last confirmation pass. Symbols younger than `a_pending` crew work are pending, not dead, and are excluded (`PR-MNT-26`).
+where `π` is the screen's precision at the last confirmation pass. A symbol without a consumer introduced by a unit whose objective the execution route has not yet settled is pending, not dead, and is excluded whatever its age (`PR-MNT-26`); once that objective is accepted and the symbol still has no consumer, it enters the screen.
 
 **Rebaseline (S5).** A change in an analyzer's configuration hash or version starts a new baseline for that metric; it is not a change in entropy.
 
@@ -61,7 +70,7 @@ They decide which content changes are the crew's thrust and which are disturbanc
 | Sensor | Gives | Present when |
 | :--- | :--- | :--- |
 | Action Journal | Path, before and after hash, agent, work unit, revision for every VFS operation | A specialist works through the VFS |
-| Tool hooks | Agent, work unit, and path hash for native edit, write, and patch tools | OpenCode runs the Takt plugin |
+| Tool hooks | Agent, work unit, path, and resulting content hash for native edit, write, and patch tools, read after the tool completes | OpenCode runs the Takt plugin |
 
 **Rule.** A file change observed by the base sensor is crew-attributed when an attribution sensor recorded an operation on that path whose resulting hash equals the observed one. Every other change is a disturbance. Changes made by shell commands are disturbances by this rule: they raise entropy, but not the crew's measured production rate.
 
@@ -84,13 +93,13 @@ Counts are sparse and heavy-tailed: most sessions record none, and a few record 
 | Effective false positives | Per analyzer rule: fraction `φ_ρ` of findings refuted (`PR-MNT-24`) or reverted | Weight of the rule in `n_f` |
 | Cycle effect | Region entropy before and after each cycle | Lockout release (see [gc-controller.md](gc-controller.md#law)) |
 | Coverage | Languages and files without analyzer coverage | Uncertainty `U` (blind files `B`) |
-| Stream liveness | Loss of a capture stream (`PR-OBS-BUS-5`) | Marks the affected sensor absent |
+| Stream liveness | Loss of a capture stream (`PR-OBS-BUS-5`) | Marks the affected sensor absent, which raises `U` (see [estimation.md](estimation.md#entropy)) |
 
 ## Sampling
 
 | Point | Runs |
 | :--- | :--- |
 | Preflight | Change scan; verification starts |
-| Each consolidation, unit finish, activity finish | Change scan; S0, S1, S3 screen, S4, S5 on changed files |
+| Each consolidation, unit finish, activity finish | Change scan; B0, B1, B2, S1, S3 screen, S4, S5 on changed files |
 | Session close | Change scan; S2; S3 confirmation; analyzers without file mode; decision (see [gc-controller.md](gc-controller.md)) |
 | After a cycle consolidates | Change scan and verification of the cycle's region; cycle effect |

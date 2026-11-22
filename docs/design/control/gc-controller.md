@@ -29,9 +29,9 @@ Evaluated at each session close. While another session of the workspace is activ
 | Launch | `Ê ≥ E_hi`, or any capability alarm `A_j` while `E ≥ E_lo` |
 | Engaged | After a launch the law stays engaged and launches one bounded cycle per decision point until release |
 | Release | `E ≤ E_lo`. The gap between `E_lo` and `E_hi` is the hysteresis that keeps the law from switching on noise |
-| Deadband | The law re-evaluates only when `E` has moved at least `δ` since the last decision, or an alarm or the engaged state changed |
+| Deadband | The law re-evaluates only when `E` or `Ê` has moved at least `δ` since the last decision, or an alarm or the engaged state changed. `Ê` is recomputed at every sample, so a change of `r` or `W` alone re-evaluates the launch condition |
 | Lockout | A region a cycle consolidated, with its closure, is not selected again until its post-cycle entropy has been measured: cycle effect `η = (E_R,before − E_R,after) / E_R,before` |
-| Uncertainty | No autonomous launch while `U_R` of the selected region exceeds `U_max` (`PR-MNT-35`) |
+| Uncertainty | No autonomous launch while the estimate uncertainty `U` exceeds `U_max` (`PR-MNT-35`), nor while `U_R` of the selected region does |
 | Record | The estimate and uncertainty read, policy version, region, mandate class, and mode (`PR-MNT-34`) |
 
 A capability alarm only launches a cycle when entropy is already above `E_lo`: below it, entropy is not the likely cause, and the alarm is the business of the session control plane.
@@ -55,16 +55,16 @@ The estimate and the law are identical in every mode (`PR-MNT-37`).
 | Mode | On a launch decision |
 | :--- | :--- |
 | Manual | Recorded. The user launches cycles at will; scope selection applies the same way |
-| Assisted | Presented to the user with its evidence: `E`, `Ê`, `U_R`, alarms, region, mandate class |
+| Assisted | Presented to the user with its evidence: `E`, `Ê`, `U`, `U_R`, alarms, region, mandate class |
 | Autonomous | Launched by the harness, subject to the uncertainty gate |
 
 ## Degraded operation
 
 | Lost | Effect | Loop |
 | :--- | :--- | :--- |
-| Verification pass incomplete | `U` stays high on unverified files | Assisted and manual act; autonomous waits for `U_R ≤ U_max` on the chosen region |
+| Verification pass incomplete | `U` stays high on unverified files | Assisted and manual act; autonomous waits for `U ≤ U_max` and `U_R ≤ U_max` on the chosen region |
 | Action Journal and tool hooks | Every change is a disturbance; `r` gets no update, `P` grows, and `U` with it | `E` remains measured; the law acts on level, with the projection weakening |
-| Code graph | No dead-code screen and `N` is empty | Exposure falls back to `F`, `D`, and hotspots; dead code only from confirmation |
+| Code graph | No dead-code screen and `N` is empty; `ω_j²` enters `U` | Exposure falls back to `F`, `D`, and hotspots; dead code only from confirmation |
 | An analyzer | Its metric has a coverage gap | Those files enter `B` and `U` rises |
 | Capability counts | No alarms | The law acts on `Ê` only |
 | Execution route | `W` falls back to the mean per session; exposure is hotspots only | Unchanged otherwise |
@@ -73,13 +73,14 @@ The estimate and the law are identical in every mode (`PR-MNT-37`).
 
 | Symbol | Meaning |
 | :--- | :--- |
-| `τ` | Complexity threshold of S1 |
-| `a_pending` | Crew work under which a consumer-less symbol is pending, not dead |
+| `τ`, `τ_ι` | Complexity threshold of S1; indentation-depth threshold of B1 |
+| `k` | Line-window length of B2 |
 | `C_chunk`, `ρ_idle`, `ρ_engaged`, `ρ_full` | Verification chunk size and rates by phase |
-| `a_F`, `a_D`, `a_N`, `a_H`, `ε` | Exposure weights and hotspot smoothing |
+| `a_F`, `a_P`, `a_D`, `a_N`, `a_H`, `ε` | Exposure weights and hotspot smoothing |
 | `κ_i` | Metric scale weights |
 | `q`, `σ_0²`, `σ_min²`, `ζ`, `g`, `P_0` | Production-rate filter: process noise, initial and minimum measurement noise, noise learning rate, gate width, initial variance |
-| `ω²` | Prior variance a blind file adds to `E` |
+| `ω²`, `ω_j²` | Prior variance a blind file adds to `E`; variance each absent fused sensor `j` adds to `U` |
+| `ω_b²` | Initial calibration variance of the base proxies, until residuals against S1 and S2 replace it |
 | `γ`, `γ_0`, `α_0`, `β_0`, `μ`, `H` | Capability filter: forgetting, baseline forgetting, priors, rise ratio, alarm threshold |
 | `E_lo`, `E_hi`, `δ`, `U_max` | Release and launch levels, deadband, uncertainty gate on `U` |
 | Demotion fraction and minimum registered work, per mandate class | Automatic demotion (`PR-MNT-32`) |

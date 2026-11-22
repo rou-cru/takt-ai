@@ -13,22 +13,23 @@ How sensor readings become the workspace estimate (`PR-OBS-EST-8`, `PR-OBS-EST-9
 | `λ_j` | Capability count rate of sensor `j`, relative to its exposure | Estimated: [Gamma-Poisson filter](#capability) |
 | `C_j` | Cumulative evidence that `λ_j` has risen | Estimated: [CUSUM](#capability) |
 
-Content metrics have no measurement noise once a file is verified: the same content always yields the same value. Their uncertainty is coverage, captured by `u`. The stochastic quantities are the crew's production rate and its capability, which are seen only through noisy increments and sparse counts.
+Content metrics are deterministic once a file is verified: the same content always yields the same value. A tool metric is taken as exact; a base proxy carries the calibration variance `ω_b²` against the tool it stands in for (see [sensors.md](sensors.md#base-sensor)). Their remaining uncertainty is coverage, captured by `u`. The stochastic quantities are the crew's production rate and its capability, which are seen only through noisy increments and sparse counts.
 
 ## Exposure
 
 Entropy matters where the crew works (`PR-OBS-EST-7`). Each file gets a weight
 
-`w_f = 1 + a_F·[f ∈ F] + a_D·[f ∈ D] + a_N·[f ∈ N] + a_H·h_f`
+`w_f = 1 + a_F·[f ∈ F] + a_P·p_f + a_D·[f ∈ D] + a_N·[f ∈ N] + a_H·h_f`
 
 | Set or term | Content |
 | :--- | :--- |
 | `F` | Write scopes of in-flight units (claims, `PR-ORQ-18`) |
+| `p_f` | Planned exposure: the share of planned units on the execution route whose assignment names `f` among its writable files (`1` when every planned unit does). A planned unit whose assignment names no files yet spreads its share evenly over `N`, or over every file without a code graph; the uncertainty of where it lands is carried by `W²·P` in `U` |
 | `D` | Files changed by units the execution route records as settled |
-| `N` | One-hop code-graph neighborhood of `F ∪ D`. Planned units record no file scope; their work is expected to land near the execution route |
+| `N` | One-hop code-graph neighborhood of `F ∪ D` and of the planned writable files |
 | `h_f` | Change frequency: attributed changes of `f` per action, smoothed as `h_f ← (1 − ε)^{Δw}·h_f + [f changed]` |
 
-Without an execution route, only the `1` and `a_H·h_f` terms remain. Without a code graph, `N` is empty.
+Without an execution route, only the `1` and `a_H·h_f` terms remain. With planned work alone, `p_f` still separates plans that target different parts of the workspace. Without a code graph, `N` is empty.
 
 ## Entropy
 
@@ -36,21 +37,23 @@ Each metric is an exposure-weighted ratio, and `E` is their weighted sum:
 
 | Metric | Ratio `E_i` |
 | :--- | :--- |
-| Complexity concentration | `E_1 = Σ w_f x_f / Σ w_f c_f` |
-| Duplication | `E_2 = Σ w_f d_f / Σ w_f s_f` |
+| Complexity concentration | `E_1 = Σ w_f x_f / Σ w_f c_f`, with `x⁰_f`, `c⁰_f` where only the base sensor measures `f` |
+| Duplication | `E_2 = Σ w_f d_f / Σ w_f s_f`, with `d⁰_f` where only the base sensor measures `f` |
 | Dead code | `E_3 = Σ w_f z_f / Σ w_f s_f` |
 | Documentation gap | `E_4 = Σ_{f ∈ T} w_f o_f / Σ_{f ∈ T} w_f`, and 0 when `T` is empty |
 | Norm conformance | `E_5 = Σ w_f n_f / Σ w_f s_f` |
+
+A ratio whose denominator is zero has no mass to be entropic: it is 0, as `E_4` is for an empty `T`. A workspace without functions has `E_1 = 0`; one without source files has every `E_i = 0`.
 
 `T` is the set of files with at least one crew-attributed change, marked in the manifest at the first one (scout rule: a file the crew touched is left documented). A disturbance never adds a file to `T`.
 
 `E = Σ_i κ_i E_i`, with `κ_i` putting the metrics on one scale. A metric without a source for a file contributes nothing for it and puts the file in `B`.
 
-**Uncertainty.** `B` holds unverified files and files for which a metric has no source. Their weighted share is `u = Σ_{f ∈ B} w_f s_f / Σ_f w_f s_f`. The projection `Ê` (see [gc-controller.md](gc-controller.md#projection)) carries two independent variances, one from blind files and one from the production rate:
+**Uncertainty.** `B` holds unverified files and files for which a metric has no source. Their weighted share is `u = Σ_{f ∈ B} w_f s_f / Σ_f w_f s_f`; `s_f` comes from the base sensor, so `u` is always computable from the manifest. When the denominator is zero, `u = 1` while any source file is unverified (nothing is known yet) and `u = 0` for a workspace without source files (nothing is there to know; with `E = 0` and `r·W = 0` no cycle launches). `u_b` is the same share over files whose S1 or S2 value comes only from the base sensor. The projection `Ê` (see [gc-controller.md](gc-controller.md#projection)) carries independent variances from blind files, base proxies, absent sensors, and the production rate:
 
-`U² = ω²·u + W²·P`
+`U² = ω²·u + ω_b²·u_b + Σ_{j ∈ A} ω_j² + W²·P`
 
-`ω²` is the prior variance that a blind file adds to `E`, in the scale of `E`. `U_R` is the same expression with `u` restricted to a region `R`. A lost sensor raises `U` through the term it feeds: files left without a source enter `B`, and unattributed work stops updating `r`, so `P` grows (see [production rate](#production-rate)).
+`ω²` is the prior variance that a blind file adds to `E`, in the scale of `E`. `A` is the set of fused sensors that stream liveness marks absent, and `ω_j²` the policy variance each one's loss adds, counted even when another sensor still covers the same quantity: losing the Action Journal raises `U` although tool hooks keep attributing the same changes (`PR-OBS-EST-3`). `U_R` is the same expression with `u` and `u_b` restricted to a region `R`. A lost sensor also raises `U` through the term it feeds: files left without a source enter `B`, and unattributed work stops updating `r`, so `P` grows (see [production rate](#production-rate)).
 
 ## Attribution
 
