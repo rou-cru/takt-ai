@@ -117,7 +117,10 @@ try {
  const store=resolve(workspace,'.takt-ai/events.db')
  for(let i=0;;i++){
   await rm(store,{recursive:true,force:true})
-  try{await mkdir(store);break}catch(e){if(e.code!=='EEXIST'||i>=100)throw e;await sleep(10)}
+  try{await mkdir(store);break}catch(e){
+   if(e.code!=='EEXIST'||i>=100)throw e
+   await sleep(10)
+  }
  }
  sessions.set('telemetry-child',{parentID:'root',title:'after-orphan',time:{created:Date.now()}})
  await context('telemetry-child','dev')

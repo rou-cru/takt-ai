@@ -769,7 +769,8 @@ function layoutComponent(component: DrawnGraph, width: number, sizing: Sizing): 
     const path = (trace: readonly Link[]) =>
       trace.flatMap(leg).filter((p, i, all) => i === 0 || p[0] !== all[i - 1][0] || p[1] !== all[i - 1][1])
     const head = (trace: readonly Link[]): Port => {
-      const last = trace[trace.length - 1]
+      const last = trace.at(-1)
+      if (!last) throw new Error("invalid DAG layout: an edge with no links")
       const [x, y] = portCell(last.to, entryOf(last))
       return { x, y, glyph: HEAD[entryOf(last)] }
     }
@@ -1320,8 +1321,7 @@ function isChainLink(
 ): boolean {
   return (
     incoming.length === 1 &&
-    previous !== undefined &&
-    previous.children.length === 1 &&
+    previous?.children.length === 1 &&
     previous.children[0] === item &&
     item.children.length <= 1 &&
     lanes.every((target, lane) => lane === at || target === undefined)
