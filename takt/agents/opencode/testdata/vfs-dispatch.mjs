@@ -64,7 +64,6 @@ const permissionHooks = {}
 const sessionHooks = {}
 const synthetic = []
 const interrupted = []
-const unreachable = new Set()
 const promptedSessions = []
 await plugin.setup({
   location: { directory: "/workspace" },
@@ -78,7 +77,6 @@ await plugin.setup({
     wait: async () => {},
     synthetic: async (message) => { synthetic.push(message) },
     interrupt: async ({ sessionID }) => {
-      if (unreachable.has(sessionID)) throw new Error(`session ${sessionID} unreachable`)
       interrupted.push(sessionID)
     },
   },

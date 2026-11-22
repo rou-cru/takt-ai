@@ -18,36 +18,36 @@ import (
 // coordinationRequest is harness IPC, not a model-selected identity or mandate.
 // Ordinary dispatch owns the shared envelope; `gc coordinate` consumes only its cycle fields.
 type coordinationRequest struct {
-	Action            string           `json:"action"`
-	Event             string           `json:"event"`
-	ActivityID        string           `json:"activity_id,omitempty"`
-	NodeKind          history.NodeKind `json:"node_kind,omitempty"`
-	Dispatch          string           `json:"dispatch,omitempty"`
-	Session           string           `json:"session"`
-	Agent             string           `json:"agent"`
-	Role              string           `json:"role"`
-	Child             string           `json:"child"`
-	Finding           string           `json:"finding"`
-	Outcome           string           `json:"outcome"`
-	Evidence          string           `json:"evidence"`
-	Pass              bool             `json:"pass"`
-	Attempt           string           `json:"attempt"`
-	Objective         string           `json:"objective"`
-	Result            string           `json:"result"`
-	Scope             []string         `json:"scope"`
-	Actions           int              `json:"actions"`
-	Attempts          int              `json:"attempts"`
-	Key               string           `json:"key"`
-	Bound             string           `json:"bound"`
-	Allowance         int              `json:"allowance"`
-	Version           string           `json:"version"`
+	Action            string              `json:"action"`
+	Event             string              `json:"event"`
+	ActivityID        string              `json:"activity_id,omitempty"`
+	NodeKind          history.NodeKind    `json:"node_kind,omitempty"`
+	Dispatch          string              `json:"dispatch,omitempty"`
+	Session           string              `json:"session"`
+	Agent             string              `json:"agent"`
+	Role              string              `json:"role"`
+	Child             string              `json:"child"`
+	Finding           string              `json:"finding"`
+	Outcome           string              `json:"outcome"`
+	Evidence          string              `json:"evidence"`
+	Pass              bool                `json:"pass"`
+	Attempt           string              `json:"attempt"`
+	Objective         string              `json:"objective"`
+	Result            string              `json:"result"`
+	Scope             []string            `json:"scope"`
+	Actions           int                 `json:"actions"`
+	Attempts          int                 `json:"attempts"`
+	Key               string              `json:"key"`
+	Bound             string              `json:"bound"`
+	Allowance         int                 `json:"allowance"`
+	Version           string              `json:"version"`
 	Plan              []protocol.PlanUnit `json:"plan"`
-	QARound           *history.QARound `json:"qa_round,omitempty"`
-	BaseVersion       string           `json:"base_version,omitempty"`
-	Withdrawals       []string         `json:"withdrawals,omitempty"`
-	AdditionalContext string           `json:"additional_context"`
-	ExtraArtifacts    []string         `json:"extra_artifacts"`
-	ResultIDs         []int64          `json:"result_ids"`
+	QARound           *history.QARound    `json:"qa_round,omitempty"`
+	BaseVersion       string              `json:"base_version,omitempty"`
+	Withdrawals       []string            `json:"withdrawals,omitempty"`
+	AdditionalContext string              `json:"additional_context"`
+	ExtraArtifacts    []string            `json:"extra_artifacts"`
+	ResultIDs         []int64             `json:"result_ids"`
 	// Units are the producer units an inputs declaration consumes.
 	Units []string `json:"units,omitempty"`
 	// Blocker marks a delivery whose entries record a blocker (PR-HAR-38).
