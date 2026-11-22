@@ -1,0 +1,162 @@
+entries:
+  - id: refusal.vfs.no_running_delegation
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [delegated]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - skills/takt-result-handoff/SKILL.md
+    vars: [session_id]
+    text: "session {{session_id}} has no running delegation; report your result in your reply"
+
+  - id: refusal.vfs.repair_non_interlocutor
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [delegated]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - skills/takt-failure-handling/SKILL.md
+    vars: [diagnostic]
+    text: "{{diagnostic}}; return this diagnostic to the orchestrator and invoke the original normal operation there"
+
+  - id: refusal.vfs.repair_retry_orchestrator
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+    vars: [diagnostic]
+    text: "{{diagnostic}}; call claim_list to ask the user for this repair, then retry"
+
+  - id: refusal.vfs.repair_retry_interlocutor
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-handoff/SKILL.md
+    vars: [diagnostic]
+    text: "{{diagnostic}}; make your next Takt tool call to ask the user for this repair, then retry"
+
+  - id: refusal.vfs.shell_not_admitted_command
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [all]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    text: "this shell command was not admitted; issue it again as a new tool call"
+
+  - id: refusal.vfs.shell_not_admitted_permission
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [all]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    text: "Takt refused this shell command: it was not admitted; issue it again as a new tool call"
+
+  - id: refusal.vfs.shell_refused
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [all]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - shared/BASELINE.md
+    vars: [reason]
+    text: "Takt refused this shell command: {{reason}}"
+
+  - id: refusal.vfs.shell_eval_error
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [all]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    vars: [reason]
+    text: "Takt refused this shell command: {{reason}}; issue it again as a new tool call"
+
+  - id: refusal.vfs.unsettled_delegations
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+      - agents/takt/OPERATIONS.md
+    vars: [named]
+    text: "; unsettled delegations: {{named}}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept"
+
+  - id: refusal.vfs.missing_unit
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    text: "Name the delegation after the work unit it executes: set its description to the unit identity"
+
+  - id: refusal.vfs.missing_specialist
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    text: "Takt VFS refused launch: the requested specialist identity is missing; set agent to the specialist and call subagent again"
+
+  - id: refusal.vfs.already_prepared
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-failure-handling/SKILL.md
+    vars: [delegation]
+    text: "dispatch {{delegation}} was already prepared; do not repeat its native launch; wait for its session, or retry the unit with a new subagent call after it settles"
+
+  - id: refusal.vfs.edit_claimed_path
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator, interlocutors]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+      - agents/takt/OPERATIONS.md
+    vars: [reason]
+    text: "Takt refused this edit: {{reason}}; retry the edit after ownership is released"
+
+  - id: refusal.vfs.dispatch_abandon_unknown
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+    vars: [dispatch]
+    text: "dispatch {{dispatch}} names no ordinary delegation; use a dispatch exactly as a refusal reported it"
+
+  - id: refusal.vfs.vfs_bind_verifier
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    text: "vfs_bind only binds implementation scope; verifier access is automatic"
+
+  - id: refusal.vfs.consolidate_failing_fallback
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-verification-consolidation/SKILL.md
+    vars: [author_key]
+    text: "correct the work instead: claim_assign with author_key {{author_key}}, delegate the correction of each finding, then delegate Verify again"
+
+  - id: refusal.vfs.consolidate_base_changed
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-verification-consolidation/SKILL.md
+      - skills/takt-vfs-coordination/SKILL.md
+    text: "; inspect the named author and files; use claim_assign with author_key to continue staged work from the current physical base, or vfs_discard to explicitly abandon that staged work"
+
+  - id: refusal.vfs.deliver_result_no_delegation
+    surface: refusal_guidance
+    owner: plugin/takt-vfs
+    audience: [result_agents]
+    correlates_with:
+      - skills/takt-result-handoff/SKILL.md
+    text: "deliver_result belongs to a running delegation, and this session runs none: nothing was credited; only a result producer's delegation delivers, so report the Takt memory entry IDs you recorded in your reply to the caller"

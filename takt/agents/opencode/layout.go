@@ -9,6 +9,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/prompts"
 )
 
 const (
@@ -58,10 +59,8 @@ func ComposePrompt(def catalog.AgentDefinition, instanceID string) string {
 // MemoryClause states how consumed entries are read (CTX-11) and names the
 // installed memory skills without injecting their content.
 func MemoryClause(authorID string) string {
-	return "## Memory\n\n" +
-		"The memory entries an assignment consumes are its inputs: read each before deciding; " +
-		"they prevail over any restatement in the brief. " +
-		"Before recording or searching memory, read `~/" + shared.ContractSkillPath +
-		"`; before recording, also `~/" + shared.MemorySkillPath(authorID) +
-		"`. They are the only memory rules that apply to you.\n"
+	return prompts.Default().MustRender("context.memory_clause", map[string]string{
+		"contract_skill": shared.ContractSkillPath,
+		"memory_skill":   shared.MemorySkillPath(authorID),
+	})
 }

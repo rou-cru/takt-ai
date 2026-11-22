@@ -1,0 +1,147 @@
+entries:
+  - id: refusal.memory.service_unavailable
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - skills/takt-memory-contract/SKILL.md
+      - shared/BASELINE.md
+    vars: [reason]
+    text: "The Takt memory service is unavailable ({{reason}}). Record nothing more: holding the chat, tell the user; in a delegation, end your turn stating this failure. Use Takt memory again only once it is reported running."
+
+  - id: refusal.memory.user_declined
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - skills/takt-memory-contract/SKILL.md
+    vars: [action]
+    text: "The user declined: {{action}}. Record this entry only if the user later asks for it."
+
+  - id: refusal.memory.non_crew_agent
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - skills/takt-memory-contract/SKILL.md
+    vars: [agent]
+    text: '"{{agent}}" is not a Takt crew member and cannot use Takt memory; use Takt memory from a crew agent''s session.'
+
+  - id: refusal.memory.global_tier_workspace_content
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - skills/takt-memory-contract/SKILL.md
+    text: "The global tier holds cross-project preferences, habits and environment quirks, never workspace content. Record this entry with scope workspace, or remove the code and the workspace directory from its title, content, and evidence."
+
+  - id: refusal.memory.matrix_supplement_hint
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-tpm/SKILL.md
+      - skills/takt-memory-verify/SKILL.md
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [own]
+    text: "relate your first {{own}} column entry to the matrix root with supplements"
+
+  - id: refusal.memory.matrix_supersede_hint
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-tpm/SKILL.md
+      - skills/takt-memory-verify/SKILL.md
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    text: "relate a later version to the head of your column chain with supersedes"
+
+  - id: refusal.memory.matrix_root_title
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [qa]
+    correlates_with:
+      - skills/takt-memory-qa/SKILL.md
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [prefix]
+    text: "The traceability matrix root is titled `{{prefix}}<objective>`; record it with that title."
+
+  - id: refusal.memory.matrix_root_disputes
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [qa]
+    correlates_with:
+      - skills/takt-memory-qa/SKILL.md
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    text: "That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction."
+
+  - id: refusal.memory.matrix_non_author
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+      - skills/takt-memory-contract/SKILL.md
+    text: "Only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction."
+
+  - id: refusal.memory.matrix_only_qa_creates_root
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [root_author, own]
+    text: "Only {{root_author}} creates the traceability matrix root; record your column titled `<matrix title>: {{own}}`."
+
+  - id: refusal.memory.matrix_missing_relation
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [own, supplement_hint, supersede_hint]
+    text: "Relate your {{own}} column to the matrix: {{supplement_hint}}; {{supersede_hint}}."
+
+  - id: refusal.memory.matrix_wrong_title
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [expected]
+    text: "Title this entry exactly `{{expected}}`."
+
+  - id: refusal.memory.matrix_supplements_root
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [prefix, supplement_hint]
+    text: "A column supplements the matrix root, titled `{{prefix}}<objective>`; {{supplement_hint}}."
+
+  - id: refusal.memory.matrix_invalid_relation
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    text: "A matrix column uses supplements for its first version or supersedes for a later one; change the relation."
+
+  - id: refusal.memory.matrix_not_a_chain
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [supplement_hint, supersede_hint]
+    text: "The related entry is not a matrix column chain; {{supplement_hint}}, or {{supersede_hint}}."
+
+  - id: refusal.memory.matrix_wrong_column_owner
+    surface: refusal_guidance
+    owner: plugin/takt-memory
+    audience: [tpm, verify]
+    correlates_with:
+      - skills/takt-memory-qa/references/traceability-matrix.md
+    vars: [start, expected]
+    text: "The related entry belongs to the column `{{start}}`, which is not yours; relate to the head of your own column `{{expected}}` with supersedes, or use disputes to state a contradiction."

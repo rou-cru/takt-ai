@@ -1,0 +1,282 @@
+tools:
+  - name: subagent
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-sdd-workflow/SKILL.md
+      - skills/takt-failure-handling/SKILL.md
+    params:
+      sessionID: "Omit it: every delegation, a retry included, starts a new session. Set it only to continue a returned delegation that delivered a blocker, with the datum that unblocks it."
+      model: 'Set only for a model or variant the user explicitly requests, or to restore an unavailable seat under the restoration conditions in your Takt operations. Otherwise omit it. It must be a chat model; image and decision models cannot run subagents. Use "providerID/modelID" or "providerID/modelID#variant". Do not guess the ID: look it up with the models tool, filtering to your own provider first.'
+      author_keys: "Staged author keys to review in this delegation; access is ready automatically, including retries."
+      seat_reason: "Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"
+      seat_substitute: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity"
+
+  - name: dispatch_commit
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-sdd-workflow/SKILL.md
+      - skills/takt-bounded-workflow/SKILL.md
+    description: "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. To change a standing plan, name its current version as base_version and list only the units the revision adds or replaces; withdrawn units leave the plan, and delegated units stand as committed."
+    params:
+      version: "Identifier of this baseline version"
+      base_version: "The standing plan version this declaration revises; omit only for the first commitment"
+      plan: "Every unit this baseline covers, or that a revision adds or replaces"
+      plan_unit: "Work unit name: a short one-line label of the work"
+      plan_contract: "Frozen contract this unit is dispatched against"
+      plan_prerequisites: "Prerequisite work unit identities"
+      qa_round_objective: "Stable acceptance objective; never rename it to reset strengthening"
+      qa_round_units: "This round's test-authoring units, declared before admission; gates and mutation are not members"
+      withdraw: "Still-planned unit identities a revision removes"
+
+  - name: dispatch_inputs
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-sdd-workflow/SKILL.md
+    description: "Before delegating a unit, declare the invariants it consumes: the work units of this session whose delivered results it consumes, and any other Takt memory entry by ID; both empty declares that none exists yet. Each is carried to its current version, and the specialist receives them with its delegation; redeclaring replaces the declaration."
+    params:
+      work_unit_id: "The unit the delegation will be named after"
+      result_ids: "Takt memory entry IDs this unit consumes that no unit of this session delivered, such as a document the user supplied; empty when there are none"
+      units: "Work units of this session whose delivered results this unit consumes"
+
+  - name: claim_list
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+    description: "List ownership claims for the current root session."
+
+  - name: claim_assign
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-vfs-coordination/SKILL.md
+    description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, any overlap with an existing claim is refused and nothing is discarded. To continue, retry, or correct staged work, pass its author_key with the exact retained scope and any added paths: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads."
+    params:
+      work_unit_id: "The unit the delegation will be named after"
+      agent: "Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"
+      scope: "Exact workspace-relative file paths, existing or to be created; no directories or globs"
+      author_key: "The author_key of this unit's existing staged work to keep; omit for new work"
+      reads: "What the unit may read beyond its scope: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit for its scope only"
+
+  - name: claim_release
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+    description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released once its unit has ended."
+    params:
+      claim_key: "Exact key returned by claim_list; never infer this key"
+
+  - name: dispatch_activity_start
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    description: "Record direct orchestrator work activity (not a delegated unit)."
+
+  - name: dispatch_activity_finish
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    description: "Finish direct orchestrator work activity with its outcome."
+
+  - name: dispatch_declare_recovery
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+      - skills/takt-sdd-recovery/SKILL.md
+    description: "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored."
+    params:
+      objective: "Identity of the objective being recovered"
+      result: "The binary expected result that would demonstrate recovery"
+      scope: "Work unit identities this recovery's scope covers"
+      actions: "Action budget: the governed calls, reads included, that the scope's units may make"
+      attempts: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one"
+
+  - name: dispatch_close_recovery
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+      - skills/takt-sdd-recovery/SKILL.md
+    description: "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false once its attempt budget is spent abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore."
+    params:
+      objective: "Identity of the recovered objective"
+      evidence: "Evidence supporting the claimed result"
+      demonstrated: "Whether the declared result was actually demonstrated"
+
+  - name: dispatch_restore
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+      - skills/takt-sdd-recovery/SKILL.md
+    description: "Drop an abandoned recovery scope: reverts all the staged work of its units, after which a new recovery can be declared. It waits until the scope's delegations have returned; call it again then."
+    params:
+      objective: "Identity of the abandoned recovery's objective"
+
+  - name: dispatch_exception
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+      - skills/takt-sdd-recovery/SKILL.md
+    description: "Propose raising one bound by a finite allowance, with the evidence for it; it is recorded only once the user accepts the confirmation this raises. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact."
+    params:
+      event: "Optional label for the record"
+      bound: "The bound being raised; ceiling/concurrent-specialists counts concurrent delegations, budget/unplanned-units counts units delegated without a committed plan"
+      objective: "Stable objective the exception applies to; required for recovery and QA-strengthening bounds"
+      allowance: "Finite additional allowance in that bound's own unit"
+      evidence: "Why the bound should be raised, shown to the user"
+
+  - name: dispatch_contest
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-verification-consolidation/SKILL.md
+      - skills/takt-failure-handling/SKILL.md
+    description: "Contest the recorded terminal failure of a unit attempt, one that ended without a result: it records the contest and spends one of the contests. Judging the contested work is a Verify delegation of yours."
+    params:
+      event: "The work unit whose recorded terminal failure is contested"
+      attempt: "The attempt identity the failure belongs to; defaults to the unit's current attempt"
+
+  - name: dispatch_abandon
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-failure-handling/SKILL.md
+    description: "End a delegation that will never return, because its session is gone or will not end: its unit can be delegated again and its slot is freed, and its staged work is kept. The user is asked to agree first."
+    params:
+      dispatch: "Dispatch identity of the delegation, as reported"
+
+  - name: dispatch_switch
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-interlocutor-lending/SKILL.md
+      - agents/takt/OPERATIONS.md
+    description: "Lend the interlocutor role to a direct-interlocutor specialist until it hands it back or the user aborts. The user is asked to accept the target specialist and objective before the switch takes effect; on a refusal, reevaluate with the user."
+    params:
+      target_agent: "Catalog id of the specialist to switch the interlocutor role to"
+      objective: "Objective for the incoming interlocutor's session"
+      requirements: "Current Takt memory entry IDs of the knowledge the incoming interlocutor needs: finalized documents and settled decisions; an empty list states that nothing useful exists"
+      client: "What is known of the user for the incoming interlocutor; state as unknown what is not"
+
+  - name: dispatch_handoff
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-handoff/SKILL.md
+      - skills/takt-interlocutor-exceptions/SKILL.md
+    description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. The user is asked to accept what is handed back (result, additional context, extra artifacts) before the handoff takes effect."
+    params:
+      result: "Outcome of this temporary interlocutor's turn"
+      additional_context: "Context to carry back to the base"
+      extra_artifacts: "Optional references to extra evidence: `#<id>` of a Takt memory entry you recorded, or a filesystem copy the user ordered; none gates the handoff"
+      result_ids: "One current Takt memory entry ID per delivered result; required for Standard handoff"
+
+  - name: vfs_inspect
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+    vars: [max_limit]
+    description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned."
+    params:
+      source: "Which record to read"
+      session: "Only entries of this session"
+      unit: "Only entries of this work unit"
+      after: "Return entries after this seq; -1 starts from the first"
+      limit: "Page size, at most {{max_limit}}"
+
+  - name: vfs_bind
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    description: "Bind to the assignment named in your context, only when your context asks you to."
+    params:
+      scope: "The exact paths your assignment names"
+
+  - name: vfs_write
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    description: 'Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated. Content is UTF-8 text. Write a binary file (image, archive, font) with a shell command to its scope path instead, e.g. `cp "$TMPDIR/x.png" assets/x.png` or `rsvg-convert in.svg -o assets/x.png`; its bytes are staged unchanged.'
+    params:
+      content: "UTF-8 text; binary content is not representable here"
+      author_key: "Assigned binding key; defaults to your own latest binding"
+
+  - name: vfs_read
+    owner: plugin/takt-vfs
+    audience: [vfs_authors, verifiers]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - skills/takt-vfs-verification/SKILL.md
+    description: "Read a file of your assignment as staged: your own staged view, or the staged work you judge."
+    params:
+      path: "Workspace-relative path within your assignment"
+      author_key: "Verifier only, optional: the author_key of the staged work whose files you read; omitted, the path's owner is used"
+
+  - name: vfs_delete
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    description: "Stage the deletion of a file inside your declared scope. Staged virtually; the workspace copy is untouched until verified and consolidated."
+    params:
+      author_key: "Assigned binding key; defaults to your own latest binding"
+
+  - name: vfs_discard
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-vfs-coordination/SKILL.md
+      - skills/takt-verification-consolidation/SKILL.md
+    description: "Discard an author's entire staged work without touching the workspace, releasing the paths it owns. Name the author by its author_key."
+    params:
+      author_key: "The author_key of the staged work to discard"
+
+  - name: vfs_verify
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+      - agents/takt-verify/OPERATIONS.md
+      - agents/takt-judge/OPERATIONS.md
+    description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, assigned by your delegation to that author_key. The verdict covers exactly the revision staged when you judged it."
+    params:
+      author_key: "The author_key your assignment names"
+      finding: "What the verdict rests on; required when pass is false"
+
+  - name: vfs_consolidate
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-verification-consolidation/SKILL.md
+      - skills/takt-vfs-coordination/SKILL.md
+    description: "Move authorized staged work into the workspace by author_key. Verdicts inform your decision; if a current one failed, the user is asked to accept consolidating anyway and a refusal keeps the work staged. Ownership and physical-base checks always apply."
+    params:
+      author_key: "The author_key of the staged work to consolidate"
+      checkpoint: "Optional short label hashed into the journal; defaults to the author key and revision"
+
+  - name: deliver_result
+    owner: plugin/takt-vfs
+    audience: [result_agents]
+    correlates_with:
+      - skills/takt-result-handoff/SKILL.md
+    vars: [record_tool]
+    description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with {{record_tool}}, either the completed artifact or the blocker that ends the unit."
+    params:
+      result_ids: "Current Takt memory entry IDs this delegation delivers"
+      blocker: "true when these entries record a blocker instead of the assigned deliverable"

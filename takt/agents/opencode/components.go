@@ -22,6 +22,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/prompts"
 )
 
 // context7Config returns the context7 MCP server entry, shaped to deep-merge
@@ -114,8 +115,10 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact {
 		"describe":    memory.AdminDescribe,
 		"admin_path":  memory.PathAdmin,
 	})
+	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-memory"))
 	content := strings.Replace(string(artifact.Content), `"__TAKT_MEMORY_WIRE__"`, string(wireJSON), 1)
-	artifact.Content = []byte(strings.Replace(content, `"__TAKT_CREW_ROSTER__"`, string(rosterJSON), 1))
+	content = strings.Replace(content, `"__TAKT_CREW_ROSTER__"`, string(rosterJSON), 1)
+	artifact.Content = []byte(strings.Replace(content, `"__TAKT_PROMPTS__"`, string(promptsJSON), 1))
 	return artifact
 }
 
@@ -134,10 +137,12 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 		"record": memory.PrefixedToolName(memory.ToolRecord),
 		"read":   memory.PrefixedToolName(memory.ToolRead),
 	})
+	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-vfs"))
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
 	content = strings.Replace(content, `"__TAKT_VFS_AUTHORS__"`, string(authors), 1)
 	content = strings.Replace(content, `"__TAKT_MEMORY_TOOLS__"`, string(memoryTools), 1)
-	artifact.Content = []byte(strings.Replace(content, `"__TAKT_RESULT_AGENTS__"`, string(resultAgents), 1))
+	content = strings.Replace(content, `"__TAKT_RESULT_AGENTS__"`, string(resultAgents), 1)
+	artifact.Content = []byte(strings.Replace(content, `"__TAKT_PROMPTS__"`, string(promptsJSON), 1))
 	return artifact
 }
 
@@ -325,7 +330,10 @@ var taktDagPluginSource string
 // documented discovery path <config>/plugins/<name>/tui.tsx, so no config
 // file registers it; taktAIBinary is the takt-ai path it polls.
 func TaktDagPluginArtifact(taktAIBinary string) Artifact {
-	return taktPluginArtifact(taktDagPluginSource, "takt-dag/tui.tsx", taktAIBinary)
+	artifact := taktPluginArtifact(taktDagPluginSource, "takt-dag/tui.tsx", taktAIBinary)
+	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-dag"))
+	artifact.Content = []byte(strings.Replace(string(artifact.Content), `"__TAKT_PROMPTS__"`, string(promptsJSON), 1))
+	return artifact
 }
 
 // TaktPluginIDs lists Takt's required server plugins in /api/plugin.

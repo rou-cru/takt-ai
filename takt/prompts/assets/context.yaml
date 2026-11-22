@@ -1,0 +1,148 @@
+entries:
+  - id: context.memory_clause
+    surface: system_clause
+    owner: opencode/layout
+    audience: [all]
+    correlates_with:
+      - shared/BASELINE.md
+      - skills/takt-memory-contract/SKILL.md
+    vars: [contract_skill, memory_skill]
+    text: |
+      ## Memory
+
+      The memory entries an assignment consumes are its inputs: read each before deciding; they prevail over any restatement in the brief. Before recording or searching memory, read `~/{{contract_skill}}`; before recording, also `~/{{memory_skill}}`. They are the only memory rules that apply to you.
+
+  - id: context.prior_claims
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-vfs-coordination/SKILL.md
+    vars: [claims]
+    text: "Previous-session VFS claims (keys, files and staged status): {{claims}}. Before delegating: claim_assign without author_key refuses any overlap and discards nothing; to continue staged work, pass its author_key with the exact retained scope."
+
+  - id: context.invariants_consumed
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [delegated]
+    correlates_with:
+      - shared/BASELINE.md
+      - skills/takt-memory-contract/SKILL.md
+    vars: [unit, entries, read_tool]
+    text: "Work unit {{unit}} consumes these invariants: {{entries}}. Read each with {{read_tool}}; they bind as read-only and prevail over any restatement in the brief."
+
+  - id: context.invariants_none
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [delegated]
+    correlates_with:
+      - shared/BASELINE.md
+    vars: [unit]
+    text: "Work unit {{unit}} consumes no recorded invariant yet; author it from the brief."
+
+  - id: context.invariants_undelivered
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [delegated]
+    correlates_with:
+      - shared/BASELINE.md
+    vars: [undelivered]
+    text: " {{undelivered}} had delivered nothing when this unit was declared."
+
+  - id: context.deliver_result_reminder
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [result_agents]
+    correlates_with:
+      - skills/takt-result-handoff/SKILL.md
+    vars: [unit]
+    text: "Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit {{unit}} (takt-result-handoff)."
+
+  - id: context.gate_notice
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+      - agents/takt-verify/OPERATIONS.md
+      - agents/takt-judge/OPERATIONS.md
+    vars: [unit, reading, verdict, gates]
+    text: "You judge the staged work of these authors for work unit {{unit}}; every gate is already bound. {{reading}} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.{{verdict}}\n{{gates}}"
+
+  - id: context.gate_read_clause
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    text: "Read staged files with vfs_read naming their author_key;"
+
+  - id: context.gate_verify_clause
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    text: " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on."
+
+  - id: context.gate_line
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    vars: [author_key, scope, refusal]
+    text: "author_key {{author_key}}: {{scope}}{{refusal}}"
+
+  - id: context.gate_refusal_suffix
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    vars: [error]
+    text: " (gate not adopted: {{error}}; report it as unverified)"
+
+  - id: context.author_notice
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - agents/takt-dev/OPERATIONS.md
+    vars: [unit, scope, unbound, conduct]
+    text: "Work unit {{unit}} owns exactly these workspace-relative paths: {{scope}}.{{unbound}} {{conduct}}"
+
+  - id: context.author_conduct_write
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    text: "Stage changes with vfs_write."
+
+  - id: context.author_conduct_delete
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    text: "Stage deletions with vfs_delete."
+
+  - id: context.author_conduct_read
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    text: "Read your staged view with vfs_read."
+
+  - id: context.author_bind_failed
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+    vars: [error]
+    text: " The harness could not bind you ({{error}}); bind with vfs_bind using exactly this scope."
