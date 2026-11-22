@@ -268,7 +268,7 @@ func runVFSOperation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 		return err
 	}
 	if req.CycleID != "" || req.MandateClass != "" {
-		return errors.New("gc: ordinary transport cannot declare a GC cycle; use gc coordinate authorize or verdict")
+		return errors.New(`gc: ordinary transport cannot declare a GC cycle; use gc coordinate --request with action "authorize" or "verdict"`)
 	}
 	if _, claim := claimCommandCapability[command]; claim {
 		return runVFSClaimControl(*workspace, *state, command, req, stdout)

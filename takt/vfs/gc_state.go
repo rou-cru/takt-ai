@@ -52,13 +52,13 @@ func (f *FS) guardMaintenanceLocked(command, action, path string, key AgentID) e
 	}
 	switch command {
 	case "verify", "consolidate":
-		return errors.New("gc: GC cycle changes use gc coordinate verdict, gc coordinate acceptance or gc coordinate no-change, not ordinary VFS closure")
+		return errors.New(`gc: GC cycle changes close through gc coordinate --request with action "verdict", "acceptance" or "no-change", not ordinary VFS closure`)
 	case "op", "shell-prepare":
 		if action == "read" {
 			return nil
 		}
 		if state.Cycle.Phase != "collect" {
-			return errors.New("gc: mutation refused outside collector phase; call gc coordinate authorize before vfs_write or vfs_delete")
+			return errors.New(`gc: mutation refused outside collector phase; call gc coordinate --request with action "authorize" before vfs_write or vfs_delete`)
 		}
 		author := key
 		if b.GateAuthorKey != "" {
