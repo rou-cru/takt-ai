@@ -10,10 +10,10 @@ The only sensor the loop can always count on (`PR-OBS-EST-2`). It depends on wor
 
 | Part | Role | Acquisition | Measured cost | Error |
 | :--- | :--- | :--- | :--- | :--- |
-| Change scan (IMU) | Fast, frequent | Stat every manifest file; hash only files whose size or modification time changed | 25 ms here; 2.4 s at 248 k files | Drift: a same-size edit within the clock resolution, or a tool that preserves modification time, goes unseen |
-| Full verification (GPS) | Slow, exact | Hash the complete content of every manifest file | 31 ms here; 24 s at 248 k files, 4.3 GB (one thread) | None in content; only age since last pass |
+| Change scan (IMU) | Fast, frequent | Walk the workspace under the manifest's ignore rules and stat every file found; hash files absent from the manifest and files whose size or modification time changed; drop manifest records whose path is gone | 25 ms here; 2.4 s at 248 k files | Drift: a same-size edit within the clock resolution, or a tool that preserves modification time, goes unseen. Created and deleted files are always seen |
+| Full verification (GPS) | Slow, exact | Hash the complete content of every file the last walk listed | 31 ms here; 24 s at 248 k files, 4.3 GB (one thread) | None in content; only age since last pass |
 
-A file stat-scanned but not hashed since its last verification is **unverified**. Unverified files are the drift; the next verification pass bounds it. Each session runs one full verification pass.
+A new file enters the manifest when the walk first finds it; a deleted file leaves it, and its contribution leaves `E`, in the same sample. A file stat-scanned but not hashed since its last verification is **unverified**. Unverified files are the drift; the next verification pass bounds it. Each session runs one full verification pass.
 
 **Pacing** (`PR-OBS-EST-6`). Verification hashes in chunks of at most `C_chunk` bytes at low operating-system priority, at a rate set by phase:
 
@@ -41,7 +41,7 @@ Dead code, documentation gaps, and norm conformance have no content-only measure
 
 ## Content metrics
 
-Computed on content of source files, for files whose hash changed and, for workspace-wide results (B2, S2, S3 confirmation), for every file whose contribution the new result changes, whether or not its own hash changed. Generated files and test trees are excluded. A language without an analyzer is a recorded coverage gap for that analyzer's metrics.
+Computed on content of source files, for files whose hash changed and, for workspace-wide results (B2, S2, S3 screen, S3 confirmation), for every file whose contribution the new result changes, whether or not its own hash changed: a new or removed clone partner, or a change in the incoming production edges of its symbols. Generated files and test trees are excluded. A language without an analyzer is a recorded coverage gap for that analyzer's metrics.
 
 | ID | Metric | Per-file value | Source | Measured | When |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -57,7 +57,7 @@ Computed on content of source files, for files whose hash changed and, for works
 
 `z_f = Σ_{confirmed} SLOC + π · Σ_{screened, unconfirmed} SLOC`
 
-where `π` is the screen's precision at the last confirmation pass. A symbol without a consumer introduced by a unit whose objective the execution route has not yet settled is pending, not dead, and is excluded whatever its age (`PR-MNT-26`); once that objective is accepted and the symbol still has no consumer, it enters the screen.
+where `π` is the screen's precision at the last confirmation pass. A symbol without a consumer introduced by a unit whose objective the execution route has not yet settled is pending, not dead, and is excluded whatever its age (`PR-MNT-26`); once that objective is accepted and the symbol still has no consumer, it enters the screen, and its file is re-screened at that acceptance whether or not the file changed.
 
 **Rebaseline (S5).** A change in an analyzer's configuration hash or version starts a new baseline for that metric; it is not a change in entropy.
 
@@ -73,6 +73,8 @@ They decide which content changes are the crew's thrust and which are disturbanc
 | Tool hooks | Agent, work unit, path, and resulting content hash for native edit, write, and patch tools, read after the tool completes | OpenCode runs the Takt plugin |
 
 **Rule.** A file change observed by the base sensor is crew-attributed when an attribution sensor recorded an operation on that path whose resulting hash equals the observed one. Every other change is a disturbance. Changes made by shell commands are disturbances by this rule: they raise entropy, but not the crew's measured production rate.
+
+A change in a file's contribution without a change in its own hash comes from a workspace-wide result (see [content metrics](#content-metrics)) and inherits the attribution of the changed files that caused it: its clone partners for B2 and S2, the files whose references added or removed its incoming edges for S3. It is crew-attributed when at least one of those causes is crew-attributed, and a disturbance otherwise. A symbol leaving pending status at objective acceptance is crew-attributed, since a crew unit introduced it. Such a change never adds the file to `T`, which marks the crew's own edits.
 
 ## Capability sensors
 
@@ -100,6 +102,7 @@ Counts are sparse and heavy-tailed: most sessions record none, and a few record 
 | Point | Runs |
 | :--- | :--- |
 | Preflight | Change scan; verification starts |
-| Each consolidation, unit finish, activity finish | Change scan; B0, B1, B2, S1, S3 screen, S4, S5 on changed files |
+| Each consolidation, unit finish, activity finish | Change scan; B0, B1, B2, S1, S3 screen, S4, S5 on changed files; B2 and S3 screen on files whose clone partners or incoming edges those changes moved |
+| Objective accepted | S3 screen on the files of symbols leaving pending status |
 | Session close | Change scan; S2; S3 confirmation; analyzers without file mode; decision (see [gc-controller.md](gc-controller.md)) |
 | After a cycle consolidates | Change scan and verification of the cycle's region; cycle effect |
