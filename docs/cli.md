@@ -7,10 +7,10 @@
 | Command | What it does |
 | --- | --- |
 | `setup install` | Applies Takt to OpenCode. |
-| `setup sync` | Re-applies the managed files to an existing installation. Files you edited are kept; files you deleted are restored. |
+| `setup sync` | Re-applies the managed files to an existing installation. Files you edited are kept; files you deleted are restored. Upgrade and drift correction are TUI tasks. |
 | `setup uninstall` | Removes what Takt installed and restores what it replaced. |
 | `setup default-request` | Prints the recommended setup request as JSON. |
-| `restore` | Puts back the files Takt replaced. Always prints JSON. |
+| `restore` | Puts back the files Takt replaced. Prints the result as JSON. |
 | `doctor` | Checks tools, configuration and capabilities. |
 | `memory start [--init]` | Starts or reuses Takt Memory and confirms readiness; `--init` creates an absent store. |
 | `memory mcp [--workspace DIR]` | Exposes the memory MCP tools over stdio for an external client. |
@@ -27,7 +27,7 @@
 | `--root DIR` | Home directory to act on. Defaults to `$HOME`. |
 | `--json` | Prints one JSON value on stdout. Human-readable notices go to stderr. |
 
-When `--input` is omitted on a terminal, the recommended setup is used. When it is omitted and stdin is not a terminal, the request is read from stdin. The request is validated strictly: unknown fields and extra JSON values are rejected.
+When `--input` is omitted on a terminal, the recorded installation is used, or the recommended setup when none exists. When it is omitted and stdin is not a terminal, the request is read from stdin. The request is validated strictly: unknown fields and extra JSON values are rejected.
 
 If a previous run stopped abruptly, setup reports it as a warning and continues; every command re-checks the actual files before acting.
 

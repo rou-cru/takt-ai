@@ -989,7 +989,7 @@ type GitPermissionRule struct {
 func GitPermissionRules(role model.RoleClass) []GitPermissionRule
 ```
 
-GitPermissionRules is role's Git policy as native shell permission patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then allows each read\-only subcommand, and a read\-only subcommand carrying one of its writing options returns to the deny; a form the patterns cannot tell apart from a mutation keeps the deny. The orchestrator allows git and asks only for the actions in orchestratorGatedGit and for a hard reset \(PR\-VFS\-GIT\-5\); every other Git mutation is its conduct.
+GitPermissionRules is role's Git policy as native shell permission patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then allows each read\-only subcommand, and a read\-only subcommand carrying one of its writing options returns to the deny; a form the patterns cannot tell apart from a mutation keeps the deny. The orchestrator allows git and asks only for the actions in orchestratorGatedGit, for an amended commit and for a hard reset \(PR\-VFS\-GIT\-5\); every other Git mutation, a plain local commit included, is its conduct.
 
 <a name="Identity"></a>
 ## type Identity

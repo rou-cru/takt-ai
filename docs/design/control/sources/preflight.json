@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "waterfall",
+  "meta": {
+    "title": "Session preflight: change scan and paced verification",
+    "output": "docs/design/control/diagrams/preflight.html",
+    "locale": "en",
+    "evidence": "illustrative",
+    "unit": "s",
+    "quality_profile": "showcase"
+  },
+  "spans": [
+    { "id": "session", "name": "Crew session", "service": "session", "start": 0, "end": 40, "detail": "Illustrative timing for a very large workspace; in a typical one, verification ends about as fast as the scan." },
+    { "id": "scan", "name": "Change scan (IMU)", "service": "base sensor", "start": 0, "duration": 2.4, "parent": "session", "detail": "Against the last manifest: the difference is the disturbance accumulated between sessions." },
+    { "id": "verify", "name": "Full verification (GPS)", "service": "base sensor", "start": 0.5, "end": 32, "parent": "session", "detail": "Chunked, low OS priority; estimation never waits for it." },
+    { "id": "route", "name": "Route files verified first", "service": "base sensor", "start": 0.5, "duration": 4.5, "parent": "verify", "detail": "U_R on the route falls first, where the crew works." },
+    { "id": "idle", "name": "Idle pace", "service": "pacing", "start": 0.5, "end": 8, "parent": "verify", "detail": "ρ_idle until the first user prompt." },
+    { "id": "engaged", "name": "Engaged pace", "service": "pacing", "start": 8, "end": 20, "parent": "verify", "detail": "ρ_engaged from the first user prompt." },
+    { "id": "full", "name": "Full pace", "service": "pacing", "start": 20, "end": 32, "parent": "verify", "detail": "ρ_full from the first workspace mutation until the pass completes." },
+    { "id": "prompt", "name": "First user prompt", "service": "crew", "start": 8, "duration": 0.4, "parent": "session" },
+    { "id": "crew", "name": "Crew work", "service": "crew", "start": 9, "end": 40, "parent": "session", "detail": "Starts on the estimate as it is; uncertainty reflects unverified files." },
+    { "id": "mutation", "name": "First workspace mutation", "service": "crew", "start": 20, "duration": 0.4, "parent": "crew" }
+  ]
+}

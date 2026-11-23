@@ -1,0 +1,65 @@
+entries:
+  - id: directive.subagent_follow_up
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+      - skills/takt-failure-handling/SKILL.md
+    text: "It takes no follow-up while it runs: wait for its return. A retry is a new delegation without sessionID; continue this session only after it delivers a blocker, to give it the datum that unblocks it."
+
+  - id: directive.vfs_read_outdated
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [verifiers]
+    correlates_with:
+      - skills/takt-vfs-verification/SKILL.md
+    vars: [paths]
+    text: "The author's staged work changed after you read: {{paths}}. What you read there may be outdated; read those files again before attaching the verdict.\n\n"
+
+  - id: directive.memory_contract_pointer
+    surface: tool_output_directive
+    owner: plugin/takt-memory
+    audience: [all]
+    correlates_with:
+      - shared/BASELINE.md
+      - skills/takt-memory-contract/SKILL.md
+    vars: [tool, contract_skill]
+    text: "Do not guess the arguments. Read this tool's contract before retrying: in a separate execute call run `return search({ query: \"{{tool}}\" })` and pass exactly the input its signature lists; the {{contract_skill}} skill states which values your entry takes."
+
+  - id: directive.declared_inputs_some
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    vars: [unit, lines, absent]
+    text: "{{unit}} consumes: {{lines}}.{{absent}}"
+
+  - id: directive.declared_inputs_none
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    vars: [unit, absent]
+    text: "{{unit}} consumes no recorded invariant yet.{{absent}}"
+
+  - id: directive.declared_inputs_absent
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [orchestrator]
+    correlates_with:
+      - agents/takt/OPERATIONS.md
+    vars: [undelivered]
+    text: " {{undelivered}} delivered nothing yet."
+
+  - id: directive.deliver_result_lent_interface
+    surface: tool_output_directive
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-handoff/SKILL.md
+      - skills/takt-result-handoff/SKILL.md
+    vars: [count]
+    text: "Validated {{count}} result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff"

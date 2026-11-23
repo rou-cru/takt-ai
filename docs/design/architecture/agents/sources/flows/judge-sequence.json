@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
-          "line": 13
+          "line": 17
         }
       ]
     },
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-judge/agent.yaml",
-          "line": 13
+          "line": 17
         }
       ]
     },
@@ -73,12 +73,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -188,15 +188,24 @@
       "title": "Independence",
       "items": [
         "The reviewers neither see nor infer each other's findings",
-        "takt receives both unmerged and never merges them"
+        "takt receives both reports unmerged and never merges them; agreement alone is not computational acceptance"
       ]
     },
     {
       "dot": "amber",
       "title": "When",
       "items": [
-        "Only when the user asks, or when assurance beyond ordinary verification is warranted",
+        "Exceptional: requires concrete evidence of damage of unknown extent or of unresolved divergence needing greater assurance; concurrency width never activates it",
+        "Skill triggers, not product norm (takt-verification-consolidation): the user asks, deviations of unknown origin, unknown real state, exhausted recovery, a DAG ending in two or more phases at the ceiling, a large refactor of unknown impact",
         "Judges review and report; they do not repair"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Round",
+      "items": [
+        "The harness selects the reviewers; takt cannot replace one to obtain a preferred answer",
+        "Both reports close one review round; correction and any repeated review consume the slice budget"
       ]
     }
   ]

@@ -8,7 +8,7 @@
 | --- | --- |
 | PR-HAR-1 | Deterministic guardrails in the harness back critical limits. |
 | PR-HAR-2 | Permission profiles govern actions within tools, not only access to whole tools. A specialist MAY use an available tool for permitted actions while other actions through that same tool remain denied or approval-gated. |
-| PR-HAR-3 | Mutating Git operations are concentrated in the orchestrator and the harness. |
+| PR-HAR-3 | Mutating Git operations are concentrated in the orchestrator. |
 | PR-HAR-4 | A textual instruction cannot make an agent exercise a capability that the harness does not expose or directly blocks at execution time. |
 | PR-HAR-7 | A blocked action returns a deterministic visible denial naming the acting role, denied scope, and an available continuation call. The denial never suggests a capability unavailable to that role; when reassignment is required it returns the scope to the orchestrator. A user-owned decision uses one scoped confirmation call. Text alone does not grant a blocked capability. |
 | PR-HAR-8 | Every governed action resolves to **allowed**, **denied**, or **approval-gated** for the acting specialist. Approval-gating applies only to execution-boundary crossings and user-owned decisions. An approval-gated request MUST identify the acting agent, exact action, and rationale through the harness's deterministic question mechanism. |

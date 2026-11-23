@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -42,7 +42,12 @@
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
           "line": 17,
-          "end_line": 26
+          "end_line": 21
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 43,
+          "end_line": 45
         }
       ]
     },
@@ -57,8 +62,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 28,
-          "end_line": 34
+          "line": 32,
+          "end_line": 37
         }
       ]
     },
@@ -73,8 +78,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 40,
-          "end_line": 47
+          "line": 26,
+          "end_line": 30
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
+          "line": 43,
+          "end_line": 48
         }
       ]
     },
@@ -90,7 +100,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
           "line": 17,
-          "end_line": 34
+          "end_line": 37
         }
       ]
     },
@@ -105,8 +115,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 42,
-          "end_line": 47
+          "line": 49,
+          "end_line": 50
         }
       ]
     },
@@ -121,8 +131,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 44,
-          "end_line": 44
+          "line": 47,
+          "end_line": 47
         }
       ]
     },
@@ -137,8 +147,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 49,
-          "end_line": 56
+          "line": 57,
+          "end_line": 61
         }
       ]
     },
@@ -153,8 +163,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
-          "line": 51,
-          "end_line": 56
+          "line": 55,
+          "end_line": 61
         }
       ]
     },
@@ -170,7 +180,7 @@
         {
           "path": "takt/catalog/assets/skills/takt-session-resume/SKILL.md",
           "line": 50,
-          "end_line": 50
+          "end_line": 51
         }
       ]
     }

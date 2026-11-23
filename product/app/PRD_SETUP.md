@@ -33,7 +33,7 @@
 | PR-SET-10 | After setup, the application MUST provide a quick route to further configuration or exit to use the installed stack. For OpenCode v2, it MUST also offer immediate optional model assignment. |
 | PR-SET-32 | After applying the plan, setup MUST verify the installed result rather than infer it from the files written: each installed MCP integration MUST be confirmed connected by OpenCode, which requires a completed protocol handshake, not configuration or a running process alone, and the Takt orchestrator MUST be confirmed selectable as the session agent. The result MUST report each affected capability as verified, not verified, or not verifiable, and MUST NOT present a not-verified result as ready to work. |
 | PR-SET-11 | The intended successful OpenCode v2 handoff MUST have the Takt orchestrator selected as the session agent and the installed MCP integrations functional, with no additional Takt setup required. |
-| PR-SET-37 | Setup configures and starts the memory service and confirms its readiness before reporting the stack ready to work. An unreachable or not-ready service MUST appear as not verified or not verifiable under PR-SET-32 and MUST NOT be reported as ready. |
+| PR-SET-37 | Setup connects the crew to the memory service, starts it when it is packaged with the installation, and confirms its readiness before reporting the stack ready to work. An unreachable or not-ready service MUST appear as not verified or not verifiable under PR-SET-32 and MUST NOT be reported as ready. |
 
 ### 1.5 Custom Capability Composition
 

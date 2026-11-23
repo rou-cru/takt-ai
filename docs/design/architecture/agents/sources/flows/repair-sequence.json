@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-fix/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -73,12 +73,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -122,7 +122,7 @@
       "from": "takt",
       "to": "fix",
       "y": 272,
-      "label": "delegate: one localized finding",
+      "label": "delegate: one finding, by entry ID",
       "variant": "emphasis"
     },
     {
@@ -220,7 +220,8 @@
       "title": "Loop",
       "items": [
         "A failing verdict leaves the staged work untouched",
-        "Each localized finding gets its own takt-fix, which runs nothing on staged work",
+        "Each finding routes to its owner; an isolated localized finding gets its own takt-fix, which runs nothing on staged work, and correlated findings go to takt-dev",
+        "Every delegation, a retry included, opens a new specialist session; a returned session continues only to give the datum that unblocks its blocker",
         "takt takes each returned delivery where the plan sends it before delegating more"
       ]
     },

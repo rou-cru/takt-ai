@@ -11,6 +11,17 @@ import { Service } from "@opencode/client/service"
 const TAKT_AI = "__TAKT_AI_BINARY__"
 // The catalog instances, rendered from the catalog; only they may use memory.
 const CREW_ROSTER: string[] = "__TAKT_CREW_ROSTER__" as unknown as string[]
+// Prompt templates owned by this plugin, rendered from takt/prompts/assets/*.yaml.
+const PROMPTS: Record<string, string> = "__TAKT_PROMPTS__" as unknown as Record<string, string>
+function renderPrompt(id: string, vars: Record<string, string> = {}): string {
+  const template = PROMPTS[id]
+  if (template === undefined) throw new Error(`missing Takt prompt template: ${id}`)
+  const rendered = template.replace(/\{\{([a-z0-9_]+)\}\}/g, (_, key: string) => {
+    if (!(key in vars)) throw new Error(`missing variable ${key} for Takt prompt ${id}`)
+    return vars[key]
+  })
+  return rendered
+}
 
 // Wire names of the memory service, rendered from the Go constants that define them.
 const WIRE: { tool_prefix: string; record: string; bind: string; describe: string; admin_path: string } = "__TAKT_MEMORY_WIRE__" as unknown as never
@@ -35,16 +46,15 @@ const INVALID_ARGUMENTS = "Invalid arguments for tool"
 const CONTRACT_SKILL = "takt-memory-contract"
 // contractPointer names where a memory tool's contract is, so a retry reads it instead of guessing.
 const contractPointer = (tool: string) =>
-  `Do not guess the arguments. Read this tool's contract before retrying: in a separate execute call run \`return search({ query: "${tool}" })\` ` +
-  `and pass exactly the input its signature lists; the ${CONTRACT_SKILL} skill states which values your entry takes.`
+  renderPrompt("directive.memory_contract_pointer", { tool, contract_skill: CONTRACT_SKILL })
 
 // Traceability matrix titles are fixed by the memory skills of qa, tpm and verify (PR-QA-9).
 const MATRIX_NAME = "Traceability Matrix"
 const MATRIX_PREFIX = `${MATRIX_NAME}: `
 const MATRIX_ROOT_AUTHOR = "qa"
 // How a column entry is placed in the matrix, as the refusals word it.
-const supplementRootHint = (own: string) => `relate your first ${own} column entry to the matrix root with supplements`
-const SUPERSEDE_HEAD_HINT = "relate a later version to the head of your column chain with supersedes"
+const supplementRootHint = (own: string) => renderPrompt("refusal.memory.matrix_supplement_hint", { own })
+const SUPERSEDE_HEAD_HINT = renderPrompt("refusal.memory.matrix_supersede_hint")
 const MATRIX_COLUMNS: Record<string, string> = { tpm: "Owning node", verify: "Evidence" }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
@@ -64,8 +74,8 @@ const columnOf = (title: string) => Object.values(MATRIX_COLUMNS).find(column =>
 const isRootTitle = (title: string) => title.startsWith(MATRIX_PREFIX) && title.length > MATRIX_PREFIX.length && columnOf(title) === undefined
 // The root author records the root under its title and never relates it to a column.
 function checkRootRecord(title: string, targetTitle: string) {
-  if (!isRootTitle(title)) throw new Error(`The traceability matrix root is titled \`${MATRIX_PREFIX}<objective>\`; record it with that title.`)
-  if (columnOf(targetTitle)) throw new Error("That entry is a matrix column kept by tpm or verify; record your own fact under another title and use disputes to state a contradiction.")
+  if (!isRootTitle(title)) throw new Error(renderPrompt("refusal.memory.matrix_root_title", { prefix: MATRIX_PREFIX }))
+  if (columnOf(targetTitle)) throw new Error(renderPrompt("refusal.memory.matrix_root_disputes"))
 }
 const isMatrixTitle = (title: string) => title.startsWith(MATRIX_NAME)
 
@@ -90,7 +100,7 @@ export default Plugin.define({
     // A failure here is retried by the first call that needs the service.
     await start().catch(() => undefined)
 
-    const unavailable = (reason: string) => new Error(`The Takt memory service is unavailable (${reason}). Record nothing more: holding the chat, tell the user; in a delegation, end your turn stating this failure. Use Takt memory again only once it is reported running.`)
+    const unavailable = (reason: string) => new Error(renderPrompt("refusal.memory.service_unavailable", { reason }))
 
     async function rpc(tool: string, args: Record<string, unknown>): Promise<unknown> {
       let res: Response
@@ -171,7 +181,7 @@ export default Plugin.define({
       const controller = new AbortController()
       const reply = new Promise<string>((resolve, reject) => pending.set(id, { session: c.sessionID, controller, resolve, reject }))
       void reply.catch(() => undefined)
-      const denied = () => new Error(`The user declined: ${action}. Record this entry only if the user later asks for it.`)
+      const denied = () => new Error(renderPrompt("refusal.memory.user_declined", { action }))
       try {
         const request = await Promise.race([api.permission.create({ id, sessionID: c.sessionID, action, resources: [title], metadata, agent: c.agent,
           source: { type: "tool", messageID: c.messageID, id: c.id } }, { signal: AbortSignal.any([abort.signal, controller.signal, AbortSignal.timeout(PERMISSION_CREATE_TIMEOUT_MS)]) }), reply.then(() => new Promise<never>(() => {}))])
@@ -233,24 +243,24 @@ export default Plugin.define({
       if (!isMatrixTitle(title) && !isMatrixTitle(targetTitle)) return
       const own = MATRIX_COLUMNS[agent]
       if (agent === MATRIX_ROOT_AUTHOR) return checkRootRecord(title, targetTitle)
-      if (own === undefined) throw new Error("Only qa, tpm and verify write the traceability matrix; record your fact under another title and use disputes to state a contradiction.")
-      if (isRootTitle(title)) throw new Error(`Only ${MATRIX_ROOT_AUTHOR} creates the traceability matrix root; record your column titled \`<matrix title>: ${own}\`.`)
-      if (!relation || !target?.exists) throw new Error(`Relate your ${own} column to the matrix: ${supplementRootHint(own)}; ${SUPERSEDE_HEAD_HINT}.`)
+      if (own === undefined) throw new Error(renderPrompt("refusal.memory.matrix_non_author"))
+      if (isRootTitle(title)) throw new Error(renderPrompt("refusal.memory.matrix_only_qa_creates_root", { root_author: MATRIX_ROOT_AUTHOR, own }))
+      if (!relation || !target?.exists) throw new Error(renderPrompt("refusal.memory.matrix_missing_relation", { own, supplement_hint: supplementRootHint(own), supersede_hint: SUPERSEDE_HEAD_HINT }))
       const expected = await expectedColumnTitle(own, relation, target, targetTitle)
-      if (title !== expected) throw new Error(`Title this entry exactly \`${expected}\`.`)
+      if (title !== expected) throw new Error(renderPrompt("refusal.memory.matrix_wrong_title", { expected }))
     }
 
     // The title a column entry must carry, from the relation that places it in the matrix.
     async function expectedColumnTitle(own: string, relation: Record<string, unknown>, target: Described, targetTitle: string): Promise<string> {
       if (relation.relation === "supplements") {
-        if (!isRootTitle(targetTitle)) throw new Error(`A column supplements the matrix root, titled \`${MATRIX_PREFIX}<objective>\`; ${supplementRootHint(own)}.`)
+        if (!isRootTitle(targetTitle)) throw new Error(renderPrompt("refusal.memory.matrix_supplements_root", { prefix: MATRIX_PREFIX, supplement_hint: supplementRootHint(own) }))
         return `${targetTitle}: ${own}`
       }
-      if (relation.relation !== "supersedes") throw new Error(`A matrix column uses supplements for its first version or supersedes for a later one; change the relation.`)
+      if (relation.relation !== "supersedes") throw new Error(renderPrompt("refusal.memory.matrix_invalid_relation"))
       const chain = await columnChain(target)
-      if (!chain) throw new Error(`The related entry is not a matrix column chain; ${supplementRootHint(own)}, or ${SUPERSEDE_HEAD_HINT}.`)
+      if (!chain) throw new Error(renderPrompt("refusal.memory.matrix_not_a_chain", { supplement_hint: supplementRootHint(own), supersede_hint: SUPERSEDE_HEAD_HINT }))
       const expected = `${chain.root}: ${own}`
-      if (chain.start !== expected) throw new Error(`The related entry belongs to the column \`${chain.start}\`, which is not yours; relate to the head of your own column \`${expected}\` with supersedes, or use disputes to state a contradiction.`)
+      if (chain.start !== expected) throw new Error(renderPrompt("refusal.memory.matrix_wrong_column_owner", { start: chain.start, expected }))
       return expected
     }
 
@@ -261,7 +271,7 @@ export default Plugin.define({
       const { title, content, evidence } = { title: text(args.title), content: text(args.content), evidence: text(args.evidence) }
       const isGlobal = args.scope === "global"
       if (isGlobal && [title, content, evidence].some(field => field.includes(CODE_FENCE) || field.includes(workspaceDirectory))) {
-        throw new Error("The global tier holds cross-project preferences, habits and environment quirks, never workspace content. Record this entry with scope workspace, or remove the code and the workspace directory from its title, content, and evidence.")
+        throw new Error(renderPrompt("refusal.memory.global_tier_workspace_content"))
       }
       const userOrder = args.user_order === true
       // The matrix check only reads, so a record it refuses never costs the user an answer.
@@ -276,7 +286,7 @@ export default Plugin.define({
 
     await ctx.tool.hook("execute.before", async (event) => {
       if (!event.tool.startsWith(TOOL_PREFIX)) return
-      if (!CREW_ROSTER.includes(event.agent)) throw new Error(`"${event.agent}" is not a Takt crew member and cannot use Takt memory; use Takt memory from a crew agent's session.`)
+      if (!CREW_ROSTER.includes(event.agent)) throw new Error(renderPrompt("refusal.memory.non_crew_agent", { agent: event.agent }))
       const grants = event.tool === RECORD_TOOL ? await vetRecord(event) : []
       const root = await claimedRoot(event.sessionID)
       await admin(BIND, key => ({ host_session: event.sessionID, agent: event.agent, claimed_root: root, workspace: key, ...(grants.length ? { grants } : {}) }))

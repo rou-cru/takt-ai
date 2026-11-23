@@ -28,6 +28,18 @@ export async function ipcOutput(proc: ReturnType<typeof Bun.spawn>, label: strin
 
 const TAKT_AI = "__TAKT_AI_BINARY__"
 const ORCHESTRATOR_ID = "__TAKT_ORCHESTRATOR_ID__"
+// Prompt templates owned by this plugin, rendered from takt/prompts/assets/*.yaml.
+const PROMPTS: Record<string, string> = "__TAKT_PROMPTS__" as unknown as Record<string, string>
+function renderPrompt(id: string, vars: Record<string, string> = {}): string {
+  const template = PROMPTS[id]
+  if (template === undefined) throw new Error(`missing Takt prompt template: ${id}`)
+  return template.replace(/\{\{([a-z0-9_]+)\}\}/g, (_, key: string) => {
+    if (!(key in vars)) throw new Error(`missing variable ${key} for Takt prompt ${id}`)
+    return vars[key]
+  })
+}
+const toolDesc = (name: string, vars?: Record<string, string>) => renderPrompt(`tool.${name}.description`, vars)
+const paramDesc = (name: string, param: string, vars?: Record<string, string>) => renderPrompt(`tool.${name}.param.${param}`, vars)
 const IPC_VERSION = 5
 // HOST_EVENT_STREAM names the sensor stream whose loss leaves executions unmonitored.
 const HOST_EVENT_STREAM = "host_events"
@@ -231,35 +243,37 @@ function allowsExplicitly(rules: unknown, toolName: string): boolean {
 }
 // invariantsNotice tells a delegated unit which recorded invariants it consumes.
 const invariantsNotice = (unit: string, consumed: number[], undelivered: string[] = []) => (consumed.length > 0
-  ? `Work unit ${unit} consumes these invariants: ${entryRefs(consumed)}. Read each with ${MEMORY_TOOLS.read}; they bind as read-only and prevail over any restatement in the brief.`
-  : `Work unit ${unit} consumes no recorded invariant yet; author it from the brief.`)
-  + (undelivered.length ? ` ${undelivered.join(", ")} had delivered nothing when this unit was declared.` : "")
+  ? renderPrompt("context.invariants_consumed", { unit, entries: entryRefs(consumed), read_tool: MEMORY_TOOLS.read })
+  : renderPrompt("context.invariants_none", { unit }))
+  + (undelivered.length ? renderPrompt("context.invariants_undelivered", { undelivered: undelivered.join(", ") }) : "")
 // declaredInputs reports what a unit will consume, as dispatch_inputs recorded it.
 const fromUnit = (unit?: string) => unit ? ` (from ${unit})` : ""
 const declaredInputs = (unit: string, inputs: { id: number; title: string; unit?: string }[], undelivered: string[]) => {
   const lines = inputs.map(i => `#${i.id} ${i.title}${fromUnit(i.unit)}`)
-  const absent = undelivered.length ? ` ${undelivered.join(", ")} delivered nothing yet.` : ""
-  return lines.length ? `${unit} consumes: ${lines.join("; ")}.${absent}` : `${unit} consumes no recorded invariant yet.${absent}`
+  const absent = undelivered.length ? renderPrompt("directive.declared_inputs_absent", { undelivered: undelivered.join(", ") }) : ""
+  return lines.length
+    ? renderPrompt("directive.declared_inputs_some", { unit, lines: lines.join("; "), absent })
+    : renderPrompt("directive.declared_inputs_none", { unit, absent })
 }
 // gateLine reports one adopted gate of a verifier's assignment.
 const gateLine = (gate: AdoptedGate) => {
-  const refusal = gate.error ? ` (gate not adopted: ${gate.error}; report it as unverified)` : ""
-  return `author_key ${gate.author_key}: ${gate.scope.join(", ")}${refusal}`
+  const refusal = gate.error ? renderPrompt("context.gate_refusal_suffix", { error: gate.error }) : ""
+  return renderPrompt("context.gate_line", { author_key: gate.author_key, scope: gate.scope.join(", "), refusal })
 }
 // gateNotice is the assignment of a verifier whose gates already arrived bound.
 const gateNotice = (unit: string, allowed: string[], gates: AdoptedGate[]) => {
-  const reading = allowed.includes("vfs_read") ? "Read staged files with vfs_read naming their author_key;" : ""
-  const verdict = allowed.includes("vfs_verify") ? " Attach a pass or fail verdict per author_key with vfs_verify, naming the finding it rests on." : ""
-  return `You judge the staged work of these authors for work unit ${unit}; every gate is already bound. ${reading} read project context with native read tools. This staged assignment inspects the delta and issues its verdict; acceptance checks run later on the materialized workspace.${verdict}\n${gates.map(gateLine).join("\n")}`
+  const reading = allowed.includes("vfs_read") ? renderPrompt("context.gate_read_clause") : ""
+  const verdict = allowed.includes("vfs_verify") ? renderPrompt("context.gate_verify_clause") : ""
+  return renderPrompt("context.gate_notice", { unit, reading, verdict, gates: gates.map(gateLine).join("\n") })
 }
 // authorNotice is the assignment of an author: the paths it owns and the VFS conduct it may use.
 const authorNotice = (unit: string, scope: string[], allowed: string[], unbound: string) => {
   const conduct = [
-    allowed.includes("vfs_write") ? "Stage changes with vfs_write." : "",
-    allowed.includes("vfs_delete") ? "Stage deletions with vfs_delete." : "",
-    allowed.includes("vfs_read") ? "Read your staged view with vfs_read." : "",
+    allowed.includes("vfs_write") ? renderPrompt("context.author_conduct_write") : "",
+    allowed.includes("vfs_delete") ? renderPrompt("context.author_conduct_delete") : "",
+    allowed.includes("vfs_read") ? renderPrompt("context.author_conduct_read") : "",
   ].filter(Boolean).join(" ")
-  return `Work unit ${unit} owns exactly these workspace-relative paths: ${scope.join(", ")}.${unbound} ${conduct}`
+  return renderPrompt("context.author_notice", { unit, scope: scope.join(", "), unbound, conduct })
 }
 
 // orchestratorOnly refuses a claim operation from any agent but the orchestrator.
@@ -271,8 +285,8 @@ export const orchestratorOnly = (c: { agent?: string }, operation: string) => {
 // delegation takes none, and a returned session continues only after it
 // delivered a blocker (PR-ORQ-39, PR-HAR-38).
 const NATIVE_SUBAGENT_FOLLOW_UP = "To send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
-const SUBAGENT_FOLLOW_UP = "It takes no follow-up while it runs: wait for its return. A retry is a new delegation without sessionID; continue this session only after it delivers a blocker, to give it the datum that unblocks it."
-const SUBAGENT_SESSION_DESCRIPTION = "Omit it: every delegation, a retry included, starts a new session. Set it only to continue a returned delegation that delivered a blocker, with the datum that unblocks it."
+const SUBAGENT_FOLLOW_UP = renderPrompt("directive.subagent_follow_up")
+const SUBAGENT_SESSION_DESCRIPTION = paramDesc("subagent", "sessionID")
 type ToolContent = string | ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string }> | undefined
 const truthfulSubagentContent = (content: ToolContent): ToolContent =>
   typeof content === "string"
@@ -555,7 +569,7 @@ export default Plugin.define({
 
     async function delegatedUnit(sessionID: string): Promise<string> {
       const d = await executionFor(sessionID)
-      if (!d) throw new Error(`session ${sessionID} has no running delegation; report your result in your reply`)
+      if (!d) throw new Error(renderPrompt("refusal.vfs.no_running_delegation", { session_id: sessionID }))
       return d.unit
     }
 
@@ -607,9 +621,9 @@ export default Plugin.define({
         const diagnostic = `${repair.reason}; ${repair.kind} ${repair.id}, author ${repair.author}, files ${repair.paths.join(", ")}, state ${repair.state}`
         // The user approves a repair; whoever speaks with the user asks.
         const interlocutor = c.agent === ORCHESTRATOR_ID || await holdsInterface(c.sessionID)
-        if (!interlocutor) throw new VFSRefusal(`${diagnostic}; return this diagnostic to the orchestrator and invoke the original normal operation there`, (error as VFSRefusal).response)
+        if (!interlocutor) throw new VFSRefusal(renderPrompt("refusal.vfs.repair_non_interlocutor", { diagnostic }), (error as VFSRefusal).response)
         if (!c.agent || !c.id || !c.messageID) {
-          throw new VFSRefusal(`${diagnostic}; ${c.agent === ORCHESTRATOR_ID ? "call claim_list" : "make your next Takt tool call"} to ask the user for this repair, then retry`, (error as VFSRefusal).response)
+          throw new VFSRefusal(renderPrompt(c.agent === ORCHESTRATOR_ID ? "refusal.vfs.repair_retry_orchestrator" : "refusal.vfs.repair_retry_interlocutor", { diagnostic }), (error as VFSRefusal).response)
         }
         const approval = { kind: repair.kind, id: repair.id, state: repair.state, preserve: repair.preserve }
         await confirmWithUser(`vfs_repair_${repair.kind}`, repair.id, { reason: repair.reason, author: repair.author, files: repair.paths.join(", "), state: repair.state, preserve_current_files: String(repair.preserve) }, { sessionID:c.sessionID, agent:c.agent, id:c.id, messageID:c.messageID })
@@ -743,7 +757,7 @@ export default Plugin.define({
           await takt("shell-guard", { sessionID, agent }, { command })
         } catch (e) {
           directShell.delete(token)
-          throw refused("git_mutation_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${e instanceof Error ? e.message : e}`))
+          throw refused("git_mutation_denied", agent ?? "", sessionID, new Error(renderPrompt("refusal.vfs.shell_refused", { reason: e instanceof Error ? e.message : String(e) })))
         }
         entry.ready = true
       }
@@ -752,7 +766,7 @@ export default Plugin.define({
     // a plan missing a field.
     const shellPlanOf = (shell: VFSShellResponse | undefined, agent: string | undefined, sessionID: string): ShellPlan => {
       if (!shell) throw new Error("takt-ai vfs shell-prepare response omitted shell plan")
-      if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(`Takt refused this shell command: ${shell.reason}`))
+      if (shell.decision === "deny") throw refused("shell_denied", agent ?? "", sessionID, new Error(renderPrompt("refusal.vfs.shell_refused", { reason: shell.reason })))
       if (typeof shell.cwd !== "string" || typeof shell.scratch !== "string" || typeof shell.confirm !== "string" || typeof shell.capture !== "boolean" || !shell.writable || !shell.protected || !shell.private || !shell.unreadable) throw new Error("takt-ai vfs shell-prepare response omitted an allowed shell plan field")
       // readable is empty when nothing inside a denied path needs re-allowing.
       return { decision: shell.decision, reason: shell.reason, cwd: shell.cwd, scratch: shell.scratch, confirm: shell.confirm, capture: shell.capture, writable: shell.writable, protected: shell.protected, private: shell.private, unreadable: shell.unreadable, readable: shell.readable ?? [], ...(shell.allowedDomains ? { allowedDomains: shell.allowedDomains } : {}) }
@@ -814,7 +828,7 @@ export default Plugin.define({
         // own refusal. A shell without an admitted token, such as one the user
         // opens outside a dispatch, is refused too.
         const admitted = token ? admittedShell.get(token) : undefined
-        if (!admitted?.ready || admitted.started) return refuse("this shell command was not admitted; issue it again as a new tool call")
+        if (!admitted?.ready || admitted.started) return refuse(renderPrompt("refusal.vfs.shell_not_admitted_command"))
         // Claim the call before the first await: a second create.before for the
         // same token finds it started.
         admitted.started = true
@@ -867,7 +881,7 @@ export default Plugin.define({
         const mine = key ? [...admittedShell.values()].find((a) => a.wrapped && !a.evaluated && a.toolKey === key && a.ready) : undefined
         if (!mine) {
           event.effect = "deny"
-          event.message = "Takt refused this shell command: it was not admitted; issue it again as a new tool call"
+          event.message = renderPrompt("refusal.vfs.shell_not_admitted_permission")
           return
         }
         mine.evaluated = true
@@ -877,7 +891,7 @@ export default Plugin.define({
           event.message = plan.reason
         } catch (error) {
           event.effect = "deny"
-          event.message = `Takt refused this shell command: ${error instanceof Error ? error.message : error}; issue it again as a new tool call`
+          event.message = renderPrompt("refusal.vfs.shell_eval_error", { reason: error instanceof Error ? error.message : String(error) })
         }
       })
 
@@ -1012,7 +1026,7 @@ export default Plugin.define({
     // unsettledNotice tells a refused admission which delegations still hold their unit.
     const unsettledNotice = (held: Delegation[]) => {
       const named = held.map(d => `dispatch ${d.dispatch} (unit ${d.unit}, session ${d.child ?? d.caller}, attempt ${d.attempt})`).join(", ")
-      return `; unsettled delegations: ${named}. The next admission checks their termination again; one that will never return is ended, with the user's agreement, by dispatch_abandon on its dispatch, and its staged work is kept`
+      return renderPrompt("refusal.vfs.unsettled_delegations", { named })
     }
 
     // effectiveModel is the model a native launch would run before any override,
@@ -1034,8 +1048,8 @@ export default Plugin.define({
       // host call identity tells a transport repetition apart from a retry.
       const unit = asString(input.description, "").trim()
       const specialist = asString(input.agent, "")
-      if (!unit) throw refused("missing_unit", specialist, root, new Error("Name the delegation after the work unit it executes: set its description to the unit identity"))
-      if (!specialist) throw refused("missing_specialist", "", root, new Error("Takt VFS refused launch: the requested specialist identity is missing; set agent to the specialist and call subagent again"), unit)
+      if (!unit) throw refused("missing_unit", specialist, root, new Error(renderPrompt("refusal.vfs.missing_unit")))
+      if (!specialist) throw refused("missing_specialist", "", root, new Error(renderPrompt("refusal.vfs.missing_specialist")), unit)
       const delegation = `${event.sessionID}:${event.id}`
       try {
         const configured = modelName((await ctx.agent.get({ agentID: specialist })).data.model)
@@ -1056,7 +1070,7 @@ export default Plugin.define({
         }
         const prepared = await repairOperation(prepare, approval => dispatchAction({ ...request, repair:approval }), event)
         if (!prepared || !isResponseObject(prepared)) throw new Error(`dispatch ${delegation} preparation returned no disposition; retry the same subagent call`)
-        if (responseObject(prepared,"dispatch prepare").launchable !== true) throw new Error(`dispatch ${delegation} was already prepared; do not repeat its native launch; wait for its session, or retry the unit with a new subagent call after it settles`)
+        if (responseObject(prepared,"dispatch prepare").launchable !== true) throw new Error(renderPrompt("refusal.vfs.already_prepared", { delegation }))
       } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error))
         const held = await unsettledExecutions().catch(() => [])
@@ -1129,7 +1143,7 @@ export default Plugin.define({
       try { await takt("edit-guard",event,{resources:event.resources}) }
       catch (error) {
         event.effect = "deny"
-        event.message = `Takt refused this edit: ${error instanceof Error ? error.message : error}; retry the edit after ownership is released`
+        event.message = renderPrompt("refusal.vfs.edit_claimed_path", { reason: error instanceof Error ? error.message : String(error) })
         refused("claimed_path", event.agent ?? "", event.sessionID,new Error(event.message))
       }
     })
@@ -1142,7 +1156,7 @@ export default Plugin.define({
       const claims = await takt("claims", event).then(r => r.claims ?? [], () => undefined)
       if (claims !== undefined) {
         const prior = claims.filter(claim => claim.root_session_id !== root)
-        if (prior.length) event.system.push({ type: "text", text: `Previous-session VFS claims (keys, files and staged status): ${JSON.stringify(prior)}. Before delegating: claim_assign without author_key refuses any overlap and discards nothing; to continue staged work, pass its author_key with the exact retained scope.` })
+        if (prior.length) event.system.push({ type: "text", text: renderPrompt("context.prior_claims", { claims: JSON.stringify(prior) }) })
       }
     })
 
@@ -1349,12 +1363,11 @@ export default Plugin.define({
           tool.input = { ...schema, properties: {
             ...toolInput(schema.properties),
             ...("sessionID" in toolInput(schema.properties) ? { sessionID: { ...toolInput(toolInput(schema.properties).sessionID), description: SUBAGENT_SESSION_DESCRIPTION } } : {}),
-            model: { ...toolInput(toolInput(schema.properties).model), description:
-              'Set only for a model or variant the user explicitly requests, or to restore an unavailable seat under the restoration conditions in your Takt operations. Otherwise omit it. It must be a chat model; image and decision models cannot run subagents. Use "providerID/modelID" or "providerID/modelID#variant". Do not guess the ID: look it up with the models tool, filtering to your own provider first.' },
+            model: { ...toolInput(toolInput(schema.properties).model), description: paramDesc("subagent", "model") },
             author_keys: { type: "array", items: str(), minItems: 1, uniqueItems: true,
-              description: "Staged author keys to review in this delegation; access is ready automatically, including retries." },
-              seat_reason: str("Only when this delegation restores an unavailable seat with another model or a substitute: the recorded evidence of why its instance cannot run"),
-              seat_substitute: { type: "boolean", description: "Only after a recorded model reassignment of this seat still fails: fill it with a Takt substitute without the specialist's identity" },
+              description: paramDesc("subagent", "author_keys") },
+            seat_reason: str(paramDesc("subagent", "seat_reason")),
+            seat_substitute: { type: "boolean", description: paramDesc("subagent", "seat_substitute") },
           } }
         })
       }
@@ -1375,19 +1388,19 @@ export default Plugin.define({
           },
         })
 
-      dispatch("dispatch_commit", "Commit a plan baseline: every listed unit becomes planned, with its contract and explicit prerequisites. Commit before delegating more work than may run without a plan, or when the active workflow calls for one. To change a standing plan, name its current version as base_version and list only the units the revision adds or replaces; withdrawn units leave the plan, and delegated units stand as committed.",
+      dispatch("dispatch_commit", toolDesc("dispatch_commit"),
         "commit",
         obj({
-          version: str("Identifier of this baseline version"),
-          base_version: str("The standing plan version this declaration revises; omit only for the first commitment"),
+          version: str(paramDesc("dispatch_commit", "version")),
+          base_version: str(paramDesc("dispatch_commit", "base_version")),
           plan: { type: "array", items: obj({
-            unit: str("Work unit name: a short one-line label of the work"), contract: str("Frozen contract this unit is dispatched against"),
-            prerequisites: { type: "array", items: { type: "string" }, description: "Prerequisite work unit identities" },
-          }, ["unit", "contract"]), description: "Every unit this baseline covers, or that a revision adds or replaces" },
-          qa_round: obj({ objective: str("Stable acceptance objective; never rename it to reset strengthening"),
-            units: { type: "array", items: str(), minItems: 1, uniqueItems: true, description: "This round's test-authoring units, declared before admission; gates and mutation are not members" },
+            unit: str(paramDesc("dispatch_commit", "plan_unit")), contract: str(paramDesc("dispatch_commit", "plan_contract")),
+            prerequisites: { type: "array", items: { type: "string" }, description: paramDesc("dispatch_commit", "plan_prerequisites") },
+          }, ["unit", "contract"]), description: paramDesc("dispatch_commit", "plan") },
+          qa_round: obj({ objective: str(paramDesc("dispatch_commit", "qa_round_objective")),
+            units: { type: "array", items: str(), minItems: 1, uniqueItems: true, description: paramDesc("dispatch_commit", "qa_round_units") },
           }, ["objective", "units"]),
-          withdraw: { type: "array", items: { type: "string" }, description: "Still-planned unit identities a revision removes" },
+          withdraw: { type: "array", items: { type: "string" }, description: paramDesc("dispatch_commit", "withdraw") },
         }, ["version", "plan"]),
         (args: { version: string; base_version?: string; withdraw?: string[]; qa_round?: { objective: string; units: string[] }; plan: { unit: string; contract: string; prerequisites?: string[] }[] }) =>
           ({
@@ -1400,11 +1413,11 @@ export default Plugin.define({
 
       editor.add({
         name: "dispatch_inputs",
-        description: "Before delegating a unit, declare the invariants it consumes: the work units of this session whose delivered results it consumes, and any other Takt memory entry by ID; both empty declares that none exists yet. Each is carried to its current version, and the specialist receives them with its delegation; redeclaring replaces the declaration.",
+        description: toolDesc("dispatch_inputs"),
         input: obj({
-          work_unit_id: str("The unit the delegation will be named after"),
-          result_ids: { type: "array", items: { type: "integer" }, description: "Takt memory entry IDs this unit consumes that no unit of this session delivered, such as a document the user supplied; empty when there are none" },
-          units: { type: "array", items: str(), description: "Work units of this session whose delivered results this unit consumes" },
+          work_unit_id: str(paramDesc("dispatch_inputs", "work_unit_id")),
+          result_ids: { type: "array", items: { type: "integer" }, description: paramDesc("dispatch_inputs", "result_ids") },
+          units: { type: "array", items: str(), description: paramDesc("dispatch_inputs", "units") },
         }, ["work_unit_id", "result_ids"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ work_unit_id: string; result_ids?: number[]; units?: string[] }>(value)
@@ -1421,26 +1434,26 @@ export default Plugin.define({
         },
       })
 
-      editor.add({ name: "claim_list", description: "List ownership claims for the current root session.", input: obj({}, []), async execute(value: unknown, c) {
+      editor.add({ name: "claim_list", description: toolDesc("claim_list"), input: obj({}, []), async execute(value: unknown, c) {
         toolInput(value)
         orchestratorOnly(c, "VFS claims")
         return { content: JSON.stringify(await takt("claims", c)) }
       } })
       // The target instance is named once and serves as both the binding agent
       // and the catalog specialist, exactly as the launched subagent binds.
-      editor.add({ name: "claim_assign", description: "Before delegating implementation, reserve the unit's exact file set for the specialist that will stage it. The returned key is that work's author_key. Never infer or expand scope. Without author_key, any overlap with an existing claim is refused and nothing is discarded. To continue, retry, or correct staged work, pass its author_key with the exact retained scope and any added paths: staged work is kept and only added paths are checked; naming only part of the staged paths hands that part to the new unit under the returned author_key, the rest stays. A unit reads only its own scope unless you state `reads`: that lifts the claim of work no one runs any more, and is refused while work it covers is in flight, and the reverse for a claim over what a unit in flight reads.", input: obj({
-        work_unit_id: str("The unit the delegation will be named after"),
-        agent: str("Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"),
-        scope: { type: "array", items: str(), description: "Exact workspace-relative file paths, existing or to be created; no directories or globs" },
-        author_key: str("The author_key of this unit's existing staged work to keep; omit for new work"),
-        reads: { type: "array", items: str(), description: "What the unit may read beyond its scope: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit for its scope only" },
+      editor.add({ name: "claim_assign", description: toolDesc("claim_assign"), input: obj({
+        work_unit_id: str(paramDesc("claim_assign", "work_unit_id")),
+        agent: str(paramDesc("claim_assign", "agent")),
+        scope: { type: "array", items: str(), description: paramDesc("claim_assign", "scope") },
+        author_key: str(paramDesc("claim_assign", "author_key")),
+        reads: { type: "array", items: str(), description: paramDesc("claim_assign", "reads") },
       }, ["work_unit_id", "agent", "scope"]), async execute(input: unknown, c) {
         const args = toolInput(input)
         orchestratorOnly(c, "VFS claim assignment")
         const unit = asString(args.work_unit_id, "").trim()
         return { content: JSON.stringify(await takt("assign", c, { work_unit_id: unit, agent_id: args.agent, specialist: args.agent, scope: args.scope, reads: args.reads, author_key: args.author_key })) }
       } })
-      editor.add({ name: "claim_release", description: "A claim that holds staged work is not released: consolidate it, reassign it with claim_assign and its author_key, or discard it. A claim with no staged work is released once its unit has ended.", input: obj({ claim_key: str("Exact key returned by claim_list; never infer this key") }, ["claim_key"]), async execute(value: unknown, c) {
+      editor.add({ name: "claim_release", description: toolDesc("claim_release"), input: obj({ claim_key: str(paramDesc("claim_release", "claim_key")) }, ["claim_key"]), async execute(value: unknown, c) {
         const args = toolInput<{ claim_key: string }>(value)
         orchestratorOnly(c, "VFS claim release")
         // The core decides under its lock: staged work and a claim whose unit
@@ -1449,35 +1462,35 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", "Record direct orchestrator work activity (not a delegated unit).", "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
-      dispatch("dispatch_activity_finish", "Finish direct orchestrator work activity with its outcome.", "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
+      dispatch("dispatch_activity_start", toolDesc("dispatch_activity_start"), "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
+      dispatch("dispatch_activity_finish", toolDesc("dispatch_activity_finish"), "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
-      dispatch("dispatch_declare_recovery", "Declare bounded autonomous recovery of an objective before uncertain work begins. The scope cannot overlap a recovery that is still open or abandoned and not restored.",
+      dispatch("dispatch_declare_recovery", toolDesc("dispatch_declare_recovery"),
         "recovery",
         obj({
-          objective: str("Identity of the objective being recovered"),
-          result: str("The binary expected result that would demonstrate recovery"),
-          scope: { type: "array", items: { type: "string" }, description: "Work unit identities this recovery's scope covers" },
-          actions: { type: "number", description: "Action budget: the governed calls, reads included, that the scope's units may make" },
-          attempts: { type: "number", description: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one" },
+          objective: str(paramDesc("dispatch_declare_recovery", "objective")),
+          result: str(paramDesc("dispatch_declare_recovery", "result")),
+          scope: { type: "array", items: { type: "string" }, description: paramDesc("dispatch_declare_recovery", "scope") },
+          actions: { type: "number", description: paramDesc("dispatch_declare_recovery", "actions") },
+          attempts: { type: "number", description: paramDesc("dispatch_declare_recovery", "attempts") },
         }, ["objective", "result", "scope", "actions", "attempts"]),
         /** Copies the recovery declaration, using its objective as the history event's work unit. */
         (args: { objective: string; result: string; scope: string[]; actions: number; attempts: number }) => ({ ...args, event: args.objective }))
 
-      dispatch("dispatch_close_recovery", "Close an open declared recovery once its attempts have returned: demonstrated true with its evidence closes it completed; demonstrated false once its attempt budget is spent abandons the scope. A scope whose action budget ran out is already abandoned: continue it with dispatch_exception or drop it with dispatch_restore.",
+      dispatch("dispatch_close_recovery", toolDesc("dispatch_close_recovery"),
         "recovered",
         obj({
-          objective: str("Identity of the recovered objective"),
-          evidence: str("Evidence supporting the claimed result"),
-          demonstrated: { type: "boolean", description: "Whether the declared result was actually demonstrated" },
+          objective: str(paramDesc("dispatch_close_recovery", "objective")),
+          evidence: str(paramDesc("dispatch_close_recovery", "evidence")),
+          demonstrated: { type: "boolean", description: paramDesc("dispatch_close_recovery", "demonstrated") },
         }, ["objective", "evidence", "demonstrated"]),
         /** Maps the recovery result to history fields, using the objective as the work unit and demonstrated as pass. */
         (args: { objective: string; evidence: string; demonstrated: boolean }) => ({ event: args.objective, objective: args.objective, evidence: args.evidence, pass: args.demonstrated }))
 
-      dispatch("dispatch_restore", "Drop an abandoned recovery scope: reverts all the staged work of its units, after which a new recovery can be declared. It waits until the scope's delegations have returned; call it again then.",
+      dispatch("dispatch_restore", toolDesc("dispatch_restore"),
         "restore",
         obj({
-          objective: str("Identity of the abandoned recovery's objective"),
+          objective: str(paramDesc("dispatch_restore", "objective")),
         }, ["objective"]),
         (args: { objective: string }) => ({ objective: args.objective }))
 
@@ -1485,13 +1498,13 @@ export default Plugin.define({
       // records it only on their agreement (PR-HAR-22).
       editor.add({
         name: "dispatch_exception",
-        description: "Propose raising one bound by a finite allowance, with the evidence for it; it is recorded only once the user accepts the confirmation this raises. Granting attempts or actions of an abandoned recovery reopens it with its staged work intact.",
+        description: toolDesc("dispatch_exception"),
         input: obj({
-          event: str("Optional label for the record"),
-          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: "The bound being raised; ceiling/concurrent-specialists counts concurrent delegations, budget/unplanned-units counts units delegated without a committed plan" },
-          objective: str("Stable objective the exception applies to; required for recovery and QA-strengthening bounds"),
-          allowance: { type: "number", description: "Finite additional allowance in that bound's own unit" },
-          evidence: str("Why the bound should be raised, shown to the user"),
+          event: str(paramDesc("dispatch_exception", "event")),
+          bound: { type: "string", enum: EXCEPTION_BOUNDS, description: paramDesc("dispatch_exception", "bound") },
+          objective: str(paramDesc("dispatch_exception", "objective")),
+          allowance: { type: "number", description: paramDesc("dispatch_exception", "allowance") },
+          evidence: str(paramDesc("dispatch_exception", "evidence")),
         }, ["bound", "allowance", "evidence"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ event?: string; bound: string; objective?: string; allowance: number; evidence: string }>(value)
@@ -1503,24 +1516,24 @@ export default Plugin.define({
         },
       })
 
-      dispatch("dispatch_contest", "Contest the recorded terminal failure of a unit attempt, one that ended without a result: it records the contest and spends one of the contests. Judging the contested work is a Verify delegation of yours.",
+      dispatch("dispatch_contest", toolDesc("dispatch_contest"),
         "contest",
         obj({
-          event: str("The work unit whose recorded terminal failure is contested"),
-          attempt: str("The attempt identity the failure belongs to; defaults to the unit's current attempt"),
+          event: str(paramDesc("dispatch_contest", "event")),
+          attempt: str(paramDesc("dispatch_contest", "attempt")),
         }, ["event"]),
         (args: { event: string; attempt?: string }) => ({ event: args.event, attempt: args.attempt ?? "" }))
 
       editor.add({
         name: "dispatch_abandon",
-        description: "End a delegation that will never return, because its session is gone or will not end: its unit can be delegated again and its slot is freed, and its staged work is kept. The user is asked to agree first.",
-        input: obj({ dispatch: str("Dispatch identity of the delegation, as reported") }, ["dispatch"]),
+        description: toolDesc("dispatch_abandon"),
+        input: obj({ dispatch: str(paramDesc("dispatch_abandon", "dispatch")) }, ["dispatch"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ dispatch: string }>(value)
           orchestratorOnly(c, "dispatch_abandon")
           if (c.sessionID !== await rootSession(c.sessionID)) throw new Error("dispatch_abandon belongs to the root orchestrator")
           const d = await execution(asString(args.dispatch, ""))
-          if (!d) throw new Error(`dispatch ${args.dispatch} names no ordinary delegation; use a dispatch exactly as a refusal reported it`)
+          if (!d) throw new Error(renderPrompt("refusal.vfs.dispatch_abandon_unknown", { dispatch: args.dispatch }))
           if (d.settled) return { content: `Dispatch ${d.dispatch} already returned` }
           const request = { action: "abandon", session: d.root, dispatch: d.dispatch, event: d.unit }
           await confirmWithUser("dispatch_abandon", d.dispatch, { unit: d.unit, agent: d.agent, root: d.root, session: d.child ?? d.caller }, c)
@@ -1545,12 +1558,12 @@ export default Plugin.define({
       // the tools, so no tool grant in the agent's rules answers them.
       editor.add({
         name: "dispatch_switch",
-        description: "Lend the interlocutor role to a direct-interlocutor specialist until it hands it back or the user aborts. The user is asked to accept the target specialist and objective before the switch takes effect; on a refusal, reevaluate with the user.",
+        description: toolDesc("dispatch_switch"),
         input: obj({
-          target_agent: str("Catalog id of the specialist to switch the interlocutor role to"),
-          objective: str("Objective for the incoming interlocutor's session"),
-          requirements: { type: "array", items: { type: "integer" }, description: "Current Takt memory entry IDs of the knowledge the incoming interlocutor needs: finalized documents and settled decisions; an empty list states that nothing useful exists" },
-          client: str("What is known of the user for the incoming interlocutor; state as unknown what is not"),
+          target_agent: str(paramDesc("dispatch_switch", "target_agent")),
+          objective: str(paramDesc("dispatch_switch", "objective")),
+          requirements: { type: "array", items: { type: "integer" }, description: paramDesc("dispatch_switch", "requirements") },
+          client: str(paramDesc("dispatch_switch", "client")),
         }, ["target_agent", "objective", "requirements", "client"]),
         async execute(value: unknown, c) {
           const args = toolInput<{ target_agent: string; objective: string; requirements: number[]; client: string }>(value)
@@ -1559,13 +1572,10 @@ export default Plugin.define({
           // A switch that would be refused is returned to the agent before the user is asked.
           await dispatchAction({ action: "validate_switch", session, agent: args.target_agent, requirements: args.requirements })
           await confirmWithUser("interlocutor_switch", args.target_agent, { target_agent: args.target_agent, objective: args.objective, requirements: entryRefs(args.requirements), client: args.client }, c)
-          const requirements = args.requirements.length ? `Takt memory entries ${entryRefs(args.requirements)}; read each with ${MEMORY_TOOLS.read}` : "none exist"
-          const text = [
-            "You are taking over as the active interlocutor for this workspace.",
-            `Objective: ${args.objective}`,
-            `Requirements: ${requirements}`,
-            `Client: ${args.client}`,
-          ].filter(Boolean).join("\n")
+          const requirements = args.requirements.length
+            ? renderPrompt("interlocutor.switch_requirements_some", { entries: entryRefs(args.requirements), read_tool: MEMORY_TOOLS.read })
+            : renderPrompt("interlocutor.switch_requirements_none")
+          const text = renderPrompt("interlocutor.switch_opening", { objective: args.objective, requirements, client: args.client })
           const child = await createChildSession({
             title: `Takt switch: ${args.target_agent}`,
             agent: args.target_agent,
@@ -1594,12 +1604,12 @@ export default Plugin.define({
       })
       editor.add({
         name: "dispatch_handoff",
-        description: "Hand the interlocutor role back to the base after a switch; only the temporary holder a switch created may call this. The user is asked to accept what is handed back (result, additional context, extra artifacts) before the handoff takes effect.",
+        description: toolDesc("dispatch_handoff"),
         input: obj({
-          result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: "Outcome of this temporary interlocutor's turn" },
-          additional_context: str("Context to carry back to the base"),
-          extra_artifacts: { type: "array", items: { type: "string" }, description: "Optional references to extra evidence: `#<id>` of a Takt memory entry you recorded, or a filesystem copy the user ordered; none gates the handoff" },
-          result_ids: { type: "array", items: { type: "integer" }, description: "One current Takt memory entry ID per delivered result; required for Standard handoff" },
+          result: { type: "string", enum: ["Standard", "EarlyHandoff", "TechFault", "Outraged"], description: paramDesc("dispatch_handoff", "result") },
+          additional_context: str(paramDesc("dispatch_handoff", "additional_context")),
+          extra_artifacts: { type: "array", items: { type: "string" }, description: paramDesc("dispatch_handoff", "extra_artifacts") },
+          result_ids: { type: "array", items: { type: "integer" }, description: paramDesc("dispatch_handoff", "result_ids") },
         }, ["result", "additional_context", "extra_artifacts", "result_ids"]),
         // Not built on dispatch(): the caller here is the temporary holder,
         // never the root, so dispatch()'s root-only guard does not apply.
@@ -1628,13 +1638,13 @@ export default Plugin.define({
       // without the workspace lock; neither holds file content.
       editor.add({
         name: "vfs_inspect",
-        description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned.",
+        description: toolDesc("vfs_inspect"),
         input: obj({
-          source: { type: "string", enum: ["journal", "history"], description: "Which record to read" },
-          session: str("Only entries of this session"),
-          unit: str("Only entries of this work unit"),
-          after: { type: "integer", minimum: -1, description: "Return entries after this seq; -1 starts from the first" },
-          limit: { type: "integer", minimum: 1, maximum: INSPECT_PAGE_LIMIT, description: `Page size, at most ${INSPECT_PAGE_LIMIT}` },
+          source: { type: "string", enum: ["journal", "history"], description: paramDesc("vfs_inspect", "source") },
+          session: str(paramDesc("vfs_inspect", "session")),
+          unit: str(paramDesc("vfs_inspect", "unit")),
+          after: { type: "integer", minimum: -1, description: paramDesc("vfs_inspect", "after") },
+          limit: { type: "integer", minimum: 1, maximum: INSPECT_PAGE_LIMIT, description: paramDesc("vfs_inspect", "limit", { max_limit: String(INSPECT_PAGE_LIMIT) }) },
         }, ["source"]),
         async execute(input: unknown) {
           const args = toolInput<{ source: "journal" | "history"; session?: string; unit?: string; after?: number; limit?: number }>(input)
@@ -1655,13 +1665,13 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_bind",
-        description: "Bind to the assignment named in your context, only when your context asks you to.",
+        description: toolDesc("vfs_bind"),
         input: obj({
-          scope: { type: "array", items: { type: "string" }, description: "The exact paths your assignment names" },
+          scope: { type: "array", items: { type: "string" }, description: paramDesc("vfs_bind", "scope") },
         }, ["scope"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ scope: string[] }>(input)
-          if (isResponseObject(input) && input.author_key !== undefined) throw new Error("vfs_bind only binds implementation scope; verifier access is automatic")
+          if (isResponseObject(input) && input.author_key !== undefined) throw new Error(renderPrompt("refusal.vfs.vfs_bind_verifier"))
           const who = { ...await callerBlock(c), work_unit_id: await delegatedUnit(c.sessionID) }
           const consumed = (await executionFor(c.sessionID, c.agent))?.inputs ?? []
           const res = await taktUnlocked("bind", { ...who, scope: args.scope })
@@ -1673,11 +1683,11 @@ export default Plugin.define({
       const authorKey = (value: unknown) => typeof value === "string" ? { author_key: value } : {}
       editor.add({
         name: "vfs_write",
-        description: "Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated. Content is UTF-8 text. Write a binary file (image, archive, font) with a shell command to its scope path instead, e.g. `cp \"$TMPDIR/x.png\" assets/x.png` or `rsvg-convert in.svg -o assets/x.png`; its bytes are staged unchanged.",
+        description: toolDesc("vfs_write"),
         input: obj({
           path: str(),
-          content: str("UTF-8 text; binary content is not representable here"),
-          author_key: str("Assigned binding key; defaults to your own latest binding"),
+          content: str(paramDesc("vfs_write", "content")),
+          author_key: str(paramDesc("vfs_write", "author_key")),
         }, ["path", "content"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; content: string; author_key?: string }>(input)
@@ -1687,8 +1697,8 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_read",
-        description: "Read a file of your assignment as staged: your own staged view, or the staged work you judge.",
-        input: obj({ path: str("Workspace-relative path within your assignment"), author_key: str("Verifier only, optional: the author_key of the staged work whose files you read; omitted, the path's owner is used") }, ["path"]),
+        description: toolDesc("vfs_read"),
+        input: obj({ path: str(paramDesc("vfs_read", "path")), author_key: str(paramDesc("vfs_read", "author_key")) }, ["path"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; author_key?: string }>(input)
           const res = await takt("op", c, { call_id: randomUUID(), action: "read", path: args.path, ...authorKey(args.author_key) })
@@ -1696,7 +1706,7 @@ export default Plugin.define({
           // earlier state may be outdated, so the read that moved it names them.
           const outdated = res.outdated_paths ?? []
           const note = outdated.length > 0
-            ? `The author's staged work changed after you read: ${outdated.join(", ")}. What you read there may be outdated; read those files again before attaching the verdict.\n\n`
+            ? renderPrompt("directive.vfs_read_outdated", { paths: outdated.join(", ") })
             : ""
           // A staged file exists nowhere else for the reader to open, so the host
           // must hand it over whole instead of cutting it at its tool-output cap.
@@ -1705,10 +1715,10 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_delete",
-        description: "Stage the deletion of a file inside your declared scope. Staged virtually; the workspace copy is untouched until verified and consolidated.",
+        description: toolDesc("vfs_delete"),
         input: obj({
           path: str(),
-          author_key: str("Assigned binding key; defaults to your own latest binding"),
+          author_key: str(paramDesc("vfs_delete", "author_key")),
         }, ["path"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ path: string; author_key?: string }>(input)
@@ -1718,9 +1728,9 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_discard",
-        description: "Discard an author's entire staged work without touching the workspace, releasing the paths it owns. Name the author by its author_key.",
+        description: toolDesc("vfs_discard"),
         input: obj({
-          author_key: str("The author_key of the staged work to discard"),
+          author_key: str(paramDesc("vfs_discard", "author_key")),
         }, ["author_key"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ author_key: string }>(input)
@@ -1733,11 +1743,11 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_verify",
-        description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, assigned by your delegation to that author_key. The verdict covers exactly the revision staged when you judged it.",
+        description: toolDesc("vfs_verify"),
         input: obj({
-          author_key: str("The author_key your assignment names"),
+          author_key: str(paramDesc("vfs_verify", "author_key")),
           pass: { type: "boolean" },
-          finding: str("What the verdict rests on; required when pass is false"),
+          finding: str(paramDesc("vfs_verify", "finding")),
         }, ["author_key", "pass"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ author_key: string; pass: boolean; finding?: string }>(input)
@@ -1750,10 +1760,10 @@ export default Plugin.define({
       })
       editor.add({
         name: "vfs_consolidate",
-        description: "Move authorized staged work into the workspace by author_key. Verdicts inform your decision; if a current one failed, the user is asked to accept consolidating anyway and a refusal keeps the work staged. Ownership and physical-base checks always apply.",
+        description: toolDesc("vfs_consolidate"),
         input: obj({
-          author_key: str("The author_key of the staged work to consolidate"),
-          checkpoint: str("Optional short label hashed into the journal; defaults to the author key and revision"),
+          author_key: str(paramDesc("vfs_consolidate", "author_key")),
+          checkpoint: str(paramDesc("vfs_consolidate", "checkpoint")),
         }, ["author_key"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ author_key: string; checkpoint?: string }>(input)
@@ -1774,13 +1784,13 @@ export default Plugin.define({
               if (typeof revision !== "number" || typeof hash !== "string") throw new Error(`${error.message}; the refusal omitted the staged state it refused`, { cause: error })
               // The core's refusal lists every failing finding; the user sees them.
               await confirmWithUser("vfs_consolidate_failing", args.author_key, { author_key: args.author_key, findings: error.message }, c,
-                `correct the work instead: claim_assign with author_key ${args.author_key}, delegate the correction of each finding, then delegate Verify again`)
+                renderPrompt("refusal.vfs.consolidate_failing_fallback", { author_key: args.author_key }))
               // The acceptance covers exactly the staged state the refusal named.
               await consolidate({ accept_failing: true, accepted_revision: revision, accepted_hash: hash })
             }
           } catch (error) {
             if (error instanceof Error && /physical base changed|recovery required/.test(error.message))
-              error.message += "; inspect the named author and files; use claim_assign with author_key to continue staged work from the current physical base, or vfs_discard to explicitly abandon that staged work"
+              error.message += renderPrompt("refusal.vfs.consolidate_base_changed")
             throw error
           }
           return { content: "Consolidated to workspace" }
@@ -1788,10 +1798,10 @@ export default Plugin.define({
       })
       editor.add({
         name: "deliver_result",
-        description: "Deliver this delegation's result: the Takt memory entry IDs you recorded for it with " + MEMORY_TOOLS.record + ", either the completed artifact or the blocker that ends the unit.",
+        description: toolDesc("deliver_result", { record_tool: MEMORY_TOOLS.record }),
         input: obj({
-          result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: "Current Takt memory entry IDs this delegation delivers" },
-          blocker: { type: "boolean", description: "true when these entries record a blocker instead of the assigned deliverable" },
+          result_ids: { type: "array", items: { type: "integer" }, minItems: 1, description: paramDesc("deliver_result", "result_ids") },
+          blocker: { type: "boolean", description: paramDesc("deliver_result", "blocker") },
         }, ["result_ids"]),
         async execute(input: unknown, c) {
           const args = toolInput<{ result_ids: number[]; blocker?: boolean }>(input)
@@ -1805,9 +1815,9 @@ export default Plugin.define({
             // A delegated session that runs no delegation has nobody to deliver
             // to; a top-level session (an interlocutor) hands off its results itself.
             if ((await ctx.session.get({ sessionID: c.sessionID })).parentID) {
-              throw new Error("deliver_result belongs to a running delegation, and this session runs none: nothing was credited; only a result producer's delegation delivers, so report the Takt memory entry IDs you recorded in your reply to the caller")
+              throw new Error(renderPrompt("refusal.vfs.deliver_result_no_delegation"))
             }
-            return { content: `Validated ${count} result id(s); no delegation to credit them to; holding a lent interface, return them with dispatch_handoff` }
+            return { content: renderPrompt("directive.deliver_result_lent_interface", { count: String(count) }) }
           }
           await governed(c, { action: "deliver", child: c.sessionID, agent: c.agent, dispatch:call?.dispatch ?? running.dispatch,attempt:call?.attempt ?? running.attempt,result_ids: args.result_ids, blocker: args.blocker === true })
           return { content: `Delivered ${count} result id(s)` }
@@ -1850,7 +1860,7 @@ export default Plugin.define({
     // needs to bind itself when adoption was refused, and nothing when it succeeded.
     async function bindAuthor(event: Caller, scope: string[]): Promise<string> {
       try { await takt("bind", event, { scope }) }
-      catch (error) { return ` The harness could not bind you (${error instanceof Error ? error.message : error}); bind with vfs_bind using exactly this scope.` }
+      catch (error) { return renderPrompt("context.author_bind_failed", { error: error instanceof Error ? error.message : String(error) }) }
       return ""
     }
     // Delegated VFS context is granted per exact agent instance and only while
@@ -1872,7 +1882,7 @@ export default Plugin.define({
         const unit = await delegatedUnit(event.sessionID)
         const consumed = delegation?.inputs
         if (consumed) event.system.push({ type: "text", text: invariantsNotice(unit, consumed, delegation?.undelivered) })
-        if (delegation && deliversArtifact(event.agent)) event.system.push({ type: "text", text: `Before your turn ends, call deliver_result with the IDs of the Takt memory entries you record for work unit ${unit} (takt-result-handoff).` })
+        if (delegation && deliversArtifact(event.agent)) event.system.push({ type: "text", text: renderPrompt("context.deliver_result_reminder", { unit }) })
         const claim = (await findClaims(event, root, unit, event.agent, ["pending", "active"]))[0]
         if (!claim || allowed.length === 0) { removeVFS(); return }
         for (const name of VFS_TOOL_NAMES) if (!allowed.includes(name)) delete event.tools?.[name]

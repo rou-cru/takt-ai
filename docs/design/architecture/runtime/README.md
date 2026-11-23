@@ -38,7 +38,7 @@ Ordinary shell network is scoped by `TAKT_SANDBOX_ALLOWED_DOMAINS`: comma-separa
 
 ## Dispatched work unit
 
-Unit state is a fold over the append-only execution history: planned, in flight, settled or withdrawn. In flight is pending launch, observed running, suspended, cancellation pending, launch uncertain or unmonitored; `launched` is the event that moves pending launch to running. Capture-unmonitored retains in-flight capacity. A result applies only to its own attempt and never changes lifecycle. Assurance is carried separately from outcome: verified, failed, blocked, impossible or unverified; a completed finish with no evaluated result appends unverified. Only stream loss marks watched executions and open activities unmonitored; inactivity or EOF alone proves neither failure nor closure. Admission denials are recorded and change no state. Contest, recovery, restoration and stop events change session accounting, not unit state. Budgets come from `takt/dispatch/admission_policy.yaml` (specialists 4, unplanned units 4, contests 3, recovery failures 2; each declared recovery at most 200 actions and 3 attempts). A lent interface is switched, handed off or aborted, one holder at a time. Resume is conduct described in the prompt; the code has no resume verb. `takt-ai dag status` projects the history into a snapshot whose capture is current, empty, uncertain or unavailable.
+Unit state is a fold over the append-only execution history: planned, in flight, settled or withdrawn. A settled unit carries the outcome completed, failed, unverified, backtracked or interrupted; whether a line is pursued is a separate live or superseded axis. In flight is pending launch, observed running, suspended, cancellation pending, launch uncertain or unmonitored; `launched` is the event that moves pending launch to running. Capture-unmonitored retains in-flight capacity. A result applies only to its own attempt and never changes lifecycle. Assurance is carried separately from outcome: verified, failed, blocked, impossible or unverified; a completed finish with no evaluated result appends unverified. Only stream loss marks watched executions and open activities unmonitored; inactivity or EOF alone proves neither failure nor closure. Admission denials are recorded and change no state. Contest, recovery, restoration and stop events change session accounting, not unit state. Budgets come from `takt/dispatch/admission_policy.yaml` (specialists 4, unplanned units 4, contests 3, recovery failures 2; each declared recovery at most 200 actions and 3 attempts). A lent interface is switched, handed off or aborted, one holder at a time. Resume is conduct described in the prompt; the code has no resume verb. `takt-ai dag status` projects the history into a snapshot whose capture is current, empty, uncertain or unavailable; the DAG view marks its own failed query stale.
 
 ## GC cycle
 
@@ -54,7 +54,7 @@ The first committed entry establishes the session. Continuity with a closed sess
 
 Startup is explicit and idempotent (`memory start`; installation initializes an absent store). Missing, corrupt or newer stores are reported rather than silently replaced. The semantic worker backfills derived vectors; entries remain searchable by terms when the model is unavailable, and diagnostics expose semantic coverage. Uninstall retention obtains a consistent backup through the service before stopping the owner and retiring its store.
 
-**Dreaming is planned, not implemented.** No dream cycles, diary or scheduler exist in code; `PRD_DREAMING.md` reports no complete requirements.
+**Dreaming is planned, not implemented.** No dream cycles, diary or scheduler exist in code.
 
 ## Observability
 
@@ -63,7 +63,7 @@ Plugins send events to `takt-ai obs ingest`, which validates the envelope (versi
 | Item | State |
 | :--- | :--- |
 | Event store (events, control actions) | Implemented. |
-| Event classes written | Dispatch, unit lifecycle, tool activity, model usage, VFS delta, collision, cycle re-edit, problem rate with count and denominator, control contain (GC mandate reversion rate). |
+| Event classes written | Dispatch, unit lifecycle, tool activity, model usage, stream liveness, VFS delta, collision, cycle re-edit, problem rate with count and denominator, control contain (GC mandate reversion rate). |
 | Event classes defined, never emitted | Unapplied GC finding, throttle, rollback, gate. |
 | Escalate | Written by GC as a control record, not as a `control_escalate` event. |
 | Reader of events | No generic event-control consumer exists. The GC mandate reversion rate is derived from the VFS journal at cycle close, not from the event store. |
@@ -71,7 +71,7 @@ Plugins send events to `takt-ai obs ingest`, which validates the envelope (versi
 
 ## TUI state machines
 
-The top level is a screen stack: the menu opens a route, and closing a screen returns to the one below it, the menu at depth one.
+The top level is a screen stack: the menu opens a route, and closing a screen returns to the one below it, the menu at depth one; a jump between flows replaces the stack, so closing the destination returns to the menu.
 
 | Route | Opens |
 | :--- | :--- |

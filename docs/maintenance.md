@@ -13,14 +13,14 @@ Checking health, updating, uninstalling and recovering files. Commands and flags
 | Deployment | The files Takt manages are present. |
 | Memory | The Takt memory service answers, its store is ready and not newer than this build, and every entry has a semantic vector. |
 | CodeGraph | A compatible binary. |
-| OpenCode | Version 2 or newer with a working API, and the VFS plugin, memory plugin and sandbox adapter deployed. |
+| OpenCode | Version 2 or newer with a working API, and the VFS plugin, memory plugin, DAG plugin and sandbox adapter deployed. |
 | Disk | Free space where `~/.takt-ai` lives: a warning under 100 MB, a failure under 10 MB. |
 
 Each check ends as pass, warn or fail. The summary is healthy, degraded (warnings only) or unhealthy (at least one failure). Only a failure makes the command exit with status 1.
 
 ## Update
 
-`takt-ai setup sync` re-applies Takt's managed files. Files you edited are kept; files you deleted are restored. After upgrading OpenCode, run it again so the plugins match. Use `--plan-only` first to see what would change.
+Upgrading Takt and correcting drift are TUI tasks (**Upgrade**, **Check for drift**). `takt-ai setup sync` re-applies Takt's managed files. Files you edited are kept; files you deleted are restored. After upgrading OpenCode, run it again so the plugins match. Use `--plan-only` first to see what would change.
 
 ## Backups
 

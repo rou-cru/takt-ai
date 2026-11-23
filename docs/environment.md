@@ -9,6 +9,7 @@ Variables you can set to change how `takt-ai` behaves. Everything else Takt AI r
 | `NO_COLOR` | Any non-empty value, `0` included, keeps the TUI without color whatever the terminal supports, and turns off color in `install.sh`. |
 | `TERM` | `dumb` has the same effect as `NO_COLOR`. |
 | `TAKT_MEMORY_DIR` | Directory of the Takt memory service: its store, socket and lock. Defaults to `~/.takt-ai/memory`. Install, `doctor` and uninstall all use it. |
+| `TAKT_SANDBOX_ALLOWED_DOMAINS` | Comma-separated domains that the crew's shell commands can reach over the network. Unset or empty leaves the network unrestricted. |
 
 Model provider keys, such as `ANTHROPIC_API_KEY`, are read by OpenCode, not by Takt AI.
 

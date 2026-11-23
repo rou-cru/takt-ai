@@ -42,8 +42,9 @@ import (
 const cancelledExitStatus = 130
 
 // usage is the public help: the commands a person runs, grouped. Commands
-// Takt's OpenCode plugins call (memory, vfs, obs, gc, dispatch, dag,
-// codegraph, setup image) are internal and documented with their callers.
+// Takt's OpenCode plugins call (vfs, obs, gc, dispatch, dag, codegraph,
+// memory serve, memory mcp --crew, setup image) are internal and documented
+// with their callers.
 const usage = `Takt AI — meta harness for agent teams, on top of OpenCode v2.
 
 Usage:
@@ -55,11 +56,13 @@ Commands:
       --plan-only                show what would change; change nothing
       --yes                      apply the change (required unless --plan-only)
       --input FILE               setup request JSON, or - for stdin
-                                 (default on a terminal: the recommended setup)
+                                 (default on a terminal: the recorded installation, else the recommended setup)
       --root DIR                 home directory to act on (default: $HOME)
       --json                     machine-readable output
   setup default-request          print the recommended setup request
   restore [--root DIR]           put back the files Takt replaced
+  memory start [--init]          start Takt Memory and confirm readiness
+  memory mcp [--workspace DIR]   expose the memory MCP tools over stdio
   doctor                         check tools, configuration and capabilities
   version                        print the version
   help                           show this help`
@@ -85,7 +88,8 @@ var runTUI = tui.Run
 
 // isInteractive checks both streams so the TUI never starts where no one can see it.
 // isTerminal reports whether r is a terminal, so a missing --input on a
-// terminal means the recommended setup rather than a request to read.
+// terminal means the recorded installation, or the recommended setup when none
+// exists, rather than a request to read.
 var isTerminal = func(r io.Reader) bool {
 	file, ok := r.(*os.File)
 	return ok && term.IsTerminal(file.Fd())
@@ -248,7 +252,7 @@ func runSetup(args []string, stdin io.Reader, stdout, stderr io.Writer) (err err
 	defer func() { err = errors.Join(err, closeInput()) }()
 	request, err := decodeStrict[setup.PlanRequest](input)
 	if err != nil {
-		return fmt.Errorf("invalid setup request: %w (pass --input FILE, or omit it on a terminal for the recommended setup)", err)
+		return fmt.Errorf("invalid setup request: %w (pass --input FILE, or omit it on a terminal to use the recorded installation or the recommended setup)", err)
 	}
 	return continueSetup(invocation, request, stdout, stderr)
 }

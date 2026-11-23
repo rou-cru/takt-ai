@@ -22,4 +22,4 @@ charts/*/templates/
 
 # Generated archify diagram pages: self-contained HTML embedding a vendored
 # viewer, rebuilt from the sibling sources/ directories.
-docs/design/architecture/**/diagrams/*.html
+docs/design/**/diagrams/**/*.html

@@ -7,12 +7,12 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
       1080,
-      560
+      616
     ],
     "column_fit": "spread"
   },
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -49,7 +49,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-spec/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-tpm/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -73,12 +73,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -88,74 +88,90 @@
     {
       "id": "m01",
       "from": "takt",
-      "to": "spec",
-      "y": 160,
-      "label": "delegate: intent, design, experience IDs",
-      "variant": "emphasis"
+      "to": "harness",
+      "label": "dispatch_inputs: intent, design, experience IDs",
+      "variant": "security",
+      "y": 160
     },
     {
       "id": "m02",
-      "from": "harness",
+      "from": "takt",
       "to": "spec",
-      "y": 188,
-      "label": "admit, launch",
-      "variant": "security"
+      "label": "delegate: brief",
+      "variant": "emphasis",
+      "y": 188
     },
     {
       "id": "m03",
-      "from": "spec",
-      "to": "memory",
-      "y": 216,
-      "label": "takt_memory_record: BDD spec",
-      "variant": "dashed"
+      "from": "harness",
+      "to": "spec",
+      "label": "admit, launch",
+      "variant": "security",
+      "y": 216
     },
     {
       "id": "m04",
       "from": "spec",
-      "to": "takt",
-      "y": 244,
-      "label": "deliver_result: IDs",
-      "variant": "return"
+      "to": "memory",
+      "label": "takt_memory_record: BDD spec",
+      "variant": "dashed",
+      "y": 244
     },
     {
       "id": "m05",
-      "from": "takt",
-      "to": "tpm",
-      "y": 272,
-      "label": "delegate: spec and design IDs",
-      "variant": "emphasis"
+      "from": "spec",
+      "to": "takt",
+      "label": "deliver_result: IDs",
+      "variant": "return",
+      "y": 272
     },
     {
       "id": "m06",
-      "from": "harness",
-      "to": "tpm",
-      "y": 300,
-      "label": "admit, launch",
-      "variant": "security"
+      "from": "takt",
+      "to": "harness",
+      "label": "dispatch_inputs: spec and design IDs",
+      "variant": "security",
+      "y": 300
     },
     {
       "id": "m07",
-      "from": "tpm",
-      "to": "memory",
-      "y": 328,
-      "label": "takt_memory_record: WBS",
-      "variant": "dashed"
+      "from": "takt",
+      "to": "tpm",
+      "label": "delegate: brief",
+      "variant": "emphasis",
+      "y": 328
     },
     {
       "id": "m08",
-      "from": "tpm",
-      "to": "takt",
-      "y": 356,
-      "label": "deliver_result: IDs",
-      "variant": "return"
+      "from": "harness",
+      "to": "tpm",
+      "label": "admit, launch",
+      "variant": "security",
+      "y": 356
     },
     {
       "id": "m09",
+      "from": "tpm",
+      "to": "memory",
+      "label": "takt_memory_record: work breakdown",
+      "variant": "dashed",
+      "y": 384
+    },
+    {
+      "id": "m10",
+      "from": "tpm",
+      "to": "takt",
+      "label": "deliver_result: IDs",
+      "variant": "return",
+      "y": 412
+    },
+    {
+      "id": "m11",
       "from": "takt",
       "to": "harness",
-      "y": 384,
-      "label": "dispatch_commit: DAG from the WBS",
-      "variant": "security"
+      "label": "dispatch_commit: DAG from the work breakdown",
+      "variant": "security",
+      "y": 440
     }
   ],
   "cards": [
@@ -164,7 +180,7 @@
       "title": "Ownership",
       "items": [
         "takt-spec does not prescribe architecture or tasks",
-        "takt-tpm supplies tasks; takt compiles and owns the DAG"
+        "takt-tpm groups the work breakdown by vertical slice, each assignment with one agent, exact writable files and justified dependencies; takt compiles and owns the DAG"
       ]
     },
     {

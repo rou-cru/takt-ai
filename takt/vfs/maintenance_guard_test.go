@@ -58,7 +58,7 @@ func TestMaintenanceGuardCycleRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	setCycle(t, f, "c1", "collect")
-	for command, continuation := range map[string]string{"verify": "gc_verdict", "consolidate": "gc_acceptance"} {
+	for command, continuation := range map[string]string{"verify": `gc coordinate --request with action "verdict"`, "consolidate": `"acceptance"`} {
 		if err := f.GuardMaintenance(command, "", "", key); err == nil || !strings.Contains(err.Error(), continuation) {
 			t.Fatalf("%s through a collector = %v; want refused naming %s", command, err, continuation)
 		}

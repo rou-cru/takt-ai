@@ -6,7 +6,7 @@
 
 | ID | Requirement |
 | --- | --- |
-| PR-REL-1 | Release validation MUST have a Docker integration-test image containing OpenCode v2 and the Takt application ready for its first configuration. |
+| PR-REL-1 | Release validation MUST have a Docker integration-test image, built from the change under test, containing OpenCode v2 and the Takt application ready for its first configuration. |
 | PR-REL-2 | The initial integration-test environment MUST NOT have Takt onboarding already completed. It MUST allow the tester to experience first-use navigation, installation, and configuration directly rather than only inspect a preinstalled stack. |
 | PR-REL-3 | Installation and configuration under test MUST target the test environment, not the host's real OpenCode v2 installation or global configuration. Any repository made available for hands-on work MUST be an intentional test input, not an implicit expansion of setup scope. |
 
@@ -39,7 +39,8 @@
 | ID | Requirement |
 | --- | --- |
 | PR-REL-13 | The integration-test image MUST be reusable for automated end-to-end testing in addition to manual release validation. |
-| PR-REL-14 | A public release image derived from the development/test image MUST ship with downloads and base setup prepared in advance. It does not replace the first-use test image. |
+| PR-REL-14 | A public release image derived from the development/test image MUST be ready to use as it ships: OpenCode v2 and Takt AI preconfigured with the base setup and the toolchains of the project's selected languages (Python, TypeScript, Go), so anyone can clone a repository and the first request to the crew finds what common work in them requires. It does not replace the first-use test image. |
+| PR-REL-17 | A benchmark environment exists to run the benchmarks and carries the extended setup they require, apart from the first-use test image and the public release image. |
 
 ### 1.6 Crew Convergence Validation
 

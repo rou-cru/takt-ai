@@ -12,6 +12,7 @@ import (
 	protocol "github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/prompts"
 	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
@@ -132,8 +133,11 @@ func (r interlocutorReturn) withNotice(from string) (interlocutorReturn, error) 
 	if e != nil {
 		return r, e
 	}
-	r.Notice = fmt.Sprintf("The interface is back from %s. Envelope:\n%s", from, envelope)
-	return r, nil
+	r.Notice, e = prompts.Default().Render("interlocutor.return_notice", map[string]string{
+		"from":     from,
+		"envelope": string(envelope),
+	})
+	return r, e
 }
 
 // handoffOutcome is the negotiated result a handoff request carries.
@@ -167,7 +171,8 @@ func abortReturn(h *history.History, ref string, r coordinationRequest) (interlo
 	if e != nil {
 		return interlocutorReturn{}, e
 	}
-	return interlocutorReturn{Envelope: envelope, Child: child, Root: r.Session}.withNotice(holder + ", whose lent session was aborted")
+	from := prompts.Default().MustRender("interlocutor.abort_from_suffix", map[string]string{"holder": holder})
+	return interlocutorReturn{Envelope: envelope, Child: child, Root: r.Session}.withNotice(from)
 }
 
 // sessionDeletedEvidence is the abort evidence recorded when a holder session

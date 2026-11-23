@@ -16,6 +16,7 @@ HOST_TEST_PKGS=(
     ./takt/internal/opencodeapi
     ./takt/model
     ./takt/obs
+    ./takt/prompts
     ./takt/setup/testutil
     ./takt/skills
     ./takt/skills/testutil

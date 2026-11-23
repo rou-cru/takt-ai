@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "GC closed loop",
+    "output": "docs/design/control/diagrams/gc-loop.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    {
+      "label": "Plant"
+    },
+    {
+      "label": "Sensing"
+    },
+    {
+      "label": "Estimation"
+    },
+    {
+      "label": "Control"
+    },
+    {
+      "label": "Actuation"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "dist",
+      "type": "external",
+      "label": "Disturbances",
+      "sublabel": "unattributed edits",
+      "stage": 0,
+      "row": 0
+    },
+    {
+      "id": "crew",
+      "type": "backend",
+      "label": "Crew + harness",
+      "sublabel": "capability held",
+      "stage": 0,
+      "row": 1,
+      "tag": "controlled"
+    },
+    {
+      "id": "ws",
+      "type": "database",
+      "label": "Workspace",
+      "sublabel": "code: terrain",
+      "stage": 0,
+      "row": 3
+    },
+    {
+      "id": "route",
+      "type": "backend",
+      "label": "Execution route",
+      "sublabel": "DAG",
+      "stage": 1,
+      "row": 0,
+      "tag": "feedforward"
+    },
+    {
+      "id": "cap",
+      "type": "backend",
+      "label": "Capability",
+      "sublabel": "problems, effort",
+      "stage": 1,
+      "row": 1
+    },
+    {
+      "id": "attr",
+      "type": "backend",
+      "label": "Attribution",
+      "sublabel": "journal, hooks",
+      "stage": 1,
+      "row": 2,
+      "tag": "opportunistic"
+    },
+    {
+      "id": "base",
+      "type": "backend",
+      "label": "Base sensor",
+      "sublabel": "scan + verify",
+      "stage": 1,
+      "row": 3,
+      "tag": "always on"
+    },
+    {
+      "id": "metrics",
+      "type": "backend",
+      "label": "Content metrics",
+      "sublabel": "B0 to B2, S1 to S5",
+      "stage": 2,
+      "row": 3
+    },
+    {
+      "id": "est",
+      "type": "backend",
+      "label": "Estimate",
+      "sublabel": "E, U, r, λ, S",
+      "stage": 2,
+      "row": 1,
+      "tag": "persisted"
+    },
+    {
+      "id": "law",
+      "type": "security",
+      "label": "Control law",
+      "sublabel": "hysteresis, lockout",
+      "stage": 3,
+      "row": 1,
+      "tag": "mode gate"
+    },
+    {
+      "id": "cycle",
+      "type": "backend",
+      "label": "GC cycle",
+      "sublabel": "outside sessions",
+      "stage": 4,
+      "row": 3,
+      "tag": "discrete"
+    },
+    {
+      "id": "health",
+      "type": "backend",
+      "label": "Actuator health",
+      "sublabel": "reversions, effect",
+      "stage": 3,
+      "row": 3,
+      "tag": "lockout, demotion"
+    }
+  ],
+  "flows": [
+    {
+      "id": "dist-ws",
+      "from": "dist",
+      "to": "ws",
+      "label": "impacts",
+      "variant": "dashed"
+    },
+    {
+      "id": "crew-ws",
+      "from": "crew",
+      "to": "ws",
+      "label": "VFS thrust",
+      "variant": "emphasis"
+    },
+    {
+      "id": "crew-cap",
+      "from": "crew",
+      "to": "cap",
+      "label": "counts"
+    },
+    {
+      "id": "crew-attr",
+      "from": "crew",
+      "to": "attr",
+      "label": "operations"
+    },
+    {
+      "id": "ws-base",
+      "from": "ws",
+      "to": "base",
+      "label": "content",
+      "variant": "emphasis"
+    },
+    {
+      "id": "base-metrics",
+      "from": "base",
+      "to": "metrics",
+      "label": "changed files"
+    },
+    {
+      "id": "metrics-est",
+      "from": "metrics",
+      "to": "est",
+      "label": "metrics",
+      "variant": "emphasis"
+    },
+    {
+      "id": "attr-est",
+      "from": "attr",
+      "to": "est",
+      "label": "crew vs disturbance"
+    },
+    {
+      "id": "cap-est",
+      "from": "cap",
+      "to": "est",
+      "label": "counts"
+    },
+    {
+      "id": "route-est",
+      "from": "route",
+      "to": "est",
+      "label": "exposure, W"
+    },
+    {
+      "id": "est-law",
+      "from": "est",
+      "to": "law",
+      "label": "Ê, U, alarms",
+      "variant": "emphasis"
+    },
+    {
+      "id": "law-cycle",
+      "from": "law",
+      "to": "cycle",
+      "label": "region, mandate",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cycle-health",
+      "from": "cycle",
+      "to": "health",
+      "label": "reversions, effect"
+    },
+    {
+      "id": "health-law",
+      "from": "health",
+      "to": "law",
+      "label": "lockout, demotion"
+    },
+    {
+      "id": "cycle-ws",
+      "from": "cycle",
+      "to": "ws",
+      "label": "entropy removed",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Controlled variable",
+      "items": [
+        "Crew capability, not the code: the workspace is terrain that changes from any source",
+        "Entropy compounds by itself, so the loop must act before the crew pays for it",
+        "Quality criterion: reject one or several impacts without overshoot or oscillation"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Sensors",
+      "items": [
+        "Base sensor is always available; every other source is fused when present",
+        "Losing a sensor raises uncertainty U; it never stops estimation",
+        "VFS operations are the crew's known input; the rest is disturbance"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Control and modes",
+      "items": [
+        "Launch on projected entropy along the route, or on a capability alarm above E_lo",
+        "Manual, assisted, autonomous: only launch authority changes",
+        "A cycle runs only while no crew session is active; its effect and reversions return as health"
+      ]
+    }
+  ]
+}

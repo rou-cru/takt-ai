@@ -10,6 +10,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
 const TAKT_AI = "__TAKT_AI_BINARY__"
+const PROMPTS: Record<string, string> = "__TAKT_PROMPTS__" as unknown as Record<string, string>
 
 // POLL_INTERVAL_MS is a transport cadence only: it never feeds node state,
 // progress budgets, detection or enforcement (PRD_DAG_TUI.md §9).
@@ -1645,7 +1646,7 @@ export default Plugin.define({
       // notice even when the stop fails, told that the lent session may still
       // run; each failure still reaches the toast.
       const stop = await context.client.session.interrupt({ sessionID: reply.child }).then(() => undefined, (error: unknown) => ({ error }))
-      const text = stop ? `${reply.notice}\nStopping the lent session failed; it may still be running.` : reply.notice
+      const text = stop ? `${reply.notice}\n${PROMPTS["interlocutor.abort_stop_failed"]}` : reply.notice
       try {
         await context.client.session.synthetic({ sessionID: reply.root, text })
       } catch (error) {

@@ -68,7 +68,7 @@ Taken from the current packages' imports.
 | Package | Imports (within Takt) |
 | :--- | :--- |
 | dispatch | catalog, history, memory, model, vfs |
-| vfs | catalog, history, internal/flock, memory, model, obs |
+| vfs | catalog, codegraph, history, internal/flock, memory, model, obs |
 | gc | history, internal/filemerge, obs, vfs |
 | memory | internal/flock, memory/embed |
 | session | obs, vfs |
@@ -115,7 +115,7 @@ Scope: the interactive surface of the `takt-ai` binary (Bubble Tea v2). The cli 
 | modelpicker | catalog, internal/opencodeapi, model, tui/keys, tui/theme, tui/ui |
 | diagnostics | setup, tui/keys, tui/theme, tui/ui, verify |
 | runtime | agents/opencode, catalog, internal/opencodeapi, lifecycle, memory, model, setup, tui/theme, tui/ui, verify |
-| ui | tui/keys, tui/theme, verify |
+| ui | memory, tui/keys, tui/theme, verify |
 
 ### Notes
 

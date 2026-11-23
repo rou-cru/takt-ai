@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/rou-cru/takt-ai.git",
-      "revision": "a2c0e51ab23843134f18e58c7119d6c4406756c6",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     },
     "viewBox": [
@@ -25,7 +25,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     },
@@ -37,8 +37,8 @@
       "sources": [
         {
           "path": "takt/dispatch/dispatch.go",
-          "line": 138,
-          "end_line": 169
+          "line": 61,
+          "end_line": 70
         }
       ]
     },
@@ -50,7 +50,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-dev/agent.yaml",
-          "line": 10
+          "line": 13
         }
       ]
     },
@@ -62,7 +62,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt-verify/agent.yaml",
-          "line": 11
+          "line": 14
         }
       ]
     },
@@ -74,12 +74,12 @@
       "sources": [
         {
           "path": "takt/memory/server.go",
-          "line": 321,
-          "end_line": 342
+          "line": 334,
+          "end_line": 349
         },
         {
           "path": "takt/memory/record.go",
-          "line": 127,
+          "line": 125,
           "end_line": 163
         }
       ]
@@ -92,7 +92,7 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/agent.yaml",
-          "line": 12
+          "line": 15
         }
       ]
     }
@@ -103,7 +103,7 @@
       "from": "takt",
       "to": "harness",
       "y": 160,
-      "label": "dispatch_commit: DAG from the WBS",
+      "label": "dispatch_commit: DAG from the work breakdown",
       "variant": "security"
     },
     {
@@ -251,7 +251,7 @@
       "title": "Not drawn",
       "items": [
         "A failing verdict leads to the repair loop (see the next view)",
-        "Build, lint and full suites run only in Verify units, never on staged work"
+        "Build, lint and full suites run in Verify units; execution agents run no checks on staged work"
       ]
     }
   ]

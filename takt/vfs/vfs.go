@@ -536,8 +536,9 @@ type GitPermissionRule struct {
 // allows each read-only subcommand, and a read-only subcommand carrying one
 // of its writing options returns to the deny; a form the patterns cannot tell
 // apart from a mutation keeps the deny. The orchestrator allows git and asks
-// only for the actions in orchestratorGatedGit and for a hard reset
-// (PR-VFS-GIT-5); every other Git mutation is its conduct.
+// only for the actions in orchestratorGatedGit, for an amended commit and
+// for a hard reset (PR-VFS-GIT-5); every other Git mutation, a plain local
+// commit included, is its conduct.
 func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
 	if GuardGitMutation(role) == nil {
 		rules := []GitPermissionRule{{"git *", ShellAllow}}
@@ -547,7 +548,8 @@ func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
 			rules = append(rules, GitPermissionRule{"git " + sub, ShellAsk}, GitPermissionRule{"git " + sub + " *", ShellAsk},
 				GitPermissionRule{"git * " + sub, ShellAsk}, GitPermissionRule{"git * " + sub + " *", ShellAsk})
 		}
-		return append(rules, GitPermissionRule{"git reset *--hard*", ShellAsk}, GitPermissionRule{"git *reset *--hard*", ShellAsk})
+		return append(rules, GitPermissionRule{"git commit *--amend*", ShellAsk}, GitPermissionRule{"git * commit *--amend*", ShellAsk},
+			GitPermissionRule{"git reset *--hard*", ShellAsk}, GitPermissionRule{"git *reset *--hard*", ShellAsk})
 	}
 	rules := []GitPermissionRule{{"git *", ShellDeny}}
 	for _, sub := range readOnlyGitSubcommands {
@@ -563,8 +565,9 @@ func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
 
 // orchestratorGatedGit are the subcommands whose every use needs the user's
 // approval when the orchestrator runs them: they publish or rewrite history
-// or discard work (PR-VFS-GIT-5). Hard reset is gated by option, not here.
-var orchestratorGatedGit = []string{"commit", "push", "rebase", "clean", "restore"}
+// or discard work (PR-VFS-GIT-5). A local commit needs none; an amended
+// commit and a hard reset are gated by option, not here.
+var orchestratorGatedGit = []string{"push", "rebase", "clean", "restore"}
 
 // readOnlyGitSubcommands never write to the repository, whatever their
 // arguments; subcommands that list or mutate by argument (branch, tag, stash,

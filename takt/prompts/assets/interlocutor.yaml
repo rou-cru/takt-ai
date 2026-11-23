@@ -1,0 +1,61 @@
+entries:
+  - id: interlocutor.switch_opening
+    surface: interlocutor_turn
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-lending/SKILL.md
+      - skills/takt-interlocutor-handoff/SKILL.md
+    vars: [objective, requirements, client]
+    text: |-
+      You are taking over as the active interlocutor for this workspace.
+      Objective: {{objective}}
+      Requirements: {{requirements}}
+      Client: {{client}}
+
+  - id: interlocutor.switch_requirements_some
+    surface: interlocutor_turn
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-lending/SKILL.md
+      - skills/takt-memory-contract/SKILL.md
+    vars: [entries, read_tool]
+    text: "Takt memory entries {{entries}}; read each with {{read_tool}}"
+
+  - id: interlocutor.switch_requirements_none
+    surface: interlocutor_turn
+    owner: plugin/takt-vfs
+    audience: [interlocutors]
+    correlates_with:
+      - skills/takt-interlocutor-lending/SKILL.md
+    text: "none exist"
+
+  - id: interlocutor.return_notice
+    surface: interlocutor_turn
+    owner: cli/dispatch
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-interlocutor-lending/SKILL.md
+      - skills/takt-interlocutor-handoff/SKILL.md
+      - agents/takt/OPERATIONS.md
+    vars: [from, envelope]
+    text: "The interface is back from {{from}}. Envelope:\n{{envelope}}"
+
+  - id: interlocutor.abort_from_suffix
+    surface: interlocutor_turn
+    owner: cli/dispatch
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-interlocutor-exceptions/SKILL.md
+      - skills/takt-interlocutor-lending/SKILL.md
+    vars: [holder]
+    text: "{{holder}}, whose lent session was aborted"
+
+  - id: interlocutor.abort_stop_failed
+    surface: interlocutor_turn
+    owner: plugin/takt-dag
+    audience: [orchestrator]
+    correlates_with:
+      - skills/takt-interlocutor-exceptions/SKILL.md
+    text: "Stopping the lent session failed; it may still be running."

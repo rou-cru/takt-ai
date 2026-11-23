@@ -7,14 +7,14 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
   "mainPath": [
     "phasegate",
-    "integrating",
     "accepting",
+    "reviewing",
     "committed"
   ],
   "states": [
@@ -26,8 +26,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 288,
-          "end_line": 315
+          "line": 140,
+          "end_line": 151
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 298,
+          "end_line": 301
         }
       ]
     },
@@ -39,13 +44,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 223,
-          "end_line": 233
+          "line": 220,
+          "end_line": 231
         },
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 179,
-          "end_line": 181
+          "line": 176,
+          "end_line": 179
         }
       ]
     },
@@ -57,8 +62,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 288,
-          "end_line": 315
+          "line": 302,
+          "end_line": 307
         }
       ]
     },
@@ -70,8 +75,18 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 249,
-          "end_line": 296
+          "line": 308,
+          "end_line": 311
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 266,
+          "end_line": 271
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 211,
+          "end_line": 213
         }
       ]
     },
@@ -83,26 +98,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 316,
-          "end_line": 323
+          "line": 312,
+          "end_line": 315
         },
         {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 128,
-          "end_line": 130
-        }
-      ]
-    },
-    {
-      "id": "integrating",
-      "type": "active",
-      "label": "Integrating",
-      "sublabel": "loose ends, no checks",
-      "sources": [
-        {
-          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 316,
-          "end_line": 323
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 14,
+          "end_line": 24
         }
       ]
     },
@@ -110,12 +112,40 @@
       "id": "accepting",
       "type": "active",
       "label": "Slice acceptance",
-      "sublabel": "global Verify",
+      "sublabel": "one Verify, whole slice",
       "sources": [
         {
+          "path": "product/meta-harness/orchestration/PRD_ORCHESTRATION.md",
+          "line": 20,
+          "end_line": 20
+        },
+        {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 316,
-          "end_line": 323
+          "line": 94,
+          "end_line": 100
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 39,
+          "end_line": 40
+        }
+      ]
+    },
+    {
+      "id": "reviewing",
+      "type": "decision",
+      "label": "Advisory review",
+      "sublabel": "defects with a reproduction",
+      "sources": [
+        {
+          "path": "product/meta-harness/orchestration/PRD_ORCHESTRATION.md",
+          "line": 51,
+          "end_line": 51
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
+          "line": 41,
+          "end_line": 43
         }
       ]
     },
@@ -127,8 +157,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 179,
-          "end_line": 181
+          "line": 174,
+          "end_line": 179
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
+          "line": 197,
+          "end_line": 199
         }
       ]
     },
@@ -140,8 +175,13 @@
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-sdd-workflow/SKILL.md",
-          "line": 104,
-          "end_line": 106
+          "line": 101,
+          "end_line": 103
+        },
+        {
+          "path": "takt/catalog/assets/skills/takt-sdd-recovery/SKILL.md",
+          "line": 12,
+          "end_line": 14
         }
       ]
     },
@@ -149,17 +189,12 @@
       "id": "committed",
       "type": "success",
       "label": "Milestone committed",
-      "sublabel": "acceptance recorded, commit",
+      "sublabel": "acceptance and review closed",
       "sources": [
         {
           "path": "takt/catalog/assets/skills/takt-verification-consolidation/SKILL.md",
-          "line": 28,
-          "end_line": 32
-        },
-        {
-          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 128,
-          "end_line": 130
+          "line": 39,
+          "end_line": 44
         }
       ]
     }
@@ -168,7 +203,7 @@
     {
       "from": "planning",
       "to": "validating",
-      "label": "contracts and tasks in"
+      "label": "contracts and work breakdown in"
     },
     {
       "from": "validating",
@@ -179,7 +214,7 @@
     {
       "from": "validating",
       "to": "rejected",
-      "label": "incomplete, unbounded or unscoped-command cut",
+      "label": "incomplete, unbounded or bundled",
       "variant": "security"
     },
     {
@@ -200,17 +235,6 @@
       "label": "phase verification planned"
     },
     {
-      "from": "phasegate",
-      "to": "integrating",
-      "label": "verdicts pass"
-    },
-    {
-      "from": "accepting",
-      "to": "committed",
-      "label": "acceptance passes",
-      "variant": "emphasis"
-    },
-    {
       "from": "executing",
       "to": "recovery",
       "label": "second failure",
@@ -223,15 +247,39 @@
       "variant": "dashed"
     },
     {
+      "from": "phasegate",
+      "to": "accepting",
+      "label": "verdicts pass"
+    },
+    {
       "from": "executing",
-      "to": "integrating",
+      "to": "accepting",
       "label": "no verification planned, consolidated",
       "variant": "dashed"
     },
     {
-      "from": "integrating",
-      "to": "accepting",
-      "label": "integration read"
+      "from": "accepting",
+      "to": "reviewing",
+      "label": "acceptance passes",
+      "variant": "emphasis"
+    },
+    {
+      "from": "reviewing",
+      "to": "committed",
+      "label": "no defect to correct",
+      "variant": "emphasis"
+    },
+    {
+      "from": "reviewing",
+      "to": "executing",
+      "label": "defect to correct",
+      "variant": "dashed"
+    },
+    {
+      "from": "accepting",
+      "to": "recovery",
+      "label": "acceptance fails",
+      "variant": "security"
     }
   ],
   "cards": [
@@ -249,9 +297,10 @@
       "title": "Rules",
       "items": [
         "Exclusive writable sets, frozen contracts before dispatch, no checks on staged work",
-        "One integration gate per slice: full build, lint and tests run only in one Verify unit on the materialized workspace after its writers finish",
-        "A milestone commit is a separate decision after acceptance passes; non-blocking advisory findings stay recorded and do not block",
-        "Integrating starts once phase verdicts pass consolidated; recovery follows a second failure or contract defect"
+        "One acceptance per slice: full build, lint and tests run only in one Verify unit on the materialized workspace after its writers finish, and it also covers the slice's consistency",
+        "Blind tests are cut from frozen contracts and the traceability matrix, never in-flight implementation, and share the wave of the code they test",
+        "A milestone commit is a separate decision after acceptance passes and advisory review closes; findings that leave the slice working stay recorded and do not block",
+        "Slice acceptance starts once phase verdicts pass and their authors are consolidated; recovery follows a second failure or contract defect"
       ]
     },
     {

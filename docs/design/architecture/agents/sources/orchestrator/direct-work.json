@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:rou-cru/takt-ai.git",
-      "revision": "ed139bbc957ca9591ff930cb12f83ce854f9cf3a",
+      "revision": "558e51674a18d0fc3dbc0d319449e15af482130b",
       "link_mode": "local-only"
     }
   },
@@ -37,8 +37,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 15
+          "line": 13,
+          "end_line": 14
         }
       ]
     },
@@ -47,13 +47,13 @@
       "lane": "tests",
       "col": 2,
       "type": "security",
-      "label": "Ordered or urgent?",
-      "sublabel": "user ordered, urgency declared",
+      "label": "Ordered by the user?",
+      "sublabel": "explicit direct-work order",
       "width": 180,
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 13,
+          "line": 12,
           "end_line": 14
         }
       ]
@@ -69,8 +69,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 15,
-          "end_line": 18
+          "line": 14,
+          "end_line": 17
         }
       ]
     },
@@ -85,8 +85,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 14,
-          "end_line": 15
+          "line": 13,
+          "end_line": 14
         }
       ]
     },
@@ -102,7 +102,7 @@
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
           "line": 19,
-          "end_line": 24
+          "end_line": 23
         }
       ]
     },
@@ -117,8 +117,8 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 25,
-          "end_line": 26
+          "line": 24,
+          "end_line": 25
         }
       ]
     },
@@ -133,13 +133,18 @@
       "sources": [
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 12,
-          "end_line": 20
+          "line": 11,
+          "end_line": 12
         },
         {
           "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
-          "line": 36,
-          "end_line": 54
+          "line": 17,
+          "end_line": 19
+        },
+        {
+          "path": "takt/catalog/assets/agents/takt/OPERATIONS.md",
+          "line": 33,
+          "end_line": 50
         }
       ]
     }
@@ -196,7 +201,7 @@
       "title": "While working directly",
       "items": [
         "Record each concern with dispatch_activity_start and close it with dispatch_activity_finish before delegating or answering",
-        "Run build, lint or full suites only when the user asks; direct checks are not independent verification, so report the missing assurance"
+        "Run build, lint or full suites only when the user asks; direct checks are not independent verification, so report the missing assurance, and a task-wide no-delegation order covers verification too"
       ]
     },
     {

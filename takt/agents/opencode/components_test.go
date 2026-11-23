@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/prompts"
 )
 
 // TestRenderConfigComponents checks each requested component reaches its key
@@ -81,12 +81,14 @@ func TestTaktDagPluginArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-dag"))
 	want := strings.Replace(string(source), `"__TAKT_AI_BINARY__"`, `"`+binary+`"`, 1)
+	want = strings.Replace(want, `"__TAKT_PROMPTS__"`, string(promptsJSON), 1)
 	if want == string(source) {
-		t.Fatal("plugin source no longer carries the takt-ai binary placeholder")
+		t.Fatal("plugin source no longer carries the takt-ai placeholders")
 	}
 	if string(artifact.Content) != want {
-		t.Error("artifact differs from the plugin source with the takt-ai binary injected")
+		t.Error("artifact differs from the plugin source with the takt-ai binary and prompts injected")
 	}
 }
 
@@ -224,23 +226,31 @@ func TestTaktMemoryPluginArtifact(t *testing.T) {
 	}
 }
 
-// toolDescription matches the text a model reads for a plugin tool: its
-// description, the description argument of the dispatch/gc helpers, and a
-// parameter's str(...) description.
-var toolDescription = regexp.MustCompile(`(?:description:\s*|(?:dispatch|gc)\("[a-z_]+",\s*|str\()"((?:[^"\\]|\\.)*)"`)
-
 func TestPluginToolDescriptionsCarryConductOnly(t *testing.T) {
-	source := string(opencode.TaktVFSPluginArtifact("/test/takt-ai", true).Content)
-	matches := toolDescription.FindAllStringSubmatch(source, -1)
-	if len(matches) < 20 {
-		t.Fatalf("found %d tool descriptions; the pattern no longer matches the plugin", len(matches))
-	}
-	for _, m := range matches {
-		for _, term := range []string{"PR-", "IR-", "harness", "plugin"} {
-			if strings.Contains(m[1], term) {
-				t.Errorf("tool description explains mechanism with %q: %s", term, m[1])
+	reg := prompts.Default()
+	checked := 0
+	for _, tool := range reg.Tools {
+		if tool.Owner != "plugin/takt-vfs" {
+			continue
+		}
+		texts := make([]string, 0, 1+len(tool.Params))
+		if tool.Description != "" {
+			texts = append(texts, tool.Description)
+		}
+		for _, desc := range tool.Params {
+			texts = append(texts, desc)
+		}
+		for _, text := range texts {
+			checked++
+			for _, term := range []string{"PR-", "IR-", "harness", "plugin"} {
+				if strings.Contains(text, term) {
+					t.Errorf("tool %s description explains mechanism with %q: %s", tool.Name, term, text)
+				}
 			}
 		}
+	}
+	if checked < 20 {
+		t.Fatalf("checked only %d tool descriptions; expected at least 20", checked)
 	}
 }
 

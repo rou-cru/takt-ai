@@ -124,7 +124,7 @@ func TestOrchestratorIsSelectableWithNativePermissions(t *testing.T) {
 	for _, tc := range []struct{ action, resource, want string }{
 		{"shell", "*", "allow"},
 		{"shell", "git push", "ask"},
-		{"shell", "git commit *", "ask"},
+		{"shell", "git commit *--amend*", "ask"},
 		{"shell", "git reset --hard *", "ask"},
 		{"shell", "git clean *", "ask"},
 		{"shell", "git restore *", "ask"},
