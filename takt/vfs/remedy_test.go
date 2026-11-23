@@ -20,7 +20,7 @@ func TestDenialsExplainResponsibleNextAction(t *testing.T) {
 	}{
 		{"unknown binding", vfs.Operation{Key: "missing", CallID: "unknown", Action: vfs.OpRead}, vfs.ErrIdentity, []string{"orchestrator", "binding"}},
 		{"stale", vfs.Operation{Key: key, CallID: "stale", Action: vfs.OpRead, Path: "owned.go"}, vfs.ErrStaleRevision, []string{"current revision 1", "fresh call", "re-read"}},
-		{"scope", vfs.Operation{Key: key, CallID: "scope", ExpectedRevision: 1, Action: vfs.OpRead, Path: "other.go"}, vfs.ErrScopeDenied, []string{"orchestrator", "scope"}},
+		{"scope", vfs.Operation{Key: key, CallID: "scope", ExpectedRevision: 1, Action: vfs.OpCreate, Path: "other.go", Content: []byte("x")}, vfs.ErrScopeDenied, []string{"orchestrator", "scope"}},
 		{"protected", vfs.Operation{Key: key, CallID: "protected", ExpectedRevision: 1, Action: vfs.OpRead, Path: ".git/config"}, vfs.ErrInvalidPath, []string{"workspace-relative", "protected"}},
 		{"replay", vfs.Operation{Key: key, CallID: "write", ExpectedRevision: 1, Action: vfs.OpRead, Path: "owned.go"}, vfs.ErrDuplicateCall, []string{"prior", "fresh call"}},
 	}

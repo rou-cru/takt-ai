@@ -2166,6 +2166,18 @@ describe("delegated VFS context", () => {
     } finally { await vfs.stop() }
   })
 
+  test("an author whose unit reads beyond its scope is told what it reads", async () => {
+    const readers = [...grants, { action: "vfs_read", resource: "vfs_read", effect: "allow" }]
+    const vfs = await startVfs({ sessions: unitSessions, permissions: { dev: readers }, claims: [claim({ active: true, scope: ["src/a.go"], reads: ["docs/", "free"] })] })
+    try {
+      const event = contextFor()
+      await vfs.fire(vfs.session, "context", event)
+      const notice = event.system.map(part => part.text).join("\n")
+      expect(notice).toContain("docs/")
+      expect(notice).toContain("every path no work in flight holds")
+    } finally { await vfs.stop() }
+  })
+
   test("an author arrives bound to the scope the harness assigned; a refused bind leaves vfs_bind with its reason", async () => {
     const scope = ["src/a.go", "src/b.go"]
     for (const refused of [false, true]) {

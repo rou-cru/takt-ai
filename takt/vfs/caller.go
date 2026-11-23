@@ -83,6 +83,12 @@ func errForeignAuthor(key AgentID, invariants InvariantSet) error {
 	return fmt.Errorf("%w: author_key %s is another unit's staged work, not an input of yours; your unit %s", ErrIdentity, key, inputs)
 }
 
+// errStagedRead answers a native read of staged work the caller's unit reads:
+// the physical file is not that work, so vfs_read serves it.
+func errStagedRead(path string) error {
+	return fmt.Errorf("%w: %s holds staged work your unit reads; read it with vfs_read, and keep this native call away from that path", ErrIdentity, path)
+}
+
 func errNotYourGate(key AgentID, gates []AgentID) error {
 	authors := make([]string, len(gates))
 	for i, gate := range gates {

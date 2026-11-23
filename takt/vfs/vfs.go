@@ -217,6 +217,8 @@ type OwnershipClaim struct {
 	RootSessionID  string   `json:"root_session_id"`
 	WorkUnitID     string   `json:"work_unit_id"`
 	Scope          []string `json:"scope"`
+	// Reads are the selectors the assignment stated beyond its scope.
+	Reads []string `json:"reads,omitempty"`
 	// AuthorKey names the staged work a verifier gate judges; empty for authors.
 	AuthorKey AgentID `json:"author_key,omitempty"`
 	Active    bool    `json:"active"`
@@ -411,8 +413,10 @@ func (f *FS) readLockedAs(agent AgentID, path string, authorizedStagedView bool)
 		if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityRead); err != nil {
 			return nil, err
 		}
+		// A path no claim holds reads as the physical file, as the native read
+		// tools serve it; reads govern only what other units hold.
 		view, granted := f.readViewLocked(agent, rel)
-		if !granted {
+		if _, owned := f.owners[rel]; !granted && owned {
 			if err := f.checkOwnership(agent, rel); err != nil {
 				f.appendJournalLocked(JournalEntry{Agent: agent, Path: rel, Operation: OpRead, Outcome: "denied"})
 				return nil, err

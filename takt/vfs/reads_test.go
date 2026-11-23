@@ -16,6 +16,8 @@
 package vfs_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -59,6 +61,22 @@ func TestReadsLiftTheMutexOfWorkNoOneRuns(t *testing.T) {
 	}
 	if claims := f.OwnershipClaims(testSession); len(claims) != 2 {
 		t.Fatalf("claims = %d; want the orphan's claim kept beside the reader's", len(claims))
+	}
+}
+
+// A native read of staged work the unit reads names that path for vfs_read:
+// the physical file is not the work the unit reads.
+func TestNativeReadOfStagedWorkTheUnitReadsNamesThePath(t *testing.T) {
+	f, _, state := newStore(t)
+	_, author := delegate(t, f, state, testSession, "dev", "code", "a.go")
+	apply(t, f, applyCase{author, "w", 0, vfs.OpCreate, "a.go", "package a"})
+	settle(t, state, testSession, "code", history.FirstAttempt)
+	if _, err := reader(t, f, state, "docs", []string{vfs.ReadAll}, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+	err := f.StartNativeInspection(callerOf(testSession, "dev", "docs"), "native", "read", "a.go")
+	if !errors.Is(err, vfs.ErrIdentity) || !strings.Contains(err.Error(), "a.go") {
+		t.Fatalf("native read of read staged work = %v; want a refusal naming a.go", err)
 	}
 }
 

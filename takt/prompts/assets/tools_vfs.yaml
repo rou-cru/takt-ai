@@ -63,7 +63,7 @@ tools:
       agent: "Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"
       scope: "Exact workspace-relative file paths, existing or to be created; no directories or globs"
       author_key: "The author_key of this unit's existing staged work to keep; omit for new work"
-      reads: "What the unit may read beyond its scope: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit for its scope only"
+      reads: "What the unit reads beyond its scope that no work in flight may write meanwhile, staged work no one runs anymore included: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit when it needs neither"
 
   - name: claim_release
     owner: plugin/takt-vfs

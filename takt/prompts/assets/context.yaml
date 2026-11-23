@@ -138,6 +138,16 @@ entries:
       - skills/takt-vfs-mutation/SKILL.md
     text: "Read your staged view with vfs_read."
 
+  - id: context.author_reads
+    surface: context_injection
+    owner: plugin/takt-vfs
+    audience: [vfs_authors]
+    correlates_with:
+      - skills/takt-vfs-mutation/SKILL.md
+      - skills/takt-vfs-coordination/SKILL.md
+    vars: [reads]
+    text: "Beyond its own paths, your unit reads {{reads}}; read with vfs_read what another unit left staged there."
+
   - id: context.author_bind_failed
     surface: context_injection
     owner: plugin/takt-vfs

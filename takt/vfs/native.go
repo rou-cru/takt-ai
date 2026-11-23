@@ -68,6 +68,9 @@ func (f *FS) StartNativeInspection(c Caller, callID, tool, resource string) (err
 	}
 	for path, owner := range f.owners {
 		if owner != key && inspection.contains(path) {
+			if view, granted := f.readViewLocked(key, path); granted && view == owner {
+				return errStagedRead(path)
+			}
 			return errForeignAuthor(owner, f.bindings[key].Invariants)
 		}
 	}
