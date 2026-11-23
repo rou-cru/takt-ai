@@ -342,15 +342,16 @@ func renderTemplate(label, text string, expected []string, vars map[string]strin
 			return "", fmt.Errorf("%s: unexpected variable %q", label, k)
 		}
 	}
-	out := text
 	for _, k := range expected {
-		val, ok := vars[k]
-		if !ok {
+		if _, ok := vars[k]; !ok {
 			return "", fmt.Errorf("%s: missing variable %q", label, k)
 		}
-		out = strings.ReplaceAll(out, "{{"+k+"}}", val)
 	}
-	return out, nil
+	// One pass over the template: inserted values are never rescanned, so a
+	// value that contains a placeholder stays literal.
+	return placeholderPattern.ReplaceAllStringFunc(text, func(m string) string {
+		return vars[m[2:len(m)-2]]
+	}), nil
 }
 
 // ToolDescriptionKey returns the flat bundle key for a tool's description.

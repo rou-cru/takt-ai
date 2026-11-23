@@ -44,6 +44,16 @@ func TestRenderAndToolDescription(t *testing.T) {
 	if !strings.HasPrefix(got, "## Memory\n\n") || !strings.HasSuffix(got, "apply to you.\n") {
 		t.Fatalf("unexpected memory clause:\n%q", got)
 	}
+	literal, err := reg.Render("context.memory_clause", map[string]string{
+		"contract_skill": "{{memory_skill}}",
+		"memory_skill":   "skills/takt-memory-dev/SKILL.md",
+	})
+	if err != nil {
+		t.Fatalf("Render with placeholder-like value failed: %v", err)
+	}
+	if !strings.Contains(literal, "{{memory_skill}}") {
+		t.Fatalf("expected value to stay literal, got:\n%q", literal)
+	}
 	if _, err := reg.Render("unknown.id", nil); err == nil {
 		t.Fatal("expected error for unknown id")
 	}
