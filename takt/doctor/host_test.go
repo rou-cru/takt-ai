@@ -130,7 +130,9 @@ func (h *host) waitForSocket(done <-chan error) {
 	h.t.Helper()
 	deadline := time.Now().Add(readyWait)
 	for {
-		if _, err := os.Stat(filepath.Join(h.memoryDir, memory.SocketFile)); err == nil {
+		// The file appears at bind, before listen: only an accepted dial means ready.
+		if conn, err := net.Dial("unix", filepath.Join(h.memoryDir, memory.SocketFile)); err == nil {
+			_ = conn.Close()
 			return
 		}
 		select {

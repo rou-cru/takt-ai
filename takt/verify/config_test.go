@@ -5,6 +5,7 @@ package verify_test
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,7 +142,9 @@ func startService(t *testing.T, dir, version string) {
 	})
 	deadline := time.Now().Add(readyWait)
 	for {
-		if _, err := os.Stat(filepath.Join(dir, memory.SocketFile)); err == nil {
+		// The file appears at bind, before listen: only an accepted dial means ready.
+		if conn, err := net.Dial("unix", filepath.Join(dir, memory.SocketFile)); err == nil {
+			_ = conn.Close()
 			return
 		}
 		select {
