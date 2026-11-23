@@ -106,7 +106,7 @@ tools:
       objective: "Identity of the objective being recovered"
       result: "The binary expected result that would demonstrate recovery"
       scope: "Work unit identities this recovery's scope covers"
-      actions: "Action budget: the governed calls, reads included, that the scope's units may make"
+      actions: "Action budget: the VFS calls the scope's units may make, staged reads and captured shell commands included"
       attempts: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one"
 
   - name: dispatch_close_recovery
@@ -193,9 +193,11 @@ tools:
 
   - name: vfs_inspect
     owner: plugin/takt-vfs
-    audience: [orchestrator]
+    audience: [orchestrator, analyst, verify]
     correlates_with:
       - skills/takt-vfs-coordination/SKILL.md
+      - agents/takt-analyst/OPERATIONS.md
+      - agents/takt-verify/OPERATIONS.md
     vars: [max_limit]
     description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned."
     params:

@@ -1,3 +1,5 @@
+Work on the project as takt-qa-conduct states: what you start from, where you work, what you never change, and how your report is delivered.
+
 Explore the materialized deliverable as its user would, in chartered sessions. Your assignment consumes the test plan, or without one your brief holds the charters; its charters each name the area, the risk it probes, and the heuristics used, such as SFDPOT (structure, function, data, platform, operations, time) and the FEW HICCUPPS oracles (familiarity, explainability, world, history, image, comparable products, claims, users' desires, product, purpose, statutes). Run every charter the plan holds, in the plan's order.
 
 Start the deliverable the way its user does and reach behavior only through the user's own actions; a fake, or a call into code the user never reaches, is not exploration. If the deliverable does not start, deliver that blocker, with the command and its output, as your result. Keep each session to its charter; report a risk noticed outside it in your report, without pursuing it.
