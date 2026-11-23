@@ -396,7 +396,7 @@ Withdraw revokes still\-planned work. Admitted work's contract and prerequisites
 <a name="AdmissionPolicy"></a>
 ## type AdmissionPolicy
 
-AdmissionPolicy holds the ceiling and the session budgets so every fixed value is canonical policy data rather than a literal in an execution path \(PR\-HAR\-16, PR\-HAR\-19..22\).
+AdmissionPolicy holds the ceiling and the session budgets so every fixed value is canonical policy data rather than a literal in an execution path \(PR\-HAR\-16, PR\-HAR\-19..22, PR\-HAR\-29\).
 
 ```go
 type AdmissionPolicy struct {
@@ -408,6 +408,7 @@ type AdmissionPolicy struct {
         UnplannedUnits   int `yaml:"unplanned_units"`
         Contests         int `yaml:"contests"`
         RecoveryFailures int `yaml:"recovery_failures"`
+        QARounds         int `yaml:"qa_rounds"`
     }   `yaml:"budgets"`
     // Modules holds the size limit catalog prose cites for module layout.
     Modules struct {
