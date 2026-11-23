@@ -299,12 +299,12 @@ func TestHarnessPromptsNameOnlyPermittedToolsForAudience(t *testing.T) {
 func TestEveryHarnessPromptHasAConsumer(t *testing.T) {
 	reg := prompts.Default()
 	ownerFiles := map[string]string{
-		"opencode/layout":   "layout.go",
-		"cli/dispatch":      filepath.Join("..", "..", "cli", "dispatch.go"),
-		"memory/mcp":        filepath.Join("..", "..", "memory", "tools.go"),
-		"plugin/takt-vfs":   filepath.Join("assets", "takt-vfs.ts"),
+		"opencode/layout":    "layout.go",
+		"cli/dispatch":       filepath.Join("..", "..", "cli", "dispatch.go"),
+		"memory/mcp":         filepath.Join("..", "..", "memory", "tools.go"),
+		"plugin/takt-vfs":    filepath.Join("assets", "takt-vfs.ts"),
 		"plugin/takt-memory": filepath.Join("assets", "takt-memory.ts"),
-		"plugin/takt-dag":   filepath.Join("assets", "takt-dag.tsx"),
+		"plugin/takt-dag":    filepath.Join("assets", "takt-dag.tsx"),
 	}
 	sources := make(map[string]string, len(ownerFiles))
 	for owner, rel := range ownerFiles {
