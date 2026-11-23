@@ -96,7 +96,7 @@ func decide(projection history.Projection, p AdmissionPolicy, req AdmissionReque
 	attempts := recovery.Attempts + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryAttempts, objective)]
 	actions := recovery.Actions + budgets.Allowance[history.AllowanceKey(history.BoundRecoveryActions, objective)]
 	qaVersion, qaRound := budgets.QARoundFor(req.Event)
-	qaCeiling := p.Recovery.MaxAttempts + budgets.Allowance[history.AllowanceKey(history.BoundQARounds, qaRound.Objective)]
+	qaCeiling := p.Budgets.QARounds + budgets.Allowance[history.AllowanceKey(history.BoundQARounds, qaRound.Objective)]
 	var e error
 	switch {
 	case nameErr != nil:

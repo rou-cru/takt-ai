@@ -25,7 +25,7 @@ func TestStrengtheningBudgetSurvivesReplanningAndReopen(t *testing.T) {
 	p := loadPolicy(t)
 	objective := "acceptance/cart"
 	version := ""
-	for round := 1; round <= p.Recovery.MaxAttempts+1; round++ {
+	for round := 1; round <= p.Budgets.QARounds+1; round++ {
 		next := fmt.Sprintf("v%d", round)
 		author, sibling := fmt.Sprintf("test-%d-a", round), fmt.Sprintf("test-%d-b", round)
 		units := []dispatch.PlanUnit{{Unit: author, Contract: "strengthen oracle"}, {Unit: sibling, Contract: "strengthen another row"}}
@@ -35,7 +35,7 @@ func TestStrengtheningBudgetSurvivesReplanningAndReopen(t *testing.T) {
 		version = next
 		req := dispatch.AdmissionRequest{Session: "root", Event: author, Agent: "test", Dispatch: author}
 		err := dispatch.Admit(h, p, "", req)
-		if round > p.Recovery.MaxAttempts {
+		if round > p.Budgets.QARounds {
 			if err == nil || !strings.Contains(err.Error(), history.BoundQARounds) || !strings.Contains(err.Error(), "Close/Report") {
 				t.Fatalf("fourth round = %v", err)
 			}

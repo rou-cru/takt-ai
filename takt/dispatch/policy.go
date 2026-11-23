@@ -38,7 +38,7 @@ const AdmissionPolicyRef = "harness.admission"
 
 // AdmissionPolicy holds the ceiling and the session budgets so every fixed
 // value is canonical policy data rather than a literal in an execution path
-// (PR-HAR-16, PR-HAR-19..22).
+// (PR-HAR-16, PR-HAR-19..22, PR-HAR-29).
 type AdmissionPolicy struct {
 	Version     int `yaml:"version"`
 	Concurrency struct {
@@ -48,6 +48,7 @@ type AdmissionPolicy struct {
 		UnplannedUnits   int `yaml:"unplanned_units"`
 		Contests         int `yaml:"contests"`
 		RecoveryFailures int `yaml:"recovery_failures"`
+		QARounds         int `yaml:"qa_rounds"`
 	} `yaml:"budgets"`
 	// Modules holds the size limit catalog prose cites for module layout.
 	Modules struct {
@@ -77,7 +78,7 @@ func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	if p.Recovery.MaxActions <= 0 || p.Recovery.MaxAttempts <= 0 {
 		return AdmissionPolicy{}, errors.New("admission policy: every declared recovery budget needs a positive ceiling")
 	}
-	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Modules.MaxFileLines <= 0 {
+	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Budgets.QARounds <= 0 || p.Modules.MaxFileLines <= 0 {
 		return AdmissionPolicy{}, errors.New("admission policy: every ceiling, budget and size limit must be positive")
 	}
 	return p, nil
