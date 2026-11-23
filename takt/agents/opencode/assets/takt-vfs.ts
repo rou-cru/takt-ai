@@ -1462,8 +1462,8 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", toolDesc("dispatch_activity_start"), "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
-      dispatch("dispatch_activity_finish", toolDesc("dispatch_activity_finish"), "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
+      dispatch("dispatch_activity_start", toolDesc("dispatch_activity_start"), "activity_start", obj({ activity_id: str(paramDesc("dispatch_activity_start", "activity_id")), node_kind: { type: "string", enum: ["orchestrator"], description: paramDesc("dispatch_activity_start", "node_kind") } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
+      dispatch("dispatch_activity_finish", toolDesc("dispatch_activity_finish"), "activity_finish", obj({ activity_id: str(paramDesc("dispatch_activity_finish", "activity_id")), node_kind: { type: "string", enum: ["orchestrator"], description: paramDesc("dispatch_activity_finish", "node_kind") }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"], description: paramDesc("dispatch_activity_finish", "outcome") } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
       dispatch("dispatch_declare_recovery", toolDesc("dispatch_declare_recovery"),
         "recovery",
@@ -1746,7 +1746,7 @@ export default Plugin.define({
         description: toolDesc("vfs_verify"),
         input: obj({
           author_key: str(paramDesc("vfs_verify", "author_key")),
-          pass: { type: "boolean" },
+          pass: { type: "boolean", description: paramDesc("vfs_verify", "pass") },
           finding: str(paramDesc("vfs_verify", "finding")),
         }, ["author_key", "pass"]),
         async execute(input: unknown, c) {

@@ -24,8 +24,8 @@ entries:
     correlates_with:
       - shared/BASELINE.md
       - skills/takt-memory-contract/SKILL.md
-    vars: [tool, contract_skill]
-    text: "Do not guess the arguments. Read this tool's contract before retrying: in a separate execute call run `return search({ query: \"{{tool}}\" })` and pass exactly the input its signature lists; the {{contract_skill}} skill states which values your entry takes."
+    vars: [tool]
+    text: "Do not guess the arguments. Read this tool's contract before retrying: in a separate execute call run `return search({ query: \"{{tool}}\" })` and pass exactly the input its signature lists."
 
   - id: directive.declared_inputs_some
     surface: tool_output_directive

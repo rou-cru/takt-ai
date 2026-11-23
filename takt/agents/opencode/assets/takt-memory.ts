@@ -42,11 +42,8 @@ const CODE_FENCE = "```"
 
 // How OpenCode opens its refusal of a call whose arguments fail the tool's input schema.
 const INVALID_ARGUMENTS = "Invalid arguments for tool"
-// The skill holding the memory rules beyond the tools' own descriptions.
-const CONTRACT_SKILL = "takt-memory-contract"
 // contractPointer names where a memory tool's contract is, so a retry reads it instead of guessing.
-const contractPointer = (tool: string) =>
-  renderPrompt("directive.memory_contract_pointer", { tool, contract_skill: CONTRACT_SKILL })
+const contractPointer = (tool: string) => renderPrompt("directive.memory_contract_pointer", { tool })
 
 // Traceability matrix titles are fixed by the memory skills of qa, tpm and verify (PR-QA-9).
 const MATRIX_NAME = "Traceability Matrix"
