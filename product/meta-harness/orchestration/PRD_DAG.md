@@ -28,7 +28,7 @@
 | ID | Requirement |
 | --- | --- |
 | PR-DAG-ACT-1 | Direct orchestrator work is recorded under its activity identity, not invented work units. An activity entry carries session identity, activity identity, kind, history position, and lifecycle state, without work-unit or attempt fields. |
-| PR-DAG-ACT-2 | Direct activity is recorded through the ordinary dispatch interface with activity start and finish actions naming the root session, a stable activity identity, and the orchestrator node kind. The orchestrator is instructed to name a direct activity by the unit-name rule of `PR-DAG-REP-8`; the harness does not refuse another identity. Finish names the outcome: completed, failed, or interrupted. A completed finish without a result event is recorded as unverified. Start and finish are idempotent for the same identity and disposition. Ordinary delegated execution MUST NOT be represented as an activity. |
+| PR-DAG-ACT-2 | Direct activity is recorded through the ordinary dispatch interface with activity start and finish actions naming the root session, a stable activity identity, and the orchestrator node kind. The orchestrator is instructed to name a direct activity by the unit-name rule of `PR-DAG-REP-8`; the harness does not refuse another identity. Finish names the outcome: completed, failed, or interrupted. An activity carries no result event, so a completed one counts as unverified. Start and finish are idempotent for the same identity and disposition. Ordinary delegated execution MUST NOT be represented as an activity. |
 
 ### 1.4 Plan Commitment and Mutation Discipline
 
