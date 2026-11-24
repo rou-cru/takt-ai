@@ -8,19 +8,19 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@opencode/client": "2.3.0",
-    "@opencode/plugin": "2.3.0",
-    "@opencode/theme": "2.3.0",
-    "@opentui/core": "0.8.4",
-    "@opentui/solid": "0.8.4",
-    "@types/bun": "1.4.4",
+    "@opencode/client": "2.3.2",
+    "@opencode/plugin": "2.3.2",
+    "@opencode/theme": "2.3.2",
+    "@opentui/core": "0.9.7",
+    "@opentui/solid": "0.9.7",
+    "@types/bun": "1.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "effect": "4.1.4",
+    "effect": "4.1.5",
     "eslint": "10.15.0",
     "globals": "17.14.0",
     "solid-js": "1.9.12",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "8.72.2"
+    "typescript-eslint": "8.73.0"
   },
   "packageManager": "pnpm@11.28.8"
 }
