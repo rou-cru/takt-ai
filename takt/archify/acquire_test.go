@@ -23,8 +23,20 @@ import (
 
 func buildArchifyZip(t *testing.T, entries map[string]string, mode os.FileMode) []byte {
 	t.Helper()
+	return buildArchifyZipWithDirs(t, nil, entries, mode)
+}
+
+func buildArchifyZipWithDirs(t *testing.T, dirs []string, entries map[string]string, mode os.FileMode) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
+	for _, dir := range dirs {
+		hdr := &zip.FileHeader{Name: dir, Method: zip.Deflate}
+		hdr.SetMode(os.ModeDir | 0o755)
+		if _, err := zw.CreateHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for name, body := range entries {
 		hdr := &zip.FileHeader{Name: name, Method: zip.Deflate}
 		hdr.SetMode(mode)
@@ -106,7 +118,104 @@ func TestAcquireAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestInstalledVersionValidation(t *testing.T) {
+	t.Run("missing package.json", func(t *testing.T) {
+		if _, err := archify.InstalledVersion(t.TempDir()); err == nil || !strings.Contains(err.Error(), "read archify package.json") {
+			t.Fatalf("InstalledVersion() error = %v, want read archify package.json", err)
+		}
+	})
+
+	t.Run("corrupt package.json", func(t *testing.T) {
+		root := t.TempDir()
+		skillDir := model.ArchifySkillDir(root)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "package.json"), []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archify.InstalledVersion(root); err == nil || !strings.Contains(err.Error(), "parse archify package.json") {
+			t.Fatalf("InstalledVersion() error = %v, want parse archify package.json", err)
+		}
+	})
+
+	t.Run("empty version in package.json", func(t *testing.T) {
+		root := t.TempDir()
+		skillDir := model.ArchifySkillDir(root)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "package.json"), []byte(`{"version":"   "}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archify.InstalledVersion(root); err == nil || !strings.Contains(err.Error(), "has no version") {
+			t.Fatalf("InstalledVersion() error = %v, want has no version", err)
+		}
+	})
+}
+
+func TestAcquireReuseViaTopLevelAcquire(t *testing.T) {
+	root := t.TempDir()
+	payload := buildArchifyZipWithDirs(t, []string{"archify/", "archify/bin/"}, map[string]string{
+		"archify/SKILL.md":        "---\nname: archify\ndescription: diagrams\n---\n",
+		"archify/package.json":    `{"name":"archify","version":"` + archify.Version + `"}`,
+		"archify/bin/archify.mjs": "#!/usr/bin/env node\n",
+	}, 0o644)
+	m, hits := manifestFor(t, payload, archify.Version)
+	wantBin, installed, err := m.Acquire(context.Background(), http.DefaultClient, root)
+	if err != nil || !installed || hits.Load() != 1 {
+		t.Fatalf("seed Acquire() = (%q, %v, %v) hits=%d", wantBin, installed, err, hits.Load())
+	}
+
+	gotBin, reusedInstalled, err := archify.Acquire(context.Background(), root)
+	if err != nil || reusedInstalled || gotBin != wantBin {
+		t.Fatalf("archify.Acquire() = (%q, %v, %v), want (%q, false, nil)", gotBin, reusedInstalled, err, wantBin)
+	}
+}
+
 func TestAcquireRejectsTamperedOrUnsafeArchives(t *testing.T) {
+	t.Run("invalid url", func(t *testing.T) {
+		m := archify.Manifest{URL: "://bad", Version: archify.Version}
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "download archify archive") {
+			t.Fatalf("Acquire() error = %v, want download archify archive", err)
+		}
+	})
+
+	t.Run("unreachable host", func(t *testing.T) {
+		m := archify.Manifest{URL: "http://127.0.0.1:1", Version: archify.Version}
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "download archify archive") {
+			t.Fatalf("Acquire() error = %v, want download archify archive", err)
+		}
+	})
+
+	t.Run("non-200 HTTP status", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}))
+		t.Cleanup(srv.Close)
+		m := archify.Manifest{URL: srv.URL, Version: archify.Version}
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+			t.Fatalf("Acquire() error = %v, want HTTP 500", err)
+		}
+	})
+
+	t.Run("wrong archive size", func(t *testing.T) {
+		payload := validArchive(t, archify.Version)
+		m, _ := manifestFor(t, payload, archify.Version)
+		m.Size += 10
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "bytes, want") {
+			t.Fatalf("Acquire() error = %v, want bytes, want", err)
+		}
+	})
+
+	t.Run("corrupt zip payload", func(t *testing.T) {
+		payload := []byte("not a zip archive")
+		m, _ := manifestFor(t, payload, archify.Version)
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "open archify zip") {
+			t.Fatalf("Acquire() error = %v, want open archify zip", err)
+		}
+	})
+
 	t.Run("checksum mismatch", func(t *testing.T) {
 		payload := validArchive(t, archify.Version)
 		m, _ := manifestFor(t, payload, archify.Version)
@@ -126,6 +235,16 @@ func TestAcquireRejectsTamperedOrUnsafeArchives(t *testing.T) {
 		}
 	})
 
+	t.Run("unexpected top-level entry", func(t *testing.T) {
+		payload := buildArchifyZip(t, map[string]string{
+			"other/file.txt": "bad",
+		}, 0o644)
+		m, _ := manifestFor(t, payload, archify.Version)
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "unexpected archify archive entry") {
+			t.Fatalf("Acquire() error = %v, want unexpected archify archive entry", err)
+		}
+	})
+
 	t.Run("symlink entry", func(t *testing.T) {
 		payload := buildArchifyZip(t, map[string]string{
 			"archify/link": "/etc/passwd",
@@ -135,6 +254,42 @@ func TestAcquireRejectsTamperedOrUnsafeArchives(t *testing.T) {
 			t.Fatalf("Acquire() error = %v, want symlink refused", err)
 		}
 	})
+
+	for _, tc := range []struct {
+		name    string
+		entries map[string]string
+	}{
+		{
+			name: "missing SKILL.md payload",
+			entries: map[string]string{
+				"archify/package.json":    `{"version":"` + archify.Version + `"}`,
+				"archify/bin/archify.mjs": "#!/usr/bin/env node\n",
+			},
+		},
+		{
+			name: "missing package.json payload",
+			entries: map[string]string{
+				"archify/SKILL.md":        "---\nname: archify\n---\n",
+				"archify/bin/archify.mjs": "#!/usr/bin/env node\n",
+			},
+		},
+		{
+			name: "below minimum version in archive",
+			entries: map[string]string{
+				"archify/SKILL.md":        "---\nname: archify\n---\n",
+				"archify/package.json":    `{"version":"3.0.0"}`,
+				"archify/bin/archify.mjs": "#!/usr/bin/env node\n",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := buildArchifyZip(t, tc.entries, 0o644)
+			m, _ := manifestFor(t, payload, archify.Version)
+			if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "lacks valid") {
+				t.Fatalf("Acquire() error = %v, want lacks valid payload", err)
+			}
+		})
+	}
 
 	t.Run("existing older unmanaged copy preserved", func(t *testing.T) {
 		root := t.TempDir()
@@ -162,21 +317,65 @@ func TestAcquireRejectsTamperedOrUnsafeArchives(t *testing.T) {
 }
 
 func TestVerifyRunsNodeDoctor(t *testing.T) {
-	root := t.TempDir()
-	payload := validArchive(t, archify.Version)
-	m, _ := manifestFor(t, payload, archify.Version)
-	if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
-		t.Fatal(err)
-	}
-	fakeBin := t.TempDir()
-	nodeScript := "#!/bin/sh\nif [ \"$2\" = \"doctor\" ]; then echo \"Archify ready\"; exit 0; fi\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(fakeBin, "node"), []byte(nodeScript), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Run("passes when node doctor succeeds", func(t *testing.T) {
+		root := t.TempDir()
+		payload := validArchive(t, archify.Version)
+		m, _ := manifestFor(t, payload, archify.Version)
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+			t.Fatal(err)
+		}
+		fakeBin := t.TempDir()
+		nodeScript := "#!/bin/sh\nif [ \"$2\" = \"doctor\" ]; then echo \"Archify ready\"; exit 0; fi\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(fakeBin, "node"), []byte(nodeScript), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	ver, err := archify.Verify(context.Background(), root)
-	if err != nil || ver != archify.Version {
-		t.Fatalf("Verify() = (%q, %v), want (%q, nil)", ver, err, archify.Version)
+		ver, err := archify.Verify(context.Background(), root)
+		if err != nil || ver != archify.Version {
+			t.Fatalf("Verify() = (%q, %v), want (%q, nil)", ver, err, archify.Version)
+		}
+	})
+
+	t.Run("missing archify install", func(t *testing.T) {
+		if _, err := archify.Verify(context.Background(), t.TempDir()); err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("Verify() error = %v, want not found", err)
+		}
+	})
+
+	for _, tc := range []struct {
+		name       string
+		nodeScript string
+		wantMsg    string
+	}{
+		{
+			name:       "node doctor fails with output",
+			nodeScript: "#!/bin/sh\necho \"broken runtime\" >&2\nexit 1\n",
+			wantMsg:    "broken runtime",
+		},
+		{
+			name:       "node doctor fails without output",
+			nodeScript: "#!/bin/sh\nexit 1\n",
+			wantMsg:    "archify doctor failed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			payload := validArchive(t, archify.Version)
+			m, _ := manifestFor(t, payload, archify.Version)
+			if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+				t.Fatal(err)
+			}
+			fakeBin := t.TempDir()
+			if err := os.WriteFile(filepath.Join(fakeBin, "node"), []byte(tc.nodeScript), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			_, err := archify.Verify(context.Background(), root)
+			if err == nil || !strings.Contains(err.Error(), "archify doctor failed") || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("Verify() error = %v, want archify doctor failed + %q", err, tc.wantMsg)
+			}
+		})
 	}
 }

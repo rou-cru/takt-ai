@@ -868,4 +868,109 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 			t.Fatal("uninstall removed the user's pre-existing unmanaged Archify installation")
 		}
 	})
+
+	t.Run("sync replaces stale Takt-managed Archify via backup", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentContext7), string(model.ComponentArchify)}
+		if _, err := rt.Run(context.Background(), "install", root, req); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		pkgPath := filepath.Join(model.ArchifySkillDir(root), "package.json")
+		if err := os.WriteFile(pkgPath, []byte(`{"name":"archify","version":"3.0.0"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res, err := rt.Run(context.Background(), "sync", root, req)
+		if err != nil {
+			t.Fatalf("Run(sync stale archify) error = %v", err)
+		}
+		if _, found := archify.Resolve(root); !found {
+			t.Fatal("archify.Resolve() = false after stale sync")
+		}
+		if ver, err := archify.InstalledVersion(root); err != nil || ver != archify.Version {
+			t.Fatalf("InstalledVersion() = (%q, %v), want %q", ver, err, archify.Version)
+		}
+		if len(res.BackedUp) == 0 {
+			t.Fatalf("BackedUp = %v, want backup entry for replaced stale archify", res.BackedUp)
+		}
+	})
+
+	t.Run("install fails before writing when Archify archive is unavailable", func(t *testing.T) {
+		root := t.TempDir()
+		srv := httptest.NewServer(http.NotFoundHandler())
+		t.Cleanup(srv.Close)
+		rt := installRuntime(t)
+		m := *rt.Archify
+		m.URL = srv.URL
+		rt.Archify = &m
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentArchify)}
+		res, err := rt.Run(context.Background(), "install", root, req)
+		if err == nil || !strings.Contains(err.Error(), "archify capability unavailable") {
+			t.Fatalf("Run(install) error = %v, want archify capability unavailable", err)
+		}
+		if len(res.Changed) != 0 {
+			t.Fatalf("Changed = %v, want none when prerequisite fails before writes", res.Changed)
+		}
+	})
+
+	t.Run("install cancelled during Archify acquisition applies nothing", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if err := rt.Model.Acquire(context.Background(), http.DefaultClient, embed.ModelDir(root)); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			cancel()
+			http.Error(w, "cancelled", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(srv.Close)
+		rt.Archify = &archify.Manifest{
+			URL:     srv.URL,
+			SHA256:  strings.Repeat("a", 64),
+			Size:    10,
+			Version: archify.Version,
+		}
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentArchify)}
+		res, err := rt.Run(ctx, "install", root, req)
+		if err != nil {
+			t.Fatalf("Run(install) error = %v, want nil for cancellation", err)
+		}
+		if res.Outcome != lifecycle.OutcomeCancelledNothingApplied {
+			t.Fatalf("Outcome = %v, want %v", res.Outcome, lifecycle.OutcomeCancelledNothingApplied)
+		}
+	})
+
+	t.Run("sync deselection preserves user-edited takt-archify bridge skill", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		reqWith := setuputil.TestPlanRequest()
+		reqWith.Components = []string{string(model.ComponentContext7), string(model.ComponentArchify)}
+		if _, err := rt.Run(context.Background(), "install", root, reqWith); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		bridgeOpenCode := filepath.Join(root, model.OpenCodeSkillsDir, "takt-archify", "SKILL.md")
+		raw, err := os.ReadFile(bridgeOpenCode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(bridgeOpenCode, append(raw, []byte("\n# custom\n")...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		reqWithout := setuputil.TestPlanRequest()
+		reqWithout.Components = []string{string(model.ComponentContext7)}
+		if _, err := rt.Run(context.Background(), "sync", root, reqWithout); err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
+		}
+		if _, err := os.Stat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("archify dir after deselection stat = %v, want removed", err)
+		}
+		got, err := os.ReadFile(bridgeOpenCode)
+		if err != nil || !strings.Contains(string(got), "# custom\n") {
+			t.Fatalf("user-edited bridge skill = (%q, %v), want preserved custom edit", string(got), err)
+		}
+	})
 }

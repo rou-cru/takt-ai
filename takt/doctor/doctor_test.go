@@ -509,4 +509,20 @@ func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
 		checks := h.mustRun()
 		expect(t, checks, "archify:skill", passMark, "archify ", "")
 	})
+
+	t.Run("fails when node doctor fails", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+			t.Fatal(err)
+		}
+		h.tool("node", []byte("#!/bin/sh\necho \"node runtime error\" >&2\nexit 1\n"))
+		checks, _, err := h.run()
+		if !errors.Is(err, doctor.ErrUnhealthy) {
+			t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+		}
+		expect(t, checks, "archify:skill", failMark, "archify doctor failed", "Ensure Node.js >= 18")
+	})
 }
