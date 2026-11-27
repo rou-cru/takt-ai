@@ -678,12 +678,14 @@ func (f *FS) checkOwnership(agent AgentID, rel string) error {
 }
 
 // readMergedLocked resolves rel as seen by agent: staging over physical disk.
+// A captured base serves reads only while agent still owns rel; a released path
+// reads as the physical file, and the base stays in the delta for recovery.
 func (f *FS) readMergedLocked(agent AgentID, rel string) ([]byte, bool, error) {
 	if d, ok := f.staged[agent]; ok {
 		if content, staged := d.files[rel]; staged {
 			return content, content != nil, nil // nil = staged delete
 		}
-		if base, ok := d.bases[rel]; ok {
+		if base, ok := d.bases[rel]; ok && f.owners[rel] == agent {
 			return base.Content, base.Present, nil
 		}
 	}
