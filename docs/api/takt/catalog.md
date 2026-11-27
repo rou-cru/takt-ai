@@ -15,7 +15,11 @@ Package catalog is the single declarative source of Takt's installable content: 
 - [func AssetFS\(\) fs.FS](<#AssetFS>)
 - [func ComponentPurpose\(id model.ComponentID\) string](<#ComponentPurpose>)
 - [func LoadNativeContent\(\) \(map\[string\]NativeSubAgentContent, error\)](<#LoadNativeContent>)
+- [func ResolvePolicyPlaceholders\(content \[\]byte\) \(\[\]byte, error\)](<#ResolvePolicyPlaceholders>)
 - [func SelectableOrder\(\) \(\[\]model.ComponentID, error\)](<#SelectableOrder>)
+- [func SkillActive\(component model.ComponentID, selected \[\]model.ComponentID\) bool](<#SkillActive>)
+- [type AdmissionPolicy](<#AdmissionPolicy>)
+  - [func LoadAdmissionPolicy\(\) \(AdmissionPolicy, error\)](<#LoadAdmissionPolicy>)
 - [type AgentDefinition](<#AgentDefinition>)
   - [func \(a AgentDefinition\) ComposeText\(fsys fs.FS\) \(string, error\)](<#AgentDefinition.ComposeText>)
   - [func \(a AgentDefinition\) ContextPaths\(\) \[\]string](<#AgentDefinition.ContextPaths>)
@@ -27,6 +31,8 @@ Package catalog is the single declarative source of Takt's installable content: 
 - [type Catalog](<#Catalog>)
   - [func LoadFS\(fsys fs.FS\) \(Catalog, error\)](<#LoadFS>)
   - [func LoadPackages\(\) \(Catalog, error\)](<#LoadPackages>)
+  - [func \(c Catalog\) ActiveAgentSkills\(def AgentDefinition, selected \[\]model.ComponentID\) \[\]string](<#Catalog.ActiveAgentSkills>)
+  - [func \(c Catalog\) SkillComponent\(skillID string\) model.ComponentID](<#Catalog.SkillComponent>)
   - [func \(c Catalog\) VFSAuthors\(\) \[\]string](<#Catalog.VFSAuthors>)
 - [type ContextFiles](<#ContextFiles>)
 - [type NativeSubAgentContent](<#NativeSubAgentContent>)
@@ -38,6 +44,12 @@ Package catalog is the single declarative source of Takt's installable content: 
 
 
 ## Constants
+
+<a name="AdmissionPolicyRef"></a>AdmissionPolicyRef names the admission rule on every record.
+
+```go
+const AdmissionPolicyRef = "harness.admission"
+```
 
 <a name="BaselinePath"></a>BaselinePath is the shared prompt prefix every agent composes on top of.
 
@@ -92,6 +104,15 @@ func LoadNativeContent() (map[string]NativeSubAgentContent, error)
 
 LoadNativeContent returns specialist prose keyed by instance ID for joining with catalog models.
 
+<a name="ResolvePolicyPlaceholders"></a>
+## func ResolvePolicyPlaceholders
+
+```go
+func ResolvePolicyPlaceholders(content []byte) ([]byte, error)
+```
+
+ResolvePolicyPlaceholders replaces each \{\{policy.\<name\>\}\} marker in catalog prose with the admission policy's value. A marker left unresolved is an error: unresolved prose would hand an agent a limit that does not exist.
+
 <a name="SelectableOrder"></a>
 ## func SelectableOrder
 
@@ -100,6 +121,54 @@ func SelectableOrder() ([]model.ComponentID, error)
 ```
 
 SelectableOrder lists user\-choosable components in manifest order so prompts stay stable.
+
+<a name="SkillActive"></a>
+## func SkillActive
+
+```go
+func SkillActive(component model.ComponentID, selected []model.ComponentID) bool
+```
+
+SkillActive reports whether a skill belonging to component should be deployed and projected for the selected component list. Core skills \(empty component\) are always active.
+
+<a name="AdmissionPolicy"></a>
+## type AdmissionPolicy
+
+AdmissionPolicy holds the ceiling and the session budgets so every fixed value is canonical policy data rather than a literal in an execution path \(PR\-HAR\-16, PR\-HAR\-19..22, PR\-HAR\-29\).
+
+```go
+type AdmissionPolicy struct {
+    Version     int `yaml:"version"`
+    Concurrency struct {
+        Specialists int `yaml:"specialists"`
+    }   `yaml:"concurrency"`
+    Budgets struct {
+        UnplannedUnits   int `yaml:"unplanned_units"`
+        Contests         int `yaml:"contests"`
+        RecoveryFailures int `yaml:"recovery_failures"`
+        QARounds         int `yaml:"qa_rounds"`
+    }   `yaml:"budgets"`
+    // Modules holds the size limit catalog prose cites for module layout.
+    Modules struct {
+        MaxFileLines int `yaml:"max_file_lines"`
+    }   `yaml:"modules"`
+    // Recovery holds the admissible ceilings of the two budgets the orchestrator
+    // declares per recovery (PR-ORQ-13).
+    Recovery struct {
+        MaxActions  int `yaml:"max_actions"`
+        MaxAttempts int `yaml:"max_attempts"`
+    }   `yaml:"recovery"`
+}
+```
+
+<a name="LoadAdmissionPolicy"></a>
+### func LoadAdmissionPolicy
+
+```go
+func LoadAdmissionPolicy() (AdmissionPolicy, error)
+```
+
+LoadAdmissionPolicy returns the shared embedded policy; callers must not mutate the result.
 
 <a name="AgentDefinition"></a>
 ## type AgentDefinition
@@ -239,6 +308,24 @@ func LoadPackages() (Catalog, error)
 
 LoadPackages loads and validates the embedded declarative catalog.
 
+<a name="Catalog.ActiveAgentSkills"></a>
+### func \(Catalog\) ActiveAgentSkills
+
+```go
+func (c Catalog) ActiveAgentSkills(def AgentDefinition, selected []model.ComponentID) []string
+```
+
+ActiveAgentSkills returns def's skill IDs that remain active under selected components.
+
+<a name="Catalog.SkillComponent"></a>
+### func \(Catalog\) SkillComponent
+
+```go
+func (c Catalog) SkillComponent(skillID string) model.ComponentID
+```
+
+SkillComponent returns the optional component owning skillID, or empty for core skills.
+
 <a name="Catalog.VFSAuthors"></a>
 ### func \(Catalog\) VFSAuthors
 
@@ -324,12 +411,14 @@ ReconcileSelection reconciles a selection against the embedded manifest for call
 <a name="SkillPackage"></a>
 ## type SkillPackage
 
-SkillPackage is one validated skill: its package ID and deployed files.
+SkillPackage is one validated skill: its package ID, optional component owner, and deployed files.
 
 ```go
 type SkillPackage struct {
     // ID is the package identifier, also its directory name under skills/.
     ID  string
+    // Component names the optional selectable component that owns this skill, or empty for core skills.
+    Component model.ComponentID
     // Files lists every file deployed for the skill, executables marked.
     Files []PackageFile
 }

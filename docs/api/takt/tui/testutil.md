@@ -11,6 +11,7 @@ Package testutil provides shared test helpers for the TUI test suites.
 ## Index
 
 - [func ActionRequest\(t \*testing.T, cmd tea.Cmd\) runtime.ActionRequest](<#ActionRequest>)
+- [func FakeArchify\(t \*testing.T\) \*archify.Manifest](<#FakeArchify>)
 - [func FakeCodegraphScript\(version string\) \[\]byte](<#FakeCodegraphScript>)
 - [func FakeModel\(t \*testing.T\) \*embed.Manifest](<#FakeModel>)
 - [func FakeOpenCodeScript\(\) \[\]byte](<#FakeOpenCodeScript>)
@@ -31,6 +32,15 @@ func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest
 ```
 
 ActionRequest extracts a runtime request from a command so tests share one unwrapping rule.
+
+<a name="FakeArchify"></a>
+## func FakeArchify
+
+```go
+func FakeArchify(t *testing.T) *archify.Manifest
+```
+
+FakeArchify serves a minimal valid Archify zip over HTTP and returns its manifest, so install acquires Archify without the network.
 
 <a name="FakeCodegraphScript"></a>
 ## func FakeCodegraphScript

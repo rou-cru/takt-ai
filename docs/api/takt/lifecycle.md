@@ -196,6 +196,8 @@ type Runtime struct {
     StartMemory bool
     // Model is the manifest install acquires; nil means the pinned model.
     Model *embed.Manifest
+    // Archify is the manifest install acquires when ComponentArchify is selected; nil means the pinned release.
+    Archify *archify.Manifest
 }
 ```
 

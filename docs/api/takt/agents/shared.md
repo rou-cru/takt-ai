@@ -14,8 +14,6 @@ Package shared holds helpers reused by the OpenCode target adapter.
 - [Variables](<#variables>)
 - [func MemorySkillPath\(authorID string\) string](<#MemorySkillPath>)
 - [func NewManagedPaths\(generated \[\]string\) \(\[\]string, error\)](<#NewManagedPaths>)
-- [func ResolveBinary\(candidates \[\]string, isCompatible func\(absolute string\) bool\) \(string, bool\)](<#ResolveBinary>)
-- [func VersionAtLeast\(have, want string\) bool](<#VersionAtLeast>)
 - [type Artifact](<#Artifact>)
 
 
@@ -58,24 +56,6 @@ func NewManagedPaths(generated []string) ([]string, error)
 ```
 
 NewManagedPaths returns OpenCode's owned paths, normalized and sorted for stable manifests, so uninstalls never touch user files.
-
-<a name="ResolveBinary"></a>
-## func ResolveBinary
-
-```go
-func ResolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool)
-```
-
-ResolveBinary scans candidates in order and returns the absolute path of the first that exists, is a regular file, and satisfies isCompatible — the scan loop shared by every managed\-binary resolver \(codegraph\).
-
-<a name="VersionAtLeast"></a>
-## func VersionAtLeast
-
-```go
-func VersionAtLeast(have, want string) bool
-```
-
-VersionAtLeast reports whether the numeric MAJOR.MINOR.PATCH prefix of have is not older than want.
 
 <a name="Artifact"></a>
 ## type Artifact

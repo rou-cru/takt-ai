@@ -92,13 +92,13 @@ const SchemaVersion = "2.0.0"
 <a name="StateDirName"></a>StateDirName is the workspace\-local state directory, shared with the execution history so all Takt state lives in one place.
 
 ```go
-const StateDirName = ".takt-ai"
+const StateDirName = model.StateDirName
 ```
 
 <a name="StoreFileName"></a>StoreFileName is the single event database, so every session and process of a workspace shares one stream.
 
 ```go
-const StoreFileName = "events.db"
+const StoreFileName = model.EventStoreFileName
 ```
 
 ## Variables
