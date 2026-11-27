@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/memory"
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/tui/theme"
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
@@ -11,15 +11,15 @@ import (
 // capabilityNames maps a check's kind (and, for MCP servers, its server) to
 // the capability a person recognizes; check identifiers never reach the UI.
 var capabilityNames = map[string]string{
-	"mcp:" + memory.ServerKey: "Memory",
-	"memory":                  "Memory service",
-	"mcp:codegraph":           "Code navigation",
-	"mcp:context7":            "Library docs",
-	"orchestrator":            "Takt AI orchestrator",
-	"model":                   "Default model",
-	"skills":                  "Skills",
-	"plugins":                 "Plugins",
-	"reload":                  "OpenCode reload",
+	"mcp:" + model.MemoryServerKey: "Memory",
+	"memory":                       "Memory service",
+	"mcp:codegraph":                "Code navigation",
+	"mcp:context7":                 "Library docs",
+	"orchestrator":                 "Takt AI orchestrator",
+	"model":                        "Default model",
+	"skills":                       "Skills",
+	"plugins":                      "Plugins",
+	"reload":                       "OpenCode reload",
 }
 
 // capabilityName resolves a check ID such as "mcp:opencode:takt_memory".

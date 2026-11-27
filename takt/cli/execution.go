@@ -68,20 +68,78 @@ func declareInputs(ctx context.Context, h *history.History, r coordinationReques
 // read now, not accepted from a plugin preflight. Native execution is outside
 // this command's lifetime and therefore outside the workspace lock.
 func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, r coordinationRequest) (any, error) {
-	if prior, ok := h.Project().Executions[r.Dispatch]; ok {
-		if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent {
-			return nil, fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
-		}
-		// The seat is part of what the execution record names: a retry may not
-		// run another model or swap in a substitute under it. An execution
-		// recorded before models were recorded names none, so any model matches.
-		if (prior.Model != "" && prior.Model != r.Model) || prior.Substitute != r.Substitute {
-			return nil, fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
-		}
-		if prior.Ready || prior.Settled {
-			return map[string]any{"execution": prior, "launchable": false}, nil
+	if resp, done, err := checkPriorExecution(h.Project(), r); err != nil || done {
+		return resp, err
+	}
+	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Previous: r.PreviousModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
+	consumed, err := validateExecutionInputs(ctx, h, r, seat)
+	if err != nil {
+		return nil, err
+	}
+	u, _ := h.Project().Unit(r.Session, r.Event)
+	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
+	for _, id := range consumed {
+		identity.Invariants = append(identity.Invariants, vfs.MemoryInvariant(id))
+	}
+	needsClaim := vfs.RequireVFSCapability(r.Agent, model.VFSCapabilityWrite) == nil
+	if prior, exists := h.Project().Executions[r.Dispatch]; exists {
+		if !slices.Equal(prior.Inputs, consumed) {
+			return nil, compensateExecutionPreparation(fs, h, entries, r, u.AttemptID, fmt.Errorf("inputs changed during interrupted preparation for unit %s; dispatch_inputs now declares a different set", r.Event))
 		}
 	}
+	admit := func() (string, error) {
+		return admitExecutionAttempt(fs, h, entries, r, seat, &u)
+	}
+	if err := fs.PrepareDelegation(identity, r.AuthorKeys, needsClaim, admit); err != nil {
+		// Invalid declarations never spend an attempt. Only compensate an
+		// admission issued by this exact preparation, not an unrelated run.
+		if u.Dispatch == r.Dispatch && u.State == history.StateInFlight {
+			return nil, compensateExecutionPreparation(fs, h, entries, r, u.AttemptID, err)
+		}
+		return nil, err
+	}
+	if err := h.ExecutionFact(h.Project().Executions[r.Dispatch], history.KindPrepared, "", "", nil); err != nil {
+		return nil, compensateExecutionPreparation(fs, h, entries, r, u.AttemptID, err)
+	}
+	if r.Child != "" {
+		if _, err := h.AttachChild(r.Dispatch, r.Child, r.Agent); err != nil {
+			return nil, compensateExecutionPreparation(fs, h, entries, r, u.AttemptID, err)
+		}
+	}
+	return struct {
+		history.Execution
+		Launchable bool `json:"launchable"`
+	}{h.Project().Executions[r.Dispatch], true}, nil
+}
+
+func checkPriorExecution(p history.Projection, r coordinationRequest) (any, bool, error) {
+	prior, ok := p.Executions[r.Dispatch]
+	if !ok {
+		return nil, false, nil
+	}
+	if err := priorExecutionMismatch(prior, r); err != nil {
+		return nil, false, err
+	}
+	if prior.Ready || prior.Settled {
+		return map[string]any{"execution": prior, "launchable": false}, true, nil
+	}
+	return nil, false, nil
+}
+
+func priorExecutionMismatch(prior history.Execution, r coordinationRequest) error {
+	if prior.Root != r.Session || prior.Unit != r.Event || prior.Caller != r.Caller || prior.Agent != r.Agent {
+		return fmt.Errorf("dispatch %s already identifies root %s unit %s agent %s; retry the intended delegation with a new subagent call", r.Dispatch, prior.Root, prior.Unit, prior.Agent)
+	}
+	// The seat is part of what the execution record names: a retry may not
+	// run another model or swap in a substitute under it. An execution
+	// recorded before models were recorded names none, so any model matches.
+	if (prior.Model != "" && prior.Model != r.Model) || prior.Substitute != r.Substitute {
+		return fmt.Errorf("dispatch %s is recorded with model %q and substitute %t; to run another seat, make a new subagent call", r.Dispatch, prior.Model, prior.Substitute)
+	}
+	return nil
+}
+
+func validateExecutionInputs(ctx context.Context, h *history.History, r coordinationRequest, seat protocol.Seat) ([]int64, error) {
 	if r.Dispatch == "" || r.Caller == "" || r.Agent == "" || r.Owner == "" {
 		return nil, errors.New("dispatch: exact host call identity and harness instance required; retry the same subagent call, or run takt-ai setup sync to re-deploy the plugin")
 	}
@@ -100,74 +158,45 @@ func prepareExecution(ctx context.Context, fs *vfs.FS, h *history.History, entri
 	if err := refuseUnblockedContinuation(h.Project(), r); err != nil {
 		return nil, err
 	}
-	seat := protocol.Seat{Agent: r.Agent, Model: r.Model, Previous: r.PreviousModel, Reason: r.SeatReason, Substitute: r.Substitute, UserConfirmed: r.UserConfirmed}
 	if err := protocol.ValidateSeat(h, r.Session, seat); err != nil {
 		return nil, err
 	}
-	u, _ := h.Project().Unit(r.Session, r.Event)
-	identity := vfs.Identity{SessionID: r.Session, WorkUnitID: r.Event, AgentID: vfs.AgentID(r.Agent), Specialist: r.Agent}
-	for _, id := range consumed {
-		identity.Invariants = append(identity.Invariants, vfs.MemoryInvariant(id))
+	return consumed, nil
+}
+
+func compensateExecutionPreparation(fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, r coordinationRequest, attemptID string, cause error) error {
+	cleanup := fs.CancelPreparedDelegation(r.Session, r.Event, attemptID)
+	finish := protocol.Finish(h, journalRef(entries), r.Event, r.Session)
+	continuation := "prepared gates released and attempt closed; retry this unit with a new subagent call"
+	if cleanup != nil || finish != nil {
+		continuation = "preparation compensation could not complete; retry this unit after the reported store failure is resolved"
 	}
-	needsClaim := vfs.RequireVFSCapability(r.Agent, model.VFSCapabilityWrite) == nil
-	compensate := func(cause error) (any, error) {
-		cleanup := fs.CancelPreparedDelegation(r.Session, r.Event, u.AttemptID)
-		finish := protocol.Finish(h, journalRef(entries), r.Event, r.Session)
-		continuation := "prepared gates released and attempt closed; retry this unit with a new subagent call"
-		if cleanup != nil || finish != nil {
-			continuation = "preparation compensation could not complete; retry this unit after the reported store failure is resolved"
+	return fmt.Errorf("launch preparation refused for root %s unit %s dispatch %s: %w; %s (use dispatch_inputs or claim_assign to correct a declaration if named)", r.Session, r.Event, r.Dispatch, errors.Join(cause, cleanup, finish), continuation)
+}
+
+func admitExecutionAttempt(fs *vfs.FS, h *history.History, entries []vfs.JournalEntry, r coordinationRequest, seat protocol.Seat, u *history.Unit) (string, error) {
+	req := r
+	req.Action = "admit"
+	if _, err := coordinateRoutine(fs, h, entries, req); err != nil {
+		return "", err
+	}
+	*u, _ = h.Project().Unit(r.Session, r.Event)
+	if u.State != history.StateInFlight || u.Dispatch != r.Dispatch || u.Agent != r.Agent {
+		return "", fmt.Errorf("dispatch %s is not running unit %s; retry the unit with a new subagent call", r.Dispatch, r.Event)
+	}
+	if _, exists := h.Project().Executions[r.Dispatch]; !exists {
+		if r.CreatedAt == 0 {
+			r.CreatedAt = time.Now().UnixMilli()
 		}
-		return nil, fmt.Errorf("launch preparation refused for root %s unit %s dispatch %s: %w; %s (use dispatch_inputs or claim_assign to correct a declaration if named)", r.Session, r.Event, r.Dispatch, errors.Join(cause, cleanup, finish), continuation)
-	}
-	if prior, exists := h.Project().Executions[r.Dispatch]; exists {
-		if !slices.Equal(prior.Inputs, consumed) {
-			return compensate(fmt.Errorf("inputs changed during interrupted preparation for unit %s; dispatch_inputs now declares a different set", r.Event))
+		batch := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
+		if seat.Restores() {
+			batch = append(batch, protocol.SeatEntry(r.Session, r.Event, u.AttemptID, seat))
 		}
-	}
-	admit := func() (string, error) {
-		req := r
-		req.Action = "admit"
-		if _, err := coordinateRoutine(fs, h, entries, req); err != nil {
+		if err := h.AppendBatch(batch); err != nil {
 			return "", err
 		}
-		u, _ = h.Project().Unit(r.Session, r.Event)
-		if u.State != history.StateInFlight || u.Dispatch != r.Dispatch || u.Agent != r.Agent {
-			return "", fmt.Errorf("dispatch %s is not running unit %s; retry the unit with a new subagent call", r.Dispatch, r.Event)
-		}
-		if _, exists := h.Project().Executions[r.Dispatch]; !exists {
-			if r.CreatedAt == 0 {
-				r.CreatedAt = time.Now().UnixMilli()
-			}
-			entries := []history.Entry{{Author: history.AuthorHarness, Kind: history.KindExecution, SessionID: r.Session, WorkUnitID: r.Event, AttemptID: u.AttemptID, Dispatch: r.Dispatch, Agent: r.Agent, Caller: r.Caller, CreatedAt: r.CreatedAt, Owner: r.Owner, Model: r.Model, Substitute: r.Substitute, Cause: history.CauseNone}}
-			if seat.Restores() {
-				entries = append(entries, protocol.SeatEntry(r.Session, r.Event, u.AttemptID, seat))
-			}
-			if err := h.AppendBatch(entries); err != nil {
-				return "", err
-			}
-		}
-		return u.AttemptID, nil
 	}
-	if err := fs.PrepareDelegation(identity, r.AuthorKeys, needsClaim, admit); err != nil {
-		// Invalid declarations never spend an attempt. Only compensate an
-		// admission issued by this exact preparation, not an unrelated run.
-		if u.Dispatch == r.Dispatch && u.State == history.StateInFlight {
-			return compensate(err)
-		}
-		return nil, err
-	}
-	if err := h.ExecutionFact(h.Project().Executions[r.Dispatch], history.KindPrepared, "", "", nil); err != nil {
-		return compensate(err)
-	}
-	if r.Child != "" {
-		if _, err := h.AttachChild(r.Dispatch, r.Child, r.Agent); err != nil {
-			return compensate(err)
-		}
-	}
-	return struct {
-		history.Execution
-		Launchable bool `json:"launchable"`
-	}{h.Project().Executions[r.Dispatch], true}, nil
+	return u.AttemptID, nil
 }
 
 func attachExecutionChild(h *history.History, r coordinationRequest) (any, error) {

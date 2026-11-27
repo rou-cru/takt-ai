@@ -1,29 +1,32 @@
 package memory
 
-import "github.com/rou-cru/takt-ai/takt/prompts"
+import (
+	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/prompts"
+)
 
 // ServerKey is the MCP server key clients register the service under; it is distinctive so it never
 // replaces or collides with a user's server under a generic key such as "memory".
-const ServerKey = "takt_memory"
+const ServerKey = model.MemoryServerKey
 
 // PrefixedToolName is the name OpenCode gives a tool of the memory MCP server: the server key, an
 // underscore, and the tool.
-func PrefixedToolName(tool string) string { return ServerKey + "_" + tool }
+func PrefixedToolName(tool string) string { return model.MemoryPrefixedToolName(tool) }
 
 // Names of the six tools served identically on /crew and /external, the single source of tool names.
 const (
-	ToolRecord          = "record"
-	ToolSearch          = "search"
-	ToolRead            = "read"
-	ToolSessions        = "sessions"
-	ToolContinueSession = "continue_session"
-	ToolCloseSession    = "close_session"
+	ToolRecord          = model.MemoryToolRecord
+	ToolSearch          = model.MemoryToolSearch
+	ToolRead            = model.MemoryToolRead
+	ToolSessions        = model.MemoryToolSessions
+	ToolContinueSession = model.MemoryToolContinueSession
+	ToolCloseSession    = model.MemoryToolCloseSession
 )
 
 // Names of the tools served on /admin, which only Takt code calls.
 const (
-	AdminBind     = "bind"
-	AdminDescribe = "describe"
+	AdminBind     = model.MemoryAdminBind
+	AdminDescribe = model.MemoryAdminDescribe
 	AdminStatus   = "status"
 	AdminInit     = "init"
 	AdminBackup   = "backup"

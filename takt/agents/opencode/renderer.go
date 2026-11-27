@@ -23,10 +23,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
-	"github.com/rou-cru/takt-ai/takt/obs"
-	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 // permissionRule is one entry of an OpenCode V2 permissions array. V2
@@ -262,15 +259,15 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 	// Recording, reading, and listing sessions are open to every crew agent; the
 	// session lifecycle belongs to the orchestrator and the roles holding the
 	// user interface.
-	for _, name := range []string{memory.ToolRecord, memory.ToolSearch, memory.ToolRead, memory.ToolSessions} {
-		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, "allow"})
+	for _, name := range []string{model.MemoryToolRecord, model.MemoryToolSearch, model.MemoryToolRead, model.MemoryToolSessions} {
+		rules = append(rules, permissionRule{model.MemoryPrefixedToolName(name), allResources, "allow"})
 	}
 	lifecycleEffect := "deny"
 	if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
 		lifecycleEffect = "allow"
 	}
-	for _, name := range []string{memory.ToolContinueSession, memory.ToolCloseSession} {
-		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, lifecycleEffect})
+	for _, name := range []string{model.MemoryToolContinueSession, model.MemoryToolCloseSession} {
+		rules = append(rules, permissionRule{model.MemoryPrefixedToolName(name), allResources, lifecycleEffect})
 	}
 	rules = append(rules, skillRules(spec.Skills)...)
 	// VFS access is an explicit per-instance grant, not a role-derived default.
@@ -302,7 +299,7 @@ func modelRef(spec AgentSpec) any {
 
 // eventStoreResource is the workspace event store as a permission resource.
 // The trailing glob covers SQLite's -wal, -shm and -journal siblings, which hold recent rows.
-var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
+var eventStoreResource = "**/" + model.StateDirName + "/" + model.EventStoreFileName + "*"
 
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.
@@ -421,14 +418,14 @@ func vfsPermissionRules(capabilities []model.VFSCapability) []permissionRule {
 	return rules
 }
 
-// gitRules copies vfs.GitPermissionRules for role into OpenCode's native rule
+// gitRules copies model.GitPermissionRules for role into OpenCode's native rule
 // shape, never re-deriving it: every role but the orchestrator (an undeclared
 // one included) denies git except read-only subcommands, and the orchestrator
 // allows git except the PR-VFS-GIT-5 actions it asks the user to approve. GitPermissionRule effects are the
 // native strings and its slice order is the evaluation order for a host
 // where the last matching rule wins, so both are copied exactly.
 func gitRules(role model.RoleClass) []permissionRule {
-	projected := vfs.GitPermissionRules(role)
+	projected := model.GitPermissionRules(role)
 	rules := make([]permissionRule, 0, len(projected))
 	for _, canonical := range projected {
 		rules = append(rules, permissionRule{"shell", canonical.Pattern, canonical.Effect})

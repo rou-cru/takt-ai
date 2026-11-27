@@ -13,13 +13,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package dispatch_test
+package catalog_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/catalog"
 )
 
 const validPolicy = `version: 1
@@ -40,7 +41,7 @@ recovery:
 // PR-HAR-29: an invalid or missing limit names the limit and the policy entry
 // to correct, whichever limit it is.
 func TestAdmissionPolicyRejectionNamesTheEntry(t *testing.T) {
-	if _, err := dispatch.ParseAdmissionPolicy([]byte(validPolicy)); err != nil {
+	if _, err := catalog.ParseAdmissionPolicy([]byte(validPolicy)); err != nil {
 		t.Fatalf("valid policy refused: %v", err)
 	}
 	for _, entry := range []string{
@@ -54,11 +55,33 @@ func TestAdmissionPolicyRejectionNamesTheEntry(t *testing.T) {
 			"negative": replaceValue(t, validPolicy, section, line, "-1"),
 			"missing":  dropEntry(t, validPolicy, line),
 		} {
-			_, err := dispatch.ParseAdmissionPolicy([]byte(policy))
+			_, err := catalog.ParseAdmissionPolicy([]byte(policy))
 			if err == nil || !strings.Contains(err.Error(), entry) {
 				t.Errorf("%s %s: error = %v, want it to name %s", entry, name, err, entry)
 			}
 		}
+	}
+}
+
+func TestResolvePolicyPlaceholders(t *testing.T) {
+	p, err := catalog.LoadAdmissionPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := catalog.ResolvePolicyPlaceholders([]byte("at most {{policy.concurrent_specialists}} and {{policy.unplanned_units}} under {{policy.max_file_lines}}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "at most " + strconv.Itoa(p.Concurrency.Specialists) + " and " + strconv.Itoa(p.Budgets.UnplannedUnits) + " under " + strconv.Itoa(p.Modules.MaxFileLines)
+	if string(got) != want {
+		t.Fatalf("resolved = %q; want %q", got, want)
+	}
+	plain, err := catalog.ResolvePolicyPlaceholders([]byte("no markers"))
+	if err != nil || string(plain) != "no markers" {
+		t.Fatalf("plain = %q, %v", plain, err)
+	}
+	if _, err = catalog.ResolvePolicyPlaceholders([]byte("{{policy.unknown}}")); err == nil || !strings.Contains(err.Error(), "unresolved") {
+		t.Fatalf("unknown marker = %v; want unresolved error", err)
 	}
 }
 

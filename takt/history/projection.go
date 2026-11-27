@@ -411,12 +411,7 @@ func (p *Projection) fold(e Entry) {
 		return
 	}
 	if e.Kind == KindTerminated {
-		for id, d := range p.Executions {
-			if d.Root == e.SessionID && d.Unit == e.WorkUnitID && d.Attempt == e.AttemptID {
-				d.Settled = true
-				p.Executions[id] = d
-			}
-		}
+		p.settleExecutions(e)
 	}
 	if nodeKind, activity := activityKindOf(e); activity {
 		p.foldActivity(e, nodeKind)
@@ -450,25 +445,43 @@ func (p *Projection) fold(e Entry) {
 	if u.NodeKind == "" && e.NodeKind == NodeKindDelegated {
 		u.NodeKind = e.NodeKind
 	}
+	recordAdmissionBudgets(b, e, known)
+	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = applyUnitTransition(u, e)
+}
+
+func (p *Projection) settleExecutions(e Entry) {
+	for id, d := range p.Executions {
+		if d.Root == e.SessionID && d.Unit == e.WorkUnitID && d.Attempt == e.AttemptID {
+			d.Settled = true
+			p.Executions[id] = d
+		}
+	}
+}
+
+func recordAdmissionBudgets(b *Budgets, e Entry, known bool) {
+	if e.Kind != KindAdmitted {
+		return
+	}
 	// Admission with no prior planned identity is uncovered delegation; it
 	// is counted once per unit and never given back (PR-HAR-19).
-	if e.Kind == KindAdmitted && !known {
-		p.budgets(e.SessionID).Unplanned++
+	if !known {
+		b.Unplanned++
 	}
-	if e.Kind == KindAdmitted {
-		if version, round := b.QARoundFor(e.WorkUnitID); version != "" {
-			round.Started = true
-			b.QARounds[version] = round
-		}
+	if version, round := b.QARoundFor(e.WorkUnitID); version != "" {
+		round.Started = true
+		b.QARounds[version] = round
 	}
 	// An admission that declares its recovery scope membership consumes one
 	// attempt of that recovery; a repeated request never reaches here
 	// (PR-HAR-6, PR-HAR-17).
-	if e.Kind == KindAdmitted && e.Objective != "" {
-		if r := p.budgets(e.SessionID).Recoveries[e.Objective]; r.Attempted != nil {
+	if e.Objective != "" {
+		if r := b.Recoveries[e.Objective]; r.Attempted != nil {
 			r.Attempted[e.WorkUnitID+"/"+e.AttemptID] = true
 		}
 	}
+}
+
+func applyUnitTransition(u Unit, e Entry) Unit {
 	u.SessionID, u.WorkUnitID, u.AttemptID = e.SessionID, e.WorkUnitID, e.AttemptID
 	switch e.Kind {
 	case KindAdmitted:
@@ -490,7 +503,7 @@ func (p *Projection) fold(e Entry) {
 		u.Launched = u.Launched || e.Kind == KindLaunched
 		u.CancelRequested = u.CancelRequested || e.Kind == KindCancelRequested
 	}
-	p.Units[UnitKey(e.SessionID, e.WorkUnitID)] = u
+	return u
 }
 
 func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
@@ -525,6 +538,9 @@ func (p *Projection) foldActivity(e Entry, nodeKind NodeKind) {
 // state, and reports that the entry changes no unit. They stay recorded and
 // visible; a denial in particular consumes nothing.
 func budgeted(b *Budgets, e Entry) bool {
+	if applyRecoveryBudget(b, e) {
+		return true
+	}
 	switch e.Kind {
 	case KindQARound:
 		if b.QARounds == nil {
@@ -535,34 +551,61 @@ func budgeted(b *Budgets, e Entry) bool {
 	case KindContested:
 		b.Contests[e.WorkUnitID+"/"+e.AttemptID] = true
 	case KindException:
-		b.Allowance[AllowanceKey(e.Bound, e.Objective)] += e.Allowance
-		if e.Bound == BoundRecoveryActions && e.Objective != "" {
-			// The enabling decision is also what reconciles unestablished
-			// consumption: the harness never clears that uncertainty itself. It
-			// re-establishes the bus position counting resumes from, and what was
-			// already consumed stands.
-			r := b.Recoveries[e.Objective]
-			r.Unreconciled, r.Cursor = false, refSeq(e.JournalRef)
-			b.Recoveries[e.Objective] = r
-		}
-		if e.Bound == BoundRecoveryActions || e.Bound == BoundRecoveryAttempts {
-			// The user's decision to continue lifts an abandonment: the scope
-			// reopens with the allowance beside what it already consumed, and
-			// its staged work was never touched.
-			if r := b.Recoveries[e.Objective]; e.Objective != "" && r.Backtracked && !r.Restored {
-				r.Open, r.Backtracked, r.Cause = true, false, ""
-				// The lifted closure no longer counts as a failed recovery; the
-				// reopened recovery's own closure decides the streak.
-				if r.Failures > 0 {
-					r.Failures--
-				}
-				b.Recoveries[e.Objective] = r
-			}
-		}
+		applyException(b, e)
 	case KindStopped:
 		b.Stopped++
 	case KindEscalated:
 		b.Escalated++
+	case KindInterlocutorSwitched:
+		b.InterlocutorHolder, b.InterlocutorAgent = e.WorkUnitID, e.Agent
+	case KindInterlocutorHandoff, KindInterlocutorAborted:
+		b.InterlocutorHolder, b.InterlocutorAgent = "", ""
+	case KindRevised:
+		// A valid revision advances the tracked plan version; the per-unit
+		// changes it produced are recorded as ordinary KindPlanned/KindWithdrawn
+		// entries alongside it and fold through the normal unit path.
+		b.PlanVersion = e.PlanVersion
+	case KindInvalidRevision:
+		// Recorded and visible, but touches no state: the last valid plan and
+		// its tracked version stay untouched (PR-DAG-MUT-6).
+	case KindSeatRestored:
+		// A record for the completion report; the restored instance runs
+		// through the unit's ordinary admission.
+	default:
+		return false
+	}
+	return true
+}
+
+func applyException(b *Budgets, e Entry) {
+	b.Allowance[AllowanceKey(e.Bound, e.Objective)] += e.Allowance
+	if e.Bound == BoundRecoveryActions && e.Objective != "" {
+		// The enabling decision is also what reconciles unestablished
+		// consumption: the harness never clears that uncertainty itself. It
+		// re-establishes the bus position counting resumes from, and what was
+		// already consumed stands.
+		r := b.Recoveries[e.Objective]
+		r.Unreconciled, r.Cursor = false, refSeq(e.JournalRef)
+		b.Recoveries[e.Objective] = r
+	}
+	if e.Bound == BoundRecoveryActions || e.Bound == BoundRecoveryAttempts {
+		// The user's decision to continue lifts an abandonment: the scope
+		// reopens with the allowance beside what it already consumed, and
+		// its staged work was never touched.
+		if r := b.Recoveries[e.Objective]; e.Objective != "" && r.Backtracked && !r.Restored {
+			r.Open, r.Backtracked, r.Cause = true, false, ""
+			// The lifted closure no longer counts as a failed recovery; the
+			// reopened recovery's own closure decides the streak.
+			if r.Failures > 0 {
+				r.Failures--
+			}
+			b.Recoveries[e.Objective] = r
+		}
+	}
+}
+
+func applyRecoveryBudget(b *Budgets, e Entry) bool {
+	switch e.Kind {
 	case KindRecoveryDeclared:
 		// A new declaration is a new budget origin, but the objective's failure
 		// streak is carried: redeclaring never resets it (PR-HAR-22).
@@ -597,21 +640,6 @@ func budgeted(b *Budgets, e Entry) bool {
 			r.Failures++
 		}
 		b.Recoveries[e.Objective] = r
-	case KindInterlocutorSwitched:
-		b.InterlocutorHolder, b.InterlocutorAgent = e.WorkUnitID, e.Agent
-	case KindInterlocutorHandoff, KindInterlocutorAborted:
-		b.InterlocutorHolder, b.InterlocutorAgent = "", ""
-	case KindRevised:
-		// A valid revision advances the tracked plan version; the per-unit
-		// changes it produced are recorded as ordinary KindPlanned/KindWithdrawn
-		// entries alongside it and fold through the normal unit path.
-		b.PlanVersion = e.PlanVersion
-	case KindInvalidRevision:
-		// Recorded and visible, but touches no state: the last valid plan and
-		// its tracked version stay untouched (PR-DAG-MUT-6).
-	case KindSeatRestored:
-		// A record for the completion report; the restored instance runs
-		// through the unit's ordinary admission.
 	default:
 		return false
 	}

@@ -14,6 +14,7 @@ HOST_TEST_PKGS=(
     ./takt/internal/artifacts
     ./takt/internal/flock
     ./takt/internal/opencodeapi
+    ./takt/internal/semver
     ./takt/model
     ./takt/obs
     ./takt/prompts

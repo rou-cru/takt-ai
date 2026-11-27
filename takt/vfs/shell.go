@@ -25,7 +25,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/history"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/obs"
@@ -546,7 +545,7 @@ func taktStatePaths() (private, readable []string, err error) {
 			private = append(private, dir)
 		}
 	}
-	if managed := codegraph.ManagedPrefix(filepath.Dir(global)); pathExists(managed) {
+	if managed := model.CodegraphManagedPrefix(filepath.Dir(global)); pathExists(managed) {
 		readable = append(readable, managed)
 	}
 	return private, readable, nil
@@ -723,7 +722,7 @@ func gitArgsMutation(args []string) string {
 		return ""
 	}
 	sub := args[0]
-	if !slices.Contains(readOnlyGitSubcommands, sub) {
+	if !slices.Contains(model.ReadOnlyGitSubcommands(), sub) {
 		return "git " + sub
 	}
 	return gitWritingOption(sub, args[1:])
@@ -761,7 +760,7 @@ func gitWritingOption(sub string, args []string) string {
 		if arg == "--" {
 			break
 		}
-		for _, option := range gitWritingOptions[sub] {
+		for _, option := range model.GitWritingOptions(sub) {
 			if gitOptionMatches(option, arg) {
 				return "git " + sub + " " + option
 			}

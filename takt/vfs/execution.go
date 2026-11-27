@@ -54,47 +54,13 @@ func (f *FS) PrepareDelegation(identity Identity, authors []AgentID, needsClaim 
 		return err
 	}
 	if needsClaim {
-		matched := false
-		for _, b := range f.bindings {
-			if b.Prelaunch && b.GateAuthorKey == "" && b.SessionID == identity.SessionID && b.WorkUnitID == identity.WorkUnitID && b.AgentID == identity.AgentID {
-				if !slices.Equal(b.Invariants, identity.Invariants) {
-					return fmt.Errorf("launch refused: inputs for unit %s changed after claim assignment; call claim_assign with author_key and the exact scope, then retry delegation", identity.WorkUnitID)
-				}
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return fmt.Errorf("%w: launch refused: no pending claim for root %s unit %s agent %s; call claim_assign for that exact unit and scope, then retry the same subagent call", ErrScopeDenied, identity.SessionID, identity.WorkUnitID, identity.AgentID)
-		}
-	}
-	prepared := make(map[AgentID]Identity)
-	if authors != nil {
-		if len(authors) == 0 {
-			return fmt.Errorf("%w: author_keys must list unique nonempty staged author keys; retry the same subagent call with its authors", ErrIdentity)
-		}
-		if err = RequireVFSCapability(identity.Specialist, model.VFSCapabilityVerify); err != nil {
+		if err = f.verifyPendingClaimLocked(identity); err != nil {
 			return err
 		}
-		seen := map[AgentID]bool{}
-		for _, key := range authors {
-			if strings.TrimSpace(string(key)) == "" || seen[key] {
-				return fmt.Errorf("%w: author_keys must list unique nonempty staged author keys", ErrIdentity)
-			}
-			seen[key] = true
-			judge := identity
-			if len(judge.Invariants) == 0 {
-				judge.Invariants = f.bindings[key].Invariants
-			}
-			judge, err = f.bindableIdentity(judge, nil)
-			if err != nil {
-				return err
-			}
-			if err = f.validateDelegatedAuthorLocked(judge, key); err != nil {
-				return fmt.Errorf("%w; call claim_assign with author_key %s to continue that work under root %s, then retry the same subagent call", err, key, identity.SessionID)
-			}
-			prepared[key] = judge
-		}
+	}
+	prepared, err := f.prepareDelegatedAuthorsLocked(identity, authors)
+	if err != nil {
+		return err
 	}
 	if admit != nil {
 		// The workspace lock stays held. The callback may unwind core GC
@@ -105,14 +71,73 @@ func (f *FS) PrepareDelegation(identity Identity, authors []AgentID, needsClaim 
 		if err != nil {
 			return err
 		}
-		// The admission may have unwound a cycle's bindings: every author is
-		// validated again against the store as it now stands.
-		for key, judge := range prepared {
-			if err = f.validateDelegatedAuthorLocked(judge, key); err != nil {
-				return err
-			}
+		if err = f.revalidateDelegatedAuthorsLocked(prepared); err != nil {
+			return err
 		}
 	}
+	f.replaceAttemptGatesLocked(identity, authors, prepared)
+	f.finishLocked(&err)
+	return err
+}
+
+func (f *FS) verifyPendingClaimLocked(identity Identity) error {
+	for _, b := range f.bindings {
+		if b.Prelaunch && b.GateAuthorKey == "" && b.SessionID == identity.SessionID && b.WorkUnitID == identity.WorkUnitID && b.AgentID == identity.AgentID {
+			if !slices.Equal(b.Invariants, identity.Invariants) {
+				return fmt.Errorf("launch refused: inputs for unit %s changed after claim assignment; call claim_assign with author_key and the exact scope, then retry delegation", identity.WorkUnitID)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: launch refused: no pending claim for root %s unit %s agent %s; call claim_assign for that exact unit and scope, then retry the same subagent call", ErrScopeDenied, identity.SessionID, identity.WorkUnitID, identity.AgentID)
+}
+
+func (f *FS) prepareDelegatedAuthorsLocked(identity Identity, authors []AgentID) (map[AgentID]Identity, error) {
+	prepared := make(map[AgentID]Identity)
+	if authors == nil {
+		return prepared, nil
+	}
+	if len(authors) == 0 {
+		return nil, fmt.Errorf("%w: author_keys must list unique nonempty staged author keys; retry the same subagent call with its authors", ErrIdentity)
+	}
+	if err := RequireVFSCapability(identity.Specialist, model.VFSCapabilityVerify); err != nil {
+		return nil, err
+	}
+	seen := map[AgentID]bool{}
+	for _, key := range authors {
+		if strings.TrimSpace(string(key)) == "" || seen[key] {
+			return nil, fmt.Errorf("%w: author_keys must list unique nonempty staged author keys", ErrIdentity)
+		}
+		seen[key] = true
+		judge := identity
+		if len(judge.Invariants) == 0 {
+			judge.Invariants = f.bindings[key].Invariants
+		}
+		var err error
+		judge, err = f.bindableIdentity(judge, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err = f.validateDelegatedAuthorLocked(judge, key); err != nil {
+			return nil, fmt.Errorf("%w; call claim_assign with author_key %s to continue that work under root %s, then retry the same subagent call", err, key, identity.SessionID)
+		}
+		prepared[key] = judge
+	}
+	return prepared, nil
+}
+
+// The admission may have unwound a cycle's bindings: every author is
+// validated again against the store as it now stands.
+func (f *FS) revalidateDelegatedAuthorsLocked(prepared map[AgentID]Identity) error {
+	for key, judge := range prepared {
+		if err := f.validateDelegatedAuthorLocked(judge, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FS) replaceAttemptGatesLocked(identity Identity, authors []AgentID, prepared map[AgentID]Identity) {
 	// A replay after an interrupted preparation may declare a different set.
 	// The core owns that set: never leave surplus gates from the same attempt.
 	for key, b := range f.bindings {
@@ -130,8 +155,6 @@ func (f *FS) PrepareDelegation(identity Identity, authors []AgentID, needsClaim 
 		judge.Prelaunch, judge.HostSession = true, ""
 		f.issueVerifierLocked(judge, key)
 	}
-	f.finishLocked(&err)
-	return err
 }
 
 // CancelPreparedDelegation releases only reservations and shell preparations

@@ -23,7 +23,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -146,5 +145,5 @@ func resolveCatalogContent(path string, content []byte) ([]byte, error) {
 	if !strings.HasSuffix(path, ".md") {
 		return content, nil
 	}
-	return dispatch.ResolvePolicyPlaceholders(content)
+	return catalog.ResolvePolicyPlaceholders(content)
 }

@@ -530,10 +530,7 @@ func GitShellDecision(role model.RoleClass, command string) (decision, reason st
 
 // GitPermissionRule is one native shell permission over a Git command
 // pattern, where "*" matches any text.
-type GitPermissionRule struct {
-	Pattern string
-	Effect  string
-}
+type GitPermissionRule = model.GitPermissionRule
 
 // GitPermissionRules is role's Git policy as native shell permission
 // patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then
@@ -544,61 +541,18 @@ type GitPermissionRule struct {
 // for a hard reset (PR-VFS-GIT-5); every other Git mutation, a plain local
 // commit included, is its conduct.
 func GitPermissionRules(role model.RoleClass) []GitPermissionRule {
-	if GuardGitMutation(role) == nil {
-		rules := []GitPermissionRule{{"git *", ShellAllow}}
-		for _, sub := range orchestratorGatedGit {
-			// "git * <sub>" also catches the subcommand behind leading options
-			// such as -C or --no-pager.
-			rules = append(rules, GitPermissionRule{"git " + sub, ShellAsk}, GitPermissionRule{"git " + sub + " *", ShellAsk},
-				GitPermissionRule{"git * " + sub, ShellAsk}, GitPermissionRule{"git * " + sub + " *", ShellAsk})
-		}
-		return append(rules, GitPermissionRule{"git commit *--amend*", ShellAsk}, GitPermissionRule{"git * commit *--amend*", ShellAsk},
-			GitPermissionRule{"git reset *--hard*", ShellAsk}, GitPermissionRule{"git *reset *--hard*", ShellAsk})
-	}
-	rules := []GitPermissionRule{{"git *", ShellDeny}}
-	for _, sub := range readOnlyGitSubcommands {
-		rules = append(rules, GitPermissionRule{"git " + sub, ShellAllow}, GitPermissionRule{"git " + sub + " *", ShellAllow})
-	}
-	for _, sub := range readOnlyGitSubcommands {
-		for _, option := range gitWritingOptions[sub] {
-			rules = append(rules, GitPermissionRule{"git " + sub + " *" + option + "*", ShellDeny})
-		}
-	}
-	return rules
-}
-
-// orchestratorGatedGit are the subcommands whose every use needs the user's
-// approval when the orchestrator runs them: they publish or rewrite history
-// or discard work (PR-VFS-GIT-5). A local commit needs none; an amended
-// commit and a hard reset are gated by option, not here.
-var orchestratorGatedGit = []string{"push", "rebase", "clean", "restore"}
-
-// readOnlyGitSubcommands never write to the repository, whatever their
-// arguments; subcommands that list or mutate by argument (branch, tag, stash,
-// reflog, config, remote, worktree) stay out.
-var readOnlyGitSubcommands = []string{
-	"diff", "log", "show", "blame", "status", "ls-tree", "ls-files", "rev-parse", "cat-file", "grep",
-	"shortlog", "describe", "merge-base", "rev-list", "for-each-ref", "check-ignore", "name-rev",
-}
-
-// gitWritingOptions are the options that make a read-only subcommand write a
-// file or run a program, so they do not inherit its read-only exemption.
-var gitWritingOptions = map[string][]string{
-	"diff": {"--output"},
-	"log":  {"--output"},
-	"show": {"--output"},
-	"grep": {"-O", "--open-files-in-pager"},
+	return model.GitPermissionRules(role)
 }
 
 // readOnlyGitHint names the git a denied caller may still run, and where any
 // other git goes.
 func readOnlyGitHint() string {
-	return "read-only git subcommands: " + strings.Join(readOnlyGitSubcommands, ", ") + "; return any other git to the orchestrator in your result"
+	return "read-only git subcommands: " + strings.Join(model.ReadOnlyGitSubcommands(), ", ") + "; return any other git to the orchestrator in your result"
 }
 
 // ReadOnlyGitSubcommands returns the read-only git subcommands.
 func ReadOnlyGitSubcommands() []string {
-	return slices.Clone(readOnlyGitSubcommands)
+	return model.ReadOnlyGitSubcommands()
 }
 
 // ─── internal helpers ─────────────────────────────────────────────────────────

@@ -54,6 +54,20 @@ const (
 // unrestricted; Takt imposes no domain of its own.
 const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
 
+// StateDirName is the workspace-local state directory shared across Takt components.
+const StateDirName = ".takt-ai"
+
+// EventStoreFileName is the workspace event database filename under StateDirName.
+const EventStoreFileName = "events.db"
+
+// CodegraphManagedPrefixKey is the root-relative slash path of the managed CodeGraph install.
+const CodegraphManagedPrefixKey = StateDirName + "/codegraph"
+
+// CodegraphManagedPrefix is where Takt installs its own CodeGraph copy: <root>/.takt-ai/codegraph.
+func CodegraphManagedPrefix(root string) string {
+	return filepath.Join(root, filepath.FromSlash(CodegraphManagedPrefixKey))
+}
+
 // OpenCodeConfigPath returns <home>/.config/opencode/opencode.json.
 func OpenCodeConfigPath(home string) string {
 	return filepath.Join(home, OpenCodeConfigDir, OpenCodeConfigFile)

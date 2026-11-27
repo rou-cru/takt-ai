@@ -683,32 +683,14 @@ func (e Entry) validateOutcomeShape() error {
 
 // validateKindFields checks the fields specific to each entry kind.
 func (e Entry) validateKindFields() error {
-	if e.QARound != nil && e.Kind != KindQARound {
-		return errors.New("history: qa_round belongs only to a round declaration")
-	}
-	if (e.Status != "" || e.Revision != nil) && e.Kind != KindResult {
-		return errors.New("history: status and revision belong only to a result")
+	if err := e.validateFieldExclusivity(); err != nil {
+		return err
 	}
 	switch e.Kind {
 	case KindResult:
-		if !resultStatuses[e.Status] {
-			return errors.New("history: a result names a known status: verified, failed, blocked, impossible or unverified")
-		}
-		evaluated := e.Status == ResultVerified || e.Status == ResultFailed
-		if evaluated && (e.Revision == nil || strings.TrimSpace(e.Evidence) == "") {
-			return errors.New("history: an evaluated result names its revision and evidence reference")
-		}
+		return e.validateResult()
 	case KindQARound:
-		if e.PlanVersion == "" || e.QARound == nil || strings.TrimSpace(e.QARound.Objective) == "" || len(e.QARound.Units) == 0 {
-			return errors.New("history: a QA round names its plan version, acceptance objective and authoring units")
-		}
-		seen := map[string]bool{}
-		for _, unit := range e.QARound.Units {
-			if strings.TrimSpace(unit) == "" || seen[unit] {
-				return errors.New("history: QA round units must be distinct and nonempty")
-			}
-			seen[unit] = true
-		}
+		return e.validateQARound()
 	case KindRecoveryDeclared, KindRecoveryClosed, KindActions, KindActionsUncertain, KindRestored:
 		if e.Objective == "" {
 			return errors.New("history: recovery requires an objective identity")
@@ -720,20 +702,65 @@ func (e Entry) validateKindFields() error {
 			return fmt.Errorf("history: a user exception names a known bound (%s) and a finite allowance above zero", strings.Join(slices.Sorted(maps.Keys(bounds)), ", "))
 		}
 	case KindRevised:
-		if e.BaseVersion == "" || e.PlanVersion == "" {
-			return errors.New("history: a revision names its expected base version and its resulting version")
-		}
-		if e.Classification != ClassificationTactical && e.Classification != ClassificationStrategic {
-			return fmt.Errorf("history: unknown revision classification %q", e.Classification)
-		}
+		return e.validateRevised()
 	case KindInvalidRevision:
 		if e.Reason == "" {
 			return errors.New("history: an invalid revision records its reason")
 		}
 	case KindSeatRestored:
-		if e.Agent == "" || e.Model == "" || e.Reason == "" {
-			return errors.New("history: a seat restoration names the instance, the model it runs and the reason")
+		return e.validateSeatRestored()
+	}
+	return nil
+}
+
+func (e Entry) validateFieldExclusivity() error {
+	if e.QARound != nil && e.Kind != KindQARound {
+		return errors.New("history: qa_round belongs only to a round declaration")
+	}
+	if (e.Status != "" || e.Revision != nil) && e.Kind != KindResult {
+		return errors.New("history: status and revision belong only to a result")
+	}
+	return nil
+}
+
+func (e Entry) validateResult() error {
+	if !resultStatuses[e.Status] {
+		return errors.New("history: a result names a known status: verified, failed, blocked, impossible or unverified")
+	}
+	evaluated := e.Status == ResultVerified || e.Status == ResultFailed
+	if evaluated && (e.Revision == nil || strings.TrimSpace(e.Evidence) == "") {
+		return errors.New("history: an evaluated result names its revision and evidence reference")
+	}
+	return nil
+}
+
+func (e Entry) validateQARound() error {
+	if e.PlanVersion == "" || e.QARound == nil || strings.TrimSpace(e.QARound.Objective) == "" || len(e.QARound.Units) == 0 {
+		return errors.New("history: a QA round names its plan version, acceptance objective and authoring units")
+	}
+	seen := map[string]bool{}
+	for _, unit := range e.QARound.Units {
+		if strings.TrimSpace(unit) == "" || seen[unit] {
+			return errors.New("history: QA round units must be distinct and nonempty")
 		}
+		seen[unit] = true
+	}
+	return nil
+}
+
+func (e Entry) validateRevised() error {
+	if e.BaseVersion == "" || e.PlanVersion == "" {
+		return errors.New("history: a revision names its expected base version and its resulting version")
+	}
+	if e.Classification != ClassificationTactical && e.Classification != ClassificationStrategic {
+		return fmt.Errorf("history: unknown revision classification %q", e.Classification)
+	}
+	return nil
+}
+
+func (e Entry) validateSeatRestored() error {
+	if e.Agent == "" || e.Model == "" || e.Reason == "" {
+		return errors.New("history: a seat restoration names the instance, the model it runs and the reason")
 	}
 	return nil
 }

@@ -37,3 +37,14 @@ func TestOpenCodePluginPath(t *testing.T) {
 		t.Errorf("OpenCodePluginPath = %q, want %q", got, want)
 	}
 }
+
+func TestCodegraphManagedPrefixAndMemoryPrefixedToolName(t *testing.T) {
+	gotPrefix := model.CodegraphManagedPrefix("/home/user")
+	wantPrefix := filepath.Join("/home/user", ".takt-ai", "codegraph")
+	if gotPrefix != wantPrefix {
+		t.Errorf("CodegraphManagedPrefix = %q, want %q", gotPrefix, wantPrefix)
+	}
+	if gotTool := model.MemoryPrefixedToolName(model.MemoryToolRead); gotTool != "takt_memory_read" {
+		t.Errorf("MemoryPrefixedToolName(read) = %q, want takt_memory_read", gotTool)
+	}
+}

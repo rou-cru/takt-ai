@@ -24,7 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/internal/semver"
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 // CodegraphVersion is the minimum codegraph release Takt configures and the one it installs.
@@ -43,7 +44,7 @@ const npmPackage = "@colbymchenry/codegraph"
 const managedMarkerKey = managedPrefixKey + "/node_modules/@colbymchenry/codegraph/npm-shim.js"
 
 // managedPrefixKey is the root-relative slash path of the managed install.
-const managedPrefixKey = ".takt-ai/codegraph"
+const managedPrefixKey = model.CodegraphManagedPrefixKey
 
 // runCommand executes one CodeGraph CLI command from the target workspace.
 func runCommand(ctx context.Context, binary, workspace string, args ...string) ([]byte, error) {
@@ -60,7 +61,7 @@ func ManagedPrefixKey() string { return managedPrefixKey }
 
 // ManagedPrefix is where Takt installs its own copy: <root>/.takt-ai/codegraph
 func ManagedPrefix(root string) string {
-	return filepath.Join(root, filepath.FromSlash(managedPrefixKey))
+	return model.CodegraphManagedPrefix(root)
 }
 
 // ManagedBinaryPath is the launcher npm links inside the managed prefix.
@@ -76,10 +77,28 @@ func Resolve(root string) (string, bool) {
 		candidates = append(candidates, onPath)
 	}
 	candidates = append(candidates, ManagedBinaryPath(root))
-	return shared.ResolveBinary(candidates, func(absolute string) bool {
+	return resolveBinary(candidates, func(absolute string) bool {
 		version, err := VerifyVersion(absolute)
 		return err == nil && compatibleVersion(version)
 	})
+}
+
+// resolveBinary scans candidates in order and returns the absolute path of the
+// first regular file that satisfies isCompatible.
+func resolveBinary(candidates []string, isCompatible func(absolute string) bool) (string, bool) {
+	for _, candidate := range candidates {
+		absolute, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(absolute); err != nil || info.IsDir() {
+			continue
+		}
+		if isCompatible(absolute) {
+			return absolute, true
+		}
+	}
+	return "", false
 }
 
 // Acquire returns Resolve's path when found; otherwise installs the pinned npm package into
@@ -171,5 +190,5 @@ func VerifyVersion(binary string) (string, error) {
 
 // compatibleVersion reads the bare `X.Y.Z` codegraph prints; anything unparseable is incompatible.
 func compatibleVersion(output string) bool {
-	return shared.VersionAtLeast(strings.TrimSpace(output), CodegraphVersion)
+	return semver.AtLeast(strings.TrimSpace(output), CodegraphVersion)
 }
