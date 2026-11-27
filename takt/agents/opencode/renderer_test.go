@@ -119,6 +119,99 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	}
 }
 
+func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing.T) {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buildSpecs := func(components ...model.ComponentID) []opencode.AgentSpec {
+		archifyOn := slices.Contains(components, model.ComponentArchify)
+		specs := make([]opencode.AgentSpec, 0, len(pack.Agents))
+		for _, def := range pack.Agents {
+			agentSkills := pack.ActiveAgentSkills(def, components)
+			if archifyOn && slices.Contains(agentSkills, "takt-archify") && def.Role != model.RoleVerification && def.Role != model.RoleQualityAssurance {
+				agentSkills = append(agentSkills, model.ArchifySkillID)
+			}
+			for _, id := range def.Instances {
+				grants, _ := def.VFSCapabilities(id)
+				specs = append(specs, opencode.AgentSpec{
+					ID:              id,
+					Description:     def.Description,
+					Mode:            opencode.AgentMode(def.Role),
+					System:          opencode.ComposePrompt(def, id, components...),
+					Role:            def.Role,
+					VFSCapabilities: grants,
+					Skills:          agentSkills,
+				})
+			}
+		}
+		return specs
+	}
+
+	// Disabled: zero mentions of Archify anywhere in rendered config or prompts.
+	offArtifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Archify: false, Agents: buildSpecs()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(offArtifact.Content)), "archify") {
+		t.Fatalf("opencode.json with Archify disabled leaked Archify references:\n%s", offArtifact.Content)
+	}
+
+	// Enabled: role-scoped prompt clauses, skill denies, and read-only shell ergonomics.
+	onArtifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Archify: true, Agents: buildSpecs(model.ComponentArchify)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := decodeConfig(t, onArtifact.Content)
+	for _, nonParticipant := range []string{"dev", "fix", "simplify", "test", "spec", "tpm", "explorer", "mutation"} {
+		rules := cfg.Agents[nonParticipant].Permissions
+		if got := effectOf(rules, "skill", "takt-archify"); got != "deny" {
+			t.Errorf("%s takt-archify = %q, want deny", nonParticipant, got)
+		}
+		if got := effectOf(rules, "skill", model.ArchifySkillID); got != "deny" {
+			t.Errorf("%s archify = %q, want deny", nonParticipant, got)
+		}
+		if strings.Contains(cfg.Agents[nonParticipant].System, "Archify") {
+			t.Errorf("%s system prompt contains Archify text", nonParticipant)
+		}
+	}
+	for _, readOnly := range []string{"verify", "judge-a", "judge-b", "quality"} {
+		rules := cfg.Agents[readOnly].Permissions
+		if got := effectOf(rules, "skill", "takt-archify"); got == "deny" {
+			t.Errorf("%s takt-archify denied, want accessible", readOnly)
+		}
+		if got := effectOf(rules, "skill", model.ArchifySkillID); got != "deny" {
+			t.Errorf("%s upstream archify = %q, want deny", readOnly, got)
+		}
+		if !strings.Contains(cfg.Agents[readOnly].System, "read-only code-analysis") {
+			t.Errorf("%s prompt missing read-only scope: %q", readOnly, cfg.Agents[readOnly].System)
+		}
+	}
+	for _, id := range []string{"architect", "analyst"} {
+		rules := cfg.Agents[id].Permissions
+		if got := effectOf(rules, "shell", "*archify/bin/archify.mjs code-analysis check *"); got != "allow" {
+			t.Errorf("%s read-only code-analysis check = %q, want allow", id, got)
+		}
+		if got := effectOf(rules, "shell", "*archify/bin/archify.mjs*--update-baseline*"); got != "ask" {
+			t.Errorf("%s --update-baseline = %q, want ask", id, got)
+		}
+		if got := effectOf(rules, "shell", "*"); got != "ask" {
+			t.Errorf("%s shell default = %q, want ask", id, got)
+		}
+		for _, r := range rules {
+			if r.Action != "shell" || r.Effect != "allow" {
+				continue
+			}
+			for _, writeCmd := range []string{"finalize", "deliver", "render", "prepare", "export-svg", "story"} {
+				if strings.Contains(r.Resource, writeCmd) {
+					t.Errorf("%s unexpectedly allows writing shell pattern %q", id, r.Resource)
+				}
+			}
+		}
+	}
+}
+
 func TestRenderConfig(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Assignment: model.ModelAssignment{Model: "openai/gpt-5.6-luna"},

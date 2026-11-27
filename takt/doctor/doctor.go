@@ -34,6 +34,7 @@ import (
 	"unicode"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/memory"
@@ -129,6 +130,9 @@ func Run(stdout io.Writer) error {
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
 	report.Checks = append(report.Checks, memoryServiceCheck(context.Background()))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
+	if archifyInstalled(home) {
+		report.Checks = append(report.Checks, archifyChecks(home)...)
+	}
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home), opencodeDAGPluginCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
 	return render(stdout, report)
@@ -298,6 +302,43 @@ func codegraphChecks(home string) []CheckResult {
 		"Run 'takt-ai setup sync' to install codegraph so agents can explore the codebase",
 		binary, found, codegraph.VerifyVersion)
 	return checks
+}
+
+func archifyInstalled(home string) bool {
+	cfg, err := setup.LoadInstalledConfig(home)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(cfg.Components, string(model.ComponentArchify))
+}
+
+// archifyChecks verifies an installed Archify skill satisfies the pinned minimum
+// version and passes `node bin/archify.mjs doctor` when ComponentArchify is selected.
+func archifyChecks(home string) []CheckResult {
+	const name = "archify:skill"
+	const remedy = "Run 'takt-ai setup sync' to restore Archify"
+	if _, found := archify.Resolve(home); !found {
+		return []CheckResult{{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: fmt.Sprintf("no archify %s or newer at %s", archify.Version, model.ArchifySkillDir(home)),
+			Remedy: remedy,
+		}}
+	}
+	version, err := archify.Verify(context.Background(), home)
+	if err != nil {
+		return []CheckResult{{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: err.Error(),
+			Remedy: "Ensure Node.js >= 18 is on PATH, or run 'takt-ai setup sync'",
+		}}
+	}
+	return []CheckResult{{
+		Name:   name,
+		Status: CheckStatusPass,
+		Detail: fmt.Sprintf("archify %s ready at %s", version, model.ArchifySkillDir(home)),
+	}}
 }
 
 // workingDirOrHome resolves the directory doctor should report a project

@@ -36,6 +36,7 @@ HOST_TEST_PKGS=(
     ./takt/tui/uninstall
 )
 CONTAINER_TEST_PKGS=(
+    ./takt/archify
     ./takt/cli
     ./takt/agents/opencode
     ./takt/codegraph

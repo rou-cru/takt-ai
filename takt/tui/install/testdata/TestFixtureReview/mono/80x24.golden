@@ -11,12 +11,12 @@
    │ WHAT YOU GET                                                           │   
    │ 18 agents        1 orchestrator · 17 specialists                       │   
    │                  on OpenCode's default model                           │   
-   │ 41 skills                                                              │   
+   │ 43 skills                                                              │   
    │  3 MCP servers   codegraph · context7 · takt_memory                    │   
-   │  4 integrations  DAG panel · memory · sandbox · VFS                    │   
+   │  5 integrations  DAG panel · memory · sandbox · VFS · Archify          │   
    │                                                                        │   
    │ WHAT CHANGES ON DISK                                                   │   
-   │ 192 new files                                                          │   
+   │ 194 new files                                                          │   
    └────────────────────────────────────────────────────────────────────────┘   
                                                                                 
                             Personalize    [ Install ]                          

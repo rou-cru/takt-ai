@@ -4,6 +4,7 @@ package opencode
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
@@ -15,7 +16,8 @@ import (
 const (
 	configDir           = model.OpenCodeConfigDir
 	packageName         = "takt"
-	contextPathCapacity = 5 // Context files plus the memory clause in a composed prompt.
+	archifyBridgeSkill  = "takt-archify"
+	contextPathCapacity = 6 // Context files plus the memory clause and optional Archify clause.
 )
 
 // ConfigDir is OpenCode's config root, relative to the install root.
@@ -46,13 +48,17 @@ func AgentMode(role model.RoleClass) string {
 }
 
 // ComposePrompt chains BASELINE, PERSONA, SOUL and OPERATIONS by file
-// reference, then the memory paths.
-func ComposePrompt(def catalog.AgentDefinition, instanceID string) string {
+// reference, then the memory clause, and Archify guidance when Archify is selected
+// and the agent declares the Takt Archify skill.
+func ComposePrompt(def catalog.AgentDefinition, instanceID string, components ...model.ComponentID) string {
 	parts := make([]string, 0, contextPathCapacity)
 	for _, p := range def.ContextPaths() {
 		parts = append(parts, FileRef(p))
 	}
 	parts = append(parts, MemoryClause(instanceID))
+	if slices.Contains(components, model.ComponentArchify) && slices.Contains(def.Skills, archifyBridgeSkill) {
+		parts = append(parts, ArchifyClause(def.Role))
+	}
 	return strings.Join(parts, "\n\n")
 }
 
@@ -62,5 +68,19 @@ func MemoryClause(authorID string) string {
 	return prompts.Default().MustRender("context.memory_clause", map[string]string{
 		"contract_skill": shared.ContractSkillPath,
 		"memory_skill":   shared.MemorySkillPath(authorID),
+	})
+}
+
+// ArchifyClause introduces the installed Archify CLI and bridge skill with
+// role-appropriate scope so verification stays read-only outside the workspace.
+func ArchifyClause(role model.RoleClass) string {
+	scope := "code-analysis check/drift and, when visuals or an on-demand explainer help, the upstream archify skill ([archify explainer: on-demand])"
+	if role == model.RoleVerification || role == model.RoleQualityAssurance {
+		scope = "read-only code-analysis check/drift writing under /tmp; never write workspace files"
+	}
+	return prompts.Default().MustRender("context.archify_clause", map[string]string{
+		"archify_bin":   model.ArchifyBinaryRelPath,
+		"archify_skill": path.Join(model.OpenCodeSkillsDir, archifyBridgeSkill, catalog.SkillFileName),
+		"scope":         scope,
 	})
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
 	"github.com/rou-cru/takt-ai/takt/memory"
@@ -39,7 +40,7 @@ func TestMain(m *testing.M) {
 // installRuntime acquires a fake model and starts no memory service, as image assembly does.
 func installRuntime(t *testing.T) lifecycle.Runtime {
 	t.Helper()
-	return lifecycle.Runtime{Model: testutil.FakeModel(t)}
+	return lifecycle.Runtime{Model: testutil.FakeModel(t), Archify: testutil.FakeArchify(t)}
 }
 
 // startingRuntime also runs the memory service, in a memory directory private to the test.
@@ -792,4 +793,79 @@ func TestUninstallKeepsTheMemoryInPlaceWhenTheSetAsidePathIsTooLong(t *testing.T
 	if len(result.Incomplete) != 1 || !strings.Contains(result.Incomplete[0], "stays in place") {
 		t.Fatalf("Incomplete = %v, want one entry stating the directory stays in place", result.Incomplete)
 	}
+}
+
+func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) {
+	t.Run("install acquires and sync deselection cleans Takt-managed Archify", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		reqWith := setuputil.TestPlanRequest()
+		reqWith.Components = []string{string(model.ComponentContext7), string(model.ComponentArchify)}
+
+		res, err := rt.Run(context.Background(), "install", root, reqWith)
+		if err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		if !slices.Contains(res.Actions, "archify-install") {
+			t.Fatalf("Actions = %v, want archify-install", res.Actions)
+		}
+		if _, found := archify.Resolve(root); !found {
+			t.Fatal("archify.Resolve() = false after install")
+		}
+		manifest, err := setup.LoadOwnershipManifest(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; !owned {
+			t.Fatalf("manifest missing %s", model.ArchifyManagedMarkerKey)
+		}
+		bridgeOpenCode := filepath.Join(root, model.OpenCodeSkillsDir, "takt-archify", "SKILL.md")
+		if _, err := os.Stat(bridgeOpenCode); err != nil {
+			t.Fatalf("bridge skill missing after install: %v", err)
+		}
+
+		reqWithout := setuputil.TestPlanRequest()
+		reqWithout.Components = []string{string(model.ComponentContext7)}
+		if _, err := rt.Run(context.Background(), "sync", root, reqWithout); err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
+		}
+		if _, err := os.Stat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("archify dir after deselection stat = %v, want removed", err)
+		}
+		if _, err := os.Stat(bridgeOpenCode); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("takt-archify bridge skill after deselection stat = %v, want removed", err)
+		}
+		manifestAfter, err := setup.LoadOwnershipManifest(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, stillOwned := manifestAfter.Entries[model.ArchifyManagedMarkerKey]; stillOwned {
+			t.Fatalf("manifest kept %s after deselection", model.ArchifyManagedMarkerKey)
+		}
+	})
+
+	t.Run("uninstall preserves reused unmanaged Archify", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
+		// Pre-install an unmanaged compatible copy before Takt install.
+		if _, installed, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, root); err != nil || !installed {
+			t.Fatalf("pre-install unmanaged Archify: %v, %v", installed, err)
+		}
+		rt := installRuntime(t)
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentArchify)}
+		res, err := rt.Run(context.Background(), "install", root, req)
+		if err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		if slices.Contains(res.Actions, "archify-install") {
+			t.Fatalf("Actions = %v, must not claim archify-install for reused copy", res.Actions)
+		}
+		if _, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, req); err != nil {
+			t.Fatalf("Run(uninstall) error = %v", err)
+		}
+		if _, found := archify.Resolve(root); !found {
+			t.Fatal("uninstall removed the user's pre-existing unmanaged Archify installation")
+		}
+	})
 }

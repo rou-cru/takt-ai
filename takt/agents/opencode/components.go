@@ -147,11 +147,21 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	return artifact
 }
 
-// taktSkillIDs lists every skill the Takt catalog installs, sorted.
-func taktSkillIDs() []string {
+// taktSkillIDs lists every skill Takt manages in OpenCode, sorted.
+// Component-owned skills are included only when their component is active.
+func taktSkillIDs(archifyEnabled bool) []string {
+	var selected []model.ComponentID
+	if archifyEnabled {
+		selected = []model.ComponentID{model.ComponentArchify}
+	}
 	ids := []string{}
 	for _, skill := range loadCatalog().Skills {
-		ids = append(ids, skill.ID)
+		if catalog.SkillActive(skill.Component, selected) {
+			ids = append(ids, skill.ID)
+		}
+	}
+	if archifyEnabled {
+		ids = append(ids, model.ArchifySkillID)
 	}
 	slices.Sort(ids)
 	return ids

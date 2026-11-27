@@ -15,6 +15,7 @@ import (
 	"testing/fstest"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 const (
@@ -140,6 +141,10 @@ func TestLoadFSRejectsInvalidTrees(t *testing.T) {
 		"persona escapes":      {agentWith(strings.Replace(validAgentYAML, "{operations", "{persona: ../x.md, operations", 1)), "escapes its package"},
 		"persona missing file": {agentWith(strings.Replace(validAgentYAML, "{operations", "{persona: P.md, operations", 1)), "missing or empty catalog file"},
 		"unknown skill":        {agentWith(validAgentYAML + "skills: [ghost]\n"), "references missing skill"},
+		"unknown skill component": {
+			skillWith("---\nname: s\ndescription: d\nmetadata:\n  component: ghost\n---\n"), "unknown component"},
+		"core skill component": {
+			skillWith("---\nname: s\ndescription: d\nmetadata:\n  component: skills\n---\n"), "core component"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fsys := validTree()
@@ -199,5 +204,24 @@ func TestContextPathsAndComposeText(t *testing.T) {
 	delete(fsys, "agents/x/SOUL.md")
 	if _, err := a.ComposeText(fsys); err == nil || !strings.Contains(err.Error(), `read context file "agents/x/SOUL.md" for agent "x"`) {
 		t.Fatalf("ComposeText() error = %v, want the missing SOUL.md named", err)
+	}
+}
+
+func TestActiveAgentSkillsFiltersOptionalComponents(t *testing.T) {
+	fsys := validTree()
+	fsys["skills/opt/SKILL.md"] = &fstest.MapFile{Data: []byte("---\nname: opt\ndescription: d\nmetadata:\n  component: archify\n---\nbody\n")}
+	fsys["agents/x/agent.yaml"] = &fstest.MapFile{Data: []byte(validAgentYAML + "skills: [s, opt]\n")}
+	c, err := catalog.LoadFS(fsys)
+	if err != nil {
+		t.Fatalf("LoadFS() error = %v", err)
+	}
+	if got := c.SkillComponent("opt"); got != model.ComponentArchify {
+		t.Fatalf("SkillComponent(opt) = %q, want archify", got)
+	}
+	if got := c.ActiveAgentSkills(c.Agents[0], nil); !slices.Equal(got, []string{"s"}) {
+		t.Fatalf("ActiveAgentSkills(nil) = %v, want [s]", got)
+	}
+	if got := c.ActiveAgentSkills(c.Agents[0], []model.ComponentID{model.ComponentArchify}); !slices.Equal(got, []string{"s", "opt"}) {
+		t.Fatalf("ActiveAgentSkills([archify]) = %v, want [s opt]", got)
 	}
 }

@@ -12,6 +12,18 @@ entries:
 
       The memory entries an assignment consumes are its inputs: read each before deciding; they prevail over any restatement in the brief. Before recording or searching memory, read `~/{{contract_skill}}`; before recording, also `~/{{memory_skill}}`. They are the only memory rules that apply to you.
 
+  - id: context.archify_clause
+    surface: system_clause
+    owner: opencode/layout
+    audience: [takt, architect, analyst, pm, product-designer, verify, judge-a, judge-b, quality]
+    correlates_with:
+      - skills/takt-archify/SKILL.md
+    vars: [archify_bin, archify_skill, scope]
+    text: |
+      ## Archify
+
+      Archify is available at `~/{{archify_bin}}`. Before using it, read `~/{{archify_skill}}` ({{scope}}).
+
   - id: context.prior_claims
     surface: context_injection
     owner: plugin/takt-vfs

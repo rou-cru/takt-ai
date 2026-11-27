@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -473,4 +474,39 @@ func TestRunReportsWriteFailure(t *testing.T) {
 	if err := doctor.Run(failingWriter{}); err == nil || !strings.Contains(err.Error(), "write failed") {
 		t.Fatalf("Run() error = %v, want the write failure", err)
 	}
+}
+
+func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
+	t.Run("absent when archify is not installed", func(t *testing.T) {
+		h := newHost(t)
+		checks := h.mustRun()
+		if _, ok := checks["archify:skill"]; ok {
+			t.Fatalf("archify:skill emitted when Archify was not installed: %+v", checks["archify:skill"])
+		}
+	})
+
+	t.Run("fails when selected without skill or node", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		checks, _, err := h.run()
+		if !errors.Is(err, doctor.ErrUnhealthy) {
+			t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+		}
+		expect(t, checks, "archify:skill", failMark, "no archify", "takt-ai setup sync")
+	})
+
+	t.Run("passes when selected and verified with node", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+			t.Fatal(err)
+		}
+		h.tool("node", []byte("#!/bin/sh\nif [ \"$2\" = \"doctor\" ]; then echo \"Archify ready\"; exit 0; fi\nexit 1\n"))
+		checks := h.mustRun()
+		expect(t, checks, "archify:skill", passMark, "archify ", "")
+	})
 }

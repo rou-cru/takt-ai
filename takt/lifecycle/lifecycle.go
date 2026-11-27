@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
@@ -147,6 +148,8 @@ type Runtime struct {
 	StartMemory bool
 	// Model is the manifest install acquires; nil means the pinned model.
 	Model *embed.Manifest
+	// Archify is the manifest install acquires when ComponentArchify is selected; nil means the pinned release.
+	Archify *archify.Manifest
 }
 
 // NewRuntime wires the production OpenCode V2 preflight and handoff while
@@ -195,13 +198,17 @@ func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) 
 }
 
 // installPlans is every plan install and sync deploy: the OpenCode plan plus
-// the skills, with the removals dropped from the selection.
+// the active skills, with the removals dropped from the selection.
 func installPlans(request setup.PlanRequest) ([]setup.TargetPlan, []catalog.Removal, error) {
+	components, _, err := setup.ResolveComponents(request.Components)
+	if err != nil {
+		return nil, nil, err
+	}
 	plans, removals, err := setup.BuildTargetPlans(request)
 	if err != nil {
 		return nil, nil, err
 	}
-	skillPlan, err := skills.BuildSkillPlan()
+	skillPlan, err := skills.BuildSkillPlan(components...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -274,6 +281,24 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return notApplied(LifecycleResult{}, fmt.Errorf("codegraph capability unavailable: requires CodeGraph %s or newer, which is not on PATH and could not be installed: %w", codegraph.CodegraphVersion, err))
 	}
+	resolvedComponents, _, _ := setup.ResolveComponents(request.Components)
+	archifySelected := slices.Contains(resolvedComponents, model.ComponentArchify)
+	var archifyInstalled bool
+	if archifySelected {
+		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Archify capability"})
+		if archifyMarkerOwned(rootDir) {
+			if aside, err = setAsideStale(rootDir, model.ArchifySkillRelDir, archify.Resolve, aside); err != nil {
+				return notApplied(LifecycleResult{}, err)
+			}
+		}
+		archifyInstalled, err = runtime.acquireArchify(ctx, rootDir)
+		if Cancelled(ctx, err) {
+			return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
+		}
+		if err != nil {
+			return notApplied(LifecycleResult{}, fmt.Errorf("archify capability unavailable: %w", err))
+		}
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Preparing managed files", Total: len(plannedPaths(plans))})
 	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, runtime.Progress, preserve...)
 	// Files are written from here on: a later failure still reports them
@@ -304,7 +329,7 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return deployed, err
 	}
-	return runtime.finishInstall(ctx, action, rootDir, request, codegraphCommand, deployed)
+	return runtime.finishInstall(ctx, action, rootDir, request, codegraphCommand, archifySelected, archifyInstalled, deployed)
 }
 
 // acquireModel downloads and verifies the semantic model the memory service loads at start.
@@ -314,6 +339,24 @@ func (runtime Runtime) acquireModel(ctx context.Context, rootDir string) error {
 		manifest = *runtime.Model
 	}
 	return manifest.Acquire(ctx, http.DefaultClient, embed.ModelDir(rootDir))
+}
+
+func (runtime Runtime) acquireArchify(ctx context.Context, rootDir string) (bool, error) {
+	manifest := archify.Pinned()
+	if runtime.Archify != nil {
+		manifest = *runtime.Archify
+	}
+	_, installed, err := manifest.Acquire(ctx, http.DefaultClient, rootDir)
+	return installed, err
+}
+
+func archifyMarkerOwned(rootDir string) bool {
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if err != nil {
+		return false
+	}
+	_, owned := manifest.Entries[model.ArchifyManagedMarkerKey]
+	return owned
 }
 
 // startMemory runs the memory service and returns only once it reports ready. Install creates the
@@ -379,8 +422,9 @@ func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPla
 }
 
 // finishInstall registers the memory and CodeGraph MCP servers after deployment, starts the memory
-// service when asked, installs the sandbox dependency, records the installation, and reloads OpenCode.
-func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+// service when asked, installs the sandbox dependency, records Archify ownership or cleans up
+// deselected Archify assets, records the installation, and reloads OpenCode.
+func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, codegraphCommand string, archifySelected, archifyInstalled bool, deployed LifecycleResult) (LifecycleResult, error) {
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing memory integration"})
 	if err := InjectMemory(rootDir); err != nil {
 		return deployed, err
@@ -396,6 +440,17 @@ func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string
 		return deployed, fmt.Errorf("inject CodeGraph MCP server: %w", err)
 	}
 	deployed.Actions = append(deployed.Actions, "codegraph-install")
+	if archifySelected && archifyInstalled {
+		marker := filepath.Join(rootDir, filepath.FromSlash(model.ArchifyManagedMarkerKey))
+		if err := registerOwnedFile(rootDir, marker, managedFileMode); err != nil {
+			return deployed, err
+		}
+		deployed.Actions = append(deployed.Actions, "archify-install")
+	} else if !archifySelected {
+		if err := cleanupDeselectedArchify(rootDir); err != nil {
+			return deployed, err
+		}
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing sandbox dependency"})
 	if err := installSandboxDependency(ctx, rootDir); err == nil {
 		deployed.Actions = append(deployed.Actions, "sandbox-adapter-npm-install")
@@ -463,6 +518,9 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 		return removed, err
 	}
 	if err := removeCodegraph(rootDir); err != nil {
+		return removed, err
+	}
+	if err := removeArchify(rootDir); err != nil {
 		return removed, err
 	}
 	if !runtime.removeMemory(ctx, rootDir, &removed) {
@@ -806,18 +864,81 @@ func removeCodegraph(rootDir string) error {
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	prefix := codegraph.ManagedPrefix(rootDir)
-	// RemoveAll never follows prefix itself, but it resolves the ancestors: a
-	// symlinked state directory would redirect the deletion outside the root.
+	return removeManagedTree(codegraph.ManagedPrefix(rootDir), "codegraph")
+}
+
+// removeArchify clears a Takt-managed Archify directory once uninstall has
+// removed its ownership marker; user-owned or edited copies keep their marker
+// and stay intact.
+func removeArchify(rootDir string) error {
+	marker := filepath.Join(rootDir, filepath.FromSlash(model.ArchifyManagedMarkerKey))
+	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return removeManagedTree(model.ArchifySkillDir(rootDir), "archify")
+}
+
+// removeManagedTree verifies the parent directory is not a symlink before
+// removing prefix, so a symlinked parent cannot redirect RemoveAll.
+func removeManagedTree(prefix, label string) error {
 	if info, err := os.Lstat(filepath.Dir(prefix)); errors.Is(err, os.ErrNotExist) {
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("remove managed codegraph: %w", err)
+		return fmt.Errorf("remove managed %s: %w", label, err)
 	} else if !info.IsDir() {
-		return fmt.Errorf("remove managed codegraph: %q is not a real directory", filepath.Dir(prefix))
+		return fmt.Errorf("remove managed %s: %q is not a real directory", label, filepath.Dir(prefix))
 	}
 	if err := os.RemoveAll(prefix); err != nil {
-		return fmt.Errorf("remove managed codegraph: %w", err)
+		return fmt.Errorf("remove managed %s: %w", label, err)
 	}
 	return nil
+}
+
+// cleanupDeselectedArchify removes Takt-owned Archify artifacts when a sync
+// deselects ComponentArchify, leaving unmanaged or user-edited files intact.
+func cleanupDeselectedArchify(rootDir string) error {
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load ownership manifest: %w", err)
+	}
+	changed := false
+	if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; owned {
+		if err := removeManagedTree(model.ArchifySkillDir(rootDir), "archify"); err != nil {
+			return err
+		}
+		delete(manifest.Entries, model.ArchifyManagedMarkerKey)
+		changed = true
+	}
+	for _, rel := range []string{
+		model.OpenCodeSkillsDir + "/takt-archify/" + catalog.SkillFileName,
+		opencode.DeployPath("skills/takt-archify/" + catalog.SkillFileName),
+	} {
+		entry, owned := manifest.Entries[rel]
+		if !owned {
+			continue
+		}
+		target := filepath.Join(rootDir, filepath.FromSlash(rel))
+		raw, err := os.ReadFile(target)
+		if err == nil {
+			sum := sha256.Sum256(raw)
+			if hex.EncodeToString(sum[:]) != entry.SHA256 {
+				continue
+			}
+			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			_ = os.Remove(filepath.Dir(target))
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		delete(manifest.Entries, rel)
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return manifest.Save(rootDir)
 }

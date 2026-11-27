@@ -87,6 +87,8 @@ func openCodeComponentArtifacts(components []model.ComponentID, config *opencode
 		switch component {
 		case model.ComponentContext7:
 			config.Context7 = true
+		case model.ComponentArchify:
+			config.Archify = true
 		}
 	}
 	rendered := []opencode.Artifact{opencode.TaktDagPluginArtifact(binary), opencode.OpenCodePluginPackageArtifact(), opencode.TaktMemoryPluginArtifact(binary), opencode.TaktVFSPluginArtifact(binary, true), opencode.TaktSandboxAdapterArtifact()}

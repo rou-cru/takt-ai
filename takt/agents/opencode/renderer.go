@@ -66,6 +66,8 @@ type ConfigRequest struct {
 	Assignment model.ModelAssignment
 	// Context7 adds the canonical context7 remote MCP server entry.
 	Context7 bool
+	// Archify enables Archify skill visibility and role-scoped shell permissions.
+	Archify bool
 	// Permissions adds the canonical bash/read permission rules.
 	Permissions bool
 	// Agents are Takt instances registered natively in opencode.json.
@@ -74,7 +76,7 @@ type ConfigRequest struct {
 
 // RenderConfig returns the native OpenCode opencode.json artifact.
 func RenderConfig(request ConfigRequest) (Artifact, error) {
-	agents, err := renderAgents(request.Agents)
+	agents, err := renderAgents(request.Agents, request.Archify)
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -121,7 +123,7 @@ func RenderCLIConfig() (Artifact, error) {
 	}, nil
 }
 
-func renderAgents(specs []AgentSpec) (map[string]any, error) {
+func renderAgents(specs []AgentSpec, archifyEnabled bool) (map[string]any, error) {
 	agents := map[string]any{
 		// OpenCode's built-in agents are disabled: build and plan would compete
 		// with the orchestrator in the agent picker, and general and explore
@@ -148,7 +150,7 @@ func renderAgents(specs []AgentSpec) (map[string]any, error) {
 		if _, exists := agents[spec.ID]; exists {
 			return nil, fmt.Errorf("duplicate OpenCode agent %q", spec.ID)
 		}
-		agents[spec.ID] = agentEntry(spec, maintenance)
+		agents[spec.ID] = agentEntry(spec, maintenance, archifyEnabled)
 	}
 	return agents, nil
 }
@@ -194,7 +196,7 @@ const vfsMutationSkill = "takt-vfs-mutation"
 // designed to use it may present a complete memory artifact as their result.
 const resultHandoffSkill = "takt-result-handoff"
 
-func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
+func agentEntry(spec AgentSpec, maintenance []string, archifyEnabled bool) map[string]any {
 	entry := map[string]any{
 		"description": spec.Description,
 		"mode":        spec.Mode,
@@ -203,7 +205,7 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 	if spec.Model != "" {
 		entry["model"] = modelRef(spec)
 	}
-	rules := agentPermissionRules(spec, maintenance)
+	rules := agentPermissionRules(spec, maintenance, archifyEnabled)
 	if len(rules) > 0 {
 		entry["permissions"] = rules
 	}
@@ -212,7 +214,7 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 
 // agentPermissionRules builds ordered OpenCode permissions from the agent's role,
 // skills, and explicit VFS grants, using maintenance to restrict delegation targets.
-func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule {
+func agentPermissionRules(spec AgentSpec, maintenance []string, archifyEnabled bool) []permissionRule {
 	var rules []permissionRule
 	if spec.Role == model.RoleOrchestrator {
 		// The orchestrator is the trusted coordinator (vfs.Identity's own
@@ -238,7 +240,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		if spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance {
 			rules = append(rules, permissionRule{"edit", allResources, "deny"})
 		}
-		rules = append(rules, shellRules(spec.Role)...)
+		rules = append(rules, shellRules(spec.Role, archifyEnabled && slices.Contains(spec.Skills, archifyBridgeSkill))...)
 		// The workspace event store records every session's activity; only the
 		// orchestrator reads it. The inspection sandbox keeps it private too; a
 		// shell that runs natively (a result agent, or enforcement off) does not.
@@ -269,7 +271,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 	for _, name := range []string{model.MemoryToolContinueSession, model.MemoryToolCloseSession} {
 		rules = append(rules, permissionRule{model.MemoryPrefixedToolName(name), allResources, lifecycleEffect})
 	}
-	rules = append(rules, skillRules(spec.Skills)...)
+	rules = append(rules, skillRules(spec.Skills, spec.Role, archifyEnabled)...)
 	// VFS access is an explicit per-instance grant, not a role-derived default.
 	rules = append(rules, vfsPermissionRules(spec.VFSCapabilities)...)
 	// The mutation skill rule comes after skillRules so it decides alone: only
@@ -350,11 +352,13 @@ func interlocutorRules(role model.RoleClass) []permissionRule {
 }
 
 // skillRules hides every Takt skill the agent is not designed to use, so its
-// skill listing carries only its own.
-func skillRules(designed []string) []permissionRule {
+// skill listing carries only its own. Read-only verification and QA roles keep
+// the upstream archify skill denied even when Archify analysis is enabled.
+func skillRules(designed []string, role model.RoleClass, archifyEnabled bool) []permissionRule {
+	readOnlyRole := role == model.RoleVerification || role == model.RoleQualityAssurance
 	var rules []permissionRule
-	for _, id := range taktSkillIDs() {
-		if !slices.Contains(designed, id) {
+	for _, id := range taktSkillIDs(archifyEnabled) {
+		if !slices.Contains(designed, id) || (readOnlyRole && id == model.ArchifySkillID) {
 			rules = append(rules, permissionRule{"skill", id, "deny"})
 		}
 	}
@@ -366,7 +370,7 @@ func skillRules(designed []string) []permissionRule {
 // subcommand allows that follow can win as the last match, and the
 // writing-option denies after them catch a read-like form that writes. No specialist drives the VFS CLI
 // directly: its tools inject the harness identity.
-func shellRules(role model.RoleClass) []permissionRule {
+func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 	rules := append(gitRules(role), vfsShellRules()...)
 	if role != model.RolePlanningAuthor && role != model.RoleDirectInterlocutor {
 		return rules
@@ -374,10 +378,30 @@ func shellRules(role model.RoleClass) []permissionRule {
 	// Their native shell runs unsandboxed and the VFS captures none of its
 	// effects, so the user approves each command (PR-HAR-11). The last match
 	// wins, so the narrower rules after the ask still decide alone: read-only
-	// Git stays allowed, and Git mutation and the harness CLIs stay denied.
+	// Git (and read-only Archify analysis when enabled) stay allowed, while
+	// writing commands and harness CLIs remain gated or denied.
 	gated := []permissionRule{{"shell", allResources, "ask"}}
 	gated = append(gated, rules...)
+	if archifyReadOnly {
+		gated = append(gated, archifyReadOnlyShellRules()...)
+	}
 	return append(gated, harnessCLIShellDenies()...)
+}
+
+// archifyReadOnlyShellRules lets planning/direct interlocutors run read-only
+// Archify code-analysis queries autonomously while keeping baseline mutations
+// and workspace-writing commands gated behind "ask".
+func archifyReadOnlyShellRules() []permissionRule {
+	return []permissionRule{
+		{"shell", "*archify/bin/archify.mjs code-analysis check *", "allow"},
+		{"shell", "*archify/bin/archify.mjs code-analysis task *", "allow"},
+		{"shell", "*archify/bin/archify.mjs code-analysis drift *", "allow"},
+		{"shell", "*archify/bin/archify.mjs guide *", "allow"},
+		{"shell", "*archify/bin/archify.mjs doctor*", "allow"},
+		{"shell", "*archify/bin/archify.mjs*--update-baseline*", "ask"},
+		{"shell", "*archify/bin/archify.mjs*--accept*", "ask"},
+		{"shell", "*archify/bin/archify.mjs*--revoke*", "ask"},
+	}
 }
 
 // vfsPermissionRules emits an explicit allow or deny for every plugin tool.

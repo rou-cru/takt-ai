@@ -33,6 +33,15 @@ const (
 	// OpenCodeSkillsDir is the home-relative directory OpenCode V2 loads skills from.
 	OpenCodeSkillsDir = ".opencode/skills"
 
+	// ArchifySkillID is the upstream Archify skill directory name OpenCode discovers.
+	ArchifySkillID = "archify"
+	// ArchifySkillRelDir is the home-relative slash path of the installed Archify skill.
+	ArchifySkillRelDir = OpenCodeSkillsDir + "/" + ArchifySkillID
+	// ArchifyBinaryRelPath is the home-relative slash path of Archify's Node CLI entrypoint.
+	ArchifyBinaryRelPath = ArchifySkillRelDir + "/bin/archify.mjs"
+	// ArchifyManagedMarkerKey is the regular file tracked in the ownership manifest for a Takt-managed install.
+	ArchifyManagedMarkerKey = ArchifySkillRelDir + "/package.json"
+
 	// OpenCodePluginsDir is the directory OpenCode loads plugins from.
 	OpenCodePluginsDir = "plugins"
 	// VFSPluginFile is the deployed governed-VFS plugin filename.
@@ -66,6 +75,16 @@ const CodegraphManagedPrefixKey = StateDirName + "/codegraph"
 // CodegraphManagedPrefix is where Takt installs its own CodeGraph copy: <root>/.takt-ai/codegraph.
 func CodegraphManagedPrefix(root string) string {
 	return filepath.Join(root, filepath.FromSlash(CodegraphManagedPrefixKey))
+}
+
+// ArchifySkillDir returns <root>/.opencode/skills/archify.
+func ArchifySkillDir(root string) string {
+	return filepath.Join(root, filepath.FromSlash(ArchifySkillRelDir))
+}
+
+// ArchifyBinaryPath returns <root>/.opencode/skills/archify/bin/archify.mjs.
+func ArchifyBinaryPath(root string) string {
+	return filepath.Join(root, filepath.FromSlash(ArchifyBinaryRelPath))
 }
 
 // OpenCodeConfigPath returns <home>/.config/opencode/opencode.json.

@@ -48,3 +48,12 @@ func TestCodegraphManagedPrefixAndMemoryPrefixedToolName(t *testing.T) {
 		t.Errorf("MemoryPrefixedToolName(read) = %q, want takt_memory_read", gotTool)
 	}
 }
+
+func TestArchifyPaths(t *testing.T) {
+	if got, want := model.ArchifySkillDir("/home/user"), filepath.Join("/home/user", ".opencode", "skills", "archify"); got != want {
+		t.Errorf("ArchifySkillDir = %q, want %q", got, want)
+	}
+	if got, want := model.ArchifyBinaryPath("/home/user"), filepath.Join("/home/user", ".opencode", "skills", "archify", "bin", "archify.mjs"); got != want {
+		t.Errorf("ArchifyBinaryPath = %q, want %q", got, want)
+	}
+}

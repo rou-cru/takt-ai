@@ -542,7 +542,11 @@ func (m Model) resultActions() []string {
 
 // applicableComponents lists the optional components the user can choose.
 func (m Model) applicableComponents() []model.ComponentID {
-	return []model.ComponentID{model.ComponentContext7}
+	components, err := setup.AllComponents()
+	if err != nil {
+		return nil
+	}
+	return components
 }
 
 // componentNames returns the selected component names.

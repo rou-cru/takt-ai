@@ -155,3 +155,34 @@ func findArtifact(plan TargetPlan, path string) Artifact {
 	}
 	return Artifact{}
 }
+
+func TestBuildTargetPlansExcludesArchifyWhenDeselectedAndIncludesWhenSelected(t *testing.T) {
+	withoutArchify, _, err := BuildTargetPlans(PlanRequest{Components: []string{string(model.ComponentContext7)}})
+	if err != nil {
+		t.Fatalf("BuildTargetPlans(context7) error = %v", err)
+	}
+	for _, a := range withoutArchify[0].Artifacts {
+		if strings.Contains(a.Path, "takt-archify") {
+			t.Errorf("inactive optional skill deployed: %s", a.Path)
+		}
+	}
+	cfgWithout := findArtifact(withoutArchify[0], ".config/opencode/opencode.json")
+	if strings.Contains(strings.ToLower(string(cfgWithout.Content)), "archify") {
+		t.Error("opencode.json mentions archify when deselected")
+	}
+
+	withArchify, _, err := BuildTargetPlans(PlanRequest{Components: []string{string(model.ComponentContext7), string(model.ComponentArchify)}})
+	if err != nil {
+		t.Fatalf("BuildTargetPlans(context7, archify) error = %v", err)
+	}
+	if a := findArtifact(withArchify[0], ".config/opencode/takt/skills/takt-archify/SKILL.md"); len(a.Content) == 0 {
+		t.Error("missing .config/opencode/takt/skills/takt-archify/SKILL.md when archify selected")
+	}
+	agents := openCodeAgents(t, withArchify[0])
+	if !strings.Contains(agents["architect"]["system"].(string), "Archify is available") {
+		t.Error("architect system prompt missing Archify clause when selected")
+	}
+	if strings.Contains(agents["dev"]["system"].(string), "Archify") {
+		t.Error("dev system prompt unexpectedly contains Archify clause")
+	}
+}

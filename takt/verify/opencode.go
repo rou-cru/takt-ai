@@ -15,6 +15,8 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
+	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/skills"
 )
 
@@ -31,7 +33,7 @@ func nativeOpenCodeChecks(ctx context.Context, root string) []CheckResult {
 		nativeOrchestratorCheck(ctx, client),
 		nativeAgentsCheck(ctx, client),
 		nativeDefaultModelCheck(ctx, client),
-		nativeSkillsCheck(ctx, client),
+		nativeSkillsCheck(ctx, root, client),
 		nativePluginsCheck(ctx, client),
 	}
 	return checks
@@ -92,9 +94,15 @@ func nativeDefaultModelCheck(ctx context.Context, client *opencodeapi.Client) Ch
 	return CheckResult{id, Verified, "OpenCode resolved the default model " + model.Ref.String() + "."}
 }
 
-func nativeSkillsCheck(ctx context.Context, client *opencodeapi.Client) CheckResult {
+func nativeSkillsCheck(ctx context.Context, root string, client *opencodeapi.Client) CheckResult {
 	const id = "skills:opencode:takt"
-	expected, err := skills.LoadSkills()
+	var components []model.ComponentID
+	if cfg, err := setup.LoadInstalledConfig(root); err == nil {
+		for _, c := range cfg.Components {
+			components = append(components, model.ComponentID(c))
+		}
+	}
+	expected, err := skills.LoadSkills(components...)
 	if err != nil {
 		return CheckResult{id, NotVerifiable, fmt.Sprintf("Cannot load Takt skill catalog: %v", err)}
 	}
@@ -107,9 +115,12 @@ func nativeSkillsCheck(ctx context.Context, client *opencodeapi.Client) CheckRes
 		seen[entry.ID] = true
 	}
 	// LoadSkills yields one definition per file; a skill is its distinct name.
-	names := make([]string, 0, len(expected))
+	names := make([]string, 0, len(expected)+1)
 	for _, entry := range expected {
 		names = append(names, entry.Name)
+	}
+	if slices.Contains(components, model.ComponentArchify) {
+		names = append(names, model.ArchifySkillID)
 	}
 	slices.Sort(names)
 	names = slices.Compact(names)

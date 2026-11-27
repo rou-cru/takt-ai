@@ -9,6 +9,11 @@ components:
     core: false
     selectable: true
     deps: []
+  - id: archify
+    purpose: Archify — interactive diagrams, explainers, and codebase architecture analysis
+    core: false
+    selectable: true
+    deps: []
   # Reserved, non-omittable core: always installed, never user-selectable.
   - id: skills
     purpose: Takt skills — workflows and conventions agents load on demand
