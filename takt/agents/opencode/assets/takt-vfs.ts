@@ -267,7 +267,11 @@ const gateNotice = (unit: string, allowed: string[], gates: AdoptedGate[]) => {
   return renderPrompt("context.gate_notice", { unit, reading, verdict, gates: gates.map(gateLine).join("\n") })
 }
 // readsLabel names a reads selector the way its reader understands it.
-const readsLabel = (selector: string) => selector === "all" ? "every path" : selector === "free" ? "every path no work in flight holds" : selector
+const readsLabels = new Map([
+  ["all", "every path"],
+  ["free", "every path no work in flight holds"],
+])
+const readsLabel = (selector: string) => readsLabels.get(selector) ?? selector
 // authorNotice is the assignment of an author: the paths it owns, what else its
 // unit reads, and the VFS conduct it may use.
 const authorNotice = (unit: string, scope: string[], reads: string[], allowed: string[], unbound: string) => {
