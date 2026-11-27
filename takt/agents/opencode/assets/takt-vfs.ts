@@ -114,7 +114,7 @@ export function isHandoffEnvelope(value: unknown): value is HandoffEnvelope {
 export function isInterlocutorReturn(value: Record<string, unknown>): value is InterlocutorReturn {
   return isHandoffEnvelope(value.envelope) && isString(value.notice) && isOptional(value.child, isString) && isOptional(value.root, isString)
 }
-type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[] }
+type OwnershipClaim = { key?: string; author_key?: string; root_session_id: string; work_unit_id: string; agent_id: string; target_instance: string; pending?: boolean; active?: boolean; staged?: boolean; scope?: string[]; reads?: string[] }
 export function isResponseObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -152,7 +152,7 @@ export function parseClaim(item: unknown): OwnershipClaim[] {
   if (!isResponseObject(item)) return []
   const claim = item
   if (typeof claim.key !== "string" || typeof claim.root_session_id !== "string" || typeof claim.work_unit_id !== "string" || typeof claim.agent_id !== "string" || typeof claim.target_instance !== "string") return []
-  return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(claim.staged === true ? { staged: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
+  return [{ key: claim.key, root_session_id: claim.root_session_id, work_unit_id: claim.work_unit_id, agent_id: claim.agent_id, target_instance: claim.target_instance, ...(claim.pending === true ? { pending: true } : {}), ...(claim.active === true ? { active: true } : {}), ...(claim.staged === true ? { staged: true } : {}), ...(Array.isArray(claim.scope) ? { scope: claim.scope.filter((path): path is string => typeof path === "string") } : {}), ...(isStringArray(claim.reads) && claim.reads.length > 0 ? { reads: claim.reads } : {}), ...(typeof claim.author_key === "string" ? { author_key: claim.author_key } : {}) }]
 }
 // parseGate keeps a well-formed adopted gate and drops anything else.
 export function parseGate(item: unknown): AdoptedGate[] {
@@ -266,12 +266,20 @@ const gateNotice = (unit: string, allowed: string[], gates: AdoptedGate[]) => {
   const verdict = allowed.includes("vfs_verify") ? renderPrompt("context.gate_verify_clause") : ""
   return renderPrompt("context.gate_notice", { unit, reading, verdict, gates: gates.map(gateLine).join("\n") })
 }
-// authorNotice is the assignment of an author: the paths it owns and the VFS conduct it may use.
-const authorNotice = (unit: string, scope: string[], allowed: string[], unbound: string) => {
+// readsLabel names a reads selector the way its reader understands it.
+const readsLabels = new Map([
+  ["all", "every path"],
+  ["free", "every path no work in flight holds"],
+])
+const readsLabel = (selector: string) => readsLabels.get(selector) ?? selector
+// authorNotice is the assignment of an author: the paths it owns, what else its
+// unit reads, and the VFS conduct it may use.
+const authorNotice = (unit: string, scope: string[], reads: string[], allowed: string[], unbound: string) => {
   const conduct = [
     allowed.includes("vfs_write") ? renderPrompt("context.author_conduct_write") : "",
     allowed.includes("vfs_delete") ? renderPrompt("context.author_conduct_delete") : "",
     allowed.includes("vfs_read") ? renderPrompt("context.author_conduct_read") : "",
+    allowed.includes("vfs_read") && reads.length > 0 ? renderPrompt("context.author_reads", { reads: reads.map(readsLabel).join(", ") }) : "",
   ].filter(Boolean).join(" ")
   return renderPrompt("context.author_notice", { unit, scope: scope.join(", "), unbound, conduct })
 }
@@ -1462,8 +1470,8 @@ export default Plugin.define({
         return { content: JSON.stringify(released) }
       } })
 
-      dispatch("dispatch_activity_start", toolDesc("dispatch_activity_start"), "activity_start", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
-      dispatch("dispatch_activity_finish", toolDesc("dispatch_activity_finish"), "activity_finish", obj({ activity_id: str(), node_kind: { type: "string", enum: ["orchestrator"] }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"] } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
+      dispatch("dispatch_activity_start", toolDesc("dispatch_activity_start"), "activity_start", obj({ activity_id: str(paramDesc("dispatch_activity_start", "activity_id")), node_kind: { type: "string", enum: ["orchestrator"], description: paramDesc("dispatch_activity_start", "node_kind") } }, ["activity_id", "node_kind"]), (args: { activity_id: string; node_kind: string }) => ({ ...args, owner: INSTANCE }))
+      dispatch("dispatch_activity_finish", toolDesc("dispatch_activity_finish"), "activity_finish", obj({ activity_id: str(paramDesc("dispatch_activity_finish", "activity_id")), node_kind: { type: "string", enum: ["orchestrator"], description: paramDesc("dispatch_activity_finish", "node_kind") }, outcome: { type: "string", enum: ["completed", "failed", "interrupted"], description: paramDesc("dispatch_activity_finish", "outcome") } }, ["activity_id", "node_kind", "outcome"]), (args: { activity_id: string; node_kind: string; outcome: string }) => args)
 
       dispatch("dispatch_declare_recovery", toolDesc("dispatch_declare_recovery"),
         "recovery",
@@ -1746,7 +1754,7 @@ export default Plugin.define({
         description: toolDesc("vfs_verify"),
         input: obj({
           author_key: str(paramDesc("vfs_verify", "author_key")),
-          pass: { type: "boolean" },
+          pass: { type: "boolean", description: paramDesc("vfs_verify", "pass") },
           finding: str(paramDesc("vfs_verify", "finding")),
         }, ["author_key", "pass"]),
         async execute(input: unknown, c) {
@@ -1899,7 +1907,7 @@ export default Plugin.define({
         // adoption leaves vfs_bind to the agent, with the reason.
         const unbound = claim.pending && allowed.includes("vfs_bind") ? await bindAuthor(event, claim.scope ?? []) : ""
         if (!unbound) delete event.tools?.vfs_bind
-        event.system.push({ type: "text", text: authorNotice(unit, claim.scope ?? [], allowed, unbound) })
+        event.system.push({ type: "text", text: authorNotice(unit, claim.scope ?? [], claim.reads ?? [], allowed, unbound) })
       } catch (error) { console.error("Takt delegated VFS context",error); removeVFS() }
     })
 

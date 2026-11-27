@@ -16,6 +16,10 @@
 package vfs_test
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/history"
@@ -59,6 +63,22 @@ func TestReadsLiftTheMutexOfWorkNoOneRuns(t *testing.T) {
 	}
 	if claims := f.OwnershipClaims(testSession); len(claims) != 2 {
 		t.Fatalf("claims = %d; want the orphan's claim kept beside the reader's", len(claims))
+	}
+}
+
+// A native read of staged work the unit reads names that path for vfs_read:
+// the physical file is not the work the unit reads.
+func TestNativeReadOfStagedWorkTheUnitReadsNamesThePath(t *testing.T) {
+	f, _, state := newStore(t)
+	_, author := delegate(t, f, state, testSession, "dev", "code", "a.go")
+	apply(t, f, applyCase{author, "w", 0, vfs.OpCreate, "a.go", "package a"})
+	settle(t, state, testSession, "code", history.FirstAttempt)
+	if _, err := reader(t, f, state, "docs", []string{vfs.ReadAll}, "doc.md"); err != nil {
+		t.Fatal(err)
+	}
+	err := f.StartNativeInspection(callerOf(testSession, "dev", "docs"), "native", "read", "a.go")
+	if !errors.Is(err, vfs.ErrIdentity) || !strings.Contains(err.Error(), "a.go") {
+		t.Fatalf("native read of read staged work = %v; want a refusal naming a.go", err)
 	}
 }
 
@@ -160,5 +180,63 @@ func TestReadsRejectUnknownSelectors(t *testing.T) {
 		if err := vfs.ValidateReads([]string{good}); err != nil {
 			t.Errorf("ValidateReads(%q) = %v", good, err)
 		}
+	}
+}
+
+// The claim list is a copy: a caller editing the reads it was handed does not
+// change the selectors the store grants reads by.
+func TestOwnershipClaimsReadsAreACopy(t *testing.T) {
+	f, _, state := newStore(t)
+	_, author := delegate(t, f, state, testSession, "dev", "code", "a.go")
+	apply(t, f, applyCase{author, "w", 0, vfs.OpCreate, "a.go", "package a"})
+	settle(t, state, testSession, "code", history.FirstAttempt)
+	docs, err := reader(t, f, state, "docs", []string{"a.go"}, "doc.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var edited bool
+	for _, claim := range f.OwnershipClaims(testSession) {
+		if claim.Key == docs {
+			if len(claim.Reads) != 1 || claim.Reads[0] != "a.go" {
+				t.Fatalf("claim reads = %v; want [a.go]", claim.Reads)
+			}
+			claim.Reads[0] = "elsewhere.go"
+			edited = true
+		}
+	}
+	if !edited {
+		t.Fatal("the reader's claim is not listed")
+	}
+	for _, claim := range f.OwnershipClaims(testSession) {
+		if claim.Key == docs && claim.Reads[0] != "a.go" {
+			t.Fatalf("claim reads = %v after a caller edit; want [a.go]", claim.Reads)
+		}
+	}
+	if got, err := readOf(f, docs, "r", "a.go"); err != nil || got != "package a" {
+		t.Fatalf("read after a caller edit = %q, %v; want the granted staged content", got, err)
+	}
+}
+
+// A path no claim holds reads as the physical file. The base a claim captured
+// belongs to the claim, so it stops serving reads once the claim is released.
+func TestReleasedPathReadsAsThePhysicalFile(t *testing.T) {
+	f, root, state := newStore(t)
+	onDisk := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, "a.go"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	onDisk("claimed")
+	_, key := delegate(t, f, state, testSession, "dev", "code", "a.go")
+	onDisk("changed on disk")
+	if got, err := readOf(f, key, "owned", "a.go"); err != nil || got != "claimed" {
+		t.Fatalf("owned read = %q, %v; want the base captured at claim time", got, err)
+	}
+	if err := f.RevokeOwnership(key); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readOf(f, key, "released", "a.go"); err != nil || got != "changed on disk" {
+		t.Fatalf("released read = %q, %v; want the physical file", got, err)
 	}
 }

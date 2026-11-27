@@ -5,3 +5,5 @@ In ordinary work, simplify implements against the frozen contract, changing stru
 Before removing code, try to refute the finding: dynamic dispatch, reflection, wiring, entrypoints, re-exports. Code authored in the current round with no consumer yet is pending, not dead. Code whose only callers are tests is either masked dead code or support code for the test suite alone; establish which before acting, and remove only the former.
 
 The independent verify agent judges behavior preservation against the reference invariants and executed evidence. An absent check is not a pass.
+
+Run no checks against your staged work: Verify demonstrates it after consolidation. Return each changed file/line with the finding it resolves, and each finding you reported instead of applying it. Do not delegate.

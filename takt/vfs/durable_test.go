@@ -171,14 +171,14 @@ func TestPrelaunchClaimPersistsConflictIsTypedAndReleaseNeverStrandsStagedWork(t
 	}
 }
 
-func TestWorkspaceReadRequiresOwnership(t *testing.T) {
+func TestUnclaimedWorkspaceReadServesThePhysicalFile(t *testing.T) {
 	f, root, _ := newStore(t)
 	if err := os.WriteFile(filepath.Join(root, "outside.txt"), []byte("physical"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	key := bind(t, f, "reader", "unit", "dev", "owned.txt")
-	if _, err := f.Apply(vfs.Operation{Key: key, CallID: "outside", Action: vfs.OpRead, Path: "outside.txt"}); !errors.Is(err, vfs.ErrScopeDenied) {
-		t.Fatalf("unclaimed workspace read = %v, want scope denial", err)
+	if res, err := f.Apply(vfs.Operation{Key: key, CallID: "outside", Action: vfs.OpRead, Path: "outside.txt"}); err != nil || string(res.Content) != "physical" {
+		t.Fatalf("unclaimed workspace read = %q, %v; want the physical file", res.Content, err)
 	}
 	if _, err := f.Apply(vfs.Operation{Key: key, CallID: "owned", Action: vfs.OpRead, Path: "owned.txt"}); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("owner read of absent scoped path = %v, want not-exist", err)

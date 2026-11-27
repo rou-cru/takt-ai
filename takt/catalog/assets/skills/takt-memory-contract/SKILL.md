@@ -36,7 +36,7 @@ Revising an artifact does not itself change its nature: a corrected proposal rem
 proposal. Existing approval remains valid within its original scope; an unapproved change
 does not inherit that approval.
 
-## 4. Relations
+## 3. Relations
 
 - A revision records the complete artifact and `corrects` or `supersedes` the entry it revises.
 - Same fact, same nature, still current: record nothing, except to deliver it as your result.
@@ -45,7 +45,7 @@ Knowledge in another role's domain is still recorded by you when your work produ
 When unsure who usually writes it, `references/domain-writers.md` names the natural writer
 per domain.
 
-## 5. When to record
+## 4. When to record
 
 - In an autonomous delegation, call `takt_memory_record` once per entry **when the assigned
   work finishes**, before you return your result, not after every step.
@@ -55,7 +55,7 @@ per domain.
   accepts is a `decision` that records the complete artifact and `supersedes` the last draft.
   Only the accepted entry reaches other agents; drafts stay in Takt memory.
 - Drafts exist only before an artifact's first approval. A change to an approved artifact is a
-  revision (§4), recorded as a `decision` once the user accepts it; nothing unaccepted
+  revision (§3), recorded as a `decision` once the user accepts it; nothing unaccepted
   supersedes an approved version.
 - Specialists working directly with the user or through a switch obtain any required
   approval before declaring a final result.
@@ -65,14 +65,14 @@ per domain.
 - Record only what you would stand behind. A Takt memory the user explicitly asked you to record is
   always captured, however brief or narrow.
 
-## 6. Never record
+## 5. Never record
 
 - Ordinary conversation, intermediate reasoning, or task progress.
 - Process notes, status updates, or a second copy of a deliverable already recorded.
 - Tool output dumps or code excerpts.
 - Anything forbidden by §1.
 
-## 7. Reading Takt memory
+## 6. Reading Takt memory
 
 - For an unknown topic, search with `takt_memory_search` and judge by title.
 - Open with `takt_memory_read` only what your work needs now, and of a long entry only the

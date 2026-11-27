@@ -63,7 +63,7 @@ tools:
       agent: "Catalog instance id of the specialist you will launch (for example `dev`); parallel lanes of one specialty share it and are told apart by `work_unit_id`"
       scope: "Exact workspace-relative file paths, existing or to be created; no directories or globs"
       author_key: "The author_key of this unit's existing staged work to keep; omit for new work"
-      reads: "What the unit may read beyond its scope: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit for its scope only"
+      reads: "What the unit reads beyond its scope that no work in flight may write meanwhile, staged work no one runs anymore included: `all`, `free` (all not held by work in flight), `dir/`, `dir/**`, `*.ext` or exact paths. Omit when it needs neither"
 
   - name: claim_release
     owner: plugin/takt-vfs
@@ -80,6 +80,9 @@ tools:
     correlates_with:
       - agents/takt/OPERATIONS.md
     description: "Record direct orchestrator work activity (not a delegated unit)."
+    params:
+      activity_id: "Stable identity of this direct activity; its finish names the same one"
+      node_kind: "The node that performs the activity: the orchestrator"
 
   - name: dispatch_activity_finish
     owner: plugin/takt-vfs
@@ -87,6 +90,10 @@ tools:
     correlates_with:
       - agents/takt/OPERATIONS.md
     description: "Finish direct orchestrator work activity with its outcome."
+    params:
+      activity_id: "The identity its start recorded"
+      node_kind: "The node kind its start recorded"
+      outcome: "How the activity ended: completed, failed, or interrupted"
 
   - name: dispatch_declare_recovery
     owner: plugin/takt-vfs
@@ -99,7 +106,7 @@ tools:
       objective: "Identity of the objective being recovered"
       result: "The binary expected result that would demonstrate recovery"
       scope: "Work unit identities this recovery's scope covers"
-      actions: "Action budget: the governed calls, reads included, that the scope's units may make"
+      actions: "Action budget: the VFS calls the scope's units may make, staged reads and captured shell commands included"
       attempts: "Attempt budget shared by every unit of the scope: each attempt admitted for any of them after this declaration spends one"
 
   - name: dispatch_close_recovery
@@ -186,9 +193,11 @@ tools:
 
   - name: vfs_inspect
     owner: plugin/takt-vfs
-    audience: [orchestrator]
+    audience: [orchestrator, analyst, verify]
     correlates_with:
       - skills/takt-vfs-coordination/SKILL.md
+      - agents/takt-analyst/OPERATIONS.md
+      - agents/takt-verify/OPERATIONS.md
     vars: [max_limit]
     description: "Read the recorded VFS journal (staged operations: path, revision, before and after hashes, agent, call) or the execution history (dispatches, units, attempts, outcomes). Entries come oldest first, at most limit per page, without file content; filter by session and unit, and fetch the next page with after set to the last seq returned."
     params:
@@ -212,7 +221,7 @@ tools:
     audience: [vfs_authors]
     correlates_with:
       - skills/takt-vfs-mutation/SKILL.md
-    description: 'Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated. Content is UTF-8 text. Write a binary file (image, archive, font) with a shell command to its scope path instead, e.g. `cp "$TMPDIR/x.png" assets/x.png` or `rsvg-convert in.svg -o assets/x.png`; its bytes are staged unchanged.'
+    description: 'Create or update a file inside your declared scope (create if absent, patch if present). Staged virtually; not written to disk until verified and consolidated. Content is UTF-8 text. Write a binary file (image, archive, font) with a shell command to its scope path instead, e.g. `cp "$TMPDIR/x.png" assets/x.png` or `rsvg-convert "$TMPDIR/in.svg" -o assets/x.png`; its bytes are staged unchanged.'
     params:
       content: "UTF-8 text; binary content is not representable here"
       author_key: "Assigned binding key; defaults to your own latest binding"
@@ -257,6 +266,7 @@ tools:
     description: "As an independent verifier: attach a pass/fail verdict to the author's staged delta, assigned by your delegation to that author_key. The verdict covers exactly the revision staged when you judged it."
     params:
       author_key: "The author_key your assignment names"
+      pass: "true for a passing verdict, false for a failing one"
       finding: "What the verdict rests on; required when pass is false"
 
   - name: vfs_consolidate

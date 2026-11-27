@@ -147,7 +147,7 @@ func (f *FS) OwnershipClaims(currentSessionID string) []OwnershipClaim {
 		identity := f.bindings[key]
 		claims = append(claims, OwnershipClaim{
 			Key: key, AgentID: identity.AgentID, TargetInstance: identity.Specialist, RootSessionID: identity.SessionID,
-			WorkUnitID: identity.WorkUnitID, Scope: scope, AuthorKey: identity.GateAuthorKey,
+			WorkUnitID: identity.WorkUnitID, Scope: scope, Reads: slices.Clone(identity.Reads), AuthorKey: identity.GateAuthorKey,
 			Active:   identity.SessionID == currentSessionID && !identity.Prelaunch,
 			Pending:  identity.Prelaunch,
 			Staged:   f.stagedLocked(key),

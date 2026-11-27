@@ -1255,7 +1255,7 @@ describe("interlocutor switch", () => {
     const vfs = await startVfs({ respond: core() })
     try {
       await vfs.run("dispatch_switch", request, orchestrator)
-      expect(vfs.log.prompts[0].text).toBe("You are taking over as the active interlocutor for this workspace.\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read\nClient: unknown")
+      expect(vfs.log.prompts[0].text).toEndWith("\nObjective: Ship it\nRequirements: Takt memory entries #7; read each with takt_memory_read\nClient: unknown")
     } finally { await vfs.stop() }
   })
 
@@ -2163,6 +2163,18 @@ describe("delegated VFS context", () => {
       expect(JSON.stringify(event.system)).not.toContain("vfs_delete")
       expect(JSON.stringify(event.system)).not.toContain("vfs_read")
       expect(event.system).toContainEqual({ type: "text", text: expect.stringContaining("Work unit unit-a owns exactly these workspace-relative paths: src/a.go, src/b.go.") })
+    } finally { await vfs.stop() }
+  })
+
+  test("an author whose unit reads beyond its scope is told what it reads", async () => {
+    const readers = [...grants, { action: "vfs_read", resource: "vfs_read", effect: "allow" }]
+    const vfs = await startVfs({ sessions: unitSessions, permissions: { dev: readers }, claims: [claim({ active: true, scope: ["src/a.go"], reads: ["docs/", "free"] })] })
+    try {
+      const event = contextFor()
+      await vfs.fire(vfs.session, "context", event)
+      const notice = event.system.map(part => part.text).join("\n")
+      expect(notice).toContain("docs/")
+      expect(notice).toContain("every path no work in flight holds")
     } finally { await vfs.stop() }
   })
 

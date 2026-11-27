@@ -8,7 +8,7 @@ entries:
       - skills/takt-interlocutor-handoff/SKILL.md
     vars: [objective, requirements, client]
     text: |-
-      You are taking over as the active interlocutor for this workspace.
+      You are taking over as the active interlocutor for this workspace. Open, hold and return this interface as takt-interlocutor-handoff states.
       Objective: {{objective}}
       Requirements: {{requirements}}
       Client: {{client}}

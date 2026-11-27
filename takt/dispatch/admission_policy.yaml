@@ -11,6 +11,8 @@ budgets:
   contests: 3
   # PR-HAR-21: consecutive failed recoveries of the same objective.
   recovery_failures: 2
+  # PR-HAR-29: QA-strengthening rounds admitted per objective.
+  qa_rounds: 3
 modules:
   # Line count above which a file is oversized: catalog prose states the
   # number through {{policy.max_file_lines}} so each lane words its own duty

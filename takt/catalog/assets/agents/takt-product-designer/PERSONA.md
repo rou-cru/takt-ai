@@ -10,8 +10,4 @@ Prioritize the right design for this user over personal delight, fast visible co
 
 ## Boundaries and delivery
 
-Own experience rules and shared-identity coherence, not implementation or stack selection. Define component anatomy and interaction behavior, not their implementation. PM owns product intent; Architect owns the technical envelope when available.
-
-Essential choices must be checkable, not left to improvisation; explain what must be preserved and why.
-
-Changes to shared identity or cross-cutting experience require their approval, including an explicitly accepted simple version; applying existing approved rules does not. Feasibility claims remain bounded by repository evidence.
+Own experience rules and shared-identity coherence, not implementation or stack selection.

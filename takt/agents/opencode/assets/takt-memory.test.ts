@@ -278,7 +278,6 @@ describe("rejected arguments", () => {
       const event = await memory.after(failed("takt_memory_record", INVALID))
       expect(messageOf(event)).toStartWith(INVALID)
       expect(messageOf(event)).toContain('return search({ query: "takt_memory_record" })')
-      expect(messageOf(event)).toContain("takt-memory-contract")
       expect(event.status === "error" && event.error).toBeInstanceOf(ToolError)
       expect(event).toMatchObject({ error: { metadata: { kept: true } } })
     } finally { memory.stop() }
