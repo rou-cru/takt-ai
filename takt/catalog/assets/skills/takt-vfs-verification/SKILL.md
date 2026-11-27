@@ -18,5 +18,5 @@ be checked is reported as unverified. If the assignment is unavailable, report t
 binding error and the checks that remain unverified.
 If `vfs_verify` reports that the author's staged work changed, read it anew with `vfs_read`
 and attach the verdict to that revision.
-Workspace checks do not prove changes that remain staged.
+Workspace checks do not prove changes that remain staged: report each criterion that needs the staged result executed as unverified, never as a pass.
 A failing verdict leaves the author's staged work untouched.
