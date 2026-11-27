@@ -37,7 +37,7 @@ func TestStrengtheningBudgetSurvivesReplanningAndReopen(t *testing.T) {
 		err := dispatch.Admit(h, p, "", req)
 		if round > p.Budgets.QARounds {
 			if err == nil || !strings.Contains(err.Error(), history.BoundQARounds) || !strings.Contains(err.Error(), "Close/Report") {
-				t.Fatalf("fourth round = %v", err)
+				t.Fatalf("round %d = %v", round, err)
 			}
 			break
 		}
@@ -107,19 +107,24 @@ func TestStrengtheningBudgetSurvivesReplanningAndReopen(t *testing.T) {
 	if err := dispatch.Except(h, "", "", "root", history.BoundQARounds, objective, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Session: "root", Event: "test-4-a", Agent: "test", Dispatch: "fourth-after-exception"}); err != nil {
+	// The exception admits exactly one round past the policy limit.
+	exceptionRound := p.Budgets.QARounds + 1
+	exceptionUnit := fmt.Sprintf("test-%d-a", exceptionRound)
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Session: "root", Event: exceptionUnit, Agent: "test", Dispatch: "round-after-exception"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dispatch.Finish(h, "", "test-4-a", "root"); err != nil {
+	if err := dispatch.Finish(h, "", exceptionUnit, "root"); err != nil {
 		t.Fatal(err)
 	}
-	if err := dispatch.Declare(h, "", "root", "v5", "close-plan", []dispatch.PlanUnit{{Unit: "test-5", Contract: "fifth round"}}, nil, &history.QARound{Objective: objective, Units: []string{"test-5"}}); err != nil {
+	nextRound := p.Budgets.QARounds + 2
+	nextUnit := fmt.Sprintf("test-%d", nextRound)
+	if err := dispatch.Declare(h, "", "root", fmt.Sprintf("v%d", nextRound), "close-plan", []dispatch.PlanUnit{{Unit: nextUnit, Contract: "round past the exception"}}, nil, &history.QARound{Objective: objective, Units: []string{nextUnit}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Session: "root", Event: "test-5", Agent: "test", Dispatch: "fifth"}); err == nil {
-		t.Fatal("finite exception allowed fifth round")
+	if err := dispatch.Admit(h, p, "", dispatch.AdmissionRequest{Session: "root", Event: nextUnit, Agent: "test", Dispatch: "round-past-exception"}); err == nil {
+		t.Fatal("finite exception allowed a round past its allowance")
 	}
-	if h.Project().Budgets("root").StrengtheningUsed(objective) != 4 {
+	if h.Project().Budgets("root").StrengtheningUsed(objective) != exceptionRound {
 		t.Fatal("round accounting changed")
 	}
 	// Other roots/objectives have no inherited consumption.

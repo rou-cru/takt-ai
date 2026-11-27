@@ -18,7 +18,6 @@ package dispatch
 import (
 	// Required blank import: the embed directive below depends on this package.
 	_ "embed"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -65,8 +64,9 @@ type AdmissionPolicy struct {
 // LoadAdmissionPolicy returns the shared embedded policy; callers must not mutate the result.
 func LoadAdmissionPolicy() (AdmissionPolicy, error) { return loadAdmissionPolicy() }
 
-// parseAdmissionPolicy rejects unknown fields and a non-positive ceiling so a
-// broken policy fails early instead of silently admitting without a limit.
+// parseAdmissionPolicy rejects unknown fields and a non-positive limit so a
+// broken policy fails early instead of silently admitting without a limit. The
+// error names the limit and the policy entry to correct (PR-HAR-29).
 func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	var p AdmissionPolicy
 	if err := yaml.UnmarshalStrict(data, &p); err != nil {
@@ -75,11 +75,23 @@ func parseAdmissionPolicy(data []byte) (AdmissionPolicy, error) {
 	if p.Version != 1 {
 		return AdmissionPolicy{}, fmt.Errorf("admission policy: unsupported version %d", p.Version)
 	}
-	if p.Recovery.MaxActions <= 0 || p.Recovery.MaxAttempts <= 0 {
-		return AdmissionPolicy{}, errors.New("admission policy: every declared recovery budget needs a positive ceiling")
-	}
-	if p.Concurrency.Specialists <= 0 || p.Budgets.UnplannedUnits <= 0 || p.Budgets.Contests <= 0 || p.Budgets.RecoveryFailures <= 0 || p.Budgets.QARounds <= 0 || p.Modules.MaxFileLines <= 0 {
-		return AdmissionPolicy{}, errors.New("admission policy: every ceiling, budget and size limit must be positive")
+	// A missing entry decodes to zero, so it is refused like an explicit zero.
+	for _, limit := range []struct {
+		entry string
+		value int
+	}{
+		{"concurrency.specialists", p.Concurrency.Specialists},
+		{"budgets.unplanned_units", p.Budgets.UnplannedUnits},
+		{"budgets.contests", p.Budgets.Contests},
+		{"budgets.recovery_failures", p.Budgets.RecoveryFailures},
+		{"budgets.qa_rounds", p.Budgets.QARounds},
+		{"modules.max_file_lines", p.Modules.MaxFileLines},
+		{"recovery.max_actions", p.Recovery.MaxActions},
+		{"recovery.max_attempts", p.Recovery.MaxAttempts},
+	} {
+		if limit.value <= 0 {
+			return AdmissionPolicy{}, fmt.Errorf("admission policy: %s is %d, a limit must be positive; set a positive value for %s in admission_policy.yaml", limit.entry, limit.value, limit.entry)
+		}
 	}
 	return p, nil
 }
