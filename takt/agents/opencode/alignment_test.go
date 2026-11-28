@@ -331,9 +331,10 @@ func TestEveryHarnessPromptHasAConsumer(t *testing.T) {
 			continue
 		}
 		if tool.Owner == "memory/mcp" {
-			// memory/tools.go looks up each tool by its Tool* constant; verify constant matches name.
-			if !strings.Contains(src, `"`+tool.Name+`"`) {
-				t.Errorf("orphan memory tool spec %s is not referenced in %s", tool.Name, ownerFiles[tool.Owner])
+			if !slices.ContainsFunc(memory.Tools, func(mt memory.Tool) bool {
+				return mt.Name == tool.Name && mt.Description != ""
+			}) {
+				t.Errorf("orphan memory tool spec %s is not registered in memory.Tools", tool.Name)
 			}
 			continue
 		}

@@ -59,4 +59,8 @@ func TestReconcileSelection(t *testing.T) {
 	if len(kept) != len(order) {
 		t.Errorf("ReconcileSelection() with every selectable component selected kept %d, want %d (removals: %+v)", len(kept), len(order), removals)
 	}
+	wantOrder := []model.ComponentID{model.ComponentContext7, model.ComponentArchify}
+	if len(order) != len(wantOrder) || order[0] != wantOrder[0] || order[1] != wantOrder[1] {
+		t.Errorf("SelectableOrder() = %v, want %v", order, wantOrder)
+	}
 }

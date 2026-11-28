@@ -104,7 +104,7 @@ func TestInstallConflictFlow(t *testing.T) {
 		t.Fatalf("request.PreservePaths = %v, want it to exclude %q: choosing restore means Takt's version overwrites it, nothing is preserved", request.PreservePaths, conflictPath)
 	}
 
-	result, err := runtime.NewAdapterFor(lifecycle.Runtime{Model: testutil.FakeModel(t)}).Execute(request)
+	result, err := runtime.NewAdapterFor(lifecycle.Runtime{Model: testutil.FakeModel(t), Archify: testutil.FakeArchify(t)}).Execute(request)
 	if err != nil {
 		t.Fatalf("Adapter.Execute() error = %v", err)
 	}

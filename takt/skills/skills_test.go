@@ -26,6 +26,7 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/dispatch"
+	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 	"github.com/rou-cru/takt-ai/takt/skills"
 )
@@ -34,7 +35,7 @@ import (
 // below the same directory. Compare with the embedded assets, not LoadPackages,
 // so dropping a reference in either loading layer cannot pass unnoticed.
 func TestLoadSkillsPreservesAllEmbeddedFiles(t *testing.T) {
-	definitions, err := skills.LoadSkills()
+	definitions, err := skills.LoadSkills(model.ComponentArchify)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +82,25 @@ func TestLoadSkillsPreservesAllEmbeddedFiles(t *testing.T) {
 	}
 	for name := range loaded {
 		t.Errorf("unexpected loaded file %s", name)
+	}
+}
+
+func TestLoadSkillsExcludesInactiveOptionalComponents(t *testing.T) {
+	coreOnly, err := skills.LoadSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range coreOnly {
+		if def.Name == "takt-archify" {
+			t.Fatal("LoadSkills() without ComponentArchify loaded takt-archify")
+		}
+	}
+	withArchify, err := skills.LoadSkills(model.ComponentArchify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(withArchify, func(d skills.SkillDefinition) bool { return d.Name == "takt-archify" }) {
+		t.Fatal("LoadSkills(ComponentArchify) omitted takt-archify")
 	}
 }
 

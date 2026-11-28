@@ -23,7 +23,6 @@ import (
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/model"
 )
 
@@ -74,7 +73,12 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 		return TargetPlan{}, err
 	}
 	specs := make([]opencode.AgentSpec, 0, len(pack.Agents))
+	archifyEnabled := slices.Contains(components, model.ComponentArchify)
 	for _, def := range pack.Agents {
+		skills := pack.ActiveAgentSkills(def, components)
+		if archifyEnabled && slices.Contains(skills, "takt-archify") && def.Role != model.RoleVerification && def.Role != model.RoleQualityAssurance {
+			skills = append(skills, model.ArchifySkillID)
+		}
 		for _, instanceID := range def.Instances {
 			assignment, ok := overrides[instanceID]
 			if !ok {
@@ -85,12 +89,12 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 				ID:              instanceID,
 				Description:     def.Description,
 				Mode:            opencode.AgentMode(def.Role),
-				System:          opencode.ComposePrompt(def, instanceID),
+				System:          opencode.ComposePrompt(def, instanceID, components...),
 				Model:           assignment.Model,
 				Variant:         assignment.Effort,
 				Role:            def.Role,
 				VFSCapabilities: vfsCapabilities,
-				Skills:          def.Skills,
+				Skills:          skills,
 			})
 		}
 	}
@@ -115,6 +119,9 @@ func buildOpenCodePlan(options OpenCodePlanOptions, overrides map[string]model.M
 	artifacts := make([]Artifact, 0, len(pack.Files)+len(componentArtifacts)+2)
 	generatedPaths := make([]string, 0, len(pack.Files)+len(componentArtifacts))
 	for _, f := range pack.Files {
+		if !catalogFileActive(f.Path, pack, components) {
+			continue
+		}
 		content, err := resolveCatalogContent(f.Path, f.Content)
 		if err != nil {
 			return TargetPlan{}, err
@@ -146,5 +153,14 @@ func resolveCatalogContent(path string, content []byte) ([]byte, error) {
 	if !strings.HasSuffix(path, ".md") {
 		return content, nil
 	}
-	return dispatch.ResolvePolicyPlaceholders(content)
+	return catalog.ResolvePolicyPlaceholders(content)
+}
+
+func catalogFileActive(relPath string, pack catalog.Catalog, components []model.ComponentID) bool {
+	if !strings.HasPrefix(relPath, "skills/") {
+		return true
+	}
+	rest := strings.TrimPrefix(relPath, "skills/")
+	skillID, _, _ := strings.Cut(rest, "/")
+	return catalog.SkillActive(pack.SkillComponent(skillID), components)
 }

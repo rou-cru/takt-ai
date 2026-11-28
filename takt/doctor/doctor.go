@@ -34,6 +34,7 @@ import (
 	"unicode"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
 	"github.com/rou-cru/takt-ai/takt/memory"
@@ -129,6 +130,9 @@ func Run(stdout io.Writer) error {
 	report.Checks = append(report.Checks, deploymentChecks(home)...)
 	report.Checks = append(report.Checks, memoryServiceCheck(context.Background()))
 	report.Checks = append(report.Checks, codegraphChecks(home)...)
+	if archifyInstalled(home) {
+		report.Checks = append(report.Checks, archifyChecks(home)...)
+	}
 	report.Checks = append(report.Checks, opencodeVersionCheck(), opencodeVFSPluginCheck(home), opencodeMemoryPluginCheck(home), opencodeSandboxAdapterCheck(home), opencodeDAGPluginCheck(home))
 	report.Checks = append(report.Checks, diskCheck(home))
 	return render(stdout, report)
@@ -298,6 +302,92 @@ func codegraphChecks(home string) []CheckResult {
 		"Run 'takt-ai setup sync' to install codegraph so agents can explore the codebase",
 		binary, found, codegraph.VerifyVersion)
 	return checks
+}
+
+func archifyInstalled(home string) bool {
+	cfg, err := setup.LoadInstalledConfig(home)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(cfg.Components, string(model.ComponentArchify))
+}
+
+// archifyProbeTimeout bounds `node bin/archify.mjs doctor`, so a hung reused
+// installation fails its check instead of keeping Run from rendering.
+const archifyProbeTimeout = 30 * time.Second
+
+// archifyChecks verifies an installed Archify skill satisfies the pinned minimum
+// version and passes `node bin/archify.mjs doctor` when ComponentArchify is selected.
+// The remedy follows what would actually repair the copy: sync replaces a
+// Takt-managed tree that is missing or no longer matches its receipt, a copy
+// installed outside Takt is the user's to repair, an unreadable ownership
+// manifest must be repaired before either can be told apart, and a managed tree
+// that still matches its receipt points at the Node.js runtime, since sync
+// would keep that tree as is.
+func archifyChecks(home string) []CheckResult {
+	const name = "archify:skill"
+	fail := func(detail, remedy string) []CheckResult {
+		return []CheckResult{{Name: name, Status: CheckStatusFail, Detail: detail, Remedy: remedy}}
+	}
+	managed, manifestErr := archifyManaged(home)
+	repair := "Run 'takt-ai setup sync' to restore Archify"
+	switch {
+	case manifestErr != nil:
+		repair = fmt.Sprintf("Repair the ownership manifest at %s (%v) so Takt can tell whether it manages the Archify copy, then run 'takt-ai doctor' again",
+			filepath.Join(home, setup.OwnershipManifestFilename), manifestErr)
+	case !managed:
+		repair = fmt.Sprintf("Repair or move aside the Archify copy at %s, then run 'takt-ai setup sync'", model.ArchifySkillDir(home))
+	}
+	if _, found := archify.Resolve(home); !found {
+		return fail(fmt.Sprintf("no archify %s or newer at %s", archify.Version, model.ArchifySkillDir(home)), repair)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), archifyProbeTimeout)
+	defer cancel()
+	version, err := archify.Verify(ctx, home)
+	if err == nil {
+		return []CheckResult{{
+			Name:   name,
+			Status: CheckStatusPass,
+			Detail: fmt.Sprintf("archify %s ready at %s", version, model.ArchifySkillDir(home)),
+		}}
+	}
+	timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
+	detail := err.Error()
+	if timedOut {
+		detail = fmt.Sprintf("archify doctor did not finish within %s", archifyProbeTimeout)
+	}
+	if manifestErr == nil && managed && archify.Intact(home) {
+		const unchanged = ": this copy matches the tree Takt extracted, so 'takt-ai setup sync' would keep it as is"
+		if timedOut {
+			return fail(detail, "Check why Node.js on PATH stalls running the Archify doctor probe"+unchanged)
+		}
+		return fail(detail, "Ensure Node.js >= 18 is on PATH and runs the Archify doctor probe"+unchanged)
+	}
+	switch {
+	case timedOut && (manifestErr != nil || !managed):
+		// Takt cannot tell whether the runtime or the copy stalls, so both are named.
+		return fail(detail, "Check why Node.js on PATH stalls running the Archify doctor probe; if the copy is at fault, "+
+			strings.ToLower(repair[:1])+repair[1:])
+	case timedOut:
+		return fail(detail, repair)
+	}
+	return fail(detail, "Ensure Node.js >= 18 is on PATH. "+repair)
+}
+
+// archifyManaged reports whether the ownership manifest records the Archify
+// receipt, the evidence that Takt extracted the tree at the skill path. Only a
+// missing manifest means no record; a manifest that cannot be read or parsed
+// leaves ownership unknown and is returned as an error.
+func archifyManaged(home string) (bool, error) {
+	manifest, err := setup.LoadOwnershipManifest(home)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, owned := manifest.Entries[model.ArchifyManagedMarkerKey]
+	return owned, nil
 }
 
 // workingDirOrHome resolves the directory doctor should report a project

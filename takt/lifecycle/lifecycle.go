@@ -27,12 +27,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/internal/filemerge"
@@ -147,6 +149,8 @@ type Runtime struct {
 	StartMemory bool
 	// Model is the manifest install acquires; nil means the pinned model.
 	Model *embed.Manifest
+	// Archify is the manifest install acquires when ComponentArchify is selected; nil means the pinned release.
+	Archify *archify.Manifest
 }
 
 // NewRuntime wires the production OpenCode V2 preflight and handoff while
@@ -195,13 +199,17 @@ func PreviewLifecycle(action string, rootDir string, request setup.PlanRequest) 
 }
 
 // installPlans is every plan install and sync deploy: the OpenCode plan plus
-// the skills, with the removals dropped from the selection.
+// the active skills, with the removals dropped from the selection.
 func installPlans(request setup.PlanRequest) ([]setup.TargetPlan, []catalog.Removal, error) {
+	components, _, err := setup.ResolveComponents(request.Components)
+	if err != nil {
+		return nil, nil, err
+	}
 	plans, removals, err := setup.BuildTargetPlans(request)
 	if err != nil {
 		return nil, nil, err
 	}
-	skillPlan, err := skills.BuildSkillPlan()
+	skillPlan, err := skills.BuildSkillPlan(components...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,7 +260,13 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	// Acquiring a prerequisite replaces a stale managed copy, so that copy is
 	// set aside into the backups first and restored when nothing is applied.
 	var aside []setup.SetAsideEntry
+	var archifyInstalled bool
 	notApplied := func(result LifecycleResult, err error) (LifecycleResult, error) {
+		// An Archify tree this run extracted is discarded with nothing applied;
+		// a reused copy stays, and a replaced one returns through its set-aside entry.
+		if archifyInstalled {
+			err = errors.Join(err, removeManagedTree(rootDir, model.ArchifySkillRelDir, "archify"))
+		}
 		return result, errors.Join(err, restoreSetAside(aside))
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Acquiring the memory model"})
@@ -273,6 +287,30 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	}
 	if err != nil {
 		return notApplied(LifecycleResult{}, fmt.Errorf("codegraph capability unavailable: requires CodeGraph %s or newer, which is not on PATH and could not be installed: %w", codegraph.CodegraphVersion, err))
+	}
+	resolvedComponents, _, _ := setup.ResolveComponents(request.Components)
+	archifySelected := slices.Contains(resolvedComponents, model.ComponentArchify)
+	if archifySelected {
+		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Archify capability"})
+		manifest := runtime.archifyManifest()
+		if archifyMarkerOwned(rootDir) {
+			// A managed copy that no longer matches the tree Takt extracted, such
+			// as one missing an asset, is replaced like an incompatible one.
+			usable := func(root string) (string, bool) {
+				binPath, found := manifest.Resolve(root)
+				return binPath, found && archify.Intact(root)
+			}
+			if aside, err = setAsideStale(rootDir, model.ArchifySkillRelDir, usable, aside); err != nil {
+				return notApplied(LifecycleResult{}, err)
+			}
+		}
+		_, archifyInstalled, err = manifest.Acquire(ctx, http.DefaultClient, rootDir)
+		if Cancelled(ctx, err) {
+			return notApplied(LifecycleResult{Outcome: OutcomeCancelledNothingApplied, NotApplied: plannedPaths(plans)}, nil)
+		}
+		if err != nil {
+			return notApplied(LifecycleResult{}, fmt.Errorf("archify capability unavailable: %w", err))
+		}
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Preparing managed files", Total: len(plannedPaths(plans))})
 	result, err := deploy(ctx, action, rootDir, plans, runtime.ProviderActions, runtime.Progress, preserve...)
@@ -304,7 +342,7 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	if err != nil {
 		return deployed, err
 	}
-	return runtime.finishInstall(ctx, action, rootDir, request, codegraphCommand, deployed)
+	return runtime.finishInstall(ctx, action, rootDir, request, codegraphCommand, archifySelected, archifyInstalled, deployed)
 }
 
 // acquireModel downloads and verifies the semantic model the memory service loads at start.
@@ -314,6 +352,24 @@ func (runtime Runtime) acquireModel(ctx context.Context, rootDir string) error {
 		manifest = *runtime.Model
 	}
 	return manifest.Acquire(ctx, http.DefaultClient, embed.ModelDir(rootDir))
+}
+
+// archifyManifest is the Archify release this runtime acquires, the one both
+// the stale-copy decision and the acquisition measure an installed copy against.
+func (runtime Runtime) archifyManifest() archify.Manifest {
+	if runtime.Archify != nil {
+		return *runtime.Archify
+	}
+	return archify.Pinned()
+}
+
+func archifyMarkerOwned(rootDir string) bool {
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if err != nil {
+		return false
+	}
+	_, owned := manifest.Entries[model.ArchifyManagedMarkerKey]
+	return owned
 }
 
 // startMemory runs the memory service and returns only once it reports ready. Install creates the
@@ -345,11 +401,13 @@ func setAsideStale(rootDir, rel string, resolve func(string) (string, bool), asi
 	if _, found := resolve(rootDir); found {
 		return aside, nil
 	}
+	// SetAside can move the copy and then fail to sync the directories: the
+	// moved entry is kept with the error, so the caller can still restore it.
 	entry, err := setup.SetAside(rootDir, rel)
-	if err != nil {
-		return aside, err
+	if entry != (setup.SetAsideEntry{}) {
+		aside = append(aside, entry)
 	}
-	return append(aside, entry), nil
+	return aside, err
 }
 
 // restoreSetAside puts every set-aside prerequisite back, latest first.
@@ -379,8 +437,9 @@ func deploy(ctx context.Context, action, rootDir string, plans []setup.TargetPla
 }
 
 // finishInstall registers the memory and CodeGraph MCP servers after deployment, starts the memory
-// service when asked, installs the sandbox dependency, records the installation, and reloads OpenCode.
-func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, codegraphCommand string, deployed LifecycleResult) (LifecycleResult, error) {
+// service when asked, installs the sandbox dependency, records Archify ownership or cleans up
+// deselected Archify assets, records the installation, and reloads OpenCode.
+func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string, request setup.PlanRequest, codegraphCommand string, archifySelected, archifyInstalled bool, deployed LifecycleResult) (LifecycleResult, error) {
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing memory integration"})
 	if err := InjectMemory(rootDir); err != nil {
 		return deployed, err
@@ -396,6 +455,26 @@ func (runtime Runtime) finishInstall(ctx context.Context, action, rootDir string
 		return deployed, fmt.Errorf("inject CodeGraph MCP server: %w", err)
 	}
 	deployed.Actions = append(deployed.Actions, "codegraph-install")
+	if archifySelected {
+		// The receipt, not this run's acquisition, proves Takt wrote the tree:
+		// a retry after a later step failed still records the copy it wrote,
+		// and a copy installed outside Takt carries no receipt to claim.
+		if archify.Intact(rootDir) {
+			marker := filepath.Join(rootDir, filepath.FromSlash(model.ArchifyManagedMarkerKey))
+			if err := registerOwnedFile(rootDir, marker, managedFileMode); err != nil {
+				return deployed, err
+			}
+		}
+		if archifyInstalled {
+			deployed.Actions = append(deployed.Actions, "archify-install")
+		}
+	} else {
+		retained, err := cleanupDeselectedArchify(rootDir)
+		if err != nil {
+			return deployed, err
+		}
+		deployed.Retained = append(deployed.Retained, retained...)
+	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Installing sandbox dependency"})
 	if err := installSandboxDependency(ctx, rootDir); err == nil {
 		deployed.Actions = append(deployed.Actions, "sandbox-adapter-npm-install")
@@ -449,6 +528,13 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 		return LifecycleResult{}, err
 	}
 	defer end()
+	// The managed Archify tree goes first, while the manifest still records
+	// its receipt: a removal that fails stops here with the record intact, so
+	// the next uninstall resumes it.
+	archifyKept, err := removeOwnedArchify(rootDir)
+	if err != nil {
+		return LifecycleResult{}, err
+	}
 	result, err := setup.UninstallContext(ctx, rootDir, uninstallTargets()...)
 	removed := LifecycleResult{Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, NotApplied: result.NotApplied, Outcome: OutcomeCompleted}
 	if Cancelled(ctx, err) {
@@ -464,6 +550,9 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 	}
 	if err := removeCodegraph(rootDir); err != nil {
 		return removed, err
+	}
+	if archifyKept {
+		removed.Preserved = append(removed.Preserved, model.ArchifySkillRelDir)
 	}
 	if !runtime.removeMemory(ctx, rootDir, &removed) {
 		// The memory may be kept set aside: the installation stays recorded, so the next uninstall
@@ -806,18 +895,136 @@ func removeCodegraph(rootDir string) error {
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	prefix := codegraph.ManagedPrefix(rootDir)
-	// RemoveAll never follows prefix itself, but it resolves the ancestors: a
-	// symlinked state directory would redirect the deletion outside the root.
-	if info, err := os.Lstat(filepath.Dir(prefix)); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("remove managed codegraph: %w", err)
-	} else if !info.IsDir() {
-		return fmt.Errorf("remove managed codegraph: %q is not a real directory", filepath.Dir(prefix))
+	return removeManagedTree(rootDir, codegraph.ManagedPrefixKey(), "codegraph")
+}
+
+// removeOwnedArchify removes the Archify tree the ownership manifest records
+// as Takt's, in place and guided by its receipt (archify.RemoveExtracted), and
+// releases the record only once the tree is gone. A removal that stops partway
+// keeps the record and leaves a tree that is still removable, so the next run
+// resumes it. A tree with content the receipt does not list is left whole and
+// released, reported by kept. A record whose receipt is gone, left by a run
+// that removed the tree but failed to save the manifest, is released, keeping
+// whatever content remains.
+func removeOwnedArchify(rootDir string) (kept bool, err error) {
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("load ownership manifest: %w", err)
+	}
+	if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; !owned {
+		return false, nil
+	}
+	skillDir := model.ArchifySkillDir(rootDir)
+	if archify.Removable(rootDir) {
+		if err := archify.RemoveExtracted(rootDir); err != nil {
+			return false, fmt.Errorf("remove managed archify: %w", err)
+		}
+	} else {
+		entries, err := os.ReadDir(skillDir)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return false, fmt.Errorf("remove managed archify: %w", err)
+		case len(entries) > 0:
+			kept = true
+		default:
+			if err := os.Remove(skillDir); err != nil {
+				return false, fmt.Errorf("remove managed archify: %w", err)
+			}
+		}
+	}
+	delete(manifest.Entries, model.ArchifyManagedMarkerKey)
+	return kept, manifest.Save(rootDir)
+}
+
+// removeManagedTree removes the managed tree at the slash-relative rel under
+// rootDir. A symlinked ancestor that resolves inside rootDir is a supported
+// layout; one that leaves it is refused before RemoveAll, so the removal never
+// reaches outside the deployment root.
+func removeManagedTree(rootDir, rel, label string) error {
+	prefix, err := setup.SafeJoin(rootDir, rel)
+	if err != nil {
+		return fmt.Errorf("remove managed %s: %w", label, err)
 	}
 	if err := os.RemoveAll(prefix); err != nil {
-		return fmt.Errorf("remove managed codegraph: %w", err)
+		return fmt.Errorf("remove managed %s: %w", label, err)
 	}
 	return nil
+}
+
+// archifyBridgeSkill is the catalog skill that introduces Archify to agents.
+const archifyBridgeSkill = "takt-archify"
+
+// cleanupDeselectedArchify removes Takt-owned Archify artifacts when a sync
+// deselects ComponentArchify, leaving unmanaged or user-edited files intact.
+// A managed tree changed since extraction is released and returned as
+// retained (see removeOwnedArchify).
+func cleanupDeselectedArchify(rootDir string) (retained []string, err error) {
+	kept, err := removeOwnedArchify(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	if kept {
+		retained = append(retained, model.ArchifySkillRelDir)
+	}
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return retained, nil
+	}
+	if err != nil {
+		return retained, fmt.Errorf("load ownership manifest: %w", err)
+	}
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		return retained, fmt.Errorf("load catalog packages: %w", err)
+	}
+	// The bridge skill is deployed under both skill roots; every file its
+	// package ships is removed while it still matches what Takt deployed.
+	bridgeRoots := []string{model.OpenCodeSkillsDir + "/" + archifyBridgeSkill, opencode.DeployPath("skills/" + archifyBridgeSkill)}
+	var dirs []string
+	changed := false
+	for _, skill := range pack.Skills {
+		if skill.ID != archifyBridgeSkill {
+			continue
+		}
+		for _, f := range skill.Files {
+			for _, bridgeRoot := range bridgeRoots {
+				rel := bridgeRoot + "/" + f.Path
+				entry, owned := manifest.Entries[rel]
+				if !owned {
+					continue
+				}
+				target := filepath.Join(rootDir, filepath.FromSlash(rel))
+				raw, err := os.ReadFile(target)
+				if err == nil {
+					sum := sha256.Sum256(raw)
+					if hex.EncodeToString(sum[:]) != entry.SHA256 {
+						continue
+					}
+					if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return retained, err
+					}
+					for dir := path.Dir(rel); strings.HasPrefix(dir, bridgeRoot); dir = path.Dir(dir) {
+						dirs = append(dirs, dir)
+					}
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return retained, err
+				}
+				delete(manifest.Entries, rel)
+				changed = true
+			}
+		}
+	}
+	// Deepest first; a directory still holding a kept file stays.
+	slices.Sort(dirs)
+	for _, dir := range slices.Backward(slices.Compact(dirs)) {
+		_ = os.Remove(filepath.Join(rootDir, filepath.FromSlash(dir)))
+	}
+	if !changed {
+		return retained, nil
+	}
+	return retained, manifest.Save(rootDir)
 }

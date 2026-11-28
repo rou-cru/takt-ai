@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package dispatch
+package catalog
 
 // ParseAdmissionPolicy lets the external tests exercise policy validation on
 // arbitrary YAML; the embedded policy is the only input production code has.

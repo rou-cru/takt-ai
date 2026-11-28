@@ -1,6 +1,8 @@
 package testutil
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/internal/flock"
 	"github.com/rou-cru/takt-ai/takt/internal/opencodeapi"
@@ -173,6 +176,48 @@ func FakeModel(t *testing.T) *embed.Manifest {
 	return &embed.Manifest{
 		BaseURL: server.URL,
 		Files:   []embed.File{{Name: fakeModelFile, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(body))}},
+	}
+}
+
+// ArchifyTemplateAsset is the Archify-skill-relative slash path of the asset
+// FakeArchify ships, which a test removes to damage a managed copy.
+const ArchifyTemplateAsset = "assets/template.html"
+
+// FakeArchify serves a minimal valid Archify zip over HTTP and returns its
+// manifest, so install acquires Archify without the network.
+func FakeArchify(t *testing.T) *archify.Manifest {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	files := map[string]string{
+		"archify/SKILL.md":                "---\nname: archify\ndescription: diagrams\n---\n",
+		"archify/package.json":            fmt.Sprintf(`{"name":"archify","version":%q}`, archify.Version),
+		"archify/bin/archify.mjs":         "#!/usr/bin/env node\nif (process.argv[2] === 'doctor') { console.log('ok'); }\n",
+		"archify/" + ArchifyTemplateAsset: "<!doctype html>\n",
+	}
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	payload := buf.Bytes()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	t.Cleanup(server.Close)
+	digest := sha256.Sum256(payload)
+	return &archify.Manifest{
+		URL:     server.URL,
+		SHA256:  hex.EncodeToString(digest[:]),
+		Size:    int64(len(payload)),
+		Version: archify.Version,
 	}
 }
 

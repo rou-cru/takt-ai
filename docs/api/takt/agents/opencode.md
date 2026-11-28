@@ -15,9 +15,10 @@ Package opencode renders native OpenCode configuration from catalog references.
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func AgentMode\(role model.RoleClass\) string](<#AgentMode>)
+- [func ArchifyClause\(role model.RoleClass\) string](<#ArchifyClause>)
 - [func AvailableModels\(ctx context.Context\) \(\[\]opencodeapi.Model, error\)](<#AvailableModels>)
 - [func CLIConfigPath\(\) string](<#CLIConfigPath>)
-- [func ComposePrompt\(def catalog.AgentDefinition, instanceID string\) string](<#ComposePrompt>)
+- [func ComposePrompt\(def catalog.AgentDefinition, instanceID string, components ...model.ComponentID\) string](<#ComposePrompt>)
 - [func ConfigDir\(\) string](<#ConfigDir>)
 - [func ConfigPath\(\) string](<#ConfigPath>)
 - [func DeployPath\(rel string\) string](<#DeployPath>)
@@ -71,6 +72,15 @@ func AgentMode(role model.RoleClass) string
 
 AgentMode is primary for the orchestrator, all for interlocutors, subagent otherwise.
 
+<a name="ArchifyClause"></a>
+## func ArchifyClause
+
+```go
+func ArchifyClause(role model.RoleClass) string
+```
+
+ArchifyClause names the Archify launcher and the bridge skill. Roles granted the upstream archify skill also learn when to author with it, and carry the upstream rules line that limits explainer pages to requests.
+
 <a name="AvailableModels"></a>
 ## func AvailableModels
 
@@ -93,10 +103,10 @@ CLIConfigPath returns the terminal client configuration's home\-relative path.
 ## func ComposePrompt
 
 ```go
-func ComposePrompt(def catalog.AgentDefinition, instanceID string) string
+func ComposePrompt(def catalog.AgentDefinition, instanceID string, components ...model.ComponentID) string
 ```
 
-ComposePrompt chains BASELINE, PERSONA, SOUL and OPERATIONS by file reference, then the memory paths.
+ComposePrompt chains BASELINE, PERSONA, SOUL and OPERATIONS by file reference, then the memory clause, and Archify guidance when Archify is selected and the agent declares the Takt Archify skill.
 
 <a name="ConfigDir"></a>
 ## func ConfigDir
@@ -295,6 +305,8 @@ type ConfigRequest struct {
     Assignment model.ModelAssignment
     // Context7 adds the canonical context7 remote MCP server entry.
     Context7 bool
+    // Archify enables Archify skill visibility and role-scoped shell permissions.
+    Archify bool
     // Permissions adds the canonical bash/read permission rules.
     Permissions bool
     // Agents are Takt instances registered natively in opencode.json.

@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -472,5 +473,114 @@ func TestRunReportsWriteFailure(t *testing.T) {
 	newHost(t)
 	if err := doctor.Run(failingWriter{}); err == nil || !strings.Contains(err.Error(), "write failed") {
 		t.Fatalf("Run() error = %v, want the write failure", err)
+	}
+}
+
+func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
+	t.Run("absent when archify is not installed", func(t *testing.T) {
+		h := newHost(t)
+		checks := h.mustRun()
+		if _, ok := checks["archify:skill"]; ok {
+			t.Fatalf("archify:skill emitted when Archify was not installed: %+v", checks["archify:skill"])
+		}
+	})
+
+	t.Run("fails when selected without skill or node", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		checks, _, err := h.run()
+		if !errors.Is(err, doctor.ErrUnhealthy) {
+			t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+		}
+		expect(t, checks, "archify:skill", failMark, "no archify", "takt-ai setup sync")
+	})
+
+	t.Run("passes when selected and verified with node", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+			t.Fatal(err)
+		}
+		h.tool("node", []byte("#!/bin/sh\nif [ \"$2\" = \"doctor\" ]; then echo \"Archify ready\"; exit 0; fi\nexit 1\n"))
+		checks := h.mustRun()
+		expect(t, checks, "archify:skill", passMark, "archify ", "")
+	})
+
+	t.Run("fails when node doctor fails", func(t *testing.T) {
+		h := newHost(t)
+		if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+			t.Fatal(err)
+		}
+		h.tool("node", []byte("#!/bin/sh\necho \"node runtime error\" >&2\nexit 1\n"))
+		checks, _, err := h.run()
+		if !errors.Is(err, doctor.ErrUnhealthy) {
+			t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+		}
+		expect(t, checks, "archify:skill", failMark, "archify doctor failed", "Ensure Node.js >= 18")
+	})
+
+	// The remedy names what would actually repair the copy: sync replaces only a
+	// managed tree that no longer matches its receipt, a user's own copy is
+	// theirs to fix, and an unreadable manifest leaves ownership unknown.
+	for _, tc := range []struct {
+		name        string
+		manifest    string
+		removeAsset bool
+		remedy      string
+	}{
+		{name: "managed copy missing an asset is repaired by sync", manifest: "managed", removeAsset: true, remedy: "Run 'takt-ai setup sync' to restore Archify"},
+		{name: "intact managed copy points at the Node runtime", manifest: "managed", remedy: "so 'takt-ai setup sync' would keep it as is"},
+		{name: "unmanaged copy is the user's to repair", remedy: "Repair or move aside the Archify copy"},
+		{name: "unreadable ownership manifest is repaired first", manifest: "corrupt", remedy: "Repair the ownership manifest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHost(t)
+			if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+				t.Fatal(err)
+			}
+			switch tc.manifest {
+			case "managed":
+				receipt, err := os.ReadFile(filepath.Join(h.home, filepath.FromSlash(model.ArchifyManagedMarkerKey)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry, err := setup.NewOwnershipEntry(model.ArchifyManagedMarkerKey, receipt, 0o644, false, "", "", setup.TargetOpenCode)
+				if err != nil {
+					t.Fatal(err)
+				}
+				manifest := setup.NewOwnershipManifest()
+				if err := manifest.Add(entry); err != nil {
+					t.Fatal(err)
+				}
+				if err := manifest.Save(h.home); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt":
+				if err := os.WriteFile(filepath.Join(h.home, setup.OwnershipManifestFilename), []byte("{"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.removeAsset {
+				if err := os.Remove(filepath.Join(model.ArchifySkillDir(h.home), filepath.FromSlash(testutil.ArchifyTemplateAsset))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.tool("node", []byte("#!/bin/sh\necho \"missing assets/template.html\" >&2\nexit 1\n"))
+			checks, _, err := h.run()
+			if !errors.Is(err, doctor.ErrUnhealthy) {
+				t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+			}
+			expect(t, checks, "archify:skill", failMark, "template.html", tc.remedy)
+		})
 	}
 }

@@ -95,12 +95,42 @@ type PackageFile struct {
 	Mode fs.FileMode
 }
 
-// SkillPackage is one validated skill: its package ID and deployed files.
+// SkillPackage is one validated skill: its package ID, optional component owner, and deployed files.
 type SkillPackage struct {
 	// ID is the package identifier, also its directory name under skills/.
 	ID string
+	// Component names the optional selectable component that owns this skill, or empty for core skills.
+	Component model.ComponentID
 	// Files lists every file deployed for the skill, executables marked.
 	Files []PackageFile
+}
+
+// SkillActive reports whether a skill belonging to component should be deployed
+// and projected for the selected component list. Core skills (empty component)
+// are always active.
+func SkillActive(component model.ComponentID, selected []model.ComponentID) bool {
+	return component == "" || slices.Contains(selected, component)
+}
+
+// SkillComponent returns the optional component owning skillID, or empty for core skills.
+func (c Catalog) SkillComponent(skillID string) model.ComponentID {
+	for _, s := range c.Skills {
+		if s.ID == skillID {
+			return s.Component
+		}
+	}
+	return ""
+}
+
+// ActiveAgentSkills returns def's skill IDs that remain active under selected components.
+func (c Catalog) ActiveAgentSkills(def AgentDefinition, selected []model.ComponentID) []string {
+	skills := make([]string, 0, len(def.Skills))
+	for _, id := range def.Skills {
+		if SkillActive(c.SkillComponent(id), selected) {
+			skills = append(skills, id)
+		}
+	}
+	return skills
 }
 
 // Catalog is the validated declarative content Takt deploys: agent definitions,
@@ -238,7 +268,8 @@ type skillMeta struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Metadata    struct {
-		Executables []string `yaml:"executables"`
+		Executables []string          `yaml:"executables"`
+		Component   model.ComponentID `yaml:"component"`
 	} `yaml:"metadata"`
 }
 
@@ -280,9 +311,29 @@ func loadSkills(fsys fs.FS, files pkgFiles) ([]SkillPackage, error) {
 		if err := files.markExecutables(base, meta.Metadata.Executables); err != nil {
 			return nil, err
 		}
-		skills = append(skills, SkillPackage{ID: id})
+		if comp := meta.Metadata.Component; comp != "" {
+			if err := validateSkillComponent(id, comp); err != nil {
+				return nil, err
+			}
+		}
+		skills = append(skills, SkillPackage{ID: id, Component: meta.Metadata.Component})
 	}
 	return skills, nil
+}
+
+func validateSkillComponent(skillID string, comp model.ComponentID) error {
+	manifest, err := LoadCapabilities()
+	if err != nil {
+		return err
+	}
+	entry, ok := capByID(manifest, comp)
+	if !ok {
+		return fmt.Errorf("skill %q references unknown component %q", skillID, comp)
+	}
+	if entry.Core {
+		return fmt.Errorf("skill %q references core component %q", skillID, comp)
+	}
+	return nil
 }
 
 // loadAgents loads every agent definition under agents/, each claiming its

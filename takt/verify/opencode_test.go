@@ -8,12 +8,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/catalog"
+	"github.com/rou-cru/takt-ai/takt/model"
+	"github.com/rou-cru/takt-ai/takt/setup"
+	"github.com/rou-cru/takt-ai/takt/skills"
 	"github.com/rou-cru/takt-ai/takt/verify"
 )
 
@@ -173,5 +177,61 @@ func TestServerInventoryMatchesDeployedPluginIDs(t *testing.T) {
 		if !strings.Contains(string(artifact.Content), `id: "`+ids[i]+`"`) {
 			t.Fatalf("%s does not declare %s", artifact.Path, ids[i])
 		}
+	}
+}
+
+func TestNativeSkillsCheckTracksArchifySelection(t *testing.T) {
+	coreDefs, err := skills.LoadSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skillEntries []string
+	seen := map[string]bool{}
+	for _, d := range coreDefs {
+		if !seen[d.Name] {
+			seen[d.Name] = true
+			skillEntries = append(skillEntries, fmt.Sprintf(`{"id":%q,"name":%q}`, d.Name, d.Name))
+		}
+	}
+
+	// Without Archify recorded, core-only skills verify without archify or takt-archify.
+	responses := healthyResponses(t)
+	responses["/api/skill"] = envelope(skillEntries...)
+	check := checkByID(t, collectInventory(t, responses), "skills:opencode:takt")
+	if check.State != verify.Verified {
+		t.Fatalf("core-only skills State = %q, want %q (%s)", check.State, verify.Verified, check.Explanation)
+	}
+
+	// With Archify recorded in .takt-installed-config.json, missing archify/takt-archify must fail.
+	root, bin := t.TempDir(), t.TempDir()
+	writeManifest(t, root, `{"version":1,"entries":{"a.txt":{"path":"a.txt","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","mode":420,"targets":["opencode"]}}}`)
+	if err := setup.RecordInstallation(root, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\ncase \"$*\" in\n"
+	for p, body := range responses {
+		script += "'api GET " + p + "') cat <<'RESPONSE'\n" + body + "\nRESPONSE\n;;\n"
+	}
+	script += "*) exit 1 ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(bin, "opencode"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	got := checkByID(t, verify.Collect(context.Background(), root).Checks, "skills:opencode:takt")
+	const missingPrefix = "Native OpenCode is missing Takt skills: "
+	if got.State != verify.NotVerified || !strings.HasPrefix(got.Explanation, missingPrefix) {
+		t.Fatalf("with Archify recorded: %+v, want NotVerified listing the missing skills", got)
+	}
+	if missing := strings.Split(strings.TrimPrefix(got.Explanation, missingPrefix), ", "); !slices.Equal(missing, []string{"archify", "takt-archify"}) {
+		t.Fatalf("missing skills = %q, want exactly [archify takt-archify]", missing)
+	}
+
+	// A malformed installed record cannot say whether Archify belongs to the inventory.
+	if err := os.WriteFile(filepath.Join(root, setup.InstalledConfigFilename), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	malformed := checkByID(t, verify.Collect(context.Background(), root).Checks, "skills:opencode:takt")
+	if malformed.State != verify.NotVerifiable || !strings.Contains(malformed.Explanation, "installed component selection") {
+		t.Fatalf("with a malformed installed record: %+v, want NotVerifiable naming the configuration error", malformed)
 	}
 }

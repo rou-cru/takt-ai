@@ -12,10 +12,18 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func ArchifyBinaryPath\(root string\) string](<#ArchifyBinaryPath>)
+- [func ArchifySkillDir\(root string\) string](<#ArchifySkillDir>)
+- [func CodegraphManagedPrefix\(root string\) string](<#CodegraphManagedPrefix>)
+- [func GitWritingOptions\(subcommand string\) \[\]string](<#GitWritingOptions>)
+- [func MemoryPrefixedToolName\(tool string\) string](<#MemoryPrefixedToolName>)
 - [func OpenCodeConfigPath\(home string\) string](<#OpenCodeConfigPath>)
 - [func OpenCodePluginPath\(home, file string\) string](<#OpenCodePluginPath>)
+- [func ReadOnlyGitSubcommands\(\) \[\]string](<#ReadOnlyGitSubcommands>)
 - [func ValidateRoleClass\(subject string, r RoleClass\) error](<#ValidateRoleClass>)
 - [type ComponentID](<#ComponentID>)
+- [type GitPermissionRule](<#GitPermissionRule>)
+  - [func GitPermissionRules\(role RoleClass\) \[\]GitPermissionRule](<#GitPermissionRules>)
 - [type InjectionResult](<#InjectionResult>)
 - [type ModelAssignment](<#ModelAssignment>)
 - [type RoleClass](<#RoleClass>)
@@ -26,6 +34,38 @@ Package model keeps one shared vocabulary for agents, components, and assignment
 
 
 ## Constants
+
+<a name="GitEffectAllow"></a>Native shell permission effects projected from role\-based Git policy.
+
+```go
+const (
+    GitEffectAllow = "allow"
+    GitEffectAsk   = "ask"
+    GitEffectDeny  = "deny"
+)
+```
+
+<a name="MemoryToolRecord"></a>Names of the six tools served identically on /crew and /external, the single source of tool names.
+
+```go
+const (
+    MemoryToolRecord          = "record"
+    MemoryToolSearch          = "search"
+    MemoryToolRead            = "read"
+    MemoryToolSessions        = "sessions"
+    MemoryToolContinueSession = "continue_session"
+    MemoryToolCloseSession    = "close_session"
+)
+```
+
+<a name="MemoryAdminBind"></a>Names of the /admin memory tools referenced by host integrations.
+
+```go
+const (
+    MemoryAdminBind     = "bind"
+    MemoryAdminDescribe = "describe"
+)
+```
 
 <a name="OpenCodeConfigDir"></a>OpenCode's home\-relative configuration paths and the plugin filenames Takt deploys into its plugin directory.
 
@@ -43,6 +83,19 @@ const (
     OpenCodeCLIConfigRelativePath = OpenCodeConfigDir + "/" + OpenCodeCLIConfigFile
     // OpenCodeSkillsDir is the home-relative directory OpenCode V2 loads skills from.
     OpenCodeSkillsDir = ".opencode/skills"
+
+    // ArchifySkillID is the upstream Archify skill directory name OpenCode discovers.
+    ArchifySkillID = "archify"
+    // ArchifySkillRelDir is the home-relative slash path of the installed Archify skill.
+    ArchifySkillRelDir = OpenCodeSkillsDir + "/" + ArchifySkillID
+    // ArchifyBinaryRelPath is the home-relative slash path of Archify's Node CLI entrypoint.
+    ArchifyBinaryRelPath = ArchifySkillRelDir + "/bin/archify.mjs"
+    // ArchifyLauncherRelPath is the home-relative slash path of the Takt launcher
+    // agents run Archify through, deployed with the takt-archify bridge skill.
+    ArchifyLauncherRelPath = OpenCodeSkillsDir + "/takt-archify/scripts/archify.mjs"
+    // ArchifyManagedMarkerKey is the receipt Takt writes into the Archify tree it
+    // extracts, tracked in the ownership manifest for a Takt-managed install.
+    ArchifyManagedMarkerKey = ArchifySkillRelDir + "/.takt-receipt"
 
     // OpenCodePluginsDir is the directory OpenCode loads plugins from.
     OpenCodePluginsDir = "plugins"
@@ -69,10 +122,40 @@ const (
 const AgentOpenCode = "opencode"
 ```
 
+<a name="CodegraphManagedPrefixKey"></a>CodegraphManagedPrefixKey is the root\-relative slash path of the managed CodeGraph install.
+
+```go
+const CodegraphManagedPrefixKey = StateDirName + "/codegraph"
+```
+
 <a name="EnvSandboxAllowedDomains"></a>EnvSandboxAllowedDomains names the environment variable with which the user opts shell sandboxes into a network allowlist: comma\-separated domain patterns such as "github.com,\*.npmjs.org". Unset or empty leaves the network unrestricted; Takt imposes no domain of its own.
 
 ```go
 const EnvSandboxAllowedDomains = "TAKT_SANDBOX_ALLOWED_DOMAINS"
+```
+
+<a name="EventStoreFileName"></a>EventStoreFileName is the workspace event database filename under StateDirName.
+
+```go
+const EventStoreFileName = "events.db"
+```
+
+<a name="MemoryPathAdmin"></a>MemoryPathAdmin is the admin HTTP path of the Takt memory service.
+
+```go
+const MemoryPathAdmin = "/admin"
+```
+
+<a name="MemoryServerKey"></a>MemoryServerKey is the MCP server key clients register the memory service under; it is distinctive so it never replaces or collides with a user's server under a generic key such as "memory".
+
+```go
+const MemoryServerKey = "takt_memory"
+```
+
+<a name="StateDirName"></a>StateDirName is the workspace\-local state directory shared across Takt components.
+
+```go
+const StateDirName = ".takt-ai"
 ```
 
 ## Variables
@@ -95,6 +178,51 @@ var SensitivePathGlobs = []string{
 }
 ```
 
+<a name="ArchifyBinaryPath"></a>
+## func ArchifyBinaryPath
+
+```go
+func ArchifyBinaryPath(root string) string
+```
+
+ArchifyBinaryPath returns \<root\>/.opencode/skills/archify/bin/archify.mjs.
+
+<a name="ArchifySkillDir"></a>
+## func ArchifySkillDir
+
+```go
+func ArchifySkillDir(root string) string
+```
+
+ArchifySkillDir returns \<root\>/.opencode/skills/archify.
+
+<a name="CodegraphManagedPrefix"></a>
+## func CodegraphManagedPrefix
+
+```go
+func CodegraphManagedPrefix(root string) string
+```
+
+CodegraphManagedPrefix is where Takt installs its own CodeGraph copy: \<root\>/.takt\-ai/codegraph.
+
+<a name="GitWritingOptions"></a>
+## func GitWritingOptions
+
+```go
+func GitWritingOptions(subcommand string) []string
+```
+
+GitWritingOptions returns the writing options for a read\-only git subcommand.
+
+<a name="MemoryPrefixedToolName"></a>
+## func MemoryPrefixedToolName
+
+```go
+func MemoryPrefixedToolName(tool string) string
+```
+
+MemoryPrefixedToolName is the name OpenCode gives a tool of the memory MCP server: the server key, an underscore, and the tool.
+
 <a name="OpenCodeConfigPath"></a>
 ## func OpenCodeConfigPath
 
@@ -112,6 +240,15 @@ func OpenCodePluginPath(home, file string) string
 ```
 
 OpenCodePluginPath returns \<home\>/.config/opencode/plugins/\<file\>.
+
+<a name="ReadOnlyGitSubcommands"></a>
+## func ReadOnlyGitSubcommands
+
+```go
+func ReadOnlyGitSubcommands() []string
+```
+
+ReadOnlyGitSubcommands returns the read\-only git subcommands.
 
 <a name="ValidateRoleClass"></a>
 ## func ValidateRoleClass
@@ -141,8 +278,31 @@ const (
     ComponentContext7 ComponentID = "context7"
     // ComponentCodegraph names the codebase-exploration MCP integration, mandatory core.
     ComponentCodegraph ComponentID = "codegraph"
+    // ComponentArchify names the optional Archify diagramming and codebase-analysis integration.
+    ComponentArchify ComponentID = "archify"
 )
 ```
+
+<a name="GitPermissionRule"></a>
+## type GitPermissionRule
+
+GitPermissionRule is one native shell permission over a Git command pattern, where "\*" matches any text.
+
+```go
+type GitPermissionRule struct {
+    Pattern string
+    Effect  string
+}
+```
+
+<a name="GitPermissionRules"></a>
+### func GitPermissionRules
+
+```go
+func GitPermissionRules(role RoleClass) []GitPermissionRule
+```
+
+GitPermissionRules is role's Git policy as native shell permission patterns, in evaluation order for a host where the last matching rule wins. Every role but the orchestrator denies every git command, then allows each read\-only subcommand, and a read\-only subcommand carrying one of its writing options returns to the deny; a form the patterns cannot tell apart from a mutation keeps the deny. The orchestrator allows git and asks only for the actions in orchestratorGatedGit, for an amended commit and for a hard reset \(PR\-VFS\-GIT\-5\); every other Git mutation, a plain local commit included, is its conduct.
 
 <a name="InjectionResult"></a>
 ## type InjectionResult

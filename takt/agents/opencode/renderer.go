@@ -23,10 +23,7 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
-	"github.com/rou-cru/takt-ai/takt/obs"
-	"github.com/rou-cru/takt-ai/takt/vfs"
 )
 
 // permissionRule is one entry of an OpenCode V2 permissions array. V2
@@ -69,6 +66,8 @@ type ConfigRequest struct {
 	Assignment model.ModelAssignment
 	// Context7 adds the canonical context7 remote MCP server entry.
 	Context7 bool
+	// Archify enables Archify skill visibility and role-scoped shell permissions.
+	Archify bool
 	// Permissions adds the canonical bash/read permission rules.
 	Permissions bool
 	// Agents are Takt instances registered natively in opencode.json.
@@ -77,7 +76,7 @@ type ConfigRequest struct {
 
 // RenderConfig returns the native OpenCode opencode.json artifact.
 func RenderConfig(request ConfigRequest) (Artifact, error) {
-	agents, err := renderAgents(request.Agents)
+	agents, err := renderAgents(request.Agents, request.Archify)
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -124,7 +123,7 @@ func RenderCLIConfig() (Artifact, error) {
 	}, nil
 }
 
-func renderAgents(specs []AgentSpec) (map[string]any, error) {
+func renderAgents(specs []AgentSpec, archifyEnabled bool) (map[string]any, error) {
 	agents := map[string]any{
 		// OpenCode's built-in agents are disabled: build and plan would compete
 		// with the orchestrator in the agent picker, and general and explore
@@ -151,7 +150,7 @@ func renderAgents(specs []AgentSpec) (map[string]any, error) {
 		if _, exists := agents[spec.ID]; exists {
 			return nil, fmt.Errorf("duplicate OpenCode agent %q", spec.ID)
 		}
-		agents[spec.ID] = agentEntry(spec, maintenance)
+		agents[spec.ID] = agentEntry(spec, maintenance, archifyEnabled)
 	}
 	return agents, nil
 }
@@ -197,7 +196,7 @@ const vfsMutationSkill = "takt-vfs-mutation"
 // designed to use it may present a complete memory artifact as their result.
 const resultHandoffSkill = "takt-result-handoff"
 
-func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
+func agentEntry(spec AgentSpec, maintenance []string, archifyEnabled bool) map[string]any {
 	entry := map[string]any{
 		"description": spec.Description,
 		"mode":        spec.Mode,
@@ -206,7 +205,7 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 	if spec.Model != "" {
 		entry["model"] = modelRef(spec)
 	}
-	rules := agentPermissionRules(spec, maintenance)
+	rules := agentPermissionRules(spec, maintenance, archifyEnabled)
 	if len(rules) > 0 {
 		entry["permissions"] = rules
 	}
@@ -215,7 +214,7 @@ func agentEntry(spec AgentSpec, maintenance []string) map[string]any {
 
 // agentPermissionRules builds ordered OpenCode permissions from the agent's role,
 // skills, and explicit VFS grants, using maintenance to restrict delegation targets.
-func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule {
+func agentPermissionRules(spec AgentSpec, maintenance []string, archifyEnabled bool) []permissionRule {
 	var rules []permissionRule
 	if spec.Role == model.RoleOrchestrator {
 		// The orchestrator is the trusted coordinator (vfs.Identity's own
@@ -241,7 +240,7 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 		if spec.Role == model.RoleVerification || spec.Role == model.RoleQualityAssurance {
 			rules = append(rules, permissionRule{"edit", allResources, "deny"})
 		}
-		rules = append(rules, shellRules(spec.Role)...)
+		rules = append(rules, shellRules(spec.Role, archifyEnabled && slices.Contains(spec.Skills, archifyBridgeSkill))...)
 		// The workspace event store records every session's activity; only the
 		// orchestrator reads it. The inspection sandbox keeps it private too; a
 		// shell that runs natively (a result agent, or enforcement off) does not.
@@ -262,17 +261,17 @@ func agentPermissionRules(spec AgentSpec, maintenance []string) []permissionRule
 	// Recording, reading, and listing sessions are open to every crew agent; the
 	// session lifecycle belongs to the orchestrator and the roles holding the
 	// user interface.
-	for _, name := range []string{memory.ToolRecord, memory.ToolSearch, memory.ToolRead, memory.ToolSessions} {
-		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, "allow"})
+	for _, name := range []string{model.MemoryToolRecord, model.MemoryToolSearch, model.MemoryToolRead, model.MemoryToolSessions} {
+		rules = append(rules, permissionRule{model.MemoryPrefixedToolName(name), allResources, "allow"})
 	}
 	lifecycleEffect := "deny"
 	if spec.Role == model.RoleOrchestrator || spec.Role.HoldsInterface() {
 		lifecycleEffect = "allow"
 	}
-	for _, name := range []string{memory.ToolContinueSession, memory.ToolCloseSession} {
-		rules = append(rules, permissionRule{memory.PrefixedToolName(name), allResources, lifecycleEffect})
+	for _, name := range []string{model.MemoryToolContinueSession, model.MemoryToolCloseSession} {
+		rules = append(rules, permissionRule{model.MemoryPrefixedToolName(name), allResources, lifecycleEffect})
 	}
-	rules = append(rules, skillRules(spec.Skills)...)
+	rules = append(rules, skillRules(spec.Skills, spec.Role, archifyEnabled)...)
 	// VFS access is an explicit per-instance grant, not a role-derived default.
 	rules = append(rules, vfsPermissionRules(spec.VFSCapabilities)...)
 	// The mutation skill rule comes after skillRules so it decides alone: only
@@ -302,7 +301,7 @@ func modelRef(spec AgentSpec) any {
 
 // eventStoreResource is the workspace event store as a permission resource.
 // The trailing glob covers SQLite's -wal, -shm and -journal siblings, which hold recent rows.
-var eventStoreResource = "**/" + obs.StateDirName + "/" + obs.StoreFileName + "*"
+var eventStoreResource = "**/" + model.StateDirName + "/" + model.EventStoreFileName + "*"
 
 // sensitiveEditDenies follows every edit allow: the last match wins, so a
 // blanket allow never reopens a secret-bearing path to writes.
@@ -353,11 +352,13 @@ func interlocutorRules(role model.RoleClass) []permissionRule {
 }
 
 // skillRules hides every Takt skill the agent is not designed to use, so its
-// skill listing carries only its own.
-func skillRules(designed []string) []permissionRule {
+// skill listing carries only its own. Read-only verification and QA roles keep
+// the upstream archify skill denied even when Archify analysis is enabled.
+func skillRules(designed []string, role model.RoleClass, archifyEnabled bool) []permissionRule {
+	readOnlyRole := role == model.RoleVerification || role == model.RoleQualityAssurance
 	var rules []permissionRule
-	for _, id := range taktSkillIDs() {
-		if !slices.Contains(designed, id) {
+	for _, id := range taktSkillIDs(archifyEnabled) {
+		if !slices.Contains(designed, id) || (readOnlyRole && id == model.ArchifySkillID) {
 			rules = append(rules, permissionRule{"skill", id, "deny"})
 		}
 	}
@@ -369,7 +370,7 @@ func skillRules(designed []string) []permissionRule {
 // subcommand allows that follow can win as the last match, and the
 // writing-option denies after them catch a read-like form that writes. No specialist drives the VFS CLI
 // directly: its tools inject the harness identity.
-func shellRules(role model.RoleClass) []permissionRule {
+func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 	rules := append(gitRules(role), vfsShellRules()...)
 	if role != model.RolePlanningAuthor && role != model.RoleDirectInterlocutor {
 		return rules
@@ -377,10 +378,35 @@ func shellRules(role model.RoleClass) []permissionRule {
 	// Their native shell runs unsandboxed and the VFS captures none of its
 	// effects, so the user approves each command (PR-HAR-11). The last match
 	// wins, so the narrower rules after the ask still decide alone: read-only
-	// Git stays allowed, and Git mutation and the harness CLIs stay denied.
+	// Git (and read-only Archify analysis when enabled) stay allowed, while
+	// writing commands and harness CLIs remain gated or denied.
 	gated := []permissionRule{{"shell", allResources, "ask"}}
 	gated = append(gated, rules...)
+	if archifyReadOnly {
+		gated = append(gated, archifyReadOnlyShellRules()...)
+	}
 	return append(gated, harnessCLIShellDenies()...)
+}
+
+// archifyReadOnlyShellRules lets planning/direct interlocutors run Archify's
+// read-only analysis and scenario guide through the Takt launcher without
+// approval. The launcher owns every analysis output location and refuses
+// baseline changes. These shells run natively, so after the allows, any
+// character the shell rewrites or redirects with asks again: what remains
+// allowed reaches the launcher as written, apart from * and ? globs, which
+// expand only to existing paths. Each pattern is anchored at the start of the
+// command, so the launcher named only as another program's argument, and the
+// upstream CLI run directly, keep the preceding "ask".
+func archifyReadOnlyShellRules() []permissionRule {
+	launcher := "node ~/" + model.ArchifyLauncherRelPath
+	rules := []permissionRule{{"shell", launcher + " guide", "allow"}}
+	for _, query := range []string{"code-analysis check", "code-analysis task", "code-analysis drift", "guide"} {
+		rules = append(rules, permissionRule{"shell", launcher + " " + query + " *", "allow"})
+	}
+	for _, shellSyntax := range []string{"'", `"`, `\`, "`", "$", "~", ">", "<", "|", ";", "&", "(", ")", "{", "}", "["} {
+		rules = append(rules, permissionRule{"shell", launcher + " *" + shellSyntax + "*", "ask"})
+	}
+	return rules
 }
 
 // vfsPermissionRules emits an explicit allow or deny for every plugin tool.
@@ -421,14 +447,14 @@ func vfsPermissionRules(capabilities []model.VFSCapability) []permissionRule {
 	return rules
 }
 
-// gitRules copies vfs.GitPermissionRules for role into OpenCode's native rule
+// gitRules copies model.GitPermissionRules for role into OpenCode's native rule
 // shape, never re-deriving it: every role but the orchestrator (an undeclared
 // one included) denies git except read-only subcommands, and the orchestrator
 // allows git except the PR-VFS-GIT-5 actions it asks the user to approve. GitPermissionRule effects are the
 // native strings and its slice order is the evaluation order for a host
 // where the last matching rule wins, so both are copied exactly.
 func gitRules(role model.RoleClass) []permissionRule {
-	projected := vfs.GitPermissionRules(role)
+	projected := model.GitPermissionRules(role)
 	rules := make([]permissionRule, 0, len(projected))
 	for _, canonical := range projected {
 		rules = append(rules, permissionRule{"shell", canonical.Pattern, canonical.Effect})

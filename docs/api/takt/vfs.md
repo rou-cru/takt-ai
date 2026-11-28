@@ -976,10 +976,7 @@ func (e *FailingVerdictError) Unwrap() error
 GitPermissionRule is one native shell permission over a Git command pattern, where "\*" matches any text.
 
 ```go
-type GitPermissionRule struct {
-    Pattern string
-    Effect  string
-}
+type GitPermissionRule = model.GitPermissionRule
 ```
 
 <a name="GitPermissionRules"></a>

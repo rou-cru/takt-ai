@@ -63,7 +63,7 @@ Package dispatch is the generic admission and lifecycle protocol for any unit of
 <a name="AdmissionPolicyRef"></a>AdmissionPolicyRef names the admission rule on every record.
 
 ```go
-const AdmissionPolicyRef = "harness.admission"
+const AdmissionPolicyRef = catalog.AdmissionPolicyRef
 ```
 
 <a name="CauseNoFailure"></a>CauseNoFailure denies a contest of work with no recorded terminal failure.
@@ -399,28 +399,7 @@ Withdraw revokes still\-planned work. Admitted work's contract and prerequisites
 AdmissionPolicy holds the ceiling and the session budgets so every fixed value is canonical policy data rather than a literal in an execution path \(PR\-HAR\-16, PR\-HAR\-19..22, PR\-HAR\-29\).
 
 ```go
-type AdmissionPolicy struct {
-    Version     int `yaml:"version"`
-    Concurrency struct {
-        Specialists int `yaml:"specialists"`
-    }   `yaml:"concurrency"`
-    Budgets struct {
-        UnplannedUnits   int `yaml:"unplanned_units"`
-        Contests         int `yaml:"contests"`
-        RecoveryFailures int `yaml:"recovery_failures"`
-        QARounds         int `yaml:"qa_rounds"`
-    }   `yaml:"budgets"`
-    // Modules holds the size limit catalog prose cites for module layout.
-    Modules struct {
-        MaxFileLines int `yaml:"max_file_lines"`
-    }   `yaml:"modules"`
-    // Recovery holds the admissible ceilings of the two budgets the orchestrator
-    // declares per recovery (PR-ORQ-13).
-    Recovery struct {
-        MaxActions  int `yaml:"max_actions"`
-        MaxAttempts int `yaml:"max_attempts"`
-    }   `yaml:"recovery"`
-}
+type AdmissionPolicy = catalog.AdmissionPolicy
 ```
 
 <a name="LoadAdmissionPolicy"></a>

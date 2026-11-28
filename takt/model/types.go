@@ -31,6 +31,8 @@ const (
 	ComponentContext7 ComponentID = "context7"
 	// ComponentCodegraph names the codebase-exploration MCP integration, mandatory core.
 	ComponentCodegraph ComponentID = "codegraph"
+	// ComponentArchify names the optional Archify diagramming and codebase-analysis integration.
+	ComponentArchify ComponentID = "archify"
 )
 
 // InjectionResult reports what an inject or remove changed so callers can record ownership and show honest summaries.

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rou-cru/takt-ai/takt/agents/shared"
+	"github.com/rou-cru/takt-ai/takt/internal/semver"
 )
 
 // MinimumVersion is the oldest OpenCode release Takt supports: v2.0.4 is the
@@ -153,7 +153,7 @@ func (c *Client) Handshake(ctx context.Context) (Handshake, error) {
 	if err != nil {
 		return Handshake{}, fmt.Errorf("%w: %s", ErrInvalidResponse, redactSensitiveText(err.Error()))
 	}
-	if !shared.VersionAtLeast(info.Version, MinimumVersion) {
+	if !semver.AtLeast(info.Version, MinimumVersion) {
 		return Handshake{}, fmt.Errorf(
 			"%w: server reports %q but Takt needs OpenCode %s or newer",
 			ErrVersion, info.Version, MinimumVersion,

@@ -15,43 +15,11 @@
 
 package dispatch
 
-import (
-	"bytes"
-	"fmt"
-	"strconv"
-)
-
-// policyPlaceholderPrefix opens every marker catalog prose uses to carry an
-// admission value, so prose and policy never hold two copies of one number.
-const policyPlaceholderPrefix = "{{policy."
+import "github.com/rou-cru/takt-ai/takt/catalog"
 
 // ResolvePolicyPlaceholders replaces each {{policy.<name>}} marker in catalog
 // prose with the admission policy's value. A marker left unresolved is an
 // error: unresolved prose would hand an agent a limit that does not exist.
 func ResolvePolicyPlaceholders(content []byte) ([]byte, error) {
-	if !bytes.Contains(content, []byte(policyPlaceholderPrefix)) {
-		return content, nil
-	}
-	p, err := LoadAdmissionPolicy()
-	if err != nil {
-		return nil, err
-	}
-	values := map[string]int{
-		"concurrent_specialists": p.Concurrency.Specialists,
-		"unplanned_units":        p.Budgets.UnplannedUnits,
-		"contests":               p.Budgets.Contests,
-		"recovery_failures":      p.Budgets.RecoveryFailures,
-		"qa_rounds":              p.Budgets.QARounds,
-		"max_file_lines":         p.Modules.MaxFileLines,
-		"recovery_max_actions":   p.Recovery.MaxActions,
-		"recovery_max_attempts":  p.Recovery.MaxAttempts,
-	}
-	for name, value := range values {
-		content = bytes.ReplaceAll(content, []byte(policyPlaceholderPrefix+name+"}}"), []byte(strconv.Itoa(value)))
-	}
-	if i := bytes.Index(content, []byte(policyPlaceholderPrefix)); i >= 0 {
-		end := min(i+len(policyPlaceholderPrefix)+40, len(content))
-		return nil, fmt.Errorf("unresolved policy placeholder near %q", content[i:end])
-	}
-	return content, nil
+	return catalog.ResolvePolicyPlaceholders(content)
 }

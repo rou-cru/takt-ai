@@ -20,7 +20,6 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/agents/shared"
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/prompts"
 )
@@ -111,11 +110,11 @@ func TaktMemoryPluginArtifact(taktAIBinary string) Artifact {
 	artifact := taktPluginArtifact(taktMemoryPluginSource, "takt-memory.ts", taktAIBinary)
 	rosterJSON, _ := json.Marshal(crewRosterIDs()) // a string slice always marshals
 	wireJSON, _ := json.Marshal(map[string]string{ // a string map always marshals
-		"tool_prefix": memory.PrefixedToolName(""),
-		"record":      memory.ToolRecord,
-		"bind":        memory.AdminBind,
-		"describe":    memory.AdminDescribe,
-		"admin_path":  memory.PathAdmin,
+		"tool_prefix": model.MemoryPrefixedToolName(""),
+		"record":      model.MemoryToolRecord,
+		"bind":        model.MemoryAdminBind,
+		"describe":    model.MemoryAdminDescribe,
+		"admin_path":  model.MemoryPathAdmin,
 	})
 	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-memory"))
 	content := strings.Replace(string(artifact.Content), `"__TAKT_MEMORY_WIRE__"`, string(wireJSON), 1)
@@ -136,8 +135,8 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	resultAgents, _ := json.Marshal(resultAgentIDs())      // a string slice always marshals
 	authors, _ := json.Marshal(loadCatalog().VFSAuthors()) // a string slice always marshals
 	memoryTools, _ := json.Marshal(map[string]string{      // a string map always marshals
-		"record": memory.PrefixedToolName(memory.ToolRecord),
-		"read":   memory.PrefixedToolName(memory.ToolRead),
+		"record": model.MemoryPrefixedToolName(model.MemoryToolRecord),
+		"read":   model.MemoryPrefixedToolName(model.MemoryToolRead),
 	})
 	promptsJSON, _ := json.Marshal(prompts.Default().BundleForOwner("plugin/takt-vfs"))
 	content := strings.Replace(string(artifact.Content), `"__TAKT_VFS_SHELL_ENFORCED__"`, string(enforced), 1)
@@ -148,11 +147,21 @@ func TaktVFSPluginArtifact(taktAIBinary string, shellEnforced bool) Artifact {
 	return artifact
 }
 
-// taktSkillIDs lists every skill the Takt catalog installs, sorted.
-func taktSkillIDs() []string {
+// taktSkillIDs lists every skill Takt manages in OpenCode, sorted.
+// Component-owned skills are included only when their component is active.
+func taktSkillIDs(archifyEnabled bool) []string {
+	var selected []model.ComponentID
+	if archifyEnabled {
+		selected = []model.ComponentID{model.ComponentArchify}
+	}
 	ids := []string{}
 	for _, skill := range loadCatalog().Skills {
-		ids = append(ids, skill.ID)
+		if catalog.SkillActive(skill.Component, selected) {
+			ids = append(ids, skill.ID)
+		}
+	}
+	if archifyEnabled {
+		ids = append(ids, model.ArchifySkillID)
 	}
 	slices.Sort(ids)
 	return ids

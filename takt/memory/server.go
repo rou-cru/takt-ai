@@ -12,13 +12,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rou-cru/takt-ai/takt/memory/embed"
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 // Request paths of the service, one per principal.
 const (
 	PathCrew     = "/crew"
 	PathExternal = "/external"
-	PathAdmin    = "/admin"
+	PathAdmin    = model.MemoryPathAdmin
 )
 
 // MCP request `_meta` keys that carry the caller's identity (MEM-AUT-7).

@@ -27,6 +27,8 @@ import (
 
 	// modernc.org/sqlite registers the "sqlite" database/sql driver via init.
 	_ "modernc.org/sqlite"
+
+	"github.com/rou-cru/takt-ai/takt/model"
 )
 
 // Telemetry modes keep the event database owner-only.
@@ -38,10 +40,10 @@ const (
 )
 
 // StateDirName is the workspace-local state directory, shared with the execution history so all Takt state lives in one place.
-const StateDirName = ".takt-ai"
+const StateDirName = model.StateDirName
 
 // StoreFileName is the single event database, so every session and process of a workspace shares one stream.
-const StoreFileName = "events.db"
+const StoreFileName = model.EventStoreFileName
 
 const storeSchema = `
 PRAGMA busy_timeout=5000;

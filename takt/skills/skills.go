@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
-	"github.com/rou-cru/takt-ai/takt/dispatch"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -37,11 +36,11 @@ type SkillDefinition struct {
 	Content  []byte
 }
 
-// LoadSkills reads every file in each embedded catalog skill, including
-// reference files, returning one definition per file with FileName relative to
-// the skill directory, sorted by deployment path. Catalog loading or validation
-// errors are wrapped and returned with a nil slice.
-func LoadSkills() ([]SkillDefinition, error) {
+// LoadSkills reads every file in each embedded catalog skill whose owning
+// component is active (core skills always load), including reference files,
+// returning one definition per file with FileName relative to the skill
+// directory, sorted by deployment path.
+func LoadSkills(components ...model.ComponentID) ([]SkillDefinition, error) {
 	c, err := catalog.LoadPackages()
 	if err != nil {
 		return nil, fmt.Errorf("load catalog packages: %w", err)
@@ -49,10 +48,13 @@ func LoadSkills() ([]SkillDefinition, error) {
 
 	definitions := make([]SkillDefinition, 0, len(c.Skills))
 	for _, pkg := range c.Skills {
+		if !catalog.SkillActive(pkg.Component, components) {
+			continue
+		}
 		for _, f := range pkg.Files {
 			content := f.Content
 			if strings.HasSuffix(f.Path, ".md") {
-				if content, err = dispatch.ResolvePolicyPlaceholders(content); err != nil {
+				if content, err = catalog.ResolvePolicyPlaceholders(content); err != nil {
 					return nil, fmt.Errorf("resolve skill %s/%s: %w", pkg.ID, f.Path, err)
 				}
 			}
@@ -97,10 +99,10 @@ func BuildSkillManagedPaths(artifacts []setup.Artifact) []string {
 	return paths
 }
 
-// BuildSkillPlan creates a TargetPlan for deploying skills to the .opencode/skills/ directory.
-// The plan targets the "skills" ownership target and includes all embedded skill files.
-func BuildSkillPlan() (setup.TargetPlan, error) {
-	definitions, err := LoadSkills()
+// BuildSkillPlan creates a TargetPlan for deploying active skills to the
+// .opencode/skills/ directory under the "skills" ownership target.
+func BuildSkillPlan(components ...model.ComponentID) (setup.TargetPlan, error) {
+	definitions, err := LoadSkills(components...)
 	if err != nil {
 		return setup.TargetPlan{}, fmt.Errorf("load skills: %w", err)
 	}

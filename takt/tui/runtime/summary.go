@@ -7,7 +7,6 @@ import (
 
 	"github.com/rou-cru/takt-ai/takt/catalog"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
-	"github.com/rou-cru/takt-ai/takt/memory"
 	"github.com/rou-cru/takt-ai/takt/model"
 	"github.com/rou-cru/takt-ai/takt/setup"
 )
@@ -44,7 +43,7 @@ type ConfigChange struct {
 
 // injectedServers are configured after the files are written (lifecycle's
 // InjectMemory/InjectCodegraph), so no planned artifact names them.
-var injectedServers = []string{string(model.ComponentCodegraph), memory.ServerKey}
+var injectedServers = []string{string(model.ComponentCodegraph), model.MemoryServerKey}
 
 // integrationLabels names the deployed plugins by their artifact base name.
 var integrationLabels = map[string]string{
@@ -77,8 +76,20 @@ func summarize(rootDir string, request setup.PlanRequest, plan InstallPlan) (Ins
 			summary.Agents = append(summary.Agents, AgentModel{Name: instance, Role: def.Role, Model: assignment.Model})
 		}
 	}
-	summary.Skills = len(packages.Skills)
-	if slices.Contains(request.Components, string(model.ComponentContext7)) {
+	selected := make([]model.ComponentID, 0, len(request.Components))
+	for _, c := range request.Components {
+		selected = append(selected, model.ComponentID(c))
+	}
+	archifyOn := slices.Contains(selected, model.ComponentArchify)
+	for _, skill := range packages.Skills {
+		if catalog.SkillActive(skill.Component, selected) {
+			summary.Skills++
+		}
+	}
+	if archifyOn {
+		summary.Skills++
+	}
+	if slices.Contains(selected, model.ComponentContext7) {
 		summary.MCPServers = append(summary.MCPServers, string(model.ComponentContext7))
 	}
 	slices.Sort(summary.MCPServers)
@@ -88,6 +99,9 @@ func summarize(rootDir string, request setup.PlanRequest, plan InstallPlan) (Ins
 				summary.Integrations = append(summary.Integrations, label)
 			}
 		}
+	}
+	if archifyOn {
+		summary.Integrations = append(summary.Integrations, "Archify")
 	}
 	manifest, _ := setup.LoadOwnershipManifest(rootDir)
 	for _, changed := range plan.Modify {

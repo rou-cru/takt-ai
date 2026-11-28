@@ -160,7 +160,7 @@ const (
 const (
     PathCrew     = "/crew"
     PathExternal = "/external"
-    PathAdmin    = "/admin"
+    PathAdmin    = model.MemoryPathAdmin
 )
 ```
 
@@ -202,12 +202,12 @@ const (
 
 ```go
 const (
-    ToolRecord          = "record"
-    ToolSearch          = "search"
-    ToolRead            = "read"
-    ToolSessions        = "sessions"
-    ToolContinueSession = "continue_session"
-    ToolCloseSession    = "close_session"
+    ToolRecord          = model.MemoryToolRecord
+    ToolSearch          = model.MemoryToolSearch
+    ToolRead            = model.MemoryToolRead
+    ToolSessions        = model.MemoryToolSessions
+    ToolContinueSession = model.MemoryToolContinueSession
+    ToolCloseSession    = model.MemoryToolCloseSession
 )
 ```
 
@@ -215,8 +215,8 @@ const (
 
 ```go
 const (
-    AdminBind     = "bind"
-    AdminDescribe = "describe"
+    AdminBind     = model.MemoryAdminBind
+    AdminDescribe = model.MemoryAdminDescribe
     AdminStatus   = "status"
     AdminInit     = "init"
     AdminBackup   = "backup"
@@ -247,7 +247,7 @@ const (
 <a name="ServerKey"></a>ServerKey is the MCP server key clients register the service under; it is distinctive so it never replaces or collides with a user's server under a generic key such as "memory".
 
 ```go
-const ServerKey = "takt_memory"
+const ServerKey = model.MemoryServerKey
 ```
 
 <a name="StoreFile"></a>StoreFile is the name of the store file inside the memory directory.

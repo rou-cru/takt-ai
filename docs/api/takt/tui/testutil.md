@@ -10,7 +10,9 @@ Package testutil provides shared test helpers for the TUI test suites.
 
 ## Index
 
+- [Constants](<#constants>)
 - [func ActionRequest\(t \*testing.T, cmd tea.Cmd\) runtime.ActionRequest](<#ActionRequest>)
+- [func FakeArchify\(t \*testing.T\) \*archify.Manifest](<#FakeArchify>)
 - [func FakeCodegraphScript\(version string\) \[\]byte](<#FakeCodegraphScript>)
 - [func FakeModel\(t \*testing.T\) \*embed.Manifest](<#FakeModel>)
 - [func FakeOpenCodeScript\(\) \[\]byte](<#FakeOpenCodeScript>)
@@ -23,6 +25,14 @@ Package testutil provides shared test helpers for the TUI test suites.
 - [func WriteTinyModel\(t \*testing.T, dir string\)](<#WriteTinyModel>)
 
 
+## Constants
+
+<a name="ArchifyTemplateAsset"></a>ArchifyTemplateAsset is the Archify\-skill\-relative slash path of the asset FakeArchify ships, which a test removes to damage a managed copy.
+
+```go
+const ArchifyTemplateAsset = "assets/template.html"
+```
+
 <a name="ActionRequest"></a>
 ## func ActionRequest
 
@@ -31,6 +41,15 @@ func ActionRequest(t *testing.T, cmd tea.Cmd) runtime.ActionRequest
 ```
 
 ActionRequest extracts a runtime request from a command so tests share one unwrapping rule.
+
+<a name="FakeArchify"></a>
+## func FakeArchify
+
+```go
+func FakeArchify(t *testing.T) *archify.Manifest
+```
+
+FakeArchify serves a minimal valid Archify zip over HTTP and returns its manifest, so install acquires Archify without the network.
 
 <a name="FakeCodegraphScript"></a>
 ## func FakeCodegraphScript

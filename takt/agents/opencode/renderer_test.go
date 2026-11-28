@@ -119,6 +119,172 @@ func TestCatalogProjectionEnforcesResponsibilityBoundaries(t *testing.T) {
 	}
 }
 
+func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing.T) {
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buildSpecs := func(components ...model.ComponentID) []opencode.AgentSpec {
+		archifyOn := slices.Contains(components, model.ComponentArchify)
+		specs := make([]opencode.AgentSpec, 0, len(pack.Agents))
+		for _, def := range pack.Agents {
+			agentSkills := pack.ActiveAgentSkills(def, components)
+			if archifyOn && slices.Contains(agentSkills, "takt-archify") && def.Role != model.RoleVerification && def.Role != model.RoleQualityAssurance {
+				agentSkills = append(agentSkills, model.ArchifySkillID)
+			}
+			for _, id := range def.Instances {
+				grants, _ := def.VFSCapabilities(id)
+				specs = append(specs, opencode.AgentSpec{
+					ID:              id,
+					Description:     def.Description,
+					Mode:            opencode.AgentMode(def.Role),
+					System:          opencode.ComposePrompt(def, id, components...),
+					Role:            def.Role,
+					VFSCapabilities: grants,
+					Skills:          agentSkills,
+				})
+			}
+		}
+		return specs
+	}
+
+	// Disabled: zero mentions of Archify anywhere in rendered config or prompts.
+	offArtifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Archify: false, Agents: buildSpecs()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(offArtifact.Content)), "archify") {
+		t.Fatalf("opencode.json with Archify disabled leaked Archify references:\n%s", offArtifact.Content)
+	}
+
+	// Enabled: role-scoped prompt clauses, skill denies, and read-only shell ergonomics.
+	onArtifact, err := opencode.RenderConfig(opencode.ConfigRequest{Permissions: true, Archify: true, Agents: buildSpecs(model.ComponentArchify)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := decodeConfig(t, onArtifact.Content)
+	for _, nonParticipant := range []string{"dev", "fix", "simplify", "test", "spec", "tpm", "explorer", "mutation"} {
+		rules := cfg.Agents[nonParticipant].Permissions
+		if got := effectOf(rules, "skill", "takt-archify"); got != "deny" {
+			t.Errorf("%s takt-archify = %q, want deny", nonParticipant, got)
+		}
+		if got := effectOf(rules, "skill", model.ArchifySkillID); got != "deny" {
+			t.Errorf("%s archify = %q, want deny", nonParticipant, got)
+		}
+		if strings.Contains(cfg.Agents[nonParticipant].System, "Archify") {
+			t.Errorf("%s system prompt contains Archify text", nonParticipant)
+		}
+	}
+	for _, readOnly := range []string{"verify", "judge-a", "judge-b", "quality"} {
+		rules := cfg.Agents[readOnly].Permissions
+		if got := effectOf(rules, "skill", "takt-archify"); got == "deny" {
+			t.Errorf("%s takt-archify denied, want accessible", readOnly)
+		}
+		if got := effectOf(rules, "skill", model.ArchifySkillID); got != "deny" {
+			t.Errorf("%s upstream archify = %q, want deny", readOnly, got)
+		}
+		system := cfg.Agents[readOnly].System
+		if strings.Contains(system, "archify explainer") || strings.Contains(system, "`archify` skill") {
+			t.Errorf("%s prompt offers authoring it cannot do: %q", readOnly, system)
+		}
+	}
+	for _, id := range []string{"verify", "quality", "architect", "analyst"} {
+		system := cfg.Agents[id].System
+		if !strings.Contains(system, "`node ~/"+model.ArchifyLauncherRelPath+" <command>`") {
+			t.Errorf("%s prompt does not name the launcher: %q", id, system)
+		}
+		// The launcher owns output locations and update checks: the prompt
+		// leaves the agent no mechanics to perform.
+		for _, mechanic := range []string{"mktemp", "TMPDIR", "--out", "ARCHIFY_UPDATE_CHECK_DISABLED", "scratch"} {
+			if strings.Contains(system, mechanic) {
+				t.Errorf("%s prompt asks the agent to handle %q: %q", id, mechanic, system)
+			}
+		}
+	}
+	for _, id := range []string{"architect", "analyst"} {
+		if !strings.Contains(cfg.Agents[id].System, "\n[archify explainer: on-demand] ") {
+			t.Errorf("%s prompt lacks the upstream on-demand rules line: %q", id, cfg.Agents[id].System)
+		}
+		rules := cfg.Agents[id].Permissions
+		for command, want := range archifyShellCases {
+			if got := shellEffect(rules, command); got != want {
+				t.Errorf("%s shell %q = %q, want %q", id, command, got, want)
+			}
+		}
+		if got := effectOf(rules, "shell", "*"); got != "ask" {
+			t.Errorf("%s shell default = %q, want ask", id, got)
+		}
+		for _, r := range rules {
+			if r.Action != "shell" || r.Effect != "allow" {
+				continue
+			}
+			for _, writeCmd := range []string{"finalize", "deliver", "render", "prepare", "export-svg", "story"} {
+				if strings.Contains(r.Resource, writeCmd) {
+					t.Errorf("%s unexpectedly allows writing shell pattern %q", id, r.Resource)
+				}
+			}
+		}
+	}
+}
+
+// archifyShellCases maps commands to the effect planning roles must get: the
+// launcher's read-only analysis and guide, including a task command exactly as
+// check prints it, run unprompted. Shell syntax that rewrites or redirects
+// what the launcher receives, the launcher named only as another program's
+// argument, an environment prefix, other Archify commands, and the upstream
+// CLI run directly keep the approval prompt.
+var archifyShellCases = map[string]string{
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check .`:                                                                                     "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --language go`:                                                                       "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task /tmp/takt-archify-QItbP3 --root /home/u/repo --format json --finding COUP-866992186eb7`: "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task --question how --entry a.go --root .`:                                                   "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis drift . --base a --head b --ir ir.json`:                                                      "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                                                                     "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide review a pull request`:                                                                               "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . > README.md`:                                                                         "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . >> README.md`:                                                                        "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . 2>README.md`:                                                                         "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task --verify t.json --root . --ou''t ./README.md`:                                           "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --"out" ./README.md`:                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --o\ut ./README.md`:                                                                  "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check $HOME`:                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check $(pwd)`:                                                                                "ask",
+	"node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check `pwd`":                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check ~/repo`:                                                                                "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . | tee README.md`:                                                                     "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check .; touch README.md`:                                                                    "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . & touch README.md`:                                                                   "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check {a,b}`:                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check [a]`:                                                                                   "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check <(cat README.md)`:                                                                      "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis prepare . --out x`:                                                                           "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis serve .`:                                                                                     "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs finalize explainer in.md out.html`:                                                                         "ask",
+	`node --eval 'require("node:fs").writeFileSync("r","x")' ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                  "ask",
+	`NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                                    "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guidex`:                                                                                                    "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .`:                                                                                              "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --accept r1 --reason ok`:                                                    "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                                                                                             "ask",
+}
+
+// shellEffect returns the effect of the last shell rule whose pattern matches
+// command, where "*" matches any text and a pattern spans the whole command.
+func shellEffect(rules []rule, command string) string {
+	effect := ""
+	for _, r := range rules {
+		if r.Action != "shell" {
+			continue
+		}
+		pattern := "^" + strings.ReplaceAll(regexp.QuoteMeta(r.Resource), regexp.QuoteMeta("*"), "(?s:.*)") + "$"
+		if regexp.MustCompile(pattern).MatchString(command) {
+			effect = r.Effect
+		}
+	}
+	return effect
+}
+
 func TestRenderConfig(t *testing.T) {
 	artifact, err := opencode.RenderConfig(opencode.ConfigRequest{
 		Assignment: model.ModelAssignment{Model: "openai/gpt-5.6-luna"},

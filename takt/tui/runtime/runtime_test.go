@@ -419,7 +419,7 @@ func testAdapter(t *testing.T, calls *[][]string) runtime.Adapter {
 	t.Helper()
 	// An uninstall deletes the memory directory: a test that does not choose its own never reaches the user's.
 	t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
-	return runtime.NewAdapterFor(lifecycle.Runtime{Model: testutil.FakeModel(t), ProviderActions: setup.ProviderRuntime{
+	return runtime.NewAdapterFor(lifecycle.Runtime{Model: testutil.FakeModel(t), Archify: testutil.FakeArchify(t), ProviderActions: setup.ProviderRuntime{
 		LookPath: func(program string) (string, error) { return "/fake/" + program, nil },
 		Run: func(_ context.Context, program string, args ...string) ([]byte, error) {
 			if calls != nil {

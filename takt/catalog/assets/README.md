@@ -12,7 +12,7 @@ This order does not introduce an authority hierarchy. PERSONA and SOUL carry ide
 one package. Skills are also deployed to `~/.opencode/skills/`, where OpenCode
 discovers them; they are not injected into initial prompts. `shared/GUIDELINES.md` is registered in `instructions`, so every session loads it. Resource bytes are
 copied unchanged, except that a double-brace `policy.<name>` marker in Markdown prose is
-replaced at install with the matching value of `takt/dispatch/admission_policy.yaml`;
+replaced at install with the matching value of `takt/catalog/admission_policy.yaml`;
 an unknown marker fails the install.
 
 Skill directories match their frontmatter `name`. References between skills are
