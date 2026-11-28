@@ -363,7 +363,12 @@ func archifyChecks(home string) []CheckResult {
 		}
 		return fail(detail, "Ensure Node.js >= 18 is on PATH and runs the Archify doctor probe"+unchanged)
 	}
-	if timedOut {
+	switch {
+	case timedOut && (manifestErr != nil || !managed):
+		// Takt cannot tell whether the runtime or the copy stalls, so both are named.
+		return fail(detail, "Check why Node.js on PATH stalls running the Archify doctor probe; if the copy is at fault, "+
+			strings.ToLower(repair[:1])+repair[1:])
+	case timedOut:
 		return fail(detail, repair)
 	}
 	return fail(detail, "Ensure Node.js >= 18 is on PATH. "+repair)
