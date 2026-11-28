@@ -312,11 +312,20 @@ func archifyInstalled(home string) bool {
 	return slices.Contains(cfg.Components, string(model.ComponentArchify))
 }
 
+// archifyProbeTimeout bounds `node bin/archify.mjs doctor`, so a hung reused
+// installation fails its check instead of keeping Run from rendering.
+const archifyProbeTimeout = 30 * time.Second
+
 // archifyChecks verifies an installed Archify skill satisfies the pinned minimum
 // version and passes `node bin/archify.mjs doctor` when ComponentArchify is selected.
+// A Takt-managed copy is repaired by sync, which replaces a tree that no longer
+// matches its receipt; a copy installed outside Takt is the user's to repair.
 func archifyChecks(home string) []CheckResult {
 	const name = "archify:skill"
-	const remedy = "Run 'takt-ai setup sync' to restore Archify"
+	remedy := "Run 'takt-ai setup sync' to restore Archify"
+	if !archifyManaged(home) {
+		remedy = fmt.Sprintf("Repair or move aside the Archify copy at %s, then run 'takt-ai setup sync'", model.ArchifySkillDir(home))
+	}
 	if _, found := archify.Resolve(home); !found {
 		return []CheckResult{{
 			Name:   name,
@@ -325,13 +334,23 @@ func archifyChecks(home string) []CheckResult {
 			Remedy: remedy,
 		}}
 	}
-	version, err := archify.Verify(context.Background(), home)
+	ctx, cancel := context.WithTimeout(context.Background(), archifyProbeTimeout)
+	defer cancel()
+	version, err := archify.Verify(ctx, home)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return []CheckResult{{
+			Name:   name,
+			Status: CheckStatusFail,
+			Detail: fmt.Sprintf("archify doctor did not finish within %s", archifyProbeTimeout),
+			Remedy: remedy,
+		}}
+	}
 	if err != nil {
 		return []CheckResult{{
 			Name:   name,
 			Status: CheckStatusFail,
 			Detail: err.Error(),
-			Remedy: "Ensure Node.js >= 18 is on PATH, or run 'takt-ai setup sync'",
+			Remedy: "Ensure Node.js >= 18 is on PATH. " + remedy,
 		}}
 	}
 	return []CheckResult{{
@@ -339,6 +358,17 @@ func archifyChecks(home string) []CheckResult {
 		Status: CheckStatusPass,
 		Detail: fmt.Sprintf("archify %s ready at %s", version, model.ArchifySkillDir(home)),
 	}}
+}
+
+// archifyManaged reports whether the ownership manifest records the Archify
+// receipt, the evidence that Takt extracted the tree at the skill path.
+func archifyManaged(home string) bool {
+	manifest, err := setup.LoadOwnershipManifest(home)
+	if err != nil {
+		return false
+	}
+	_, owned := manifest.Entries[model.ArchifyManagedMarkerKey]
+	return owned
 }
 
 // workingDirOrHome resolves the directory doctor should report a project

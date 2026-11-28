@@ -525,4 +525,47 @@ func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
 		}
 		expect(t, checks, "archify:skill", failMark, "archify doctor failed", "Ensure Node.js >= 18")
 	})
+
+	// Sync repairs only a copy Takt manages; a user's own copy is theirs to fix.
+	for _, tc := range []struct {
+		name    string
+		managed bool
+		remedy  string
+	}{
+		{name: "managed copy is repaired by sync", managed: true, remedy: "Run 'takt-ai setup sync' to restore Archify"},
+		{name: "unmanaged copy is the user's to repair", managed: false, remedy: "Repair or move aside the Archify copy"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHost(t)
+			if err := setup.RecordInstallation(h.home, setup.PlanRequest{Components: []string{string(model.ComponentArchify)}}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
+				t.Fatal(err)
+			}
+			if tc.managed {
+				receipt, err := os.ReadFile(filepath.Join(h.home, filepath.FromSlash(model.ArchifyManagedMarkerKey)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry, err := setup.NewOwnershipEntry(model.ArchifyManagedMarkerKey, receipt, 0o644, false, "", "", setup.TargetOpenCode)
+				if err != nil {
+					t.Fatal(err)
+				}
+				manifest := setup.NewOwnershipManifest()
+				if err := manifest.Add(entry); err != nil {
+					t.Fatal(err)
+				}
+				if err := manifest.Save(h.home); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.tool("node", []byte("#!/bin/sh\necho \"missing assets/template.html\" >&2\nexit 1\n"))
+			checks, _, err := h.run()
+			if !errors.Is(err, doctor.ErrUnhealthy) {
+				t.Fatalf("Run() error = %v, want ErrUnhealthy", err)
+			}
+			expect(t, checks, "archify:skill", failMark, "template.html", tc.remedy)
+		})
+	}
 }
