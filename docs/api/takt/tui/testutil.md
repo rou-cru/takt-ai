@@ -10,6 +10,7 @@ Package testutil provides shared test helpers for the TUI test suites.
 
 ## Index
 
+- [Constants](<#constants>)
 - [func ActionRequest\(t \*testing.T, cmd tea.Cmd\) runtime.ActionRequest](<#ActionRequest>)
 - [func FakeArchify\(t \*testing.T\) \*archify.Manifest](<#FakeArchify>)
 - [func FakeCodegraphScript\(version string\) \[\]byte](<#FakeCodegraphScript>)
@@ -23,6 +24,14 @@ Package testutil provides shared test helpers for the TUI test suites.
 - [func StopMemoryOwner\(dir string\)](<#StopMemoryOwner>)
 - [func WriteTinyModel\(t \*testing.T, dir string\)](<#WriteTinyModel>)
 
+
+## Constants
+
+<a name="ArchifyTemplateAsset"></a>ArchifyTemplateAsset is the Archify\-skill\-relative slash path of the asset FakeArchify ships, which a test removes to damage a managed copy.
+
+```go
+const ArchifyTemplateAsset = "assets/template.html"
+```
 
 <a name="ActionRequest"></a>
 ## func ActionRequest

@@ -64,7 +64,7 @@ InstalledVersion reads the package.json version of an Archify install under root
 func Intact(root string) bool
 ```
 
-Intact reports whether the Archify tree under root is exactly the tree Takt extracted: its receipt is a regular file whose recorded listing matches every file now in the tree. A copy installed without Takt carries no receipt.
+Intact reports whether the Archify tree under root is exactly the tree Takt extracted: its receipt is a regular file whose recorded listing matches every file and directory now in the tree. A copy installed without Takt carries no receipt.
 
 <a name="Resolve"></a>
 ## func Resolve
