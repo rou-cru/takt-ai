@@ -14,6 +14,8 @@ Package archify acquires, verifies, and locates the pinned Archify skill release
 - [func Acquire\(ctx context.Context, root string\) \(binPath string, installed bool, err error\)](<#Acquire>)
 - [func InstalledVersion\(root string\) \(string, error\)](<#InstalledVersion>)
 - [func Intact\(root string\) bool](<#Intact>)
+- [func Removable\(root string\) bool](<#Removable>)
+- [func RemoveExtracted\(root string\) error](<#RemoveExtracted>)
 - [func Resolve\(root string\) \(string, bool\)](<#Resolve>)
 - [func Verify\(ctx context.Context, root string\) \(string, error\)](<#Verify>)
 - [type Manifest](<#Manifest>)
@@ -65,6 +67,24 @@ func Intact(root string) bool
 ```
 
 Intact reports whether the Archify tree under root is exactly the tree Takt extracted: its receipt is a regular file whose recorded listing matches every file and directory now in the tree. A copy installed without Takt carries no receipt.
+
+<a name="Removable"></a>
+## func Removable
+
+```go
+func Removable(root string) bool
+```
+
+Removable reports whether the Archify tree under root holds nothing but what Takt extracted: its receipt is a regular file and every file and directory still in the tree matches its recorded line. Entries may be missing, as after a removal that stopped partway; none may be added or changed.
+
+<a name="RemoveExtracted"></a>
+## func RemoveExtracted
+
+```go
+func RemoveExtracted(root string) error
+```
+
+RemoveExtracted removes the Archify tree under root while Removable holds: every recorded file, then every recorded directory, deepest first, then the receipt, then the tree root. Nothing the receipt does not list is touched, and a failure leaves the receipt in place, so a later call resumes.
 
 <a name="Resolve"></a>
 ## func Resolve

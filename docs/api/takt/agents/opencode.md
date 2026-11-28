@@ -79,7 +79,7 @@ AgentMode is primary for the orchestrator, all for interlocutors, subagent other
 func ArchifyClause(role model.RoleClass) string
 ```
 
-ArchifyClause introduces the installed Archify CLI and bridge skill with role\-appropriate scope so verification stays read\-only outside the workspace.
+ArchifyClause names the Archify launcher and the bridge skill. Roles granted the upstream archify skill also learn when to author with it, and carry the upstream rules line that limits explainer pages to requests.
 
 <a name="AvailableModels"></a>
 ## func AvailableModels
