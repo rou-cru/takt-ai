@@ -527,10 +527,13 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 		return LifecycleResult{}, err
 	}
 	defer end()
-	// Ownership of the Archify tree is read before the manifest-driven
-	// uninstall drops its receipt entry.
-	archifyOwned := archifyMarkerOwned(rootDir)
-	archifyIntact := archifyOwned && archify.Intact(rootDir)
+	// The managed Archify tree goes first, while the manifest still records
+	// its receipt: a removal that fails stops here with the record intact, so
+	// the next uninstall resumes it.
+	archifyKept, err := removeOwnedArchify(rootDir)
+	if err != nil {
+		return LifecycleResult{}, err
+	}
 	result, err := setup.UninstallContext(ctx, rootDir, uninstallTargets()...)
 	removed := LifecycleResult{Removed: result.Removed, Preserved: result.Preserved, Restored: result.Restored, NotApplied: result.NotApplied, Outcome: OutcomeCompleted}
 	if Cancelled(ctx, err) {
@@ -547,11 +550,8 @@ func (runtime Runtime) uninstall(ctx context.Context, rootDir string, request se
 	if err := removeCodegraph(rootDir); err != nil {
 		return removed, err
 	}
-	if archifyOwned && !archifyIntact {
+	if archifyKept {
 		removed.Preserved = append(removed.Preserved, model.ArchifySkillRelDir)
-	}
-	if err := removeArchify(rootDir, archifyIntact, result.Removed); err != nil {
-		return removed, err
 	}
 	if !runtime.removeMemory(ctx, rootDir, &removed) {
 		// The memory may be kept set aside: the installation stays recorded, so the next uninstall
@@ -897,56 +897,46 @@ func removeCodegraph(rootDir string) error {
 	return removeManagedTree(rootDir, codegraph.ManagedPrefixKey(), "codegraph")
 }
 
-// removeArchify clears the Archify tree only on positive evidence that Takt
-// owns it: the tree matched its receipt before uninstall, and uninstall removed
-// that receipt. An untracked tree, or one changed since Takt extracted it,
-// stays intact whatever files it lacks.
-func removeArchify(rootDir string, intactOwned bool, removed []string) error {
-	if err := purgeRetiredArchify(rootDir); err != nil {
-		return err
+// removeOwnedArchify removes the Archify tree the ownership manifest records
+// as Takt's, in place and guided by its receipt (archify.RemoveExtracted), and
+// releases the record only once the tree is gone. A removal that stops partway
+// keeps the record and leaves a tree that is still removable, so the next run
+// resumes it. A tree with content the receipt does not list is left whole and
+// released, reported by kept. A record whose receipt is gone, left by a run
+// that removed the tree but failed to save the manifest, is released, keeping
+// whatever content remains.
+func removeOwnedArchify(rootDir string) (kept bool, err error) {
+	manifest, err := setup.LoadOwnershipManifest(rootDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
 	}
-	if !intactOwned || !slices.Contains(removed, model.ArchifyManagedMarkerKey) {
-		return nil
-	}
-	return removeManagedTree(rootDir, model.ArchifySkillRelDir, "archify")
-}
-
-// retireArchify moves the verified Archify tree from the skill path to
-// model.ArchifyRetiredRelDir, releases its ownership, and removes it. The move
-// comes before the release, so a failed move or manifest save keeps the record
-// for the next sync to retry; a failed removal leaves only the retired copy,
-// which purgeRetiredArchify clears later without touching whatever is then
-// installed at the skill path.
-func retireArchify(rootDir string, manifest *setup.OwnershipManifest) error {
-	skillDir, err := setup.SafeJoin(rootDir, model.ArchifySkillRelDir)
 	if err != nil {
-		return fmt.Errorf("retire managed archify: %w", err)
+		return false, fmt.Errorf("load ownership manifest: %w", err)
 	}
-	retired, err := setup.SafeJoin(rootDir, model.ArchifyRetiredRelDir)
-	if err != nil {
-		return fmt.Errorf("retire managed archify: %w", err)
+	if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; !owned {
+		return false, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(retired), setup.RetainedDirectoryMode); err != nil {
-		return fmt.Errorf("retire managed archify: %w", err)
-	}
-	if err := os.Rename(skillDir, retired); err != nil {
-		return fmt.Errorf("retire managed archify: %w", err)
+	skillDir := model.ArchifySkillDir(rootDir)
+	if archify.Removable(rootDir) {
+		if err := archify.RemoveExtracted(rootDir); err != nil {
+			return false, fmt.Errorf("remove managed archify: %w", err)
+		}
+	} else {
+		entries, err := os.ReadDir(skillDir)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return false, fmt.Errorf("remove managed archify: %w", err)
+		case len(entries) > 0:
+			kept = true
+		default:
+			if err := os.Remove(skillDir); err != nil {
+				return false, fmt.Errorf("remove managed archify: %w", err)
+			}
+		}
 	}
 	delete(manifest.Entries, model.ArchifyManagedMarkerKey)
-	if err := manifest.Save(rootDir); err != nil {
-		if restoreErr := os.Rename(retired, skillDir); restoreErr != nil {
-			return errors.Join(err, fmt.Errorf("restore managed archify: %w", restoreErr))
-		}
-		return err
-	}
-	return purgeRetiredArchify(rootDir)
-}
-
-// purgeRetiredArchify removes the retired Archify copy, if any. Only
-// retireArchify writes that path, and only with a tree verified against its
-// receipt, so clearing it never reaches a tree at the skill path.
-func purgeRetiredArchify(rootDir string) error {
-	return removeManagedTree(rootDir, model.ArchifyRetiredRelDir, "retired archify")
+	return kept, manifest.Save(rootDir)
 }
 
 // removeManagedTree removes the managed tree at the slash-relative rel under
@@ -966,32 +956,22 @@ func removeManagedTree(rootDir, rel, label string) error {
 
 // cleanupDeselectedArchify removes Takt-owned Archify artifacts when a sync
 // deselects ComponentArchify, leaving unmanaged or user-edited files intact.
-// A tree that still matches its receipt is retired (see retireArchify); a
-// changed tree is released from ownership and returned as retained. A retired
-// copy an earlier run failed to remove is cleared first.
+// A managed tree changed since extraction is released and returned as
+// retained (see removeOwnedArchify).
 func cleanupDeselectedArchify(rootDir string) (retained []string, err error) {
-	if err := purgeRetiredArchify(rootDir); err != nil {
+	kept, err := removeOwnedArchify(rootDir)
+	if err != nil {
 		return nil, err
+	}
+	if kept {
+		retained = append(retained, model.ArchifySkillRelDir)
 	}
 	manifest, err := setup.LoadOwnershipManifest(rootDir)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return retained, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("load ownership manifest: %w", err)
-	}
-	if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; owned {
-		if archify.Intact(rootDir) {
-			if err := retireArchify(rootDir, manifest); err != nil {
-				return nil, err
-			}
-		} else {
-			delete(manifest.Entries, model.ArchifyManagedMarkerKey)
-			if err := manifest.Save(rootDir); err != nil {
-				return nil, err
-			}
-			retained = append(retained, model.ArchifySkillRelDir)
-		}
+		return retained, fmt.Errorf("load ownership manifest: %w", err)
 	}
 	changed := false
 	for _, rel := range []string{

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -966,7 +967,8 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 	t.Run("install cancelled before deployment discards the new Archify tree", func(t *testing.T) {
 		root := t.TempDir()
 		rt := installRuntime(t)
-		res, err := rt.Run(cancelBeforeDeploy(&rt), "install", root, withArchify())
+		ctx := cancelBeforeDeploy(&rt)
+		res, err := rt.Run(ctx, "install", root, withArchify())
 		if err != nil {
 			t.Fatalf("Run(install) error = %v, want nil for cancellation", err)
 		}
@@ -993,7 +995,8 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		if err := os.Remove(bridge); err != nil {
 			t.Fatal(err)
 		}
-		res, err := rt.Run(cancelBeforeDeploy(&rt), "sync", root, withArchify())
+		ctx := cancelBeforeDeploy(&rt)
+		res, err := rt.Run(ctx, "sync", root, withArchify())
 		if err != nil {
 			t.Fatalf("Run(sync) error = %v, want nil for cancellation", err)
 		}
@@ -1009,8 +1012,13 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		root := t.TempDir()
 		preinstallUnmanagedArchify(t, root)
 		rt := installRuntime(t)
-		if _, err := rt.Run(cancelBeforeDeploy(&rt), "install", root, withArchify()); err != nil {
+		ctx := cancelBeforeDeploy(&rt)
+		res, err := rt.Run(ctx, "install", root, withArchify())
+		if err != nil {
 			t.Fatalf("Run(install) error = %v, want nil for cancellation", err)
+		}
+		if res.Outcome != lifecycle.OutcomeCancelledNothingApplied {
+			t.Fatalf("Outcome = %v, want %v", res.Outcome, lifecycle.OutcomeCancelledNothingApplied)
 		}
 		if _, found := archify.Resolve(root); !found {
 			t.Fatal("cancelled install removed an Archify copy it reused")
@@ -1211,74 +1219,120 @@ func TestArchifyOwnershipFollowsTheReceipt(t *testing.T) {
 		}
 	})
 
-	t.Run("deselection retries a removal an earlier run left unfinished", func(t *testing.T) {
+	t.Run("deselection finishes a removal an earlier run left unfinished", func(t *testing.T) {
 		root := t.TempDir()
 		rt := installRuntime(t)
 		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
 			t.Fatalf("Run(install) error = %v", err)
 		}
-		// An earlier deselection retired the verified tree and failed to remove
-		// it; since then the user installed their own copy at the skill path.
-		retired := filepath.Join(root, filepath.FromSlash(model.ArchifyRetiredRelDir))
-		if err := os.MkdirAll(filepath.Dir(retired), 0o700); err != nil {
+		// An earlier removal stopped after deleting part of the extracted tree.
+		if err := os.Remove(filepath.Join(model.ArchifySkillDir(root), "SKILL.md")); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Rename(model.ArchifySkillDir(root), retired); err != nil {
+		if err := os.RemoveAll(filepath.Join(model.ArchifySkillDir(root), "assets")); err != nil {
 			t.Fatal(err)
 		}
-		manifest, err := setup.LoadOwnershipManifest(root)
+		res, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest())
 		if err != nil {
-			t.Fatal(err)
-		}
-		delete(manifest.Entries, model.ArchifyManagedMarkerKey)
-		if err := manifest.Save(root); err != nil {
-			t.Fatal(err)
-		}
-		preinstallUnmanagedArchify(t, root)
-		if _, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest()); err != nil {
 			t.Fatalf("Run(sync without archify) error = %v", err)
 		}
-		if _, err := os.Lstat(retired); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("retired Archify copy after retry stat = %v, want removed", err)
+		if _, err := os.Lstat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("archify dir after resumed removal stat = %v, want removed", err)
 		}
-		if _, found := archify.Resolve(root); !found {
-			t.Fatal("the retry removed the user's copy at the skill path")
+		if slices.Contains(res.Retained, model.ArchifySkillRelDir) || owned(t, root) {
+			t.Fatalf("Retained = %v, owned = %v; want the partial tree removed and released", res.Retained, owned(t, root))
 		}
 	})
 
-	t.Run("deselection that cannot retire the tree keeps it owned", func(t *testing.T) {
-		if os.Geteuid() == 0 {
-			t.Skip("root bypasses the directory permissions this failure needs")
-		}
+	t.Run("deselection keeps a partial tree that gained a file", func(t *testing.T) {
 		root := t.TempDir()
 		rt := installRuntime(t)
 		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
 			t.Fatalf("Run(install) error = %v", err)
 		}
-		state := filepath.Join(root, model.StateDirName)
-		if err := os.MkdirAll(state, 0o755); err != nil {
+		if err := os.Remove(filepath.Join(model.ArchifySkillDir(root), "SKILL.md")); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(state, 0o555); err != nil {
+		notes := filepath.Join(model.ArchifySkillDir(root), "notes.md")
+		if err := os.WriteFile(notes, []byte("mine"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = os.Chmod(state, 0o755) })
-		if _, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest()); err == nil {
-			t.Fatal("Run(sync without archify) error = nil, want the failed retirement reported")
+		res, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest())
+		if err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
 		}
-		if !owned(t, root) || !archify.Intact(root) {
-			t.Fatal("a failed retirement released or changed the managed tree")
+		if _, err := os.Stat(notes); err != nil {
+			t.Fatalf("deselection removed a file the receipt does not list: %v", err)
 		}
-		if err := os.Chmod(state, 0o755); err != nil {
+		if !slices.Contains(res.Retained, model.ArchifySkillRelDir) {
+			t.Fatalf("Retained = %v, want %s", res.Retained, model.ArchifySkillRelDir)
+		}
+	})
+
+	t.Run("a record whose tree is already gone is released", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		// An earlier run removed the tree and failed to save the manifest.
+		if err := os.RemoveAll(model.ArchifySkillDir(root)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest()); err != nil {
-			t.Fatalf("Run(sync retry) error = %v", err)
+			t.Fatalf("Run(sync without archify) error = %v", err)
 		}
-		if _, err := os.Lstat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("archify dir after retry stat = %v, want removed", err)
+		if owned(t, root) {
+			t.Fatal("deselection kept the record of a tree that is gone")
 		}
 	})
+
+	// A failed removal keeps the record, so a retry once the cause is fixed
+	// removes the tree, in deselection and in uninstall alike.
+	for _, action := range []string{"sync", "uninstall"} {
+		t.Run(action+" that cannot remove the tree keeps it owned", func(t *testing.T) {
+			if os.Geteuid() == 0 {
+				t.Skip("root bypasses the directory permissions this failure needs")
+			}
+			root := t.TempDir()
+			t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
+			rt := installRuntime(t)
+			if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+				t.Fatalf("Run(install) error = %v", err)
+			}
+			// The skills directory is outside the receipt: protecting it fails the
+			// last step, removing the emptied tree root, without changing the tree.
+			skills := filepath.Dir(model.ArchifySkillDir(root))
+			if err := os.Chmod(skills, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(skills, 0o755) })
+			run := func() error {
+				if action == "uninstall" {
+					_, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, withArchify())
+					return err
+				}
+				_, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest())
+				return err
+			}
+			err := run()
+			if err == nil || !strings.Contains(err.Error(), "remove managed archify") || !errors.Is(err, fs.ErrPermission) {
+				t.Fatalf("Run(%s) error = %v, want the failed removal reported as a permission error", action, err)
+			}
+			if !owned(t, root) {
+				t.Fatal("a failed removal released the managed tree")
+			}
+			if err := os.Chmod(skills, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := run(); err != nil {
+				t.Fatalf("Run(%s retry) error = %v", action, err)
+			}
+			if _, err := os.Lstat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("archify dir after retry stat = %v, want removed", err)
+			}
+		})
+	}
 
 	t.Run("sync restores a missing asset", func(t *testing.T) {
 		root := t.TempDir()

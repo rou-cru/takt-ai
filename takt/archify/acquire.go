@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -130,6 +131,96 @@ func Intact(root string) bool {
 	}
 	current, err := treeListing(skillDir)
 	return err == nil && bytes.Equal(recorded, current)
+}
+
+// Removable reports whether the Archify tree under root holds nothing but
+// what Takt extracted: its receipt is a regular file and every file and
+// directory still in the tree matches its recorded line. Entries may be
+// missing, as after a removal that stopped partway; none may be added or
+// changed.
+func Removable(root string) bool {
+	_, ok := removableReceipt(model.ArchifySkillDir(root))
+	return ok
+}
+
+// RemoveExtracted removes the Archify tree under root while Removable holds:
+// every recorded file, then every recorded directory, deepest first, then the
+// receipt, then the tree root. Nothing the receipt does not list is touched,
+// and a failure leaves the receipt in place, so a later call resumes.
+func RemoveExtracted(root string) error {
+	skillDir := model.ArchifySkillDir(root)
+	recorded, ok := removableReceipt(skillDir)
+	if !ok {
+		return fmt.Errorf("archify tree at %s holds content its receipt does not list", skillDir)
+	}
+	var dirs []string
+	for _, rel := range recorded {
+		if strings.HasSuffix(rel, "/") {
+			dirs = append(dirs, strings.TrimSuffix(rel, "/"))
+			continue
+		}
+		if err := removeIfPresent(filepath.Join(skillDir, filepath.FromSlash(rel))); err != nil {
+			return err
+		}
+	}
+	// A directory sorts after its own path's prefix, so reverse lexical order
+	// removes each directory after every directory below it.
+	slices.Sort(dirs)
+	for _, rel := range slices.Backward(dirs) {
+		if err := removeIfPresent(filepath.Join(skillDir, filepath.FromSlash(rel))); err != nil {
+			return err
+		}
+	}
+	if err := removeIfPresent(filepath.Join(skillDir, receiptFile)); err != nil {
+		return err
+	}
+	return removeIfPresent(skillDir)
+}
+
+// removableReceipt returns the paths the receipt at skillDir records, with a
+// trailing slash for directories, when every entry now in the tree matches
+// its recorded line.
+func removableReceipt(skillDir string) ([]string, bool) {
+	receipt := filepath.Join(skillDir, receiptFile)
+	if info, err := os.Lstat(receipt); err != nil || !info.Mode().IsRegular() {
+		return nil, false
+	}
+	raw, err := os.ReadFile(receipt)
+	if err != nil {
+		return nil, false
+	}
+	current, err := treeListing(skillDir)
+	if err != nil {
+		return nil, false
+	}
+	recorded := make(map[string]bool)
+	var paths []string
+	for _, line := range strings.SplitAfter(string(raw), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.SplitN(strings.TrimSuffix(line, "\n"), " ", 3)
+		if len(fields) != 3 {
+			return nil, false
+		}
+		recorded[line] = true
+		paths = append(paths, fields[2])
+	}
+	for _, line := range strings.SplitAfter(string(current), "\n") {
+		if line != "" && !recorded[line] {
+			return nil, false
+		}
+	}
+	return paths, true
+}
+
+// removeIfPresent removes path, a file or an empty directory, treating its
+// absence as already removed.
+func removeIfPresent(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // Acquire returns an existing compatible Archify installation under root, or

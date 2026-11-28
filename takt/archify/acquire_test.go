@@ -532,3 +532,77 @@ func TestVerifyBoundsTheDoctorProbe(t *testing.T) {
 		t.Fatalf("Verify() returned after %s, want the deadline plus the wait delay", elapsed)
 	}
 }
+
+func TestRemoveExtractedFollowsTheReceipt(t *testing.T) {
+	extracted := func(t *testing.T) (root, skillDir string) {
+		t.Helper()
+		root = t.TempDir()
+		m, _ := manifestFor(t, validArchive(t, archify.Version), archify.Version)
+		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+			t.Fatal(err)
+		}
+		return root, model.ArchifySkillDir(root)
+	}
+	removed := func(t *testing.T, root, skillDir string) {
+		t.Helper()
+		if !archify.Removable(root) {
+			t.Fatal("Removable() = false for a tree holding only what its receipt lists")
+		}
+		if err := archify.RemoveExtracted(root); err != nil {
+			t.Fatalf("RemoveExtracted() error = %v", err)
+		}
+		if _, err := os.Lstat(skillDir); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("skill tree still present after RemoveExtracted: %v", err)
+		}
+	}
+	kept := func(t *testing.T, root, skillDir, local string) {
+		t.Helper()
+		if archify.Removable(root) {
+			t.Fatal("Removable() = true for a tree holding content its receipt does not list")
+		}
+		if err := archify.RemoveExtracted(root); err == nil {
+			t.Fatal("RemoveExtracted() error = nil, want a refusal")
+		}
+		if _, err := os.Lstat(filepath.Join(skillDir, local)); err != nil {
+			t.Fatalf("local content %s touched: %v", local, err)
+		}
+		if _, err := os.Lstat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+			t.Fatalf("refused removal still deleted extracted files: %v", err)
+		}
+	}
+
+	t.Run("intact tree", func(t *testing.T) {
+		root, skillDir := extracted(t)
+		removed(t, root, skillDir)
+	})
+	t.Run("partial tree left by an interrupted removal", func(t *testing.T) {
+		root, skillDir := extracted(t)
+		for _, rel := range []string{"SKILL.md", "bin/archify.mjs"} {
+			if err := os.Remove(filepath.Join(skillDir, filepath.FromSlash(rel))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		removed(t, root, skillDir)
+	})
+	t.Run("added file", func(t *testing.T) {
+		root, skillDir := extracted(t)
+		if err := os.WriteFile(filepath.Join(skillDir, "notes.md"), []byte("mine"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		kept(t, root, skillDir, "notes.md")
+	})
+	t.Run("edited file", func(t *testing.T) {
+		root, skillDir := extracted(t)
+		if err := os.WriteFile(filepath.Join(skillDir, "package.json"), []byte(`{"local":true}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		kept(t, root, skillDir, "package.json")
+	})
+	t.Run("copy without receipt", func(t *testing.T) {
+		root, skillDir := extracted(t)
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(model.ArchifyManagedMarkerKey))); err != nil {
+			t.Fatal(err)
+		}
+		kept(t, root, skillDir, "package.json")
+	})
+}
