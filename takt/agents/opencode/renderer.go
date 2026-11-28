@@ -378,7 +378,7 @@ func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 	// Their native shell runs unsandboxed and the VFS captures none of its
 	// effects, so the user approves each command (PR-HAR-11). The last match
 	// wins, so the narrower rules after the ask still decide alone: read-only
-	// Git (and read-only Archify analysis when enabled) stay allowed, while
+	// Git (and Archify's guide and doctor when enabled) stay allowed, while
 	// writing commands and harness CLIs remain gated or denied.
 	gated := []permissionRule{{"shell", allResources, "ask"}}
 	gated = append(gated, rules...)
@@ -388,22 +388,19 @@ func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 	return append(gated, harnessCLIShellDenies()...)
 }
 
-// archifyReadOnlyShellRules lets planning/direct interlocutors run read-only
-// Archify code-analysis queries autonomously while keeping baseline mutations
-// and workspace-writing commands gated behind "ask". Every pattern is anchored
+// archifyReadOnlyShellRules lets planning/direct interlocutors run the Archify
+// commands that write nothing (the scenario guide and the installation probe)
+// autonomously. Every code-analysis command accepts an unbounded --out
+// destination that a prefix pattern cannot confine, so check, task, and drift
+// keep the preceding "ask", as do baseline mutations. Each pattern is anchored
 // at the start of the command, in the forms the takt-archify skill prescribes,
 // so the Archify path appearing only as an argument of another program (for
-// example "node --eval ... archify.mjs doctor") keeps the preceding "ask".
+// example "node --eval ... archify.mjs doctor") keeps the "ask" as well.
 func archifyReadOnlyShellRules() []permissionRule {
 	var rules []permissionRule
 	for _, invocation := range archifyInvocations() {
-		for _, query := range []string{"code-analysis check *", "code-analysis task *", "code-analysis drift *", "guide", "guide *", "doctor", "doctor *"} {
+		for _, query := range []string{"guide", "guide *", "doctor"} {
 			rules = append(rules, permissionRule{"shell", invocation + " " + query, "allow"})
-		}
-	}
-	for _, invocation := range archifyInvocations() {
-		for _, mutation := range []string{"--update-baseline", "--accept", "--revoke"} {
-			rules = append(rules, permissionRule{"shell", invocation + " *" + mutation + "*", "ask"})
 		}
 	}
 	return rules

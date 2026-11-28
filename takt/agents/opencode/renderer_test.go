@@ -212,15 +212,19 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 }
 
 // archifyShellCases maps commands to the effect planning roles must get: the
-// skill's own invocations run unprompted, while the Archify path appearing only
+// guide and doctor invocations run unprompted, while every code-analysis
+// command (each can write its --out anywhere), the Archify path appearing only
 // as an argument of another program, an extra environment prefix, or a
 // baseline mutation keeps the approval prompt.
 var archifyShellCases = map[string]string{
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --json": "allow",
-	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/out --finding f1 --root . --format json":                        "allow",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift a b":                                "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --json": "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out ./report --json":            "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/out --finding f1 --root . --format json --out ./task.json":      "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift a b --out ./drift":                  "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs guide review a pull request":                                                            "allow",
 	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs guide":                                                  "allow",
 	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                 "allow",
+	"node ~/.opencode/skills/archify/bin/archify.mjs doctor; touch report.txt":                                                               "ask",
 	`node --eval 'require("node:fs").writeFileSync("report.txt","changed")' ~/.opencode/skills/archify/bin/archify.mjs doctor`:               "ask",
 	"node -e 1 ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .":                                                             "ask",
 	"NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                "ask",
