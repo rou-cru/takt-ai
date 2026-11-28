@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -38,6 +39,7 @@ const (
 	ArchiveSize int64 = 5493974
 
 	downloadTimeout  = 2 * time.Minute
+	doctorWaitDelay  = 2 * time.Second
 	dirMode          = os.FileMode(0o755)
 	regularFileMode  = os.FileMode(0o644)
 	scriptFileMode   = os.FileMode(0o755)
@@ -45,6 +47,12 @@ const (
 	packageJSONFile  = "package.json"
 	skillDescriptor  = "SKILL.md"
 	archiveRootEntry = "archify/"
+)
+
+var (
+	// binaryRelPath and receiptFile are relative to the Archify skill directory.
+	binaryRelPath = strings.TrimPrefix(model.ArchifyBinaryRelPath, model.ArchifySkillRelDir+"/")
+	receiptFile   = path.Base(model.ArchifyManagedMarkerKey)
 )
 
 // Manifest identifies a verifiable Archify zip archive.
@@ -67,7 +75,11 @@ func Pinned() Manifest {
 
 // InstalledVersion reads the package.json version of an Archify install under root.
 func InstalledVersion(root string) (string, error) {
-	raw, err := os.ReadFile(filepath.Join(model.ArchifySkillDir(root), packageJSONFile))
+	return packageVersion(model.ArchifySkillDir(root))
+}
+
+func packageVersion(skillDir string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(skillDir, packageJSONFile))
 	if err != nil {
 		return "", fmt.Errorf("read archify %s: %w", packageJSONFile, err)
 	}
@@ -86,27 +98,37 @@ func InstalledVersion(root string) (string, error) {
 
 // Resolve reports whether root holds a valid Archify installation >= Version.
 func Resolve(root string) (string, bool) {
-	return resolveVersion(root, Version)
+	return Pinned().Resolve(root)
 }
 
-func resolveVersion(root, minVersion string) (string, bool) {
-	skillDir := model.ArchifySkillDir(root)
-	binPath := model.ArchifyBinaryPath(root)
-	for _, required := range []string{binPath, filepath.Join(skillDir, skillDescriptor)} {
-		info, err := os.Stat(required)
-		if err != nil || info.IsDir() {
-			return "", false
-		}
-	}
-	version, err := InstalledVersion(root)
-	if err != nil || !semver.AtLeast(version, minVersion) {
+// Resolve reports whether root holds a valid Archify installation >= m.Version
+// and returns the absolute path of its CLI entrypoint.
+func (m Manifest) Resolve(root string) (string, bool) {
+	if _, found := installedVersionIn(model.ArchifySkillDir(root), m.Version); !found {
 		return "", false
 	}
-	abs, err := filepath.Abs(binPath)
+	abs, err := filepath.Abs(model.ArchifyBinaryPath(root))
 	if err != nil {
 		return "", false
 	}
 	return abs, true
+}
+
+// Intact reports whether the Archify tree under root is exactly the tree Takt
+// extracted: its receipt is a regular file whose recorded listing matches every
+// file now in the tree. A copy installed without Takt carries no receipt.
+func Intact(root string) bool {
+	skillDir := model.ArchifySkillDir(root)
+	receipt := filepath.Join(skillDir, receiptFile)
+	if info, err := os.Lstat(receipt); err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	recorded, err := os.ReadFile(receipt)
+	if err != nil {
+		return false
+	}
+	current, err := treeListing(skillDir)
+	return err == nil && bytes.Equal(recorded, current)
 }
 
 // Acquire returns an existing compatible Archify installation under root, or
@@ -118,7 +140,7 @@ func Acquire(ctx context.Context, root string) (binPath string, installed bool, 
 
 // Acquire installs m into root when no copy meeting m.Version is already present.
 func (m Manifest) Acquire(ctx context.Context, client *http.Client, root string) (binPath string, installed bool, err error) {
-	if binPath, found := resolveVersion(root, m.Version); found {
+	if binPath, found := m.Resolve(root); found {
 		return binPath, false, nil
 	}
 	destDir := model.ArchifySkillDir(root)
@@ -154,6 +176,8 @@ func Verify(ctx context.Context, root string) (string, error) {
 	}
 	cmd := exec.CommandContext(ctx, "node", binPath, "doctor")
 	cmd.Env = append(os.Environ(), updateCheckOff)
+	// A descendant that outlives a cancelled probe must not hold its output open.
+	cmd.WaitDelay = doctorWaitDelay
 	if out, err := cmd.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {
@@ -217,8 +241,17 @@ func extractArchive(body []byte, root, destDir, minVersion string) error {
 			return err
 		}
 	}
-	if _, found := resolveVersionInDir(stageArchify, minVersion); !found {
+	if _, found := installedVersionIn(stageArchify, minVersion); !found {
 		return fmt.Errorf("archify archive lacks valid >= %s payload", minVersion)
+	}
+	// The receipt lands with the tree in the same rename, so a tree in place
+	// always carries the proof that Takt wrote it.
+	listing, err := treeListing(stageArchify)
+	if err != nil {
+		return fmt.Errorf("record archify receipt: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(stageArchify, receiptFile), listing, regularFileMode); err != nil {
+		return fmt.Errorf("record archify receipt: %w", err)
 	}
 	if err := os.Rename(stageArchify, destDir); err != nil {
 		return fmt.Errorf("install archify skill: %w", err)
@@ -275,22 +308,57 @@ func extractZipEntry(f *zip.File, stageArchify string) error {
 	return out.Close()
 }
 
-func resolveVersionInDir(skillDir, minVersion string) (string, bool) {
-	for _, req := range []string{filepath.Join(skillDir, "bin", "archify.mjs"), filepath.Join(skillDir, skillDescriptor)} {
-		info, err := os.Stat(req)
-		if err != nil || info.IsDir() {
+// installedVersionIn reports the version of a valid Archify tree at skillDir
+// meeting minVersion. The entrypoint, descriptor, and package.json must be
+// regular files: a directory, symlink, or named pipe never passes.
+func installedVersionIn(skillDir, minVersion string) (string, bool) {
+	for _, required := range []string{filepath.Join(skillDir, filepath.FromSlash(binaryRelPath)), filepath.Join(skillDir, skillDescriptor), filepath.Join(skillDir, packageJSONFile)} {
+		info, err := os.Lstat(required)
+		if err != nil || !info.Mode().IsRegular() {
 			return "", false
 		}
 	}
-	raw, err := os.ReadFile(filepath.Join(skillDir, packageJSONFile))
+	version, err := packageVersion(skillDir)
+	if err != nil || !semver.AtLeast(version, minVersion) {
+		return "", false
+	}
+	return version, true
+}
+
+// treeListing renders one "sha256 mode path" line per regular file under dir,
+// in lexical order, leaving out the receipt itself. Any other file type makes
+// the tree unlistable.
+func treeListing(dir string) ([]byte, error) {
+	var listing bytes.Buffer
+	err := filepath.WalkDir(dir, func(file string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, file)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if entry.IsDir() || rel == receiptFile {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("archify tree entry %q is not a regular file", rel)
+		}
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(content)
+		fmt.Fprintf(&listing, "%s %04o %s\n", hex.EncodeToString(sum[:]), info.Mode().Perm(), rel)
+		return nil
+	})
 	if err != nil {
-		return "", false
+		return nil, err
 	}
-	var pkg struct {
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(raw, &pkg); err != nil || !semver.AtLeast(strings.TrimSpace(pkg.Version), minVersion) {
-		return "", false
-	}
-	return pkg.Version, true
+	return listing.Bytes(), nil
 }

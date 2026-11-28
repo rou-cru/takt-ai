@@ -9,13 +9,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/model"
@@ -230,8 +233,10 @@ func TestAcquireRejectsTamperedOrUnsafeArchives(t *testing.T) {
 			"../escape.txt": "bad",
 		}, 0o644)
 		m, _ := manifestFor(t, payload, archify.Version)
-		if _, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir()); err == nil || !strings.Contains(err.Error(), "unsafe archify archive path") {
-			t.Fatalf("Acquire() error = %v, want unsafe path error", err)
+		// With GODEBUG=zipinsecurepath=0 the zip reader refuses the path itself.
+		_, _, err := m.Acquire(context.Background(), http.DefaultClient, t.TempDir())
+		if err == nil || (!errors.Is(err, zip.ErrInsecurePath) && !strings.Contains(err.Error(), "unsafe archify archive path")) {
+			t.Fatalf("Acquire() error = %v, want an insecure or unsafe path error", err)
 		}
 	})
 
@@ -377,5 +382,141 @@ func TestVerifyRunsNodeDoctor(t *testing.T) {
 				t.Fatalf("Verify() error = %v, want archify doctor failed + %q", err, tc.wantMsg)
 			}
 		})
+	}
+}
+
+func TestResolveRequiresRegularFiles(t *testing.T) {
+	for _, rel := range []string{"bin/archify.mjs", "SKILL.md", "package.json"} {
+		t.Run(rel, func(t *testing.T) {
+			root := t.TempDir()
+			m, _ := manifestFor(t, validArchive(t, archify.Version), archify.Version)
+			if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(model.ArchifySkillDir(root), filepath.FromSlash(rel))
+			if err := os.Remove(target); err != nil {
+				t.Fatal(err)
+			}
+			if err := syscall.Mkfifo(target, 0o644); err != nil {
+				t.Skipf("mkfifo unavailable: %v", err)
+			}
+			if _, ok := archify.Resolve(root); ok {
+				t.Fatalf("Resolve() accepted a named pipe at %s", rel)
+			}
+			if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err == nil {
+				t.Fatalf("Acquire() reused a tree with a named pipe at %s", rel)
+			}
+		})
+	}
+}
+
+func TestManifestResolveUsesItsOwnVersion(t *testing.T) {
+	root := t.TempDir()
+	pinned, _ := manifestFor(t, validArchive(t, archify.Version), archify.Version)
+	if _, _, err := pinned.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+		t.Fatal(err)
+	}
+	newer := archify.Manifest{Version: "99.0.0"}
+	if _, ok := newer.Resolve(root); ok {
+		t.Fatalf("Manifest{Version: 99.0.0}.Resolve() accepted a %s install", archify.Version)
+	}
+	if _, ok := archify.Resolve(root); !ok {
+		t.Fatal("Resolve() rejected the pinned install")
+	}
+}
+
+func TestIntactTracksTheExtractedTree(t *testing.T) {
+	root := t.TempDir()
+	m, _ := manifestFor(t, validArchive(t, archify.Version), archify.Version)
+	if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+		t.Fatal(err)
+	}
+	if !archify.Intact(root) {
+		t.Fatal("Intact() = false for the tree Acquire extracted")
+	}
+	receipt := filepath.Join(root, filepath.FromSlash(model.ArchifyManagedMarkerKey))
+	if info, err := os.Lstat(receipt); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("receipt %s missing after Acquire: %v", receipt, err)
+	}
+	skillDir := model.ArchifySkillDir(root)
+
+	t.Run("edited file", func(t *testing.T) {
+		pkg := filepath.Join(skillDir, "package.json")
+		original, err := os.ReadFile(pkg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(pkg, []byte(`{"version":"`+archify.Version+`","local":true}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if archify.Intact(root) {
+			t.Fatal("Intact() = true after package.json was edited")
+		}
+		if err := os.WriteFile(pkg, original, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("added file", func(t *testing.T) {
+		extra := filepath.Join(skillDir, "notes.md")
+		if err := os.WriteFile(extra, []byte("mine"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if archify.Intact(root) {
+			t.Fatal("Intact() = true with a file Takt did not extract")
+		}
+		if err := os.Remove(extra); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("removed file", func(t *testing.T) {
+		descriptor := filepath.Join(skillDir, "SKILL.md")
+		original, err := os.ReadFile(descriptor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(descriptor); err != nil {
+			t.Fatal(err)
+		}
+		if archify.Intact(root) {
+			t.Fatal("Intact() = true with an extracted file missing")
+		}
+		if err := os.WriteFile(descriptor, original, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !archify.Intact(root) {
+		t.Fatal("Intact() = false after every change was reverted")
+	}
+	t.Run("copy without receipt", func(t *testing.T) {
+		if err := os.Remove(receipt); err != nil {
+			t.Fatal(err)
+		}
+		if archify.Intact(root) {
+			t.Fatal("Intact() = true for a tree without a receipt")
+		}
+	})
+}
+
+func TestVerifyBoundsTheDoctorProbe(t *testing.T) {
+	root := t.TempDir()
+	m, _ := manifestFor(t, validArchive(t, archify.Version), archify.Version)
+	if _, _, err := m.Acquire(context.Background(), http.DefaultClient, root); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin := t.TempDir()
+	// The probe leaves a descendant holding its output open after it is killed.
+	if err := os.WriteFile(filepath.Join(fakeBin, "node"), []byte("#!/bin/sh\nsleep 30 &\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err := archify.Verify(ctx, root)
+	if err == nil {
+		t.Fatal("Verify() = nil for a probe that never finishes")
+	}
+	if elapsed := time.Since(started); elapsed > 10*time.Second {
+		t.Fatalf("Verify() returned after %s, want the deadline plus the wait delay", elapsed)
 	}
 }

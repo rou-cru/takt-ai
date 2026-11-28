@@ -39,8 +39,9 @@ const (
 	ArchifySkillRelDir = OpenCodeSkillsDir + "/" + ArchifySkillID
 	// ArchifyBinaryRelPath is the home-relative slash path of Archify's Node CLI entrypoint.
 	ArchifyBinaryRelPath = ArchifySkillRelDir + "/bin/archify.mjs"
-	// ArchifyManagedMarkerKey is the regular file tracked in the ownership manifest for a Takt-managed install.
-	ArchifyManagedMarkerKey = ArchifySkillRelDir + "/package.json"
+	// ArchifyManagedMarkerKey is the receipt Takt writes into the Archify tree it
+	// extracts, tracked in the ownership manifest for a Takt-managed install.
+	ArchifyManagedMarkerKey = ArchifySkillRelDir + "/.takt-receipt"
 
 	// OpenCodePluginsDir is the directory OpenCode loads plugins from.
 	OpenCodePluginsDir = "plugins"

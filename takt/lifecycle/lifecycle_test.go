@@ -1,6 +1,7 @@
 package lifecycle_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -848,9 +849,7 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		root := t.TempDir()
 		t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
 		// Pre-install an unmanaged compatible copy before Takt install.
-		if _, installed, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, root); err != nil || !installed {
-			t.Fatalf("pre-install unmanaged Archify: %v, %v", installed, err)
-		}
+		preinstallUnmanagedArchify(t, root)
 		rt := installRuntime(t)
 		req := setuputil.TestPlanRequest()
 		req.Components = []string{string(model.ComponentArchify)}
@@ -922,9 +921,11 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// No response is written: one could race the cancellation and reach
+		// Acquire as an HTTP error instead of context.Canceled.
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			cancel()
-			http.Error(w, "cancelled", http.StatusServiceUnavailable)
+			<-r.Context().Done()
 		}))
 		t.Cleanup(srv.Close)
 		rt.Archify = &archify.Manifest{
@@ -971,6 +972,178 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		got, err := os.ReadFile(bridgeOpenCode)
 		if err != nil || !strings.Contains(string(got), "# custom\n") {
 			t.Fatalf("user-edited bridge skill = (%q, %v), want preserved custom edit", string(got), err)
+		}
+	})
+}
+
+// preinstallUnmanagedArchify places a compatible Archify copy the way a user
+// installing it independently would: the same tree, without Takt's receipt.
+func preinstallUnmanagedArchify(t *testing.T, root string) {
+	t.Helper()
+	if _, installed, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, root); err != nil || !installed {
+		t.Fatalf("pre-install unmanaged Archify: %v, %v", installed, err)
+	}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(model.ArchifyManagedMarkerKey))); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestArchifyOwnershipFollowsTheReceipt covers the ownership evidence an
+// Archify tree carries: Takt's receipt, recorded in the ownership manifest.
+func TestArchifyOwnershipFollowsTheReceipt(t *testing.T) {
+	withArchify := func() setup.PlanRequest {
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentArchify)}
+		return req
+	}
+	owned := func(t *testing.T, root string) bool {
+		t.Helper()
+		manifest, err := setup.LoadOwnershipManifest(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, found := manifest.Entries[model.ArchifyManagedMarkerKey]
+		return found
+	}
+
+	t.Run("a retry records the tree an interrupted install wrote", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		// An earlier run extracted the tree and failed before recording it.
+		if _, installed, err := rt.Archify.Acquire(context.Background(), http.DefaultClient, root); err != nil || !installed {
+			t.Fatalf("earlier extraction: %v, %v", installed, err)
+		}
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) retry error = %v", err)
+		}
+		if !owned(t, root) {
+			t.Fatalf("retry did not record %s for the tree Takt wrote", model.ArchifyManagedMarkerKey)
+		}
+		if _, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest()); err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
+		}
+		if _, err := os.Lstat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("archify dir after deselection stat = %v, want removed", err)
+		}
+	})
+
+	t.Run("an independent copy is never claimed", func(t *testing.T) {
+		root := t.TempDir()
+		preinstallUnmanagedArchify(t, root)
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		if owned(t, root) {
+			t.Fatal("install claimed an Archify copy installed outside Takt")
+		}
+	})
+
+	t.Run("uninstall leaves an untracked tree without package.json", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, setuputil.TestPlanRequest()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		notes := filepath.Join(model.ArchifySkillDir(root), "notes.md")
+		if err := os.MkdirAll(filepath.Dir(notes), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(notes, []byte("local"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, setuputil.TestPlanRequest()); err != nil {
+			t.Fatalf("Run(uninstall) error = %v", err)
+		}
+		if _, err := os.Stat(notes); err != nil {
+			t.Fatalf("uninstall removed an untracked Archify tree: %v", err)
+		}
+	})
+
+	t.Run("uninstall preserves a managed tree changed since extraction", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv(memory.EnvDir, filepath.Join(t.TempDir(), "absent"))
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		edited := filepath.Join(model.ArchifySkillDir(root), "SKILL.md")
+		if err := os.WriteFile(edited, []byte("---\nname: archify\ndescription: mine\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res, err := (lifecycle.Runtime{}).Run(context.Background(), "uninstall", root, withArchify())
+		if err != nil {
+			t.Fatalf("Run(uninstall) error = %v", err)
+		}
+		if _, err := os.Stat(edited); err != nil {
+			t.Fatalf("uninstall removed a changed managed Archify tree: %v", err)
+		}
+		if !slices.Contains(res.Preserved, model.ArchifySkillRelDir) {
+			t.Fatalf("Preserved = %v, want %s", res.Preserved, model.ArchifySkillRelDir)
+		}
+	})
+
+	t.Run("deselection keeps a managed tree with local changes", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		pkg := filepath.Join(model.ArchifySkillDir(root), "package.json")
+		local := []byte(`{"name":"archify","version":"` + archify.Version + `","local":true}`)
+		if err := os.WriteFile(pkg, local, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest())
+		if err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
+		}
+		if got, err := os.ReadFile(pkg); err != nil || !bytes.Equal(got, local) {
+			t.Fatalf("package.json after deselection = %q, %v; want the local edit kept", got, err)
+		}
+		if !slices.Contains(res.Retained, model.ArchifySkillRelDir) {
+			t.Fatalf("Retained = %v, want %s", res.Retained, model.ArchifySkillRelDir)
+		}
+		if owned(t, root) {
+			t.Fatal("deselection kept ownership of a tree it left in place")
+		}
+		// The released tree is no longer Takt's: a later deselection leaves it too.
+		if _, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest()); err != nil {
+			t.Fatalf("Run(second sync) error = %v", err)
+		}
+		if _, err := os.Stat(pkg); err != nil {
+			t.Fatalf("second deselection removed the released tree: %v", err)
+		}
+	})
+
+	t.Run("sync replaces a damaged managed copy", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		// The copy still resolves, yet no longer matches the extracted tree.
+		bin := model.ArchifyBinaryPath(root)
+		if err := os.WriteFile(bin, []byte("#!/usr/bin/env node\nthrow new Error('damaged')\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, found := archify.Resolve(root); !found {
+			t.Fatal("damaged copy no longer resolves; the scenario needs one that does")
+		}
+		res, err := rt.Run(context.Background(), "sync", root, withArchify())
+		if err != nil {
+			t.Fatalf("Run(sync) error = %v", err)
+		}
+		if !archify.Intact(root) {
+			t.Fatal("sync left the damaged managed copy in place")
+		}
+		backedUp := false
+		for _, backup := range res.BackedUp {
+			backedUp = backedUp || backup.Path == model.ArchifySkillRelDir
+		}
+		if !backedUp {
+			t.Fatalf("BackedUp = %+v, want the damaged copy set aside", res.BackedUp)
 		}
 	})
 }
