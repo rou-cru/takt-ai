@@ -390,17 +390,23 @@ func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 
 // archifyReadOnlyShellRules lets planning/direct interlocutors run Archify's
 // read-only analysis autonomously: code-analysis check, task, and drift, the
-// scenario guide, and the installation probe. The last match wins, so the
-// rules narrow in order: any --out destination asks again, except one under
-// archifyScratchPrefix, the scratch location the takt-archify skill
-// prescribes; a second --out (the CLI keeps the last one) or a parent segment
-// after the scratch prefix asks again, as do baseline mutations. Each pattern is
-// anchored at the start of the command, in the forms the skill prescribes, so
-// the Archify path appearing only as an argument of another program (for
-// example "node --eval ... archify.mjs doctor") keeps the preceding "ask".
+// scenario guide, the installation probe, and the exact archifyScratchCreate
+// that makes their private output directory. These shells run natively, so a
+// rule must hold for the arguments Archify receives, not only for the command
+// text: the last match wins, and after every allow, any character the shell
+// rewrites or redirects with (quotes, escapes, expansions, redirections,
+// control operators, grouping) asks again. What remains allowed is literal
+// apart from the * and ? globs, which a pattern cannot name literally and
+// which expand only to paths that already exist under the literal prefix
+// before them. Any --out asks again, except one under archifyScratchPrefix; a
+// second --out (the CLI keeps the last one) or a parent segment after that
+// prefix asks again, as do baseline mutations. Each pattern is anchored at the
+// start of the command, so the Archify path appearing only as an argument of
+// another program (for example "node --eval ... archify.mjs doctor") keeps the
+// preceding "ask".
 func archifyReadOnlyShellRules() []permissionRule {
 	analyses := []string{"code-analysis check", "code-analysis task", "code-analysis drift"}
-	var rules []permissionRule
+	rules := []permissionRule{{"shell", archifyScratchCreate, "allow"}}
 	for _, invocation := range archifyInvocations() {
 		for _, query := range append(analyses, "guide") {
 			rules = append(rules, permissionRule{"shell", invocation + " " + query + " *", "allow"})
@@ -418,13 +424,20 @@ func archifyReadOnlyShellRules() []permissionRule {
 		for _, mutation := range []string{"--update-baseline", "--accept", "--revoke"} {
 			rules = append(rules, permissionRule{"shell", invocation + " *" + mutation + "*", "ask"})
 		}
+		for _, shellSyntax := range []string{"'", `"`, `\`, "`", "$", "~", ">", "<", "|", ";", "&", "(", ")", "{", "}", "["} {
+			rules = append(rules, permissionRule{"shell", invocation + " *" + shellSyntax + "*", "ask"})
+		}
 	}
 	return rules
 }
 
 // archifyScratchPrefix is the only --out location Archify analysis writes to
-// without approval: a per-run directory under /tmp, outside every workspace.
-const archifyScratchPrefix = "/tmp/takt-archify-"
+// without approval in a native shell; archifyScratchCreate makes a private
+// directory under it, whose printed path ArchifyClause tells the agent to use.
+const (
+	archifyScratchPrefix = "/tmp/takt-archify-"
+	archifyScratchCreate = "mktemp -d " + archifyScratchPrefix + "XXXXXX"
+)
 
 // archifyInvocations are the command prefixes that execute the installed
 // Archify CLI: the skill's form with update notices suppressed, and the bare one.

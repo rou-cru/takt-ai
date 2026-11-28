@@ -18,11 +18,11 @@ entries:
     audience: [takt, architect, analyst, pm, product-designer, verify, judge-a, judge-b, quality]
     correlates_with:
       - skills/takt-archify/SKILL.md
-    vars: [archify_bin, archify_skill, scope]
+    vars: [archify_bin, archify_skill, scope, scratch]
     text: |
       ## Archify
 
-      Archify is available at `~/{{archify_bin}}`. Before using it, read `~/{{archify_skill}}` ({{scope}}).
+      Archify is available at `~/{{archify_bin}}`. Before using it, read `~/{{archify_skill}}` ({{scope}}). Your private Archify scratch, where every `--out` goes: {{scratch}}.
 
   - id: context.prior_claims
     surface: context_injection
