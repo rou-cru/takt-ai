@@ -390,18 +390,30 @@ func shellRules(role model.RoleClass, archifyReadOnly bool) []permissionRule {
 
 // archifyReadOnlyShellRules lets planning/direct interlocutors run read-only
 // Archify code-analysis queries autonomously while keeping baseline mutations
-// and workspace-writing commands gated behind "ask".
+// and workspace-writing commands gated behind "ask". Every pattern is anchored
+// at the start of the command, in the forms the takt-archify skill prescribes,
+// so the Archify path appearing only as an argument of another program (for
+// example "node --eval ... archify.mjs doctor") keeps the preceding "ask".
 func archifyReadOnlyShellRules() []permissionRule {
-	return []permissionRule{
-		{"shell", "*archify/bin/archify.mjs code-analysis check *", "allow"},
-		{"shell", "*archify/bin/archify.mjs code-analysis task *", "allow"},
-		{"shell", "*archify/bin/archify.mjs code-analysis drift *", "allow"},
-		{"shell", "*archify/bin/archify.mjs guide *", "allow"},
-		{"shell", "*archify/bin/archify.mjs doctor*", "allow"},
-		{"shell", "*archify/bin/archify.mjs*--update-baseline*", "ask"},
-		{"shell", "*archify/bin/archify.mjs*--accept*", "ask"},
-		{"shell", "*archify/bin/archify.mjs*--revoke*", "ask"},
+	var rules []permissionRule
+	for _, invocation := range archifyInvocations() {
+		for _, query := range []string{"code-analysis check *", "code-analysis task *", "code-analysis drift *", "guide", "guide *", "doctor", "doctor *"} {
+			rules = append(rules, permissionRule{"shell", invocation + " " + query, "allow"})
+		}
 	}
+	for _, invocation := range archifyInvocations() {
+		for _, mutation := range []string{"--update-baseline", "--accept", "--revoke"} {
+			rules = append(rules, permissionRule{"shell", invocation + " *" + mutation + "*", "ask"})
+		}
+	}
+	return rules
+}
+
+// archifyInvocations are the command prefixes that execute the installed
+// Archify CLI: the skill's form with update notices suppressed, and the bare one.
+func archifyInvocations() []string {
+	bare := "node ~/" + model.ArchifyBinaryRelPath
+	return []string{"ARCHIFY_UPDATE_CHECK_DISABLED=1 " + bare, bare}
 }
 
 // vfsPermissionRules emits an explicit allow or deny for every plugin tool.

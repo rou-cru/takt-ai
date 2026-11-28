@@ -190,11 +190,10 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 	}
 	for _, id := range []string{"architect", "analyst"} {
 		rules := cfg.Agents[id].Permissions
-		if got := effectOf(rules, "shell", "*archify/bin/archify.mjs code-analysis check *"); got != "allow" {
-			t.Errorf("%s read-only code-analysis check = %q, want allow", id, got)
-		}
-		if got := effectOf(rules, "shell", "*archify/bin/archify.mjs*--update-baseline*"); got != "ask" {
-			t.Errorf("%s --update-baseline = %q, want ask", id, got)
+		for command, want := range archifyShellCases {
+			if got := shellEffect(rules, command); got != want {
+				t.Errorf("%s shell %q = %q, want %q", id, command, got, want)
+			}
 		}
 		if got := effectOf(rules, "shell", "*"); got != "ask" {
 			t.Errorf("%s shell default = %q, want ask", id, got)
@@ -210,6 +209,44 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 			}
 		}
 	}
+}
+
+// archifyShellCases maps commands to the effect planning roles must get: the
+// skill's own invocations run unprompted, while the Archify path appearing only
+// as an argument of another program, an extra environment prefix, or a
+// baseline mutation keeps the approval prompt.
+var archifyShellCases = map[string]string{
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --json": "allow",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/out --finding f1 --root . --format json":                        "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift a b":                                "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs guide":                                                  "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                 "allow",
+	`node --eval 'require("node:fs").writeFileSync("report.txt","changed")' ~/.opencode/skills/archify/bin/archify.mjs doctor`:               "ask",
+	"node -e 1 ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .":                                                             "ask",
+	"NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                "ask",
+	"cat ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                                                  "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs doctorx":                                                                                "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --update-baseline":                "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --accept r1":                                                      "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --revoke r1":                                                      "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs finalize out":                                                                           "ask",
+}
+
+// shellEffect returns the effect of the last shell rule whose pattern matches
+// command, where "*" matches any text and a pattern spans the whole command.
+func shellEffect(rules []rule, command string) string {
+	effect := ""
+	for _, r := range rules {
+		if r.Action != "shell" {
+			continue
+		}
+		pattern := "^" + strings.ReplaceAll(regexp.QuoteMeta(r.Resource), regexp.QuoteMeta("*"), "(?s:.*)") + "$"
+		if regexp.MustCompile(pattern).MatchString(command) {
+			effect = r.Effect
+		}
+	}
+	return effect
 }
 
 func TestRenderConfig(t *testing.T) {
