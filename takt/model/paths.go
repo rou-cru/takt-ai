@@ -39,6 +39,9 @@ const (
 	ArchifySkillRelDir = OpenCodeSkillsDir + "/" + ArchifySkillID
 	// ArchifyBinaryRelPath is the home-relative slash path of Archify's Node CLI entrypoint.
 	ArchifyBinaryRelPath = ArchifySkillRelDir + "/bin/archify.mjs"
+	// ArchifyLauncherRelPath is the home-relative slash path of the Takt launcher
+	// agents run Archify through, deployed with the takt-archify bridge skill.
+	ArchifyLauncherRelPath = OpenCodeSkillsDir + "/takt-archify/scripts/archify.mjs"
 	// ArchifyManagedMarkerKey is the receipt Takt writes into the Archify tree it
 	// extracts, tracked in the ownership manifest for a Takt-managed install.
 	ArchifyManagedMarkerKey = ArchifySkillRelDir + "/.takt-receipt"

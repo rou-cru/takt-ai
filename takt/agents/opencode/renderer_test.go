@@ -184,11 +184,28 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 		if got := effectOf(rules, "skill", model.ArchifySkillID); got != "deny" {
 			t.Errorf("%s upstream archify = %q, want deny", readOnly, got)
 		}
-		if !strings.Contains(cfg.Agents[readOnly].System, "read-only code-analysis") {
-			t.Errorf("%s prompt missing read-only scope: %q", readOnly, cfg.Agents[readOnly].System)
+		system := cfg.Agents[readOnly].System
+		if strings.Contains(system, "archify explainer") || strings.Contains(system, "`archify` skill") {
+			t.Errorf("%s prompt offers authoring it cannot do: %q", readOnly, system)
+		}
+	}
+	for _, id := range []string{"verify", "quality", "architect", "analyst"} {
+		system := cfg.Agents[id].System
+		if !strings.Contains(system, "`node ~/"+model.ArchifyLauncherRelPath+" <command>`") {
+			t.Errorf("%s prompt does not name the launcher: %q", id, system)
+		}
+		// The launcher owns output locations and update checks: the prompt
+		// leaves the agent no mechanics to perform.
+		for _, mechanic := range []string{"mktemp", "TMPDIR", "--out", "ARCHIFY_UPDATE_CHECK_DISABLED", "scratch"} {
+			if strings.Contains(system, mechanic) {
+				t.Errorf("%s prompt asks the agent to handle %q: %q", id, mechanic, system)
+			}
 		}
 	}
 	for _, id := range []string{"architect", "analyst"} {
+		if !strings.Contains(cfg.Agents[id].System, "\n[archify explainer: on-demand] ") {
+			t.Errorf("%s prompt lacks the upstream on-demand rules line: %q", id, cfg.Agents[id].System)
+		}
 		rules := cfg.Agents[id].Permissions
 		for command, want := range archifyShellCases {
 			if got := shellEffect(rules, command); got != want {
@@ -212,57 +229,44 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 }
 
 // archifyShellCases maps commands to the effect planning roles must get: the
-// skill's read-only analysis, written literally into the private directory
-// mktemp creates under /tmp/takt-archify-, runs unprompted. Any other output
-// destination, any shell syntax that rewrites the arguments Archify receives
-// or redirects its output, the Archify path appearing only as an argument of
-// another program, an extra environment prefix, or a baseline mutation keeps
-// the approval prompt.
+// launcher's read-only analysis and guide, including a task command exactly as
+// check prints it, run unprompted. Shell syntax that rewrites or redirects
+// what the launcher receives, the launcher named only as another program's
+// argument, an environment prefix, other Archify commands, and the upstream
+// CLI run directly keep the approval prompt.
 var archifyShellCases = map[string]string{
-	`mktemp -d /tmp/takt-archify-XXXXXX`: "allow",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-AbC123 --json`:                         "allow",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json`:                                                        "allow",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-AbC123 --finding f1 --root . --format json`:                                     "allow",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-AbC123 --finding f1 --root . --out /tmp/takt-archify-AbC123/task.json`:          "allow",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift . --base a --head b --ir ir.json --out /tmp/takt-archify-AbC123`: "allow",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs guide`:                                                                               "allow",
-	`node ~/.opencode/skills/archify/bin/archify.mjs guide review a pull request`:                                                                                         "allow",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                                                              "allow",
-	`mktemp -d /tmp/x`: "ask",
-	`mktemp -d /tmp/takt-archify-XXXXXX; touch README.md`:                                                                                                    "ask",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out ./report --json`:                            "ask",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/other --json`:                          "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-AbC123 --out ./report`:                                    "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-../../home/u/repo`:                                        "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-AbC123 --finding f1 --out ./task.json`:                             "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift . --base a --head b --ir ir.json --out ./drift`:                                     "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json > README.md`:                                                               "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json >> README.md`:                                                              "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json 2>README.md`:                                                               "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task --verify /tmp/takt-archify-AbC123/task.json --root . --ou''t ./README.md`:            "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --"out" ./README.md`:                                                              "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --o\ut ./README.md`:                                                               "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out $TMPDIR/takt-archify`:                                                       "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-$(pwd)`:                                                   "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-`pwd`":                                                    "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out ~/report`:                                                                   "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json | tee README.md`:                                                           "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json; touch README.md`:                                                          "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json & touch README.md`:                                                         "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-{x,y}`:                                                    "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-[x]`:                                                      "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json <(cat README.md)`:                                                          "ask",
-	`node --eval 'require("node:fs").writeFileSync("report.txt","changed")' ~/.opencode/skills/archify/bin/archify.mjs doctor`:                               "ask",
-	`node -e 1 ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .`:                                                                             "ask",
-	`NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                                                "ask",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                "ask",
-	`cat ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                                                                                  "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs doctorx`:                                                                                                "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs doctor; touch report.txt`:                                                                               "ask",
-	`ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-AbC123 --update-baseline`: "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --accept r1 --reason ok`:                                        "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --revoke r1`:                                                    "ask",
-	`node ~/.opencode/skills/archify/bin/archify.mjs finalize out`:                                                                                           "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check .`:                                                                                     "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --language go`:                                                                       "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task /tmp/takt-archify-QItbP3 --root /home/u/repo --format json --finding COUP-866992186eb7`: "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task --question how --entry a.go --root .`:                                                   "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis drift . --base a --head b --ir ir.json`:                                                      "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                                                                     "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide review a pull request`:                                                                               "allow",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . > README.md`:                                                                         "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . >> README.md`:                                                                        "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . 2>README.md`:                                                                         "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis task --verify t.json --root . --ou''t ./README.md`:                                           "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --"out" ./README.md`:                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . --o\ut ./README.md`:                                                                  "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check $HOME`:                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check $(pwd)`:                                                                                "ask",
+	"node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check `pwd`":                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check ~/repo`:                                                                                "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . | tee README.md`:                                                                     "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check .; touch README.md`:                                                                    "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check . & touch README.md`:                                                                   "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check {a,b}`:                                                                                 "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check [a]`:                                                                                   "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check <(cat README.md)`:                                                                      "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis prepare . --out x`:                                                                           "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis serve .`:                                                                                     "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs finalize explainer in.md out.html`:                                                                         "ask",
+	`node --eval 'require("node:fs").writeFileSync("r","x")' ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                  "ask",
+	`NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/takt-archify/scripts/archify.mjs guide`:                                                                    "ask",
+	`node ~/.opencode/skills/takt-archify/scripts/archify.mjs guidex`:                                                                                                    "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .`:                                                                                              "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --accept r1 --reason ok`:                                                    "ask",
+	`node ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                                                                                             "ask",
 }
 
 // shellEffect returns the effect of the last shell rule whose pattern matches

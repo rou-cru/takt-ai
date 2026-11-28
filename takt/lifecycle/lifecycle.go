@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -954,6 +955,9 @@ func removeManagedTree(rootDir, rel, label string) error {
 	return nil
 }
 
+// archifyBridgeSkill is the catalog skill that introduces Archify to agents.
+const archifyBridgeSkill = "takt-archify"
+
 // cleanupDeselectedArchify removes Takt-owned Archify artifacts when a sync
 // deselects ComponentArchify, leaving unmanaged or user-edited files intact.
 // A managed tree changed since extraction is released and returned as
@@ -973,31 +977,51 @@ func cleanupDeselectedArchify(rootDir string) (retained []string, err error) {
 	if err != nil {
 		return retained, fmt.Errorf("load ownership manifest: %w", err)
 	}
+	pack, err := catalog.LoadPackages()
+	if err != nil {
+		return retained, fmt.Errorf("load catalog packages: %w", err)
+	}
+	// The bridge skill is deployed under both skill roots; every file its
+	// package ships is removed while it still matches what Takt deployed.
+	bridgeRoots := []string{model.OpenCodeSkillsDir + "/" + archifyBridgeSkill, opencode.DeployPath("skills/" + archifyBridgeSkill)}
+	var dirs []string
 	changed := false
-	for _, rel := range []string{
-		model.OpenCodeSkillsDir + "/takt-archify/" + catalog.SkillFileName,
-		opencode.DeployPath("skills/takt-archify/" + catalog.SkillFileName),
-	} {
-		entry, owned := manifest.Entries[rel]
-		if !owned {
+	for _, skill := range pack.Skills {
+		if skill.ID != archifyBridgeSkill {
 			continue
 		}
-		target := filepath.Join(rootDir, filepath.FromSlash(rel))
-		raw, err := os.ReadFile(target)
-		if err == nil {
-			sum := sha256.Sum256(raw)
-			if hex.EncodeToString(sum[:]) != entry.SHA256 {
-				continue
+		for _, f := range skill.Files {
+			for _, bridgeRoot := range bridgeRoots {
+				rel := bridgeRoot + "/" + f.Path
+				entry, owned := manifest.Entries[rel]
+				if !owned {
+					continue
+				}
+				target := filepath.Join(rootDir, filepath.FromSlash(rel))
+				raw, err := os.ReadFile(target)
+				if err == nil {
+					sum := sha256.Sum256(raw)
+					if hex.EncodeToString(sum[:]) != entry.SHA256 {
+						continue
+					}
+					if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return retained, err
+					}
+					for dir := path.Dir(rel); strings.HasPrefix(dir, bridgeRoot); dir = path.Dir(dir) {
+						dirs = append(dirs, dir)
+					}
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return retained, err
+				}
+				delete(manifest.Entries, rel)
+				changed = true
 			}
-			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return retained, err
-			}
-			_ = os.Remove(filepath.Dir(target))
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return retained, err
 		}
-		delete(manifest.Entries, rel)
-		changed = true
+	}
+	// Deepest first; a directory still holding a kept file stays.
+	slices.Sort(dirs)
+	for _, dir := range slices.Backward(slices.Compact(dirs)) {
+		_ = os.Remove(filepath.Join(rootDir, filepath.FromSlash(dir)))
 	}
 	if !changed {
 		return retained, nil

@@ -18,11 +18,11 @@ entries:
     audience: [takt, architect, analyst, pm, product-designer, verify, judge-a, judge-b, quality]
     correlates_with:
       - skills/takt-archify/SKILL.md
-    vars: [archify_bin, archify_skill, scope, scratch]
+    vars: [launcher, skill, authoring]
     text: |
       ## Archify
 
-      Archify is available at `~/{{archify_bin}}`. Before using it, read `~/{{archify_skill}}` ({{scope}}). Your private Archify scratch, where every `--out` goes: {{scratch}}.
+      Archify maps this repository's structure: coupling, cycles, hotspots, layer boundaries, and drift from an authored diagram. Run it as `node ~/{{launcher}} <command>` after reading `~/{{skill}}`.{{authoring}}
 
   - id: context.prior_claims
     surface: context_injection

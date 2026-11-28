@@ -178,8 +178,11 @@ func TestBuildTargetPlansExcludesArchifyWhenDeselectedAndIncludesWhenSelected(t 
 	if a := findArtifact(withArchify[0], ".config/opencode/takt/skills/takt-archify/SKILL.md"); len(a.Content) == 0 {
 		t.Error("missing .config/opencode/takt/skills/takt-archify/SKILL.md when archify selected")
 	}
+	if a := findArtifact(withArchify[0], ".config/opencode/takt/skills/takt-archify/scripts/archify.mjs"); len(a.Content) == 0 {
+		t.Error("missing the takt-archify launcher when archify selected")
+	}
 	agents := openCodeAgents(t, withArchify[0])
-	if !strings.Contains(agents["architect"]["system"].(string), "Archify is available") {
+	if !strings.Contains(agents["architect"]["system"].(string), "node ~/"+model.ArchifyLauncherRelPath) {
 		t.Error("architect system prompt missing Archify clause when selected")
 	}
 	if strings.Contains(agents["dev"]["system"].(string), "Archify") {

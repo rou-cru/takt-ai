@@ -1,38 +1,28 @@
 ---
 name: takt-archify
-description: Run headless repository architecture analysis (coupling, cycles, hotspots, diagram drift) or author interactive Archify diagrams and on-demand one-page explainers when Archify is installed.
+description: Analyze a repository's architecture headlessly with Archify when you need coupling, cycles, hotspots, layer boundaries, or new imports between two commits measured against an authored diagram.
 license: AGPL-3.0
 metadata:
   author: takt
-  version: "1.0"
+  version: "1.1"
   component: archify
 ---
 
 # Takt Archify
 
-Always invoke the installed Archify CLI with update notices suppressed:
+Run Archify through Takt's launcher. It keeps analysis output in a private scratch, keeps the installed version fixed, and prints every follow-up command ready to run:
 
 ```sh
-ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs <command>
+node ~/.opencode/skills/takt-archify/scripts/archify.mjs code-analysis check <repo-root>
 ```
 
-## 1. Read-only codebase analysis (`code-analysis`)
+| Need | Command after the launcher |
+| --- | --- |
+| First structural look at a repository | `code-analysis check <repo-root>` |
+| Evidence and excerpts for one lead or signal | the `task` command printed with it |
+| New imports between two commits, against an authored diagram | `code-analysis drift <repo-root> --base <sha> --head <sha> --ir <architecture.json>` |
 
-Use headless `code-analysis` for coupling, cycles, hotspots, layer boundaries, and diagram drift without mutating the workspace:
-
-```sh
-ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check <repo-root> --out <scratch> --json
-```
-
-- Write every `--out` (check, task, drift) inside the private Archify scratch your Archify context names, spelled literally as it was printed or named, never inside the repository workspace; any other destination needs user approval.
-- Inspect `investigation.leads`, `investigation.architecture`, `ruleCounts`, and `coverage` in the JSON receipt, and read the cited source files before stating findings. Use `code-analysis task <scratch> --finding <id> --root <repo-root> --format json` for finding excerpts, or `code-analysis drift` when comparing two commits against an authored architecture IR.
-- Static findings are structural signals, never proof of runtime failure or a verified fix.
-- Never pass `--update-baseline`, `--accept`, or `--revoke` without explicit user approval. Report missing language toolchains or parse gaps honestly.
-
-## 2. Diagrams, workbenches, and explainers (authoring roles only)
-
-For interactive HTML diagrams, `code-analysis prepare`, or explainers, load the `archify` skill for schemas, `finalize`, and delivery gates.
-
-- **Enforce `[archify explainer: on-demand]`:** never generate unsolicited explainer pages for routine answers, status updates, or internal agent-to-agent handoffs; answer in prose or a Takt memory entry instead.
-- Write authored artifacts under `.archify/<type>-<slug>-<timestamp>/` (or the user's requested path), never inside an active VFS claim or secret-bearing path.
-- Report exact output paths and state clearly if Chrome/Chromium was unavailable so `browser-check` did not run.
+- **Read the cited source before stating a finding.** Start from `investigation.leads`, `investigation.architecture`, and `ruleCounts` in the JSON.
+- **A finding is a structural signal**, not proof of a runtime failure or of a fix.
+- **Report what the analysis could not see.** Name the files or languages `coverage` lists as unparsed or missing a toolchain.
+- **Baseline changes are the user's decision.** The launcher refuses `--update-baseline`, `--accept`, and `--revoke` and prints the command to run once the user approves.

@@ -22,6 +22,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/rou-cru/takt-ai/takt/agents/opencode"
 	"github.com/rou-cru/takt-ai/takt/archify"
 	"github.com/rou-cru/takt-ai/takt/codegraph"
 	"github.com/rou-cru/takt-ai/takt/lifecycle"
@@ -821,9 +822,16 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; !owned {
 			t.Fatalf("manifest missing %s", model.ArchifyManagedMarkerKey)
 		}
-		bridgeOpenCode := filepath.Join(root, model.OpenCodeSkillsDir, "takt-archify", "SKILL.md")
-		if _, err := os.Stat(bridgeOpenCode); err != nil {
-			t.Fatalf("bridge skill missing after install: %v", err)
+		bridgeDirs := []string{
+			filepath.Join(root, model.OpenCodeSkillsDir, "takt-archify"),
+			filepath.Join(root, filepath.FromSlash(opencode.DeployPath("skills/takt-archify"))),
+		}
+		for _, dir := range bridgeDirs {
+			for _, file := range []string{"SKILL.md", "scripts/archify.mjs"} {
+				if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(file))); err != nil {
+					t.Fatalf("bridge skill file %s missing after install: %v", file, err)
+				}
+			}
 		}
 
 		reqWithout := setuputil.TestPlanRequest()
@@ -834,8 +842,10 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		if _, err := os.Stat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("archify dir after deselection stat = %v, want removed", err)
 		}
-		if _, err := os.Stat(bridgeOpenCode); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("takt-archify bridge skill after deselection stat = %v, want removed", err)
+		for _, dir := range bridgeDirs {
+			if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("takt-archify bridge skill %s after deselection stat = %v, want removed with its launcher", dir, err)
+			}
 		}
 		manifestAfter, err := setup.LoadOwnershipManifest(root)
 		if err != nil {

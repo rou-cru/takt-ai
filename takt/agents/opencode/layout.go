@@ -71,21 +71,18 @@ func MemoryClause(authorID string) string {
 	})
 }
 
-// ArchifyClause introduces the installed Archify CLI and bridge skill with
-// role-appropriate scope, and names the one output location the role's shell
-// can write without approval: a sandboxed role's private $TMPDIR scratch, or a
-// native shell's private directory created with archifyScratchCreate.
+// ArchifyClause names the Archify launcher and the bridge skill. Roles granted
+// the upstream archify skill also learn when to author with it, and carry the
+// upstream rules line that limits explainer pages to requests.
 func ArchifyClause(role model.RoleClass) string {
-	scope := "code-analysis check/task/drift and, when visuals or an on-demand explainer help, the upstream archify skill ([archify explainer: on-demand])"
-	scratch := "a directory you create first with `" + archifyScratchCreate + "` (it prints the path and is readable only by you), then pass that printed path literally to every `--out` of the analysis; never invent another path"
+	authoring := " When the user asks for a diagram or explainer, load the `archify` skill and run its `bin/archify.mjs` commands through the same launcher.\n\n" +
+		"[archify explainer: on-demand] Make Archify explainer pages only when the user asks for one."
 	if role == model.RoleVerification || role == model.RoleQualityAssurance {
-		scope = "read-only code-analysis check/task/drift only; never write workspace files"
-		scratch = "`$TMPDIR/takt-archify`, inside your sandbox's private scratch. It lasts a single shell call, so run `check` and the `task` lookups that read its output in one command (`check ... && task ...`)"
+		authoring = ""
 	}
 	return prompts.Default().MustRender("context.archify_clause", map[string]string{
-		"archify_bin":   model.ArchifyBinaryRelPath,
-		"archify_skill": path.Join(model.OpenCodeSkillsDir, archifyBridgeSkill, catalog.SkillFileName),
-		"scope":         scope,
-		"scratch":       scratch,
+		"launcher":  model.ArchifyLauncherRelPath,
+		"skill":     path.Join(model.OpenCodeSkillsDir, archifyBridgeSkill, catalog.SkillFileName),
+		"authoring": authoring,
 	})
 }
