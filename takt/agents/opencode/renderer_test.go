@@ -212,29 +212,36 @@ func TestArchifyProjectionRespectsComponentSelectionAndRoleBoundaries(t *testing
 }
 
 // archifyShellCases maps commands to the effect planning roles must get: the
-// guide and doctor invocations run unprompted, while every code-analysis
-// command (each can write its --out anywhere), the Archify path appearing only
-// as an argument of another program, an extra environment prefix, or a
-// baseline mutation keeps the approval prompt.
+// skill's read-only analysis runs unprompted, writing only under the
+// /tmp/takt-archify- scratch prefix, while any other output destination, the
+// Archify path appearing only as an argument of another program, an extra
+// environment prefix, or a baseline mutation keeps the approval prompt.
 var archifyShellCases = map[string]string{
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --json": "ask",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out ./report --json":            "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/out --finding f1 --root . --format json --out ./task.json":      "ask",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift a b --out ./drift":                  "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs guide review a pull request":                                                            "allow",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs guide":                                                  "allow",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                 "allow",
-	"node ~/.opencode/skills/archify/bin/archify.mjs doctor; touch report.txt":                                                               "ask",
-	`node --eval 'require("node:fs").writeFileSync("report.txt","changed")' ~/.opencode/skills/archify/bin/archify.mjs doctor`:               "ask",
-	"node -e 1 ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .":                                                             "ask",
-	"NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                "ask",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                "ask",
-	"cat ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                                                  "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs doctorx":                                                                                "ask",
-	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --update-baseline":                "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --accept r1":                                                      "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --revoke r1":                                                      "ask",
-	"node ~/.opencode/skills/archify/bin/archify.mjs finalize out":                                                                           "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --json":                         "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --json":                                                   "allow",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-x --finding f1 --root . --format json":                                     "allow",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-x --finding f1 --root . --out /tmp/takt-archify-x/task.json":               "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift . --base a --head b --ir ir.json --out /tmp/takt-archify-d": "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs guide":                                                                          "allow",
+	"node ~/.opencode/skills/archify/bin/archify.mjs guide review a pull request":                                                                                    "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                                         "allow",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out ./report --json":                                    "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/other --json":                                  "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --out ./report":                                                 "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-../../home/u/repo":                                                "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis task /tmp/takt-archify-x --finding f1 --out ./task.json":                                          "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis drift . --base a --head b --ir ir.json --out ./drift":                                             "ask",
+	`node --eval 'require("node:fs").writeFileSync("report.txt","changed")' ~/.opencode/skills/archify/bin/archify.mjs doctor`:                                       "ask",
+	"node -e 1 ~/.opencode/skills/archify/bin/archify.mjs code-analysis check .":                                                                                     "ask",
+	"NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                                        "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 NODE_OPTIONS=--require=./evil.js node ~/.opencode/skills/archify/bin/archify.mjs doctor":                                        "ask",
+	"cat ~/.opencode/skills/archify/bin/archify.mjs doctor":                                                                                                          "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs doctorx":                                                                                                        "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs doctor; touch report.txt":                                                                                       "ask",
+	"ARCHIFY_UPDATE_CHECK_DISABLED=1 node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --out /tmp/takt-archify-x --update-baseline":              "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --accept r1 --reason ok":                                                "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs code-analysis check . --baseline b.json --revoke r1":                                                            "ask",
+	"node ~/.opencode/skills/archify/bin/archify.mjs finalize out":                                                                                                   "ask",
 }
 
 // shellEffect returns the effect of the last shell rule whose pattern matches
