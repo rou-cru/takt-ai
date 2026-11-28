@@ -468,6 +468,18 @@ func TestIntactTracksTheExtractedTree(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("added empty directory", func(t *testing.T) {
+		extra := filepath.Join(skillDir, "drafts")
+		if err := os.Mkdir(extra, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if archify.Intact(root) {
+			t.Fatal("Intact() = true with a directory Takt did not extract")
+		}
+		if err := os.Remove(extra); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("removed file", func(t *testing.T) {
 		descriptor := filepath.Join(skillDir, "SKILL.md")
 		original, err := os.ReadFile(descriptor)

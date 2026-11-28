@@ -116,7 +116,8 @@ func (m Manifest) Resolve(root string) (string, bool) {
 
 // Intact reports whether the Archify tree under root is exactly the tree Takt
 // extracted: its receipt is a regular file whose recorded listing matches every
-// file now in the tree. A copy installed without Takt carries no receipt.
+// file and directory now in the tree. A copy installed without Takt carries no
+// receipt.
 func Intact(root string) bool {
 	skillDir := model.ArchifySkillDir(root)
 	receipt := filepath.Join(skillDir, receiptFile)
@@ -325,9 +326,11 @@ func installedVersionIn(skillDir, minVersion string) (string, bool) {
 	return version, true
 }
 
-// treeListing renders one "sha256 mode path" line per regular file under dir,
-// in lexical order, leaving out the receipt itself. Any other file type makes
-// the tree unlistable.
+// treeListing renders, in lexical order, one "sha256 mode path" line per
+// regular file under dir and one "- mode path/" line per directory below it,
+// leaving out dir itself and the receipt. Recording directories lets an added
+// empty directory count as a local change. Any other file type makes the tree
+// unlistable.
 func treeListing(dir string) ([]byte, error) {
 	var listing bytes.Buffer
 	err := filepath.WalkDir(dir, func(file string, entry fs.DirEntry, err error) error {
@@ -339,12 +342,16 @@ func treeListing(dir string) ([]byte, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if entry.IsDir() || rel == receiptFile {
+		if rel == "." || rel == receiptFile {
 			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
+		}
+		if info.IsDir() {
+			fmt.Fprintf(&listing, "- %04o %s/\n", info.Mode().Perm(), rel)
+			return nil
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("archify tree entry %q is not a regular file", rel)
