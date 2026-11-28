@@ -902,10 +902,51 @@ func removeCodegraph(rootDir string) error {
 // that receipt. An untracked tree, or one changed since Takt extracted it,
 // stays intact whatever files it lacks.
 func removeArchify(rootDir string, intactOwned bool, removed []string) error {
+	if err := purgeRetiredArchify(rootDir); err != nil {
+		return err
+	}
 	if !intactOwned || !slices.Contains(removed, model.ArchifyManagedMarkerKey) {
 		return nil
 	}
 	return removeManagedTree(rootDir, model.ArchifySkillRelDir, "archify")
+}
+
+// retireArchify moves the verified Archify tree from the skill path to
+// model.ArchifyRetiredRelDir, releases its ownership, and removes it. The move
+// comes before the release, so a failed move or manifest save keeps the record
+// for the next sync to retry; a failed removal leaves only the retired copy,
+// which purgeRetiredArchify clears later without touching whatever is then
+// installed at the skill path.
+func retireArchify(rootDir string, manifest *setup.OwnershipManifest) error {
+	skillDir, err := setup.SafeJoin(rootDir, model.ArchifySkillRelDir)
+	if err != nil {
+		return fmt.Errorf("retire managed archify: %w", err)
+	}
+	retired, err := setup.SafeJoin(rootDir, model.ArchifyRetiredRelDir)
+	if err != nil {
+		return fmt.Errorf("retire managed archify: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(retired), setup.RetainedDirectoryMode); err != nil {
+		return fmt.Errorf("retire managed archify: %w", err)
+	}
+	if err := os.Rename(skillDir, retired); err != nil {
+		return fmt.Errorf("retire managed archify: %w", err)
+	}
+	delete(manifest.Entries, model.ArchifyManagedMarkerKey)
+	if err := manifest.Save(rootDir); err != nil {
+		if restoreErr := os.Rename(retired, skillDir); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("restore managed archify: %w", restoreErr))
+		}
+		return err
+	}
+	return purgeRetiredArchify(rootDir)
+}
+
+// purgeRetiredArchify removes the retired Archify copy, if any. Only
+// retireArchify writes that path, and only with a tree verified against its
+// receipt, so clearing it never reaches a tree at the skill path.
+func purgeRetiredArchify(rootDir string) error {
+	return removeManagedTree(rootDir, model.ArchifyRetiredRelDir, "retired archify")
 }
 
 // removeManagedTree removes the managed tree at the slash-relative rel under
@@ -925,11 +966,13 @@ func removeManagedTree(rootDir, rel, label string) error {
 
 // cleanupDeselectedArchify removes Takt-owned Archify artifacts when a sync
 // deselects ComponentArchify, leaving unmanaged or user-edited files intact.
-// The Archify tree is removed only while it matches its receipt, and only
-// after the manifest no longer records it, so a failed save can never leave a
-// stale record that a later run would act on. A changed tree is released from
-// ownership and returned as retained.
+// A tree that still matches its receipt is retired (see retireArchify); a
+// changed tree is released from ownership and returned as retained. A retired
+// copy an earlier run failed to remove is cleared first.
 func cleanupDeselectedArchify(rootDir string) (retained []string, err error) {
+	if err := purgeRetiredArchify(rootDir); err != nil {
+		return nil, err
+	}
 	manifest, err := setup.LoadOwnershipManifest(rootDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -938,15 +981,16 @@ func cleanupDeselectedArchify(rootDir string) (retained []string, err error) {
 		return nil, fmt.Errorf("load ownership manifest: %w", err)
 	}
 	if _, owned := manifest.Entries[model.ArchifyManagedMarkerKey]; owned {
-		intact := archify.Intact(rootDir)
-		delete(manifest.Entries, model.ArchifyManagedMarkerKey)
-		if err := manifest.Save(rootDir); err != nil {
-			return nil, err
-		}
-		if !intact {
+		if archify.Intact(rootDir) {
+			if err := retireArchify(rootDir, manifest); err != nil {
+				return nil, err
+			}
+		} else {
+			delete(manifest.Entries, model.ArchifyManagedMarkerKey)
+			if err := manifest.Save(rootDir); err != nil {
+				return nil, err
+			}
 			retained = append(retained, model.ArchifySkillRelDir)
-		} else if err := removeManagedTree(rootDir, model.ArchifySkillRelDir, "archify"); err != nil {
-			return nil, err
 		}
 	}
 	changed := false

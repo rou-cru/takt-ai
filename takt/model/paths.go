@@ -42,6 +42,10 @@ const (
 	// ArchifyManagedMarkerKey is the receipt Takt writes into the Archify tree it
 	// extracts, tracked in the ownership manifest for a Takt-managed install.
 	ArchifyManagedMarkerKey = ArchifySkillRelDir + "/.takt-receipt"
+	// ArchifyRetiredRelDir is the home-relative slash path a deselected managed
+	// Archify tree moves to before removal, outside the skills OpenCode loads,
+	// so an interrupted removal is finished later without touching the skill path.
+	ArchifyRetiredRelDir = StateDirName + "/archify-retired"
 
 	// OpenCodePluginsDir is the directory OpenCode loads plugins from.
 	OpenCodePluginsDir = "plugins"
