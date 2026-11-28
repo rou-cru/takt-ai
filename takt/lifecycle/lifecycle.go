@@ -259,7 +259,13 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	// Acquiring a prerequisite replaces a stale managed copy, so that copy is
 	// set aside into the backups first and restored when nothing is applied.
 	var aside []setup.SetAsideEntry
+	var archifyInstalled bool
 	notApplied := func(result LifecycleResult, err error) (LifecycleResult, error) {
+		// An Archify tree this run extracted is discarded with nothing applied;
+		// a reused copy stays, and a replaced one returns through its set-aside entry.
+		if archifyInstalled {
+			err = errors.Join(err, removeManagedTree(rootDir, model.ArchifySkillRelDir, "archify"))
+		}
 		return result, errors.Join(err, restoreSetAside(aside))
 	}
 	runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Acquiring the memory model"})
@@ -283,7 +289,6 @@ func (runtime Runtime) install(ctx context.Context, action, rootDir string, requ
 	}
 	resolvedComponents, _, _ := setup.ResolveComponents(request.Components)
 	archifySelected := slices.Contains(resolvedComponents, model.ComponentArchify)
-	var archifyInstalled bool
 	if archifySelected {
 		runtime.report(setup.DeploymentProgress{Stage: "preparing", Message: "Checking Archify capability"})
 		manifest := runtime.archifyManifest()

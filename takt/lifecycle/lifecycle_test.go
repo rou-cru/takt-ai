@@ -945,6 +945,78 @@ func TestArchifyLifecycleInstallSyncDeselectAndPreservedUnmanaged(t *testing.T) 
 		}
 	})
 
+	// Cancelling once the prerequisites are in place, before deployment writes a
+	// file, must leave the skill path as it was before the run.
+	cancelBeforeDeploy := func(rt *lifecycle.Runtime) context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		rt.Progress = func(progress setup.DeploymentProgress) {
+			if progress.Message == "Preparing managed files" {
+				cancel()
+			}
+		}
+		return ctx
+	}
+	withArchify := func() setup.PlanRequest {
+		req := setuputil.TestPlanRequest()
+		req.Components = []string{string(model.ComponentArchify)}
+		return req
+	}
+
+	t.Run("install cancelled before deployment discards the new Archify tree", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		res, err := rt.Run(cancelBeforeDeploy(&rt), "install", root, withArchify())
+		if err != nil {
+			t.Fatalf("Run(install) error = %v, want nil for cancellation", err)
+		}
+		if res.Outcome != lifecycle.OutcomeCancelledNothingApplied {
+			t.Fatalf("Outcome = %v, want %v", res.Outcome, lifecycle.OutcomeCancelledNothingApplied)
+		}
+		if _, err := os.Lstat(model.ArchifySkillDir(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("archify dir after cancelled install stat = %v, want absent", err)
+		}
+	})
+
+	t.Run("sync cancelled before deployment restores the replaced Archify copy", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		damaged := []byte("#!/usr/bin/env node\nthrow new Error('damaged')\n")
+		if err := os.WriteFile(model.ArchifyBinaryPath(root), damaged, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// A missing managed file gives deployment work to cancel.
+		bridge := filepath.Join(root, model.OpenCodeSkillsDir, "takt-archify", "SKILL.md")
+		if err := os.Remove(bridge); err != nil {
+			t.Fatal(err)
+		}
+		res, err := rt.Run(cancelBeforeDeploy(&rt), "sync", root, withArchify())
+		if err != nil {
+			t.Fatalf("Run(sync) error = %v, want nil for cancellation", err)
+		}
+		if res.Outcome != lifecycle.OutcomeCancelledNothingApplied {
+			t.Fatalf("Outcome = %v, want %v", res.Outcome, lifecycle.OutcomeCancelledNothingApplied)
+		}
+		if got, err := os.ReadFile(model.ArchifyBinaryPath(root)); err != nil || !bytes.Equal(got, damaged) {
+			t.Fatalf("archify entrypoint after cancelled sync = %q, %v; want the replaced copy restored", got, err)
+		}
+	})
+
+	t.Run("install cancelled before deployment keeps a reused Archify copy", func(t *testing.T) {
+		root := t.TempDir()
+		preinstallUnmanagedArchify(t, root)
+		rt := installRuntime(t)
+		if _, err := rt.Run(cancelBeforeDeploy(&rt), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v, want nil for cancellation", err)
+		}
+		if _, found := archify.Resolve(root); !found {
+			t.Fatal("cancelled install removed an Archify copy it reused")
+		}
+	})
+
 	t.Run("sync deselection preserves user-edited takt-archify bridge skill", func(t *testing.T) {
 		root := t.TempDir()
 		rt := installRuntime(t)
