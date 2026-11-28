@@ -318,57 +318,71 @@ const archifyProbeTimeout = 30 * time.Second
 
 // archifyChecks verifies an installed Archify skill satisfies the pinned minimum
 // version and passes `node bin/archify.mjs doctor` when ComponentArchify is selected.
-// A Takt-managed copy is repaired by sync, which replaces a tree that no longer
-// matches its receipt; a copy installed outside Takt is the user's to repair.
+// The remedy follows what would actually repair the copy: sync replaces a
+// Takt-managed tree that is missing or no longer matches its receipt, a copy
+// installed outside Takt is the user's to repair, an unreadable ownership
+// manifest must be repaired before either can be told apart, and a managed tree
+// that still matches its receipt points at the Node.js runtime, since sync
+// would keep that tree as is.
 func archifyChecks(home string) []CheckResult {
 	const name = "archify:skill"
-	remedy := "Run 'takt-ai setup sync' to restore Archify"
-	if !archifyManaged(home) {
-		remedy = fmt.Sprintf("Repair or move aside the Archify copy at %s, then run 'takt-ai setup sync'", model.ArchifySkillDir(home))
+	fail := func(detail, remedy string) []CheckResult {
+		return []CheckResult{{Name: name, Status: CheckStatusFail, Detail: detail, Remedy: remedy}}
+	}
+	managed, manifestErr := archifyManaged(home)
+	repair := "Run 'takt-ai setup sync' to restore Archify"
+	switch {
+	case manifestErr != nil:
+		repair = fmt.Sprintf("Repair the ownership manifest at %s (%v) so Takt can tell whether it manages the Archify copy, then run 'takt-ai doctor' again",
+			filepath.Join(home, setup.OwnershipManifestFilename), manifestErr)
+	case !managed:
+		repair = fmt.Sprintf("Repair or move aside the Archify copy at %s, then run 'takt-ai setup sync'", model.ArchifySkillDir(home))
 	}
 	if _, found := archify.Resolve(home); !found {
-		return []CheckResult{{
-			Name:   name,
-			Status: CheckStatusFail,
-			Detail: fmt.Sprintf("no archify %s or newer at %s", archify.Version, model.ArchifySkillDir(home)),
-			Remedy: remedy,
-		}}
+		return fail(fmt.Sprintf("no archify %s or newer at %s", archify.Version, model.ArchifySkillDir(home)), repair)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), archifyProbeTimeout)
 	defer cancel()
 	version, err := archify.Verify(ctx, home)
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if err == nil {
 		return []CheckResult{{
 			Name:   name,
-			Status: CheckStatusFail,
-			Detail: fmt.Sprintf("archify doctor did not finish within %s", archifyProbeTimeout),
-			Remedy: remedy,
+			Status: CheckStatusPass,
+			Detail: fmt.Sprintf("archify %s ready at %s", version, model.ArchifySkillDir(home)),
 		}}
 	}
-	if err != nil {
-		return []CheckResult{{
-			Name:   name,
-			Status: CheckStatusFail,
-			Detail: err.Error(),
-			Remedy: "Ensure Node.js >= 18 is on PATH. " + remedy,
-		}}
+	timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
+	detail := err.Error()
+	if timedOut {
+		detail = fmt.Sprintf("archify doctor did not finish within %s", archifyProbeTimeout)
 	}
-	return []CheckResult{{
-		Name:   name,
-		Status: CheckStatusPass,
-		Detail: fmt.Sprintf("archify %s ready at %s", version, model.ArchifySkillDir(home)),
-	}}
+	if manifestErr == nil && managed && archify.Intact(home) {
+		const unchanged = ": this copy matches the tree Takt extracted, so 'takt-ai setup sync' would keep it as is"
+		if timedOut {
+			return fail(detail, "Check why Node.js on PATH stalls running the Archify doctor probe"+unchanged)
+		}
+		return fail(detail, "Ensure Node.js >= 18 is on PATH and runs the Archify doctor probe"+unchanged)
+	}
+	if timedOut {
+		return fail(detail, repair)
+	}
+	return fail(detail, "Ensure Node.js >= 18 is on PATH. "+repair)
 }
 
 // archifyManaged reports whether the ownership manifest records the Archify
-// receipt, the evidence that Takt extracted the tree at the skill path.
-func archifyManaged(home string) bool {
+// receipt, the evidence that Takt extracted the tree at the skill path. Only a
+// missing manifest means no record; a manifest that cannot be read or parsed
+// leaves ownership unknown and is returned as an error.
+func archifyManaged(home string) (bool, error) {
 	manifest, err := setup.LoadOwnershipManifest(home)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
 	if err != nil {
-		return false
+		return false, err
 	}
 	_, owned := manifest.Entries[model.ArchifyManagedMarkerKey]
-	return owned
+	return owned, nil
 }
 
 // workingDirOrHome resolves the directory doctor should report a project

@@ -526,14 +526,19 @@ func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
 		expect(t, checks, "archify:skill", failMark, "archify doctor failed", "Ensure Node.js >= 18")
 	})
 
-	// Sync repairs only a copy Takt manages; a user's own copy is theirs to fix.
+	// The remedy names what would actually repair the copy: sync replaces only a
+	// managed tree that no longer matches its receipt, a user's own copy is
+	// theirs to fix, and an unreadable manifest leaves ownership unknown.
 	for _, tc := range []struct {
-		name    string
-		managed bool
-		remedy  string
+		name        string
+		manifest    string
+		removeAsset bool
+		remedy      string
 	}{
-		{name: "managed copy is repaired by sync", managed: true, remedy: "Run 'takt-ai setup sync' to restore Archify"},
-		{name: "unmanaged copy is the user's to repair", managed: false, remedy: "Repair or move aside the Archify copy"},
+		{name: "managed copy missing an asset is repaired by sync", manifest: "managed", removeAsset: true, remedy: "Run 'takt-ai setup sync' to restore Archify"},
+		{name: "intact managed copy points at the Node runtime", manifest: "managed", remedy: "so 'takt-ai setup sync' would keep it as is"},
+		{name: "unmanaged copy is the user's to repair", remedy: "Repair or move aside the Archify copy"},
+		{name: "unreadable ownership manifest is repaired first", manifest: "corrupt", remedy: "Repair the ownership manifest"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHost(t)
@@ -543,7 +548,8 @@ func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
 			if _, _, err := testutil.FakeArchify(t).Acquire(context.Background(), http.DefaultClient, h.home); err != nil {
 				t.Fatal(err)
 			}
-			if tc.managed {
+			switch tc.manifest {
+			case "managed":
 				receipt, err := os.ReadFile(filepath.Join(h.home, filepath.FromSlash(model.ArchifyManagedMarkerKey)))
 				if err != nil {
 					t.Fatal(err)
@@ -557,6 +563,15 @@ func TestRunArchifyCheckFollowsInstallationSelection(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err := manifest.Save(h.home); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt":
+				if err := os.WriteFile(filepath.Join(h.home, setup.OwnershipManifestFilename), []byte("{"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.removeAsset {
+				if err := os.Remove(filepath.Join(model.ArchifySkillDir(h.home), filepath.FromSlash(testutil.ArchifyTemplateAsset))); err != nil {
 					t.Fatal(err)
 				}
 			}
