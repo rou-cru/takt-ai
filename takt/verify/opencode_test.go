@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -217,7 +218,20 @@ func TestNativeSkillsCheckTracksArchifySelection(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	got := checkByID(t, verify.Collect(context.Background(), root).Checks, "skills:opencode:takt")
-	if got.State != verify.NotVerified || !strings.Contains(got.Explanation, "archify") || !strings.Contains(got.Explanation, "takt-archify") {
-		t.Fatalf("with Archify recorded: %+v, want NotVerified naming archify and takt-archify", got)
+	const missingPrefix = "Native OpenCode is missing Takt skills: "
+	if got.State != verify.NotVerified || !strings.HasPrefix(got.Explanation, missingPrefix) {
+		t.Fatalf("with Archify recorded: %+v, want NotVerified listing the missing skills", got)
+	}
+	if missing := strings.Split(strings.TrimPrefix(got.Explanation, missingPrefix), ", "); !slices.Equal(missing, []string{"archify", "takt-archify"}) {
+		t.Fatalf("missing skills = %q, want exactly [archify takt-archify]", missing)
+	}
+
+	// A malformed installed record cannot say whether Archify belongs to the inventory.
+	if err := os.WriteFile(filepath.Join(root, setup.InstalledConfigFilename), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	malformed := checkByID(t, verify.Collect(context.Background(), root).Checks, "skills:opencode:takt")
+	if malformed.State != verify.NotVerifiable || !strings.Contains(malformed.Explanation, "installed component selection") {
+		t.Fatalf("with a malformed installed record: %+v, want NotVerifiable naming the configuration error", malformed)
 	}
 }

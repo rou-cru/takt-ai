@@ -5,6 +5,7 @@ package verify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,11 +97,17 @@ func nativeDefaultModelCheck(ctx context.Context, client *opencodeapi.Client) Ch
 
 func nativeSkillsCheck(ctx context.Context, root string, client *opencodeapi.Client) CheckResult {
 	const id = "skills:opencode:takt"
+	// A missing record is a legacy core-only installation; an unreadable or
+	// malformed one cannot say which optional skills belong to the inventory.
 	var components []model.ComponentID
-	if cfg, err := setup.LoadInstalledConfig(root); err == nil {
+	cfg, err := setup.LoadInstalledConfig(root)
+	switch {
+	case err == nil:
 		for _, c := range cfg.Components {
 			components = append(components, model.ComponentID(c))
 		}
+	case !errors.Is(err, os.ErrNotExist):
+		return CheckResult{id, NotVerifiable, fmt.Sprintf("Cannot read the installed component selection: %v", err)}
 	}
 	expected, err := skills.LoadSkills(components...)
 	if err != nil {
