@@ -1117,6 +1117,49 @@ func TestArchifyOwnershipFollowsTheReceipt(t *testing.T) {
 		}
 	})
 
+	t.Run("deselection keeps a managed tree with an added directory", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		drafts := filepath.Join(model.ArchifySkillDir(root), "drafts")
+		if err := os.Mkdir(drafts, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		res, err := rt.Run(context.Background(), "sync", root, setuputil.TestPlanRequest())
+		if err != nil {
+			t.Fatalf("Run(sync without archify) error = %v", err)
+		}
+		if info, err := os.Stat(drafts); err != nil || !info.IsDir() {
+			t.Fatalf("deselection removed the user's directory: %v", err)
+		}
+		if !slices.Contains(res.Retained, model.ArchifySkillRelDir) {
+			t.Fatalf("Retained = %v, want %s", res.Retained, model.ArchifySkillRelDir)
+		}
+	})
+
+	t.Run("sync restores a missing asset", func(t *testing.T) {
+		root := t.TempDir()
+		rt := installRuntime(t)
+		if _, err := rt.Run(context.Background(), "install", root, withArchify()); err != nil {
+			t.Fatalf("Run(install) error = %v", err)
+		}
+		asset := filepath.Join(model.ArchifySkillDir(root), filepath.FromSlash(testutil.ArchifyTemplateAsset))
+		if err := os.Remove(asset); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rt.Run(context.Background(), "sync", root, withArchify()); err != nil {
+			t.Fatalf("Run(sync) error = %v", err)
+		}
+		if info, err := os.Lstat(asset); err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("sync did not restore %s: %v", testutil.ArchifyTemplateAsset, err)
+		}
+		if !archify.Intact(root) {
+			t.Fatal("sync left a managed copy that does not match its receipt")
+		}
+	})
+
 	t.Run("sync replaces a damaged managed copy", func(t *testing.T) {
 		root := t.TempDir()
 		rt := installRuntime(t)

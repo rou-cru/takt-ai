@@ -179,6 +179,10 @@ func FakeModel(t *testing.T) *embed.Manifest {
 	}
 }
 
+// ArchifyTemplateAsset is the Archify-skill-relative slash path of the asset
+// FakeArchify ships, which a test removes to damage a managed copy.
+const ArchifyTemplateAsset = "assets/template.html"
+
 // FakeArchify serves a minimal valid Archify zip over HTTP and returns its
 // manifest, so install acquires Archify without the network.
 func FakeArchify(t *testing.T) *archify.Manifest {
@@ -186,9 +190,10 @@ func FakeArchify(t *testing.T) *archify.Manifest {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	files := map[string]string{
-		"archify/SKILL.md":        "---\nname: archify\ndescription: diagrams\n---\n",
-		"archify/package.json":    fmt.Sprintf(`{"name":"archify","version":%q}`, archify.Version),
-		"archify/bin/archify.mjs": "#!/usr/bin/env node\nif (process.argv[2] === 'doctor') { console.log('ok'); }\n",
+		"archify/SKILL.md":                "---\nname: archify\ndescription: diagrams\n---\n",
+		"archify/package.json":            fmt.Sprintf(`{"name":"archify","version":%q}`, archify.Version),
+		"archify/bin/archify.mjs":         "#!/usr/bin/env node\nif (process.argv[2] === 'doctor') { console.log('ok'); }\n",
+		"archify/" + ArchifyTemplateAsset: "<!doctype html>\n",
 	}
 	for name, content := range files {
 		w, err := zw.Create(name)
